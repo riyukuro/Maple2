@@ -42,7 +42,7 @@ public abstract class Server<T> : BackgroundService, IHealthCheck where T : Sess
     protected abstract void AddSession(T session);
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken) {
-        var listener = new TcpListener(IPAddress.Any, Port);
+        var listener = new TcpListener(IPAddress.Loopback, Port);
         listener.Start();
         state = ServerState.Running;
 

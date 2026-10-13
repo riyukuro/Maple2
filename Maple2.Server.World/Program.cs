@@ -35,7 +35,7 @@ Log.Logger = new LoggerConfiguration()
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.Listen(new IPEndPoint(IPAddress.Any, Target.GrpcWorldPort), listen => {
+    options.Listen(new IPEndPoint(IPAddress.Loopback, Target.GrpcWorldPort), listen => {
         listen.Protocols = HttpProtocols.Http2;
     });
 });

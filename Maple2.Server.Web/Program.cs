@@ -36,11 +36,11 @@ int.TryParse(Environment.GetEnvironmentVariable("WEB_PORT") ?? "4000", out int w
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.Listen(new IPEndPoint(IPAddress.Any, webPort), listen => {
+    options.Listen(new IPEndPoint(IPAddress.Loopback, webPort), listen => {
         listen.Protocols = HttpProtocols.Http1;
     });
     // Omitting for now since HTTPS requires a certificate
-    // options.Listen(new IPEndPoint(IPAddress.Any, 443), listen => {
+    // options.Listen(new IPEndPoint(IPAddress.Loopback, 443), listen => {
     //     listen.UseHttps();
     //     listen.Protocols = HttpProtocols.Http1;
     // });
