@@ -434,8 +434,19 @@ public abstract class Session : IDisposable {
                 break;
             default:
                 Logger.Verbose("{Mode} ({Name} - {OpCode}): {Packet}", "RECV".ColorGreen(), opcode, $"0x{op:X4}", packet.ToHexString(packet.Length, ' '));
+                TstCapture(op, packet);
                 break;
         }
+    }
+
+    // LOCAL TEST HOOK (tst1): TST_PKT_DIR set -> append each client-sent packet to <dir>/pkt.<CharacterId>.log as "op<TAB>len<TAB>hex"
+    public static void TstAppend(long characterId, string line) {
+        string? dir = Environment.GetEnvironmentVariable("TST_PKT_DIR");
+        if (string.IsNullOrEmpty(dir) || characterId == 0) return;
+        try { lock (typeof(Session)) File.AppendAllText(Path.Combine(dir, $"pkt.{characterId}.log"), line + "\n"); } catch (IOException) { }
+    }
+    private void TstCapture(short op, ReadOnlySpan<byte> packet) {
+        TstAppend(CharacterId, $"0x{op:X4}\t{packet.Length}\t{Convert.ToHexString(packet)}");
     }
 
     public string ExtractIp() {

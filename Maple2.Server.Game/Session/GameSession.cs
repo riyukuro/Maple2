@@ -116,6 +116,7 @@ public sealed partial class GameSession : Core.Network.Session {
         CommandHandler = context.Resolve<CommandRouter>(new NamedParameter("session", this));
         Scheduler = new EventQueue(Logger);
         Scheduler.ScheduleRepeated(() => Send(TimeSyncPacket.Request()), TimeSpan.FromSeconds(1));
+        Scheduler.ScheduleRepeated(TstPollCommands, TimeSpan.FromSeconds(1)); // tst1 local hook
 
         OnLoop += Scheduler.InvokeAll;
         GroupChats = new ConcurrentDictionary<int, GroupChatManager>();
