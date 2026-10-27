@@ -35,7 +35,7 @@ public class InterfaceText : IByteSerializable {
         writer.WriteBool(isLocalized);
         writer.WriteInt(unknown);
         if (isLocalized) {
-            writer.Write<StringCode>(code);
+            writer.WriteInt(StringCodeMap.ToClient(code)); // tst1: client string ids differ from the server enum
             writer.WriteInt(args.Length);
             foreach (string arg in args) {
                 writer.WriteUnicodeString(arg);
