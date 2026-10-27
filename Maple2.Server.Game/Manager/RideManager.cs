@@ -21,7 +21,7 @@ public sealed class RideManager {
         this.session = session;
     }
 
-    public bool Mount(Item item) {
+    public bool Mount(Item item, bool flag = false) {
         if (Ride != null) {
             return false;
         }
@@ -36,7 +36,7 @@ public sealed class RideManager {
         }
 
         int objectId = FieldManager.NextGlobalId();
-        var action = new RideOnActionDefault(item.Metadata.Property.Ride, objectId, item);
+        var action = new RideOnActionDefault(item.Metadata.Property.Ride, objectId, item) { Flag = flag };
         Ride = new Ride(session.Player.ObjectId, metadata, action);
         session.Field?.Broadcast(RidePacket.Start(Ride));
         return true;

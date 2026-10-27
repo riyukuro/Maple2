@@ -9,6 +9,8 @@ public class RideOnAction : IByteSerializable {
     public readonly RideOnType Type;
     public readonly int RideId;
     public readonly int ObjectId;
+    // KMS2 client (RideOnAction 0x14077ddb0/0x14077de30): one byte after ObjectId, a ride option flag (game option byte 2).
+    public bool Flag { get; init; }
 
     public RideOnAction(int rideId, int objectId) : this(RideOnType.Default, rideId, objectId) { }
 
@@ -22,6 +24,7 @@ public class RideOnAction : IByteSerializable {
         writer.Write<RideOnType>(Type);
         writer.WriteInt(RideId);
         writer.WriteInt(ObjectId);
+        writer.WriteBool(Flag);
     }
 }
 

@@ -60,6 +60,7 @@ public class RideHandler : FieldPacketHandler {
         var type = packet.Read<RideOnType>();
         int rideId = packet.ReadInt();
         packet.ReadInt(); // ObjectId, Unset
+        bool flag = packet.ReadBool(); // KMS2: RideOnAction byte +0x28 (ride option flag)
         packet.ReadInt(); // ItemId, Unset
         long itemUid = packet.ReadLong();
         // client doesn't set this data?
@@ -81,7 +82,7 @@ public class RideHandler : FieldPacketHandler {
             return;
         }
 
-        session.Ride.Mount(item);
+        session.Ride.Mount(item, flag);
     }
 
     private void HandleStop(GameSession session, IByteReader packet) {
