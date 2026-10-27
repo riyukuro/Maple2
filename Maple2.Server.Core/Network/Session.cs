@@ -143,6 +143,13 @@ public abstract class Session : IDisposable {
             Logger.Debug(ex, "SendWorker drain join failed");
         }
 
+        // tst1: linger 0 turns Close into an RST, which can drop the just-sent last packet (GameToLogin) under wine.
+        // Close gracefully after the drain: FIN first, short linger.
+        try {
+            client.LingerState = new LingerOption(true, 2);
+            client.Client.Shutdown(SocketShutdown.Send);
+        } catch (Exception) { /* already closed */ }
+
         Dispose();
     }
 
