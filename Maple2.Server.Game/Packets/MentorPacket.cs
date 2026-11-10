@@ -26,15 +26,6 @@ public static class MentorPacket {
         Unknown16 = 16,
     }
 
-    public static ByteWriter Init(FieldPlayer player) {
-        var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<MentorRole>(player.Value.Character.MentorRole);
-        pWriter.WriteInt(player.ObjectId);
-        pWriter.WriteLong(player.Value.Character.Id);
-        return pWriter;
-
-    }
-
     public static ByteWriter UpdateRole(MentorRole role, int objectId) {
         var pWriter = Packet.Of(SendOp.Mentor);
         pWriter.Write<Command>(Command.UpdateRole);
