@@ -113,7 +113,7 @@ public class PremiumClubHandler : FieldPacketHandler {
             }
         }
 
-        session.Send(PremiumCubPacket.PurchasePackage(packageId));
+        session.Send(PremiumCubPacket.PurchasePackage());
         session.Config.UpdatePremiumTime(premiumMetadata.Period);
     }
 }

@@ -41,18 +41,17 @@ public static class PremiumCubPacket {
         return pWriter;
     }
 
+    // The client reads only the sub-type for 3 and 4: UIVIPDialog::FUN_140fb87d0 (uivipdialog.cpp:234) handles 1 and 2 only.
     public static ByteWriter LoadPackages() {
         var pWriter = Packet.Of(SendOp.PremiumClub);
         pWriter.Write<Command>(Command.LoadPackages);
-        pWriter.WriteInt();
 
         return pWriter;
     }
 
-    public static ByteWriter PurchasePackage(int packageId) {
+    public static ByteWriter PurchasePackage() {
         var pWriter = Packet.Of(SendOp.PremiumClub);
         pWriter.Write<Command>(Command.PurchasePackage);
-        pWriter.WriteInt(packageId);
 
         return pWriter;
     }
