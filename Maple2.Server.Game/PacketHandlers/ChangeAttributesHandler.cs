@@ -19,6 +19,9 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     private enum Command : byte {
         Change = 0,
         Select = 2,
+        KeepCurrent = 3,
+        StageItem = 4,
+        OpenDialog = 6,
         Unknown5 = 7,
         ForceFill = 8,
     }
@@ -43,6 +46,15 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 return;
             case Command.ForceFill:
                 HandleForceFill(session, packet);
+                return;
+            case Command.KeepCurrent:
+                HandleKeepCurrent(session, packet);
+                return;
+            case Command.StageItem:
+                HandleStageItem(session, packet);
+                return;
+            case Command.OpenDialog:
+                HandleOpenDialog(session, packet);
                 return;
         }
     }
@@ -272,5 +284,26 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             }, InventoryType.Misc).FirstOrDefault();
         }
         return null;
+    }
+
+    // Client TabContentsPetRemakeOption / UIItemRemakeOptionDialog: the player keeps the current
+    // options instead of the new ones (kind 1 item, 2 pet). Only the pending result in the session
+    // is dropped; nothing saved changes. The client sends no item uid and expects no reply here.
+    private static void HandleKeepCurrent(GameSession session, IByteReader packet) {
+        byte kind = packet.ReadByte();
+        session.ChangeAttributesItem = null;
+    }
+
+    // Client UIItemRemakeOptionDialog::SendChangeAttributesMode4: an item put in the remake slot.
+    // The reply the client expects for this mode is not known.
+    private void HandleStageItem(GameSession session, IByteReader packet) {
+        long itemUid = packet.ReadLong();
+        Logger.Debug("ChangeAttributes stage {ItemUid} from {CharacterId} not implemented", itemUid, session.CharacterId);
+    }
+
+    // Client UIItemRemakeOptionDialog::OnLoadComplete (kind 1) and the pet tab reset (kind 2).
+    private void HandleOpenDialog(GameSession session, IByteReader packet) {
+        byte kind = packet.ReadByte();
+        Logger.Debug("ChangeAttributes dialog {Kind} opened by {CharacterId}", kind, session.CharacterId);
     }
 }
