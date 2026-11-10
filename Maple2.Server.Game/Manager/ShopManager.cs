@@ -112,6 +112,14 @@ public sealed class ShopManager {
             activeShop = new Shop(metadata) {
                 Items = GetShopItems(metadata),
             };
+            // Shops without a reset still limit items with a stock count; the bought count never restocks.
+            if (TryGetShopItemData(metadata.Id, out IDictionary<int, CharacterShopItemData>? stockData)) {
+                foreach ((int shopItemId, CharacterShopItemData itemData) in stockData) {
+                    if (activeShop.Items.TryGetValue(shopItemId, out ShopItem? shopItem) && shopItem.StockCount > 0) {
+                        shopItem.StockPurchased = itemData.StockPurchased;
+                    }
+                }
+            }
         }
 
         shopNpcId = npcId;
@@ -373,6 +381,39 @@ public sealed class ShopManager {
         shopItem.StockPurchased += quantity;
     }
 
+    // Stock bought from a shop without a reset: one row per bought item, created on the first purchase and
+    // saved with the other shop rows. These shops have no CharacterShopData row, so nothing restocks them.
+    private void UpdateUnresetStockCount(ShopMetadata metadata, ShopItem shopItem, int quantity) {
+        if (!TryGetShopItemData(metadata.Id, out IDictionary<int, CharacterShopItemData>? data)) {
+            data = new Dictionary<int, CharacterShopItemData>();
+            if (metadata.RestockData.AccountWide) {
+                accountShopItemData[metadata.Id] = data;
+            } else {
+                characterShopItemData[metadata.Id] = data;
+            }
+        }
+        if (!data.TryGetValue(shopItem.Id, out CharacterShopItemData? itemData)) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            long ownerId = metadata.RestockData.AccountWide ? session.AccountId : session.CharacterId;
+            itemData = db.CreateCharacterShopItemData(ownerId, new CharacterShopItemData {
+                ShopId = metadata.Id,
+                ShopItemId = shopItem.Id,
+                Item = shopItem.Item,
+            });
+            if (itemData == null) {
+                logger.Error("Failed to create stock data for shop {ShopId} item {ShopItemId}", metadata.Id, shopItem.Id);
+                return;
+            }
+            data[shopItem.Id] = itemData;
+        }
+        itemData.StockPurchased += quantity;
+        shopItem.StockPurchased += quantity;
+    }
+
+    private bool IsUnresetShop(int shopId) {
+        return session.ServerTableMetadata.ShopTable.Entries.TryGetValue(shopId, out ShopMetadata? metadata) && !metadata.EnableReset;
+    }
+
     private long GetRestockTime(ShopMetadata metadata) {
         if (metadata.RestockTime > 0) {
             return metadata.RestockTime;
@@ -471,8 +512,12 @@ public sealed class ShopManager {
             return;
         }
 
-        if (activeShop.Metadata.EnableReset && shopItem.StockCount > 0) {
-            UpdateStockCount(activeShop.Id, shopItem, quantity);
+        if (shopItem.StockCount > 0) {
+            if (activeShop.Metadata.EnableReset) {
+                UpdateStockCount(activeShop.Id, shopItem, quantity);
+            } else {
+                UpdateUnresetStockCount(activeShop.Metadata, shopItem, quantity);
+            }
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
 
@@ -673,12 +718,12 @@ public sealed class ShopManager {
         db.SaveCharacterShopData(session.CharacterId, saveCharacterShops.Values.ToList());
 
         db.SaveCharacterShopItemData(session.AccountId, accountShopItemData
-            .Where(kvp => saveAccountShops.ContainsKey(kvp.Key))
+            .Where(kvp => saveAccountShops.ContainsKey(kvp.Key) || IsUnresetShop(kvp.Key))
             .SelectMany(kvp => kvp.Value.Values)
             .ToList());
 
         db.SaveCharacterShopItemData(session.CharacterId, characterShopItemData
-            .Where(kvp => saveCharacterShops.ContainsKey(kvp.Key))
+            .Where(kvp => saveCharacterShops.ContainsKey(kvp.Key) || IsUnresetShop(kvp.Key))
             .SelectMany(kvp => kvp.Value.Values)
             .ToList());
     }
