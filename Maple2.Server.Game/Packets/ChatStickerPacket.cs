@@ -36,8 +36,9 @@ public static class ChatStickerPacket {
     public static ByteWriter Add(Item item, ChatSticker sticker) {
         var pWriter = Packet.Of(SendOp.ChatStamp);
         pWriter.Write<Command>(Command.Add);
+        // CChatEmoticonCli::FUN_140a39360 (chatemoticoncli.cpp:202): item id, then a count of sticker groups and one {id, expiry} per group.
         pWriter.WriteInt(item.Id);
-        pWriter.WriteInt(item.Amount);
+        pWriter.WriteInt(1);
         pWriter.Write<ChatSticker>(sticker);
 
         return pWriter;
