@@ -218,15 +218,21 @@ public static class MeretMarketPacket {
         pWriter.Write<Command>(Command.FeaturedPremium);
         pWriter.WriteByte(section);
         pWriter.WriteByte(tabId);
+        if (section == 0) {
+            // The home page starts with three product groups (a count, then products without an exists flag).
+            pWriter.WriteByte();
+            pWriter.WriteByte();
+            pWriter.WriteByte();
+        }
         pWriter.WriteByte();
         pWriter.WriteByte(marketSlots);
         for (int i = 0; i < marketSlots; i++) {
+            // The client reads an exists flag for every slot and skips the empty ones.
             MarketItem? item = marketItems.ElementAtOrDefault(i);
             pWriter.WriteBool(item != null);
-            if (item == null) {
-                break;
+            if (item != null) {
+                pWriter.WriteMarketItem(item);
             }
-            pWriter.WriteMarketItem(item);
         }
         return pWriter;
     }
@@ -259,22 +265,17 @@ public static class MeretMarketPacket {
                     pWriter.WriteClass<PremiumMarketPromoData>(premium.PromoData);
                 }
                 pWriter.WriteByte();
+                pWriter.WriteUnicodeString();
                 pWriter.WriteBool(premium.Metadata.ShowSaleTime);
-                pWriter.WriteInt();
+                pWriter.WriteInt(); // buy count
                 pWriter.WriteByte((byte) premium.AdditionalQuantities.Count);
                 foreach (PremiumMarketItem addEntry in premium.AdditionalQuantities) {
                     pWriter.WriteBool(true);
                     pWriter.WriteClass<PremiumMarketItem>(addEntry);
-                    bool unk = false;
-                    pWriter.WriteBool(unk);
-                    if (unk) {
-                        pWriter.WriteString();
-                        pWriter.WriteLong();
-                        pWriter.WriteUnicodeString();
-                        pWriter.WriteLong();
-                    }
+                    pWriter.WriteBool(false); // no event (category string, start and end time when set)
                     pWriter.WriteByte();
-                    pWriter.WriteByte();
+                    pWriter.WriteUnicodeString();
+                    pWriter.WriteBool(false);
                 }
                 break;
             case UgcMarketItem ugc:
