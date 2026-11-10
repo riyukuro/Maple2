@@ -16,8 +16,10 @@ public class ItemInventoryHandler : FieldPacketHandler {
         Move = 3,
         Drop = 4,
         DropAll = 5,
-        Sort = 10,
-        Expand = 11,
+        // KMS 2525 client: UIInventoryDialog::SendRequestItemInventory (8, tab, flag) and
+        // Unk_Inventory::SendRequestItemInventory (9, tab) for the expand button.
+        Sort = 8,
+        Expand = 9,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -69,9 +71,14 @@ public class ItemInventoryHandler : FieldPacketHandler {
 
     private void HandleSort(GameSession session, IByteReader packet) {
         var type = packet.Read<InventoryType>();
-        bool removeExpired = packet.ReadBool();
+        // The client sets this from the confirm box it shows only when the tab holds stackable items
+        // (UIInventoryDialog::OnSortConfirm), so it asks to merge stacks; it does not ask to remove expired items.
+        bool mergeStacks = packet.ReadBool();
+        if (mergeStacks) {
+            Logger.Debug("Inventory sort with stack merge from {CharacterId}: merge not implemented", session.CharacterId);
+        }
 
-        session.Item.Inventory.Sort(type, removeExpired);
+        session.Item.Inventory.Sort(type);
     }
 
     private void HandleExpand(GameSession session, IByteReader packet) {
