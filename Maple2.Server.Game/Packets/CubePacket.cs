@@ -310,9 +310,12 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter ArchitectScore() {
+    // Client: CSceneStateGame::OnResponseCube case 0x1c (scenestategame.cpp:10356): two ints, stored by FUN_1410c3410 / FUN_1410c3450.
+    public static ByteWriter ArchitectScore(int value1, int value2) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ArchitectScore);
+        pWriter.WriteInt(value1);
+        pWriter.WriteInt(value2);
 
         return pWriter;
     }
@@ -461,30 +464,51 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter UpdateBuildBudget() {
+    // Client: CSceneStateGame::OnResponseCube case 0x38 (scenestategame.cpp:10791): byte error; when 0, two longs, then the home dialog's UpdateBalance.
+    public static ByteWriter UpdateBuildBudget(byte error = 0, long value1 = 0, long value2 = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.UpdateBuildBudget);
+        pWriter.WriteByte(error);
+        if (error == 0) {
+            pWriter.WriteLong(value1);
+            pWriter.WriteLong(value2);
+        }
 
         return pWriter;
     }
 
-    public static ByteWriter AddBuildPermission() {
+    // Client: CSceneStateGame::OnResponseCube case 0x39 (scenestategame.cpp:10761): byte error; when 0, the long id added (FUN_1410d57a0).
+    public static ByteWriter AddBuildPermission(byte error = 0, long id = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.AddBuildPermission);
+        pWriter.WriteByte(error);
+        if (error == 0) {
+            pWriter.WriteLong(id);
+        }
 
         return pWriter;
     }
 
-    public static ByteWriter RemoveBuildPermission() {
+    // Client: CSceneStateGame::OnResponseCube case 0x3a (scenestategame.cpp:10776): byte error; when 0, the long id removed (FUN_1410d5830).
+    public static ByteWriter RemoveBuildPermission(byte error = 0, long id = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.RemoveBuildPermission);
+        pWriter.WriteByte(error);
+        if (error == 0) {
+            pWriter.WriteLong(id);
+        }
 
         return pWriter;
     }
 
-    public static ByteWriter LoadBuildPermission() {
+    // Client: CSceneStateGame::OnResponseCube case 0x3b (scenestategame.cpp:10808): int count, count x long id, each added as in case 0x39.
+    public static ByteWriter LoadBuildPermission(ICollection<long> ids) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.LoadBuildPermission);
+        pWriter.WriteInt(ids.Count);
+        foreach (long id in ids) {
+            pWriter.WriteLong(id);
+        }
 
         return pWriter;
     }
