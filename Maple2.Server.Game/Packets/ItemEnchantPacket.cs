@@ -144,10 +144,12 @@ public static class ItemEnchantPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown15(long itemUid) {
+    // OnItemEnchant mode 15 (scenestategame.cpp:6127): item uid, then the whole item, which the client re-reads in place.
+    public static ByteWriter Unknown15(Item item) {
         var pWriter = Packet.Of(SendOp.ItemEnchant);
         pWriter.Write<Command>(Command.Unknown15);
-        pWriter.WriteLong(itemUid);
+        pWriter.WriteLong(item.Uid);
+        pWriter.WriteClass<Item>(item);
 
         return pWriter;
     }
