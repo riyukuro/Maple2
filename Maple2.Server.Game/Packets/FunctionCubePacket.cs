@@ -12,9 +12,9 @@ public static class FunctionCubePacket {
     private enum Command : byte {
         SendCubes = 2,
         Add = 3,
-        Furniture = 5,
-        SuccessLifeSkill = 8,
-        FailLifeSkill = 9,
+        Furniture = 6,
+        SuccessLifeSkill = 9,
+        FailLifeSkill = 10,
         Feed = 11,
     }
 
@@ -61,7 +61,7 @@ public static class FunctionCubePacket {
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(interactCube.Id);
         pWriter.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        pWriter.Write<InteractCubeState>(interactCube.State);
+        pWriter.WriteInt(1); // count the client adds to its per-cube success tally; one gather = one success
         return pWriter;
     }
 
