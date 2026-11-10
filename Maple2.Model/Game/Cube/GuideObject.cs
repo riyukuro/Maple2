@@ -45,7 +45,6 @@ public class SkillMagicControlGuide : IGuideObject {
         writer.WriteShort();
         writer.WriteByte();
         writer.WriteByte();
-        writer.WriteInt();
         writer.WriteByte(); // count
         // for (int i = 0; i < count; i++) {
         //     writer.WriteLong();
