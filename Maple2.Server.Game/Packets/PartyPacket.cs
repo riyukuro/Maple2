@@ -42,7 +42,7 @@ public static class PartyPacket {
         StartVote = 47,
         ReadyCheck = 48,
         EndVote = 49,
-        SurvivalPartySearch = 54,
+        SurvivalPartySearch = 55, // OnPartySurvivalSquadRegister (partymanager.cpp:473)
     }
 
     public static ByteWriter Error(PartyError error, string targetName = "") {
