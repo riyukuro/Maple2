@@ -22,12 +22,14 @@ Results today:
 
 | direction | rows | pass | warning | fail | not checkable |
 |---|---|---|---|---|---|
-| client to server | 678 | 215 | 5 | 91 | 367 |
-| server to client | 1,136 | 529 | 2 | 0 | 605 |
+| client to server | 678 | 215 | 5 | 90 | 368 |
+| server to client | 1,161 | 571 | 3 | 0 | 587 |
 
-Of the 91 client-to-server fails, 90 are sub-types the server does not handle (listed below). The other one is a known false alarm in the checker.
+The 90 client-to-server fails are all sub-types the server does not handle (listed below).
 
-The two server-to-client warnings are kept on purpose. Trade sub-type 13 carries a trailing byte that the official server sends too. The skill state packet (sub-type 6) carries an extra int that shifts fields the client reads and then discards.
+Server-to-client rows whose layout depends on client state are checked once per branch the client can take; a row passes when one branch reads the packet exactly. Of the server-to-client passes, 9 are weak (only a branch that ignores the packet, or a guessed condition, fits).
+
+Two of the three server-to-client warnings are kept on purpose; the third is weak and not settled yet: on the skill damage target packet (sub-type 0) the checker's made-up targets do not reach the client's entry loop, so the 26 bytes past what it reads may be one entry. Trade sub-type 13 carries a trailing byte that the official server sends too. The skill state packet (sub-type 6) carries an extra int that shifts fields the client reads and then discards.
 
 ## Fixes so far, by system
 
@@ -46,7 +48,8 @@ The two server-to-client warnings are kept on purpose. Trade sub-type 13 carries
 - **Party search:** Remove sends sub-type 1, and the error's request type is one byte.
 - **Ugc:** the confirmation request reads the client's two strings.
 - **Change attributes:** the ForceFill sub-type is 8 and the debug remake sub-type is 7.
-- **Skill damage:** sub-types 7 and 8 write the client's fields.
+- **Skill damage:** sub-types 7 and 8 write the client's fields; dot damage (sub-type 3) writes the amount as a long.
+- **Guide objects:** the skill guide has no int before the entry count; a ball is created on field entry through the home action packet, not the guide object create, which refuses a ball.
 - **Guild:**
   - Server-to-client sub-types 52 to 89 are shifted up by 2 to the client's numbers.
   - Experience, funds and member contribution use the client's sub-types (53 and 97).
@@ -55,6 +58,7 @@ The two server-to-client warnings are kept on purpose. Trade sub-type 13 carries
 - **Cube:**
   - The architect score, build budget and build permission packets (sub-types 28 and 56 to 59) write the client's fields.
   - The profile update writes four ints before the name and a trailing byte; plot extension writes only the error byte.
+  - The vote confirm (sub-type 25) writes the error byte and, on success, the character id and value; sub-type 53 writes the four longs the client reads.
 - **Fishing:** the simulation result writes four fixed ints per fish.
 - **Item socket:** unequipping a gem writes the gem's uid at the end.
 - **Club:** a member rename writes the club id before the names; a member update writes only the member profile; leaving writes only the club id.
