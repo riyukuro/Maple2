@@ -135,9 +135,15 @@ public static class SkillDamagePacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown7() {
+    // Client: CSceneStateGame::FUN_14171e860 (scenestategame.cpp:7128): int target id, int count, count x int player object id.
+    public static ByteWriter Unknown7(int targetId, ICollection<int> playerObjectIds) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
         pWriter.Write<Command>(Command.Unknown7);
+        pWriter.WriteInt(targetId);
+        pWriter.WriteInt(playerObjectIds.Count);
+        foreach (int objectId in playerObjectIds) {
+            pWriter.WriteInt(objectId);
+        }
 
         return pWriter;
     }
