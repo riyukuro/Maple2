@@ -223,9 +223,11 @@ public static class ClubPacket {
         return pWriter;
     }
 
-    public static ByteWriter UpdateMemberName(string oldName, string newName) {
+    public static ByteWriter UpdateMemberName(long clubId, string oldName, string newName) {
         var pWriter = Packet.Of(SendOp.Club);
         pWriter.Write<Command>(Command.UpdateMemberName);
+        // Client 2525 CClubClientManager::OnPacketMemberRename: club id, then CClubCli reads the names.
+        pWriter.WriteLong(clubId);
         pWriter.WriteUnicodeString(oldName);
         pWriter.WriteUnicodeString(newName);
 

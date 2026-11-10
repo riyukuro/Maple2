@@ -194,7 +194,7 @@ public class ClubManager : IDisposable {
         member.Info.Update(type, info);
 
         if (name != member.Info.Name) {
-            session.Send(ClubPacket.UpdateMemberName(name, member.Name));
+            session.Send(ClubPacket.UpdateMemberName(Club.Id, name, member.Name));
         }
 
         if (type == UpdateField.Map) {
