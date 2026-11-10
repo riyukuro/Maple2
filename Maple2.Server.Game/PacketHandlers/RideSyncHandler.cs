@@ -33,7 +33,6 @@ public class RideSyncHandler : FieldPacketHandler {
                 stateSyncs[i].State = ActorState.Ride;
             }
             packet.ReadInt(); // ClientTicks
-            packet.ReadInt(); // ServerTicks
         }
 
         using (var buffer = new PoolByteWriter()) {
