@@ -74,7 +74,10 @@ public class RevivalHandler : FieldPacketHandler {
                 return;
             }
 
-            int cost = Lua.CalcRevivalPrice((ushort) session.Player.Value.Character.Level);
+            // The client prices this button with CalcRevivalMeso(level, remaining daily count, 0)
+            // (UIRevivalDialog::RefreshMesoButton); CalcRevivalPrice is a different, much smaller fee.
+            int remaining = Math.Max(totalMaxCount - session.Config.InstantReviveCount, 0);
+            int cost = Lua.CalcRevivalMeso(session.Player.Value.Character.Level, remaining, 0);
             if (session.Currency.Meso < cost) {
                 // Client sends error
                 return;
