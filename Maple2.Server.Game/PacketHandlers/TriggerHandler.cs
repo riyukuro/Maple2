@@ -14,11 +14,11 @@ public class TriggerHandler : FieldPacketHandler {
 
     private enum Command : byte {
         Unknown4 = 4,
-        SkipCutscene = 7,
-        Ui = 8,
-        LoadScript = 10,
-        SaveScript = 12,
-        DiscardScript = 21,
+        SkipCutscene = 8,
+        Ui = 9,
+        LoadScript = 11,
+        SaveScript = 13,
+        DiscardScript = 22,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
