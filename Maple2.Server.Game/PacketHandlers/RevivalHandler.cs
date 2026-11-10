@@ -14,7 +14,9 @@ public class RevivalHandler : FieldPacketHandler {
 
     private enum Command : byte {
         SafeRevive = 0,
+        CouponRevive = 1,
         InstantRevive = 2,
+        SummonRevive = 3,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -25,6 +27,12 @@ public class RevivalHandler : FieldPacketHandler {
                 return;
             case Command.InstantRevive:
                 HandleInstantRevive(session, packet);
+                return;
+            case Command.CouponRevive:
+                HandleCouponRevive(session, packet);
+                return;
+            case Command.SummonRevive:
+                HandleSummonRevive(session, packet);
                 return;
         }
     }
@@ -78,5 +86,18 @@ public class RevivalHandler : FieldPacketHandler {
         if (session.Player.Revive(true)) {
             session.Player.Tombstone = null;
         }
+    }
+
+    // Client UIRevivalDialog::SendRevivalMode1: revive in place, with the coupon value from FUN_141abc9d0.
+    // The meaning of that value is not settled, so nothing is consumed here.
+    private void HandleCouponRevive(GameSession session, IByteReader packet) {
+        byte coupon = packet.ReadByte();
+        Logger.Debug("Revival mode 1 (coupon {Coupon}) from {CharacterId} not implemented", coupon, session.CharacterId);
+    }
+
+    // Client StateSummonRevive: a dead summon owned by the player asks to revive; the fork has no summon revive state.
+    private void HandleSummonRevive(GameSession session, IByteReader packet) {
+        int objectId = packet.ReadInt();
+        Logger.Debug("Revival of summon {ObjectId} from {CharacterId} not implemented", objectId, session.CharacterId);
     }
 }
