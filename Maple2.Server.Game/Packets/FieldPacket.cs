@@ -193,15 +193,13 @@ public static class FieldPacket {
         pWriter.WriteInt(item.Id);
         pWriter.WriteInt(item.Amount);
 
-        pWriter.WriteBool(fieldItem.ReceiverId >= 0);
-        if (fieldItem.ReceiverId >= 0) {
-            pWriter.WriteLong(fieldItem.ReceiverId);
-        }
+        // KMS 2525 CSceneStateGame::OnFieldAddItem (0x141711e70) reads the receiver as a plain int64, no presence bool,
+        // and the owner object id is followed directly by the drop type byte.
+        pWriter.WriteLong(fieldItem.ReceiverId);
 
         pWriter.Write<Vector3>(fieldItem.Position);
         pWriter.WriteInt(fieldItem.Owner?.ObjectId ?? 0);
-        pWriter.WriteInt();
-        pWriter.Write<DropType>(fieldItem.Type);
+        pWriter.WriteByte((byte) fieldItem.Type);
         pWriter.WriteInt(item.Rarity);
         pWriter.WriteShort();
         pWriter.WriteBool(fieldItem.FixedPosition);
