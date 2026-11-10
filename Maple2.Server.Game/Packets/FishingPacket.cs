@@ -144,11 +144,12 @@ public static class FishingPacket {
             pWriter.WriteInt(fish.Id);
             pWriter.WriteInt(); // pick count
             pWriter.WriteInt(); // catch count
-            pWriter.WriteInt(); // count
-            // loop for each count above
-            pWriter.WriteInt(); // unk
-            // end loop
-            pWriter.WriteInt(); // prize count
+            // Client 2525 CFishSimulteData::Read (fishsimultedata.cpp:78): a fixed array of 4 ints;
+            // the client shows [3] in s_fishing_simulate.
+            pWriter.WriteInt();
+            pWriter.WriteInt();
+            pWriter.WriteInt();
+            pWriter.WriteInt();
         }
 
         return pWriter;
