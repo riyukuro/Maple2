@@ -23,8 +23,6 @@ public class MentoringManager : IDisposable {
     }
 
     public void Load() {
-        session.Send(MentorPacket.Init(session.Player));
-
         session.Send(MentorPacket.AssignReturningUser());
         //  session.Send(MentorPacket.Load());
 
