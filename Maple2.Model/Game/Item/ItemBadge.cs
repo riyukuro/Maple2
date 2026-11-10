@@ -51,7 +51,7 @@ public sealed class ItemBadge : IByteSerializable, IByteDeserializable {
     public void WriteTo(IByteWriter writer) {
         writer.WriteByte(1);
         writer.WriteByte((byte) Type);
-        writer.WriteUnicodeString(Id.ToString());
+        writer.WriteInt(Id); // CItemGem::vfunc_4 reads the gem id as an int (itemgem.cpp:1010)
 
         switch (Type) {
             case BadgeType.Transparency: // Flags for each slot
@@ -68,7 +68,7 @@ public sealed class ItemBadge : IByteSerializable, IByteDeserializable {
     public void ReadFrom(IByteReader reader) {
         reader.ReadByte();
         reader.ReadByte(); // Type
-        reader.ReadUnicodeString(); // String ItemId
+        reader.ReadInt(); // ItemId
 
         switch (Type) {
             case BadgeType.Transparency: // Flags for each slot
