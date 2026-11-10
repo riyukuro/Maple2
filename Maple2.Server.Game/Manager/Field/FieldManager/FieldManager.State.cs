@@ -1028,7 +1028,10 @@ public partial class FieldManager {
 
         foreach (FieldPlayer fieldPlayer in Players.Values) {
             added.Session.Send(FieldPacket.AddPlayer(fieldPlayer.Session));
-            if (fieldPlayer.Session.GuideObject != null) {
+            if (fieldPlayer.Session.GuideObject is { Value: BallGuideObject } ball) {
+                // the client creates balls through HomeAction, its GuideObject create has no ball type
+                added.Session.Send(HomeActionPacket.AddBall(ball));
+            } else if (fieldPlayer.Session.GuideObject != null) {
                 added.Session.Send(GuideObjectPacket.Create(fieldPlayer.Session.GuideObject));
             }
             switch (fieldPlayer.Session.HeldCube) {

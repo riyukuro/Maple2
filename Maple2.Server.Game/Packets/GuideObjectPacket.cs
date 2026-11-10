@@ -15,6 +15,10 @@ public static class GuideObjectPacket {
     }
 
     public static ByteWriter Create(FieldGuideObject guideObject) {
+        // the client's create has no ball type; balls go through HomeActionPacket.AddBall
+        if (guideObject.Value is BallGuideObject) {
+            throw new ArgumentException("ball guide objects are created with HomeActionPacket.AddBall", nameof(guideObject));
+        }
         var pWriter = Packet.Of(SendOp.GuideObject);
         pWriter.Write<Command>(Command.Create);
         pWriter.WriteClass<FieldGuideObject>(guideObject);
