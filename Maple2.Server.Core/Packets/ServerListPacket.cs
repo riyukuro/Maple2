@@ -12,6 +12,7 @@ public static class ServerListPacket {
 
     public static ByteWriter Error() {
         var pWriter = Packet.Of(SendOp.ServerList);
+        pWriter.WriteString("dev"); // the client reads this string before the result byte (as in Load)
         pWriter.Write<Command>(Command.Error);
 
         return pWriter;
