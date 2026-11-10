@@ -26,6 +26,10 @@ public static class Target {
 
     public static readonly bool InstancedContent = false;
 
+    // Address every listener binds to. MS2_BIND_IP unset or not an IP address = loopback only; "0.0.0.0" = all interfaces.
+    public static readonly IPAddress BindAddress =
+        IPAddress.TryParse(Environment.GetEnvironmentVariable("MS2_BIND_IP"), out IPAddress? bindAddress) ? bindAddress : IPAddress.Loopback;
+
     static Target() {
         if (IPAddress.TryParse(Environment.GetEnvironmentVariable("LOGIN_IP"), out IPAddress? loginIpAddress)) {
             LoginIp = loginIpAddress;

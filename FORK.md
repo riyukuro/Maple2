@@ -76,7 +76,7 @@ The checker also cannot yet follow the client's item reader. The item block insi
 
 ## Two local changes a server operator must know
 
-1. **All servers bind to loopback (127.0.0.1).** The login, game, world and web servers do not accept connections from other machines. To serve other machines, change the addresses in `Maple2.Server.Core/Constants/Target.cs` and in the listeners.
+1. **All servers bind to loopback (127.0.0.1) by default.** To serve other machines, set `MS2_BIND_IP` to the address to listen on (`0.0.0.0` for all interfaces, as upstream); the server has no hardening for the open internet beyond upstream's.
 2. **Test hooks.** Two environment variables turn on test hooks. Neither does anything unless it is set.
    - `TST_CMD_FILE`: once a second, the game server reads a file named after this prefix and the character id, and runs each line as a chat command **as the logged-in player**. Never set it on a server that others can reach.
    - `TST_PKT_DIR`: the server appends every packet that clients send, including chat, to a log file per character in this directory.

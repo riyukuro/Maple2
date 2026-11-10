@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Maple2.Server.Login;
@@ -38,9 +39,12 @@ Log.Logger = new LoggerConfiguration()
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.ListenLocalhost(Target.GrpcLoginPort, listen => {
-        listen.Protocols = HttpProtocols.Http2;
-    });
+    Action<ListenOptions> grpc = listen => listen.Protocols = HttpProtocols.Http2;
+    if (Target.BindAddress.Equals(IPAddress.Loopback)) {
+        options.ListenLocalhost(Target.GrpcLoginPort, grpc);
+    } else {
+        options.Listen(new IPEndPoint(Target.BindAddress, Target.GrpcLoginPort), grpc);
+    }
 });
 
 builder.Logging.ClearProviders();

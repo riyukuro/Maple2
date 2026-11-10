@@ -80,7 +80,7 @@ if (response == null || response.GamePort == 0) {
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.Listen(new IPEndPoint(IPAddress.Loopback, response.GrpcPort), listen => {
+    options.Listen(new IPEndPoint(Target.BindAddress, response.GrpcPort), listen => {
         listen.Protocols = HttpProtocols.Http2;
     });
 });
