@@ -23,9 +23,11 @@ Results today:
 | direction | rows | pass | warning | fail | not checkable |
 |---|---|---|---|---|---|
 | client to server | 678 | 215 | 5 | 91 | 367 |
-| server to client | 1,012 | 419 | 29 | 0 | 564 |
+| server to client | 1,134 | 503 | 2 | 0 | 629 |
 
 Of the 91 client-to-server fails, 90 are sub-types the server does not handle (listed below). The other one is a known false alarm in the checker.
+
+The two server-to-client warnings are kept on purpose. Trade sub-type 13 carries a trailing byte that the official server sends too. The skill state packet (sub-type 6) carries an extra int that shifts fields the client reads and then discards.
 
 ## Fixes so far, by system
 
@@ -38,20 +40,29 @@ Of the 91 client-to-server fails, 90 are sub-types the server does not handle (l
 - **Ride:**
   - RideSync reads one trailing int per record.
   - The ride start request carries a byte after the object id, and the response echoes it.
-- **Mentor:** the server no longer sends an initial packet that the client has no reader for.
-- **Party:** cancel party search reads one byte.
+- **Mentor:** the server no longer sends an initial packet that the client has no reader for, and its writer is removed.
+- **Party:** cancel party search reads one byte; the dungeon match confirm (sub-type 31) has no body; the survival squad register is sub-type 55.
+- **Room dungeon:** the dungeon result is sub-type 10; the stage packets write the int, byte and bool the client reads (create) and nothing after the sub-type (clear).
 - **Party search:** Remove sends sub-type 1, and the error's request type is one byte.
 - **Ugc:** the confirmation request reads the client's two strings.
 - **Change attributes:** the ForceFill sub-type is 8 and the debug remake sub-type is 7.
 - **Skill damage:** sub-types 7 and 8 write the client's fields.
-- **Guild:** server-to-client sub-types 52 to 89 are shifted up by 2 to the client's numbers.
+- **Guild:**
+  - Server-to-client sub-types 52 to 89 are shifted up by 2 to the client's numbers.
+  - Experience, funds and member contribution use the client's sub-types (53 and 97).
 - **Server list:** the error writes the string the client reads first.
 - **Field portal:** sub-type 3 writes the portal id before the two vectors.
-- **Cube:** the architect score, build budget and build permission packets (sub-types 28 and 56 to 59) write the client's fields.
+- **Cube:**
+  - The architect score, build budget and build permission packets (sub-types 28 and 56 to 59) write the client's fields.
+  - The profile update writes four ints before the name and a trailing byte; plot extension writes only the error byte.
 - **Fishing:** the simulation result writes four fixed ints per fish.
 - **Item socket:** unequipping a gem writes the gem's uid at the end.
-- **Club:** a member rename writes the club id before the names.
+- **Club:** a member rename writes the club id before the names; a member update writes only the member profile; leaving writes only the club id.
 - **Shop:** a shop item writes the extra flag the client reads.
+- **Character list:** the name change result writes only what the client reads.
+- **User environment:** the gathering counts have no trailing int.
+- **Mail, global portal, premium club:** results the client reads no fields of (mail sent, portal closed, premium club sub-types 3 and 4) write only the sub-type.
+- **Chat stickers:** adding a sticker group writes a group count of 1, not the item stack size.
 - **Strings:** server message codes are mapped to the client's string ids by name.
 - **Data:** 62 constants missing from the KMS constants file get the old built-in values as defaults; the file parser is updated for current XML.
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
