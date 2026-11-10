@@ -68,6 +68,7 @@ public static class PortalPacket {
     public static ByteWriter Move(FieldPortal fieldPortal) {
         var pWriter = Packet.Of(SendOp.FieldPortal);
         pWriter.Write<Command>(Command.Move);
+        pWriter.WriteInt(fieldPortal.Value.Id);
         pWriter.Write<Vector3>(fieldPortal.Position);
         pWriter.Write<Vector3>(fieldPortal.Rotation);
 
