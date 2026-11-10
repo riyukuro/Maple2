@@ -112,11 +112,13 @@ public static class ItemSocketPacket {
         return pWriter;
     }
 
-    public static ByteWriter UnequipGemstone(long itemUid, byte slot) {
+    public static ByteWriter UnequipGemstone(long itemUid, byte slot, long gemUid) {
         var pWriter = Packet.Of(SendOp.ItemSocketSystem);
         pWriter.Write<Command>(Command.UnequipGemstone);
+        // Client 2525 FUN_140628be0 (itemsocketsystemutil.cpp:703): long, byte, long.
         pWriter.WriteLong(itemUid);
         pWriter.WriteByte(slot);
+        pWriter.WriteLong(gemUid);
 
         return pWriter;
     }

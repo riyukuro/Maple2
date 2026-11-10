@@ -315,7 +315,7 @@ public class ItemSocketHandler : FieldPacketHandler {
             }
 
             item.Socket!.Sockets[socketSlot] = null;
-            session.Send(ItemSocketPacket.UnequipGemstone(item.Uid, socketSlot));
+            session.Send(ItemSocketPacket.UnequipGemstone(item.Uid, socketSlot, gem.Uid));
             session.ConditionUpdate(ConditionType.gemstone_putoff);
         }
 
