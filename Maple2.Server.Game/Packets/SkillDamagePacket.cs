@@ -148,9 +148,19 @@ public static class SkillDamagePacket {
         return pWriter;
     }
 
-    public static ByteWriter Target() {
+    // Client: CSceneStateGame::FUN_14171e9a0 (scenestategame.cpp:7149): long tag uid, byte create; when create:
+    // int skill id, short level, int owner object id, int caster object id. create = 0 destroys the tag's model.
+    public static ByteWriter Target(long tagUid, bool create, int skillId = 0, short level = 0, int ownerId = 0, int casterId = 0) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
         pWriter.Write<Command>(Command.Unknown8);
+        pWriter.WriteLong(tagUid);
+        pWriter.WriteBool(create);
+        if (create) {
+            pWriter.WriteInt(skillId);
+            pWriter.WriteShort(level);
+            pWriter.WriteInt(ownerId);
+            pWriter.WriteInt(casterId);
+        }
 
         return pWriter;
     }
