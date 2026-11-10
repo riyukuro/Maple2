@@ -25,10 +25,10 @@ public static class GlobalPortalPacket {
         return pWriter;
     }
 
-    public static ByteWriter Close(int id) {
+    // UIGlobalPortalDialog case 1 (uiglobalportaldialog.cpp:270) reads nothing more: it clears the event id and closes the dialog.
+    public static ByteWriter Close() {
         var pWriter = Packet.Of(SendOp.GlobalPortal);
         pWriter.Write<Command>(Command.Close);
-        pWriter.WriteInt(id);
 
         return pWriter;
     }

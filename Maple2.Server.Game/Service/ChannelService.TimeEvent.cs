@@ -47,7 +47,7 @@ public partial class ChannelService {
 
     private TimeEventResponse CloseGlobalPortal(TimeEventRequest.Types.CloseGlobalPortal portal) {
         foreach (GameSession session in server.GetSessions()) {
-            session.Send(GlobalPortalPacket.Close(portal.EventId));
+            session.Send(GlobalPortalPacket.Close());
         }
         return new TimeEventResponse();
     }
