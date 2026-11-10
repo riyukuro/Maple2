@@ -23,7 +23,7 @@ Results today:
 | direction | rows | pass | warning | fail | not checkable |
 |---|---|---|---|---|---|
 | client to server | 678 | 215 | 5 | 91 | 367 |
-| server to client | 1,134 | 503 | 2 | 0 | 629 |
+| server to client | 1,136 | 529 | 2 | 0 | 605 |
 
 Of the 91 client-to-server fails, 90 are sub-types the server does not handle (listed below). The other one is a known false alarm in the checker.
 
@@ -65,6 +65,13 @@ The two server-to-client warnings are kept on purpose. Trade sub-type 13 carries
 - **Chat stickers:** adding a sticker group writes a group count of 1, not the item stack size.
 - **Strings:** server message codes are mapped to the client's string ids by name.
 - **Data:** 62 constants missing from the KMS constants file get the old built-in values as defaults; the file parser is updated for current XML.
+- **Items:**
+  - The option block ends with the int the client reads (itemoptiondata_1.cpp:260).
+  - The enchant history is in the client's layout (itemenchantinfo.cpp:28).
+  - A gem writes its id as an int (itemgem.cpp:1010).
+  - Enchant sub-type 15 writes the uid and the whole item.
+  - The limit break preview has no meso field.
+  - Adding a pet item writes no string before the item.
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 
 ## Known not to work
@@ -83,7 +90,7 @@ The client sends 90 sub-types that the server does not handle yet. They are list
 
 These systems have one unhandled sub-type each: Achieve, Buddy, ChatSticker, Club, EnchantScroll, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, SystemShop, Trade, Ugc.
 
-The checker also cannot yet follow the client's item reader. The item block inside inventory, shop and trade packets is therefore not checked yet.
+The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
 ## Two local changes a server operator must know
 
