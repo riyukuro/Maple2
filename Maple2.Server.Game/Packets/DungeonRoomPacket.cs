@@ -13,7 +13,7 @@ public static class DungeonRoomPacket {
         Load = 5,
         Update = 6,
         Modify = 7,
-        DungeonResult = 11,
+        DungeonResult = 10, // OnClosingPhoto (dungeonrecordcli.cpp:299); 11 only opens a dialog (:306)
         Error = 18,
         RankRewards = 20,
     }
