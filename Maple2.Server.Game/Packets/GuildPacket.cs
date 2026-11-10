@@ -49,9 +49,9 @@ public static class GuildPacket {
         WithdrawApplication = 46,
         NotifyApplication = 47,
         NotifyApplicant = 48,
-        GuildExperience = 49,
-        GuildFunds = 50,
-        GuildContribution = 51,
+        GuildExperience = 50,
+        GuildFunds = 51,
+        GuildContribution = 53,
         NotifyUseBuff = 54,
         UpgradeBuff = 55,
         // 54
