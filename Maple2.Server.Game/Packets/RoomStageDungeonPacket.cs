@@ -21,10 +21,10 @@ public static class RoomStageDungeonPacket {
         return pWriter;
     }
 
-    public static ByteWriter Update(int value) {
+    // OnRoomStageDungeon case 1 (networkservice.cpp:1092) reads nothing more: it calls ClearStage.
+    public static ByteWriter Update() {
         var pWriter = Packet.Of(SendOp.RoomStageDungeon);
         pWriter.Write<Command>(Command.Update);
-        pWriter.WriteInt(value);
 
         return pWriter;
     }
