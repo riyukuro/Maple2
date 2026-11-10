@@ -74,7 +74,6 @@ public static class UserEnvPacket {
             pWriter.WriteInt(recipeId);
             pWriter.WriteInt(count);
         }
-        pWriter.WriteInt();
 
         return pWriter;
     }
