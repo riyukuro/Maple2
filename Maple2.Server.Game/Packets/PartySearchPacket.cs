@@ -46,7 +46,7 @@ public static class PartySearchPacket {
     public static ByteWriter Error(PartySearchError error, int category = 0) {
         var pWriter = Packet.Of(SendOp.PartySearch);
         pWriter.Write<Command>(Command.Error);
-        pWriter.WriteInt(category);
+        pWriter.WriteByte((byte) category); // client OnMatchPartyError: u8 request type
         pWriter.Write<PartySearchError>(error);
 
         return pWriter;
