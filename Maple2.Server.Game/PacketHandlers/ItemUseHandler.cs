@@ -392,7 +392,7 @@ public class ItemUseHandler : FieldPacketHandler {
             CharacterId = session.CharacterId,
             Name = newName,
         });
-        session.Send(CharacterListPacket.NameChanged(session.CharacterId, newName));
+        session.Send(CharacterListPacket.NameChanged());
     }
 
     private static void HandlePremiumClubCoupon(GameSession session, Item item) {

@@ -70,12 +70,11 @@ public static class CharacterListPacket {
         return pWriter;
     }
 
-    public static ByteWriter NameChanged(long characterId, string characterName) {
+    // KMS 2525: the client reads only the result; 1 makes it quit to the character list (CSceneStateGame::OnCharacterList)
+    public static ByteWriter NameChanged() {
         var pWriter = Packet.Of(SendOp.CharacterList);
         pWriter.Write<Command>(Command.NameChanged);
         pWriter.WriteInt(1); // accepted
-        pWriter.WriteLong(characterId);
-        pWriter.WriteUnicodeString(characterName);
         return pWriter;
     }
 
