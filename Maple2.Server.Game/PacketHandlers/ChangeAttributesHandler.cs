@@ -20,7 +20,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         Change = 0,
         Select = 2,
         Unknown5 = 5,
-        ForceFill = 6,
+        ForceFill = 8,
     }
 
     #region Autofac Autowired
