@@ -24,23 +24,39 @@ public class FunctionCubeHandler : FieldPacketHandler {
 
     public override RecvOp OpCode => RecvOp.FunctionCube;
 
+    // KMS 2525 client: both sub-types carry an i32 count and then (wstr cube id, u8) per cube.
+    // Begin is sent when a gathering or nurturing state starts (StateHomemade::SendFunctionCubeMode4);
+    // Use is sent when that state completes (SendFunctionCubeMode5) and when furniture is used
+    // (StateUseFurniture, CFunctionCubeObject::vfunc_8, MyPC::SendFunctionCube).
     private enum Command : byte {
-        Use = 4,
+        Begin = 4,
+        Use = 5,
     }
+
+    // The client only lists the cubes within reach of the character.
+    private const int MaxCubesPerRequest = 32;
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
+            case Command.Begin:
             case Command.Use:
-                HandleUseCube(session, packet);
+                int count = packet.ReadInt();
+                if (count < 0 || count > MaxCubesPerRequest) {
+                    return;
+                }
+                for (int i = 0; i < count; i++) {
+                    string interactId = packet.ReadUnicodeString();
+                    packet.ReadByte();
+                    if (command == Command.Use) {
+                        HandleUseCube(session, interactId);
+                    }
+                }
                 break;
         }
     }
 
-    private void HandleUseCube(GameSession session, IByteReader packet) {
-        string interactId = packet.ReadUnicodeString();
-        byte unk = packet.ReadByte();
-
+    private void HandleUseCube(GameSession session, string interactId) {
         if (!interactId.Contains('_')) {
             Logger.Error("Unexpected interactId {0}", interactId);
             return;
