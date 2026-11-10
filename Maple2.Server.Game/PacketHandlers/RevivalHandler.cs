@@ -43,11 +43,15 @@ public class RevivalHandler : FieldPacketHandler {
     private void HandleSafeRevive(GameSession session) {
         if (session.Field is null) return;
         if (session.Field.Metadata.Property.NoRevivalHere) {
+            Logger.Debug("Safe revive refused for {CharacterId}: map {MapId} has NoRevivalHere", session.CharacterId, session.Field.MapId);
             return;
         }
         // Revive player - this will handle moving to spawn point
         if (session.Player.Revive()) {
             session.Player.Tombstone = null;
+        } else {
+            Logger.Debug("Safe revive ignored for {CharacterId}: dead {Dead}, tombstone {Tombstone}",
+                session.CharacterId, session.Player.IsDead, session.Player.Tombstone != null);
         }
     }
 
