@@ -21,6 +21,7 @@ public class EnchantScrollHandler : FieldPacketHandler {
     private enum Command : byte {
         Preview = 1,
         Enchant = 2,
+        Manufacture = 4,
     }
 
     #region Autofac Autowired
@@ -37,6 +38,9 @@ public class EnchantScrollHandler : FieldPacketHandler {
                 return;
             case Command.Enchant:
                 HandleEnchant(session, packet);
+                return;
+            case Command.Manufacture:
+                HandleManufacture(session, packet);
                 return;
         }
     }
@@ -178,5 +182,13 @@ public class EnchantScrollHandler : FieldPacketHandler {
 
         // Extra sanity check on enchant scroll data.
         return metadata.Enchants.Length > 0 && metadata.ItemTypes.Length > 0 && metadata.Rarities.Length > 0;
+    }
+
+    // Client UIMasteryDialog::OnCastingFinished: a manufacturing recipe finished casting.
+    // Magic scroll recipes go through Mastery 2 instead. The reply the client expects for this
+    // mode is not known, so the craft is not run here.
+    private void HandleManufacture(GameSession session, IByteReader packet) {
+        int recipeId = packet.ReadInt();
+        Logger.Debug("Manufacture of recipe {RecipeId} from {CharacterId} not implemented", recipeId, session.CharacterId);
     }
 }

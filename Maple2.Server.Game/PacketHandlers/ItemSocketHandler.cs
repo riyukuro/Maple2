@@ -23,9 +23,11 @@ public class ItemSocketHandler : FieldPacketHandler {
         StageUpgradeGemstone = 6,
         EquipGemstone = 8,
         UnequipGemstone = 10,
+        TransferSocket = 12,
         Unknown14 = 14,
         Unknown15 = 15,
         Unknown16 = 16,
+        StageTransferSocket = 17,
     }
 
     #region Autofac Autowired
@@ -55,6 +57,10 @@ public class ItemSocketHandler : FieldPacketHandler {
                 return;
             case Command.UnequipGemstone:
                 HandleUnequipGemstone(session, packet);
+                return;
+            case Command.TransferSocket:
+            case Command.StageTransferSocket:
+                HandleTransferSocket(session, packet, command);
                 return;
         }
     }
@@ -411,5 +417,13 @@ public class ItemSocketHandler : FieldPacketHandler {
             return SocketState.Locked;
         }
         return itemSocket.Sockets[slot] != null ? SocketState.Used : SocketState.Empty;
+    }
+
+    // Client ItemSocketSystemPageSocketTransfer: 17 asks to stage moving the sockets of the source
+    // item to the target item, 12 confirms it. The fork has no socket transfer rule yet.
+    private void HandleTransferSocket(GameSession session, IByteReader packet, Command command) {
+        long sourceItemUid = packet.ReadLong();
+        long targetItemUid = packet.ReadLong();
+        Logger.Debug("ItemSocket {Command} from {SourceItemUid} to {TargetItemUid} not implemented", command, sourceItemUid, targetItemUid);
     }
 }

@@ -12,6 +12,9 @@ public class ItemMergeHandler : FieldPacketHandler {
         Stage = 1,
         SelectCrystal = 2,
         Empower = 3,
+        Choice = 4,
+        Revert = 6,
+        SelectMaterial = 7,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -25,6 +28,15 @@ public class ItemMergeHandler : FieldPacketHandler {
                 break;
             case Command.Empower:
                 HandleEmpower(session, packet);
+                break;
+            case Command.Choice:
+                HandleChoice(session, packet);
+                break;
+            case Command.Revert:
+                HandleRevert(session, packet);
+                break;
+            case Command.SelectMaterial:
+                HandleSelectMaterial(session, packet);
                 break;
         }
     }
@@ -48,5 +60,26 @@ public class ItemMergeHandler : FieldPacketHandler {
 
         session.ItemMerge.Empower(itemUid, catalystUid);
 
+    }
+
+    // Client UIItemMergeOptionDialog::RequestChoice: the option the player keeps.
+    // Empower applies its result at once here, so there is no pending choice to settle.
+    private void HandleChoice(GameSession session, IByteReader packet) {
+        byte choice = packet.ReadByte();
+        Logger.Debug("ItemMerge choice {Choice} from {CharacterId} not implemented", choice, session.CharacterId);
+    }
+
+    // Client UIItemMergeRevertDialog: undo the merge options of an item with a revert item.
+    private void HandleRevert(GameSession session, IByteReader packet) {
+        long itemUid = packet.ReadLong();
+        long revertItemUid = packet.ReadLong();
+        Logger.Debug("ItemMerge revert of {ItemUid} with {RevertItemUid} not implemented", itemUid, revertItemUid);
+    }
+
+    // Client UIItemMergeOptionDialog::RequestMaterial: the material picked for the item.
+    private void HandleSelectMaterial(GameSession session, IByteReader packet) {
+        long itemUid = packet.ReadLong();
+        long materialUid = packet.ReadLong();
+        Logger.Debug("ItemMerge material {MaterialUid} for {ItemUid} not implemented", materialUid, itemUid);
     }
 }

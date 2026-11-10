@@ -14,7 +14,9 @@ public class ItemExchangeScroll : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.ItemExchangeScroll;
 
     private enum Command : byte {
+        SetTarget = 0,
         Exchange = 1,
+        ForceFillIngredient = 3,
     }
 
     #region Autofac Autowired
@@ -29,6 +31,12 @@ public class ItemExchangeScroll : FieldPacketHandler {
         switch (command) {
             case Command.Exchange:
                 HandleExchange(session, packet);
+                break;
+            case Command.SetTarget:
+                HandleSetTarget(session, packet);
+                break;
+            case Command.ForceFillIngredient:
+                HandleForceFillIngredient(session, packet);
                 break;
         }
     }
@@ -89,5 +97,22 @@ public class ItemExchangeScroll : FieldPacketHandler {
             session.Item.MailItem(rewardItem);
         }
         session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_ok));
+    }
+
+    // Client ItemExchangeSlot::vfunc_18: an item dropped on the exchange slot of a scroll.
+    // The reply the client expects for this mode is not known.
+    private void HandleSetTarget(GameSession session, IByteReader packet) {
+        long scrollItemUid = packet.ReadLong();
+        long itemUid = packet.ReadLong();
+        Logger.Debug("ItemExchangeScroll target {ItemUid} for scroll {ScrollItemUid} not implemented", itemUid, scrollItemUid);
+    }
+
+    // Client UIItemExchangeScrollDialog (only shown at admin level 0x32 and above):
+    // fill the ingredients of a scroll without owning them. Never granted here.
+    private void HandleForceFillIngredient(GameSession session, IByteReader packet) {
+        long scrollItemUid = packet.ReadLong();
+        long itemUid = packet.ReadLong();
+        int count = packet.ReadInt();
+        Logger.Debug("ItemExchangeScroll force fill {Count} for scroll {ScrollItemUid}, target {ItemUid} not implemented", count, scrollItemUid, itemUid);
     }
 }
