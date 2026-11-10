@@ -175,6 +175,15 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         }
     }
 
+    /// <summary>
+    /// Credits damage that did not come from a skill hit (e.g. a GM kill) to the caster, so death handling
+    /// (drops, exp, quest conditions) sees the caster as a damage dealer.
+    /// </summary>
+    public void RecordDamage(IActor caster, long amount) {
+        DamageDealers.GetOrAdd(caster.ObjectId, _ => new DamageRecordTarget(this)).AddDamage(DamageType.Normal, amount);
+        OnDamageReceived(caster, amount);
+    }
+
     protected virtual void OnDamageReceived(IActor caster, long amount) { }
 
     public virtual void Reflect(IActor target) {

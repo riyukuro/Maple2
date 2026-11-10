@@ -161,6 +161,7 @@ public class KillCommand : GameCommand {
         long damage = npc.Stats.Values[BasicAttribute.Health].Current;
         target.AddDamage(DamageType.Normal, damage);
         damageRecord.Targets.TryAdd(npc.ObjectId, target);
+        npc.RecordDamage(session.Player, damage);
         npc.Stats.Values[BasicAttribute.Health].Add(-damage);
         session.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));
 
