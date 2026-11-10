@@ -269,11 +269,11 @@ public static class CubePacket {
         pWriter.WriteInt(player.Home.Indoor.MapId);
         pWriter.WriteInt(player.Home.PlotMapId);
         pWriter.WriteInt(player.Home.PlotNumber);
-        pWriter.WriteInt(player.Home.ApartmentNumber);
         pWriter.WriteUnicodeString(player.Home.Name);
         pWriter.WriteLong(player.Home.PlotExpiryTime);
         pWriter.WriteLong(player.Home.LastModified);
         pWriter.WriteBool(load);
+        pWriter.WriteByte(); // UserUGCMapInfo +0x40, 0 unless the region is CN (ugcmapoptions.cpp:240)
 
         return pWriter;
     }
