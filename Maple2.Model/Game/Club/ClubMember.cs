@@ -28,8 +28,12 @@ public class ClubMember : IByteSerializable, IDisposable {
         writer.WriteLong(ClubId);
 
         WriteInfo(writer, this);
+        writer.WriteLong(JoinTime);
+        writer.WriteLong(Info.LastOnlineTime);
+        writer.WriteBool(!Info.Online);
     }
 
+    // The member profile, as CClubMemberProxy::Read reads it (UpdateMember, clubcli.cpp:363); WriteTo adds the join and online fields.
     public static void WriteInfo(IByteWriter writer, ClubMember member) {
         PlayerInfo info = member.Info;
         writer.WriteLong(info.AccountId);
@@ -47,8 +51,5 @@ public class ClubMember : IByteSerializable, IDisposable {
         writer.WriteInt(info.ApartmentNumber);
         writer.WriteLong(info.PlotExpiryTime);
         writer.Write<AchievementInfo>(info.AchievementInfo);
-        writer.WriteLong(member.JoinTime);
-        writer.WriteLong(info.LastOnlineTime);
-        writer.WriteBool(!info.Online);
     }
 }
