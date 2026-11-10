@@ -473,11 +473,11 @@ public sealed class ShopManager {
 
         if (activeShop.Metadata.EnableReset && shopItem.StockCount > 0) {
             UpdateStockCount(activeShop.Id, shopItem, quantity);
-            session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.Metadata.SellUnit));
+            session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
 
         session.Item.Inventory.Add(item, true);
-        session.Send(ShopPacket.Buy(shopItem, shopItem.Metadata.SellUnit * quantity, price));
+        session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price));
     }
 
     public void PurchaseBuyBack(int id) {

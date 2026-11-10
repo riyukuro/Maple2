@@ -12,6 +12,11 @@ public class ShopItem : IByteSerializable {
     public int StockPurchased { get; set; }
     public int StockCount { get; set; }
     public required Item Item { get; init; }
+    /// <summary>
+    /// Items per purchase. Most shop rows leave sellUnit out (0); the client treats anything below 2 as 1
+    /// (CNpcShopProductCli::SetBuyItemCount), so counts multiplied by it must too.
+    /// </summary>
+    public int SellUnit => Math.Max(1, (int) Metadata.SellUnit);
 
     public ShopItem(ShopItemMetadata metadata) {
         Metadata = metadata;
@@ -33,7 +38,7 @@ public class ShopItem : IByteSerializable {
         writer.WriteByte(Metadata.Rarity);
         writer.WriteInt(500);
         writer.WriteInt(StockCount);
-        writer.WriteInt(StockPurchased * Metadata.SellUnit);
+        writer.WriteInt(StockPurchased * SellUnit);
         writer.WriteInt(Metadata.Requirements.GuildTrophy);
         writer.WriteString(Metadata.Category);
         writer.WriteInt(Metadata.Requirements.Achievement.Id);
