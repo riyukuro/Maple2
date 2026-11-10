@@ -296,9 +296,16 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter ConfirmVote() {
+    // Client: CSceneStateGame::OnResponseCube case 0x19 (scenestategame.cpp:10320): byte error; when 0, the character id
+    // and a value the client keeps when the id is its own character.
+    public static ByteWriter ConfirmVote(byte error = 0, long characterId = 0, long value = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ConfirmVote);
+        pWriter.WriteByte(error);
+        if (error == 0) {
+            pWriter.WriteLong(characterId);
+            pWriter.WriteLong(value);
+        }
 
         return pWriter;
     }
