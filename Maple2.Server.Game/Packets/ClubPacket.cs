@@ -135,11 +135,10 @@ public static class ClubPacket {
         return pWriter;
     }
 
-    public static ByteWriter Leave(long clubId, string playerName) {
+    public static ByteWriter Leave(long clubId) {
         var pWriter = Packet.Of(SendOp.Club);
         pWriter.Write<Command>(Command.Leave);
         pWriter.WriteLong(clubId);
-        pWriter.WriteUnicodeString(playerName);
 
         return pWriter;
     }

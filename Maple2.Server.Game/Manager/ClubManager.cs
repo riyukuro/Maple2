@@ -156,7 +156,7 @@ public class ClubManager : IDisposable {
         EndListen(member);
 
         if (session.CharacterId == characterId) {
-            session.Send(ClubPacket.Leave(Id, member.Name));
+            session.Send(ClubPacket.Leave(Id));
             RemoveClub();
         } else {
             session.Send(ClubPacket.LeaveNotice(Id, member.Name));
