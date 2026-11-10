@@ -2,7 +2,7 @@
 
 namespace Maple2.Model.Game;
 
-[StructLayout(LayoutKind.Sequential, Pack = 4, Size = 26)]
+[StructLayout(LayoutKind.Sequential, Pack = 1, Size = 26)]
 public readonly struct Emote {
     public readonly int Id;
     public readonly int Level = 1;
