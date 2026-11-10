@@ -35,10 +35,10 @@ public sealed class ItemEnchant : IByteSerializable, IByteDeserializable {
         writer.WriteInt(EnchantExp);
         writer.WriteByte(EnchantCharges);
 
+        // Unk_EnchantHistory::Read (itemenchantinfo.cpp:28): i64, i32, i32, bool, i32
         writer.WriteLong();
         writer.WriteInt();
         writer.WriteInt();
-        writer.WriteInt();// Enchantment attempts
         writer.WriteBool(Tradeable);
         writer.WriteInt(Charges);
 

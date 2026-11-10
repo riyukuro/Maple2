@@ -68,7 +68,7 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
             }
         }
 
-        // writer.WriteInt(); // this version of kms2 does not have this?
+        writer.WriteInt(); // CItemOption::Deserialize reads an int after the five groups (itemoptiondata_1.cpp:260)
     }
 
     public void ReadFrom(IByteReader reader) {
@@ -84,9 +84,9 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
                 var type = (SpecialAttribute) reader.ReadShort();
                 option.Special[type] = reader.Read<SpecialOption>();
             }
-
-            // reader.ReadInt(); // this version of kms2 does not have this?
         }
+
+        reader.ReadInt();
     }
 
     public class Option {
