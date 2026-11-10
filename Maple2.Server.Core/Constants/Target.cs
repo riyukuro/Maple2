@@ -37,6 +37,15 @@ public static class Target {
         if (ushort.TryParse(Environment.GetEnvironmentVariable("LOGIN_PORT"), out ushort loginPortOverride)) {
             LoginPort = loginPortOverride;
         }
+        if (ushort.TryParse(Environment.GetEnvironmentVariable("GRPC_LOGIN_PORT"), out ushort grpcLoginPortOverride)) {
+            GrpcLoginPort = grpcLoginPortOverride;
+        }
+        if (ushort.TryParse(Environment.GetEnvironmentVariable("GAME_PORT_BASE"), out ushort gamePortBaseOverride)) {
+            BaseGamePort = gamePortBaseOverride;
+        }
+        if (ushort.TryParse(Environment.GetEnvironmentVariable("GRPC_CHANNEL_PORT_BASE"), out ushort grpcChannelPortBaseOverride)) {
+            BaseGrpcChannelPort = grpcChannelPortBaseOverride;
+        }
 
         if (IPAddress.TryParse(Environment.GetEnvironmentVariable("GAME_IP"), out IPAddress? gameIpAddress)) {
             GameIp = gameIpAddress;
