@@ -79,7 +79,7 @@ public static class GuildPacket {
         ListGuilds = 87,
         UseBuff = 90,
         UsePersonalBuff = 91,
-        AddContribution = 95,
+        AddContribution = 97,
         // 96, 104, 107, 109
         Donated = 110,
         // 114, 115, 116, 119, 120
