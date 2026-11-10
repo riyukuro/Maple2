@@ -22,14 +22,18 @@ Results today:
 
 | direction | rows | pass | warning | fail | not checkable |
 |---|---|---|---|---|---|
-| client to server | 678 | 215 | 5 | 90 | 368 |
-| server to client | 1,161 | 571 | 3 | 0 | 587 |
+| client to server | 680 | 239 | 5 | 67 | 369 |
+| server to client | 1,193 | 592 | 4 | 0 | 597 |
 
-The 90 client-to-server fails are all sub-types the server does not handle (listed below).
+The 67 client-to-server fails are all sub-types the server does not handle (listed below).
 
-Server-to-client rows whose layout depends on client state are checked once per branch the client can take; a row passes when one branch reads the packet exactly. Of the server-to-client passes, 9 are weak (only a branch that ignores the packet, or a guessed condition, fits).
+Server-to-client rows whose layout depends on client state are checked once per branch the client can take; a row passes when one branch reads the packet exactly. Of the server-to-client passes, 10 are weak (only a branch that ignores the packet, or a guessed condition, fits).
 
-Two of the three server-to-client warnings are kept on purpose; the third is weak and not settled yet: on the skill damage target packet (sub-type 0) the checker's made-up targets do not reach the client's entry loop, so the 26 bytes past what it reads may be one entry. Trade sub-type 13 carries a trailing byte that the official server sends too. The skill state packet (sub-type 6) carries an extra int that shifts fields the client reads and then discards.
+The four server-to-client warnings are kept on purpose; in each the client reads a prefix and ignores the rest:
+- Trade sub-type 13 carries a trailing byte that the official server sends too.
+- The skill state packet (sub-type 6) carries an extra int that shifts fields the client reads and then discards.
+- The achievement favorite packet has no reader in the client (it handles sub-types 0 to 2 only).
+- The skill macro load (sub-type 0) is read by a client handler that acts on sub-type 2 only.
 
 ## Fixes so far, by system
 
@@ -76,23 +80,28 @@ Two of the three server-to-client warnings are kept on purpose; the third is wea
   - Enchant sub-type 15 writes the uid and the whole item.
   - The limit break preview has no meso field.
   - Adding a pet item writes no string before the item.
+- **Function cube:** the command numbers are the client's, and a gathering success writes the count 1 the client adds to its tally.
+- **Requests read without a reply yet** (each logs what it read; the reply needs state the server does not keep):
+  - Item merge choice, revert and material select; manufacture through the enchant scroll; socket transfer; exchange scroll target and fill.
+  - Change attributes: keep current (drops the pending result), stage item, open dialog.
+  - Revival: coupon revive and summon revive.
+  - Meret Market: UGC sale details, the by-id lists (at most 20 ids) and the random sale requests.
+  - System shop: every shop kind; closing one clears the open shop.
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 
 ## Known not to work
 
-The client sends 90 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 67 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
-| RequestCube | 9 | ChangeAttributes | 3 | ItemExchangeScroll | 2 |
-| MeretMarket | 9 | Wedding | 3 | FunctionCube | 2 |
-| EventReward | 9 | ItemMerge | 3 | BuddyBadge | 2 |
-| Quest | 8 | HomeAction | 3 | Party | 2 |
-| Guild | 6 | Revival | 2 | ItemSocketSystem | 2 |
-| RoomDungeon | 5 | RequestItemInventory | 2 | | |
-| RequestItemEnchant | 5 | | | | |
+| RequestCube | 9 | RequestItemEnchant | 5 | FunctionCube | 2 |
+| EventReward | 9 | Wedding | 3 | BuddyBadge | 2 |
+| Quest | 8 | HomeAction | 3 | RequestItemInventory | 2 |
+| Guild | 6 | Party | 2 | | |
+| RoomDungeon | 5 | | | | |
 
-These systems have one unhandled sub-type each: Achieve, Buddy, ChatSticker, Club, EnchantScroll, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, SystemShop, Trade, Ugc.
+These systems have one unhandled sub-type each: Achieve, Buddy, ChatSticker, Club, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Trade, Ugc.
 
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
