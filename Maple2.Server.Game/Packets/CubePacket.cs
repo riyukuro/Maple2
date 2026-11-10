@@ -455,9 +455,15 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter GrantBuildPermissions() {
+    // Client: CSceneStateGame::OnResponseCube case 0x35 (scenestategame.cpp:10592): the character id, the house owner's
+    // character id, and the two build budget values of UpdateBuildBudget; the client ignores it for another character.
+    public static ByteWriter GrantBuildPermissions(long characterId = 0, long ownerId = 0, long value1 = 0, long value2 = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.GrantBuildPermissions);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteLong(ownerId);
+        pWriter.WriteLong(value1);
+        pWriter.WriteLong(value2);
 
         return pWriter;
     }
