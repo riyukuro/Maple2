@@ -322,7 +322,8 @@ public class UgcHandler : FieldPacketHandler {
 
     private void HandleConfirmation(GameSession session, IByteReader packet) {
         var info = packet.Read<UgcInfo>();
-        packet.ReadInt();
+        packet.ReadUnicodeString(); // object name
+        packet.ReadUnicodeString(); // name
         long ugcUid = packet.ReadLong();
         string ugcGuid = packet.ReadUnicodeString();
         packet.ReadShort(); // -255
