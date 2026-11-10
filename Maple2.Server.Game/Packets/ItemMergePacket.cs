@@ -33,9 +33,8 @@ public static class ItemMergePacket {
     public static ByteWriter Select(ItemMergeTable.Entry metadata, int materialMultiplier = 1) {
         var pWriter = Packet.Of(SendOp.ItemMerge);
         pWriter.Write<Command>(Command.Select);
-        pWriter.WriteInt(1); // Step. Hardcoding 1 as there's never more than one
+        // Client 2525 CItemMergeOptionProxy::Read (itemmergeoptiontable.cpp:245).
         pWriter.WriteLong(metadata.MesoCost * materialMultiplier);
-        pWriter.WriteInt(1); // Needs to be 1 for meso cost to show?
         pWriter.WriteByte((byte) metadata.Materials.Length);
         foreach (ItemComponent ingredient in metadata.Materials) {
             pWriter.WriteInt(ingredient.ItemId);
@@ -92,7 +91,5 @@ public static class ItemMergePacket {
     private static void WriteMergeStat(this IByteWriter pWriter, ItemMergeTable.Option option) {
         pWriter.WriteInt(option.Values[0].Min);
         pWriter.WriteInt(option.Values[^1].Max);
-        pWriter.WriteFloat((float) option.Rates[0].Min / 1000);
-        pWriter.WriteFloat((float) option.Rates[^1].Max / 1000);
     }
 }
