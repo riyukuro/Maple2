@@ -268,7 +268,7 @@ public static class PartyPacket {
     public static ByteWriter PartySearchDungeon() {
         var pWriter = Packet.Of(SendOp.Party);
         pWriter.Write<Command>(Command.PartySearchDungeon);
-        pWriter.WriteLong(); // s_party_match_dungeon
+        // OnPartyDungeonMatchConfirm (partymanager.cpp:471) reads nothing; it shows s_party_match_dungeon.
 
         return pWriter;
     }
