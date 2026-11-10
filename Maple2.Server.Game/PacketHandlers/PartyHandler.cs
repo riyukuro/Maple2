@@ -265,11 +265,6 @@ public class PartyHandler : FieldPacketHandler {
     private void HandleCancelPartySearch(GameSession session, IByteReader packet) {
         // TODO: Implement
         byte unk1 = packet.ReadByte();
-        if (unk1 != 3) {
-            int const_1 = packet.ReadInt();
-            int unk2 = packet.ReadInt();
-            byte unk3 = packet.ReadByte();
-        }
     }
 
     private void HandleVoteKick(GameSession session, IByteReader packet) {
