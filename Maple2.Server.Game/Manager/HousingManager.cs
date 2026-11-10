@@ -308,7 +308,7 @@ public class HousingManager {
             return;
         }
 
-        session.Field.Broadcast(CubePacket.ExtendPlot(plotInfo));
+        session.Field.Broadcast(CubePacket.ExtendPlot());
         SetPlot(plotInfo);
         session.World.UpdateFieldPlot(new FieldPlotRequest {
             MapId = session.Field.MapId,

@@ -128,11 +128,11 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter ExtendPlot(PlotInfo plot) {
+    // OnResponseCube case 9 (scenestategame.cpp:10310) reads only the error byte.
+    public static ByteWriter ExtendPlot() {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ExtendPlot);
         pWriter.Write<UgcMapError>(UgcMapError.s_ugcmap_ok);
-        pWriter.WriteLong(plot.OwnerId);
 
         return pWriter;
     }
