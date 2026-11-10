@@ -16,6 +16,7 @@ public static class PetInventoryPacket {
         Reset = 6,
     }
 
+    // OnPetInventory mode 0 (scenestategame.cpp:2648): id, uid, slot, rarity, then the item; no string, as in Load.
     public static ByteWriter Add(Item item) {
         var pWriter = Packet.Of(SendOp.PetInventory);
         pWriter.Write<Command>(Command.Add);
@@ -23,7 +24,6 @@ public static class PetInventoryPacket {
         pWriter.WriteLong(item.Uid);
         pWriter.WriteShort(item.Slot);
         pWriter.WriteInt(item.Rarity);
-        pWriter.WriteUnicodeString();
         pWriter.WriteClass<Item>(item);
 
         return pWriter;
