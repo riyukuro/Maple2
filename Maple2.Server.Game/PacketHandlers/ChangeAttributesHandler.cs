@@ -19,7 +19,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     private enum Command : byte {
         Change = 0,
         Select = 2,
-        Unknown5 = 5,
+        Unknown5 = 7,
         ForceFill = 8,
     }
 
