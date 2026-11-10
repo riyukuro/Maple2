@@ -16,6 +16,7 @@ public class EmoteHandler : FieldPacketHandler {
     private enum Command : byte {
         Learn = 1,
         Use = 2,
+        Favorite = 4,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -26,6 +27,9 @@ public class EmoteHandler : FieldPacketHandler {
                 return;
             case Command.Use:
                 HandleUse(session, packet);
+                return;
+            case Command.Favorite:
+                HandleFavorite(packet);
                 return;
         }
     }
@@ -53,6 +57,14 @@ public class EmoteHandler : FieldPacketHandler {
 
         session.Player.Value.Unlock.Emotes.Add(emoteId);
         session.Send(EmotePacket.Learn(new Emote(emoteId)));
+    }
+
+    // Client 2525: uidynamicactiondialog.cpp:356-371 / uicoupleactiondialog.cpp:320-336 ("onFavorite")
+    // write u8=4, i32 emote id, i32 level, bool favorite. The flag is not stored yet.
+    private static void HandleFavorite(IByteReader packet) {
+        packet.ReadInt(); // emote id
+        packet.ReadInt(); // level
+        packet.ReadBool(); // favorite
     }
 
     private void HandleUse(GameSession session, IByteReader packet) {
