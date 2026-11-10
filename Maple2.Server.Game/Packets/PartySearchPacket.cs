@@ -25,7 +25,7 @@ public static class PartySearchPacket {
 
     public static ByteWriter Remove(long partySearchId) {
         var pWriter = Packet.Of(SendOp.PartySearch);
-        pWriter.Write<Command>(Command.Add);
+        pWriter.Write<Command>(Command.Remove);
         pWriter.WriteLong(partySearchId);
 
         return pWriter;
