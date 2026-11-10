@@ -33,7 +33,6 @@ public static class SkillDamagePacket {
         pWriter.Write<Vector3S>(record.Position); // Impact
         pWriter.Write<Vector3>(record.Direction); // Impact
         pWriter.WriteBool(true); // SkillId:10600211 only
-        pWriter.WriteInt(record.ServerTick);
 
         pWriter.WriteByte((byte) targets.Count);
         foreach (TargetRecord target in targets) {
