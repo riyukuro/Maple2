@@ -51,7 +51,7 @@ public class RideHandler : FieldPacketHandler {
     }
 
     private void HandleStart(GameSession session, IByteReader packet) {
-        Logger.Information("tst1 RequestRide Start: map={Map} limitRide={Limit} alreadyRiding={Riding}", session.Field?.MapId, session.Field?.Metadata.Limit.Ride, session.Ride.Ride != null);
+        Logger.Information("RequestRide Start: map={Map} limitRide={Limit} alreadyRiding={Riding}", session.Field?.MapId, session.Field?.Metadata.Limit.Ride, session.Ride.Ride != null);
         if (session.Field == null || !session.Field.Metadata.Limit.Ride || session.Ride.Ride != null) {
             session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
             return;
@@ -66,13 +66,13 @@ public class RideHandler : FieldPacketHandler {
         // client doesn't set this data?
         //var ugc = packet.ReadClass<UgcItemLook>();
 
-        Logger.Information("tst1 RequestRide Start: type={Type} rideId={Ride} itemUid={Uid}", type, rideId, itemUid);
+        Logger.Information("RequestRide Start: type={Type} rideId={Ride} itemUid={Uid}", type, rideId, itemUid);
         if (type != RideOnType.Default) {
             return;
         }
 
         Item? item = session.Item.Inventory.Get(itemUid, InventoryType.Mount);
-        Logger.Information("tst1 RequestRide Start: item={Item} itemRide={ItemRide} expired={Expired}", item?.Id, item?.Metadata.Property.Ride, item?.IsExpired());
+        Logger.Information("RequestRide Start: item={Item} itemRide={ItemRide} expired={Expired}", item?.Id, item?.Metadata.Property.Ride, item?.IsExpired());
         if (item == null) {
             session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_do_not_have));
             return;

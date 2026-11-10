@@ -55,7 +55,7 @@ public class ShopItem : IByteSerializable {
             writer.WriteClass<Game.Shop.RestrictedBuyData>(Metadata.RestrictedBuyData);
         }
 
-        writer.WriteBool(false); // ft1: KMS2_DEV client reads a has-NpcShopItemLife bool here (0x140db698c)
+        writer.WriteBool(false); // KMS 2525: the client reads a has-NpcShopItemLife bool here (0x140db698c)
         writer.WriteClass<Item>(Item);
     }
 }

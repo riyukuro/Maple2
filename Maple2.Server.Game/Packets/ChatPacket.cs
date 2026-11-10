@@ -122,7 +122,7 @@ public static class ChatPacket {
         pWriter.WriteLong();
         pWriter.WriteUnicodeString();
         pWriter.WriteBool(true);
-        pWriter.WriteInt(StringCodeMap.ToClient(code)); // tst1: client string ids differ from the server enum
+        pWriter.WriteInt(StringCodeMap.ToClient(code)); // KMS 2525: client string ids differ from the server enum
         pWriter.Write<ChatType>(ChatType.NoticeAlert);
         pWriter.WriteBool(false);
         pWriter.WriteInt();

@@ -3,7 +3,7 @@ using System.IO;
 
 namespace Maple2.Server.Game.Session;
 
-// LOCAL TEST HOOK (tst1): if TST_CMD_FILE is set, once per second run each line of that file as a chat command
+// LOCAL TEST HOOK: if TST_CMD_FILE is set, once per second run each line of that file as a chat command
 // (as the logged-in player, e.g. "warp 2000001") and delete the file. File = TST_CMD_FILE + "." + character id;
 // ack lines go to <that file>.ack.
 public sealed partial class GameSession {

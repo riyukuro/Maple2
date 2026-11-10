@@ -143,7 +143,7 @@ public abstract class Session : IDisposable {
             Logger.Debug(ex, "SendWorker drain join failed");
         }
 
-        // tst1: linger 0 turns Close into an RST, which can drop the just-sent last packet (GameToLogin) under wine.
+        // Graceful close: linger 0 turns Close into an RST, which can drop the just-sent last packet (GameToLogin) under wine.
         // Close gracefully after the drain: FIN first, short linger.
         try {
             client.LingerState = new LingerOption(true, 2);
@@ -450,7 +450,7 @@ public abstract class Session : IDisposable {
         }
     }
 
-    // LOCAL TEST HOOK (tst1): TST_PKT_DIR set -> append each client-sent packet to <dir>/pkt.<CharacterId>.log as "op<TAB>len<TAB>hex"
+    // LOCAL TEST HOOK: TST_PKT_DIR set -> append each client-sent packet to <dir>/pkt.<CharacterId>.log as "op<TAB>len<TAB>hex"
     public static void TstAppend(long characterId, string line) {
         string? dir = Environment.GetEnvironmentVariable("TST_PKT_DIR");
         if (string.IsNullOrEmpty(dir) || characterId == 0) return;
