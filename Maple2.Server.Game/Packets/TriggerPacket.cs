@@ -147,7 +147,7 @@ public static class TriggerPacket {
     public static ByteWriter ResetScript(bool error = false) {
         var pWriter = Packet.Of(SendOp.Trigger);
         pWriter.Write<Command>(Command.ResetScript);
-        pWriter.WriteBool(error); // no error=>s_user_trigger_msg_rollback
+        pWriter.WriteInt(error ? 1 : 0); // 0 => s_user_trigger_msg_rollback
 
         return pWriter;
     }
