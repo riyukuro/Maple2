@@ -11,11 +11,12 @@ namespace Maple2.Server.Game.Packets;
 
 public static class ItemMergePacket {
     private enum Command : byte {
-        Stage = 0,
-        Select = 1,
-        Empower = 3,
-        Error = 3, // Same as Empower
-        Remove = 4,
+        // Client 2525 CSceneStateGame::OnItemFusion (scenestategame.cpp:5906).
+        Stage = 1,
+        Select = 2,
+        Empower = 5,
+        Error = 5, // Same as Empower
+        Remove = 6,
     }
 
     public static ByteWriter Stage(ICollection<long> crystals) {
