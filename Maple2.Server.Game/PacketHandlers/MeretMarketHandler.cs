@@ -33,6 +33,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         RemoveListing = 14,
         UnlistItem = 15,
         RelistItem = 18,
+        UgcSaleDetails = 19,
         CollectProfit = 20,
         LoadDesigners = 22,
         AddDesigner = 23,
@@ -42,11 +43,19 @@ public class MeretMarketHandler : FieldPacketHandler {
         BlueprintClear = 28,
         FindItem = 29,
         Purchase = 30,
+        LoadPremiumById = 32,
+        LoadUgcById = 33,
         Featured = 101,
         OpenUgcShop = 102,
         Search = 104,
         BlueprintSearch = 105,
         LoadCart = 107, // Just a guess?
+        RandomSaleRequest = 111,
+        RandomSalePay = 112,
+        RandomSaleCreate = 114,
+        RandomSaleRequestNotice = 115,
+        RandomSalePayNotice = 116,
+        RandomSaleRequestOther = 118,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -106,6 +115,29 @@ public class MeretMarketHandler : FieldPacketHandler {
             case Command.BlueprintClear:
             case Command.BlueprintSearch:
                 HandleBlueprintSearch(session, packet);
+                return;
+            case Command.UgcSaleDetails:
+                HandleUgcSaleDetails(session, packet);
+                return;
+            case Command.LoadPremiumById:
+                HandleLoadPremiumById(session, packet);
+                return;
+            case Command.LoadUgcById:
+                HandleLoadUgcById(session, packet);
+                return;
+            case Command.RandomSaleRequest:
+            case Command.RandomSalePay:
+                HandleRandomSaleBuy(session, packet, command);
+                return;
+            case Command.RandomSaleCreate:
+                HandleRandomSaleCreate(session, packet);
+                return;
+            case Command.RandomSaleRequestNotice:
+            case Command.RandomSalePayNotice:
+                HandleRandomSaleNotice(session, packet, command);
+                return;
+            case Command.RandomSaleRequestOther:
+                HandleRandomSaleRequestOther(session, packet);
                 return;
         }
     }
@@ -650,4 +682,74 @@ public class MeretMarketHandler : FieldPacketHandler {
         return entries.Skip(offset).Take(numPages * itemsPerPage + Math.Min(0, offset)).ToList();
     }
     #endregion
+
+    // Client CMeratMarketMan::SendMeretMarketMode19 (meratmarketman.cpp:520): the sale details of a UGC product.
+    private void HandleUgcSaleDetails(GameSession session, IByteReader packet) {
+        long ugcUid = packet.ReadLong();
+        Logger.Debug("MeretMarket UGC sale details {UgcUid} not implemented", ugcUid);
+    }
+
+    // Client CMeratMarketMan::SendMeretMarketMode32/33 (meratmarketman.cpp:665/679): products by id,
+    // at most 20. The reply layout for these modes is not modelled yet.
+    private const int MaxProductsById = 20;
+
+    private void HandleLoadPremiumById(GameSession session, IByteReader packet) {
+        int count = packet.ReadInt();
+        if (count < 0 || count > MaxProductsById) {
+            return;
+        }
+        var ids = new int[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = packet.ReadInt();
+        }
+        Logger.Debug("MeretMarket premium products by id ({Count}) not implemented", count);
+    }
+
+    private void HandleLoadUgcById(GameSession session, IByteReader packet) {
+        int count = packet.ReadInt();
+        if (count < 0 || count > MaxProductsById) {
+            return;
+        }
+        var ids = new long[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = packet.ReadLong();
+        }
+        Logger.Debug("MeretMarket UGC products by id ({Count}) not implemented", count);
+    }
+
+    // Client UIMeratMarketDialog::SendRandomSaleRequest (111, uimeratmarketdialog.cpp:2813) and the
+    // bill payment (112, uimeratmarketcommon.cpp:560): buy a type 6 random-sale product.
+    // The fork has no random-sale state, so nothing is bought.
+    private void HandleRandomSaleBuy(GameSession session, IByteReader packet, Command command) {
+        int productId = packet.ReadInt();
+        byte arg1 = packet.ReadByte();
+        byte arg2 = packet.ReadByte();
+        int remainCount = packet.ReadInt();
+        long remainSeconds = packet.ReadLong();
+        long salePrice = packet.ReadLong();
+        Logger.Debug("MeretMarket {Command} product {ProductId} not implemented", command, productId);
+    }
+
+    // Client uimeratmarketdialog.cpp:3890: create a random sale for a type 7 or 8 product.
+    private void HandleRandomSaleCreate(GameSession session, IByteReader packet) {
+        int productId = packet.ReadInt();
+        byte type = packet.ReadByte();
+        Logger.Debug("MeretMarket random sale create {ProductId} type {Type} not implemented", productId, type);
+    }
+
+    // Client uimeratmarketdialog.cpp:2825/2834 (115) and uimeratmarketcommon.cpp:583 (116):
+    // type 7 or 8 random-sale products, with the notice string id the client shows.
+    private void HandleRandomSaleNotice(GameSession session, IByteReader packet, Command command) {
+        int productId = packet.ReadInt();
+        int arg = packet.ReadInt();
+        int notice = packet.ReadInt();
+        Logger.Debug("MeretMarket {Command} product {ProductId} not implemented", command, productId);
+    }
+
+    // Client uimeratmarketdialog.cpp:2843: any other random-sale product type.
+    private void HandleRandomSaleRequestOther(GameSession session, IByteReader packet) {
+        int productId = packet.ReadInt();
+        int arg = packet.ReadInt();
+        Logger.Debug("MeretMarket random sale request {ProductId} not implemented", productId);
+    }
 }

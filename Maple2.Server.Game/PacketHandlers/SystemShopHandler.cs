@@ -45,6 +45,9 @@ public class SystemShopHandler : FieldPacketHandler {
             case Command.Item:
                 HandleItem(session, packet);
                 break;
+            default:
+                HandleOther(session, packet, command);
+                break;
         }
     }
 
@@ -122,5 +125,17 @@ public class SystemShopHandler : FieldPacketHandler {
 
         session.Shop.Load(item.Metadata.Property.ShopId);
         session.Send(SystemShopPacket.Item());
+    }
+
+    // Client CNetworkService::SendSystemShop (networkservice.cpp:530) writes the shop kind
+    // (uishopdialog.cpp:713 sort kind, unit_141347b10.cpp:490 tab) and 1 to open or 0 to close.
+    // The fork knows no NPC for the other kinds; closing still clears the active shop.
+    private void HandleOther(GameSession session, IByteReader packet, Command kind) {
+        bool openShop = packet.ReadBool();
+        if (!openShop) {
+            session.Shop.ClearActiveShop();
+            return;
+        }
+        Logger.Debug("System shop kind {Kind} opened by {CharacterId}: no shop for this kind", (byte) kind, session.CharacterId);
     }
 }
