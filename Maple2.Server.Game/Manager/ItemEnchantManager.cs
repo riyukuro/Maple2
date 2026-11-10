@@ -474,7 +474,7 @@ public class ItemEnchantManager {
 
         limitBreakItemUpgrade.LimitBreak.Level++;
         limitBreakItemUpgrade.Enchant!.Enchants = 0;
-        session.Send(LimitBreakPacket.StageItem(item, limitBreakItemUpgrade, mesoCost, catalysts));
+        session.Send(LimitBreakPacket.StageItem(item, limitBreakItemUpgrade, catalysts));
 
         return true;
     }

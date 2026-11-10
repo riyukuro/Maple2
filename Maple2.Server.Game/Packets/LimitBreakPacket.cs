@@ -15,11 +15,13 @@ public static class LimitBreakPacket {
 
     }
 
-    public static ByteWriter StageItem(Item item, Item upgradeItem, long mesoCost, ICollection<IngredientInfo> catalysts) {
+    // UIUnlimitedEnchantDialog preview (uiunlimitedenchantdialog.cpp:223): item uid, the ingredient container
+    // (commonstruct_wa.cpp:255), then the result item. There is no meso field; the client works out its fee
+    // text from the ingredients.
+    public static ByteWriter StageItem(Item item, Item upgradeItem, ICollection<IngredientInfo> catalysts) {
         var pWriter = Packet.Of(SendOp.LimitBreak);
         pWriter.Write<Command>(Command.StageItem);
         pWriter.WriteLong(item.Uid);
-        pWriter.WriteLong(mesoCost);
         pWriter.WriteByte((byte) catalysts.Count);
 
         foreach (IngredientInfo ingredient in catalysts) {
