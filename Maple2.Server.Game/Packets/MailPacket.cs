@@ -37,10 +37,10 @@ public static class MailPacket {
         return pWriter;
     }
 
-    public static ByteWriter Send(long mailId) {
+    // OnMail mode 1 (scenestategame.cpp:11521) reads nothing more: it shows the sent message and closes the send dialog.
+    public static ByteWriter Send() {
         var pWriter = Packet.Of(SendOp.Mail);
         pWriter.Write<Command>(Command.Send);
-        pWriter.WriteLong(mailId);
 
         return pWriter;
     }

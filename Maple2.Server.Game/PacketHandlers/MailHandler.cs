@@ -91,7 +91,7 @@ public class MailHandler : FieldPacketHandler {
         }
 
         session.ConditionUpdate(ConditionType.send_mail);
-        session.Send(MailPacket.Send(mail.Id));
+        session.Send(MailPacket.Send());
         try {
             session.World.MailNotification(new MailNotificationRequest {
                 CharacterId = receiverId,
