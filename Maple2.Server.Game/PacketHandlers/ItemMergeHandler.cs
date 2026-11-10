@@ -9,9 +9,9 @@ public class ItemMergeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.ItemMerge;
 
     private enum Command : byte {
-        Stage = 0,
-        SelectCrystal = 1,
-        Empower = 2,
+        Stage = 1,
+        SelectCrystal = 2,
+        Empower = 3,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
