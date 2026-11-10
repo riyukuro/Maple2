@@ -10,12 +10,13 @@ public static class RoomStageDungeonPacket {
         Update = 1,
     }
 
-    public static ByteWriter Set(int dungeonId) {
+    // OnRoomStageDungeon case 0 (networkservice.cpp:1085) reads an int, a byte and a bool, then calls CreateStage.
+    public static ByteWriter Set(int dungeonId, byte flag = 0, bool enabled = false) {
         var pWriter = Packet.Of(SendOp.RoomStageDungeon);
         pWriter.Write<Command>(Command.Set);
         pWriter.WriteInt(dungeonId);
-        pWriter.WriteInt();
-        pWriter.WriteShort();
+        pWriter.WriteByte(flag);
+        pWriter.WriteBool(enabled);
 
         return pWriter;
     }
