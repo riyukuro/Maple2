@@ -7,6 +7,7 @@ using Maple2.File.Parser.Xml.Table;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using System.Xml;
 using Slot = Maple2.File.Parser.Xml.Item.Slot;
 
 namespace Maple2.File.Ingest.Mapper;
@@ -30,15 +31,21 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         // The items the played client has item data for (PlayedClientItems); null without a played client or when
         // its pack has no item data, and then no item is marked.
         HashSet<int>? known = null;
+        Dictionary<int, string>? playedTags = null;
         if (playedReader != null) {
-            known = PlayedClientItems.Ids(
-                playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
-                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            List<XmlDocument> itemFiles = playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)).ToList();
+            Func<XmlElement, bool> available = node =>
+                FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+            known = PlayedClientItems.Ids(itemFiles, available);
             if (known.Count == 0) {
                 known = null;
+            } else {
+                // The option-lock tags the played client tests (PlayedClientItems.LockTag).
+                playedTags = PlayedClientItems.Tags(itemFiles, available);
             }
         }
-        int notInPlayed = 0, inPlayed = 0;
+        int notInPlayed = 0, inPlayed = 0, lockTagsChanged = 0;
 
         Dictionary<int, int> itemExtractionTryCount = tableParser.ParseItemExtraction()
             .ToDictionary(entry => entry.Id, entry => entry.Extraction.TryCount);
@@ -176,6 +183,9 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 IndoorPortal: data.install.indoor != 0,
                 MapAttribute: Enum.TryParse<MapAttribute>(data.install.mapAttribute, true, out MapAttribute mapAttribute) ? mapAttribute : MapAttribute.none);
 
+            ItemTag serverTag = string.IsNullOrWhiteSpace(data.basic.stringTag) ? ItemTag.None : Enum.Parse<ItemTag>(data.basic.stringTag);
+            ItemTag tag = playedTags == null ? serverTag : PlayedClientItems.LockTag(serverTag, playedTags.GetValueOrDefault(id));
+            if (tag != serverTag) lockTagsChanged++;
             var itemMetadata = new ItemMetadata(
                 Id: id,
                 Name: name,
@@ -197,7 +207,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     SubType: data.property.subtype,
                     Category: data.property.category,
                     BlackMarketCategory: data.property.blackMarketCategory,
-                    Tag: string.IsNullOrWhiteSpace(data.basic.stringTag) ? ItemTag.None : Enum.Parse<ItemTag>(data.basic.stringTag),
+                    Tag: tag,
                     Group: data.property.itemGroup,
                     Collection: data.property.collection,
                     GearScore: data.property.gearScore,
@@ -262,6 +272,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         }
         if (known != null) {
             Console.WriteLine($"items: {notInPlayed} not in the played client's item data (the server creates none of them), {inPlayed} in it");
+            Console.WriteLine($"items: {lockTagsChanged} option-lock tags taken from the played client's item data");
         }
     }
 }

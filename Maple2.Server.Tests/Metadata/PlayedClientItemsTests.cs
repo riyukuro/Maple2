@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
@@ -33,6 +34,48 @@ public class PlayedClientItemsTests {
         XmlDocument second = File("""<item id="200"><environment /></item>""");
 
         Assert.That(PlayedClientItems.Ids([first, second], Available).OrderBy(id => id), Is.EqualTo(new[] { 100, 102, 200 }));
+    }
+
+    // Made-up ids. The tag of each item from its available environments; an item whose available environments
+    // disagree has none.
+    [Test]
+    public void Tags_FromTheAvailableEnvironments() {
+        XmlDocument file = File("""
+            <item id="100"><environment feature="Other"><basic stringTag="LockItemOptionArmor" /></environment></item>
+            <item id="101"><environment locale="KR"><basic stringTag="LockItemOptionArmor" /></environment><environment locale="NA"><basic stringTag="LockItemOptionWeapon" /></environment></item>
+            <item id="102"><environment><basic stringTag="LockItemOptionArmor" /></environment><environment locale="NA"><basic stringTag="LockItemOptionWeapon" /></environment></item>
+            <item id="103"><environment><basic /></environment></item>
+            <item id="104"><environment feature="Off"><basic stringTag="LockItemOptionPet" /></environment></item>
+            """);
+
+        Dictionary<int, string> tags = PlayedClientItems.Tags([file], Available);
+        Assert.That(tags, Is.EquivalentTo(new Dictionary<int, string> {
+            [100] = "LockItemOptionArmor",
+            [101] = "LockItemOptionWeapon",
+            [103] = "",
+        }));
+    }
+
+    // The shape of a scroll the played client tags for armour and the NA pack for accessories: the server takes the
+    // played client's lock tag. Other tags stay the server pack's.
+    [TestCase(ItemTag.LockItemOptionAccessory, "LockItemOptionArmor", ItemTag.LockItemOptionArmor)]
+    [TestCase(ItemTag.LockItemOptionAccessory, "", ItemTag.None)]
+    [TestCase(ItemTag.None, "LockItemOptionPet", ItemTag.LockItemOptionPet)]
+    [TestCase(ItemTag.LockItemOptionWeapon, null, ItemTag.LockItemOptionWeapon)]
+    [TestCase(ItemTag.None, "SomeTagTheServerLacks", ItemTag.None)]
+    [TestCase(ItemTag.LockItemOptionPet, "SomeTagTheServerLacks", ItemTag.None)]
+    [TestCase(ItemTag.None, "LockItemOptionPetX", ItemTag.None)]
+    public void LockTag_IsThePlayedClients(ItemTag server, string? played, ItemTag expected) {
+        Assert.That(PlayedClientItems.LockTag(server, played), Is.EqualTo(expected));
+    }
+
+    // Tags that are not lock tags on either side are left alone.
+    [Test]
+    public void LockTag_LeavesOtherTags() {
+        ItemTag other = Enum.GetValues<ItemTag>().First(tag => tag != ItemTag.None && !tag.ToString().StartsWith("LockItemOption"));
+        ItemTag another = Enum.GetValues<ItemTag>().Last(tag => tag != other && tag != ItemTag.None && !tag.ToString().StartsWith("LockItemOption"));
+        Assert.That(PlayedClientItems.LockTag(other, another.ToString()), Is.EqualTo(other));
+        Assert.That(PlayedClientItems.LockTag(other, ""), Is.EqualTo(other));
     }
 
     [Test]

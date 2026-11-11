@@ -1,4 +1,5 @@
 using System.Xml;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 
 namespace Maple2.Model.Metadata;
@@ -36,6 +37,55 @@ public static class PlayedClientItems {
         }
         return ids;
     }
+
+    // The stringTag (<basic stringTag>) of each item from its available environments, for items whose available
+    // environments agree on it (every lock scroll of today's played client has one environment). The client tests
+    // this tag, not the server pack's, when it matches an option-lock scroll to the item (CItemData stringTag
+    // against UIItemRemake GetLockItemId, FUN_140a5f7b0).
+    public static Dictionary<int, string> Tags(IEnumerable<XmlDocument> itemFiles, Func<XmlElement, bool> available) {
+        var tags = new Dictionary<int, string>();
+        var mixed = new HashSet<int>();
+        foreach (XmlDocument file in itemFiles) {
+            XmlNodeList? items = file.SelectNodes("ms2/item");
+            if (items == null) {
+                continue;
+            }
+            foreach (XmlNode node in items) {
+                if (node is not XmlElement item || !int.TryParse(item.GetAttribute("id"), out int id) || id == 0) {
+                    continue;
+                }
+                foreach (XmlNode child in item.ChildNodes) {
+                    if (child is not XmlElement { Name: "environment" } environment || !available(environment)) {
+                        continue;
+                    }
+                    string tag = (environment["basic"]?.GetAttribute("stringTag") ?? "").Trim();
+                    if (tags.TryGetValue(id, out string? other) && other != tag) {
+                        mixed.Add(id);
+                    }
+                    tags[id] = tag;
+                }
+            }
+        }
+        foreach (int id in mixed) {
+            tags.Remove(id);
+        }
+        return tags;
+    }
+
+    // The option-lock tags are taken from the played client: the server picks and accepts the lock scroll the
+    // client counts (ItemRemakeRules.IsLockItem), where the server pack can tag the same id for another item kind
+    // (e.g. a scroll the played client tags LockItemOptionArmor is LockItemOptionAccessory in the NA pack).
+    // Other tags stay the server pack's. playedTag null = the played client has no single tag for the id.
+    public static ItemTag LockTag(ItemTag serverTag, string? playedTag) {
+        if (playedTag == null) {
+            return serverTag;
+        }
+        ItemTag played = System.Enum.TryParse(playedTag, out ItemTag parsed) && System.Enum.IsDefined(parsed) ? parsed : ItemTag.None;
+        return IsLockTag(serverTag) || IsLockTag(played) ? played : serverTag;
+    }
+
+    private static bool IsLockTag(ItemTag tag) =>
+        tag is ItemTag.LockItemOptionWeapon or ItemTag.LockItemOptionArmor or ItemTag.LockItemOptionAccessory or ItemTag.LockItemOptionPet;
 
     // A row is kept when each item id it names (0 = none) is known; a row with a second item (itemID2, the
     // other gender's item) goes when either is unknown, as the server could hand out either.
