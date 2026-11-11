@@ -17,6 +17,11 @@ public static class HomeOpenRules {
         return passcode == PrivatePasscode;
     }
 
+    // Whether someone standing in a home has to leave after its owner stored this setting.
+    public static bool MovesOut(string? passcode, long ownerAccountId, long accountId) {
+        return IsPrivate(passcode) && accountId != ownerAccountId;
+    }
+
     public enum Enter {
         Allow,
         Blocked,

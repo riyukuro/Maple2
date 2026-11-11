@@ -67,6 +67,13 @@ public partial class FieldManager {
         }
 
         /// <summary>
+        /// The running home field of this owner on this channel, if there is one. Never creates a field.
+        /// </summary>
+        public HomeFieldManager? FindHome(long ownerId) {
+            return homes.TryGetValue(ownerId, out HomeFieldManager? home) && !home.Disposed ? home : null;
+        }
+
+        /// <summary>
         /// Create a new Field instance for the given mapId.
         /// If ownerId is provided, it will be a house field. (Player or Guild house)
         /// If no ownerId is provided, it belongs to the "server".

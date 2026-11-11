@@ -104,10 +104,14 @@ public class HousingManager {
 
         session.Send(CubePacket.SetPasscode());
 
-        // A home set to private keeps no visitors: those in the owner's room leave the way a kicked visitor does.
-        if (HomeOpenRules.IsPrivate(passcode) && session.Field is HomeFieldManager home && home.OwnerId == session.AccountId) {
+        // A home set to private keeps no visitors: they leave the way a kicked visitor does. The owner can
+        // change the setting from any map, so the home is looked up when the owner is not standing in it.
+        HomeFieldManager? home = session.Field is HomeFieldManager here && here.OwnerId == session.AccountId
+            ? here
+            : session.FieldFactory.FindHome(session.AccountId);
+        if (home != null) {
             foreach (FieldPlayer visitor in home.Players.Values) {
-                if (visitor.Session.AccountId == session.AccountId) {
+                if (!HomeOpenRules.MovesOut(passcode, session.AccountId, visitor.Session.AccountId)) {
                     continue;
                 }
                 visitor.Session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.Kicked));

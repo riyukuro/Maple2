@@ -103,6 +103,19 @@ public class HomeOpenRulesTests {
     }
 
     [Test]
+    public void OnlyPrivateMovesVisitorsOutAndNeverTheOwner() {
+        // Kind 2, empty text (00 00), flag 1: private.
+        Assert.That(Read(new byte[] { 0x02, 0x00, 0x00, 0x01 }, out string stored), Is.True);
+        Assert.That(HomeOpenRules.MovesOut(stored, 10, 11), Is.True);
+        Assert.That(HomeOpenRules.MovesOut(stored, 10, 10), Is.False);
+
+        Assert.That(Read(Body(1, "123456"), out stored), Is.True);
+        Assert.That(HomeOpenRules.MovesOut(stored, 10, 11), Is.False);
+        Assert.That(Read(Body(0, ""), out stored), Is.True);
+        Assert.That(HomeOpenRules.MovesOut(stored, 10, 11), Is.False);
+    }
+
+    [Test]
     public void OtherKindsAreRefused() {
         Assert.That(Read(Body(3, ""), out _), Is.False);
         Assert.That(Read(Body(0xFF, "123456"), out _), Is.False);
