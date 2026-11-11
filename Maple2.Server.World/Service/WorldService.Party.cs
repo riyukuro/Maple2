@@ -283,7 +283,7 @@ public partial class WorldService {
                 if (partyLookup.DungeonMatch.IsSearching(manager.Party.Id)) {
                     return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
                 }
-                ids = manager.OnlineMembers();
+                ids = manager.MemberIds();
             } else {
                 info = requestor;
                 ids = [requestorId];

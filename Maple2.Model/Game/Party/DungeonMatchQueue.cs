@@ -15,8 +15,8 @@ public enum DungeonMatchOutcome {
 
 public readonly record struct DungeonMatchResult(DungeonMatchOutcome Outcome, int PartyId = 0, byte Kind = 0, int RoomId = 0);
 
-// The searching groups, one per party, under one lock. A group holds the character ids that count for it (the
-// party's online members) and the ones the matchmaker brought in (the "members found so far" of rule 2). The
+// The searching groups, one per party, under one lock. A group holds the character ids that count for it (every
+// member of the party, online or not: an offline member keeps a slot, rv42 MAJOR 1) and the ones the matchmaker brought in (the "members found so far" of rule 2). The
 // caller does the party side (the member move, the room) with what a call returns; members Join counted that the
 // party then refuses are given back with Leave.
 public sealed class DungeonMatchQueue {
@@ -29,7 +29,7 @@ public sealed class DungeonMatchQueue {
         public required long Order;
 
         public int Users => Members.Count;
-        // Found members still counted: one who left or went offline is no longer found.
+        // Found members still counted: one who left the party is no longer found.
         public int Found => FoundIds.Count(Members.Contains);
     }
 
@@ -84,7 +84,7 @@ public sealed class DungeonMatchQueue {
         }
     }
 
-    // Before a search starts: the searchers (a player with no party, or a party's online members) go into the
+    // Before a search starts: the searchers (a player with no party, or a party's members) go into the
     // largest searching group of the same kind that shares a room with them and still holds them all in that room
     // (the room's maxUserCount is the cap), the one that started first on a tie. A player alone takes any such
     // group (rule 3); a party only a larger one (the user's merge rule, 11-11). The group then searches only
@@ -162,7 +162,7 @@ public sealed class DungeonMatchQueue {
         }
     }
 
-    // The party's online members changed outside the matchmaker (an invite, a leave, a kick, a logout): the group
+    // The party's members changed outside the matchmaker (an invite, a leave, a kick): the group
     // takes them, keeps the rooms that still hold them, and is matched when it is now full for one of them. A found
     // member who is no longer among them is no longer found (rule 2 counts the members found so far).
     public DungeonMatchResult Resize(int partyId, IReadOnlyCollection<long> online) {
@@ -181,7 +181,7 @@ public sealed class DungeonMatchQueue {
         }
     }
 
-    // The party is gone (disbanded, merged, or its leader logged out): its search ends.
+    // The party is gone (disbanded or merged): its search ends.
     public DungeonMatchResult Remove(int partyId) {
         lock (mutex) {
             return groups.Remove(partyId, out Group? group)

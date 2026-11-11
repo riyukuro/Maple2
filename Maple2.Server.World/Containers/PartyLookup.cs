@@ -122,8 +122,9 @@ public class PartyLookup : IDisposable {
     public void DungeonMatchStep(Action body) => steps.Run(body);
     public static void Defer(Action effect) => LockedSteps.Defer(effect);
 
-    // Before a search: each searching group takes its party's online members now (a member who went offline
-    // without a logout reaching World), and a group whose party is gone or whose leader is offline stops.
+    // Before a search: each searching group takes its party's members now; a group whose party is gone stops. A
+    // leader who went offline without a logout reaching World hands the party over to an online member and the
+    // search goes on (rv42 MINOR 7); with no member online the search stops.
     public void RefreshDungeonMatch() => DungeonMatchStep(() => {
         foreach (int partyId in DungeonMatch.SearchingParties()) {
             if (!TryGet(partyId, out PartyManager? manager)) {
@@ -132,8 +133,14 @@ public class PartyLookup : IDisposable {
             }
             bool leaderOnline = manager.Party.Members.TryGetValue(manager.Party.LeaderCharacterId, out PartyMember? leader) && leader.Info.Online;
             if (!leaderOnline) {
-                CompleteDungeonMatch(manager, DungeonMatch.Remove(partyId));
-                continue;
+                if (manager.OnlineMembers().Length == 0) {
+                    CompleteDungeonMatch(manager, DungeonMatch.Remove(partyId));
+                    continue;
+                }
+                manager.FindNewLeader(manager.Party.LeaderCharacterId);
+                if (!TryGet(partyId, out _)) {
+                    continue;
+                }
             }
             DungeonMatchResize(manager);
         }
@@ -141,7 +148,7 @@ public class PartyLookup : IDisposable {
 
     // A member joined or left a party: a searching party's group takes the new count.
     public void DungeonMatchResize(PartyManager manager) => DungeonMatchStep(() => {
-        DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.OnlineMembers());
+        DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.MemberIds());
         if (result.Outcome != DungeonMatchOutcome.NotSearching) {
             CompleteDungeonMatch(manager, result);
         }
@@ -154,7 +161,7 @@ public class PartyLookup : IDisposable {
         switch (result.Outcome) {
             case DungeonMatchOutcome.Matched:
                 BroadcastDungeonMatch(manager, result.Kind, false);
-                int size = manager.OnlineMembers().Length;
+                int size = manager.Party.Members.Count;
                 Defer(() => {
                     int lobbyRoomId = CreateMatchedRoom(manager, result.RoomId, size);
                     if (lobbyRoomId != 0) {

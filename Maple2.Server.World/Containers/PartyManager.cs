@@ -133,7 +133,10 @@ public class PartyManager : IDisposable {
         }
     }
 
-    // The members who count for a dungeon match search: the online ones.
+    // The members who count for a dungeon match search: every member, online or not (rv42 MAJOR 1), so the party
+    // never outgrows the room's maxUserCount when an offline member comes back.
+    public long[] MemberIds() => Party.Members.Keys.ToArray();
+
     // except: a member going offline (logout), counted offline whether or not their info has caught up.
     public long[] OnlineMembers(long except = 0) => Party.Members.Values
         .Where(member => member.Info.Online && member.CharacterId != except)
@@ -314,23 +317,10 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     }
 
-    // The requestor logged out (Game's CheckDisband). An offline member does not stay in a search (rv40 MAJOR 2):
-    // the leader's going stops the party's search, another member's shrinks its group to the online members.
+    // The requestor logged out (Game's CheckDisband). An offline member keeps a slot in a search (rv42 MAJOR 1): the
+    // group is not resized. A leader who logs out hands the party over first and the search goes on with the new
+    // leader (rv42 MINOR 7); with no member online the party goes, and Disband ends its search.
     public void Disband(long requestorId) => PartyLookup.DungeonMatchStep(() => {
-        if (PartyLookup.DungeonMatch.IsSearching(Party.Id)) {
-            if (requestorId == Party.LeaderCharacterId) {
-                PartyLookup.CompleteDungeonMatch(this, PartyLookup.DungeonMatch.Remove(Party.Id));
-            } else {
-                DungeonMatchResult result = PartyLookup.DungeonMatch.Resize(Party.Id, OnlineMembers(requestorId));
-                if (result.Outcome != DungeonMatchOutcome.NotSearching) {
-                    PartyLookup.CompleteDungeonMatch(this, result);
-                }
-            }
-        }
-        if (!PartyLookup.TryGet(Party.Id, out _)) {
-            return;
-        }
-
         int onlineCount = OnlineMembers(requestorId).Length;
         if (onlineCount == 0) {
             PartyLookup.Disband(Party.Id);

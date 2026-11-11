@@ -182,19 +182,15 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.Cancel(2, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 500)));
     }
 
-    // rv40 MAJOR 2: only online members count; a group whose members all went offline stops.
+    // rv42 MAJOR 1: every member counts, online or not; an offline member keeps its slot.
     [Test]
-    public void OfflineMembersDoNotFillTheGroup() {
+    public void OfflineMembersKeepTheirSlot() {
         var queue = new DungeonMatchQueue();
-        queue.Start(1, 1, [Four], [1]);
-        // The solo searcher logs out.
-        Assert.That(queue.Resize(1, []).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
-        Assert.That(queue.Join(1, [Four], [2]), Is.Null);
-
-        // A party of three with one offline is a group of two: a stranger makes three, not a full four.
-        queue.Start(2, 1, [Four], [3, 4]);
-        Assert.That(queue.Join(1, [Four], [5])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
-        Assert.That(queue.CountOf(2), Is.EqualTo((3, 1)));
+        // A party of three, one of them offline, is a group of three: a stranger fills the four.
+        queue.Start(2, 1, [Four], [3, 4, 6]);
+        Assert.That(queue.Resize(2, [3, 4, 6]).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(queue.CountOf(2), Is.EqualTo((3, 0)));
+        Assert.That(queue.Join(1, [Four], [5])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
 
     // rv40 MINOR 10: a cancel of another kind is not the party's search.
@@ -397,16 +393,16 @@ public class DungeonMatchQueueTests {
     }
 
     [Test]
-    public void ALogoutShrinksTheGroupToTheOnlineMembers() {
+    public void ALogoutKeepsTheSlotSoTheCapHolds() {
         var queue = new DungeonMatchQueue();
         var room = new DungeonMatchRoom(700, 1, 4, false);
         long[] members = M(3);
         Assert.That(queue.Start(1, 1, [room], members).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
-        // A member logs out: the group counts the two still online, and a solo now fits twice.
-        queue.Resize(1, members.Take(2).ToArray());
-        Assert.That(queue.CountOf(1).Users, Is.EqualTo(2));
-        Assert.That(queue.Join(1, [room], M(1))!.Value.PartyId, Is.EqualTo(1));
+        // A member logs out: the group still counts three, so one solo fills the room and the one who comes back
+        // does not make five.
+        Assert.That(queue.CountOf(1).Users, Is.EqualTo(3));
         Assert.That(queue.Join(1, [room], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.IsSearching(1), Is.False);
     }
 
     [Test]
