@@ -104,14 +104,15 @@ public enum NpcTalkButton {
 }
 
 public enum NpcTalkAction : byte {
-    Unknown1 = 1,
+    // Numbers of the client's reader (UITalkManager::OnTalkPacket, uitalkcinematic.cpp:1018-1030).
+    NameTag = 1,
     MovePlayer = 3,
     OpenDialog = 4,
     RewardItem = 5,
-    RewardExp = 6,
+    RewardMeret = 6,
     RewardMeso = 7,
-    AddOption = 8,
-    Unknown9 = 9,
+    RewardExp = 8,
+    RewardAffinity = 9,
     Cutscene = 10,
 }
 
