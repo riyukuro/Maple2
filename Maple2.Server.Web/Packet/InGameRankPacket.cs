@@ -221,28 +221,31 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    public static ByteWriter Colosseum() {
+    // The Colosseum board (0xcb, 0xcc), read as the client's GameRanking::BossColosseum: per row the rank, the
+    // character, its name and profile picture, the rounds cleared (shown as the points) and the run's seconds (shown
+    // as minutes:seconds), and two time strings. The client reads the other fields but does not show them.
+    public static ByteWriter Colosseum(GameRankingType type, IList<ColosseumRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(GameRankingType.Colosseum);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // colosseum id
-        pWriter.WriteInt((int) JobCode.None); // job code
-        pWriter.WriteInt(); // unknown value
-        pWriter.WriteInt(); // season/week id
-        pWriter.WriteInt(); // rounds cleared
-        pWriter.WriteInt(); // clear in seconds
-        pWriter.WriteInt(); // level
-        pWriter.WriteUnicodeStringWithLength(); // clear timestamp
-        pWriter.WriteUnicodeStringWithLength(); // clear timestamp again
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (ColosseumRankInfo info in rankInfos) {
+            string setTime = DateTimeOffset.FromUnixTimeSeconds(info.SetTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(0); // read, not shown
+            pWriter.WriteInt(0); // read, not shown
+            pWriter.WriteLong(0); // read, not shown
+            pWriter.WriteInt(info.Rounds);
+            pWriter.WriteInt(info.Seconds);
+            pWriter.WriteInt(0); // read, not shown
+            pWriter.WriteUnicodeStringWithLength(setTime); // read, not shown
+            pWriter.WriteUnicodeStringWithLength(setTime); // read, not shown
+        }
 
         return pWriter;
-
     }
 }

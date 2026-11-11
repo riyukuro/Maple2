@@ -46,6 +46,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<Nurturing> Nurturing { get; set; } = null!;
     internal DbSet<DungeonRecord> DungeonRecord { get; set; } = null!;
     internal DbSet<DarkStreamRecord> DarkStreamRecord { get; set; } = null!;
+    internal DbSet<ColosseumRecord> ColosseumRecord { get; set; } = null!;
     internal DbSet<BossClear> BossClear { get; set; } = null!;
     internal DbSet<BossClearMember> BossClearMember { get; set; } = null!;
     internal DbSet<PlayerReport> PlayerReports { get; set; } = null!;
@@ -101,6 +102,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
 
         modelBuilder.Entity<DungeonRecord>(Maple2.Database.Model.DungeonRecord.Configure);
         modelBuilder.Entity<DarkStreamRecord>(Maple2.Database.Model.DarkStreamRecord.Configure);
+        modelBuilder.Entity<ColosseumRecord>(Maple2.Database.Model.ColosseumRecord.Configure);
         modelBuilder.Entity<BossClear>(Maple2.Database.Model.BossClear.Configure);
         modelBuilder.Entity<BossClearMember>(Maple2.Database.Model.BossClearMember.Configure);
         modelBuilder.Entity<Ban>(Maple2.Database.Model.Ban.Configure);

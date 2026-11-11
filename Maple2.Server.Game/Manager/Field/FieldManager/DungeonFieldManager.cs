@@ -70,6 +70,7 @@ public class DungeonFieldManager : FieldManager {
                 }
             }
             KeepBossClear(seconds);
+            KeepColosseumRun(seconds);
         }
         DungeonRoomRecord.State = state;
         DungeonRoomRecord.EndTick = FieldTick;
@@ -212,6 +213,40 @@ public class DungeonFieldManager : FieldManager {
         long clearId = db.AddBossClear(DungeonMetadata.BossRanking, DungeonId, clear.LeaderId, (int) Math.Max(0, seconds),
             DateTime.Now.ToEpochSeconds(), clear.Members);
         resultLogger.Debug("Dungeon {DungeonId} boss clear {ClearId} kept for {Count} members", DungeonId, clearId, clear.Members.Length);
+    }
+
+    /// <summary>
+    /// The run of a Colosseum room that goes on the Colosseum board (the ranking dialog's board 0x10 lists the
+    /// colosseum rooms that have a BossRanking): the room's first user and the rounds it cleared (dungeon_clear_round),
+    /// when it cleared any and the script did not disable the ranking (dungeon_disable_ranking, a continued game).
+    /// </summary>
+    public static (long CharacterId, int Rounds)? ColosseumRun(DungeonRoomMetadata metadata, DungeonRoomRecord room) {
+        if (metadata.GroupType != DungeonGroupType.colosseum || metadata.BossRanking == 0 || room.RankingDisabled) {
+            return null;
+        }
+        if (!room.UserResults.TryGetValue(room.FirstCharacterId, out DungeonUserRecord? record) || record.Round <= 0) {
+            return null;
+        }
+        return (room.FirstCharacterId, record.Round);
+    }
+
+    // The first end of a Colosseum room keeps the run as the character's best of the season, when it is in the
+    // field. A run outside every Colosseum season keeps nothing.
+    private void KeepColosseumRun(long seconds) {
+        if (ColosseumRun(DungeonMetadata, DungeonRoomRecord) is not { } run || !TryGetPlayerById(run.CharacterId, out FieldPlayer? _)) {
+            return;
+        }
+        DateTime now = DateTime.Now;
+        int seasonId = ColosseumBest.SeasonAt(TableMetadata.SeasonDataTable.Boss, now);
+        if (seasonId == 0) {
+            resultLogger.Debug("Dungeon {DungeonId} colosseum run not kept: no season at {Time}", DungeonId, now);
+            return;
+        }
+
+        using GameStorage.Request db = GameStorage.Context();
+        bool saved = db.SaveColosseumRun(run.CharacterId, seasonId, run.Rounds, (int) Math.Max(0, seconds), now.ToEpochSeconds());
+        resultLogger.Debug("Dungeon {DungeonId} colosseum run {Rounds} rounds in {Seconds}s, season {SeasonId}: best {Saved}",
+            DungeonId, run.Rounds, seconds, seasonId, saved);
     }
 
     /// <summary>PlayTime missions of every player of the room, scored at the clear. Returns the changed missions.</summary>

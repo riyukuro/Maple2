@@ -26,12 +26,14 @@ public class WebController : ControllerBase {
     private readonly WebStorage webStorage;
     private readonly GameStorage gameStorage;
     private readonly IMemoryCache cache;
+    private readonly TableMetadataStorage tableMetadata;
     private static readonly TimeSpan RankingCacheDuration = TimeSpan.FromHours(1);
 
-    public WebController(WebStorage webStorage, GameStorage gameStorage, IMemoryCache cache) {
+    public WebController(WebStorage webStorage, GameStorage gameStorage, IMemoryCache cache, TableMetadataStorage tableMetadata) {
         this.webStorage = webStorage;
         this.gameStorage = gameStorage;
         this.cache = cache;
+        this.tableMetadata = tableMetadata;
     }
 
     [HttpPost("irrq.aspx")]
@@ -71,6 +73,8 @@ public class WebController : ControllerBase {
             GameRankingType.BossClearCountPersonal => PersonalBoss(rankingId, characterId),
             GameRankingType.FameChallengeClearCount or GameRankingType.FameChallengeFirstClears or GameRankingType.FameChallengeShortestClears => FameChallenge(type, rankingId, userName),
             GameRankingType.FameChallengeClearCountPersonal or GameRankingType.FameChallengeShortestClearPersonal => PersonalFameChallenge(type, rankingId, characterId),
+            GameRankingType.Colosseum or GameRankingType.ColosseumPreviousSeason => Colosseum(type, seasonId, rankingId, userName),
+            GameRankingType.ColosseumPersonal or GameRankingType.ColosseumPersonalPreviousSeason => PersonalColosseum(type, seasonId, rankingId, characterId),
             _ => new ByteWriter(),
         };
 
@@ -400,6 +404,38 @@ public class WebController : ControllerBase {
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
             ByteWriter writer = DarkStreamRanking.Board(db, type, jobCode, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter Colosseum(GameRankingType type, int seasonId, int jobCode, string userName) {
+        int season = ColosseumRanking.Season(type, seasonId, tableMetadata.SeasonDataTable.Boss, DateTime.Now);
+        string cacheKey = $"Colosseum_{type}_{season}_{jobCode}_{SearchKey(userName)}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = ColosseumRanking.Board(db, type, season, jobCode, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalColosseum(GameRankingType type, int seasonId, int jobCode, long characterId) {
+        int season = ColosseumRanking.Season(type, seasonId, tableMetadata.SeasonDataTable.Boss, DateTime.Now);
+        string cacheKey = $"PersonalColosseum_{type}_{season}_{jobCode}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = ColosseumRanking.Personal(db, type, season, jobCode, characterId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }

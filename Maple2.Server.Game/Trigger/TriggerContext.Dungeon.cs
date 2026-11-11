@@ -45,8 +45,12 @@ public partial class TriggerContext {
         Field.RoomTimer?.Close();
     }
 
+    // The room's run is left off the Colosseum board.
     public void DungeonDisableRanking() {
-        ErrorLog("[DungeonDisableRanking]");
+        DebugLog("[DungeonDisableRanking]");
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.DungeonRoomRecord.DisableRanking();
+        }
     }
 
     public void DungeonEnableGiveUp(bool enabled) {

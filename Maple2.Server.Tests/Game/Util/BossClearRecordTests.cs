@@ -98,4 +98,37 @@ public class BossClearRecordTests {
         Assert.That(record.TryKeepBossClear(), Is.False);
         Assert.That(new DungeonRoomRecord(null!).TryKeepBossClear(), Is.True);
     }
+
+    private static DungeonRoomRecord ColosseumRoom(long characterId, int round) {
+        var record = new DungeonRoomRecord(null!);
+        record.SetFirstUser(characterId);
+        record.UserResults[characterId] = new DungeonUserRecord(23900001, characterId) { Round = round };
+        return record;
+    }
+
+    [Test]
+    public void ColosseumRun_TheFirstUserAndItsRounds() {
+        Assert.That(DungeonFieldManager.ColosseumRun(Room(DungeonGroupType.colosseum, 70001), ColosseumRoom(11, 7)), Is.EqualTo((11L, 7)));
+    }
+
+    [Test]
+    public void ColosseumRun_NoRoundCleared_KeepsNothing() {
+        Assert.That(DungeonFieldManager.ColosseumRun(Room(DungeonGroupType.colosseum, 70001), ColosseumRoom(11, 0)), Is.Null);
+        Assert.That(DungeonFieldManager.ColosseumRun(Room(DungeonGroupType.colosseum, 70001), new DungeonRoomRecord(null!)), Is.Null);
+    }
+
+    [Test]
+    public void ColosseumRun_RankingDisabled_KeepsNothing() {
+        DungeonRoomRecord room = ColosseumRoom(11, 7);
+        room.DisableRanking();
+        Assert.That(room.RankingDisabled, Is.True);
+        Assert.That(DungeonFieldManager.ColosseumRun(Room(DungeonGroupType.colosseum, 70001), room), Is.Null);
+    }
+
+    [TestCase(DungeonGroupType.raid, 70001)]
+    [TestCase(DungeonGroupType.normal, 70001)]
+    [TestCase(DungeonGroupType.colosseum, 0)]
+    public void ColosseumRun_OnlyColosseumRoomsWithABossRanking(DungeonGroupType group, int bossRanking) {
+        Assert.That(DungeonFieldManager.ColosseumRun(Room(group, bossRanking), ColosseumRoom(11, 7)), Is.Null);
+    }
 }

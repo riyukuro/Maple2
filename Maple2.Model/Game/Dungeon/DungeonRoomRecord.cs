@@ -28,6 +28,12 @@ public class DungeonRoomRecord {
     private int bossClearKept;
     public bool TryKeepBossClear() => Interlocked.Exchange(ref bossClearKept, 1) == 0;
 
+    // dungeon_disable_ranking: the room's run is left off the Colosseum board (the Colosseum script runs it for a
+    // continued game).
+    private int rankingDisabled;
+    public bool RankingDisabled => Volatile.Read(ref rankingDisabled) == 1;
+    public void DisableRanking() => Interlocked.Exchange(ref rankingDisabled, 1);
+
     /// <summary>The sum of the first user's user mission scores (the client sums the scores the same way).</summary>
     public int FirstUserMissionScore() {
         if (!UserResults.TryGetValue(FirstCharacterId, out DungeonUserRecord? record)) {

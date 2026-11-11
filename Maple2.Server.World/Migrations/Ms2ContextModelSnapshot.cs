@@ -593,6 +593,30 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("club-member", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.ColosseumRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SeasonId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Rounds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Seconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SetTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("CharacterId", "SeasonId");
+
+                    b.HasIndex("SeasonId", "Rounds");
+
+                    b.ToTable("colosseum-record", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.DarkStreamRecord", b =>
                 {
                     b.Property<long>("CharacterId")
@@ -1946,6 +1970,15 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
 
                     b.Navigation("Character");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.ColosseumRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.DarkStreamRecord", b =>
