@@ -556,6 +556,15 @@ public static class Lua {
         return level * 10;
     }
 
+    #region Fame
+    // calcFameCompletionTicketCount (the same in the client's and the server's script): the completion tickets an alliance
+    // quest takes, by its rank (S 0, A 1, B 2, C 3, D 4, none 5); the alliance is not read.
+    public static int CalcFameCompletionTicketCount(int alliance, int rank) {
+        int[] counts = [90, 60, 50, 20, 10, 0];
+        return rank >= 0 && rank < counts.Length ? counts[rank] : 0;
+    }
+    #endregion
+
     #region KillCount
     public static float CalcKillCountBonusExpRate(int killCount) {
         return killCount switch {

@@ -134,10 +134,11 @@ public class QuestHandler : FieldPacketHandler {
             case Command.AllianceQuest:
                 // UIAllianceQuestDialog::SendQuestMode33 (unit_140bf60f0_uialliancequestdialog.cpp:705): the
                 // id of an alliance quest in progress that the player wants to complete with completion
-                // tickets. Not handled: the server takes no completion tickets, so no quest is completed this
-                // way; the answer is the client's own text for a ticket that could not be used (Quest error 7).
-                packet.ReadInt();
-                session.Send(QuestPacket.Error(QuestError.s_alliance_quest_completion_ticket_error));
+                // tickets. The client reads no answer for a success (the completion packet shows it); a refusal
+                // is its text for a ticket that could not be used (Quest error 7).
+                if (!session.Quest.CompleteWithTickets(packet.ReadInt())) {
+                    session.Send(QuestPacket.Error(QuestError.s_alliance_quest_completion_ticket_error));
+                }
                 break;
             case Command.AllianceAcceptAll:
                 // UIAllianceQuestDialog::SendQuestMode34 (unit_140bf60f0_uialliancequestdialog.cpp:681): no

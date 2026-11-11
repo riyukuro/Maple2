@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -559,6 +560,35 @@ public sealed class QuestManager {
             }
         }
         return completed;
+    }
+
+    // Quest sub-type 33 (UIAllianceQuestDialog::FUN_140bf8c30, unit_140bf60f0_uialliancequestdialog.cpp:654): a quest in
+    // progress whose basic property allows it is completed without its conditions for completion tickets (item tag
+    // FameCompletionTicket), as many as calcFameCompletionTicketCount gives for its rank. The tickets are taken only
+    // when the quest was completed (a full bag refuses it unless quest items go by mail).
+    public bool CompleteWithTickets(int questId) {
+        if (!TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started || !quest.Metadata.Basic.CompletionTicket) {
+            return false;
+        }
+
+        QuestMetadataBasic basic = quest.Metadata.Basic;
+        int cost = Lua.CalcFameCompletionTicketCount((int) basic.Alliance, basic.Rank);
+        if (cost <= 0) {
+            return false;
+        }
+
+        lock (session.Item) {
+            if (session.Item.Inventory.Find(ItemTag.FameCompletionTicket).Sum(item => item.Amount) < cost) {
+                return false;
+            }
+            if (!Complete(quest, bypassConditions: true)) {
+                return false;
+            }
+            if (!session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FameCompletionTicket, cost)])) {
+                logger.Error("Quest {QuestId} completed but {Count} completion tickets could not be taken", questId, cost);
+            }
+        }
+        return true;
     }
 
     private List<QuestMetadata> Missions() {

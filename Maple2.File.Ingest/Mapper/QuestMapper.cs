@@ -69,7 +69,9 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     ResetWeekday: QuestPeriod.ResetWeekday(data.basic.usePeriod),
                     DurationMinutes: QuestPeriod.DurationMinutes(data.basic.usePeriod),
                     Alliance: (Maple2.Model.Enum.AllianceType) (int) data.basic.alliance,
-                    Rank: (int) data.basic.rank
+                    Rank: (int) data.basic.rank,
+                    CompletionTicket: data.basic.property.Contains(QuestPropertyType.availablecompletionticket)
+                        && FeatureLocaleFilter.FeatureEnabled("FameCompletionTicket")
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,

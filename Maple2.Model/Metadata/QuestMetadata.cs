@@ -48,7 +48,11 @@ public record QuestMetadataBasic(
     // basic alliance as the client's id (Parse_14021a330: darkwind 1 .. georg 9, 0 none) and basic rank (Parse_14021a570:
     // S 0, A 1, B 2, C 3, D 4, anything else 5). The alliance window lists the alliance quests (type 9) of its alliance.
     AllianceType Alliance = AllianceType.AnyFaction,
-    int Rank = 5);
+    int Rank = 5,
+    // basic property holds AvailableCompletionTicket (ParseProperty, questdata.cpp:2801, bit 2) and the feature
+    // FameCompletionTicket is on: the quest in progress may be completed with completion tickets (Quest sub-type 33,
+    // UIAllianceQuestDialog::CanUseCompletionTicket).
+    bool CompletionTicket = false);
 
 public record QuestMetadataRequire(
     short Level,
