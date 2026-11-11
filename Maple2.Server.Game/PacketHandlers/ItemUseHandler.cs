@@ -390,36 +390,17 @@ public class ItemUseHandler : FieldPacketHandler {
     private void HandleChangeCharacterName(GameSession session, IByteReader packet, Item item) {
         string newName = packet.ReadUnicodeString();
 
-        // The same blank and ban-word checks as the character create.
-        if (CharacterCreateRules.IsBlankName(newName)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_name));
-            return;
-        }
-        // Counted the way the client counts for its region (Hangul and CJK count twice).
+        // The same checks as the name check before the confirm box. The game scene reads no
+        // CharacterCreate packet, so a refusal is a message box with the client's name change text.
         int width = NameValidator.CharacterNameWidth(newName, Target.LOCALE);
-        if (width < 0) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
-            return;
-        }
-        if (width < Constant.CharacterNameLengthMin) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_name));
-            return;
-        }
-
-        if (width > Constant.CharacterNameLengthMax) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_system));
-            return;
-        }
-
-        if (!CharacterCreateRules.IsAllowedName(newName, BanWordStorage.ContainsBannedWord)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_any));
-            return;
-        }
-
+        bool blank = CharacterCreateRules.IsBlankName(newName);
+        bool banned = !blank && BanWordStorage.ContainsBannedWord(newName);
         using GameStorage.Request db = GameStorage.Context();
-        long existingId = db.GetCharacterId(newName);
-        if (existingId != default) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_already_taken));
+        bool taken = !blank && db.GetCharacterId(newName) != default;
+        NameChangeRules.Refusal refusal = NameChangeRules.Check(blank, width, Constant.CharacterNameLengthMin, Constant.CharacterNameLengthMax, banned, taken);
+        if (refusal != NameChangeRules.Refusal.None) {
+            (StringCode code, string[] args) = NameChangeRules.Text(refusal, newName);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(code, args)));
             return;
         }
 

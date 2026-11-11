@@ -49,4 +49,15 @@ public class NameChangeRulesTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(argCount));
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Abc"));
     }
+
+    // The voucher use after the confirm box: a name taken in between is refused before the item is
+    // consumed, with the already-taken text.
+    [Test]
+    public void VoucherTaken() {
+        NameChangeRules.Refusal refusal = NameChangeRules.Check(false, 6, 2, 12, banned: false, taken: true);
+        Assert.That(refusal, Is.EqualTo(NameChangeRules.Refusal.Taken));
+        (StringCode code, string[] args) = NameChangeRules.Text(refusal, "Abc");
+        Assert.That(StringCodeMap.ToClient(code), Is.EqualTo(0x2a));
+        Assert.That(args, Is.EqualTo(new[] { "Abc" }));
+    }
 }
