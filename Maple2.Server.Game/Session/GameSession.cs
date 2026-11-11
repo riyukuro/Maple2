@@ -438,6 +438,8 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     private void LeaveField() {
+        InteractStarted.Clear();
+        CubeStarted.Clear();
         Array.Clear(ItemLockStaging);
         Array.Clear(DismantleStaging);
         DismantleOpened = false;

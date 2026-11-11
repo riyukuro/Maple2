@@ -51,7 +51,7 @@ public class InteractObjectHandler : FieldPacketHandler {
 
     // Start and End carry a count, then that many object names (CInteractObject and StateInteraction senders).
     private void HandleStart(GameSession session, IByteReader packet) {
-        // The names are kept: an end is taken only for an object this start named.
+        // The names are kept: the end of a gathered object is taken only if this start named it.
         session.InteractStarted.Clear();
         foreach (string name in InteractRules.ReadNames(packet)) {
             if (session.InteractStarted.Count >= InteractRules.MaxStarted) {
@@ -61,22 +61,31 @@ public class InteractObjectHandler : FieldPacketHandler {
             if (session.Field?.TryGetInteract(name, out FieldInteract? interact) != true) {
                 continue;
             }
-            float reach = interact.Value.Type == InteractType.Gathering
-                ? session.ServerTableMetadata.ConstantsTable.MasteryObjectInteractionDistance
-                : InteractRules.OtherReach;
-            if (!InteractRules.InReach(session.Player.Position, interact.Position, reach)) {
+            if (!InReach(session, interact)) {
                 continue;
             }
             session.InteractStarted.Add(name);
         }
     }
 
+    private static bool InReach(GameSession session, FieldInteract interact) {
+        float reach = interact.Value.Type == InteractType.Gathering
+            ? session.ServerTableMetadata.ConstantsTable.MasteryObjectInteractionDistance
+            : InteractRules.OtherReach;
+        return InteractRules.InReach(session.Player.Position, interact.Position, reach);
+    }
+
     private void HandleEnd(GameSession session, IByteReader packet) {
-        foreach (string name in InteractRules.ReadNames(packet)) {
-            // One end per started object.
-            if (InteractRules.CanEnd(session.InteractStarted, name) && session.InteractStarted.Remove(name)) {
-                End(session, name);
+        // The end of an object that is not gathered names the object the player chose, which the start
+        // (the nearest one) need not have named: it is tested for reach instead.
+        List<string> ends = InteractRules.TakeEnds(session.InteractStarted, InteractRules.ReadNames(packet), name => {
+            if (session.Field?.TryGetInteract(name, out FieldInteract? interact) != true) {
+                return null;
             }
+            return (interact.Value.Type == InteractType.Gathering, InReach(session, interact));
+        });
+        foreach (string name in ends) {
+            End(session, name);
         }
     }
 

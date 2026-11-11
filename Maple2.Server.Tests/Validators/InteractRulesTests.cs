@@ -50,10 +50,36 @@ public class InteractRulesTests {
     }
 
     [Test]
-    public void EndNeedsStart() {
+    public void GatheredEndNeedsStart() {
         var started = new HashSet<string> { "a1" };
-        Assert.That(InteractRules.CanEnd(started, "a1"), Is.True);
-        Assert.That(InteractRules.CanEnd(started, "b2"), Is.False);
-        Assert.That(InteractRules.CanEnd(new HashSet<string>(), "a1"), Is.False);
+        (bool, bool)? Gathered(string name) => (true, true);
+        // Each started name once, also when the packet repeats it.
+        Assert.That(InteractRules.TakeEnds(started, new[] { "a1", "a1", "b2" }, Gathered), Is.EqualTo(new[] { "a1" }));
+        Assert.That(started, Is.Empty);
+        Assert.That(InteractRules.TakeEnds(started, new[] { "a1" }, Gathered), Is.Empty);
+    }
+
+    // Two chests in range: the start names the nearer one, the end the one the player clicked.
+    [Test]
+    public void TwoChests() {
+        var started = new HashSet<string> { "near" };
+        (bool, bool)? Chest(string name) => name switch {
+            "near" or "far" => (false, true),
+            "away" => (false, false),
+            _ => null,
+        };
+        Assert.That(InteractRules.TakeEnds(started, new[] { "far" }, Chest), Is.EqualTo(new[] { "far" }));
+        // No start at all (the nearer chest was used up): the chosen one still ends.
+        Assert.That(InteractRules.TakeEnds(new HashSet<string>(), new[] { "far" }, Chest), Is.EqualTo(new[] { "far" }));
+        Assert.That(InteractRules.TakeEnds(started, new[] { "away", "gone", "far", "far" }, Chest), Is.EqualTo(new[] { "far" }));
+    }
+
+    [Test]
+    public void EndCap() {
+        var names = new List<string>();
+        for (int i = 0; i < InteractRules.MaxStarted + 10; i++) {
+            names.Add("n" + i);
+        }
+        Assert.That(InteractRules.TakeEnds(new HashSet<string>(), names, _ => (false, true)), Has.Count.EqualTo(InteractRules.MaxStarted));
     }
 }

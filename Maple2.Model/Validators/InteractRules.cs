@@ -5,8 +5,10 @@ using Maple2.PacketLib.Tools;
 namespace Maple2.Model.Validators;
 
 // InteractObject 0x0031 modes 11 (start) and 12 (end): i32 count, then that many object names.
-// The client sends the start list when the interaction begins and, when it ends, the end list
-// with those of the same objects that can still be used.
+// Gathered objects (category 6): the start and the end list come from the same list of objects in reach
+// (stateinteractdata.cpp:278-289). Other objects: the start names the nearest enabled object whose range
+// covers the character (stateinteractdata.cpp:268, worldservice_1.cpp:4557), the end names the object the
+// player chose (mouseinteract.cpp:451), so the two can differ and an end can come with no start.
 public static class InteractRules {
     // Server rule: the names kept from one start packet.
     public const int MaxStarted = 64;
@@ -41,8 +43,23 @@ public static class InteractRules {
         return type is InteractCubeControlType.Farming or InteractCubeControlType.Breeding;
     }
 
-    // An end is taken only for an object the last start packet named.
-    public static bool CanEnd(ICollection<string> started, string name) {
-        return started.Contains(name);
+    // The ends to take from one end packet, each name once. A gathered object needs its name in the last
+    // start packet and is taken off it; any other object needs only to be in reach. lookup gives null for
+    // a name the field does not have.
+    public static List<string> TakeEnds(ISet<string> started, IEnumerable<string> names, Func<string, (bool Gathered, bool InReach)?> lookup) {
+        var ends = new List<string>();
+        var seen = new HashSet<string>();
+        foreach (string name in names) {
+            if (seen.Count >= MaxStarted) {
+                break;
+            }
+            if (!seen.Add(name) || lookup(name) is not { } found) {
+                continue;
+            }
+            if (found.Gathered ? started.Remove(name) : found.InReach) {
+                ends.Add(name);
+            }
+        }
+        return ends;
     }
 }
