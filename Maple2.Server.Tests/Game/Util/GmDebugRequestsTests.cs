@@ -223,13 +223,15 @@ public class GmDebugRequestsTests {
             Is.EqualTo(new byte[] { 0x87, 0, 7, 1, 0, (byte) 'A', 0, 1, 0, 0, 0, 2, 0, (byte) '/', 0, (byte) 'a', 0, 0, 0 }));
     }
 
-    // Gives a bare session the two collections Send needs and returns the queue the packets land in.
+    // Gives a bare session what Send needs (the two collections, and the logger the Debug build's LogSend
+    // writes to) and returns the queue the packets land in.
     private static BlockingCollection<(byte[] packet, int length)> SendQueueOf(GameSession session) {
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
         Type type = typeof(Maple2.Server.Core.Network.Session);
         var queue = new BlockingCollection<(byte[] packet, int length)>();
         type.GetField("sendQueue", flags)!.SetValue(session, queue);
         type.GetField("lastSentPackets", flags)!.SetValue(session, new ConcurrentDictionary<SendOp, byte[]>());
+        type.GetField("Logger", flags)!.SetValue(session, Serilog.Log.Logger);
         return queue;
     }
 
