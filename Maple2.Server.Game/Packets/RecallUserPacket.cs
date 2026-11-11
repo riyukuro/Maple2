@@ -38,7 +38,8 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // Kind 5: name, byte result. Tells the caller that the request went out (REQUEST_RECALL or REQUEST_CONFIRM).
+    // Kind 5: name, byte result. A text for the invited player with the caller's name (REQUEST_RECALL or
+    // REQUEST_CONFIRM).
     public static ByteWriter Requested(string name, byte result) {
         var pWriter = Packet.Of(SendOp.RecallUser);
         pWriter.WriteByte((byte) Command.Answer);

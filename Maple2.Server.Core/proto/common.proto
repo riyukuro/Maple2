@@ -337,6 +337,8 @@ message PlayerWarpResponse {
   float y = 3;
   float z = 4;
   int32 room_id = 5;
+  // The account that owns the target's field when it is a home; 0 otherwise.
+  int64 owner_id = 6;
 }
 
 message AdminRequest {

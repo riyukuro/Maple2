@@ -29,6 +29,8 @@ public static class UserRecallUtil {
             target.UserRecall = recall;
         }
         target.Send(RecallUserPacket.Invite(recall.CallerName, recall.InviteId));
+        // The text of kind 5 with result 1 is for the invited player and names the caller.
+        target.Send(RecallUserPacket.Requested(recall.CallerName, RecallUserPacket.REQUEST_CONFIRM));
         return 0;
     }
 

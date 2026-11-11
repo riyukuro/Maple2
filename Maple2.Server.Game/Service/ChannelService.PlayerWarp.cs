@@ -1,4 +1,5 @@
 ﻿using Grpc.Core;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -55,6 +56,7 @@ public partial class ChannelService {
 
         return new PlayerWarpResponse {
             RoomId = session.Field.RoomId,
+            OwnerId = session.Field is HomeFieldManager home ? home.OwnerId : 0,
             X = session.Player.Position.X,
             Y = session.Player.Position.Y,
             Z = session.Player.Position.Z,

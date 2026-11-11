@@ -28,18 +28,27 @@ public static class PlayerWarpUtil {
 
     // How the player gets to the target. The channel is tested first: room ids and map ids repeat on every
     // channel, so the same room id and map id on another channel is still another place.
-    public static GoToKind Decide(int targetChannel, int ownChannel, int targetRoomId, int ownRoomId, int targetMapId, int ownMapId) {
+    // Every home has the same map id, so two homes are told apart by their owners (0: not a home).
+    public static GoToKind Decide(int targetChannel, int ownChannel, int targetRoomId, int ownRoomId, int targetMapId, int ownMapId, long targetOwnerId = 0, long ownOwnerId = 0) {
         if (targetChannel != ownChannel) {
             return GoToKind.Channel;
         }
-        return targetRoomId == ownRoomId && targetMapId == ownMapId ? GoToKind.Portal : GoToKind.Field;
+        return targetRoomId == ownRoomId && targetMapId == ownMapId && targetOwnerId == ownOwnerId ? GoToKind.Portal : GoToKind.Field;
+    }
+
+    // The home a move to a player goes into: the home the target is in when the move may enter homes, else
+    // none (0), which for the home map means the mover's own home (GameSession.PrepareField).
+    public static long TargetHome(bool intoHome, long targetOwnerId) {
+        return intoHome ? targetOwnerId : 0;
     }
 
     /// <summary>
     /// Moves the player to where the target player stands: same room, another room on this channel, or another channel.
     /// Returns false when the target's position could not be found or the field could not be prepared.
+    /// intoHome: the target's home field is entered when the target is in one, whatever its entry rules. Only
+    /// the recall invite of a GM sets it.
     /// </summary>
-    public static bool GoToPlayer(GameSession session, PlayerInfo playerInfo) {
+    public static bool GoToPlayer(GameSession session, PlayerInfo playerInfo, bool intoHome = false) {
         if (session.Field is null) return false;
 
         PlayerWarpResponse? warpResponse = session.World.PlayerWarp(new PlayerWarpRequest {
@@ -55,15 +64,20 @@ public static class PlayerWarpUtil {
         }
 
         var position = new Vector3(warpResponse.X, warpResponse.Y, warpResponse.Z + VERTICAL_SPAWN_OFFSET);
-        GoToKind kind = Decide(playerInfo.Channel, session.Player.Value.Character.Channel, warpResponse.RoomId, session.Field.RoomId,
-            playerInfo.MapId, session.Player.Value.Character.MapId);
+        long ownerId = TargetHome(intoHome, warpResponse.OwnerId);
+        long ownOwnerId = session.Field is Manager.Field.HomeFieldManager ownHome ? ownHome.OwnerId : 0;
+        GoToKind kind = intoHome
+            ? Decide(playerInfo.Channel, session.Player.Value.Character.Channel, warpResponse.RoomId, session.Field.RoomId,
+                playerInfo.MapId, session.Player.Value.Character.MapId, ownerId, ownOwnerId)
+            : Decide(playerInfo.Channel, session.Player.Value.Character.Channel, warpResponse.RoomId, session.Field.RoomId,
+                playerInfo.MapId, session.Player.Value.Character.MapId);
         if (kind == GoToKind.Portal) {
             session.Send(PortalPacket.MoveByPortal(session.Player, position, session.Player.Rotation));
             return true;
         }
 
         if (kind == GoToKind.Field) {
-            if (!session.PrepareField(playerInfo.MapId, roomId: warpResponse.RoomId, position: position)) {
+            if (!session.PrepareField(playerInfo.MapId, ownerId: ownerId, roomId: warpResponse.RoomId, position: position)) {
                 session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
                 return false;
             }
@@ -87,6 +101,10 @@ public static class PlayerWarpUtil {
                 PositionZ = position.Z,
                 Type = MigrationType.Normal,
             };
+
+            if (ownerId != 0) {
+                request.OwnerId = ownerId;
+            }
 
             MigrateOutResponse response = session.World.MigrateOut(request);
             if (TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {

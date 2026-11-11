@@ -215,7 +215,7 @@ public class RecallUserCommand : GameCommand {
             session.Send(RecallUserPacket.Fail(name, (byte) result));
             return;
         }
-        session.Send(RecallUserPacket.Requested(name, RecallUserPacket.REQUEST_CONFIRM));
+        // The caller hears how the invite ended (kind 6 or 7); the text of kind 5 goes to the invited player.
         ctx.ExitCode = 0;
     }
 }

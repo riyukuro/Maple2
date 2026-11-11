@@ -52,10 +52,11 @@ public class RecallUserHandler : FieldPacketHandler {
             return;
         }
 
-        // The caller must still be on the map the invite was sent from, and the player in a state to leave.
+        // The invite comes only from a GM's command, so the move goes into the caller's field as it is, a home
+        // included. The caller must still be on the map the invite was sent from, and the player in a state to leave.
         if (!UserRecallUtil.CanBeMoved(session.Player.IsDead, session.Field is DungeonFieldManager)
             || !session.PlayerInfo.GetOrFetch(recall.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
-            || !PlayerWarpUtil.GoToPlayer(session, callerInfo)) {
+            || !PlayerWarpUtil.GoToPlayer(session, callerInfo, intoHome: true)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
             UserRecallUtil.TellCaller(session, name, recall.CallerId, false, RecallUserPacket.FAIL_CANNOT_MOVE);
             return;
