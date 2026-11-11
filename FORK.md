@@ -60,6 +60,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Ride:**
   - RideSync reads one trailing int per record.
   - The ride start request carries a byte after the object id, and the response echoes it.
+  - Boarding another player's mount (ride join) follows the client's rule: the joiner and the owner are alive and a seat is free; the owner riding alone takes no one. The client's friend, party or same-guild check applies only with the RideShareAuthority feature, which is off in KR and NA (feature.xml level 99), so anyone may board and the server checks none of these either.
 - **Mentor:** the server no longer sends an initial packet that the client has no reader for, and its writer is removed.
 - **Party:** cancel party search reads one byte; the dungeon match confirm (sub-type 31) has no body; the survival squad register is sub-type 55.
 - **Party dungeon match (32, 33, 34):** a matchmaker in the World server. The rules are the user's choice (11-11), not read from the client:

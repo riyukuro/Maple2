@@ -9,6 +9,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -144,22 +145,17 @@ public class RideHandler : FieldPacketHandler {
         if (!session.Field.TryGetPlayer(otherId, out FieldPlayer? other)) {
             return;
         }
-        if (other.Session.Ride.Ride == null || other.Session.Ride.Ride.Passengers.Length == 0) {
-            return;
-        }
-        if (other.Session.Ride.Ride.Action.Flag) {
-            // The owner rides alone; the client shows no board prompt on such a mount.
+        if (other.Session.Ride.Ride == null) {
             return;
         }
 
-        // TODO: must be friend, guild, or party?
-        // s_multi_riding_item_desc
-
-        sbyte index = (sbyte) Array.FindIndex(other.Session.Ride.Ride.Passengers, objectId => objectId == 0);
-        if (index < 0) {
-            // Ride is full
+        // The owner riding alone (Action.Flag) gets no board prompt in the client; see RideShare for the rest.
+        int seat = RideShare.Seat(session.Player.IsDead, other.IsDead, other.Session.Ride.Ride.Action.Flag,
+            other.Session.Ride.Ride.Passengers);
+        if (seat < 0) {
             return;
         }
+        sbyte index = (sbyte) seat;
 
         other.Session.Ride.Ride.Passengers[index] = session.Player.ObjectId;
         session.Ride.Ride = other.Session.Ride.Ride;
