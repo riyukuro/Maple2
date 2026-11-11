@@ -26,6 +26,7 @@ public class ClubHandler : FieldPacketHandler {
         Invite = 6,
         RespondInvite = 8,
         Leave = 10,
+        Unknown12 = 12,
         Buff = 13,
         Rename = 14,
     }
@@ -62,6 +63,10 @@ public class ClubHandler : FieldPacketHandler {
                 break;
             case Command.Rename:
                 HandleRename(session, packet);
+                break;
+            case Command.Unknown12:
+                // Not handled: club id and a member's name; the client only sends it for the club leader.
+                Logger.Debug("Club {Command} from {CharacterId}: club {ClubId}, {Name}", command, session.CharacterId, packet.ReadLong(), packet.ReadUnicodeString());
                 break;
         }
     }
