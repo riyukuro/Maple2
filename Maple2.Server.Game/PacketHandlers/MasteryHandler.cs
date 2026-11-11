@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -70,7 +71,7 @@ public class MasteryHandler : FieldPacketHandler {
 
         session.Player.Value.Unlock.MasteryRewardsClaimed.Add(rewardBoxDetails, true);
         session.Send(MasteryPacket.ClaimReward(rewardBoxDetails, new List<ItemComponent>() {
-            new(entry.ItemId, (short) entry.ItemRarity, entry.ItemRarity, ItemTag.None),
+            new(entry.ItemId, (short) entry.ItemRarity, entry.ItemAmount, ItemTag.None),
         }));
     }
 
@@ -81,19 +82,12 @@ public class MasteryHandler : FieldPacketHandler {
             return;
         }
 
-        foreach (int questId in entry.RequiredQuests) {
-            if (session.Quest.TryGetQuest(questId, out _)) continue;
-
-            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_quest));
-            return;
-        }
-
-        if (session.Mastery[entry.Type] < entry.RequiredMastery) {
-            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_mastery));
-        }
-
-        if (session.Currency.CanAddMeso(-entry.RequiredMeso) != -entry.RequiredMeso) {
-            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_meso));
+        // The client makes the same checks in the same order before it sends the craft.
+        bool hasAnyQuest = entry.RequiredQuests.Any(questId => session.Quest.TryGetQuest(questId, out _));
+        MasteryError error = MasteryRules.CraftError(session.Mastery[entry.Type], entry.RequiredMastery,
+            entry.RequiredQuests.Count, hasAnyQuest, session.Currency.Meso, entry.RequiredMeso);
+        if (error != 0) {
+            session.Send(MasteryPacket.Error(error));
             return;
         }
 
