@@ -52,6 +52,37 @@ public class DivorceRulesTests {
         Assert.That(DivorceRules.Swapped(MaritalStatus.Engaged), Is.EqualTo(MaritalStatus.Engaged));
     }
 
+    // The client's WeddingProxy::IsPartner (weddingproxy.cpp:639) on the packet a viewer gets: groom = the first
+    // partner sent (the other one), bride = the second (the viewer). True names the filer: CheckLeave gives 0x31
+    // (s_wedding_result_invalid_divorce_agree_user) and CheckEnter 0x37 (s_wedding_result_divorcecancel) on it.
+    private static bool ClientIsPartner(MaritalStatus sent, long groomId, long id) {
+        return sent switch {
+            ByGroom => groomId == id,
+            ByBride => groomId != id,
+            _ => false,
+        };
+    }
+
+    [Test]
+    public void ClientReading_OfTheSentStateNamesTheFilerForBothViewers() {
+        foreach (long filer in new[] { First, Second }) {
+            MaritalStatus stored = DivorceRules.FiledStatus(filer, First);
+            // First stored partner: gets the swapped state with Second first. Second: the stored state with First first.
+            var views = new[] { (Viewer: First, Sent: DivorceRules.Swapped(stored), Groom: Second), (Viewer: Second, Sent: stored, Groom: First) };
+            foreach ((long viewer, MaritalStatus sent, long groom) in views) {
+                bool isPartner = ClientIsPartner(sent, groom, viewer);
+                Assert.That(isPartner, Is.EqualTo(viewer == filer));
+                // UIWeddingDialog::OnLoadComplete (uiweddingdialog.cpp:159): the window's divorce line is set for
+                // IsPartner(own id) == false, so it is the other partner's line, the one with the agree box.
+                bool divorceLine = !isPartner;
+                Assert.That(divorceLine, Is.EqualTo(viewer != filer));
+            }
+        }
+        // The two bytes the live try saw: the filer A (stored second here) gets 04, B gets 03.
+        Assert.That(DivorceRules.Swapped(DivorceRules.FiledStatus(First, First)), Is.EqualTo(ByBride));
+        Assert.That(DivorceRules.FiledStatus(Second, First), Is.EqualTo(ByBride));
+    }
+
     [Test]
     public void OlderThanDays_IsTheClientsTest() {
         Assert.That(DivorceRules.OlderThanDays(Now - 30 * Day, 30, Now), Is.False, "exactly 30 days is not older");
