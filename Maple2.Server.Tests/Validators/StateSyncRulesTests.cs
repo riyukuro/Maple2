@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -79,5 +80,16 @@ public class StateSyncRulesTests {
         var writer = new ByteWriter();
         sync.WriteTo(writer);
         Assert.That(writer.ToArray(), Is.EqualTo(bytes));
+    }
+
+    // RideSync 0x0041 and GuideObjectSync 0x0035 carry the same record; the ride handler reads it with ReadClass.
+    [TestCase((byte) 178, (byte) 0x13, true)]
+    [TestCase((byte) 179, (byte) 2, false)]
+    [TestCase((byte) 0, (byte) 0x14, false)]
+    public void RecordOfRideAndGuideObjectSync(byte subState, byte afterSpeed, bool expected) {
+        IByteReader packet = new ByteReader(Record(afterSpeed, subState: subState), 0);
+        StateSync sync = packet.ReadClass<StateSync>();
+        Assert.That(packet.Available, Is.EqualTo(0));
+        Assert.That(StateSyncRules.IsRelayable((byte) sync.SubState, sync.Unknown1), Is.EqualTo(expected));
     }
 }

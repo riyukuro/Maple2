@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -39,6 +40,10 @@ public class GuideObjectSyncHandler : FieldPacketHandler {
             };
 
             stateSync.ReadFrom(packet);
+            // Same record as UserSync: a record the other clients' reader would fail on is not sent on.
+            if (!StateSyncRules.IsRelayable((byte) stateSync.SubState, stateSync.Unknown1)) {
+                return;
+            }
             stateSyncs[i] = stateSync;
 
             packet.ReadInt(); // ClientTicks

@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -29,6 +30,10 @@ public class RideSyncHandler : FieldPacketHandler {
         var stateSyncs = new StateSync[segments];
         for (int i = 0; i < segments; i++) {
             stateSyncs[i] = packet.ReadClass<StateSync>();
+            // Same record and same reader on the other clients as UserSync: a record they would fail on is not sent on.
+            if (!StateSyncRules.IsRelayable((byte) stateSyncs[i].SubState, stateSyncs[i].Unknown1)) {
+                return;
+            }
             if (stateSyncs[i].State is ActorState.Walk) {
                 stateSyncs[i].State = ActorState.Ride;
             }
