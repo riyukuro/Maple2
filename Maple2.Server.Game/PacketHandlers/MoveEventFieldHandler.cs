@@ -29,10 +29,14 @@ public class MoveEventFieldHandler : FieldPacketHandler {
         }
 
         // The client refuses a field outside the continent group itself; a changed client gets its notice.
+        // A field id the map data does not know is no event field.
+        if (!session.MapMetadata.TryGet(fieldId, out MapMetadata? target)) {
+            session.Send(MoveEventFieldPacket.Refuse(MoveEventFieldPacket.NO_EVENT));
+            return;
+        }
+
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
-        int[] openContinents = [constants.WarpOpenContinent0, constants.WarpOpenContinent1, constants.WarpOpenContinent2, constants.WarpOpenContinent3];
-        if (!session.MapMetadata.TryGet(fieldId, out MapMetadata? target)
-            || !EventFieldRules.SameGroup((int) session.Field.Metadata.Property.Continent, (int) target.Property.Continent, openContinents.Where(code => code != 0))) {
+        if (!EventFieldRules.SameGroup((int) session.Field.Metadata.Property.Continent, (int) target.Property.Continent, constants.OpenContinents())) {
             session.Send(MoveEventFieldPacket.Refuse(MoveEventFieldPacket.OTHER_CONTINENT));
             return;
         }
@@ -42,6 +46,7 @@ public class MoveEventFieldHandler : FieldPacketHandler {
             eventFields = session.EventFields;
         } else {
             eventFields = [];
+            bool answered = true;
             try {
                 TimeEventResponse response = session.World.TimeEvent(new TimeEventRequest {
                     GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
@@ -56,9 +61,13 @@ public class MoveEventFieldHandler : FieldPacketHandler {
                 }
             } catch (RpcException ex) {
                 Logger.Warning(ex, "Event field move: the World server did not answer");
+                answered = false;
             }
-            session.EventFields = eventFields;
-            session.EventFieldsAskedAt = now;
+            // Only an answer is kept: after a failed call the next request asks again.
+            if (answered) {
+                session.EventFields = eventFields;
+                session.EventFieldsAskedAt = now;
+            }
         }
 
         switch (EventFieldRules.Decide(true, session.Player.IsDead, session.Field.MapId, fieldId, eventFields)) {

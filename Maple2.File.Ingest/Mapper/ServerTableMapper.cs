@@ -2172,6 +2172,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             GenericHelper.SetValue(property, constants, cleanValue);
         }
 
+        var rowLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string key, string value) in serverRows) {
+            rowLookup.TryAdd(key, value);
+        }
+        constants = constants with { WarpOpenContinents = ConstantsTable.ReadList(rowLookup, "WarpOpenContinent") };
+
         // Prices: the client's own row for this locale wins, so the server takes what the client's box shows.
         foreach (ClientPriceConstants.Override price in ClientPriceConstants.Differences(ClientPriceConstants.Select(serverRows), ClientPriceRows())) {
             if (!propertyLookup.TryGetValue(price.Key, out PropertyInfo? property)) continue;

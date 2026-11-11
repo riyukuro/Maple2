@@ -955,5 +955,27 @@ public record ConstantsTable(
     int MapleSurvivalTopNRanking = 0,
     string MapleSurvivalSeasonRewardUrl = "",
     int HoldAttackSkillID = 10700252,
-    string DiscordAppID = ""
-) : ServerTable;
+    string DiscordAppID = "",
+    // The whole WarpOpenContinent list, read as the client reads it. Null in a table made before this field.
+    IReadOnlyList<int>? WarpOpenContinents = null
+) : ServerTable {
+    // Client: Constants::Values<T>::Define (unit_1402ab440_constantsblocks.cpp:399): a list constant is the rows
+    // key0, key1, ... up to the first number that has no row.
+    public static List<int> ReadList(IReadOnlyDictionary<string, string> rows, string key) {
+        var values = new List<int>();
+        for (int index = 0; rows.TryGetValue($"{key}{index}", out string? value); index++) {
+            values.Add(int.TryParse(value.Trim(), out int number) ? number : 0);
+        }
+
+        return values;
+    }
+
+    public IEnumerable<int> OpenContinents() {
+        if (WarpOpenContinents != null) {
+            return WarpOpenContinents;
+        }
+
+        int[] first = [WarpOpenContinent0, WarpOpenContinent1, WarpOpenContinent2, WarpOpenContinent3];
+        return first.Where(code => code != 0);
+    }
+}
