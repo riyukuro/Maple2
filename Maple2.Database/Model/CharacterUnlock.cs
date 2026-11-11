@@ -59,7 +59,7 @@ internal class CharacterUnlock {
             HairSlotExpand = other.HairSlotExpand,
             Maps = other.Maps,
             Taxis = other.Taxis,
-            Titles = other.Titles,
+            Titles = new SortedSet<int>(other.TitlesCopy()), // copied under the lock the title writers hold
             Emotes = other.Emotes,
             StickerSets = other.StickerSets,
             MasteryRewardsClaimed = other.MasteryRewardsClaimed,
