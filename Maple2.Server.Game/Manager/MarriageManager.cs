@@ -184,9 +184,10 @@ public sealed class MarriageManager {
             return error;
         }
 
-        Dictionary<long, long>? list = db.AddWeddingGuests(WeddingHall.Id, accounts);
+        // The stored list is tested again under the row lock; nothing is paid or mailed when it refuses.
+        Dictionary<long, long>? list = db.AddWeddingGuests(WeddingHall.Id, accounts, constants.WeddingInvitationMaxCount, out WeddingError addError);
         if (list == null) {
-            return WeddingError.s_wedding_result_not_find_weddinghall;
+            return addError != WeddingError.none ? addError : WeddingError.s_wedding_result_not_find_weddinghall;
         }
         WeddingHall.GuestList = list;
         session.Currency.Meso -= cost;

@@ -83,6 +83,23 @@ public class WeddingInviteRulesTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(44));
     }
 
+    // Two partners send at once: the second save merges into the list the first one stored, and is refused
+    // when that list already holds one of its guests or has no room left.
+    [Test]
+    public void Merge_KeepsTheStoredGuests() {
+        var stored = new Dictionary<long, long> { [11] = 1, [22] = 2 };
+        Dictionary<long, long>? list = WeddingInviteRules.Merge(stored, new Dictionary<long, long> { [33] = 3 }, 3, out WeddingError error);
+        Assert.That(error, Is.EqualTo(WeddingError.none));
+        Assert.That(list, Is.EquivalentTo(new Dictionary<long, long> { [11] = 1, [22] = 2, [33] = 3 }));
+        Assert.That(stored, Has.Count.EqualTo(2), "the stored list is not changed");
+
+        Assert.That(WeddingInviteRules.Merge(stored, new Dictionary<long, long> { [22] = 2, [33] = 3 }, 10, out error), Is.Null);
+        Assert.That(error, Is.EqualTo(WeddingError.s_wedding_result_already_send_invitation));
+
+        Assert.That(WeddingInviteRules.Merge(stored, new Dictionary<long, long> { [33] = 3, [44] = 4 }, 3, out error), Is.Null);
+        Assert.That(error, Is.EqualTo(WeddingError.s_wedding_result_wedding_invitation_count));
+    }
+
     // UIWeddingGuestDialog::OnStrangerFound: account id, character id, name; OnInvitationOk reads nothing.
     [Test]
     public void InvitationFoundAndOk_Layout() {

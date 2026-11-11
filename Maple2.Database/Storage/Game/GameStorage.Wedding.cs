@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -253,19 +254,38 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        // Adds guests (character id, account id) to a hall's stored list. The whole list after it, or null.
-        public Dictionary<long, long>? AddWeddingGuests(long hallId, IReadOnlyDictionary<long, long> guests) {
-            Model.WeddingHall? hall = Context.WeddingHall.Find(hallId);
-            if (hall == null) {
+        // Adds guests (character id, account id) to a hall's stored list. The whole list after it, or null:
+        // with an error when the stored list does not take them (WeddingInviteRules.Merge), with error none
+        // when the hall is gone or the save failed. The two partners can send from different channel
+        // processes, so the hall's row is locked in the database for the read, the merge and the save: the
+        // second of two senders waits and then merges into the first one's list.
+        public Dictionary<long, long>? AddWeddingGuests(long hallId, IReadOnlyDictionary<long, long> guests, int max, out WeddingError error) {
+            error = WeddingError.none;
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `wedding-hall` WHERE `Id` = {0} FOR UPDATE", hallId);
+                Model.WeddingHall? hall = Context.WeddingHall.Find(hallId);
+                if (hall == null) {
+                    return null;
+                }
+                // The context may hold the row from before the lock.
+                Context.Entry(hall).Reload();
+
+                Dictionary<long, long>? list = WeddingInviteRules.Merge(hall.GuestList, guests, max, out error);
+                if (list == null) {
+                    return null; // the transaction is rolled back when it is disposed
+                }
+                hall.GuestList = list;
+                if (!Context.TrySaveChanges()) {
+                    return null;
+                }
+
+                transaction.Commit();
+                return list;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to add guests to wedding hall {HallId}", hallId);
                 return null;
             }
-
-            var list = new Dictionary<long, long>(hall.GuestList);
-            foreach ((long characterId, long accountId) in guests) {
-                list[characterId] = accountId;
-            }
-            hall.GuestList = list;
-            return Context.TrySaveChanges() ? list : null;
         }
 
         // The halls with a ceremony time from..to (epoch seconds) that have the character on the guest list.

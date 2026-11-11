@@ -54,6 +54,28 @@ public static class WeddingInviteRules {
         return (true, WeddingError.none, cost);
     }
 
+    // The stored list with the new guests (character id, account id) added, or null with the client's error
+    // when the stored list no longer takes them: the partner may have sent invitations between this sender's
+    // check and its save. The same two tests as Check, on the list as it is stored at the moment of the save.
+    public static Dictionary<long, long>? Merge(IReadOnlyDictionary<long, long> stored, IReadOnlyDictionary<long, long> add, int max,
+            out WeddingError error) {
+        error = WeddingError.none;
+        if (stored.Count + add.Count > max) {
+            error = WeddingError.s_wedding_result_wedding_invitation_count;
+            return null;
+        }
+        if (add.Keys.Any(stored.ContainsKey)) {
+            error = WeddingError.s_wedding_result_already_send_invitation;
+            return null;
+        }
+
+        var list = new Dictionary<long, long>(stored);
+        foreach ((long characterId, long accountId) in add) {
+            list[characterId] = accountId;
+        }
+        return list;
+    }
+
     // A guest gets the ticket of a hall that is not the guest's own marriage's while its ceremony time is in
     // the window in which the client offers the way in (WeddingManager::CollectTickets, 1800 s either side).
     public static bool GuestTicket(IReadOnlyDictionary<long, long> invited, long characterId, long hallMarriageId, long ownMarriageId,
