@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
@@ -48,13 +49,14 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
             case Command.Favorite:
                 HandleFavorite(session, packet);
                 break;
+            case Command.ChangeExpert:
+                HandleChangeExpert(session, packet);
+                break;
             case Command.AddExtraRewardCount:
                 // Not handled: the dungeon whose extra reward count is bought with the coupon item.
             case Command.FindHelper:
             case Command.FindMember:
                 // Not handled: the dungeon the party asks helpers or members for.
-            case Command.ChangeExpert:
-                // Not handled: the dungeon the player switches to expert for.
                 Logger.Debug("RoomDungeon {Command} from {CharacterId}: dungeon {Id}", command, session.CharacterId, packet.ReadInt());
                 break;
         }
@@ -89,6 +91,25 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
         // The client shows the mark from the record's flag, so the record is sent back.
         record.Flag = favorite ? record.Flag | DungeonRecordFlag.Favorite : record.Flag & ~DungeonRecordFlag.Favorite;
         session.Send(DungeonRoomPacket.Update(record));
+    }
+
+    private void HandleChangeExpert(GameSession session, IByteReader packet) {
+        int dungeonId = packet.ReadInt();
+
+        // The same tests the client makes before it shows the button.
+        if (!TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata) || metadata.HelperRequireClearCount == 0) {
+            return;
+        }
+        if (!session.Dungeon.Records.TryGetValue(dungeonId, out DungeonRecord? record)) {
+            return;
+        }
+        if (record.Flag.HasFlag(DungeonRecordFlag.Veteran) || record.TotalClears < metadata.HelperRequireClearCount) {
+            return;
+        }
+
+        record.Flag |= DungeonRecordFlag.Veteran;
+        session.Send(DungeonRoomPacket.Update(record));
+        session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.ChangeToExpert, dungeonId));
     }
 
     private void HandleEnterField(GameSession session) {
