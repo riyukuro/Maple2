@@ -17,8 +17,18 @@ public static class GmCheck {
         return permissions.HasFlag(AdminPermissions.GameMaster);
     }
 
+    // A GM that also holds every flag of `also` (the flag of the matching chat command).
+    public static bool IsGm(AdminPermissions permissions, AdminPermissions also) {
+        return IsGm(permissions) && (permissions & also) == also;
+    }
+
     public static bool Allow(GameSession session, RecvOp opCode, int mode = -1) {
-        if (session.Player != null && IsGm(session.Player.AdminPermissions)) {
+        return Allow(session, opCode, AdminPermissions.None, mode);
+    }
+
+    // `also`: a finer flag the packet needs on top of the GM check (SpawnItem, SpawnNpc).
+    public static bool Allow(GameSession session, RecvOp opCode, AdminPermissions also, int mode = -1) {
+        if (session.Player != null && IsGm(session.Player.AdminPermissions, also)) {
             return true;
         }
 

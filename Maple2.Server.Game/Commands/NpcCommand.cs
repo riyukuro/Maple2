@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -39,25 +40,15 @@ public class NpcCommand : GameCommand {
             Vector3 basePosition = session.Player.Position;
             Vector3 rotation = session.Player.Rotation;
 
-            int spawnedCount = 0;
-            for (int i = 0; i < amount; i++) {
-                // Add small random offset to prevent NPCs from spawning exactly on top of each other
-                Vector3 spawnPosition = basePosition + new Vector3(
-                    Random.Shared.NextSingle() * 200 - 100, // Random offset between -100 and 100
-                    Random.Shared.NextSingle() * 200 - 100,
-                    0 // Keep Z position the same
-                );
-
-                FieldNpc? fieldNpc = session.Field.SpawnNpc(metadata, spawnPosition, rotation, disableAi: noAi);
-                if (fieldNpc == null) {
-                    ctx.Console.Error.WriteLine($"Failed to spawn npc {i + 1}/{amount}: {npcId}");
-                    continue;
-                }
-
-                session.Field.Broadcast(FieldPacket.AddNpc(fieldNpc));
-                session.Field.Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
-                fieldNpc.Update(Environment.TickCount64);
-                spawnedCount++;
+            // Add small random offset to prevent NPCs from spawning exactly on top of each other.
+            // The field holds a limited number of GM-spawned NPCs (GmCreateRules.MaxNpcPerField).
+            int spawnedCount = session.Field.SpawnGmNpcs(metadata, amount, _ => basePosition + new Vector3(
+                Random.Shared.NextSingle() * 200 - 100, // Random offset between -100 and 100
+                Random.Shared.NextSingle() * 200 - 100,
+                0 // Keep Z position the same
+            ), rotation, noAi);
+            if (spawnedCount < amount) {
+                ctx.Console.Error.WriteLine($"Spawned {spawnedCount}/{amount} of npc {npcId}: at most {GmCreateRules.MaxNpcPerRequest} per command and {GmCreateRules.MaxNpcPerField} GM-spawned NPCs per field");
             }
 
             if (spawnedCount > 0) {

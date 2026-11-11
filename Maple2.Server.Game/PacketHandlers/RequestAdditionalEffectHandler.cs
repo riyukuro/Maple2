@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -31,21 +32,49 @@ public class RequestAdditionalEffectHandler : FieldPacketHandler {
                     return;
                 }
 
+                // Only a buff this request created is recorded: not one that was already on (refreshed
+                // or stacked), and nothing when the add was refused.
+                List<Buff> before = session.Player.Buffs.EnumerateBuffs(request.EffectId);
                 session.Player.Buffs.AddBuff(session.Player, session.Player, request.EffectId, request.Level, session.Field.FieldTick);
+                List<Buff> created = GmEffectRules.Created(before, session.Player.Buffs.EnumerateBuffs(request.EffectId));
                 lock (session.GmEffects) {
-                    session.GmEffects.Add(request.EffectId);
+                    session.GmEffects.RemoveAll(buff => !IsOn(session, buff));
+                    session.GmEffects.AddRange(created);
                 }
                 return;
             case GmEffectRequest.Reset:
-                int[] effectIds;
+                Buff[] buffs;
                 lock (session.GmEffects) {
-                    effectIds = session.GmEffects.ToArray();
+                    buffs = session.GmEffects.ToArray();
                     session.GmEffects.Clear();
                 }
-                foreach (int effectId in effectIds) {
-                    session.Player.Buffs.Remove(effectId, session.Player.ObjectId);
+                foreach (Buff buff in buffs) {
+                    // Still the same buff object: one that ended and came back from a skill or an item stays.
+                    if (IsOn(session, buff)) {
+                        session.Player.Buffs.Remove(buff.Id, buff.Caster.ObjectId);
+                    }
                 }
                 return;
         }
+    }
+
+    private static bool IsOn(GameSession session, Buff buff) {
+        return GmEffectRules.Contains(session.Player.Buffs.EnumerateBuffs(buff.Id), buff);
+    }
+}
+
+// Which objects of `after` are not in `before`, by reference.
+public static class GmEffectRules {
+    public static List<T> Created<T>(IReadOnlyList<T> before, IReadOnlyList<T> after) where T : class {
+        return after.Where(item => !Contains(before, item)).ToList();
+    }
+
+    public static bool Contains<T>(IReadOnlyList<T> list, T item) where T : class {
+        foreach (T entry in list) {
+            if (ReferenceEquals(entry, item)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

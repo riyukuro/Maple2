@@ -124,9 +124,11 @@ The client's GM create windows are handled, each behind that check (a plain acco
 
 | Packet | Window | What the server does |
 |---|---|---|
-| 0x15 RequestItemCreate | item create | Creates the item (id, amount, rank 1-6) into the inventory by the normal add path. A stackable item gives one stack at most; other items give one per free slot. A full bag answers with the inventory-full notice. An unknown id is refused. The period, level, enchant and option fields are read and not applied. |
-| 0x24 RequestNpcCreate | NPC create | Spawns the NPC at the position and rotation the window sends (1 to 50, within 3000 units of the sender). The NPC belongs to that field instance and goes with it. The pet button (pet flag set) is read and not handled. |
-| 0x5C RequestAdditionalEffect | effect control | Mode 0 puts the effect (id, level) on the sender; the packet names no target. Mode 1 (reset) takes off the effects this window put on in this session. |
+| 0x15 RequestItemCreate | item create | Needs SpawnItem as well. Creates the item (id, amount, rank) into the inventory by the normal add path. A rank outside 1-6 or an amount below 1 is refused. A stackable item gives one stack at most; other items give one per free slot; a currency id (meso, meret, experience orb and the like) gives 100,000,000 at most per request. A full bag answers with the inventory-full notice. An unknown id is refused. The period, level, enchant and option fields are read and not applied. |
+| 0x24 RequestNpcCreate | NPC create | Needs SpawnNpc as well. Spawns the NPC at the position and rotation the window sends (1 to 50 per request, within 3000 units of the sender). One field instance holds at most 200 living GM-spawned NPCs, counted together with the `npc` command, which follows the same two limits. The NPC belongs to that field instance and goes with it. The pet button (pet flag set) is read and not handled. |
+| 0x5C RequestAdditionalEffect | effect control | Mode 0 puts the effect (id, level) on the sender; the packet names no target. Mode 1 (reset) takes off the buffs this window created in this session that are still on. A buff the sender already had, or got again later from a skill or an item, stays. |
+
+The item and NPC windows need the same permission as the chat command that does the same thing (`item`: SpawnItem, `npc`: SpawnNpc), on top of the GM check. GameMaster alone holds neither flag, so a GameMaster account gets them with `perm` or is an Admin.
 
 The client reads no reply of its own for these three; it shows the normal item, NPC and buff packets.
 

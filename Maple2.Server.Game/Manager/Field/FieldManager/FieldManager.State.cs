@@ -162,6 +162,31 @@ public partial class FieldManager {
         return fieldNpc;
     }
 
+    // NPCs spawned by a GM (create window 0x24, `npc` command). The field holds GmCreateRules.MaxNpcPerField
+    // of them alive at most; returns how many were spawned.
+    private readonly HashSet<int> gmNpcs = [];
+
+    public int SpawnGmNpcs(NpcMetadata npc, int requested, Func<int, Vector3> position, Vector3 rotation, bool disableAi = false) {
+        lock (gmNpcs) {
+            gmNpcs.RemoveWhere(objectId => !Npcs.ContainsKey(objectId) && !Mobs.ContainsKey(objectId));
+            int count = GmCreateRules.PlanNpc(requested, gmNpcs.Count);
+            int spawned = 0;
+            for (int i = 0; i < count; i++) {
+                FieldNpc? fieldNpc = SpawnNpc(npc, position(i), rotation, disableAi: disableAi);
+                if (fieldNpc == null) {
+                    continue;
+                }
+
+                gmNpcs.Add(fieldNpc.ObjectId);
+                Broadcast(FieldPacket.AddNpc(fieldNpc));
+                Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
+                fieldNpc.Update(Environment.TickCount64);
+                spawned++;
+            }
+            return spawned;
+        }
+    }
+
     public FieldNpc? SpawnNpc(NpcMetadata npc, SpawnPointNPC spawnPointNpc) {
         return SpawnNpc(npc, spawnPointNpc.Position, spawnPointNpc.Rotation, disableAi: false, owner: null, spawnPointNpc: spawnPointNpc);
     }

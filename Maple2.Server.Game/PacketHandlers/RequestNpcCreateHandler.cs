@@ -2,9 +2,7 @@
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
-using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
-using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 
@@ -16,11 +14,10 @@ public class RequestNpcCreateHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestNpcCreate;
 
     // Server rules; the window has no limit of its own.
-    private const int MaxCount = 50;
     private const float MaxDistance = 3000f;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        if (!GmCheck.Allow(session, OpCode)) {
+        if (!GmCheck.Allow(session, OpCode, GmCreateRules.NpcPermission)) {
             return;
         }
 
@@ -42,22 +39,14 @@ public class RequestNpcCreateHandler : FieldPacketHandler {
             return;
         }
 
-        int count = Math.Clamp(request.Count, 1, MaxCount);
-        for (int i = 0; i < count; i++) {
-            Vector3 position = request.Position;
-            if (i > 0) {
-                // Keep the rest from standing inside the first one.
-                position += new Vector3(Random.Shared.NextSingle() * 200 - 100, Random.Shared.NextSingle() * 200 - 100, 0);
-            }
-
-            FieldNpc? npc = session.Field.SpawnNpc(metadata, position, request.Rotation);
-            if (npc == null) {
-                continue;
-            }
-
-            session.Field.Broadcast(FieldPacket.AddNpc(npc));
-            session.Field.Broadcast(ProxyObjectPacket.AddNpc(npc));
-            npc.Update(Environment.TickCount64);
+        int spawned = session.Field.SpawnGmNpcs(metadata, request.Count, i => {
+            // Keep the rest from standing inside the first one.
+            return i == 0 ? request.Position
+                : request.Position + new Vector3(Random.Shared.NextSingle() * 200 - 100, Random.Shared.NextSingle() * 200 - 100, 0);
+        }, request.Rotation);
+        if (spawned == 0) {
+            Logger.Warning("RequestNpcCreate: no npc {NpcId} spawned (field holds {Max} GM-spawned NPCs at most), account {AccountId}",
+                request.NpcId, GmCreateRules.MaxNpcPerField, session.AccountId);
         }
     }
 

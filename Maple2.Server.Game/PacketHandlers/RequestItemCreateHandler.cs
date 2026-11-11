@@ -15,19 +15,23 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class RequestItemCreateHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestItemCreate;
 
-    private const int MaxRarity = 6;
-
     public override void Handle(GameSession session, IByteReader packet) {
-        if (!GmCheck.Allow(session, OpCode)) {
+        if (!GmCheck.Allow(session, OpCode, GmCreateRules.ItemPermission)) {
             return;
         }
 
         GmItemCreateRequest request = GmItemCreateRequest.Read(packet);
-        if (session.Field == null || request.Amount <= 0) {
+        if (session.Field == null) {
             return;
         }
 
-        int rarity = Math.Clamp((int) request.Rarity, 1, MaxRarity);
+        int rarity = request.Rarity;
+        if (GmCreateRules.PlanItem(request.Amount, rarity, false, 1, 1).Verdict == GmCreateRules.ItemVerdict.Refuse) {
+            // Amount <= 0 or a rank outside 1-6: refused, the client has no notice for it.
+            Logger.Warning("RequestItemCreate: amount {Amount} rank {Rarity} refused, account {AccountId}", request.Amount, rarity, session.AccountId);
+            return;
+        }
+
         Item? item = session.Field.ItemDrop.CreateItem(request.ItemId, rarity);
         if (item == null) {
             // Unknown item id: refused, the client has no notice for it.
@@ -36,43 +40,37 @@ public class RequestItemCreateHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            if (item.IsCurrency()) {
-                item.Amount = request.Amount;
-                Give(session, item);
-                return;
-            }
-
-            int slotMax = Math.Max(1, item.Metadata.Property.SlotMax);
-            int freeSlots = session.Item.Inventory.FreeSlots(item.Inventory);
-            if (slotMax > 1) {
-                // One stack at most.
-                item.Amount = Math.Min(request.Amount, slotMax);
-                if (!session.Item.Inventory.CanAdd(item)) {
-                    session.Item.Inventory.Discard(item);
-                    session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
+            GmCreateRules.ItemPlan plan = GmCreateRules.PlanItem(request.Amount, rarity, item.IsCurrency(),
+                Math.Max(1, item.Metadata.Property.SlotMax), session.Item.Inventory.FreeSlots(item.Inventory));
+            switch (plan.Verdict) {
+                case GmCreateRules.ItemVerdict.Currency:
+                    item.Amount = plan.Amount;
+                    Give(session, item);
                     return;
-                }
-                Give(session, item);
-                return;
-            }
-
-            if (freeSlots <= 0) {
-                session.Item.Inventory.Discard(item);
-                session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
-                return;
-            }
-
-            // One slot per item: as many as there are free slots.
-            int amount = Math.Min(request.Amount, freeSlots);
-            if (!Give(session, item)) {
-                return;
-            }
-            for (int i = 1; i < amount; i++) {
-                Item? next = session.Field.ItemDrop.CreateItem(request.ItemId, rarity);
-                if (next == null || !Give(session, next)) {
+                case GmCreateRules.ItemVerdict.Stack:
+                    // One stack at most.
+                    item.Amount = plan.Amount;
+                    if (!session.Item.Inventory.CanAdd(item)) {
+                        break;
+                    }
+                    Give(session, item);
                     return;
-                }
+                case GmCreateRules.ItemVerdict.Singles:
+                    // One slot per item: as many as there are free slots.
+                    if (!Give(session, item)) {
+                        return;
+                    }
+                    for (int i = 1; i < plan.Amount; i++) {
+                        Item? next = session.Field.ItemDrop.CreateItem(request.ItemId, rarity);
+                        if (next == null || !Give(session, next)) {
+                            return;
+                        }
+                    }
+                    return;
             }
+
+            session.Item.Inventory.Discard(item);
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
         }
     }
 
