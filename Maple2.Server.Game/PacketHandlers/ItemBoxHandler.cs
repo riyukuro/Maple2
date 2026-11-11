@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -16,6 +17,9 @@ public class ItemBoxHandler : FieldPacketHandler {
         int itemId = packet.ReadInt();
         short unk = packet.ReadShort();
         int count = packet.ReadInt();
+        if (!ItemBoxRules.IsOpenCount(count, session.ServerTableMetadata.ConstantsTable.ItemBoxMultiOpenMaxCount)) {
+            return;
+        }
 
         Item? item = session.Item.Inventory.Find(itemId).FirstOrDefault();
         if (item == null) {
