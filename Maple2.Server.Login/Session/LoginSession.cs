@@ -34,7 +34,10 @@ public class LoginSession : Core.Network.Session {
     // ReSharper restore All
     #endregion
 
+    // Set by ListCharacters; null until the character list was sent.
     private Account account = null!;
+    // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+    public bool HasAccount => account != null;
     public int MaxCharacters => account.MaxCharacters;
 
     public int ServerTick;

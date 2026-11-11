@@ -121,7 +121,13 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         var job = (Job) ((int) jobCode * 10);
         string name = packet.ReadUnicodeString();
 
-        // The client sends gender 0 or 1 and one of the jobs of its create screen.
+        // A create before the character list was sent has no account to count slots for.
+        if (!session.HasAccount) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_system));
+            return;
+        }
+
+        // The client sends gender 0 or 1; the job must be one the job table (job.xml) holds.
         if (!CharacterCreateRules.IsCreateGender(gender)) {
             session.Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
