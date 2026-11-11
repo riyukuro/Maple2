@@ -298,6 +298,13 @@ public static class GuildRules {
         return eventMapId > 0 && IsEventActive(openTime, now) && currentMapId != eventMapId;
     }
 
+    // Guild 100 and the guild house entry move the member to another field. A dead member, or one inside
+    // a dungeon or a home, stays where they are: the move would take them out of the death, the dungeon
+    // room or the home without that field's own way out.
+    public static bool CanGoToGuildField(bool dead, bool inDungeon, bool inHome) {
+        return !dead && !inDungeon && !inHome;
+    }
+
     // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must
     // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
     // member's meso pays its cost, and the member does not have the effect already. A row without an effect

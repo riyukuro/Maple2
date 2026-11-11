@@ -364,4 +364,12 @@ public class GuildApplicationRulesTests {
     public void StorageGift_Rules(int count, int stored, bool receiverIsMember, GuildError expected) {
         Assert.That(GuildRules.CheckStorageGift(count, stored, receiverIsMember), Is.EqualTo(expected));
     }
+
+    [TestCase(false, false, false, true)]
+    [TestCase(true, false, false, false)]
+    [TestCase(false, true, false, false)]
+    [TestCase(false, false, true, false)]
+    public void GuildFieldEntry_NeedsAMemberFreeToLeave(bool dead, bool inDungeon, bool inHome, bool expected) {
+        Assert.That(GuildRules.CanGoToGuildField(dead, inDungeon, inHome), Is.EqualTo(expected));
+    }
 }

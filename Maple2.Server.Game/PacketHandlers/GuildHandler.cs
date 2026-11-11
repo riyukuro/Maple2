@@ -8,6 +8,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -1077,6 +1078,9 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (!GuildRules.CanEnterEvent(row?.MapId ?? 0, openTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.Field.MapId)) {
             return;
         }
+        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field is DungeonFieldManager, session.Field is HomeFieldManager)) {
+            return;
+        }
 
         session.Migrate(row!.MapId, guild.Id);
     }
@@ -1147,6 +1151,9 @@ public class GuildHandler : PacketHandler<GameSession> {
         houseRank.TryGetValue(session.Guild.Guild.HouseTheme, out GuildTable.House? house);
 
         if (house is null) {
+            return;
+        }
+        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field is DungeonFieldManager, session.Field is HomeFieldManager)) {
             return;
         }
 
