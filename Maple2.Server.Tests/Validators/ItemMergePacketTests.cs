@@ -205,6 +205,46 @@ public class ItemMergePacketTests {
         Assert.That(equipped.Stats!.HasMergeOption, Is.True);
     }
 
+    // The item xml's fusionable flag: the revert dialog refuses an item without it with code 3, before
+    // every other check (uiitemmergerevertdialog.cpp:283). A row ingested before the field has no value
+    // and is let through.
+    [Test]
+    public void RevertRefusesAnItemThatIsNotFusionable() {
+        static Item With(bool? fusionable, int rarity = 4) {
+            Item item = Merged(11300001, rarity);
+            ItemMetadata metadata = item.Metadata with { Property = item.Metadata.Property with { Fusionable = fusionable } };
+            return new Item(metadata, rarity) { Uid = item.Uid, Stats = item.Stats };
+        }
+        Item revert = ItemOf(37000021, 4, 9, "1");
+
+        Assert.That(ItemMergeManager.IsFusionable(With(true)), Is.True);
+        Assert.That(ItemMergeManager.IsFusionable(With(false)), Is.False);
+        Assert.That(ItemMergeManager.IsFusionable(With(null)), Is.True);
+        Assert.That(ItemMergeManager.CheckRevert(revert, With(true)), Is.EqualTo(ItemMergeError.ok));
+        Assert.That(ItemMergeManager.CheckRevert(revert, With(null)), Is.EqualTo(ItemMergeError.ok));
+        Assert.That(ItemMergeManager.CheckRevert(revert, With(false)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
+        // Code 3 comes before the revert item, rarity and option checks.
+        Assert.That(ItemMergeManager.CheckRevert(null, With(false)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
+        Assert.That(ItemMergeManager.CheckRevert(revert, With(false, 5)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
+    }
+
+    // The metadata rows are stored as json without default values: false is written, a missing value
+    // reads back as "not known".
+    [Test]
+    public void FusionableSurvivesTheMetadataJson() {
+        var options = new System.Text.Json.JsonSerializerOptions {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
+        };
+        ItemMetadataProperty property = ItemOf(11300001, 4, 5).Metadata.Property;
+        ItemMetadataProperty? Round(ItemMetadataProperty value) => System.Text.Json.JsonSerializer.Deserialize<ItemMetadataProperty>(System.Text.Json.JsonSerializer.Serialize(value, options), options);
+
+        Assert.That(Round(property with { Fusionable = false })!.Fusionable, Is.False);
+        Assert.That(Round(property with { Fusionable = true })!.Fusionable, Is.True);
+        Assert.That(Round(property)!.Fusionable, Is.Null);
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(property, options), Does.Not.Contain("Fusionable"));
+        Assert.That(Round(property with { Fusionable = false })!.SubType, Is.EqualTo(13));
+    }
+
     // The codes of the client's own check (UIItemMergeRevertDialog::CheckItem).
     [Test]
     public void RevertErrors() {

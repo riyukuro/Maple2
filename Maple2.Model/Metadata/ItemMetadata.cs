@@ -51,7 +51,11 @@ public record ItemMetadataProperty(
     long[] SellPrices,
     long[] CustomSellPrices,
     int ShopId,
-    int LimitBreakMaxLevel);
+    int LimitBreakMaxLevel) {
+    // The item xml's fusion element, attribute fusionable (client itemdatastruct.cpp:1559, default 0).
+    // Null in a row that was ingested before this field existed: such a row is not judged.
+    public bool? Fusionable { get; init; }
+}
 
 public record ItemMetadataCustomize(
     int ColorPalette,

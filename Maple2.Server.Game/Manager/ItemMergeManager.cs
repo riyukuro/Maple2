@@ -132,7 +132,7 @@ public sealed class ItemMergeManager {
             return;
         }
 
-        if (upgradeItem?.Uid != itemUid || Find(itemUid) == null) {
+        if (upgradeItem?.Uid != itemUid || Find(itemUid) == null || !IsFusionable(upgradeItem)) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
             return;
         }
@@ -304,8 +304,15 @@ public sealed class ItemMergeManager {
         return Lua.CalcItemMergeRevertMeso(item.Rarity, EquipSubtype(item.Metadata));
     }
 
+    // The client offers only items whose xml says fusionable to the merge dialog
+    // (uiitemmergeoptiondialog.cpp:605 and :623) and the revert dialog refuses the others with code 3
+    // (uiitemmergerevertdialog.cpp:283). A row without the field (older ingest) is let through.
+    public static bool IsFusionable(Item item) {
+        return item.Metadata.Property.Fusionable != false;
+    }
+
     public static ItemMergeError CheckRevert(Item? revertItem, Item? item) {
-        if (item == null) {
+        if (item == null || !IsFusionable(item)) {
             return ItemMergeError.s_item_merge_option_error_invalid_mergeitem;
         }
         if (revertItem?.Metadata.Function?.Type != ItemFunction.ItemMergeRevert) {

@@ -199,7 +199,9 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     CustomSellPrices: data.property.sell.priceCustom,
                     ShopId: data.Shop?.systemShopID ?? 0,
                     LimitBreakMaxLevel: data.property.unlimitedEnchantMaxGrade
-                ),
+                ) {
+                    Fusionable = data.fusion.fusionable != 0,
+                },
                 Customize: new ItemMetadataCustomize(
                     ColorPalette: data.customize.colorPalette,
                     DefaultColorIndex: data.customize.defaultColorIndex
