@@ -49,7 +49,8 @@ public static class WeddingPacket {
     public static ByteWriter Error(WeddingError error) {
         var pWriter = Packet.Of(SendOp.Wedding);
         pWriter.Write<Command>(Command.Error);
-        pWriter.Write<WeddingError>(error);
+        // The client reads the result as one byte and nothing after it (WeddingManager::OnResult).
+        pWriter.WriteByte((byte) error);
 
         return pWriter;
     }
