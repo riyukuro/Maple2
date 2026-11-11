@@ -592,6 +592,10 @@ public class AiState {
     }
 
     private void ProcessNode(SetValueRangeTargetNode node) {
+        if (node.IsKeepBattle) {
+            actor.BattleState.KeepBattle = true;
+        }
+
         int range = node.Radius;
         int height = node.Height;
 
@@ -616,13 +620,9 @@ public class AiState {
                 continue;
             }
 
-            if (node.IsModify) {
-                if (npc.AiExtraData.TryGetValue(node.Key, out int oldValue)) {
-                    actor.AiExtraData[node.Key] = oldValue + node.Value;
-                    continue;
-                }
-            }
-            actor.AiExtraData[node.Key] = node.Value;
+            // The key goes on each npc in range, not on the npc that runs the node.
+            bool hasOld = npc.AiExtraData.TryGetValue(node.Key, out int oldValue);
+            npc.AiExtraData[node.Key] = AiSummon.ModifiedValue(hasOld, oldValue, node.Value, node.IsModify);
         }
     }
 
