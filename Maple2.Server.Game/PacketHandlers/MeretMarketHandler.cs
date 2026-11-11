@@ -470,25 +470,29 @@ public class MeretMarketHandler : FieldPacketHandler {
 
     private void HandleFindItem(GameSession session, IByteReader packet) {
         bool premium = packet.ReadBool();
+        // The client sends the id as a long for both kinds (CMeratMarketMan::SendMeretMarketMode29).
+        long id = packet.ReadLong();
+        // Set when the blueprint market dialog asks; that dialog only shows the blueprint page reply,
+        // the market dialog only the search page reply.
+        bool blueprintDialog = packet.ReadBool();
+
+        MarketItem? marketItem;
         if (premium) {
-            int premiumId = packet.ReadInt();
-            MarketItem? marketItem = session.GetPremiumMarketItem(premiumId);
-            if (marketItem is null) {
+            if (id is < int.MinValue or > int.MaxValue) {
                 return;
             }
-            session.Send(MeretMarketPacket.LoadItems([marketItem], 1, 1));
+            marketItem = session.GetPremiumMarketItem((int) id);
+        } else {
+            using GameStorage.Request db = session.GameStorage.Context();
+            marketItem = db.GetUgcMarketItem(id);
+        }
+        if (marketItem is null) {
             return;
         }
 
-        long ugcId = packet.ReadLong();
-        using GameStorage.Request db = session.GameStorage.Context();
-
-        UgcMarketItem? ugcMarketItem = db.GetUgcMarketItem(ugcId);
-        if (ugcMarketItem is null) {
-            return;
-        }
-        session.Send(MeretMarketPacket.LoadBlueprints([ugcMarketItem], 1, 1, 1));
-
+        session.Send(blueprintDialog
+            ? MeretMarketPacket.LoadBlueprints([marketItem], 1, 1, 1)
+            : MeretMarketPacket.LoadItems([marketItem], 1, 1));
     }
 
     private void HandleSearch(GameSession session, IByteReader packet) {
