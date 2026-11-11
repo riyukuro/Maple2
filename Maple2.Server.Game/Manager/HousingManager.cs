@@ -979,11 +979,20 @@ public class HousingManager {
         }
 
         long itemUid = session.Item.Furnishing.AddCube(cube);
-        if (itemUid == 0 || !session.Item.Furnishing.TryAddCube(itemUid, result)) {
+        if (itemUid == 0) {
             lock (Home) {
                 HomeBuildRules.Refund(Home, merat, shopEntry.Price);
             }
             helper.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
+            return false;
+        }
+
+        // The item was bought into the owner's storage and stays there, so the charge stays too.
+        if (!session.Item.Furnishing.TryAddCube(itemUid, result)) {
+            if (shopEntry.Price > 0) {
+                SendBuildBudget();
+            }
+            helper.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
             return false;
         }
 
