@@ -25,6 +25,38 @@ public class SkillBookRulesTests {
         Assert.That(SkillBookRules.NameAllowed(new string('a', SkillBookRules.MaxNameLength + 1)), Is.False);
     }
 
+    [Test]
+    public void BannedName() {
+        Assert.That(SkillBookRules.NameBanned("Build", name => name.Contains("ui")), Is.True);
+        Assert.That(SkillBookRules.NameBanned("Build", name => name.Contains("xx")), Is.False);
+        Assert.That(SkillBookRules.NameBanned("", _ => true), Is.False);
+    }
+
+    // Mode 4: i32 UI id of the skill window, bool coupon check box.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ExpandBytes(bool coupon) {
+        var writer = new ByteWriter();
+        writer.WriteInt(0x4F2D);
+        writer.WriteBool(coupon);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        (int dialogId, bool useCoupon) = SkillBookRules.ReadExpand(reader);
+        Assert.That(dialogId, Is.EqualTo(SkillBookRules.DialogId));
+        Assert.That(useCoupon, Is.EqualTo(coupon));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    [TestCase(true, true, 0, 1000, SkillBookRules.ExpandPayment.Coupon)]
+    [TestCase(true, true, 5000, 1000, SkillBookRules.ExpandPayment.Coupon)]
+    [TestCase(true, false, 1000, 1000, SkillBookRules.ExpandPayment.Meret)]
+    [TestCase(true, false, 999, 1000, SkillBookRules.ExpandPayment.None)]
+    [TestCase(false, true, 1000, 1000, SkillBookRules.ExpandPayment.Meret)]
+    [TestCase(false, true, 0, 1000, SkillBookRules.ExpandPayment.None)]
+    [TestCase(false, false, 5000, -1, SkillBookRules.ExpandPayment.None)]
+    public void ExpandPaidBy(bool useCoupon, bool hasCoupon, long meret, long price, SkillBookRules.ExpandPayment expected) {
+        Assert.That(SkillBookRules.ExpandPaidBy(useCoupon, hasCoupon, meret, price), Is.EqualTo(expected));
+    }
+
     [TestCase(0, 3, true)]
     [TestCase(3, 3, true)]
     [TestCase(4, 3, false)]

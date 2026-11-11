@@ -1,9 +1,11 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -20,6 +22,12 @@ public class SkillBookHandler : FieldPacketHandler {
         Rename = 2,
         Expand = 4,
     }
+
+    #region Autofac Autowired
+    // ReSharper disable MemberCanBePrivate.Global
+    public required BanWordStorage BanWordStorage { private get; init; }
+    // ReSharper restore All
+    #endregion
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
@@ -76,6 +84,10 @@ public class SkillBookHandler : FieldPacketHandler {
         if (!SkillBookRules.NameAllowed(skillTabName)) {
             return;
         }
+        if (SkillBookRules.NameBanned(skillTabName, BanWordStorage.ContainsBannedWord)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+            return;
+        }
 
         SkillTab? skillTab = session.Config.Skill.GetSkillTab(skillTabId);
         if (skillTab == null) {
@@ -87,12 +99,11 @@ public class SkillBookHandler : FieldPacketHandler {
     }
 
     private void HandleExpand(GameSession session, IByteReader packet) {
-        int constant = packet.ReadInt();
-        packet.ReadBool();
-        if (constant != 20272) {
+        (int dialogId, bool useCoupon) = SkillBookRules.ReadExpand(packet);
+        if (dialogId != SkillBookRules.DialogId) {
             return;
         }
 
-        session.Config.Skill.ExpandSkillTabs();
+        session.Config.Skill.ExpandSkillTabs(useCoupon);
     }
 }

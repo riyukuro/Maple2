@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -119,7 +120,7 @@ public class SkillManager {
         return true;
     }
 
-    public bool ExpandSkillTabs() {
+    public bool ExpandSkillTabs(bool useCoupon = false) {
         if (SkillBook.SkillTabs.Count < SkillBook.MaxSkillTabs) {
             return true;
         }
@@ -127,11 +128,20 @@ public class SkillManager {
         if (SkillBook.MaxSkillTabs >= Constant.MaxSkillTabCount) {
             return false;
         }
-        if (session.Currency.Meret < Constants.SkillBookTreeAddTabFeeMerat) {
-            return false;
+        long price = Constants.SkillBookTreeAddTabFeeMerat;
+        bool hasCoupon = useCoupon && session.Item.Inventory.Find(ItemTag.SkillBookTreeAddTabCoupon).Any();
+        switch (SkillBookRules.ExpandPaidBy(useCoupon, hasCoupon, session.Currency.Meret, price)) {
+            case SkillBookRules.ExpandPayment.Coupon:
+                if (!session.Item.Inventory.Consume([new IngredientInfo(ItemTag.SkillBookTreeAddTabCoupon, 1)])) {
+                    return false;
+                }
+                break;
+            case SkillBookRules.ExpandPayment.Meret:
+                session.Currency.Meret -= price;
+                break;
+            default:
+                return false;
         }
-
-        session.Currency.Meret -= Constants.SkillBookTreeAddTabFeeMerat;
         SkillBook.MaxSkillTabs++;
         session.Send(SkillBookPacket.Expand(SkillBook));
 
