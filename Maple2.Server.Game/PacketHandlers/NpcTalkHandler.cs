@@ -83,8 +83,13 @@ public class NpcTalkHandler : FieldPacketHandler {
 
         int options = 0;
         var talkType = NpcTalkType.None;
-        if (npc.Value.Metadata.Basic.ShopId > 0) {
-            session.Shop.Load(npc.Value.Metadata.Basic.ShopId, npc.Value.Id);
+        int shopId = npc.Value.Metadata.Basic.ShopId;
+        if (shopId > 0) {
+            // A beauty NPC's ShopId names its beauty shop; the client opens that one itself from the
+            // NPC's script with Beauty 0 (UITalkManager::OpenTalkDialog), so there is no normal shop to load.
+            if (!session.ServerTableMetadata.BeautyShopTable.Entries.ContainsKey(shopId)) {
+                session.Shop.Load(shopId, npc.Value.Id);
+            }
             talkType |= NpcTalkType.Dialog;
             options++;
         }
