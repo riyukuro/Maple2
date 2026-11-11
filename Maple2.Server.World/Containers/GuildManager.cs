@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Channel.Service;
 using Maple2.Tools.Extensions;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.World.Containers;
 
@@ -185,9 +186,12 @@ public class GuildManager : IDisposable {
             if (rank == null || !rank.Permission.HasFlag(GuildPermission.EditRank)) {
                 return GuildError.s_guild_err_no_authority;
             }
-            GuildRank? newRank = Guild.Ranks.ElementAtOrDefault((byte) rankId);
-            if (newRank == null) {
+            // Rank 0 is the master's: it is not given here and the master does not leave it here (UpdateLeader does both).
+            if (!GuildRules.IsAssignableRank((byte) rankId, Guild.Ranks.Count)) {
                 return GuildError.s_guild_err_invalid_grade_index;
+            }
+            if (!GuildRules.CanChangeRankOf(member.Rank)) {
+                return GuildError.s_guild_err_set_grade_failed;
             }
 
             member.Rank = (byte) rankId;

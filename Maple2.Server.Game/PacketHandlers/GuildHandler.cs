@@ -437,9 +437,19 @@ public class GuildHandler : PacketHandler<GameSession> {
             return;
         }
 
+        // CGuildManager::SendGuildMode10 sends a rank from 1 to the last index; rank 0 is the master's.
+        if (!GuildRules.IsAssignableRank(rankId, session.Guild.Guild.Ranks.Count)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_index));
+            return;
+        }
+
         GuildMember? member = session.Guild.GetMember(playerName);
         if (member == null) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_null_member));
+            return;
+        }
+        if (!GuildRules.CanChangeRankOf(member.Rank)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_set_grade_failed));
             return;
         }
 
