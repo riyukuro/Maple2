@@ -1796,11 +1796,16 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     private ShopItemTable ParseShopItems() {
         var results = new Dictionary<int, Dictionary<int, ShopItemMetadata>>();
+        HashSet<int>? known = PlayedItemIds();
+        var count = new PlayedClientItems.Count();
         foreach ((int shopId, ShopGame data) in parser.ParseShopGame()) {
             var shopResults = new Dictionary<int, ShopItemMetadata>();
             foreach (ShopGame.Item item in data.item) {
                 // Check if item exists in ItemMetadataById
                 if (!ItemMapper.ItemMetadataById.TryGetValue(item.id, out ItemMetadata? itemMeta)) {
+                    continue;
+                }
+                if (known != null && !PlayedClientItems.KnownShopItem(item.id, item.paymentItemID, known, ref count)) {
                     continue;
                 }
 
@@ -1905,6 +1910,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 shopResults.Add(item.sn, entry);
             }
             results.Add(shopId, shopResults);
+        }
+        if (known != null) {
+            Console.WriteLine($"shop_game: {count} (items not in the played client's item data)");
         }
         return new ShopItemTable(results);
     }

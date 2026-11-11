@@ -99,6 +99,18 @@ public static class PlayedClientItems {
         return results;
     }
 
+    // An NPC shop row (Server.m2d shop_game) is kept when its item and its payment item (paymentItemID, 0 = paid
+    // otherwise) are known. The client reads each sold item of the shop list into a CItem
+    // (CNpcShopProductCli::ReadPacket, client/ms2/npcshopproductbase.cpp:139) and goes on to CItem::ReadFromStream
+    // (commonfiles/item.cpp:2655) even when CItem::FUN_140523c40 (item.cpp:2760) found no item data for the id, so
+    // the shop window crashes the client on a row of an unknown item. The payment item is left out with it, as the
+    // window could not name or count what the row costs. The shop itself stays, with the rows it has left.
+    public static bool KnownShopItem(int itemId, int paymentItemId, IReadOnlySet<int> known, ref Count count) {
+        bool keep = Known([itemId, paymentItemId], known);
+        count = keep ? count with { Kept = count.Kept + 1 } : count with { Dropped = count.Dropped + 1 };
+        return keep;
+    }
+
     // Reward content items (table/rewardcontentitemtable.xml) without unknown items. A level range left with no
     // items stays and gives none (GameSession adds each item of the range); its exp and meso come from other tables.
     public static RewardItem[] Keep(RewardItem[] items, IReadOnlySet<int> known, ref Count count) {

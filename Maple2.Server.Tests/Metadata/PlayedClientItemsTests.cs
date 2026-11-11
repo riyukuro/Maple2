@@ -129,6 +129,21 @@ public class PlayedClientItemsTests {
         });
     }
 
+    // A shop row goes when its item or its payment item is unknown; payment item 0 names none.
+    [Test]
+    public void ShopItems_NeedTheItemAndThePaymentItem() {
+        var known = new HashSet<int> { 10, 20 };
+        var count = new PlayedClientItems.Count();
+
+        Assert.Multiple(() => {
+            Assert.That(PlayedClientItems.KnownShopItem(10, 0, known, ref count), Is.True);
+            Assert.That(PlayedClientItems.KnownShopItem(10, 20, known, ref count), Is.True);
+            Assert.That(PlayedClientItems.KnownShopItem(90, 0, known, ref count), Is.False);
+            Assert.That(PlayedClientItems.KnownShopItem(10, 91, known, ref count), Is.False);
+            Assert.That(count, Is.EqualTo(new PlayedClientItems.Count(Dropped: 2, Kept: 2)));
+        });
+    }
+
     // Reward items of a level range: unknown ones go, the range stays even when none is left; counts add up.
     [Test]
     public void RewardItems_DropUnknownItemsAndAddToTheCount() {
