@@ -444,6 +444,12 @@ public enum ItemTag {
     [Description("")]
     WeddingHallCoupon_Grade3 = 218,
 
-    // Not defined in client mapping.
+    // Out of the number range of the client table (the client has it, see ItemTagMap).
     PetEXP = 250,
+
+    // Names of the KMS 2525 client table that this enum lacked. The numbers are internal: ItemTagMap gives the wire number.
+    GuildStorageItemOnlyToMe = 251,
+    UGCMapOX = 252,
+    Enix = 253,
+    Eragonix = 254,
 }

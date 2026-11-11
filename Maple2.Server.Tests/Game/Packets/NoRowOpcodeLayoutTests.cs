@@ -100,10 +100,10 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(91));
         Assert.That(reader.ReadByte(), Is.EqualTo(2));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
-        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.GreenCrystal));
+        Assert.That(reader.ReadInt(), Is.EqualTo(94));
         Assert.That(reader.ReadInt(), Is.EqualTo(3));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
-        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.ChaosOnix));
+        Assert.That(reader.ReadInt(), Is.EqualTo(98));
         Assert.That(reader.ReadInt(), Is.EqualTo(120));
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 1 + 2 * 12));
     }
@@ -257,7 +257,7 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.None));
         Assert.That(reader.ReadInt(), Is.EqualTo(5));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
-        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.SkinCrystal));
+        Assert.That(reader.ReadInt(), Is.EqualTo(88));
         Assert.That(reader.ReadInt(), Is.EqualTo(2));
         Assert.That(reader.Available, Is.EqualTo(0));
     }

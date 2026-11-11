@@ -49,7 +49,7 @@ public static class ItemMergePacket {
         pWriter.WriteByte((byte) metadata.Materials.Length);
         foreach (ItemComponent ingredient in metadata.Materials) {
             pWriter.WriteInt(ingredient.ItemId);
-            pWriter.WriteInt((int) ingredient.Tag);
+            pWriter.WriteInt(ItemTagMap.ToClient(ingredient.Tag));
             pWriter.WriteInt(ingredient.Amount * materialMultiplier);
         }
 

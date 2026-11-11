@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Error;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -38,7 +39,7 @@ public static class ChangeAttributesPacket {
         pWriter.WriteByte((byte) ingredients.Count);
         foreach (IngredientInfo ingredient in ingredients) {
             pWriter.WriteInt(ingredient.Unknown); // item id; 0 when the ingredient is named by its tag
-            pWriter.WriteInt((int) ingredient.Tag);
+            pWriter.WriteInt(ItemTagMap.ToClient(ingredient.Tag));
             pWriter.WriteInt(ingredient.Amount);
         }
 

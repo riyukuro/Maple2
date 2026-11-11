@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Error;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -25,7 +26,9 @@ public static class LimitBreakPacket {
         pWriter.WriteByte((byte) catalysts.Count);
 
         foreach (IngredientInfo ingredient in catalysts) {
-            pWriter.Write<IngredientInfo>(ingredient);
+            pWriter.WriteInt(0);
+            pWriter.WriteInt(ItemTagMap.ToClient(ingredient.Tag));
+            pWriter.WriteInt(ingredient.Amount);
         }
 
         pWriter.WriteClass<Item>(upgradeItem);

@@ -30,7 +30,9 @@ public static class ItemEnchantPacket {
 
         pWriter.WriteByte((byte) catalysts.Count);
         foreach (IngredientInfo catalyst in catalysts) {
-            pWriter.Write<IngredientInfo>(catalyst);
+            pWriter.WriteInt(0);
+            pWriter.WriteInt(ItemTagMap.ToClient(catalyst.Tag));
+            pWriter.WriteInt(catalyst.Amount);
         }
 
         pWriter.Write<EnchantFailType>(EnchantFailType.None);
