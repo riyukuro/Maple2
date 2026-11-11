@@ -36,4 +36,27 @@ public static class KeyBindRules {
         }
         return stored;
     }
+
+    // The key codes of the client's key table: single keys 1 to 0xCF, and combined keys packed as
+    // second | first << 8 | mode << 16, both keys counted from 0x91. The first key is one of 0x96 to 0x99;
+    // mode 0xF0 takes a second key of 0x92 to 0xA1 outside 0x96 to 0x99, mode 0xF1 one of 0xA3 to 0xB2.
+    // That is 319 codes, so a player's key table cannot grow past it.
+    public static bool IsClientKeyCode(int keyCode) {
+        if (keyCode is >= 1 and < 0xD0) {
+            return true;
+        }
+
+        int second = keyCode & 0xFF;
+        int first = (keyCode >> 8) & 0xFF;
+        int mode = (keyCode >> 16) & 0xFF;
+        if ((uint) keyCode >> 24 != 0 || first is < 5 or > 8) {
+            return false;
+        }
+
+        return mode switch {
+            0xF0 => second is >= 1 and <= 16 and not (>= 5 and <= 8),
+            0xF1 => second is >= 0x12 and <= 0x21,
+            _ => false,
+        };
+    }
 }

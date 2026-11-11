@@ -4,6 +4,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -49,6 +50,9 @@ public class KeyTableHandler : FieldPacketHandler {
         int count = packet.ReadInt();
         for (int i = 0; i < count; i++) {
             var keyBind = packet.Read<KeyBind>();
+            if (!KeyBindRules.IsClientKeyCode(keyBind.KeyCode)) {
+                continue;
+            }
             session.Config.SetKeyBind(keyBind);
         }
     }
