@@ -7,6 +7,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -62,6 +63,11 @@ public class MailHandler : FieldPacketHandler {
         string receiverName = packet.ReadUnicodeString();
         string title = packet.ReadUnicodeString();
         string content = packet.ReadUnicodeString();
+
+        if (!MailRules.CanSend(title, content)) {
+            session.Send(MailPacket.Error(MailError.s_mail_error_sendmail));
+            return;
+        }
 
         if (receiverName == session.PlayerName) {
             session.Send(MailPacket.Error(MailError.s_mail_error_recipient_equal_sender));
