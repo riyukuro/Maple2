@@ -1,3 +1,4 @@
+using Maple2.Model.Game.Ugc;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Model.Validators;
@@ -27,7 +28,8 @@ public static class UgcRules {
     }
 
     // Mode 19 costs nothing, and the client sends the hours of one day in one request (24 at most).
-    // Server rule: a character holds at most this many reserved slots that it has not paid for.
+    // Server rule: a character holds at most this many reserved slots without a finished design
+    // (BannerSlotHeld).
     public const int BannerReserveMax = 24;
 
     // How many more slots the character may reserve.
@@ -35,7 +37,32 @@ public static class UgcRules {
         return Math.Clamp(BannerReserveMax - unpaidOwned, 0, BannerReserveMax);
     }
 
-    // A reserved slot whose owner was lost (kept in memory only, so 0 after a restart) and that has
+    // Whether a slot counts against BannerReserveMax for the character: it owns the slot, the hour is
+    // not over, and no finished design is on it. A design without a picture (an upload that was
+    // charged and not finished, or one that failed) counts like no design.
+    public static bool BannerSlotHeld(long ownerId, bool hasPicture, bool expired, long characterId) {
+        return characterId != 0 && ownerId == characterId && !hasPicture && !expired;
+    }
+
+    // Takes the designs of one upload off the slots it was staged on, when they have no picture. The
+    // slots are the ones the upload named, on whatever field they are; they stay reserved for their
+    // owner. Returns how many were cleared.
+    public static int ClearStagedBanner(IEnumerable<BannerSlot> staged, long ugcUid, long characterId) {
+        if (ugcUid == 0) {
+            return 0;
+        }
+        int cleared = 0;
+        foreach (BannerSlot slot in staged) {
+            if (slot.Template?.Id == ugcUid && slot.Template.CharacterId == characterId && string.IsNullOrEmpty(slot.Template.Url)) {
+                slot.Template = null;
+                cleared++;
+            }
+        }
+        return cleared;
+    }
+
+    // A reserved slot whose owner was lost (kept in memory only: 0 after a restart, after the field
+    // was disposed, and on another channel) and that has
     // no design may be reserved again; the one who asks first holds it. An owned slot or one with a
     // design is never given to another.
     public static bool BannerSlotClaimable(long ownerId, bool hasDesign) {
@@ -43,9 +70,11 @@ public static class UgcRules {
     }
 
     // Whether the character may upload to a reserved slot. The slot belongs to the character that
-    // reserved it (ownerId, 0 when not known: the owner is kept in memory only). A design on the slot
-    // names its owner too: a finished one closes the slot, one without a picture (an upload that
-    // failed) may be replaced by its own character.
+    // reserved it (ownerId, 0 when not known: the owner is kept in memory only). A slot with no owner
+    // and no design takes an upload from anyone, at the usual price: the owner is lost whenever the
+    // field is disposed, and the client does not reserve an hour it holds a second time. A design on
+    // the slot names its owner too: a finished one closes the slot, one without a picture (an upload
+    // that failed) may be replaced by its own character.
     public static bool BannerSlotOpenTo(long ownerId, long designCharacterId, bool hasPicture, long characterId) {
         if (characterId == 0 || (ownerId != 0 && ownerId != characterId)) {
             return false;
@@ -53,7 +82,7 @@ public static class UgcRules {
         if (designCharacterId != 0) {
             return designCharacterId == characterId && !hasPicture;
         }
-        return ownerId == characterId;
+        return true;
     }
 
     // Mode 1, guild emblem (CUgcGuildMarkProxy::Write): i64 guild id.

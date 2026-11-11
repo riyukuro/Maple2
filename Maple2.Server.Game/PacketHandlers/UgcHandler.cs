@@ -106,8 +106,9 @@ public class UgcHandler : FieldPacketHandler {
         }
     }
 
-    // Gives a fee back and drops what the upload staged: the item, and on this field the banner
-    // designs of the upload that have no picture (their slots stay reserved for the character).
+    // Gives a fee back and drops what the upload staged: the item, and the banner designs of the
+    // upload that have no picture, on the banner they were staged on, which may be on a field the
+    // character has left (their slots stay reserved for the character).
     private void GiveBack(GameSession session, UgcPendingFee? fee) {
         if (fee == null) {
             return;
@@ -116,12 +117,9 @@ public class UgcHandler : FieldPacketHandler {
         if (session.StagedUgcItem?.Template?.Id == fee.UgcUid) {
             session.StagedUgcItem = null;
         }
-        if (session.Field != null && fee.UgcUid != 0) {
-            foreach (BannerSlot slot in session.Field.Banners.Values.SelectMany(banner => banner.Slots)) {
-                if (slot.Template?.Id == fee.UgcUid && slot.Template.CharacterId == session.CharacterId && string.IsNullOrEmpty(slot.Template.Url)) {
-                    slot.Template = null;
-                }
-            }
+        if (session.StagedBanner != null) {
+            UgcRules.ClearStagedBanner(session.StagedBanner.Slots.ToArray(), fee.UgcUid, session.CharacterId);
+            session.StagedBanner = null;
         }
 
         if (fee.VoucherItemId != 0) {
@@ -315,6 +313,7 @@ public class UgcHandler : FieldPacketHandler {
             banner.Slots.Remove(oldSlot);
             banner.Slots.Add(slot);
         }
+        session.StagedBanner = banner;
 
         session.Send(UgcPacket.Upload(resource));
     }
@@ -433,8 +432,9 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
-        // True for the upload that mode 1 charged; after it a mode 0 gives nothing back.
-        bool paidUpload = session.UgcFees.Finish(session.CharacterId, ugcUid);
+        // True for the upload that mode 1 charged; after it a mode 0 gives nothing back. A mode 3
+        // whose kind is not the resource's finishes nothing, so its fee can still be given back.
+        bool paidUpload = resource.Type == info.Type && session.UgcFees.Finish(session.CharacterId, ugcUid);
 
         switch (info.Type) {
             case UgcType.Item or UgcType.Furniture or UgcType.Mount:
@@ -535,8 +535,10 @@ public class UgcHandler : FieldPacketHandler {
                 Logger.Warning("Banner confirmation without a paid upload {UgcUid}", ugcUid);
                 return;
             }
-            UgcBanner? banner = session.Field?.Banners.Values.FirstOrDefault(x => x.Slots.Any(slot => slot.Template?.Id == ugcUid && slot.Template.CharacterId == session.CharacterId));
-            if (banner is null) {
+            // The banner the upload was staged on, also when the character has changed field since.
+            UgcBanner? banner = session.StagedBanner;
+            session.StagedBanner = null;
+            if (banner is null || !banner.Slots.Any(slot => slot.Template?.Id == ugcUid && slot.Template.CharacterId == session.CharacterId)) {
                 Logger.Warning("Failed to find banner for UGC {UgcUid}", ugcUid);
                 return;
             }
@@ -548,7 +550,10 @@ public class UgcHandler : FieldPacketHandler {
                 }
             }
 
-            session.Send(UgcPacket.UpdateBanner(banner));
+            // Shown now only on the banner's own field; elsewhere the banner list of that field has it.
+            if (session.Field != null && session.Field.Banners.TryGetValue(banner.Id, out FieldUgcBanner? shown) && ReferenceEquals(shown, banner)) {
+                session.Send(UgcPacket.UpdateBanner(banner));
+            }
         }
 
         void ConfirmItem() {
@@ -629,9 +634,9 @@ public class UgcHandler : FieldPacketHandler {
         List<BannerSlot> newSlots = [];
 
         // Reserving is free, so it is bounded: the slots this character holds on the field without
-        // a design, and the ones of this request, stay within UgcRules.BannerReserveMax.
+        // a finished design, and the ones of this request, stay within UgcRules.BannerReserveMax.
         int room = UgcRules.BannerReserveRoom(session.Field.Banners.Values.Sum(other =>
-            other.Slots.Count(slot => slot.OwnerId == session.CharacterId && slot.Template == null && !slot.Expired)));
+            other.Slots.Count(slot => UgcRules.BannerSlotHeld(slot.OwnerId, !string.IsNullOrEmpty(slot.Template?.Url), slot.Expired, session.CharacterId))));
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
         using GameStorage.Request db = session.GameStorage.Context();
@@ -649,7 +654,7 @@ public class UgcHandler : FieldPacketHandler {
 
             BannerSlot? held = banner.Slots.FirstOrDefault(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour);
             if (held != null && UgcRules.BannerSlotClaimable(held.OwnerId, held.Template != null)) {
-                // Reserved before a restart: the owner was lost, so the first to ask for the hour again holds it.
+                // The owner was lost (restart, field dispose, other channel): the first to ask for the hour again holds it.
                 held.OwnerId = session.CharacterId;
                 room--;
                 newSlots.Add(held);

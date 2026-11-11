@@ -21,6 +21,8 @@ public partial class GameSession {
     public GuildPoster? StagedGuildPoster = null;
     public long StagedGuildEmblemUgc = 0;
     public readonly UgcFeeBook UgcFees = new();
+    // The banner slots the last banner upload (Ugc mode 1) put its design on, on the field of that upload.
+    public Maple2.Model.Game.Ugc.UgcBanner? StagedBanner = null;
 
     public Item? StagedInstrumentItem = null;
     public Item? StagedScoreItem = null;
