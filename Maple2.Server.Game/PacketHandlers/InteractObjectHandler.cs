@@ -14,6 +14,7 @@ public class InteractObjectHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.InteractObject;
 
     private enum Command : byte {
+        DebugCreate = 9,
         Start = 11,
         End = 12,
     }
@@ -26,6 +27,18 @@ public class InteractObjectHandler : FieldPacketHandler {
                 return;
             case Command.End:
                 HandleEnd(session, packet);
+                return;
+            case Command.DebugCreate:
+                // Not handled: the client's object create dialog. Read what it writes.
+                int kind = packet.ReadInt();
+                packet.ReadUnicodeString();
+                packet.ReadUnicodeString();
+                packet.ReadUnicodeString();
+                packet.ReadUnicodeString();
+                int count = packet.ReadInt();
+                packet.Read<System.Numerics.Vector3>(); // position
+                packet.Read<System.Numerics.Vector3>(); // rotation
+                Logger.Debug("InteractObject {Command} from {CharacterId}: kind {Kind}, count {Count}", command, session.CharacterId, kind, count);
                 return;
         }
     }
