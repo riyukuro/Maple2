@@ -60,7 +60,8 @@ public class HomeActionHandler : FieldPacketHandler {
             case Command.PvpControl:
                 // UIUGCPVPControlDialog "OnStart" (uiugcpvpcontroldialog.cpp:109): a constant 1 and the six values
                 // of the PvP control dialog. The server has no PvP mode for homes; the client reads only the six
-                // values back (HomeAction 14, 0) and has no refusal text. Read and logged.
+                // values back (HomeAction 14, 0) and has no refusal text. Read and logged. The PVP function cubes of
+                // items 50400174 to 50400176 carry a team (0, 1, 2); the client has no match rule and names no flag.
                 Logger.Debug("HomeAction {Command} from {CharacterId}: {Type} {A} {B} {C} {D} {E} {F}", command, session.CharacterId,
                     packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte());
                 break;

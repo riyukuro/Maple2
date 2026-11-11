@@ -215,7 +215,8 @@ public class RequestCubeHandler : FieldPacketHandler {
             // UIHomeSummonDialog::Summon (unit_141299650_uihomesummondialog.cpp:137): the dialog of a function cube
             // of sub-kind 7 (CFunctionCubeObject::OpenSubKindDialog) sends the cube's id string and a typed text of
             // two or more letters. The client reads no answer under sub-type 30 and does not show which packet the
-            // named player gets: read and logged.
+            // named player gets: read and logged. The dialog is for a cube with UseUiFunction "Summon"
+            // (commonfiles/objectdata.cpp:170), and no function cube in the data has it.
             case Command.HomeSummon:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {First}, {Second}", command, session.CharacterId, packet.ReadUnicodeString(), packet.ReadUnicodeString());
                 break;
