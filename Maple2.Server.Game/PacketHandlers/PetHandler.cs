@@ -36,7 +36,7 @@ public class PetHandler : FieldPacketHandler {
         UpdateLootConfig = 6,
         Fusion = 12, // OnPetEnchant, s_msg_transfer_bind_pet_compose
         AttackState = 15, // UIGameMenuDialog::OnPetAttack: the client flips its pet attack flag and sends the new value
-        Unknown16 = 16,
+        ViewOther = 16, // UIPopUpMenu::SendRequestPet: the pet popup of another player's pet
         Evolve = 17,
         EvolvePoints = 18,
     }
@@ -69,8 +69,8 @@ public class PetHandler : FieldPacketHandler {
             case Command.AttackState:
                 HandleAttackState(session, packet);
                 return;
-            case Command.Unknown16:
-                HandleUnknown16(session, packet);
+            case Command.ViewOther:
+                HandleViewOther(session, packet);
                 return;
             case Command.Evolve:
                 HandleEvolve(session, packet);
@@ -265,9 +265,23 @@ public class PetHandler : FieldPacketHandler {
         packet.ReadBool(); // attack on
     }
 
-    private void HandleUnknown16(GameSession session, IByteReader packet) {
-        packet.ReadLong();
-        packet.ReadLong();
+    // Mode 16: "pet info" in the popup of another player's pet (uipartydialog.cpp:3397). The body is the owner's
+    // character id and the uid of the pet item the owner has summoned; for its own pet the client opens its pet
+    // window and sends nothing. The answer (mode 16: owner object id, item id, uid, rarity, item) opens the
+    // other-pet window (CPetManager::OnOtherPetInfo). Only a pet summoned in the sender's field is shown.
+    private void HandleViewOther(GameSession session, IByteReader packet) {
+        long characterId = packet.ReadLong();
+        long petUid = packet.ReadLong();
+        if (session.Field == null || !session.Field.TryGetPlayerById(characterId, out FieldPlayer? owner)) {
+            return;
+        }
+
+        Item? pet = owner.Session.Pet?.Pet;
+        if (pet == null || !PetRules.IsShownPet(pet.Uid, petUid)) {
+            return;
+        }
+
+        session.Send(PetPacket.PetInfo(owner.ObjectId, pet));
     }
 
     // Mode 17 (TabContentsPetEvolution::OnPetEnchant): the pet has the points its evolution needs. It goes to

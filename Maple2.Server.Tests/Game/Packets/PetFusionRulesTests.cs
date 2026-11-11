@@ -14,7 +14,7 @@ namespace Maple2.Server.Tests.Game.Packets;
 public class PetFusionRulesTests {
     private const long Now = 1_000_000;
 
-    private static Item ItemOf(long uid, int rarity = 2, int levelLimit = 50, bool pet = true, ItemTag tag = ItemTag.None,
+    internal static Item ItemOf(long uid, int rarity = 2, int levelLimit = 50, bool pet = true, ItemTag tag = ItemTag.None,
             ItemMetadataFunction? function = null, int amount = 1) {
         var property = new ItemMetadataProperty(false, 0, 99, 0, 0, string.Empty, string.Empty, tag, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0) {
             PetId = pet ? 61000001 : 0,

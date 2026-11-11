@@ -1,4 +1,4 @@
-using Maple2.Model.Validators;
+﻿using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Server.Tests.Validators;
@@ -75,5 +75,14 @@ public class PetRulesTests {
     [TestCase(0, 0.05f, 50, 0)]
     public void LevelBonus_ConstantTimesFactorPerLevel(int constant, float factor, int level, int expected) {
         Assert.That(PetRules.LevelBonus(constant, factor, (short) level), Is.EqualTo(expected));
+    }
+
+    // RequestPet 16: only the pet the owner has summoned now is shown.
+    [TestCase(77L, 77L, true)]
+    [TestCase(77L, 78L, false)]
+    [TestCase(null, 77L, false)]
+    [TestCase(0L, 0L, false)]
+    public void ShownPet_IsTheSummonedOne(long? summoned, long requested, bool expected) {
+        Assert.That(PetRules.IsShownPet(summoned, requested), Is.EqualTo(expected));
     }
 }

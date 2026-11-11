@@ -170,9 +170,11 @@ public static class PetPacket {
         return pWriter;
     }
 
+    // Answer to RequestPet 16 (CPetManager::OnOtherPetInfo): the owner's object id, the item id, uid and
+    // rarity the client builds the item from, then the item; it opens the other-pet window.
     public static ByteWriter PetInfo(int ownerId, Item pet) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.PetInfo);
+        pWriter.WriteByte((byte) Command.PetInfo);
         pWriter.WriteInt(ownerId);
         pWriter.WriteInt(pet.Id);
         pWriter.WriteLong(pet.Uid);

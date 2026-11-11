@@ -1,4 +1,4 @@
-namespace Maple2.Model.Validators;
+﻿namespace Maple2.Model.Validators;
 
 public static class PetRules {
     // Whether a pet may be summoned here. The client refuses in a field whose usePet is 0 (MyPC::FUN_14152b2d0,
@@ -13,6 +13,12 @@ public static class PetRules {
     // (CEquipment::FUN_1411e76c0, equipment.cpp:3037-3040; FUN_1406198a0, itemremakescrolldata.cpp:933).
     public static int LevelBonus(int constantValue, float optionFactor, short petLevel) {
         return (int) (constantValue * (double) optionFactor + 1e-06) * (petLevel - 1);
+    }
+
+    // RequestPet 16 (another player's pet): the popup names the pet the owner has summoned; a pet that was put
+    // away or switched since then is not shown.
+    public static bool IsShownPet(long? summonedUid, long requestedUid) {
+        return requestedUid != 0 && summonedUid == requestedUid;
     }
 
     // RequestPet 4 (rename): the client's name box sends a name that is not empty and is shorter than 32 characters.
