@@ -4,8 +4,17 @@ using Maple2.Model.Enum;
 namespace Maple2.Model.Game;
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 4)]
+// The client keeps a basic option as one int (BaseOption). In an item's option groups it is always a
+// flat value (CItemStatus::GetStatValue). In the enchant and limit break options it is a rate for the
+// ratio stats and a flat value for the others; a rate is stored as rate * 1000, rounded down
+// (BaseOption::SetRate, read back by GetRate as value / 1000).
 public readonly record struct BasicOption(int Value) {
-    public BasicOption(float percent) : this((int) percent * 100) { }
+    public BasicOption(float rate) : this((int) MathF.Floor(rate * 1000f)) { }
+
+    // CItemStatus::IsRatioStat: defense, minimum and maximum weapon attack.
+    public static bool IsRatio(BasicAttribute attribute) {
+        return attribute is BasicAttribute.Defense or BasicAttribute.MinWeaponAtk or BasicAttribute.MaxWeaponAtk;
+    }
 
     public static BasicOption operator +(BasicOption self, BasicOption other) {
         return new BasicOption(self.Value + other.Value);

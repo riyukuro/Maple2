@@ -174,19 +174,14 @@ public class StatsManager {
 
             // Add enhancement attributes to character attributes
             if (item.Enchant is not null) {
-                // An enchant option is a rate in thousandths of the item's constant option of the same
-                // attribute (client: CItemStatus::GetStatValue(key, 0, 0) scaled by the enchant ratio,
-                // uienchantscrolldialog.cpp:390-394).
                 foreach (KeyValuePair<BasicAttribute, BasicOption> kvp in item.Enchant.BasicOptions) {
-                    if (item.Stats != null && item.Stats[ItemStats.Type.Constant].Basic.TryGetValue(kvp.Key, out BasicOption constant)) {
-                        Values[kvp.Key].AddTotal((long) (constant.Value * (kvp.Value.Value / 1000.0)));
-                    }
+                    AddUpgradeOption(item, kvp.Key, kvp.Value);
                 }
             }
 
             if (item.LimitBreak is not null) {
                 foreach (KeyValuePair<BasicAttribute, BasicOption> kvp in item.LimitBreak.BasicOptions) {
-                    Values[kvp.Key].AddTotal(kvp.Value);
+                    AddUpgradeOption(item, kvp.Key, kvp.Value);
                 }
             }
 
@@ -247,6 +242,18 @@ public class StatsManager {
                 sum *= buff.Metadata.Status.Conversion.Rate;
                 Values[buff.Metadata.Status.Conversion.ResultAttribute].AddTotal((long) sum);
             }
+        }
+    }
+
+    // An enchant or limit break option of a ratio stat is a rate in thousandths of the item's constant
+    // option of the same attribute; of any other stat it is a flat value (CItemStatus::GetStatValue).
+    private void AddUpgradeOption(Item item, BasicAttribute attribute, BasicOption option) {
+        if (!BasicOption.IsRatio(attribute)) {
+            Values[attribute].AddTotal(option);
+            return;
+        }
+        if (item.Stats != null && item.Stats[ItemStats.Type.Constant].Basic.TryGetValue(attribute, out BasicOption constant)) {
+            Values[attribute].AddTotal((long) (constant.Value * (option.Value / 1000.0)));
         }
     }
 

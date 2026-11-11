@@ -36,4 +36,11 @@ public class SpecialOptionConverterTests {
         SpecialOption empty = JsonSerializer.Deserialize<SpecialOption>("{}", Options);
         Assert.That(empty.Value, Is.EqualTo(0));
     }
+
+    [Test]
+    public void BasicRateIsThousandths() {
+        Assert.That(new BasicOption(0.25f).Value, Is.EqualTo(250));
+        Assert.That(BasicOption.IsRatio(BasicAttribute.Defense), Is.True);
+        Assert.That(BasicOption.IsRatio(BasicAttribute.Health), Is.False);
+    }
 }
