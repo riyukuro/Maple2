@@ -22,4 +22,11 @@ public class WardrobeRulesTests {
         Assert.That(WardrobeRules.NameAllowed(new string('a', 10), 10), Is.True);
         Assert.That(WardrobeRules.NameAllowed(new string('a', 11), 10), Is.False);
     }
+
+    [Test]
+    public void BannedName() {
+        Assert.That(WardrobeRules.NameBanned("Raid", name => name.Contains("ai")), Is.True);
+        Assert.That(WardrobeRules.NameBanned("Raid", name => name.Contains("xx")), Is.False);
+        Assert.That(WardrobeRules.NameBanned("", _ => true), Is.False);
+    }
 }

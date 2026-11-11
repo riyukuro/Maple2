@@ -15,4 +15,10 @@ public static class WardrobeRules {
     public static bool NameAllowed(string name, int maxLength) {
         return name.Length <= maxLength;
     }
+
+    // The client sends a tab name with no text check of its own (uiclosetdialog.cpp:1173-1196), so the
+    // server's ban-word list is the only one the name meets.
+    public static bool NameBanned(string name, System.Func<string, bool> isBanned) {
+        return !string.IsNullOrWhiteSpace(name) && isBanned(name);
+    }
 }
