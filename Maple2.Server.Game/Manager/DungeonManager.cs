@@ -309,6 +309,18 @@ public class DungeonManager {
             return;
         }
 
+        // A limitEnter room is entered only while its reward record has a count left. The client's OnError 4
+        // reads the room id and shows that room's record expire (dungeonrecordcli.cpp:338).
+        if (metadata.LimitEnter) {
+            int rewardId = metadata.Reward.UnionRewardId != 0 ? metadata.Reward.UnionRewardId : metadata.Id;
+            DungeonRoomMetadata rewardRoom = session.TableMetadata.DungeonRoomTable.Entries.GetValueOrDefault(rewardId, metadata);
+            Records.TryGetValue(rewardId, out DungeonRecord? rewardRecord);
+            if (!DungeonRoomRules.HasCountLeft(rewardRecord, rewardRoom.Reward.Count, rewardRoom.Reward.SubRewardCount, DateTime.Now.ToEpochSeconds())) {
+                session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_party_err_cooldown, metadata.Id));
+                return;
+            }
+        }
+
         if (withParty) {
             if (Party == null) {
                 session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_invalidPartyOID));

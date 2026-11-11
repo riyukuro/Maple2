@@ -1875,6 +1875,13 @@ public class TableMapper : TypeMapper<TableMetadata> {
     }
 
     private DungeonRoomTable ParseDungeonRoom() {
+        // The played client's own room table says which rooms limit entry (PlayedClientRooms).
+        HashSet<int> playedLimitEnter = [];
+        Maple2.File.IO.Crypto.Common.PackFileEntry? roomEntry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.RoomTable);
+        if (playedReader != null && roomEntry != null) {
+            playedLimitEnter = PlayedClientRooms.LimitEnter(playedReader.GetXmlDocument(roomEntry),
+                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+        }
         var dungeons = new Dictionary<int, DungeonRoomMetadata>();
         foreach ((int id, DungeonRoom dungeon) in parser.ParseDungeonRoom()) {
             dungeons.Add(id, new DungeonRoomMetadata(
@@ -1927,7 +1934,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 MoveToBackupField: dungeon.isMoveOutToBackupField,
                 TimerType: (Maple2.Model.Enum.DungeonTimerType) dungeon.timerType,
                 IsExpireTimeOut: dungeon.isExpireTimeOut,
-                BossRanking: dungeon.BossRanking
+                BossRanking: dungeon.BossRanking,
+                LimitEnter: playedLimitEnter.Contains(dungeon.dungeonRoomID)
                 ));
         }
 

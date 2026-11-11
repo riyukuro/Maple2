@@ -30,7 +30,9 @@ public record DungeonRoomMetadata(
     bool IsExpireTimeOut,
     // The boss board id (BossRanking): the ranking dialog adds one boss board tab per room with one, and asks for
     // its boards with this id. 0 = no board.
-    int BossRanking = 0
+    int BossRanking = 0,
+    // limitEnter: the room is entered only while its reward record has a count left (DungeonRoomRules.HasCountLeft).
+    bool LimitEnter = false
 );
 
 public record DungeonRoomRewardMetadata(

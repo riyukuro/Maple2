@@ -1,4 +1,5 @@
 using System;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -58,5 +59,43 @@ public class DungeonRoomRulesTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(7));
         Assert.That(reader.ReadBool(), Is.False);
         Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    // HasCountLeft: the client's DungeonRecordCli::HasCountLeft on the record fields the server writes.
+    private static DungeonRecord Record(byte taken, long expire, byte subClears = 0, long subExpire = 0, byte bonus = 0) =>
+        new(1) { UnionClears = taken, UnionCooldownTimestamp = expire, UnionSubClears = subClears, UnionSubCooldownTimestamp = subExpire, ExtraSubClears = bonus };
+
+    [TestCase(0, true)]
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    public void HasCountLeft_TheRewardsTakenBeforeTheExpire(int taken, bool left) {
+        Assert.That(DungeonRoomRules.HasCountLeft(Record((byte) taken, 200), 3, 0, 100), Is.EqualTo(left));
+    }
+
+    [Test]
+    public void HasCountLeft_AtTheExpireTheCountIsBack() {
+        Assert.That(DungeonRoomRules.HasCountLeft(Record(3, 200), 3, 0, 200), Is.True);
+    }
+
+    [Test]
+    public void HasCountLeft_TheBonusCountAddsUntilTheExpire() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.HasCountLeft(Record(3, 200, bonus: 1), 3, 0, 100), Is.True);
+            Assert.That(DungeonRoomRules.HasCountLeft(Record(4, 200, bonus: 1), 3, 0, 100), Is.False);
+        });
+    }
+
+    [Test]
+    public void HasCountLeft_TheSubCountStopsUntilItsOwnExpire() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.HasCountLeft(Record(1, 200, subClears: 1, subExpire: 150), 3, 1, 100), Is.False);
+            Assert.That(DungeonRoomRules.HasCountLeft(Record(1, 200, subClears: 1, subExpire: 150), 3, 1, 150), Is.True);
+            Assert.That(DungeonRoomRules.HasCountLeft(Record(1, 200, subClears: 1, subExpire: 150), 3, 0, 100), Is.True);
+        });
+    }
+
+    [Test]
+    public void HasCountLeft_NoRecordHasACount() {
+        Assert.That(DungeonRoomRules.HasCountLeft(null, 1, 0, 100), Is.True);
     }
 }
