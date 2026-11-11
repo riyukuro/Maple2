@@ -122,6 +122,12 @@ public class DungeonFieldManager : FieldManager {
                     codeLong: DungeonId);
 
             }
+        } else if (DungeonRoomRecord.State == DungeonState.Fail) {
+            foreach (long characterId in DungeonRoomRecord.UserResults.Keys) {
+                if (TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                    player.Session.Dungeon.FailDungeon();
+                }
+            }
         }
     }
     /// <summary>

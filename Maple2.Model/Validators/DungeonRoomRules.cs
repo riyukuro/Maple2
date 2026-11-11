@@ -112,4 +112,29 @@ public static class DungeonRoomRules {
     // s_room_dungeon_canEnterDayOfWeeks (dungeonrecordcli.cpp:371).
     public static bool OpenOnDay(IReadOnlyCollection<DayOfWeek> days, DayOfWeek today) =>
         days.Count == 0 || days.Contains(today);
+
+    // A room's reward period. The client reads only cooldownValue and takes the type from it
+    // (DungeonRoom::GetCooldownType, commonfiles/dungeonroom.cpp:524: 0 is the next day, else a weekday), so a
+    // table without cooldownType (the KR one) still has weekly rooms; the ingest maps the type the same way.
+    public static DungeonCooldownType CooldownType(int cooldownValue) =>
+        cooldownValue == 0 ? DungeonCooldownType.nextDay : DungeonCooldownType.dayOfWeeks;
+
+    // The period's end, CalcCooldownEndTime (dungeonroom.cpp:770): the next midnight for nextDay; for
+    // dayOfWeeks the midnight of the next day numbered cooldownValue (Sunday 1, GetWeekdayStart in
+    // timeutil.cpp:303), a week on when that day is today; no valid day (or no type) ends it at once.
+    public static DateTime CooldownEnd(DungeonCooldownType type, int cooldownValue, DateTime clearTime) {
+        switch (type) {
+            case DungeonCooldownType.nextDay:
+                return clearTime.Date.AddDays(1);
+            case DungeonCooldownType.dayOfWeeks when cooldownValue is >= 1 and <= 7:
+                int current = (int) clearTime.DayOfWeek;
+                int target = cooldownValue - 1;
+                if (current >= target) {
+                    target += 7;
+                }
+                return clearTime.Date.AddDays(target - current);
+            default:
+                return clearTime;
+        }
+    }
 }

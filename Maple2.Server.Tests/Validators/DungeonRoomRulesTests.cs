@@ -214,4 +214,43 @@ public class DungeonRoomRulesTests {
             Assert.That(DungeonRoomRules.WithOtherRookie(1, new Dictionary<long, bool>()), Is.False);
         });
     }
+
+    // The client takes a room's cooldown type from cooldownValue alone: 0 is the next day, else a weekday.
+    [TestCase(0, DungeonCooldownType.nextDay)]
+    [TestCase(6, DungeonCooldownType.dayOfWeeks)]
+    [TestCase(1, DungeonCooldownType.dayOfWeeks)]
+    public void CooldownType_FromValue(int value, DungeonCooldownType expected) {
+        Assert.That(DungeonRoomRules.CooldownType(value), Is.EqualTo(expected));
+    }
+
+    // 2026-11-11 is a Wednesday; cooldownValue 6 is Friday (Sunday 1), the next one a week on when it is today.
+    [TestCase("2026-11-11 15:30", DungeonCooldownType.dayOfWeeks, 6, "2026-11-13 00:00")]
+    [TestCase("2026-11-13 10:00", DungeonCooldownType.dayOfWeeks, 6, "2026-11-20 00:00")]
+    [TestCase("2026-11-14 00:00", DungeonCooldownType.dayOfWeeks, 6, "2026-11-20 00:00")]
+    [TestCase("2026-11-11 15:30", DungeonCooldownType.dayOfWeeks, 1, "2026-11-15 00:00")]
+    [TestCase("2026-11-11 23:59", DungeonCooldownType.nextDay, 0, "2026-11-12 00:00")]
+    [TestCase("2026-11-11 15:30", DungeonCooldownType.none, 6, "2026-11-11 15:30")]
+    [TestCase("2026-11-11 15:30", DungeonCooldownType.dayOfWeeks, 8, "2026-11-11 15:30")]
+    public void CooldownEnd_FollowsTheClient(string clear, DungeonCooldownType type, int value, string expected) {
+        Assert.That(DungeonRoomRules.CooldownEnd(type, value, DateTime.Parse(clear)), Is.EqualTo(DateTime.Parse(expected)));
+    }
+
+    // The Colosseum row (cooldownValue 6, no cooldownType in the played client's table): a run that cleared one
+    // round keeps a reward count of 1 until Friday, so receivedRewardDungeonID holds and Nagi offers to continue.
+    [Test]
+    public void ColosseumRound_CountsUntilTheWeekEnds() {
+        DateTime clear = DateTime.Parse("2026-11-11 15:30");
+        var record = new DungeonRecord(24096001) {
+            UnionClears = 1,
+            UnionCooldownTimestamp = Maple2.Database.Extensions.DateTimeExtensions.ToEpochSeconds(
+                DungeonRoomRules.CooldownEnd(DungeonRoomRules.CooldownType(6), 6, clear)),
+        };
+        long now = Maple2.Database.Extensions.DateTimeExtensions.ToEpochSeconds(clear.AddHours(1));
+        long after = Maple2.Database.Extensions.DateTimeExtensions.ToEpochSeconds(DateTime.Parse("2026-11-13 00:01"));
+        Assert.Multiple(() => {
+            Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCount(record, now), Is.EqualTo(1));
+            Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCondition(1, 0, complete: false), Is.True);
+            Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCount(record, after), Is.EqualTo(0));
+        });
+    }
 }

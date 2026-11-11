@@ -1964,8 +1964,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 Level: dungeon.dungeonLevel,
                 PlayType: (DungeonPlayType) dungeon.playType,
                 GroupType: (DungeonGroupType) dungeon.groupType,
-                CooldownType: (DungeonCooldownType) dungeon.cooldownType,
-                CooldownValue: dungeon.cooldownType == Parser.Enum.DungeonCooldownType.dayOfWeeks ? dungeon.cooldownValue + 1 : dungeon.cooldownValue, // dayOfWeeks is 0-indexed
+                CooldownType: DungeonRoomRules.CooldownType(dungeon.cooldownValue), // the client ignores cooldownType
+                CooldownValue: dungeon.cooldownValue, // a day number, Sunday 1
                 DurationTick: dungeon.durationTick,
                 LobbyFieldId: dungeon.lobbyFieldID,
                 FieldIds: dungeon.fieldIDs,

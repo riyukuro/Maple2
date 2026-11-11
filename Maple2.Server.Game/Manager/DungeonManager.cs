@@ -519,6 +519,21 @@ public class DungeonManager {
         session.Send(DungeonRewardPacket.Dungeon(UserRecord));
     }
 
+    // A failed run's result: the reward window with the fail title, its time under the fail-time label and no
+    // reward. A fail's closing photo opens that window when it closes (UIDungeonClosingPhotoDialog vfunc_67,
+    // uidungeonclosingphotodialog.cpp:226, opens 20217 = UIDungeonRewardDialog); without this packet the window
+    // keeps its defaults (the Clear Time text "time", 0 mesos and exp, the guild rows). OnRewardPacket
+    // (uidungeonrewarddialog.cpp:557) reads the win flag first and shows s_dungeon_reward_title_fail and
+    // s_dungeon_reward_fail_time when it is false.
+    public void FailDungeon() {
+        if (Lobby == null || Metadata == null || UserRecord == null) {
+            return;
+        }
+        UserRecord.IsDungeonSuccess = false;
+        UserRecord.TotalSeconds = (int) (Lobby.DungeonRoomRecord.EndTick - Lobby.DungeonRoomRecord.StartTick) / 1000;
+        session.Send(DungeonRewardPacket.Dungeon(UserRecord));
+    }
+
     // The rank score of a clear (DungeonScoreRules), on every clear of a room with a rank table, whether or not
     // the clear still had a reward count left: LifetimeRecord keeps the best score, and in a season rank room
     // CurrentRecord keeps the best score of the season week, its expiry in CooldownTimestamp (the long the client
@@ -827,12 +842,8 @@ public class DungeonManager {
         return complete ? rewardCount >= roomRewardCount : rewardCount > 0;
     }
 
-    private long GetCooldownTime(DungeonCooldownType type, int cooldownValue, DateTime clearTime) {
-        return type switch {
-            DungeonCooldownType.nextDay => new DateTime(clearTime.Year, clearTime.Month, clearTime.Day).AddDays(1).ToEpochSeconds(),
-            DungeonCooldownType.dayOfWeeks => DateTime.Now.NextDayOfWeek((DayOfWeek) cooldownValue).ToEpochSeconds(),
-            _ => 0,
-        };
+    private static long GetCooldownTime(DungeonCooldownType type, int cooldownValue, DateTime clearTime) {
+        return DungeonRoomRules.CooldownEnd(type, cooldownValue, clearTime).ToEpochSeconds();
     }
 
     public void Reset() {
