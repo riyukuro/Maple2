@@ -67,12 +67,16 @@ public static class MesoMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter Create(MesoListing listing) {
+    // Client: CMesoMarketMan::OnMesoMarketRegistered (mesomarketproductcli.cpp:372): the listing (five longs
+    // and the own-listing bool, CMesoMarketProduct::Read), then an int the client keeps as its count of
+    // listings made today, the same value as the first int of Quota. CanRegister (:283) tests it against the
+    // daily limit.
+    public static ByteWriter Create(MesoListing listing, int dailyListed) {
         var pWriter = Packet.Of(SendOp.MesoMarket);
         pWriter.Write<Command>(Command.Create);
         pWriter.WriteClass<MesoListing>(listing);
         pWriter.WriteBool(true); // Self listing
-        pWriter.WriteInt(1); // Amount? always 1
+        pWriter.WriteInt(dailyListed);
 
         return pWriter;
     }
@@ -98,12 +102,15 @@ public static class MesoMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter Purchase(long listingId, MesoMarketError error = MesoMarketError.none) {
+    // Client: CMesoMarketMan::OnBuyResult (mesomarketproductcli.cpp:401): int code, long listing id, then an
+    // int the client keeps as its count of purchases this month, the same value as the second int of Quota.
+    // CanBuy (:311) tests it against the monthly limit.
+    public static ByteWriter Purchase(long listingId, int monthlyPurchased, MesoMarketError error = MesoMarketError.none) {
         var pWriter = Packet.Of(SendOp.MesoMarket);
         pWriter.Write<Command>(Command.Purchase);
         pWriter.Write<MesoMarketError>(error);
         pWriter.WriteLong(listingId);
-        pWriter.WriteInt(1); // Amount? always 1
+        pWriter.WriteInt(monthlyPurchased);
 
         return pWriter;
     }
