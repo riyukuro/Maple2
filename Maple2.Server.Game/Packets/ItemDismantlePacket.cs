@@ -30,10 +30,10 @@ public static class ItemDismantlePacket {
         return pWriter;
     }
 
-    public static ByteWriter Result(IDictionary<int, int> rewards) {
+    public static ByteWriter Result(byte type, IDictionary<int, int> rewards) {
         var pWriter = Packet.Of(SendOp.ItemDismantle);
         pWriter.Write<Command>(Command.Result);
-        pWriter.WriteBool(true); // success?
+        pWriter.WriteByte(type); // the type of the open dialog (c2s sub-type 0); the client drops the result if it differs
         pWriter.WriteInt(rewards.Count);
         foreach ((int id, int amount) in rewards) {
             pWriter.WriteInt(id);

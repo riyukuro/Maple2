@@ -13,6 +13,7 @@ public partial class GameSession {
 
     private const int DISMANTLE_MAX_STAGED_ITEMS = 100;
     public bool DismantleOpened = false;
+    public byte DismantleType;
     public readonly (long Uid, int Amount)[] DismantleStaging = new (long, int)[DISMANTLE_MAX_STAGED_ITEMS];
 
     public Item? StagedUgcItem = null;

@@ -55,7 +55,8 @@ public class ItemDismantleHandler : FieldPacketHandler {
     }
 
     private void HandleInterface(GameSession session, IByteReader packet) {
-        session.DismantleOpened = packet.ReadBool();
+        session.DismantleType = packet.ReadByte();
+        session.DismantleOpened = session.DismantleType != 0;
         Array.Clear(session.DismantleStaging);
     }
 
@@ -152,7 +153,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
             }
 
-            session.Send(ItemDismantlePacket.Result(result));
+            session.Send(ItemDismantlePacket.Result(session.DismantleType, result));
         }
     }
 
