@@ -30,7 +30,7 @@ public class PetHandler : FieldPacketHandler {
         UpdatePotionConfig = 5,
         UpdateLootConfig = 6,
         Fusion = 12, // OnPetEnchant, s_msg_transfer_bind_pet_compose
-        Attack = 15, // OnPetAttack, setPetAttackState
+        ToggleAuto = 15, // the client flips its pet auto flag and sends the new value
         Unknown16 = 16,
         Evolve = 17,
         EvolvePoints = 18,
@@ -61,8 +61,8 @@ public class PetHandler : FieldPacketHandler {
             case Command.Fusion:
                 HandleFusion(session, packet);
                 return;
-            case Command.Attack:
-                HandleAttack(session, packet);
+            case Command.ToggleAuto:
+                HandleToggleAuto(session, packet);
                 return;
             case Command.Unknown16:
                 HandleUnknown16(session, packet);
@@ -151,8 +151,8 @@ public class PetHandler : FieldPacketHandler {
         }
     }
 
-    private void HandleAttack(GameSession session, IByteReader packet) {
-        packet.ReadBool();
+    private void HandleToggleAuto(GameSession session, IByteReader packet) {
+        packet.ReadBool(); // auto on
     }
 
     private void HandleUnknown16(GameSession session, IByteReader packet) {

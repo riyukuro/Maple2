@@ -22,7 +22,7 @@ public static class PetPacket {
         Fusion = 10,
         LevelUp = 11,
         FusionCount = 12,
-        IsSummoned = 15,
+        AutoChanged = 15,
         PetInfo = 16,
         Evolve = 17,
         EvolvePoints = 18,
@@ -152,10 +152,11 @@ public static class PetPacket {
         return pWriter;
     }
 
-    public static ByteWriter IsSummoned(bool isSummoned) {
+    // The client stores the bool as its pet auto flag, the one its own toggle request (mode 15) flips.
+    public static ByteWriter AutoChanged(bool auto) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.IsSummoned);
-        pWriter.WriteBool(isSummoned);
+        pWriter.Write<Command>(Command.AutoChanged);
+        pWriter.WriteBool(auto);
 
         return pWriter;
     }
