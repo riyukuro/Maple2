@@ -14,8 +14,8 @@ namespace Maple2.Server.Game.PacketHandlers;
 
 // The client's debug mode (a GM hotkey) and the windows it opens. GM only.
 // Mode 2: a click on a minimap entity in debug mode, with the entity's position. The sender is moved there.
-// Mode 4: the NPC control window. The health and additional effect buttons are applied; the others are read
-// and logged.
+// Mode 4: the NPC control window. The health, additional effect, skill and stop skill buttons are applied; the
+// others are read and logged.
 // The client has no reader for a reply (0x87 DebugMode is in its opcode list, no case reads it).
 public class SetDebugModeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.SetDebugMode;
@@ -95,6 +95,19 @@ public class SetDebugModeHandler : FieldPacketHandler {
                 foreach (Buff buff in npc.Buffs.EnumerateBuffs(request.EffectId)) {
                     npc.Buffs.Remove(buff.Id, buff.Caster.ObjectId);
                 }
+                return;
+            case GmNpcControlRequest.UseSkill:
+                // The first skill of the list is cast once, facing the sender; the loop count and the rest
+                // of the list are not played.
+                if (request.SkillCount < 1 || request.SkillLevel is < 1 or > short.MaxValue
+                    || !session.Field.SkillMetadata.TryGet(request.SkillId, (short) request.SkillLevel, out SkillMetadata? _)) {
+                    Logger.Warning("SetDebugMode: unknown skill {SkillId} level {Level} from account {AccountId}", request.SkillId, request.SkillLevel, session.AccountId);
+                    return;
+                }
+                npc.CastAiSkill(request.SkillId, (short) request.SkillLevel, faceTarget: 1, facePos: session.Player.Position);
+                return;
+            case GmNpcControlRequest.StopSkill:
+                npc.MovementState.CastTask?.Cancel();
                 return;
             default:
                 Logger.Debug("SetDebugMode: NPC control command {Command} on {ObjectId} from account {AccountId} not handled", request.Command, request.ObjectId, session.AccountId);

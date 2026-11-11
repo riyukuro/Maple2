@@ -5,7 +5,8 @@ namespace Maple2.Server.Game.Util;
 // 0x50 SetDebugMode, mode 4: the client's NPC control window (opened by picking an NPC with the cursor
 // in debug mode). The body after the mode byte, read as the client writes it: the NPC's object id, a
 // command byte and the command's own fields.
-public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, long Value, int EffectId, int EffectLevel, int SkillCount, string Text) {
+// SkillId and SkillLevel are the first entry of the skill list (command 8).
+public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, long Value, int EffectId, int EffectLevel, int SkillCount, string Text, int SkillId = 0, int SkillLevel = 0) {
     public const byte Select = 0; // the NPC was picked; no fields
     public const byte HealthPercent = 1; // long, 1 to 100
     public const byte HealthValue = 2; // long, above 0
@@ -26,6 +27,8 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
         int effectLevel = 0;
         int skillCount = 0;
         string text = string.Empty;
+        int skillId = 0;
+        int skillLevel = 0;
 
         switch (command) {
             case Select:
@@ -35,8 +38,12 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
                 value = packet.ReadShort(); // loop
                 skillCount = Math.Clamp((int) packet.ReadShort(), 0, MaxSkills);
                 for (int i = 0; i < skillCount; i++) {
-                    packet.ReadInt(); // skill id
-                    packet.ReadInt(); // level
+                    int id = packet.ReadInt();
+                    int level = packet.ReadInt();
+                    if (i == 0) {
+                        skillId = id;
+                        skillLevel = level;
+                    }
                 }
                 break;
             case AiFile:
@@ -58,7 +65,7 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
                 break;
         }
 
-        return new GmNpcControlRequest(objectId, command, value, effectId, effectLevel, skillCount, text);
+        return new GmNpcControlRequest(objectId, command, value, effectId, effectLevel, skillCount, text, skillId, skillLevel);
     }
 
     // The health the two health commands ask for, or -1 when the command is another one or the value is

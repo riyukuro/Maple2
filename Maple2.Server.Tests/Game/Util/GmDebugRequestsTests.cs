@@ -44,6 +44,7 @@ public class GmDebugRequestsTests {
         GmNpcControlRequest request = GmNpcControlRequest.Read(reader);
 
         Assert.That(request.SkillCount, Is.EqualTo(2));
+        Assert.That((request.SkillId, request.SkillLevel), Is.EqualTo((1, 1)));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 
