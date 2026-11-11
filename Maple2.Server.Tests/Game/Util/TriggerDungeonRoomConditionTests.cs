@@ -24,4 +24,17 @@ public class TriggerDungeonRoomConditionTests {
         // A field that is no dungeon room has id 0.
         Assert.That(TriggerContext.DungeonIdMatches(0, 90010003), Is.False);
     }
+
+    [Test]
+    public void DungeonLevel_IsTheRaidGroupType() {
+        Assert.That(Condition("""<condition name="dungeon_level" level="2" />"""), Is.TypeOf<TriggerConditions.DungeonLevel>());
+        Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.raid, 2), Is.True);
+        Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.raid, 3), Is.False);
+        Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.chaosRaid, 3), Is.True);
+        Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.chaosRaid, 2), Is.False);
+        // No raid room (or no dungeon room): the old answer, chaos.
+        Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.normal, 2), Is.False);
+        Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.normal, 3), Is.True);
+        Assert.That(TriggerContext.DungeonLevelMatches(null, 3), Is.True);
+    }
 }

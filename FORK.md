@@ -42,6 +42,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Trigger:** the sub-type numbers are the client's (skip cutscene, UI, load script, save script, discard script).
 - **Trigger dungeon variables:** a variable never set reads 0; no client code or table gives a start value.
 - **Trigger score board:** score_board_score compares only in a field whose script called score_board_set_score; elsewhere it is the old test (the threshold compared with 0, so GreaterEqual passes). No kill, pickup or packet score reaches the board (the client only shows it), so 02020063/02020065 battle_1 (800 points) and 99999840/99999841 would otherwise never end.
+- **Trigger dungeon level:** dungeon_level compares the room's groupType (2 raid, 3 chaos raid; the scripts' states are named so), not its dungeonLevel, which is a character level. Outside a raid or chaos raid room it keeps the old answer (3), so a script that tests only 2 and 3 still goes on.
 - **Item merge:**
   - Request and response sub-types are renumbered to the client's.
   - The option preview (Select) is written in the client's layout.

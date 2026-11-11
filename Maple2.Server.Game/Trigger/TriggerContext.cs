@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using BasicAttribute = Maple2.Model.Enum.BasicAttribute;
+using DungeonGroupType = Maple2.Model.Enum.DungeonGroupType;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
@@ -154,9 +155,17 @@ public partial class TriggerContext : ITriggerContext {
 
     public static bool DungeonIdMatches(int fieldDungeonId, int dungeonId) => fieldDungeonId == dungeonId;
 
+    // The scripts test 2 (raid) and 3 (chaos raid): the room's groupType in DungeonRoom.xml, not its
+    // dungeonLevel (a character level). Outside a raid room the old answer (chaos) stays, so a script
+    // that tests only 2 and 3 still goes on.
     public bool DungeonLevel(int level) {
-        ErrorLog("[GetDungeonLevel]");
-        return level == 3;
+        DebugLog("[DungeonLevel] level:{Level}", level);
+        DungeonGroupType? groupType = (Field as DungeonFieldManager)?.DungeonMetadata.GroupType;
+        return DungeonLevelMatches(groupType, level);
+    }
+
+    public static bool DungeonLevelMatches(DungeonGroupType? groupType, int level) {
+        return groupType is DungeonGroupType.raid or DungeonGroupType.chaosRaid ? (int) groupType == level : level == 3;
     }
 
     public bool DungeonMaxUserCount(int value) {
