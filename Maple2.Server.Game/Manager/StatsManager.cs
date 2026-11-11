@@ -219,6 +219,11 @@ public class StatsManager {
                     AddUpgradeOption(item, kvp.Key, kvp.Value);
                 }
             }
+            if (item.LimitBreak is not null) {
+                foreach (KeyValuePair<SpecialAttribute, SpecialOption> kvp in item.LimitBreak.SpecialOptions) {
+                    Values[kvp.Key].AddTotal(SetItemRules.LimitBreakSpecial(pvp, kvp.Value.Value));
+                }
+            }
 
             if (item.Socket != null) {
                 for (int index = 0; index < item.Socket.UnlockSlots; index++) {
@@ -355,7 +360,7 @@ public class StatsManager {
 
     // In a PvP field the client counts an item's enchant and limit break for the ratio stats only
     // (SetItemRules.PvpUpgrade); the limit break's special options are not counted there either
-    // (CItemStatus::FUN_14062ff70) and the server never adds those.
+    // (SetItemRules.LimitBreakSpecial).
     private void AddPvpUpgrades(Item item) {
         foreach (BasicAttribute attribute in new[] { BasicAttribute.Defense, BasicAttribute.MinWeaponAtk, BasicAttribute.MaxWeaponAtk }) {
             long enchant = item.Enchant != null && item.Enchant.BasicOptions.TryGetValue(attribute, out BasicOption enchantOption)

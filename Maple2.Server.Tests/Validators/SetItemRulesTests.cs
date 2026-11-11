@@ -66,6 +66,12 @@ public class SetItemRulesTests {
     }
 
     [Test]
+    public void LimitBreakSpecial_AsStoredOutsidePvp() {
+        Assert.That(SetItemRules.LimitBreakSpecial(pvp: false, value: 10), Is.EqualTo(10));
+        Assert.That(SetItemRules.LimitBreakSpecial(pvp: true, value: 10), Is.EqualTo(0));
+    }
+
+    [Test]
     public void GivesStats_CountedItemOfTheEquipOrOutfitTab() {
         Assert.That(SetItemRules.GivesStats(layer: 0, counted: true), Is.True);
         Assert.That(SetItemRules.GivesStats(layer: 1, counted: true), Is.True);

@@ -60,6 +60,13 @@ public static class SetItemRules {
         return defense ? (int) ((float) extra * 0.159f) : extra;
     }
 
+    // What a limit break's special option adds to the special stat: its stored int as it is (a rate stays in
+    // thousandths, like an item's own special option), with no cut (CItemStatus::GetSpecialValue,
+    // itemsocketsystemutil.cpp:1971-1976), and nothing in a PvP field (FUN_14062ff70, :1893).
+    public static int LimitBreakSpecial(bool pvp, int value) {
+        return pvp ? 0 : value;
+    }
+
     // An item's expiry time has passed (CItem::IsExpired, item.cpp:1303; 0 = no expiry). A pet item is never
     // held back by it (item.cpp:1719).
     public static bool Expired(long expiryTime, long now, bool pet) {
