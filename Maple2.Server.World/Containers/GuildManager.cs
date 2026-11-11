@@ -847,13 +847,9 @@ public class GuildManager : IDisposable {
     }
 
     public GuildError AddOrUpdatePoster(int id, string picture, long ownerId, string ownerName, long resourceId) {
-        if (!Guild.Members.TryGetValue(ownerId, out GuildMember? requestor)) {
+        // Any member: the client asks for no rank right before a poster upload, unlike the emblem (64).
+        if (!Guild.Members.ContainsKey(ownerId)) {
             return GuildError.s_guild_err_null_member;
-        }
-
-        GuildRank? rank = Guild.Ranks.ElementAtOrDefault(requestor.Rank);
-        if (rank == null || !rank.Permission.HasFlag(GuildPermission.EditEmblem)) {
-            return GuildError.s_guild_err_no_authority;
         }
 
         GuildPoster? oldPoster = Guild.Posters.FirstOrDefault(poster => poster.Id == id);

@@ -19,6 +19,7 @@ public partial class GameSession {
 
     public Item? StagedUgcItem = null;
     public GuildPoster? StagedGuildPoster = null;
+    public long StagedGuildEmblemUgc = 0;
     public readonly UgcFeeBook UgcFees = new();
 
     public Item? StagedInstrumentItem = null;

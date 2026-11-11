@@ -101,4 +101,41 @@ public class UgcRulesTests {
         Assert.That(UgcRules.BannerTimeOpen(20261112, 0, now), Is.True);
         Assert.That(UgcRules.BannerTimeOpen(20260230, 5, now), Is.False);
     }
+
+    [Test]
+    public void GuildMarkBytes() {
+        var writer = new ByteWriter();
+        writer.WriteLong(0x1122334455667788);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(UgcRules.ReadGuildMark(reader), Is.EqualTo(0x1122334455667788));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void GuildPosterBytes() {
+        var writer = new ByteWriter();
+        writer.WriteLong(0x1122334455667788);
+        writer.WriteInt(3);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(UgcRules.ReadGuildPoster(reader), Is.EqualTo((0x1122334455667788, 3)));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void GuildKinds() {
+        Assert.That(UgcRules.OwnGuild(5, 5), Is.True);
+        Assert.That(UgcRules.OwnGuild(6, 5), Is.False);
+        Assert.That(UgcRules.OwnGuild(0, 0), Is.False);
+
+        int[] posters = [0, 1, 2, 0];
+        Assert.That(UgcRules.GuildPosterIdValid(2, posters), Is.True);
+        Assert.That(UgcRules.GuildPosterIdValid(0, posters), Is.False);
+        Assert.That(UgcRules.GuildPosterIdValid(3, posters), Is.False);
+        Assert.That(UgcRules.GuildPosterIdValid(-1, posters), Is.False);
+
+        Assert.That(UgcRules.GuildConfirmAllowed(100, 100, true), Is.True);
+        Assert.That(UgcRules.GuildConfirmAllowed(100, 101, true), Is.False);
+        Assert.That(UgcRules.GuildConfirmAllowed(100, 100, false), Is.False);
+        Assert.That(UgcRules.GuildConfirmAllowed(0, 0, true), Is.False);
+    }
 }

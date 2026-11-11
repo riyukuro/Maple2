@@ -1,3 +1,5 @@
+using Maple2.PacketLib.Tools;
+
 namespace Maple2.Model.Validators;
 
 // Ugc 0x0038, the banner modes. Mode 19 reserves hours of a banner: i64 banner id, i32 count, then per
@@ -45,6 +47,35 @@ public static class UgcRules {
             return designCharacterId == characterId && !hasPicture;
         }
         return ownerId == characterId;
+    }
+
+    // Mode 1, guild emblem (CUgcGuildMarkProxy::Write): i64 guild id.
+    public static long ReadGuildMark(IByteReader packet) {
+        return packet.ReadLong();
+    }
+
+    // Mode 1, guild poster (CUgcGuildPosterProxy::Write): i64 guild id, i32 the poster object's id.
+    public static (long GuildId, int PosterId) ReadGuildPoster(IByteReader packet) {
+        long guildId = packet.ReadLong();
+        int posterId = packet.ReadInt();
+        return (guildId, posterId);
+    }
+
+    // The guild named by the client is the sender's own. The client fills in its own guild id and
+    // does not start the upload without one.
+    public static bool OwnGuild(long sentGuildId, long guildId) {
+        return guildId != 0 && sentGuildId == guildId;
+    }
+
+    // A guild poster goes on a poster object of the guild house: the id is one of the table's.
+    public static bool GuildPosterIdValid(int posterId, IEnumerable<int> posterIds) {
+        return posterId > 0 && posterIds.Contains(posterId);
+    }
+
+    // Mode 3 of a guild kind finishes the upload this session started with mode 1, and the resource
+    // is of that kind.
+    public static bool GuildConfirmAllowed(long stagedUgcUid, long ugcUid, bool resourceOfKind) {
+        return ugcUid != 0 && stagedUgcUid == ugcUid && resourceOfKind;
     }
 
     // The price of one hour of the banner, -1 when the table has none for it.

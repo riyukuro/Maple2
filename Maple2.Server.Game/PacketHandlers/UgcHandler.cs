@@ -320,16 +320,22 @@ public class UgcHandler : FieldPacketHandler {
     }
 
     private void UploadGuildBanner(GameSession session, IByteReader packet) {
-        long guildId = packet.ReadLong();
-        int bannerId = packet.ReadInt();
+        (long guildId, int bannerId) = UgcRules.ReadGuildPoster(packet);
 
         if (session.Guild.Guild is null) {
             Logger.Warning("Failed to find guild for UGC {GuildId}", guildId);
             return;
         }
 
-        if (session.Guild.Id != guildId) {
+        if (!UgcRules.OwnGuild(guildId, session.Guild.Id)) {
             Logger.Warning("Invalid guild for UGC {GuildId}", guildId);
+            return;
+        }
+
+        // The client tests no rank right for a poster (CUgcManager::OpenGuildPosterUpload: a guild, and
+        // the poster object of the guild house). The id is the object's housePosterId.
+        if (!UgcRules.GuildPosterIdValid(bannerId, TableMetadata.InteractObjectTable.Entries.Values.Select(entry => entry.GuildPosterId))) {
+            Logger.Warning("Invalid guild poster {PosterId} from {CharacterId}", bannerId, session.CharacterId);
             return;
         }
 
@@ -351,8 +357,14 @@ public class UgcHandler : FieldPacketHandler {
     }
 
     private void UploadGuildEmblem(GameSession session, IByteReader packet) {
+        long guildId = UgcRules.ReadGuildMark(packet);
         if (session.Guild.Guild is null) {
             Logger.Error("Cannot upload guild emblem without a guild");
+            return;
+        }
+
+        if (!UgcRules.OwnGuild(guildId, session.Guild.Id)) {
+            Logger.Warning("Invalid guild for UGC {GuildId}", guildId);
             return;
         }
 
@@ -368,6 +380,7 @@ public class UgcHandler : FieldPacketHandler {
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {session.Guild.Id}");
         }
 
+        session.StagedGuildEmblemUgc = resource.Id;
         session.Send(UgcPacket.Upload(resource));
     }
 
@@ -446,6 +459,7 @@ public class UgcHandler : FieldPacketHandler {
 
         session.StagedUgcItem = null;
         session.StagedGuildPoster = null;
+        session.StagedGuildEmblemUgc = 0;
         return;
 
         void ConfirmGuildBanner() {
@@ -455,7 +469,7 @@ public class UgcHandler : FieldPacketHandler {
                 return;
             }
 
-            if (session.StagedGuildPoster is null || session.StagedGuildPoster.ResourceId != ugcUid) {
+            if (session.StagedGuildPoster is null || !UgcRules.GuildConfirmAllowed(session.StagedGuildPoster.ResourceId, ugcUid, resource.Type == UgcType.GuildBanner)) {
                 Logger.Warning("Failed to find guild poster for UGC {UgcUid}", ugcUid);
                 return;
             }
@@ -487,6 +501,12 @@ public class UgcHandler : FieldPacketHandler {
             Guild? guild = session.Guild.Guild;
             if (guild is null) {
                 Logger.Warning("Failed to find guild for UGC {UgcUid}", ugcUid);
+                return;
+            }
+
+            // Only the emblem upload this session started: any other resource id is not made the emblem.
+            if (!UgcRules.GuildConfirmAllowed(session.StagedGuildEmblemUgc, ugcUid, resource.Type == UgcType.GuildEmblem)) {
+                Logger.Warning("Failed to find guild emblem upload for UGC {UgcUid}", ugcUid);
                 return;
             }
 
