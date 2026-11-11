@@ -282,8 +282,11 @@ public partial class TriggerContext {
         DebugLog("[QuestUserDetected] boxIds:{BoxIds}, questIds:{QuestIds}, questStates:{QuestStates}, jobCode:{JobCode}",
             string.Join(", ", boxIds), string.Join(", ", questIds), string.Join(", ", questStates), (JobCode) jobCode);
 
-
         foreach (FieldPlayer player in PlayersInBox(boxIds)) {
+            if (!TriggerJobCode.Matches(player.Value.Character.Job.Code(), jobCode)) {
+                continue;
+            }
+
             foreach (int questId in questIds) {
                 if (!player.Session.Quest.TryGetQuest(questId, out Quest? quest)) {
                     continue;
