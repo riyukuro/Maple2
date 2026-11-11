@@ -1,10 +1,12 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 
@@ -23,7 +25,11 @@ public class HomeDoctorHandler : FieldPacketHandler {
     public override void Handle(GameSession session, IByteReader packet) {
         if (session.Field is null) return;
         long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (session.Player.Value.Character.DoctorCooldown + Constants.HomeDoctorCallCooltime > time) {
+        var home = session.Field as HomeFieldManager;
+        if (!HomeConvenienceRules.IsDoctorAllowed(home != null, home?.OwnerId ?? 0, session.AccountId)) {
+            return;
+        }
+        if (!HomeConvenienceRules.IsReady(session.Player.Value.Character.DoctorCooldown, Constants.HomeDoctorCallCooltime, time)) {
             return;
         }
 

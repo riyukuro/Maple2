@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -12,11 +13,6 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class HomeBankHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestHomeBank;
 
-    private enum Command : byte {
-        Home = 1,
-        Premium = 2,
-    }
-
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required ServerTableMetadataStorage ServerTableMetadata { private get; init; }
@@ -25,24 +21,21 @@ public class HomeBankHandler : FieldPacketHandler {
     #endregion
 
     public override void Handle(GameSession session, IByteReader packet) {
-        var command = packet.Read<Command>();
-        switch (command) {
-            case Command.Home:
-                long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (session.Player.Value.Character.StorageCooldown + Constants.HomeBankCallCooltime > time) {
-                    return;
-                }
-
-                session.Player.Value.Character.StorageCooldown = time;
-                session.Send(HomeBank(time));
-                return;
-            case Command.Premium:
-                session.Send(HomeBank());
-                return;
+        byte kind = packet.ReadByte();
+        long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!HomeConvenienceRules.IsBankKindAllowed(kind, session.Player.Value.Account.PremiumTime >= time)) {
+            return;
         }
+        // Both buttons share the one cooltime: the client checks it before either request and stores the answer's time.
+        if (!HomeConvenienceRules.IsReady(session.Player.Value.Character.StorageCooldown, Constants.HomeBankCallCooltime, time)) {
+            return;
+        }
+
+        session.Player.Value.Character.StorageCooldown = time;
+        session.Send(HomeBank(time));
     }
 
-    private static ByteWriter HomeBank(long time = 0) {
+    private static ByteWriter HomeBank(long time) {
         var pWriter = Packet.Of(SendOp.HomeBank);
         pWriter.WriteLong(time);
 
