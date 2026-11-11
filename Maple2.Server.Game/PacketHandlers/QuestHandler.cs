@@ -214,6 +214,11 @@ public class QuestHandler : FieldPacketHandler {
                 continue;
             }
 
+            // Any other quest is accepted from its NPC, item or mail, not through this list.
+            if (session.Field == null || !QuestRules.ClientStartsItself(metadata, session.Field.MapId)) {
+                continue;
+            }
+
             session.Quest.Start(questId);
         }
     }
