@@ -116,6 +116,8 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             session.Send(MigrationPacket.LoginToGameError(s_move_err_default, ex.Message));
             session.Disconnect();
         } catch (Exception ex) {
+            // A failed load (a bad stored row, say) would otherwise leave only the client's error code.
+            Logger.Error(ex, "Login to game failed for character {CharacterId}", characterId);
             session.Send(MigrationPacket.LoginToGameError(s_move_err_default, ex.Message));
             session.Disconnect();
         }
