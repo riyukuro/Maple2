@@ -279,6 +279,8 @@ public class GuildManager : IDisposable {
                 continue;
             }
 
+            // The time of use is stored first: a member with no field now, or who leaves this field before
+            // the task below runs, gets the effect from LoadSkillBuffs on the next field entry.
             Guild.Buffs[i] = buff;
             session.Send(GuildPacket.NotifyUseBuff(requestorName, buff));
             FieldManager? field = session.Field;
