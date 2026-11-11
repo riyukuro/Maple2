@@ -75,11 +75,11 @@ public static class SkillPacket {
         return pWriter;
     }
 
+    // Client: CSceneStateGame::OnStateSkill mode 6 reads int object id, long cast uid, int skill id, int state.
     public static ByteWriter StateSkill(FieldPlayer player, int skillId, long skillCastUid) {
         var pWriter = Packet.Of(SendOp.StateSkill);
         pWriter.WriteByte(0x06);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.WriteInt(); // ItemId??
         pWriter.WriteLong(skillCastUid);
         pWriter.WriteInt(skillId);
         pWriter.WriteInt((int) player.State);

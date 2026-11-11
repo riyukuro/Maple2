@@ -12,15 +12,9 @@ public static class SkillMacroPacket {
         Init = 2,
     }
 
+    // Client: CSkillSystem::FUN_141767ae0 reads mode 2 only, so the answer to the dialog's request is mode 2 too.
     public static ByteWriter Load(ICollection<SkillMacro> skillMacros) {
-        var pWriter = Packet.Of(SendOp.SkillMacro);
-        pWriter.Write<Command>(Command.Load);
-        pWriter.WriteInt(skillMacros.Count);
-        foreach (SkillMacro macro in skillMacros) {
-            pWriter.WriteClass<SkillMacro>(macro);
-        }
-
-        return pWriter;
+        return Init(skillMacros);
     }
 
     public static ByteWriter Init(ICollection<SkillMacro> skillMacros) {
