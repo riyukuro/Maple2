@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Xml;
 using M2dXmlGenerator;
 using Maple2.Database.Extensions;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Ingest.Utils;
 using Maple2.File.IO;
 using Maple2.File.Parser;
@@ -47,10 +48,13 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private readonly M2dReader xmlReader;
     // The Xml pack of the client that is played, when it is not the data folder's (MS2_PLAYED_CLIENT_XML).
     private readonly M2dReader? playedReader;
+    // The server pack (Server.m2d), for the attributes only its copy of a table has (enchant scroll rates).
+    private readonly M2dReader? serverReader;
 
-    public TableMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
+    public TableMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null, M2dReader? serverReader = null) {
         this.xmlReader = xmlReader;
         this.playedReader = playedReader;
+        this.serverReader = serverReader;
         parser = PackTables.NewParser(xmlReader, language);
         optionParser = new ItemOptionParser(xmlReader);
         this.language = language;
@@ -1194,15 +1198,20 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
     private EnchantScrollTable ParseEnchantScrollTable() {
         var results = new Dictionary<int, EnchantScrollMetadata>();
+        Dictionary<int, ServerEnchantScroll.Entry> serverRows = ServerEnchantScroll.Read(serverReader);
         foreach ((int id, EnchantScroll scroll) in parser.ParseEnchantScroll()) {
+            int[] enchants = scroll.grade.ToArray();
+            Array.Sort(enchants); // Just in case
+            ServerEnchantScroll.Entry? serverRow = serverRows.TryGetValue(id, out ServerEnchantScroll.Entry row) ? row : null;
             var metadata = new EnchantScrollMetadata(
                 Type: (EnchantScrollType) scroll.scrollType,
                 MinLevel: scroll.minLv,
                 MaxLevel: scroll.maxLv,
-                Enchants: scroll.grade,
+                Enchants: enchants,
                 ItemTypes: scroll.slot,
-                Rarities: scroll.rank);
-            Array.Sort(metadata.Enchants); // Just in case
+                Rarities: scroll.rank,
+                Rates: ServerEnchantScroll.RatesFor(serverRow, enchants),
+                DisableBreak: serverRow?.DisableBreak ?? false);
             results.Add(id, metadata);
         }
 

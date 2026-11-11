@@ -22,7 +22,8 @@ public static class EnchantScrollPacket {
         pWriter.Write<Command>(Command.UseScroll);
         pWriter.WriteLong(item.Uid);
         pWriter.Write<EnchantScrollType>(metadata.Type);
-        pWriter.WriteBool(false);
+        // Client UIEnchantScrollDialog m_bDisableBreak: adds s_enchantscroll_desc_disable_break to the description.
+        pWriter.WriteBool(metadata.DisableBreak);
         pWriter.WriteInt(metadata.Enchants.Max());
         pWriter.WriteInt(10000); // div 100 = Rate
         pWriter.WriteShort(metadata.MinLevel);

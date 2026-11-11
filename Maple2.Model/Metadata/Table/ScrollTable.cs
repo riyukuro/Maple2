@@ -11,7 +11,12 @@ public record EnchantScrollMetadata(
     short MaxLevel,
     int[] Enchants,
     int[] ItemTypes,
-    int[] Rarities);
+    int[] Rarities,
+    // From the server pack's copy of the table (successProp): one weight per entry of Enchants, or null for data
+    // ingested before it was read (then each grade is equally likely).
+    int[]? Rates = null,
+    // From the server pack's copy (disableBreak), sent to the client's scroll dialog.
+    bool DisableBreak = false);
 
 public record ItemExchangeScrollTable(IReadOnlyDictionary<int, ItemExchangeScrollMetadata> Entries) : Table;
 

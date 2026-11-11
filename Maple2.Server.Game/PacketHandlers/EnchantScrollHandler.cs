@@ -108,7 +108,7 @@ public class EnchantScrollHandler : FieldPacketHandler {
             }
 
             // Update item enchant stats
-            int enchantLevel = metadata.Enchants.Random();
+            int enchantLevel = RollEnchant(metadata, Random.Shared);
             // Ensure that you cannot randomize an enchant lower than current item.
             item.Enchant ??= new ItemEnchant();
             if (enchantLevel > item.Enchant.Enchants) {
@@ -122,6 +122,28 @@ public class EnchantScrollHandler : FieldPacketHandler {
 
             session.Send(EnchantScrollPacket.Enchant(item));
         }
+    }
+
+    // The grade an enchant gives: weighted by the server table's successProp (one weight per grade; the random
+    // scrolls' weights, e.g. 4970,3600,1000,500,90,40 for +6..+11), or equally likely when the data has no weights.
+    public static int RollEnchant(EnchantScrollMetadata metadata, Random random) {
+        int[] enchants = metadata.Enchants;
+        int[]? rates = metadata.Rates;
+        if (rates == null || rates.Length != enchants.Length || rates.Any(rate => rate < 0)) {
+            return enchants[random.Next(enchants.Length)];
+        }
+        long total = rates.Sum(rate => (long) rate);
+        if (total <= 0) {
+            return enchants[random.Next(enchants.Length)];
+        }
+        long roll = random.NextInt64(total);
+        for (int i = 0; i < enchants.Length; i++) {
+            roll -= rates[i];
+            if (roll < 0) {
+                return enchants[i];
+            }
+        }
+        return enchants[^1];
     }
 
     private static EnchantScrollError IsCompatibleScroll(Item item, EnchantScrollMetadata metadata) {
