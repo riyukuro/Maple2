@@ -1,6 +1,7 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -29,25 +30,21 @@ public class TutorialItemHandler : FieldPacketHandler {
         }
 
         foreach (IGrouping<int, JobTable.Item> tutorialItemGroup in jobMetadata.Tutorial.StartItem.GroupBy(item => item.Id)) {
-            int tutorialItemsInInventory = session.Item.Inventory.Find(tutorialItemGroup.Key).Count();
-
-            tutorialItemsInInventory += session.Item.Equips.Gear.Count(x => x.Value.Id == tutorialItemGroup.Key);
-
-            int tutorialItemsToSpawn = tutorialItemGroup.Select(item => item.Count).Sum();
-
-            if (tutorialItemsInInventory >= tutorialItemsToSpawn) {
+            // Amounts, not stacks: a stack of 10 counted as 1 and was given again on every request.
+            int owned = session.Item.Inventory.Find(tutorialItemGroup.Key).Sum(item => item.Amount)
+                        + session.Item.Equips.Gear.Count(x => x.Value.Id == tutorialItemGroup.Key);
+            int missing = TutorialItemRules.Missing(owned, tutorialItemGroup.Select(item => item.Count));
+            if (missing <= 0) {
                 continue;
             }
 
-            Item? tutorialItem = session.Field?.ItemDrop.CreateItem(tutorialItemGroup.Key);
+            // One item with the missing amount: the same item object used to be added once per missing piece.
+            Item? tutorialItem = session.Field?.ItemDrop.CreateItem(tutorialItemGroup.Key, amount: missing);
             if (tutorialItem == null) {
                 continue;
             }
 
-            while (tutorialItemsInInventory < tutorialItemsToSpawn) {
-                session.Item.Inventory.Add(tutorialItem, true);
-                tutorialItemsInInventory++;
-            }
+            session.Item.Inventory.Add(tutorialItem, true);
         }
     }
 }
