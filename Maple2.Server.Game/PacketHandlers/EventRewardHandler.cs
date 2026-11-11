@@ -17,6 +17,8 @@ public class EventRewardHandler : FieldPacketHandler {
 
     private enum Command : byte {
         ClaimStampReward = 0,
+        ClaimStampCompleteReward = 1,
+        OpenEventBox = 2,
         ClaimTimeRunFinalReward = 3,
         ClaimTimeRunStepReward = 4,
         VipGmClick = 5,
@@ -27,11 +29,13 @@ public class EventRewardHandler : FieldPacketHandler {
         ClaimSnowmanAccumReward = 13,
         ClaimLevelUpEventReward = 15,
         SetEventCharacter = 16,
+        ClaimCollectItemGroupReward = 19,
         OpenBingo = 20,
         CrossOffBingoNumber = 22,
         ClaimBingoReward = 23,
         ClaimLongTermAttendReward = 25,
         LongTermAttend = 26,
+        LongTermAttendOpen = 27,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -65,13 +69,19 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimStampReward: // stamp count, special flag
                 Logger.Debug("EventReward {Command} from {CharacterId}: count {Count}, special {Special}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
                 return;
-            case Command.VipGmClick: // always 1
+            case Command.ClaimStampCompleteReward: // all stamps collected; no body
+            case Command.OpenEventBox: // the event box dialog's open button; no body
+            case Command.LongTermAttendOpen: // sent when the long-term attend event starts or its dialog asks again; no body
+                Logger.Debug("EventReward {Command} from {CharacterId}", command, session.CharacterId);
+                return;
+            case Command.VipGmClick: // always 1; sent by any player when the buddy event page opens, not a GM mode
             case Command.ClaimSnowmanDailyReward: // snowman index
             case Command.ClaimSnowmanAccumReward: // snowman index
             case Command.LongTermAttend: // 1 = catch up a missed day with merat, 0 = with an attend point
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
                 return;
             case Command.ClaimLevelUpEventReward: // event id
+            case Command.ClaimCollectItemGroupReward: // event id
             case Command.ClaimLongTermAttendReward: // day
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 return;
