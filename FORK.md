@@ -138,15 +138,15 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 58 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 56 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
 | EventReward | 12 | RequestItemEnchant | 5 | BuddyBadge | 2 |
-| RequestCube | 9 | Wedding | 3 | Party | 2 |
+| RequestCube | 9 | Wedding | 2 | Party | 2 |
 | Quest | 7 | HomeAction | 2 | | |
 | Guild | 6 | | | | |
-| RoomDungeon | 5 | | | | |
+| RoomDungeon | 4 | | | | |
 
 These systems have one unhandled sub-type each: Achieve, FurnishingStorage, InteractObject, Mapleopoly, Ugc.
 
@@ -158,6 +158,8 @@ Narrowed, with the reason:
 - Quest 15 (sky fortress mission), 17 (epic quest restart), 19 (re-enter a quest's hidden field), 28 (find a player for a quest) and 33 to 35 (alliance quest ticket, accept all, complete all): the server does not load the data or run the system behind them (no sky fortress missions, no restart event, no re-entry flag in the quest data, no alliance quest accept).
 - RequestItemEnchant 9 (refund), 13 and 14 (enchant simulation) and the GM debug buttons 15 to 19: read and logged only. The debug ones need a GM account.
 - Party 39 and 43 (join a dungeon party from a chat link): the link is built from a recruiting notice that the server never sends. Party 32 to 34 (dungeon match queue) have no matchmaker behind them.
+- Wedding 9 (the answer to the divorce message box) and 37 (the item of a wedding skill): the server has no divorce flow and does not load the wedding skill table. Both are read and logged. Wedding 34 (the couple message) is handled: the message is saved and shown to both partners.
+- RoomDungeon 8 (buy an extra reward count with a coupon item): the dungeon data the server loads has no coupon item or cost. 15 and 16 (ask for helpers or members): they need the recruiting notice, which the server never sends. 21 (reset the united reward, after a confirm box): what the reset changes is not settled from the client. All are read and logged. 17 (expert mode) and 24 (favourite mark), counted here before, are handled. The four lobby buttons of the dungeon search window (4, 12, 13, 14) belong to the match queue and are not counted.
 - Achieve 5 (GM debug buttons of the trophy window): read and logged only, GM account needed.
 
 Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. So are Quest 18 (the quest portal opens again when the quest talk ends) and Buddy 20 (the "refuse friend requests" option: a request is declined on receipt while the option is on; the server asks the client for the option at login and also learns it when the options are saved), Club 12 (the leader hands the club to a member) and HomeAction 1 to 3 (the home owner kills, sends out or revives a visitor from the player menu; only sub-type 3 was counted above). RequestRide 6 (the "ride alone" game option: the field is told and nobody can board the mount while it is on) and FunctionCube 5 and 7 (use a cube; closing a cube's dialog hands the cube back to other players) are handled too, EventReward 8 as well, and the client sends no Prestige sub-type other than the two that were already handled. The two HomeAction entries left are the PvP control dialog (14) and the OX quiz (10). The revive block of a buff (`disableRevivalHere`) is a new metadata property: it is empty until the metadata is ingested again. RequestItemInventory 8 and 9 (sort, expand) and Trade 14 (busy answer) were already handled and are no longer counted. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.

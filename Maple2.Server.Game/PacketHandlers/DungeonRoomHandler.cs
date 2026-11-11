@@ -17,11 +17,16 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
         Reset = 1,
         Create = 2,
         EnterLobby = 3,
+        ChaosRaidLobby = 4,
         AddExtraRewardCount = 8,
         EnterField = 9,
+        ReverseRaidLobby = 12,
+        ColosseumLobby = 13,
+        LapentaLobby = 14,
         FindHelper = 15,
         FindMember = 16,
         ChangeExpert = 17,
+        ResetUnitedReward = 21,
         Favorite = 24,
     }
 
@@ -58,6 +63,15 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
             case Command.FindMember:
                 // Not handled: the dungeon the party asks helpers or members for.
                 Logger.Debug("RoomDungeon {Command} from {CharacterId}: dungeon {Id}", command, session.CharacterId, packet.ReadInt());
+                break;
+            case Command.ChaosRaidLobby:
+            case Command.ReverseRaidLobby:
+            case Command.ColosseumLobby:
+            case Command.LapentaLobby:
+                // Not handled: the lobby button of the dungeon search window, one sub-type per dungeon group; no body.
+            case Command.ResetUnitedReward:
+                // Not handled: the confirmed reset of the united (weekly) reward; no body.
+                Logger.Debug("RoomDungeon {Command} from {CharacterId}", command, session.CharacterId);
                 break;
         }
     }
