@@ -328,6 +328,10 @@ public class PartyManager : IDisposable {
         session.Dungeon.SetDungeon(dungeonId, dungeonRoomId, set);
 
         session.Send(PartyPacket.DungeonReset(set, dungeonId));
+        if (set && dungeonId != 0 && Party.LeaderCharacterId != session.CharacterId) {
+            // The leader made a dungeon room: the client asks this member whether to enter it.
+            session.Send(PartyPacket.DungeonRoomCreate(dungeonId));
+        }
         if (Party.DungeonId == 0) {
             session.Send(PartyPacket.PartyNotice(PartyMessage.s_field_enteracne_party_notify_reset_dungeon, "Field_Enterance_Reset_Dungeon"));
         }
