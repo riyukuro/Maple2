@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -121,40 +122,23 @@ public sealed class ExperienceManager {
             return 0;
         }
 
-        long expValue;
-        switch (expType) {
-            case ExpType.fishing:
-            case ExpType.musicMastery1:
-            case ExpType.musicMastery2:
-            case ExpType.musicMastery3:
-            case ExpType.musicMastery4:
-            case ExpType.manufacturing:
-            case ExpType.gathering:
-            case ExpType.arcade:
-            case ExpType.expDrop:
-            case ExpType.miniGame:
-            case ExpType.userMiniGame:
-                if (!expBase.TryGetValue(Level, out expValue)) {
-                    return 0;
-                }
+        int level;
+        switch (CommonExpRules.Level(expType)) {
+            case CommonExpRules.LevelSource.Character:
+                level = Level;
                 break;
-            case ExpType.taxi:
-            case ExpType.mapCommon:
-            case ExpType.mapHidden:
-            case ExpType.telescope:
-            case ExpType.rareChestFirst:
-                int fieldLevel = session.Field.Metadata.Drop.Level;
-                int correctedLevel = fieldLevel > Level ? Level : fieldLevel;
-                if (!expBase.TryGetValue(correctedLevel, out expValue)) {
-                    return 0;
-                }
+            case CommonExpRules.LevelSource.Field:
+                level = CommonExpRules.FieldLevel(session.Field.Metadata.Drop.Level, Level);
                 break;
             default:
                 Log.Logger.Warning("Unhandled ExpType: {ExpType}", expType);
                 return 0;
         }
+        if (!expBase.TryGetValue(level, out long expValue)) {
+            return 0;
+        }
 
-        return AddExp((long) ((expValue * modifier) * entry.Factor) + additionalExp, expType.Message());
+        return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), expType.Message());
     }
 
     public void AddStaticExp(long amount) {
