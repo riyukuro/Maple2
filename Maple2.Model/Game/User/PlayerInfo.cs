@@ -62,7 +62,7 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
         writer.WriteInt(1);
         writer.WriteInt(MapId);
         writer.WriteInt(MapId);
-        writer.WriteInt(PlotMapId);
+        writer.WriteInt(); // instance (room) id, as FieldAddUser writes it; not known here, and a home map id is not one
         writer.WriteShort(Level);
         writer.WriteShort(Channel);
         writer.WriteInt((int) Job.Code());
@@ -78,7 +78,9 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
         writer.WriteInt(GearScore);
         writer.Write<SkinColor>(default);
         writer.WriteLong();
-        writer.Write<AchievementInfo>(default);
+        writer.WriteInt(AchievementInfo.Combat);
+        writer.WriteInt(AchievementInfo.Adventure);
+        writer.WriteInt(AchievementInfo.Lifestyle);
         writer.WriteLong(GuildId);
         writer.WriteUnicodeString(GuildName);
         writer.WriteUnicodeString(Motto);
