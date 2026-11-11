@@ -170,7 +170,7 @@ public partial class TriggerContext {
     // score, and clearing the last round gives each player in the field the reward row of the rounds cleared
     // (table/darkstream.xml: the exp, the meso, the habi and the items, an item to the bag or else by mail) and
     // sends it in the result with the player's best score before the run (0 before a first run). The run's score
-// is then kept as the player's best when it is higher (DarkStreamBest.Replaces).
+    // is then kept as the player's best when it is higher (DarkStreamBest.Replaces).
     public void DarkStreamSpawnMonster(int[] spawnIds, int score) {
         DebugLog("[DarkStreamSpawnMonster] spawnIds:{SpawnIds}, score:{Score}", string.Join(", ", spawnIds), score);
         foreach (int spawnId in spawnIds) {

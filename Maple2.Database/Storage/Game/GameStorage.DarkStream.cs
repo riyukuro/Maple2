@@ -44,44 +44,80 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        // The whole board, best first; a job code other than 0 keeps the characters of that job (the client's job
-        // tabs). Equal scores rank by the time they were set, the earlier one first.
-        private List<DarkStreamRankInfo> DarkStreamBoard(int jobCode) {
-            var rows = (from record in Context.DarkStreamRecord.AsNoTracking()
-                        join character in Context.Character.AsNoTracking() on record.CharacterId equals character.Id
-                        select new {
-                            record.CharacterId,
-                            record.Score,
-                            record.SetTime,
-                            character.Name,
-                            character.Job,
-                            Picture = character.Profile.Picture,
-                        })
-                .AsEnumerable()
-                .Where(row => jobCode == 0 || (int) row.Job.Code() == jobCode)
-                .OrderByDescending(row => row.Score)
+        // The rows of a job tab with their characters, in the database: a job code other than 0 keeps the characters
+        // of that job (the client's job tabs; Job.Code() is the job / 10, and the game master job is its own code).
+        private IQueryable<DarkStreamRow> DarkStreamRows(int jobCode) {
+            IQueryable<DarkStreamRow> rows = from record in Context.DarkStreamRecord.AsNoTracking()
+                                             join character in Context.Character.AsNoTracking() on record.CharacterId equals character.Id
+                                             select new DarkStreamRow {
+                                                 CharacterId = record.CharacterId,
+                                                 Score = record.Score,
+                                                 SetTime = record.SetTime,
+                                                 Name = character.Name,
+                                                 Job = character.Job,
+                                                 Profile = character.Profile,
+                                             };
+            if (jobCode == (int) JobCode.GameMaster) {
+                return rows.Where(row => row.Job == Job.GameMaster);
+            }
+            if (jobCode != 0) {
+                var low = (Job) (jobCode * 10);
+                var high = (Job) (jobCode * 10 + 9);
+                return rows.Where(row => row.Job != Job.GameMaster && row.Job >= low && row.Job <= high);
+            }
+            return rows;
+        }
+
+        // Best first; equal scores rank by the time they were set, the earlier one first, then by the character id.
+        private static IQueryable<DarkStreamRow> InBoardOrder(IQueryable<DarkStreamRow> rows) {
+            return rows.OrderByDescending(row => row.Score)
                 .ThenBy(row => row.SetTime)
                 .ThenBy(row => row.CharacterId);
-            return rows.Select((row, index) => new DarkStreamRankInfo(
-                    Rank: index + 1,
-                    CharacterId: row.CharacterId,
-                    Name: row.Name,
-                    Profile: row.Picture ?? string.Empty,
-                    Score: row.Score,
-                    SetTime: row.SetTime.ToEpochSeconds()))
-                .ToList();
+        }
+
+        private static DarkStreamRankInfo ToRankInfo(DarkStreamRow row, int rank) {
+            return new DarkStreamRankInfo(
+                Rank: rank,
+                CharacterId: row.CharacterId,
+                Name: row.Name,
+                Profile: row.Profile.Picture ?? string.Empty,
+                Score: row.Score,
+                SetTime: row.SetTime.ToEpochSeconds());
+        }
+
+        // The rank of a row: 1 + the rows of the same tab that come before it in the board order.
+        private int DarkStreamRank(int jobCode, DarkStreamRow row) {
+            return 1 + DarkStreamRows(jobCode).Count(other => other.Score > row.Score
+                || (other.Score == row.Score && (other.SetTime < row.SetTime
+                    || (other.SetTime == row.SetTime && other.CharacterId < row.CharacterId))));
         }
 
         public IList<DarkStreamRankInfo> GetDarkStreamRankings(int jobCode) {
-            return DarkStreamBoard(jobCode).Take(200).ToList();
+            return InBoardOrder(DarkStreamRows(jobCode))
+                .Take(200)
+                .AsEnumerable()
+                .Select((row, index) => ToRankInfo(row, index + 1))
+                .ToList();
         }
 
         public DarkStreamRankInfo? GetDarkStreamRankInfo(int jobCode, long characterId) {
-            return DarkStreamBoard(jobCode).FirstOrDefault(row => row.CharacterId == characterId);
+            DarkStreamRow? row = DarkStreamRows(jobCode).FirstOrDefault(row => row.CharacterId == characterId);
+            return row == null ? null : ToRankInfo(row, DarkStreamRank(jobCode, row));
         }
 
+        // The search by name finds the character as the trophy search does (GetCharacterId, any case).
         public DarkStreamRankInfo? GetDarkStreamRankInfo(int jobCode, string name) {
-            return DarkStreamBoard(jobCode).FirstOrDefault(row => row.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            long characterId = GetCharacterId(name);
+            return characterId == default ? null : GetDarkStreamRankInfo(jobCode, characterId);
+        }
+
+        private class DarkStreamRow {
+            public long CharacterId { get; init; }
+            public int Score { get; init; }
+            public DateTime SetTime { get; init; }
+            public string Name { get; init; } = string.Empty;
+            public Job Job { get; init; }
+            public Model.Profile Profile { get; init; } = null!;
         }
     }
 }

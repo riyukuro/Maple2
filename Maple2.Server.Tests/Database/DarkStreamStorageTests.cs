@@ -235,5 +235,38 @@ public class DarkStreamStorageTests {
         Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, (int) JobCode.Knight, alpha), GameRankingType.DarkDescentPersonal), Is.EqualTo(2));
         Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonalPreviousSeason, 0, alpha), GameRankingType.DarkDescentPersonalPreviousSeason), Is.EqualTo(0));
     }
+    [Test]
+    public void Board_GameMasterTab_KeepsOnlyTheGameMasterJob() {
+        long master = CreateCharacter("master", Job.GameMaster);
+        long alpha = CreateCharacter("alpha", Job.Knight);
+        Save(master, 3000, 1_800_000_300);
+        Save(alpha, 5000, 1_800_000_100);
+
+        (int _, int count, ByteReader reader) = ReadBoardHeader(Board(GameRankingType.DarkDescent, (int) JobCode.GameMaster));
+        Assert.That(count, Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadLong(), Is.EqualTo(master));
+        // Job.GameMaster is 999, inside the value range of job code 99, which is no job: that tab stays empty.
+        Assert.That(ReadBoardHeader(Board(GameRankingType.DarkDescent, 99)).Count, Is.EqualTo(0));
+        Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, (int) JobCode.GameMaster, master), GameRankingType.DarkDescentPersonal), Is.EqualTo(1));
+        Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, (int) JobCode.GameMaster, alpha), GameRankingType.DarkDescentPersonal), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Personal_EqualScores_RankByTheEarlierRecord() {
+        long alpha = CreateCharacter("alpha", Job.Knight);
+        long beta = CreateCharacter("beta", Job.Knight);
+        long gamma = CreateCharacter("gamma", Job.Knight);
+        Save(alpha, 3000, 1_800_000_300);
+        Save(beta, 3000, 1_800_000_100);
+        Save(gamma, 3000, 1_800_000_300);
+
+        Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, 0, beta), GameRankingType.DarkDescentPersonal), Is.EqualTo(1));
+        Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, 0, alpha), GameRankingType.DarkDescentPersonal), Is.EqualTo(2));
+        Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, 0, gamma), GameRankingType.DarkDescentPersonal), Is.EqualTo(3));
+        (int _, int count, ByteReader reader) = ReadBoardHeader(Board(GameRankingType.DarkDescent, 0, "gamma"));
+        Assert.That(count, Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+    }
     #endregion
 }

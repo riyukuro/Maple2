@@ -320,6 +320,7 @@ The checker follows the client's item reader (CItem::ReadFromStream, commonfiles
   - set_mini_game_area_for_hack and unset_mini_game_area_for_hack (13): anti-hack areas. The client's check for them is not known.
   - give_exp (1) and start_tutorial (1): one use each, and the script does not settle the rule.
   - npc_is_dead_by_string_id and announce: no shipped script uses them.
+- Web ranking (irrq.aspx) types 71 and 72 (the raid clear count: 0x47 the own rank, 0x48 BossKillCount rows) are not answered. The ranking dialog adds the raid board's tabs from the dungeon rooms of group type raid that have a BossRanking (one tab per room, the request's ranking id is that room's BossRanking; UIGameRankingDialog::AddCategory, DungeonRoomTable::GetBossRankingRooms), and with no such room it does not add the board at all. No shipped raid room has a BossRanking (the rooms with one are chaos raid, lapenta, fame challenge and colosseum rooms), so the client never shows the board and never asks for these types.
 
 ## Two local changes a server operator must know
 
