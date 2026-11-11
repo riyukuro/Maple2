@@ -56,6 +56,12 @@ public class GroupChatHandler : FieldPacketHandler {
             return;
         }
 
+        // Check the invited player before the chat exists, so a failed invite leaves no empty chat behind.
+        long targetCharacterId = 0;
+        if (!string.IsNullOrEmpty(targetPlayerName) && !CheckInviteTarget(session, targetPlayerName, out targetCharacterId)) {
+            return;
+        }
+
         GroupChatResponse response = World.GroupChat(new GroupChatRequest {
             Create = new GroupChatRequest.Types.Create(),
             RequesterId = session.CharacterId,
@@ -72,35 +78,47 @@ public class GroupChatHandler : FieldPacketHandler {
         }
 
         session.Send(GroupChatPacket.Create(response.GroupChat.Id));
-        if (!string.IsNullOrEmpty(targetPlayerName)) {
-            Invite(session, targetPlayerName, response.GroupChat.Id);
+        if (targetCharacterId != 0) {
+            Invite(session, targetPlayerName, targetCharacterId, response.GroupChat.Id);
         }
     }
 
     private void HandleInvite(GameSession session, IByteReader packet) {
         string targetPlayerName = packet.ReadUnicodeString();
         int groupChatId = packet.ReadInt();
-        Invite(session, targetPlayerName, groupChatId);
+        if (CheckInviteTarget(session, targetPlayerName, out long characterId)) {
+            Invite(session, targetPlayerName, characterId, groupChatId);
+        }
     }
 
-    private void Invite(GameSession session, string targetPlayerName, int groupChatId) {
-        using GameStorage.Request db = session.GameStorage.Context();
-        long characterId = db.GetCharacterId(targetPlayerName);
+    // The invited player exists and has room for one more chat. Sends the error and returns false otherwise.
+    private bool CheckInviteTarget(GameSession session, string targetPlayerName, out long characterId) {
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            characterId = db.GetCharacterId(targetPlayerName);
+        }
         if (characterId == 0) {
             session.Send(GroupChatPacket.Error(GroupChatError.s_err_groupchat_null_target_user, session.PlayerName, targetPlayerName));
-            return;
+            return false;
         }
 
         try {
             GroupChatInfoResponse infoResponse = World.GroupChatInfo(new GroupChatInfoRequest {
                 CharacterId = characterId,
             });
-
             if (infoResponse.Infos.Count >= Constant.GroupChatMaxCount) {
                 session.Send(GroupChatPacket.Error(GroupChatError.s_err_groupchat_maxgroup, session.PlayerName, targetPlayerName));
-                return;
+                return false;
             }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to look up the group chats of {Name}", targetPlayerName);
+            session.Send(GroupChatPacket.Error(GroupChatError.s_err_groupchat_add_member_target, session.PlayerName, targetPlayerName));
+            return false;
+        }
+        return true;
+    }
 
+    private void Invite(GameSession session, string targetPlayerName, long characterId, int groupChatId) {
+        try {
             session.Send(GroupChatPacket.Invite(session.PlayerName, targetPlayerName, groupChatId));
             var request = new GroupChatRequest {
                 Invite = new GroupChatRequest.Types.Invite {
