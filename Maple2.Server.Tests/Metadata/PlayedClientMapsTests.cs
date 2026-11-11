@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Xml;
@@ -31,6 +32,23 @@ public class PlayedClientMapsTests {
     public void Missing_TableWithoutRows_IsEmpty() {
         Assert.That(PlayedClientMaps.Missing(Table("")), Is.Empty);
         Assert.That(PlayedClientMaps.Missing(Table("<v key=\"a\" />")), Is.Empty);
+    }
+
+    // A map with an empty row or with no row at all is lacking; a table without rows marks nothing.
+    [Test]
+    public void Lacks_EmptyRowOrNoRow() {
+        XmlDocument table = Table("""
+            <fieldData id="900001"><environment><xblock name="900001_AA" /></environment></fieldData>
+            <fieldData id="900002" />
+            """);
+        HashSet<int> rows = PlayedClientMaps.Rows(table);
+        HashSet<int> missing = PlayedClientMaps.Missing(table);
+
+        Assert.That(rows.OrderBy(id => id), Is.EqualTo(new[] { 900001, 900002 }));
+        Assert.That(PlayedClientMaps.Lacks(rows, missing, 900001), Is.False);
+        Assert.That(PlayedClientMaps.Lacks(rows, missing, 900002), Is.True, "empty row");
+        Assert.That(PlayedClientMaps.Lacks(rows, missing, 900003), Is.True, "no row");
+        Assert.That(PlayedClientMaps.Lacks([], [], 900003), Is.False, "no table");
     }
 
     // The mark is kept in the property JSON: absent in rows ingested before (reads false), kept when set.

@@ -65,7 +65,7 @@ public record MapMetadataProperty(
     // so the default must be false. Data ingested before this field reads as false until re-ingested.
     bool MinimapPing = false,
     // Set at ingest when MS2_PLAYED_CLIENT_XML names the pack of the client that is played and that pack's
-    // field table has only an empty row for this map (no xblock name): that client cannot load the map and
+    // field table has only an empty row for this map (no xblock name) or no row at all: that client cannot load the map and
     // hangs when it is sent there. The server then refuses every way in. False when the option is not set;
     // the JSON store omits false values, so the default must be false.
     bool NotInPlayedClient = false);

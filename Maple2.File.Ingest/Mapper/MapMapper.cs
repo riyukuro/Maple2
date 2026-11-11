@@ -13,6 +13,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
 
     // Maps the played client cannot load (MS2_PLAYED_CLIENT_XML); empty when the option is not set.
     private readonly HashSet<int> notInPlayedClient = [];
+    // All map ids the played client's field table has a row for; a map without a row is lacking too.
+    private readonly HashSet<int> playedClientRows = [];
 
     public MapMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         spawnParser = PackTables.NewParser(xmlReader, language);
@@ -20,7 +22,9 @@ public class MapMapper : TypeMapper<MapMetadata> {
 
         Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientMaps.FieldTable);
         if (playedReader != null && entry != null) {
-            notInPlayedClient = PlayedClientMaps.Missing(playedReader.GetXmlDocument(entry));
+            System.Xml.XmlDocument fieldTable = playedReader.GetXmlDocument(entry);
+            notInPlayedClient = PlayedClientMaps.Missing(fieldTable);
+            playedClientRows = PlayedClientMaps.Rows(fieldTable);
         }
     }
 
@@ -47,7 +51,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
 
         int marked = 0;
         foreach ((int id, string name, MapData data) in parser.Parse()) {
-            if (notInPlayedClient.Contains(id)) {
+            bool lacking = PlayedClientMaps.Lacks(playedClientRows, notInPlayedClient, id);
+            if (lacking) {
                 marked++;
             }
             yield return new MapMetadata(
@@ -78,7 +83,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     CanClimb: data.property.checkClimb,
                     IndoorType: data.indoor.type,
                     MinimapPing: data.property.minimapPing,
-                    NotInPlayedClient: notInPlayedClient.Contains(id)),
+                    NotInPlayedClient: lacking),
                 Limit: new MapMetadataLimit(
                     Capacity: data.property.capacity,
                     MinLevel: data.property.enterMinLevel,
@@ -108,7 +113,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
                 EntranceBuffs: data.property.enteranceBuffIDs.Zip(data.property.enteranceBuffLevels,
                         (skillId, level) => new MapEntranceBuff(skillId, level)).ToArray());
         }
-        if (notInPlayedClient.Count > 0) {
+        if (playedClientRows.Count > 0) {
             Console.WriteLine($"maps: {marked} marked as not in the played client (entry refused)");
         }
     }

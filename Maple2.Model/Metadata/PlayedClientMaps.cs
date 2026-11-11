@@ -34,4 +34,25 @@ public static class PlayedClientMaps {
         }
         return missing;
     }
+
+    // The ids of all rows, loadable or not.
+    public static HashSet<int> Rows(XmlDocument fieldTable) {
+        var ids = new HashSet<int>();
+        XmlNodeList? rows = fieldTable.SelectNodes("ms2/fieldData");
+        if (rows == null) {
+            return ids;
+        }
+        foreach (XmlNode node in rows) {
+            if (node is XmlElement row && int.TryParse(row.GetAttribute("id"), out int id)) {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
+
+    // Whether the played client lacks a map: its row is empty, or the table has no row for it at all (the
+    // client finds nothing to load either way). A table without any row says nothing about any map.
+    public static bool Lacks(HashSet<int> rows, HashSet<int> missing, int mapId) {
+        return rows.Count > 0 && (missing.Contains(mapId) || !rows.Contains(mapId));
+    }
 }
