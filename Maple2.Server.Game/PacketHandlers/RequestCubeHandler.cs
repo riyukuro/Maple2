@@ -194,7 +194,10 @@ public class RequestCubeHandler : FieldPacketHandler {
             case Command.RemoveCube13: // cube position
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 break;
-            case Command.GodModeIndex: // debug index
+            // CGodModeInfo::SendRequestCube (godmodeinfo.cpp:121): a debug index stepped with two keys, sent only
+            // while a client debug switch is on. Nothing in the client turns that switch on; it is only cleared
+            // (mypc.cpp:4531). GM accounts only, then logged.
+            case Command.GodModeIndex:
                 if (!GmCheck.Allow(session, OpCode, (int) command)) {
                     return;
                 }
