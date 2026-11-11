@@ -62,6 +62,8 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
                 HandleAddExtraRewardCount(session, packet);
                 break;
             case Command.FindHelper:
+                HandleFindHelper(session, packet);
+                break;
             case Command.FindMember:
                 // Not handled: the dungeon the party asks helpers or members for.
                 Logger.Debug("RoomDungeon {Command} from {CharacterId}: dungeon {Id}", command, session.CharacterId, packet.ReadInt());
@@ -86,6 +88,15 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     private static void HandleAddExtraRewardCount(GameSession session, IByteReader packet) {
         int dungeonId = packet.ReadInt();
         session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, dungeonId));
+    }
+
+    // UIDungeonRoomInfo::RequestFindHelper (uidungeonroomdialog.cpp:1556): the party leader, or a player without a
+    // party, asks for helpers for a dungeon. The helpers come through the recruiting notice and its chat link
+    // (Party 39 and 43), which the server never sends, so the answer is the client's text for the helper search being
+    // off (DungeonRecordManagerCli::OnError case 0x1b, dungeonrecordcli.cpp:323).
+    private static void HandleFindHelper(GameSession session, IByteReader packet) {
+        int dungeonId = packet.ReadInt();
+        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
     }
 
     private void HandleReset(GameSession session) {

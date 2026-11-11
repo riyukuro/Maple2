@@ -50,4 +50,19 @@ public class BlackMarketAndDungeonErrorTests {
             Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 4));
         });
     }
+
+    // RoomDungeon 15 and 16 (find helpers, find members): OnError case 0x1b shows
+    // s_room_dungeon_shutdown_find_dungeon_helper.
+    [Test]
+    public void DungeonHelperSearchOffIs27() {
+        ByteWriter writer = DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, 1234);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.Multiple(() => {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.RoomDungeon));
+            Assert.That(reader.ReadByte(), Is.EqualTo(18));
+            Assert.That(reader.ReadInt(), Is.EqualTo(0x1b));
+            Assert.That(reader.ReadInt(), Is.EqualTo(1234));
+            Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 4));
+        });
+    }
 }
