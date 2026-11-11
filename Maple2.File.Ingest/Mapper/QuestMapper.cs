@@ -43,7 +43,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     StartNpc: data.start?.npc ?? 0,
                     CompleteNpc: data.complete?.npc ?? 0,
                     CompleteMaps: data.complete?.map,
-                    ProgressMaps: data.progressMap.progressMap
+                    ProgressMaps: data.progressMap.progressMap,
+                    UseReEntryHiddenMap: data.basic.useReEntryHiddenMap
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,

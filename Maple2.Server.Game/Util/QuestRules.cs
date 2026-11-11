@@ -22,6 +22,15 @@ public static class QuestRules {
         return state == QuestState.Started && hasSummonPortal && inNpcTalk && !ownsLivePortal;
     }
 
+    // Quest sub-type 19 (CQuestCommon::FUN_140744670, questdata.cpp:221, is the client's own gate): the
+    // player goes back to the hidden field of a quest only when the quest is started, its data has
+    // useReEntryHiddenMap, its first progress map is set and is not the field the player is in, and the
+    // player is alive.
+    public static bool CanReEnterHiddenMap(QuestState state, bool useReEntryHiddenMap, int[]? progressMaps, int mapId, bool isDead) {
+        return state == QuestState.Started && useReEntryHiddenMap && !isDead
+               && progressMaps is { Length: > 0 } && progressMaps[0] != 0 && progressMaps[0] != mapId;
+    }
+
     public static bool ClientStartsItself(QuestMetadata metadata, int mapId) {
         QuestMetadataBasic basic = metadata.Basic;
         return ClientStartsItself(basic.Type, basic.AutoStart, basic.Disabled, basic.ProgressMaps, mapId);

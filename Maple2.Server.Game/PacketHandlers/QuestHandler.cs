@@ -122,6 +122,9 @@ public class QuestHandler : FieldPacketHandler {
                 // ended and the quest has a summonPortal; the player wants its portal again.
                 session.Quest.ResummonPortal(packet.ReadInt());
                 break;
+            case Command.ResumeDungeon:
+                HandleReEnterHiddenMap(session, packet);
+                break;
             case Command.SkyFortressMission:
             case Command.AllianceQuest:
                 // Not handled: one quest id.
@@ -246,6 +249,25 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         session.Send(session.PrepareField(quest.Metadata.GoToNpc.MapId, portalId: quest.Metadata.GoToNpc.PortalId)
+            ? FieldEnterPacket.Request(session.Player)
+            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+    }
+
+    // CQuestManager::SendQuestMode19 (questmanager_2.cpp:1459): the quest id. The quest window's re-entry
+    // button sends it; the client reads no Quest answer, it waits for the field move.
+    private static void HandleReEnterHiddenMap(GameSession session, IByteReader packet) {
+        int questId = packet.ReadInt();
+
+        if (session.Field is null || !session.Quest.TryGetQuest(questId, out Quest? quest)) {
+            return;
+        }
+
+        QuestMetadataBasic basic = quest.Metadata.Basic;
+        if (!QuestRules.CanReEnterHiddenMap(quest.State, basic.UseReEntryHiddenMap, basic.ProgressMaps, session.Field.MapId, session.Player.IsDead)) {
+            return;
+        }
+
+        session.Send(session.PrepareField(basic.ProgressMaps![0])
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }

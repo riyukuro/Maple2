@@ -45,6 +45,23 @@ public class QuestRulesTests {
         Assert.That(QuestRules.ClientStartsItself(type, autoStart, locked, null, 2000001), Is.EqualTo(expected));
     }
 
+    // Quest sub-type 19: the gate of CQuestCommon::FUN_140744670 (questdata.cpp:221) and the alive check.
+    [TestCase(QuestState.Started, true, 2000002, 2000001, false, true)]
+    [TestCase(QuestState.Completed, true, 2000002, 2000001, false, false)] // not in progress
+    [TestCase(QuestState.Started, false, 2000002, 2000001, false, false)] // no useReEntryHiddenMap
+    [TestCase(QuestState.Started, true, 0, 2000001, false, false)] // first progress map not set
+    [TestCase(QuestState.Started, true, 2000001, 2000001, false, false)] // already there
+    [TestCase(QuestState.Started, true, 2000002, 2000001, true, false)] // dead
+    public void CanReEnterHiddenMap(QuestState state, bool flag, int firstMap, int mapId, bool isDead, bool expected) {
+        Assert.That(QuestRules.CanReEnterHiddenMap(state, flag, [firstMap, 2000009], mapId, isDead), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void CanReEnterHiddenMap_NoProgressMaps() {
+        Assert.That(QuestRules.CanReEnterHiddenMap(QuestState.Started, true, null, 2000001, false), Is.False);
+        Assert.That(QuestRules.CanReEnterHiddenMap(QuestState.Started, true, [], 2000001, false), Is.False);
+    }
+
     [Test]
     public void ClientStartsItself_ExplorationQuestOfAnotherField() {
         Assert.That(QuestRules.ClientStartsItself(QuestType.FieldMission, false, false, [2000002, 2000001], 2000001), Is.False);

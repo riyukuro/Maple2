@@ -32,7 +32,8 @@ public record QuestMetadataBasic(
     int StartNpc,
     int CompleteNpc,
     int[]? CompleteMaps,
-    int[]? ProgressMaps);
+    int[]? ProgressMaps,
+    bool UseReEntryHiddenMap = false); // the quest's hidden field can be entered again (Quest sub-type 19)
 
 public record QuestMetadataRequire(
     short Level,
