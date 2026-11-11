@@ -171,7 +171,12 @@ public class EventRewardHandler : FieldPacketHandler {
         }
 
         // The client does not show what the card's reward is; here it is the reward of the card's quest.
-        if (!session.Quest.TryGetQuest(gallery.QuestIds[index], out Quest? quest) || !session.Quest.Complete(quest)) {
+        // A card is flipped by sub-type 7, which starts its quest: no reward for a card that is not flipped.
+        if (!session.Quest.TryGetQuest(gallery.QuestIds[index], out Quest? quest) || quest.State != QuestState.Started) {
+            return;
+        }
+
+        if (!session.Quest.Complete(quest)) {
             return;
         }
 
