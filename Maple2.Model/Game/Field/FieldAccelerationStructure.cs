@@ -641,7 +641,27 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
         // TODO: generate AABB tree from unaligned objects list
     }
 
+    // The map-data blob begins with this marker and FormatVersion, so a blob of another layout stops with a message
+    // instead of being misread. Read as the old layout's grid size, the marker gives negative X and Y, which no map has.
+    // Version 1 was the unmarked layout; 2 added the vibrate entities' HideGroupId.
+    public const int FormatMarker = unchecked((int) 0x8D41F2A0);
+    public const int FormatVersion = 2;
+
+    /// <summary>Reads the marker and version; a blob without them or of another version throws.</summary>
+    public static void ReadFormat(IByteReader reader) {
+        int marker = reader.ReadInt();
+        if (marker != FormatMarker) {
+            throw new InvalidOperationException($"Map data has no format marker (format 1, this server reads {FormatVersion}). Rerun Ingest!");
+        }
+        int version = reader.ReadInt();
+        if (version != FormatVersion) {
+            throw new InvalidOperationException($"Map data is format {version}, this server reads {FormatVersion}. Rerun Ingest!");
+        }
+    }
+
     public void WriteTo(IByteWriter writer) {
+        writer.WriteInt(FormatMarker);
+        writer.WriteInt(FormatVersion);
         writer.Write(GridSize);
         writer.Write(MinIndex);
         writer.Write<int>(vibrateEntities.Count);
@@ -819,6 +839,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
     }
 
     public void ReadFrom(IByteReader reader) {
+        ReadFormat(reader);
         GridSize = reader.Read<Vector3S>();
         MinIndex = reader.Read<Vector3S>();
         MaxIndex = MinIndex + GridSize - new Vector3S(1, 1, 1);

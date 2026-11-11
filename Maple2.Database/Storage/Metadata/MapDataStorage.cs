@@ -28,20 +28,36 @@ public class MapDataStorage(MetadataContext context) : MetadataStorage<string, F
                 return false;
             }
 
-            MemoryStream input = new MemoryStream(data.Data);
-            MemoryStream output = new MemoryStream();
-
-            using (DeflateStream dstream = new DeflateStream(input, CompressionMode.Decompress)) {
-                dstream.CopyTo(output);
-            }
-
-            ByteReader reader = new ByteReader(output.ToArray());
-
-            mapData = reader.ReadClassWithNew<FieldAccelerationStructure>();
+            mapData = Decode(data).ReadClassWithNew<FieldAccelerationStructure>();
 
             Cache.AddReplace(xblock, mapData);
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Reads the format of one map's data at startup, so map data from an ingest of another layout stops the server
+    /// with "Rerun Ingest!" instead of being misread when a field opens.
+    /// </summary>
+    public void CheckFormat() {
+        lock (Context) {
+            MapDataMetadata? data = Context.MapDataMetadata.FirstOrDefault();
+            if (data == null) {
+                throw new InvalidOperationException("No map data. Rerun Ingest!");
+            }
+
+            FieldAccelerationStructure.ReadFormat(Decode(data));
+        }
+    }
+
+    private static ByteReader Decode(MapDataMetadata data) {
+        var input = new MemoryStream(data.Data);
+        var output = new MemoryStream();
+        using (var dstream = new DeflateStream(input, CompressionMode.Decompress)) {
+            dstream.CopyTo(output);
+        }
+
+        return new ByteReader(output.ToArray());
     }
 }

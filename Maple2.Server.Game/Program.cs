@@ -169,6 +169,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
 });
 
 WebApplication app = builder.Build();
+// Map data from an ingest of another layout stops here instead of being misread.
+app.Services.GetRequiredService<MapDataStorage>().CheckFormat();
 app.UseRouting();
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client.");
 app.MapGrpcService<ChannelService>();
