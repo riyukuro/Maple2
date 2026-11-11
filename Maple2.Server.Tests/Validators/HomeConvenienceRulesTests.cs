@@ -5,17 +5,25 @@ namespace Maple2.Server.Tests.Validators;
 
 public class HomeConvenienceRulesTests {
     // RequestHomeBank 0x004D: one byte, the kind of the button (1 home dialog, 2 inventory).
-    [TestCase((byte) 1, false, true)]
-    [TestCase((byte) 1, true, true)]
-    [TestCase((byte) 2, true, true)]
-    [TestCase((byte) 2, false, false)]
-    [TestCase((byte) 0, true, false)]
-    [TestCase((byte) 3, true, false)]
-    public void BankKindByte(byte wire, bool premium, bool expected) {
+    [TestCase((byte) 1, false, true, true)]
+    [TestCase((byte) 1, true, false, false)] // the home dialog's kind from outside the own home
+    [TestCase((byte) 1, false, false, false)]
+    [TestCase((byte) 2, true, false, true)]
+    [TestCase((byte) 2, false, true, false)]
+    [TestCase((byte) 0, true, true, false)]
+    [TestCase((byte) 3, true, true, false)]
+    public void BankKindByte(byte wire, bool premium, bool inOwnHome, bool expected) {
         var packet = new ByteReader(new byte[] { 0x4D, 0x00, wire }, 2);
         byte kind = packet.ReadByte();
         Assert.That(packet.Available, Is.EqualTo(0));
-        Assert.That(HomeConvenienceRules.IsBankKindAllowed(kind, premium), Is.EqualTo(expected));
+        Assert.That(HomeConvenienceRules.IsBankKindAllowed(kind, premium, inOwnHome), Is.EqualTo(expected));
+    }
+
+    [TestCase(1001, 1000, true)]
+    [TestCase(1000, 1000, false)] // the end second itself is no longer premium
+    [TestCase(0, 1000, false)]
+    public void PremiumEndsAtItsSecond(long end, long now, bool expected) {
+        Assert.That(HomeConvenienceRules.IsPremium(end, now), Is.EqualTo(expected));
     }
 
     // The cooltime constant is milliseconds, the call times are seconds.

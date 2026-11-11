@@ -4,6 +4,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 using static Maple2.Server.World.Service.World;
@@ -23,7 +24,9 @@ public class HomeBankHandler : FieldPacketHandler {
     public override void Handle(GameSession session, IByteReader packet) {
         byte kind = packet.ReadByte();
         long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (!HomeConvenienceRules.IsBankKindAllowed(kind, session.Player.Value.Account.PremiumTime >= time)) {
+        var home = session.Field as HomeFieldManager;
+        bool premium = HomeConvenienceRules.IsPremium(session.Player.Value.Account.PremiumTime, time);
+        if (!HomeConvenienceRules.IsBankKindAllowed(kind, premium, home != null && home.OwnerId == session.AccountId)) {
             return;
         }
         // Both buttons share the one cooltime: the client checks it before either request and stores the answer's time.
