@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -44,14 +45,12 @@ public class SetCraftModeHandler : FieldPacketHandler {
     }
 
     private void HandleStart(GameSession session, IByteReader packet) {
-        bool isStart = packet.ReadBool();
-        Debug.Assert(isStart);
-
-        if (session.Field == null || session.GuideObject != null) {
+        // The second byte says whether a cube follows: the client writes 0 and no cube when its palette
+        // is empty (mypc.cpp:4151-4190), and then nothing is held and no guide is made.
+        PlotCube? firstCubeItem = CraftModeRules.ReadCube(packet);
+        if (firstCubeItem == null || session.Field == null || session.GuideObject != null) {
             return;
         }
-
-        var firstCubeItem = packet.ReadClass<PlotCube>();
 
         session.GuideObject = session.Field.SpawnGuideObject(session.Player, new ConstructionGuideObject());
         session.HeldCube = firstCubeItem;
