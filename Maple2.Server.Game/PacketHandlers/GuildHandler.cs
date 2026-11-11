@@ -1070,8 +1070,30 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
+    // CGuildManager::FUN_1413bb000: the kind of guild NPC the master raises by one level. The World server
+    // checks, pays and saves; every member gets the new fund (51) and the NPC (59).
     private void HandleUpgradeNpc(GameSession session, IByteReader packet) {
-        var type = packet.Read<GuildNpcType>();
+        int type = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                UpgradeNpc = new GuildRequest.Types.UpgradeNpc {
+                    GuildId = session.Guild.Id,
+                    Type = type,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+            }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to upgrade guild NPC");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleCreateGuildEvent(GameSession session) {

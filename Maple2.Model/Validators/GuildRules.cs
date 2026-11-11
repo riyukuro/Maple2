@@ -144,6 +144,26 @@ public static class GuildRules {
     // the error packet), the guild level of the next row, and the upgrade cost of the next row in the fund.
     // Skills 1001 to 10000 are paid from the event fund (GuildSkill::FUN_1404d4e80), which the server does
     // not keep: for them the fund counts as 0.
+    // Guild 114 (CGuildManager::FUN_1413bb000), in the client's order: the row of the next level must
+    // exist ("highest level", which has no code in the error packet), the master asks, the guild level and
+    // the house level reach the row's (the client shows the guild level text for both), and the fund pays.
+    // A kind the guild does not have yet is at level 0, so its first upgrade asks for the row of level 1.
+    public static GuildError CheckUpgradeNpc(bool isMaster, GuildTable.Npc? next, int guildLevel, int houseLevel, int funds) {
+        if (next == null) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (!isMaster) {
+            return GuildError.s_guild_err_no_master;
+        }
+        if (next.RequireGuildLevel > guildLevel || next.RequireHouseLevel > houseLevel) {
+            return GuildError.s_guild_err_not_enough_guild_level;
+        }
+        if (next.UpgradeCost < 0 || next.UpgradeCost > funds) {
+            return GuildError.s_guild_err_not_enough_guild_fund;
+        }
+        return GuildError.none;
+    }
+
     public static bool IsEventFundSkill(int skillId) {
         return skillId is > 1000 and <= 10000;
     }

@@ -57,6 +57,8 @@ public partial class WorldService {
                 return Task.FromResult(RespondGuildApplication(request.RequestorId, request.RespondApplication));
             case GuildRequest.GuildOneofCase.UpgradeBuff:
                 return Task.FromResult(UpgradeGuildBuff(request.RequestorId, request.UpgradeBuff));
+            case GuildRequest.GuildOneofCase.UpgradeNpc:
+                return Task.FromResult(UpgradeGuildNpc(request.RequestorId, request.UpgradeNpc));
             case GuildRequest.GuildOneofCase.Donate:
                 return Task.FromResult(DonateGuild(request.RequestorId, request.Donate));
             default:
@@ -428,6 +430,19 @@ public partial class WorldService {
         }
 
         GuildError error = manager.UpgradeBuff(requestorId, upgrade.BuffId);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = upgrade.GuildId };
+    }
+
+    private GuildResponse UpgradeGuildNpc(long requestorId, GuildRequest.Types.UpgradeNpc upgrade) {
+        if (!guildLookup.TryGet(upgrade.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.UpgradeNpc(requestorId, (GuildNpcType) upgrade.Type);
         if (error != GuildError.none) {
             return new GuildResponse { Error = (int) error };
         }

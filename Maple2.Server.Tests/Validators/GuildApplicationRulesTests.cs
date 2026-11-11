@@ -1,4 +1,5 @@
 using System.Linq;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -65,6 +66,20 @@ public class GuildApplicationRulesTests {
 
     private static GuildTable.Buff SkillRow(short requireLevel, int upgradeCost) =>
         new(Id: 90000001, Level: 1, RequireLevel: requireLevel, Cost: 100, UpgradeCost: upgradeCost, Duration: 60);
+
+    [Test]
+    public void UpgradeNpc_Rules() {
+        var next = new GuildTable.Npc(GuildNpcType.Equip, Level: 2, RequireGuildLevel: 3, RequireHouseLevel: 2, UpgradeCost: 500);
+
+        Assert.That(GuildRules.CheckUpgradeNpc(true, next, 3, 2, 500), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUpgradeNpc(true, null, 3, 2, 500), Is.EqualTo(GuildError.s_guild_err_unknown), "no next level");
+        Assert.That(GuildRules.CheckUpgradeNpc(false, null, 3, 2, 500), Is.EqualTo(GuildError.s_guild_err_unknown), "the level is checked before the master");
+        Assert.That(GuildRules.CheckUpgradeNpc(false, next, 3, 2, 500), Is.EqualTo(GuildError.s_guild_err_no_master));
+        Assert.That(GuildRules.CheckUpgradeNpc(true, next, 2, 2, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
+        Assert.That(GuildRules.CheckUpgradeNpc(true, next, 3, 1, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level), "house level");
+        Assert.That(GuildRules.CheckUpgradeNpc(true, next, 3, 2, 499), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUpgradeNpc(true, next with { UpgradeCost = -1 }, 3, 2, 499), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+    }
 
     [Test]
     public void UpgradeSkill_Rules() {

@@ -342,6 +342,82 @@ public class GuildManager : IDisposable {
     }
 
     // Guild 113. The channel has checked the member's meso and takes it after this call succeeds.
+    // Guild 114. The fund and the NPC are saved before the answer; a failed save undoes both.
+    public GuildError UpgradeNpc(long requestorId, GuildNpcType type) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        GuildNpc upgraded;
+        int guildFund;
+        lock (guildLock) {
+            int index = -1;
+            for (int i = 0; i < Guild.Npcs.Count; i++) {
+                if (Guild.Npcs[i].Type == type) {
+                    index = i;
+                    break;
+                }
+            }
+            int level = index < 0 ? 0 : Guild.Npcs[index].Level;
+
+            GuildTable.Npc? next = null;
+            if (level >= 0 && level < short.MaxValue
+                && TableMetadata.GuildTable.Npcs.TryGetValue(type, out IReadOnlyDictionary<short, GuildTable.Npc>? levels)) {
+                levels.TryGetValue((short) (level + 1), out next);
+            }
+            GuildError error = GuildRules.CheckUpgradeNpc(requestorId == Guild.LeaderCharacterId, next,
+                GuildProperty().Level, Guild.HouseRank, Guild.Funds);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            int oldFunds = Guild.Funds;
+            upgraded = new GuildNpc(type, level + 1);
+            Guild.Funds -= next!.UpgradeCost;
+            if (index < 0) {
+                Guild.Npcs.Add(upgraded);
+            } else {
+                Guild.Npcs[index] = upgraded;
+            }
+
+            bool saved;
+            try {
+                using GameStorage.Request db = GameStorage.Context();
+                saved = db.SaveGuild(Guild);
+            } catch (Exception) {
+                saved = false;
+            }
+            if (!saved) {
+                Guild.Funds = oldFunds;
+                if (index < 0) {
+                    Guild.Npcs.Remove(upgraded);
+                } else {
+                    Guild.Npcs[index] = new GuildNpc(type, level);
+                }
+                return GuildError.s_guild_err_unknown;
+            }
+            guildFund = Guild.Funds;
+        }
+
+        // No contributor: the members get the new fund (51) without a contribution line.
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = 0,
+                GuildExp = Guild.Experience,
+                GuildFund = guildFund,
+            },
+        });
+        Broadcast(new GuildRequest {
+            UpgradeNpc = new GuildRequest.Types.UpgradeNpc {
+                RequestorName = requestor.Name,
+                Type = (int) upgraded.Type,
+                Level = upgraded.Level,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     public GuildError Donate(long requestorId, int count, long fund, out GuildMember? member) {
         if (!Guild.Members.TryGetValue(requestorId, out member)) {
             return GuildError.s_guild_err_null_member;

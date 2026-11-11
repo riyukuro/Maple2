@@ -281,6 +281,28 @@ public class GuildManager : IDisposable {
         return false;
     }
 
+    // Guild 59 (CGuildManager::FUN_1413c3ef0): the client adds or replaces the NPC of that kind and prints
+    // s_guild_notify_upgrade_npc.
+    public bool UpgradeNpc(string requestorName, GuildNpc npc) {
+        if (Guild == null) {
+            return false;
+        }
+
+        bool found = false;
+        for (int i = 0; i < Guild.Npcs.Count; i++) {
+            if (Guild.Npcs[i].Type == npc.Type) {
+                Guild.Npcs[i] = npc;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            Guild.Npcs.Add(npc);
+        }
+        session.Send(GuildPacket.UpgradeNpc(requestorName, npc));
+        return true;
+    }
+
     public bool UpdateNotice(string requestorName, string message) {
         if (Guild == null) {
             return false;
