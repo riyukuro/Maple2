@@ -113,7 +113,7 @@ public partial class ChannelService {
 
                 plot.Cubes.Add(plotCube.Position, plotCube);
                 if (plotCube.Interact is not null) {
-                    fieldManager.AddFieldFunctionInteract(plotCube);
+                    fieldManager.AddFieldFunctionInteract(plotCube, plot);
                 }
                 if (isReplace) {
                     fieldManager.Broadcast(CubePacket.ReplaceCube(fieldManager.FieldActor.ObjectId, plotCube));

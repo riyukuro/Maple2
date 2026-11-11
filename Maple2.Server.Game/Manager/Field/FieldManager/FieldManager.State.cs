@@ -1026,7 +1026,8 @@ public partial class FieldManager {
         return fieldPortal;
     }
 
-    public FieldFunctionInteract? AddFieldFunctionInteract(PlotCube cube) {
+    // plot: the plot the cube is placed in, which owns a mannequin's items; without it no mannequin is set up.
+    public FieldFunctionInteract? AddFieldFunctionInteract(PlotCube cube, Plot? plot = null) {
         if (cube.Interact == null) {
             return null;
         }
@@ -1039,12 +1040,39 @@ public partial class FieldManager {
 
         Broadcast(FunctionCubePacket.AddFunctionCube(cube.Interact));
 
+        if (plot != null && cube.Interact.Metadata.FittingDoll is { } dollData) {
+            AddFittingDoll(cube, plot, dollData);
+        }
+
         return fieldInteract;
     }
 
     public bool RemoveFieldFunctionInteract(string entityId) {
-        return fieldFunctionInteracts.TryRemove(entityId, out FieldFunctionInteract? _);
+        if (!fieldFunctionInteracts.TryRemove(entityId, out FieldFunctionInteract? removed)) {
+            return false;
+        }
+        if (fittingDolls.TryRemove(removed.CubeId, out FieldFittingDoll? doll)) {
+            Broadcast(FittingDollPacket.Remove(doll));
+        }
+        return true;
     }
+
+    #region Fitting dolls
+    private readonly ConcurrentDictionary<long, FieldFittingDoll> fittingDolls = new();
+
+    private void AddFittingDoll(PlotCube cube, Plot plot, FunctionCubeMetadata.FittingDollData data) {
+        var doll = new FieldFittingDoll(NextLocalId(), cube, plot, data);
+        using (GameStorage.Request db = GameStorage.Context()) {
+            foreach (Item item in db.GetItemGroups(cube.Id, ItemGroup.FittingDoll).GetValueOrDefault(ItemGroup.FittingDoll) ?? []) {
+                doll.Items[(EquipSlot) item.Slot] = item;
+            }
+        }
+        fittingDolls[cube.Id] = doll;
+        Broadcast(FittingDollPacket.Load(doll, doll.Items.Values));
+    }
+
+    public FieldFittingDoll? GetFittingDoll(long cubeUid) => fittingDolls.GetValueOrDefault(cubeUid);
+    #endregion
 
     public FieldFunctionInteract? TryGetFieldFunctionInteract(string entityId) {
         return fieldFunctionInteracts.TryGetValue(entityId, out FieldFunctionInteract? fieldFunctionInteract) ? fieldFunctionInteract : null;
@@ -1221,6 +1249,11 @@ public partial class FieldManager {
         }
 
         added.Session.Send(FunctionCubePacket.SendCubes(fieldFunctionInteracts.Values));
+        foreach (FieldFittingDoll doll in fittingDolls.Values) {
+            lock (doll.Lock) {
+                added.Session.Send(FittingDollPacket.Load(doll, doll.Items.Values));
+            }
+        }
 
         foreach (Plot plot in Plots.Values) {
             foreach (PlotCube plotCube in plot.Cubes.Values) {

@@ -152,8 +152,9 @@ public partial class GameStorage {
                 .ToList()!;
         }
 
+        // A mail's items. Mannequin items are keyed by cube uid, which another table's id (a mail's) can equal.
         public List<Item> GetAllItems(long ownerId) {
-            return Context.Item.Where(item => item.OwnerId == ownerId)
+            return Context.Item.Where(item => item.OwnerId == ownerId && item.Group != ItemGroup.FittingDoll)
                 .AsEnumerable()
                 .Select(ToItem)
                 .Where(item => item != null)

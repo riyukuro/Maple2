@@ -15,6 +15,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Serilog;
@@ -731,7 +732,7 @@ public class HousingManager {
         }
 
         if (functionCubeMetadata is not null) {
-            session.Field.AddFieldFunctionInteract(result);
+            session.Field.AddFieldFunctionInteract(result, plot);
         }
 
         if (outdoor && itemMetadata.Install.IndoorPortal) {
@@ -778,6 +779,11 @@ public class HousingManager {
 
         if (plot.IsPlanner) {
             return true;
+        }
+
+        // A mannequin's items go back to the owner; another builder's removal leaves them on the cube's uid.
+        if (cube.Interact?.Metadata.FittingDoll != null && plot.OwnerId == session.AccountId) {
+            FittingDollHandler.ReturnItems(session, cube.Id);
         }
 
         if (!session.Item.Furnishing.RetrieveCube(cube.Id)) {

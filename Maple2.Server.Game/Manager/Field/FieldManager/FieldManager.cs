@@ -147,7 +147,7 @@ public partial class FieldManager : IField {
                 plot.Cubes.Values
                     .Where(plotCube => plotCube.Interact != null)
                     .ToList()
-                    .ForEach(plotCube => AddFieldFunctionInteract(plotCube));
+                    .ForEach(plotCube => AddFieldFunctionInteract(plotCube, plot));
 
                 plot.Cubes.Values
                     .Where(plotCube => plotCube.Metadata.Install is { IndoorPortal: true })

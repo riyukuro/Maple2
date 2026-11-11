@@ -37,7 +37,7 @@ public class HomeFieldManager : FieldManager {
             plot.Cubes.Values
                 .Where(plotCube => plotCube.Interact != null)
                 .ToList()
-                .ForEach(plotCube => AddFieldFunctionInteract(plotCube));
+                .ForEach(plotCube => AddFieldFunctionInteract(plotCube, plot));
         }
     }
 

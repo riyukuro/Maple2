@@ -17,4 +17,7 @@ public enum ItemGroup : byte {
     Furnishing = 10,
     Home = 11,
     Plot = 12,
+
+    // Cube uid specific: the items on a home mannequin, Slot = the equip slot.
+    FittingDoll = 13,
 }

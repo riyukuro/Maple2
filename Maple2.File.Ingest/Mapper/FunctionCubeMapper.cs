@@ -29,7 +29,12 @@ public class FunctionCubeMapper : TypeMapper<FunctionCubeMetadata> {
                 AutoStateChange: functionCube.AutoStateChange,
                 AutoStateChangeTime: functionCube.AutoStateChangeTime,
                 Nurturing: ParseNurturing(functionCube.nurturing)
-            );
+            ) {
+                // Every cube parses with an empty doll node; only the mannequins open the doll window.
+                FittingDoll = functionCube.UseUiFunction.ToString() == "FittingDoll" && functionCube.fittingdoll is { } doll
+                    ? new FunctionCubeMetadata.FittingDollData((Gender) (int) doll.fittingdollGender, doll.fittingdollType)
+                    : null,
+            };
         }
     }
 

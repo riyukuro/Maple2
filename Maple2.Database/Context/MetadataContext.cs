@@ -255,6 +255,7 @@ public sealed class MetadataContext(DbContextOptions options) : DbContext(option
         builder.HasKey(cube => cube.Id);
         builder.Property(cube => cube.AutoStateChange).HasJsonConversion();
         builder.Property(cube => cube.Nurturing).HasJsonConversion();
+        builder.Property(cube => cube.FittingDoll).HasJsonConversion();
     }
 
     private static void ConfigureTriggerMetadata(EntityTypeBuilder<TriggerMetadata> builder) {

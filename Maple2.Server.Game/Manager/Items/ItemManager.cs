@@ -92,6 +92,35 @@ public class ItemManager {
         return true;
     }
 
+    // Mails an item row that another owner holds (a mannequin's item): the row moves to the mail as it is.
+    public bool MailHeldItem(Item item) {
+        lock (session.Item) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            Mail? mail = db.CreateMail(new Mail {
+                Type = MailType.System,
+                ReceiverId = session.CharacterId,
+                Content = "50000000", // id from string/en/systemmailcontentna.xml
+            });
+            if (mail == null) {
+                return false;
+            }
+
+            item.Group = ItemGroup.Default;
+            item.Slot = -1;
+            if (!db.SaveItems(mail.Id, item)) {
+                return false;
+            }
+
+            try {
+                session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = session.CharacterId,
+                    MailId = mail.Id,
+                });
+            } catch { /* ignored */ }
+        }
+        return true;
+    }
+
     public void Save(GameStorage.Request db) {
         Equips.Save(db);
         Inventory.Save(db);
