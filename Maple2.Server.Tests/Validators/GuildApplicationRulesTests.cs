@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -284,5 +285,25 @@ public class GuildApplicationRulesTests {
     [TestCase(true, true, true, false)]
     public void SkillEffectOnEntry_Rules(bool isPvpMap, bool keep, bool remove, bool expected) {
         Assert.That(GuildRules.GivesEffectOnEntry(isPvpMap, keep, remove), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void SkillEffects_AreTheRowsOfTheGuildsLevels() {
+        var table = new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>> {
+            [1] = new Dictionary<short, GuildTable.Buff> {
+                [1] = new GuildTable.Buff(Id: 900, Level: 1, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 60),
+                [2] = new GuildTable.Buff(Id: 900, Level: 2, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 60),
+            },
+            [10001] = new Dictionary<short, GuildTable.Buff> {
+                [1] = new GuildTable.Buff(Id: 950, Level: 1, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 60),
+            },
+            [3] = new Dictionary<short, GuildTable.Buff> {
+                [1] = new GuildTable.Buff(Id: 0, Level: 1, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 60),
+            },
+        };
+        GuildBuff[] skills = [new GuildBuff(1, 2, 0), new GuildBuff(10001, 1, 0), new GuildBuff(3, 1, 0), new GuildBuff(4, 1, 0)];
+
+        // Skill 3 has no effect and skill 4 no row: neither is listed.
+        Assert.That(GuildRules.SkillEffects(skills, table), Is.EqualTo(new List<(int, short)> { (900, 2), (950, 1) }));
     }
 }

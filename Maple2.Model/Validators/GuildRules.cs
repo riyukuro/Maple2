@@ -324,6 +324,19 @@ public static class GuildRules {
         return !isPvpMap || (keepOnEnterPvpZone && !removeOnPvpZone);
     }
 
+    // The effects a guild's skills can give, guild and personal ones, at the level the guild has them.
+    public static List<(int Id, short Level)> SkillEffects(IEnumerable<GuildBuff> skills,
+                                                           IReadOnlyDictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>> table) {
+        var result = new List<(int, short)>();
+        foreach (GuildBuff skill in skills) {
+            if (table.TryGetValue(skill.Id, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)
+                && levels.TryGetValue((short) skill.Level, out GuildTable.Buff? row) && row.Id > 0) {
+                result.Add((row.Id, row.Level));
+            }
+        }
+        return result;
+    }
+
     // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds (the
     // client's table reader GuildSkill::FUN_1404d4cb0 stores duration * 60 and cooltime * 60, and the
     // getters add them to the time of use). A skill that was never used has the time 0.

@@ -24,6 +24,7 @@ public class GuildManager : IDisposable {
 
     public GuildTable.Property Properties { get; private set; }
     private readonly CancellationTokenSource tokenSource;
+    private List<(int Id, short Level)>? leftEffects;
 
     private readonly ILogger logger = Log.Logger.ForContext<GuildManager>();
 
@@ -152,9 +153,34 @@ public class GuildManager : IDisposable {
         return true;
     }
 
+    // The skill effects of the guild this member left, not yet removed from the member. Field thread only.
+    private void RemoveLeftEffects() {
+        List<(int Id, short Level)>? effects = Interlocked.Exchange(ref leftEffects, null);
+        if (effects == null) {
+            return;
+        }
+        foreach ((int id, short _) in effects) {
+            session.Player.Buffs.Remove(id, session.Player.ObjectId);
+        }
+    }
+
     public void RemoveGuild() {
         if (Guild == null) {
             return;
+        }
+
+        // The member who leaves, is expelled or whose guild is disbanded keeps none of the guild's skill
+        // effects. The client has no step of its own for this: the effects it shows are the server's.
+        // This can run on a World call's thread, so the removal is a task of the member's field; a member
+        // who changes field before it runs loses the effects on the next field entry (LoadSkillBuffs).
+        leftEffects = GuildRules.SkillEffects(Guild.Buffs, session.TableMetadata.GuildTable.Buffs);
+        FieldManager? field = session.Field;
+        if (field != null && leftEffects.Count > 0) {
+            field.Scheduler.Schedule(() => {
+                if (session.Field == field) {
+                    RemoveLeftEffects();
+                }
+            });
         }
 
         Guild = null;
@@ -341,6 +367,7 @@ public class GuildManager : IDisposable {
     // The effects of the guild skills that are running, for the time they have left; called when the member
     // enters a field, so that a member who logs in, joins or changes field after the use has them too.
     public void LoadSkillBuffs() {
+        RemoveLeftEffects();
         FieldManager? field = session.Field;
         if (Guild == null || field == null) {
             return;
