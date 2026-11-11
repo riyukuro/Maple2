@@ -76,7 +76,7 @@ public partial class WorldService {
             };
         }
 
-        GroupChatError error = manager.Invite(requestorId, info);
+        GroupChatError error = groupChatLookup.Invite(manager, requestorId, info);
         return new GroupChatResponse {
             Error = (int) error,
         };

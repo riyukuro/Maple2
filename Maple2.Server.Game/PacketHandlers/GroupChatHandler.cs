@@ -51,7 +51,8 @@ public class GroupChatHandler : FieldPacketHandler {
         // CGroupChatManager::Create: the player to invite into the new chat, empty for an empty chat.
         string targetPlayerName = packet.ReadUnicodeString();
 
-        if (session.GroupChats.Count >= Constant.GroupChatMaxCapacity) {
+        // CGroupChatManager::Create: at most 3 chats per player (GroupChatMaxCapacity is the member limit).
+        if (session.GroupChats.Count >= Constant.GroupChatMaxCount) {
             session.Send(GroupChatPacket.Error(GroupChatError.s_err_groupchat_maxgroup, session.PlayerName, session.PlayerName));
             return;
         }
