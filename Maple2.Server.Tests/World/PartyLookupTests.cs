@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.World.Containers;
+using Maple2.Server.World.Service;
 
 namespace Maple2.Server.Tests.World;
 
@@ -16,6 +17,8 @@ public class PartyLookupTests {
         public Action? WhileMakingRoom;
         public bool Throw;
         public bool Async;
+        public readonly HashSet<int> FailMoveFrom = [];
+        public bool FailSoloJoin;
         public readonly List<int> Made = [];
         public readonly List<int> Destroyed = [];
 
@@ -31,6 +34,12 @@ public class PartyLookupTests {
         }
 
         protected override void DestroyMatchedRoom(int lobbyRoomId) => Destroyed.Add(lobbyRoomId);
+
+        public override PartyError MoveMembers(PartyManager from, PartyManager to) =>
+            FailMoveFrom.Contains(from.Party.Id) ? PartyError.s_party_err_full_limit_player : base.MoveMembers(from, to);
+
+        protected override PartyError JoinSolo(PartyManager target, PlayerInfo info) =>
+            FailSoloJoin ? PartyError.s_party_err_full_limit_player : base.JoinSolo(target, info);
 
         protected override void RunRoomTask(Action work) {
             if (Async) {
@@ -191,6 +200,72 @@ public class PartyLookupTests {
         Assert.That(lookup.TryGet(waitingId, out _), Is.False);
         Assert.That(shrinking.Party.Members.Count, Is.EqualTo(5));
         Assert.That(lookup.Made, Is.EqualTo(new[] { shrinking.Party.Id }));
+    }
+
+    private PartyResponse Search(PlayerInfo requestor, DungeonMatchRoom room) =>
+        lookup.SearchDungeonMatch(requestor.CharacterId, requestor, 1, [room]);
+
+    private PlayerInfo Leader(PartyManager manager) => manager.Party.Members[manager.Party.LeaderCharacterId].Info;
+
+    // rv44 MINOR 6: a party whose move into the group it joined fails puts the group back and searches on its own.
+    [Test]
+    public void AFailedPartyMoveStartsTheSearchersOwnSearch() {
+        var room = new DungeonMatchRoom(100, 1, 4, false);
+        PartyManager target = Party(2);
+        Assert.That(Start(target, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        PartyManager searcher = Party(2);
+        lookup.FailMoveFrom.Add(searcher.Party.Id);
+
+        PartyResponse response = Search(Leader(searcher), room);
+        Assert.That(response.Error, Is.EqualTo(0));
+        Assert.That(response.PartyId, Is.EqualTo(searcher.Party.Id));
+        Assert.That(lookup.DungeonMatch.IsSearching(searcher.Party.Id), Is.True);
+        Assert.That(lookup.DungeonMatch.IsSearching(target.Party.Id), Is.True);
+        Assert.That(lookup.DungeonMatch.CountOf(target.Party.Id).Users, Is.EqualTo(2));
+        Assert.That(target.Party.Members.Count, Is.EqualTo(2));
+        Assert.That(lookup.Made, Is.Empty);
+    }
+
+    // rv44 MINOR 6: a solo searcher whose join fails gets a party of their own that searches.
+    [Test]
+    public void AFailedSoloJoinStartsTheSearchersOwnSearch() {
+        var room = new DungeonMatchRoom(100, 1, 4, false);
+        PartyManager target = Party(2);
+        Assert.That(Start(target, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        lookup.FailSoloJoin = true;
+        PlayerInfo solo = Player();
+
+        PartyResponse response = Search(solo, room);
+        Assert.That(response.Error, Is.EqualTo(0));
+        Assert.That(lookup.TryGetByCharacter(solo.CharacterId, out PartyManager? own), Is.True);
+        Assert.That(response.PartyId, Is.EqualTo(own!.Party.Id));
+        Assert.That(response.PartyId, Is.Not.EqualTo(target.Party.Id));
+        Assert.That(lookup.DungeonMatch.IsSearching(own.Party.Id), Is.True);
+        Assert.That(lookup.DungeonMatch.CountOf(target.Party.Id).Users, Is.EqualTo(2));
+        Assert.That(target.Party.Members.Count, Is.EqualTo(2));
+    }
+
+    // rv44 MINOR 6: a pulled party whose move fails searches on its own again; the puller keeps searching.
+    [Test]
+    public void AFailedPulledMoveSearchesOnItsOwn() {
+        var room = new DungeonMatchRoom(100, 1, 4, false);
+        PartyManager waiting = Party(1);
+        Assert.That(Start(waiting, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        lookup.FailMoveFrom.Add(waiting.Party.Id);
+        PartyManager puller = Party(3);
+
+        PartyResponse response = Search(Leader(puller), room);
+        Assert.That(response.PartyId, Is.EqualTo(puller.Party.Id));
+        Assert.That(lookup.DungeonMatch.IsSearching(waiting.Party.Id), Is.True);
+        Assert.That(lookup.DungeonMatch.CountOf(waiting.Party.Id).Users, Is.EqualTo(1));
+        Assert.That(lookup.DungeonMatch.IsSearching(puller.Party.Id), Is.True);
+        Assert.That(lookup.DungeonMatch.CountOf(puller.Party.Id).Users, Is.EqualTo(3));
+        Assert.That(lookup.DungeonMatch.IsMatching(puller.Party.Id), Is.False);
+        Assert.That(lookup.Made, Is.Empty);
+
+        // Without the failure the same pull fills the room.
+        lookup.FailMoveFrom.Clear();
+        Assert.That(lookup.PullDungeonMatch(puller).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
 
     // rv44 MINOR 3: no join while the party is matched, nor past the set room's maxUserCount.

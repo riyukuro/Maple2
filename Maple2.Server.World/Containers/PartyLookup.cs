@@ -116,7 +116,8 @@ public class PartyLookup : IDisposable {
 
     // A dungeon match merge or join: the members of from move into to, whose group the queue already counts them
     // in. from goes without a Disband (its members load to in place of it); to's members are told of each mover.
-    public PartyError MoveMembers(PartyManager from, PartyManager to) => DungeonMatchStep(() => {
+    // Virtual: the tests' seam for a move that fails.
+    public virtual PartyError MoveMembers(PartyManager from, PartyManager to) => DungeonMatchStep(() => {
         PartyMember[] movers = from.Party.Members.Values.ToArray();
         if (to.Party.Members.Count + movers.Length > to.Party.Capacity) {
             return PartyError.s_party_err_full_limit_player;
@@ -243,7 +244,8 @@ public class PartyLookup : IDisposable {
     });
 
     // A player with no party takes the slot the queue gave them in target's group.
-    private static PartyError JoinSolo(PartyManager target, PlayerInfo info) {
+    // Virtual: the tests' seam for a solo join that fails.
+    protected virtual PartyError JoinSolo(PartyManager target, PlayerInfo info) {
         // The queue has counted the searcher and may have marked the party matched already.
         PartyError error = target.Join(info, matchmaker: true);
         if (error == PartyError.none && target.Party.Members.TryGetValue(info.CharacterId, out PartyMember? member)) {
