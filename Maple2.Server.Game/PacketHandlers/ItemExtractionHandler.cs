@@ -27,7 +27,7 @@ public class ItemExtractionHandler : FieldPacketHandler {
             Item? anvil = session.Item.Inventory.Get(anvilItemUid);
             Item? sourceItem = session.Item.Inventory.Get(sourceItemUid);
 
-            if (anvil == null || sourceItem is not { GlamorForges: > 0 }) {
+            if (anvil?.Metadata.Property.Tag != ItemTag.ItemExtraction || sourceItem is not { GlamorForges: > 0 }) {
                 return;
             }
 
@@ -40,7 +40,8 @@ public class ItemExtractionHandler : FieldPacketHandler {
                 return;
             }
 
-            if (session.Item.Inventory.FreeSlots(InventoryType.Gear) <= 0) {
+            // The result goes to its own tab (an outfit for a skin), not always to gear.
+            if (!session.Item.Inventory.CanAdd(resultItem, resultItem.Amount)) {
                 session.Send(ItemExtractionPacket.FullInventory());
                 return;
             }
