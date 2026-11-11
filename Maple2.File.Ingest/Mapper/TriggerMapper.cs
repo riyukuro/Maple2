@@ -215,16 +215,14 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
             if (!TriggerDefinitionOverride.ActionOverride.TryGetValue(actionName, out TriggerDefinitionOverride? overrideValue)) continue;
 
             if (overrideValue.FunctionSplitter is not null) {
-                XmlAttribute? attributeSplitter = nodeParams.FirstOrDefault(x => x.Name == overrideValue.FunctionSplitter);
-                if (attributeSplitter is not null) {
-                    overrideValue.FunctionLookup.TryGetValue(attributeSplitter.Value, out overrideValue);
-                    Debug.Assert(overrideValue is not null, $"Unable to find override for {attributeSplitter.Value}");
-                } else {
-                    string? valueDefault = overrideValue.Types.FirstOrDefault().Value;
-                    Debug.Assert(valueDefault is not null, $"Unable to find default value for {overrideValue.Name}");
-                    overrideValue.FunctionLookup.TryGetValue(valueDefault, out overrideValue);
-                    Debug.Assert(overrideValue is not null, $"Unable to find override for {valueDefault}");
+                string? splitterValue = nodeParams.FirstOrDefault(x => x.Name == overrideValue.FunctionSplitter)?.Value;
+                TriggerDefinitionOverride? split = SplitOverride(overrideValue, splitterValue);
+                if (split is null) {
+                    // An unknown variant: leave the action as it is (the server logs it as unknown) instead of throwing.
+                    Console.WriteLine($"Trigger action {actionName}: no variant for {overrideValue.FunctionSplitter}={splitterValue}");
+                    continue;
                 }
+                overrideValue = split;
                 node.Attributes["name"]!.Value = overrideValue.Name;
             }
 
@@ -294,6 +292,15 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
         }
 
         return xml.OuterXml;
+    }
+
+    // The variant of a split action: the one its splitter value names; with no splitter value, the first
+    // variant (the splitter's own entry has no parameter types to take a default from).
+    private static TriggerDefinitionOverride? SplitOverride(TriggerDefinitionOverride splitter, string? value) {
+        if (value is null) {
+            return splitter.FunctionLookup.Values.FirstOrDefault();
+        }
+        return splitter.FunctionLookup.GetValueOrDefault(value);
     }
 
     [return: NotNullIfNotNull(nameof(name))]
