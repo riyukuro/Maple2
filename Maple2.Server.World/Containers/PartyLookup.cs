@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
+using Maple2.Server.World.Service;
 using Serilog;
 
 namespace Maple2.Server.World.Containers;
@@ -156,6 +157,100 @@ public class PartyLookup : IDisposable {
         }
         return DungeonMatch.Restore(pull.Before!, moved);
     });
+
+    // A Party 32 search (moved here from WorldService, r62): the searchers join a group that holds them, else start their own.
+    public PartyResponse SearchDungeonMatch(long requestorId, PlayerInfo requestor, byte kind, List<DungeonMatchRoom> rooms) => DungeonMatchStep(() => {
+        RefreshDungeonMatch();
+        PlayerInfo? info = null;
+        long[] ids;
+        if (TryGetByCharacter(requestorId, out PartyManager? manager)) {
+            if (manager.Party.LeaderCharacterId != requestorId) {
+                return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_isNotChief };
+            }
+            if (manager.Party.Members.Values.Any(member => !member.Info.Online)) {
+                return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_hasOfflineUser };
+            }
+            if (DungeonMatch.IsSearching(manager.Party.Id)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+            }
+            if (manager.Party.DungeonSet || DungeonMatch.IsMatching(manager.Party.Id)) {
+                // A party with a dungeon room set (rv42 MINOR 8), or matched with its room being made (MINOR 6),
+                // does not search; the client has no error of its own for it, 43 is the nearest.
+                return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+            }
+            ids = manager.MemberIds();
+        } else {
+            info = requestor;
+            ids = [requestorId];
+        }
+
+        DungeonMatchResult? joined = DungeonMatch.Join(kind, rooms, ids, out DungeonMatchGroup? before, MayMerge);
+        if (joined != null) {
+            if (!TryGet(joined.Value.PartyId, out PartyManager? target)) {
+                DungeonMatch.Remove(joined.Value.PartyId);
+                DungeonMatch.EndMatching(joined.Value.PartyId);
+            } else {
+                PartyError error = manager != null ? MoveMembers(manager, target) : JoinSolo(target, info!);
+                if (error == PartyError.none) {
+                    if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
+                        CompleteDungeonMatch(target, joined.Value);
+                    } else {
+                        BroadcastDungeonMatch(target, kind, true);
+                    }
+                    return new PartyResponse { PartyId = target.Party.Id };
+                }
+                // The group is put back as it was, still searching, and no room is made (rv42 MINOR 5); the
+                // searcher then starts a search of their own below (rv44 MINOR 6).
+                CompleteDungeonMatch(target, DungeonMatch.Restore(before!));
+            }
+        }
+
+        bool made = false;
+        if (manager == null) {
+            PartyError createError = Create(requestorId, out int partyId, requestor);
+            if (createError != PartyError.none) {
+                return new PartyResponse { Error = (int) createError };
+            }
+            if (!TryGet(partyId, out manager)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+            }
+            made = true;
+        }
+        DungeonMatchResult own = DungeonMatch.Start(manager.Party.Id, kind, rooms, ids);
+        switch (own.Outcome) {
+            case DungeonMatchOutcome.Stopped:
+                // No room holds the party: nothing was registered.
+                if (made) {
+                    Disband(manager.Party.Id);
+                }
+                return new PartyResponse();
+            case DungeonMatchOutcome.AlreadySearching:
+                return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+        }
+        if (made) {
+            // The solo searcher's party of one, loaded before the search is announced.
+            manager.SendLoad(manager.Party.Members.Values);
+        }
+        if (own.Outcome == DungeonMatchOutcome.Searching) {
+            own = PullDungeonMatch(manager);
+        }
+        if (own.Outcome == DungeonMatchOutcome.Matched) {
+            CompleteDungeonMatch(manager, own);
+        } else {
+            BroadcastDungeonMatch(manager, kind, true);
+        }
+        return new PartyResponse { PartyId = manager.Party.Id };
+    });
+
+    // A player with no party takes the slot the queue gave them in target's group.
+    private static PartyError JoinSolo(PartyManager target, PlayerInfo info) {
+        // The queue has counted the searcher and may have marked the party matched already.
+        PartyError error = target.Join(info, matchmaker: true);
+        if (error == PartyError.none && target.Party.Members.TryGetValue(info.CharacterId, out PartyMember? member)) {
+            target.SendLoad([member]);
+        }
+        return error;
+    }
 
     // Runs body under the matchmaker lock; the channel calls it defers (Defer) are made after the lock is released.
     public T DungeonMatchStep<T>(Func<T> body) => steps.Run(body);
