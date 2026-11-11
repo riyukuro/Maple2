@@ -14,6 +14,7 @@ using Maple2.Model.Game.Ugc;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.DebugGraphics;
 using Maple2.Server.Game.Manager.Items;
@@ -301,7 +302,12 @@ public partial class FieldManager : IField {
                     if (packet.session.State is SessionState.Disconnected) {
                         continue;
                     }
-                    packet.handler.Handle(packet.session, packet.reader);
+                    // The copy's buffer is rented and can be longer than the packet: the handler's reader ends at the packet.
+                    int length = packet.reader is FieldPacketReader copy ? copy.PacketLength - copy.Position : packet.reader.Available;
+                    packet.handler.Handle(packet.session, new BoundedPacketReader(packet.reader, length));
+                } catch (PacketOverreadException ex) {
+                    logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left",
+                        $"0x{(ushort) packet.handler.OpCode:X4}", packet.handler.GetType().Name, ex.Wanted, ex.Left);
                 } catch (Exception ex) {
                     if (ex is IndexOutOfRangeException) {
                         logger.Error("Error processing packet {OpCode} for account ID {AccountId}. Packet: {Packet}", packet.handler.OpCode, packet.session.AccountId, packet.ToString());

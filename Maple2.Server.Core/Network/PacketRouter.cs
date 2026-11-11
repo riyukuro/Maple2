@@ -28,7 +28,17 @@ public class PacketRouter<T> where T : Session {
             return;
         }
 
-        handler?.Handle(session, reader);
+        if (handler == null) {
+            return;
+        }
+
+        try {
+            handler.Handle(session, new BoundedPacketReader(reader, reader.Available));
+        } catch (PacketOverreadException ex) {
+            // The handler reads more than the client wrote: drop the packet, keep the session.
+            logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left",
+                $"0x{(ushort) op:X4}", handler.GetType().Name, ex.Wanted, ex.Left);
+        }
     }
 
     private void Register(ImmutableDictionary<RecvOp, PacketHandler<T>>.Builder builder, PacketHandler<T> packetHandler) {
