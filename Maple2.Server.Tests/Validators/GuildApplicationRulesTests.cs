@@ -264,4 +264,14 @@ public class GuildApplicationRulesTests {
     public void EventActive_Rules(long openTime, long now, bool expected) {
         Assert.That(GuildRules.IsEventActive(openTime, now), Is.EqualTo(expected));
     }
+
+    // event map, time of opening, now, current map
+    [TestCase(500, 100, 110, 200, true)]
+    [TestCase(0, 100, 110, 200, false)] // no row
+    [TestCase(500, 0, 110, 200, false)] // never opened
+    [TestCase(500, 100, 130, 200, false)] // over
+    [TestCase(500, 100, 110, 500, false)] // in the map already
+    public void EnterEvent_Rules(int eventMapId, long openTime, long now, int currentMapId, bool expected) {
+        Assert.That(GuildRules.CanEnterEvent(eventMapId, openTime, now, currentMapId), Is.EqualTo(expected));
+    }
 }

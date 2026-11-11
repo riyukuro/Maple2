@@ -292,6 +292,12 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // Guild 100 (CGuildManager::SendGuildMode100, guildmanager.cpp:881), in the client's order: the event
+    // has a row with a map, it is open, and the member is not in its map already.
+    public static bool CanEnterEvent(int eventMapId, long openTime, long now, int currentMapId) {
+        return eventMapId > 0 && IsEventActive(openTime, now) && currentMapId != eventMapId;
+    }
+
     // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must
     // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
     // member's meso pays its cost, and the member does not have the effect already.

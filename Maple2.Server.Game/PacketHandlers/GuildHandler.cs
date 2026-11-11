@@ -1061,8 +1061,24 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
+    // CGuildManager::SendGuildMode100 (guildmanager.cpp:881): the id of an open guild event the member
+    // enters. The client reads no answer; the member goes to the event's map, in the guild's own copy of
+    // it, as with the guild house.
     private void HandleEnterArcade(GameSession session, IByteReader packet) {
-        int index = packet.ReadInt();
+        int eventId = packet.ReadInt();
+        Guild? guild = session.Guild.Guild;
+        if (guild == null || session.Field == null) {
+            return; // Not in a guild.
+        }
+
+        GuildTable.Event? row = null;
+        TableMetadata.GuildTable.Events?.TryGetValue(eventId, out row);
+        int openTime = guild.Events.FirstOrDefault(entry => entry.Id == eventId).Value;
+        if (!GuildRules.CanEnterEvent(row?.MapId ?? 0, openTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.Field.MapId)) {
+            return;
+        }
+
+        session.Migrate(row!.MapId, guild.Id);
     }
 
     // CGuildManager::FUN_1413ba820: the body is the theme chosen for the next house level, not the level;
