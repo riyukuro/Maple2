@@ -970,6 +970,18 @@ public partial class FieldManager {
             foreach (FieldReactor reactor in fieldReactors.Values) {
                 reactor.Leave(fieldPlayer.Session.CharacterId);
             }
+            // A function cube the leaver holds in use goes back to its default state, as on a dialog close.
+            long leaverId = fieldPlayer.Session.CharacterId;
+            foreach (FieldFunctionInteract interact in fieldFunctionInteracts.Values) {
+                InteractCube cube = interact.InteractCube;
+                if (!FunctionCubeCloseRule.Releases(interact.Value.ControlType, cube.State, cube.Metadata.DefaultState, cube.InteractingCharacterId, leaverId)) {
+                    continue;
+                }
+                cube.State = cube.Metadata.DefaultState;
+                cube.InteractingCharacterId = 0;
+                Broadcast(FunctionCubePacket.UpdateFunctionCube(cube));
+                Broadcast(FunctionCubePacket.UseFurniture(leaverId, cube));
+            }
             Broadcast(FieldPacket.RemovePlayer(objectId));
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
 
