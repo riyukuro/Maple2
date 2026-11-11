@@ -189,4 +189,5 @@ public enum RecvOp : ushort
     Wedding = 0x00BA,
     WeddingBillboard = 0x00BB,
     LimitBreak = 0x00BC,
+    PersonalInfoAgreement = 0x00C0,
 }
