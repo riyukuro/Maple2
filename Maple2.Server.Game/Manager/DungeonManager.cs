@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -156,7 +157,6 @@ public class DungeonManager {
         MailSeasonRewards();
         foreach (DungeonRecord record in Records.Values) {
             record.UnionClears = 0;
-            record.ExtraClears = 0;
             // The bought extra counts expire with the record's period (DungeonRecordCli::GetBonusCountNow).
             record.ExtraSubClears = 0;
         }
@@ -391,7 +391,7 @@ public class DungeonManager {
         if (metadata.LimitEnter) {
             (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(metadata);
             Records.TryGetValue(rewardId, out DungeonRecord? rewardRecord);
-            if (!DungeonRoomRules.HasCountLeft(rewardRecord, rewardRoom.Reward.Count, rewardRoom.Reward.SubRewardCount, DateTime.Now.ToEpochSeconds())) {
+            if (!DungeonRoomRules.HasCountLeft(rewardRecord, rewardRoom.Reward.Count, rewardRoom.Reward.SubRewardCount, DateTime.Now.ToEpochSeconds(), ExtraRewardCount(rewardId))) {
                 if (!useTicket) {
                     session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_party_err_cooldown, metadata.Id));
                     return;
@@ -651,7 +651,8 @@ public class DungeonManager {
             DungeonRecord unionRecord = GetRecord(Metadata.Reward.UnionRewardId);
             // A clear counts while the record has a count left, as the client tells (HasCountLeft): a room without a
             // subRewardCount has no daily limit (the Colosseum and most rooms).
-            if (DungeonRoomRules.HasCountLeft(unionRecord, unionMetadata.Reward.Count, unionMetadata.Reward.SubRewardCount, clearTimeStamp)) {
+            if (DungeonRoomRules.HasCountLeft(unionRecord, unionMetadata.Reward.Count, unionMetadata.Reward.SubRewardCount, clearTimeStamp,
+                    ExtraRewardCount(Metadata.Reward.UnionRewardId))) {
                 UpdateUnionRecord(unionRecord, unionMetadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
             }
@@ -664,7 +665,7 @@ public class DungeonManager {
             UpdateDungeonRecord(record, Metadata, clearTimeStamp);
 
         } else {
-            if (DungeonRoomRules.HasCountLeft(record, Metadata.Reward.Count, Metadata.Reward.SubRewardCount, clearTimeStamp)) {
+            if (DungeonRoomRules.HasCountLeft(record, Metadata.Reward.Count, Metadata.Reward.SubRewardCount, clearTimeStamp, ExtraRewardCount(Metadata.Id))) {
                 UpdateUnionRecord(record, Metadata, clearTimeStamp);
                 UpdateDungeonRecord(record, Metadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
@@ -733,7 +734,6 @@ public class DungeonManager {
         if (clearTimeStamp >= record.UnionCooldownTimestamp) {
             record.UnionCooldownTimestamp = GetCooldownTime(helperRoom.CooldownType, helperRoom.CooldownValue, clearTime);
             record.UnionClears = 0;
-            record.ExtraClears = 0;
             record.ExtraSubClears = 0;
         }
         if (clearTimeStamp >= record.UnionSubCooldownTimestamp) {
@@ -804,7 +804,6 @@ public class DungeonManager {
         if (now.ToEpochSeconds() >= record.UnionCooldownTimestamp) {
             record.UnionCooldownTimestamp = GetCooldownTime(rewardRoom.CooldownType, rewardRoom.CooldownValue, now);
             record.UnionClears = 0;
-            record.ExtraClears = 0;
             record.ExtraSubClears = 0;
         }
         record.ExtraSubClears++;
@@ -824,7 +823,6 @@ public class DungeonManager {
         if (clearTimeStamp > record.UnionCooldownTimestamp) {
             record.UnionCooldownTimestamp = GetCooldownTime(metadata.CooldownType, metadata.CooldownValue, clearTime);
             record.UnionClears = 0;
-            record.ExtraClears = 0;
             record.ExtraSubClears = 0;
         }
 
@@ -835,6 +833,11 @@ public class DungeonManager {
 
         if (metadata.GroupType == DungeonGroupType.colosseum) {
             record.UnionClears = (byte) UserRecord.Round;
+        } else if (record.UnionClears >= metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, clearTimeStamp)
+                   && ExtraReward(record.DungeonId) is { } extra
+                   && DungeonRoomRules.UseExtraCount(record, extra.Entry, clearTime, extra.End)) {
+            // The room's reward count is used: the clear takes an event count, and the reward stays.
+            record.UnionSubClears++;
         } else {
             record.UnionClears++;
             record.UnionSubClears++;
@@ -914,6 +917,20 @@ public class DungeonManager {
     public static bool RewardCondition(int rewardCount, int roomRewardCount, bool complete) {
         return complete ? rewardCount >= roomRewardCount : rewardCount > 0;
     }
+
+    // The running DungeonExtraReward event count of a reward room, with the event's end.
+    private (DungeonExtraReward.Entry Entry, DateTime End)? ExtraReward(int dungeonId) {
+        IList<GameEvent> events = session.FindEvent(GameEventType.DungeonExtraReward);
+        var found = DungeonRoomRules.ExtraRewardEntry(events
+            .Where(gameEvent => gameEvent.Metadata.Data is DungeonExtraReward)
+            .Select(gameEvent => (gameEvent.Id, (DungeonExtraReward) gameEvent.Metadata.Data)), dungeonId);
+        if (found == null) {
+            return null;
+        }
+        return (found.Value.Entry, events.First(gameEvent => gameEvent.Id == found.Value.EventId).Metadata.EndTime);
+    }
+
+    private int ExtraRewardCount(int dungeonId) => ExtraReward(dungeonId)?.Entry.Count ?? 0;
 
     private static long GetCooldownTime(DungeonCooldownType type, int cooldownValue, DateTime clearTime) {
         return DungeonRoomRules.CooldownEnd(type, cooldownValue, clearTime).ToEpochSeconds();

@@ -29,8 +29,13 @@ public static class DungeonRoomRules {
     // it (DungeonRecord.WriteTo): the expire is UnionCooldownTimestamp, the rewards taken are UnionClears, the
     // timed clear count is UnionSubClears until UnionSubCooldownTimestamp, and ExtraSubClears is the bonus count
     // added to rewardCount. Each part counts only while now is before its expire. A missing record has a count.
-    public static bool HasCountLeft(DungeonRecord? record, int rewardCount, int subRewardCount, long now) {
+    // An event count (eventCount, the DungeonExtraReward event's count of the room, 0 without one) not used up
+    // gives a count first, before the daily limit (DungeonRecordCli::IsExtraExhausted, dungeonrecordcli.cpp:160).
+    public static bool HasCountLeft(DungeonRecord? record, int rewardCount, int subRewardCount, long now, int eventCount = 0) {
         if (record == null) {
+            return true;
+        }
+        if (ExtraCountNow(record, now) < eventCount) {
             return true;
         }
         bool expired = now >= record.UnionCooldownTimestamp;
@@ -43,6 +48,42 @@ public static class DungeonRoomRules {
         int taken = expired ? 0 : record.UnionClears;
         int max = rewardCount + (expired ? 0 : record.ExtraSubClears);
         return taken < max;
+    }
+
+    // The event reward counts used (DungeonRecordCli::GetExtraCountNow, dungeonrecordcli.cpp:110): ExtraClears until
+    // ExtraCooldownTimestamp, 0 after it or without a record.
+    public static int ExtraCountNow(DungeonRecord? record, long now) =>
+        record == null || now >= record.ExtraCooldownTimestamp ? 0 : record.ExtraClears;
+
+    // The room's count of the running DungeonExtraReward events: the first event by id that names it, as the
+    // client keeps the first (CGameRule::AddDungeonExtraRewardCount logs a later one as a duplicate).
+    public static (int EventId, DungeonExtraReward.Entry Entry)? ExtraRewardEntry(
+            IEnumerable<(int EventId, DungeonExtraReward Data)> events, int dungeonId) {
+        foreach ((int eventId, DungeonExtraReward data) in events.OrderBy(gameEvent => gameEvent.EventId)) {
+            foreach (DungeonExtraReward.Entry entry in data.Entries) {
+                if (entry.DungeonId == dungeonId) {
+                    return (eventId, entry);
+                }
+            }
+        }
+        return null;
+    }
+
+    // A clear past the room's reward count takes an event count while one is left. The event's cooldown is not sent to
+    // the client; its counts end at the cooldown's end as a room's do (CooldownEnd), or with the event without one.
+    public static bool UseExtraCount(DungeonRecord record, DungeonExtraReward.Entry entry, DateTime clearTime, DateTime eventEnd) {
+        long now = new DateTimeOffset(clearTime).ToUnixTimeSeconds();
+        if (ExtraCountNow(record, now) >= entry.Count) {
+            return false;
+        }
+        if (now >= record.ExtraCooldownTimestamp) {
+            record.ExtraClears = 0;
+            DateTime end = entry.CooldownType == DungeonCooldownType.none
+                ? eventEnd : CooldownEnd(entry.CooldownType, entry.CooldownValue, clearTime);
+            record.ExtraCooldownTimestamp = new DateTimeOffset(end).ToUnixTimeSeconds();
+        }
+        record.ExtraClears++;
+        return true;
     }
 
     // The extra reward counts bought in the record's period (DungeonRecordCli::GetBonusCountNow,

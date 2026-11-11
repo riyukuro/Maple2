@@ -1320,6 +1320,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.WorldmapIcon:
                 // value1 is sent as it is; GameEventWorldmapIconCli::OnStart parses it.
                 return string.IsNullOrWhiteSpace(value1) ? null : new WorldmapIcon(Xml: value1);
+            case GameEventType.DungeonExtraReward:
+                return ReadDungeonExtraReward(value1);
             case GameEventType.reactor:
                 // value1: field ids, value2: the placement count limit (GameEventReactor::ReadReactorData).
                 return new Reactor(
@@ -1546,6 +1548,45 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     // The old hand copies: materials 37000056..63 taken to use table 37000055. A material with a table id from
     // the played client is asked by that id first (ItemMergeManager.MergeSlot), so a copy only serves a material
     // that got none. An id with rows of its own keeps them.
+    // GameEventDungeonExtraReward::vfunc_2 (gameevent.cpp:1867): each child of value1's root is a room's count
+    // (DungeonExtraRewardCountCtx::Load); one without a room or a count is skipped, and a later row of a room
+    // replaces the earlier one (CAtlMap::SetAt). No row: no event.
+    public static DungeonExtraReward? ReadDungeonExtraReward(string value1) {
+        if (string.IsNullOrWhiteSpace(value1)) {
+            return null;
+        }
+        var document = new XmlDocument();
+        try {
+            document.LoadXml(value1);
+        } catch (XmlException) {
+            return null;
+        }
+        if (document.DocumentElement == null) {
+            return null;
+        }
+
+        var entries = new Dictionary<int, DungeonExtraReward.Entry>();
+        foreach (XmlNode node in document.DocumentElement.ChildNodes) {
+            if (node is not XmlElement element) {
+                continue;
+            }
+            int dungeonId = int.TryParse(element.GetAttribute("dungeonID"), out int parsedId) ? parsedId : 0;
+            int count = int.TryParse(element.GetAttribute("count"), out int parsedCount) ? parsedCount : 0;
+            if (dungeonId == 0 || count == 0) {
+                continue;
+            }
+            // Parse_1402199e0: the names without case, else none.
+            Maple2.Model.Enum.DungeonCooldownType cooldownType = element.GetAttribute("cooldownType").ToLowerInvariant() switch {
+                "dayofweeks" => Maple2.Model.Enum.DungeonCooldownType.dayOfWeeks,
+                "nextday" => Maple2.Model.Enum.DungeonCooldownType.nextDay,
+                _ => Maple2.Model.Enum.DungeonCooldownType.none,
+            };
+            int cooldownValue = int.TryParse(element.GetAttribute("cooldownValue"), out int parsedValue) ? parsedValue : 0;
+            entries[dungeonId] = new DungeonExtraReward.Entry(dungeonId, count, cooldownType, cooldownValue);
+        }
+        return entries.Count == 0 ? null : new DungeonExtraReward(entries.Values.ToArray());
+    }
+
     public static void AddHandCopies(Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> results) {
         if (!results.TryGetValue(37000055, out Dictionary<int, ItemMergeTable.Entry>? rows)) {
             return;

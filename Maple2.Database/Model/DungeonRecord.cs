@@ -17,6 +17,7 @@ internal class DungeonRecord {
     public short CurrentRecord { get; set; }
     public byte ExtraCurrentSubClears { get; set; }
     public byte ExtraCurrentClears { get; set; }
+    public DateTime ExtraCooldownTime { get; set; }
     public DateTime DailyResetTime { get; set; }
     public DateTime UnionCooldownTime { get; set; }
     public DateTime CooldownTime { get; set; }
@@ -37,6 +38,7 @@ internal class DungeonRecord {
             CurrentRecord = other.CurrentRecord,
             ExtraCurrentSubClears = other.ExtraSubClears,
             ExtraCurrentClears = other.ExtraClears,
+            ExtraCooldownTime = other.ExtraCooldownTimestamp.FromEpochSeconds(),
             Flag = other.Flag,
         };
     }
@@ -55,6 +57,7 @@ internal class DungeonRecord {
             CurrentRecord = other.CurrentRecord,
             ExtraSubClears = other.ExtraCurrentSubClears,
             ExtraClears = other.ExtraCurrentClears,
+            ExtraCooldownTimestamp = other.ExtraCooldownTime.ToEpochSeconds(),
             Flag = other.Flag,
         };
     }

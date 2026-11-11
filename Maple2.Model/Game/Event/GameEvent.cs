@@ -172,6 +172,18 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteUnicodeString(worldmapIcon.Xml);
                 break;
+            case DungeonExtraReward extraReward:
+                // GameEventDungeonExtraReward::vfunc_4: the id, then its map by room id; each value is the room, the
+                // event id and the count.
+                writer.WriteInt(Id);
+                writer.WriteInt(extraReward.Entries.Length);
+                foreach (DungeonExtraReward.Entry entry in extraReward.Entries) {
+                    writer.WriteInt(entry.DungeonId);
+                    writer.WriteInt(entry.DungeonId);
+                    writer.WriteInt(Id);
+                    writer.WriteInt(entry.Count);
+                }
+                break;
             case QuestTag questTag:
                 writer.WriteInt(Id);
                 writer.WriteUnicodeString(questTag.Tag);

@@ -156,6 +156,21 @@ public record WorldmapIcon(
     string Xml) : GameEventData;
 
 /// <summary>
+/// More dungeon reward counts while the event runs (GameEventDungeonExtraReward, gameevent.cpp:1880): value1 is
+/// &lt;ms2&gt;&lt;v dungeonID count cooldownType cooldownValue /&gt;...&lt;/ms2&gt;. A clear of a room past its reward count
+/// takes one of the room's Count until the cooldown ends (DungeonRecordCli::IsExtraExhausted). The client is sent
+/// the room and the count only (DungeonExtraRewardCountCtx operator&lt;&lt;, gameeventcontext.cpp:740).
+/// </summary>
+public record DungeonExtraReward(
+    DungeonExtraReward.Entry[] Entries) : GameEventData {
+    public record Entry(
+        int DungeonId,
+        int Count,
+        DungeonCooldownType CooldownType,
+        int CooldownValue);
+}
+
+/// <summary>
 /// Enables quests with eventTag to be enabled/active.
 /// </summary>
 public record QuestTag(

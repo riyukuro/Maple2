@@ -17,6 +17,8 @@ public class DungeonRecord : IByteSerializable {
     public short CurrentRecord { get; set; }
     public byte ExtraSubClears { get; set; }
     public byte ExtraClears { get; set; }
+    // When the event reward count ExtraClears ends (the client's m_extraCount expire).
+    public long ExtraCooldownTimestamp { get; set; }
     public DungeonRecordFlag Flag { get; set; }
 
     public DungeonRecord(int dungeonId) {
@@ -32,7 +34,7 @@ public class DungeonRecord : IByteSerializable {
         writer.WriteLong(UnionSubCooldownTimestamp);
         writer.WriteByte(ExtraSubClears);
         writer.WriteByte(ExtraClears);
-        writer.WriteLong(ClearTimestamp);
+        writer.WriteLong(ExtraCooldownTimestamp);
         writer.WriteInt(TotalClears);
         writer.WriteShort(LifetimeRecord);
         writer.WriteShort(CurrentRecord);

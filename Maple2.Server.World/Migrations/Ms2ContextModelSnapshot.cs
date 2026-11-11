@@ -664,6 +664,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<DateTime>("DailyResetTime")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime>("ExtraCooldownTime")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<byte>("ExtraCurrentClears")
                         .HasColumnType("tinyint unsigned");
 
