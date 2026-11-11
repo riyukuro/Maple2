@@ -37,11 +37,16 @@ public static class DebugButtonRules {
     // RequestItemEnchant 16: m_debugBtnFillIngredient sends 0, m_debugBtnFillIngredientUnit sends 10.
     // The server's reading of the names: 0 tops the bag up to what the staged enchant needs, a number gives
     // that many of each ingredient.
-    public static int FillAmount(int requested, int need, int held) {
+    // Either way one press gives at most FillStacksMax full stacks of the material.
+    public const int FillStacksMax = 5;
+
+    public static int FillAmount(int requested, int need, int held, int slotMax) {
         if (requested < 0 || need <= 0) {
             return 0;
         }
-        return requested > 0 ? requested : Math.Max(0, need - Math.Max(0, held));
+        long cap = (long) Math.Max(1, slotMax) * FillStacksMax;
+        long amount = requested > 0 ? requested : Math.Max(0, need - Math.Max(0, held));
+        return (int) Math.Min(amount, cap);
     }
 
     // Enchant materials (onyx, chaos onyx, crystal fragment) sit in this item id range.

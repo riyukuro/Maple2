@@ -246,20 +246,26 @@ public class ItemEnchantManager {
 
         foreach (IngredientInfo ingredient in catalysts) {
             int held = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ingredient.Tag).Sum(item => item.Amount);
-            int amount = Util.DebugButtonRules.FillAmount(requested, ingredient.Amount, held);
+            // The enchant cost names a tag, not an item: take the first material item that carries the tag.
+            ItemMetadata? material = null;
+            for (int id = Util.DebugButtonRules.MaterialIdFirst; id <= Util.DebugButtonRules.MaterialIdLast && material == null; id++) {
+                if (session.ItemMetadata.TryGet(id, out ItemMetadata? metadata) && metadata.Property.Tag == ingredient.Tag) {
+                    material = metadata;
+                }
+            }
+            if (material == null) {
+                logger.Debug("Enchant debug fill: no material item with tag {Tag}", ingredient.Tag);
+                continue;
+            }
+
+            // The amount comes from the packet: no more than a few full stacks of the material.
+            int amount = Util.DebugButtonRules.FillAmount(requested, ingredient.Amount, held, material.Property.SlotMax);
             if (amount <= 0) {
                 continue;
             }
 
-            // The enchant cost names a tag, not an item: take the first material item that carries the tag.
-            Item? give = null;
-            for (int id = Util.DebugButtonRules.MaterialIdFirst; id <= Util.DebugButtonRules.MaterialIdLast && give == null; id++) {
-                if (session.ItemMetadata.TryGet(id, out ItemMetadata? metadata) && metadata.Property.Tag == ingredient.Tag) {
-                    give = session.Field?.ItemDrop.CreateItem(id, amount: amount);
-                }
-            }
+            Item? give = session.Field?.ItemDrop.CreateItem(material.Id, amount: amount);
             if (give == null) {
-                logger.Debug("Enchant debug fill: no material item with tag {Tag}", ingredient.Tag);
                 continue;
             }
 

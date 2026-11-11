@@ -59,14 +59,20 @@ public class DebugButtonRulesTests {
         Assert.That(DebugButtonRules.ForceEnchantAllowed(enchants), Is.EqualTo(expected));
     }
 
-    // requested 0 = top up to the need, a number = that many
-    [TestCase(0, 20, 5, 15)]
-    [TestCase(0, 20, 20, 0)]
-    [TestCase(0, 20, 50, 0)]
-    [TestCase(10, 20, 50, 10)]
-    [TestCase(10, 0, 0, 0)]
-    [TestCase(-1, 20, 0, 0)]
-    public void FillAmountOfAnIngredient(int requested, int need, int held, int expected) {
-        Assert.That(DebugButtonRules.FillAmount(requested, need, held), Is.EqualTo(expected));
+    // requested 0 = top up to the need, a number = that many; never more than 5 stacks
+    [TestCase(0, 20, 5, 100, 15)]
+    [TestCase(0, 20, 20, 100, 0)]
+    [TestCase(0, 20, 50, 100, 0)]
+    [TestCase(10, 20, 50, 100, 10)]
+    [TestCase(10, 0, 0, 100, 0)]
+    [TestCase(-1, 20, 0, 100, 0)]
+    [TestCase(int.MaxValue, 20, 0, 100, 500)]
+    [TestCase(501, 20, 0, 100, 500)]
+    [TestCase(500, 20, 0, 100, 500)]
+    [TestCase(int.MaxValue, 20, 0, 0, 5)]
+    [TestCase(int.MaxValue, 20, 0, int.MaxValue, int.MaxValue)]
+    [TestCase(0, 900, 0, 100, 500)]
+    public void FillAmountOfAnIngredient(int requested, int need, int held, int slotMax, int expected) {
+        Assert.That(DebugButtonRules.FillAmount(requested, need, held, slotMax), Is.EqualTo(expected));
     }
 }
