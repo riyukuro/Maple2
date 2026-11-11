@@ -69,6 +69,50 @@ public static class UgcRules {
         return ownerId == 0 && !hasDesign;
     }
 
+    // Mode 19, the part that runs under the lock of the banner's slot list: each asked hour that is
+    // open and free is taken while room is left. An hour whose owner was lost is claimed; a free hour
+    // gets a new slot, added to the list at once so that no other request can take the hour. Nothing
+    // is written to the database here: the new slots (created) have no id yet, the caller writes them
+    // after the lock and takes a slot whose write failed back out with ReleaseBannerSlot.
+    // Returns the slots the character got, claimed and new, in the order asked.
+    public static List<BannerSlot> ReserveBannerSlots(List<BannerSlot> slots, long bannerId, IEnumerable<(int Date, int Hour)> asked,
+                                                      long characterId, int room, DateTimeOffset now, out List<BannerSlot> created) {
+        var got = new List<BannerSlot>();
+        created = [];
+        lock (slots) {
+            foreach ((int date, int hour) in asked) {
+                if (room <= 0 || !BannerTimeOpen(date, hour, now)) {
+                    continue;
+                }
+
+                BannerSlot? held = slots.FirstOrDefault(slot => slot.Date == date && slot.Hour == hour);
+                if (held != null) {
+                    if (!BannerSlotClaimable(held.OwnerId, held.Template != null)) {
+                        continue;
+                    }
+                    held.OwnerId = characterId;
+                    room--;
+                    got.Add(held);
+                    continue;
+                }
+
+                var slot = new BannerSlot(bannerId, date, hour) { OwnerId = characterId };
+                slots.Add(slot);
+                created.Add(slot);
+                got.Add(slot);
+                room--;
+            }
+        }
+        return got;
+    }
+
+    // A slot of ReserveBannerSlots that could not be written is taken out of the list again.
+    public static void ReleaseBannerSlot(List<BannerSlot> slots, BannerSlot slot) {
+        lock (slots) {
+            slots.Remove(slot);
+        }
+    }
+
     // Whether the character may upload to a reserved slot. The slot belongs to the character that
     // reserved it (ownerId, 0 when not known: the owner is kept in memory only). A slot with no owner
     // and no design takes an upload from anyone, at the usual price: the owner is lost whenever the

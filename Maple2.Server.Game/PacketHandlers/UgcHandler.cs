@@ -633,48 +633,31 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
-        List<BannerSlot> newSlots = [];
+        var asked = new List<(int Date, int Hour)>(hours);
+        for (int i = 0; i < hours; i++) {
+            var reservation = packet.Read<UgcBannerReservation>();
+            asked.Add((reservation.Date, reservation.Hour));
+        }
 
         // Reserving is free, so it is bounded: the slots this character holds on the field without
         // a finished design, and the ones of this request, stay within UgcRules.BannerReserveMax.
         int room = UgcRules.BannerReserveRoom(session.Field.Banners.Values.Sum(other =>
             other.SlotsSnapshot().Count(slot => UgcRules.BannerSlotHeld(slot.OwnerId, !string.IsNullOrEmpty(slot.Template?.Url), slot.Expired, session.CharacterId))));
-        DateTimeOffset now = DateTimeOffset.UtcNow;
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        // One lock over the test and the add: two sessions asking for the same hour get it once.
-        lock (banner.Slots) {
-            for (int i = 0; i < hours; i++) {
-                var reservation = packet.Read<UgcBannerReservation>();
-
-                // The slot's start time is built from the date and the hour: values that are no time, or an
-                // hour that is over, are skipped.
-                if (!UgcRules.BannerTimeOpen(reservation.Date, reservation.Hour, now)) {
-                    continue;
+        // The hours are tested and taken under the list's lock, so two sessions asking for the same
+        // hour get it once. The rows are written after the lock: the field thread takes the same lock
+        // in its update and must not wait for the database.
+        List<BannerSlot> newSlots = UgcRules.ReserveBannerSlots(banner.Slots, banner.Id, asked, session.CharacterId, room, DateTimeOffset.UtcNow, out List<BannerSlot> created);
+        if (created.Count > 0) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            foreach (BannerSlot slot in created) {
+                try {
+                    db.AddBannerSlot(slot);
+                } catch (Exception ex) {
+                    Logger.Error(ex, "Failed to save banner slot {BannerId} {Date} {Hour}", bannerId, slot.Date, slot.Hour);
+                    UgcRules.ReleaseBannerSlot(banner.Slots, slot);
+                    newSlots.Remove(slot);
                 }
-                if (room <= 0) {
-                    continue;
-                }
-
-                BannerSlot? held = banner.Slots.FirstOrDefault(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour);
-                if (held != null && UgcRules.BannerSlotClaimable(held.OwnerId, held.Template != null)) {
-                    // The owner was lost (restart, field dispose, other channel): the first to ask for the hour again holds it.
-                    held.OwnerId = session.CharacterId;
-                    room--;
-                    newSlots.Add(held);
-                    continue;
-                }
-                if (held != null) {
-                    Logger.Warning("Failed to reserve banner slot {BannerId} {Date} {Hour}", bannerId, reservation.Date, reservation.Hour);
-                    continue;
-                }
-
-                BannerSlot slot = new(banner.Id, reservation.Date, reservation.Hour);
-                slot = db.AddBannerSlot(slot);
-                slot.OwnerId = session.CharacterId;
-                room--;
-                newSlots.Add(slot);
-                banner.Slots.Add(slot);
             }
         }
 

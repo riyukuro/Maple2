@@ -146,6 +146,54 @@ public class UgcRulesTests {
         Assert.That(finished.Template, Is.Not.Null);
     }
 
+    // Mode 19 from two sessions at the same moment: the hour is given once, in every try.
+    [Test]
+    public void BannerReserveRace() {
+        DateTimeOffset now = new(2026, 11, 11, 0, 0, 0, TimeSpan.Zero);
+        (int Date, int Hour)[] asked = [(20261111, 5)];
+        for (int attempt = 0; attempt < 2000; attempt++) {
+            var slots = new List<BannerSlot>();
+            using var barrier = new System.Threading.Barrier(2);
+            var got = new List<BannerSlot>[2];
+            var threads = new System.Threading.Thread[2];
+            for (int t = 0; t < 2; t++) {
+                int index = t;
+                threads[t] = new System.Threading.Thread(() => {
+                    barrier.SignalAndWait();
+                    got[index] = UgcRules.ReserveBannerSlots(slots, 1, asked, 7 + index, 24, now, out _);
+                });
+                threads[t].Start();
+            }
+            foreach (System.Threading.Thread thread in threads) {
+                thread.Join();
+            }
+
+            Assert.That(slots, Has.Count.EqualTo(1));
+            Assert.That(got[0].Count + got[1].Count, Is.EqualTo(1));
+            Assert.That(slots[0].OwnerId, Is.EqualTo(got[0].Count == 1 ? 7 : 8));
+        }
+    }
+
+    // One request: open free hours get new slots, a lost owner's hour is claimed, an owned hour, an hour
+    // that is over and hours past the room are left. A slot whose write failed is taken out again.
+    [Test]
+    public void BannerReserve() {
+        DateTimeOffset now = new(2026, 11, 11, 12, 30, 0, TimeSpan.Zero);
+        var lost = new BannerSlot(1, 20261111, 14);
+        var owned = new BannerSlot(1, 20261111, 15) { OwnerId = 8 };
+        var slots = new List<BannerSlot> { lost, owned };
+        (int Date, int Hour)[] asked = [(20261111, 11), (20261111, 13), (20261111, 14), (20261111, 15), (20261111, 16), (20261111, 17)];
+        List<BannerSlot> got = UgcRules.ReserveBannerSlots(slots, 1, asked, 7, 3, now, out List<BannerSlot> created);
+        Assert.That(got.Select(slot => slot.Hour), Is.EqualTo(new[] { 13, 14, 16 }));
+        Assert.That(created.Select(slot => slot.Hour), Is.EqualTo(new[] { 13, 16 }));
+        Assert.That(got.All(slot => slot.OwnerId == 7), Is.True);
+        Assert.That(owned.OwnerId, Is.EqualTo(8));
+        Assert.That(slots, Has.Count.EqualTo(4));
+
+        UgcRules.ReleaseBannerSlot(slots, created[0]);
+        Assert.That(slots.Select(slot => slot.Hour), Is.EquivalentTo(new[] { 14, 15, 16 }));
+    }
+
     // The copy is taken under the list's lock and does not follow later changes of the list; the
     // slots in it are the banner's own objects.
     [Test]
