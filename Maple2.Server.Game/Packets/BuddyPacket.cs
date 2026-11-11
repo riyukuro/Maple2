@@ -154,7 +154,7 @@ public static class BuddyPacket {
     public static ByteWriter NotifyRemove(Buddy buddy, string action) {
         var pWriter = Packet.Of(SendOp.Buddy);
         pWriter.Write<Command>(Command.NotifyRemove);
-        pWriter.WriteInt();
+        pWriter.WriteInt(1); // entry count; the client reads this many name, action, id entries
         pWriter.WriteUnicodeString(buddy.Info.Name);
         pWriter.WriteUnicodeString(action);
         pWriter.WriteLong(buddy.Id);
