@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -75,22 +76,30 @@ public class MaidHandler : FieldPacketHandler {
             OwnerName = packet.ReadUnicodeString(),
             BelongTo = packet.ReadUnicodeString(),
         };
-        Maid? maid = session.Field?.GetMaid(maidUid);
-        if (session.Field == null || maid == null) {
-            return;
-        }
-        bool debug = session.Player.AdminPermissions.HasFlag(AdminPermissions.Debug);
-        if (!MaidRules.CanEditProfile(maid, session.AccountId, debug)) {
-            return;
-        }
         if (MaidRules.ProfileTexts(profile).Any(BanWordStorage.ContainsBannedWord)) {
             return;
         }
-        maid.Profile = profile;
-        if (session.Field.SaveMaid(maid)) {
-            int objectId = session.Field.GetMaidNpcObjectId(maidUid);
-            session.Send(UserMaidPacket.Property(objectId != 0 ? objectId : npcObjectId));
+        // The change and the save run on the field thread of the maid's field, which owns it: the maid is read and
+        // the owner checked again there.
+        FieldManager? field = session.Field;
+        if (field?.GetMaid(maidUid) == null) {
+            return;
         }
+        field.Scheduler.Schedule(() => {
+            Maid? maid = field.GetMaid(maidUid);
+            if (maid == null) {
+                return;
+            }
+            bool debug = session.Player.AdminPermissions.HasFlag(AdminPermissions.Debug);
+            if (!MaidRules.CanEditProfile(maid, session.AccountId, debug)) {
+                return;
+            }
+            maid.Profile = profile;
+            if (field.SaveMaid(maid)) {
+                int objectId = field.GetMaidNpcObjectId(maidUid);
+                session.Send(UserMaidPacket.Property(objectId != 0 ? objectId : npcObjectId));
+            }
+        });
     }
 
     private void HandleDebug(GameSession session, IByteReader packet, Command command) {
@@ -100,32 +109,19 @@ public class MaidHandler : FieldPacketHandler {
         if (!session.Player.AdminPermissions.HasFlag(AdminPermissions.Debug)) {
             return;
         }
-        Maid? maid = session.Field?.GetMaid(maidUid);
-        if (session.Field == null || maid == null) {
+        FieldManager? field = session.Field;
+        if (field?.GetMaid(maidUid) == null) {
             return;
         }
         IReadOnlyDictionary<int, int> exps = TableMetadata.MaidTable.Exps ?? new Dictionary<int, int>();
-        switch (command) {
-            case Command.AffinityGrade:
-                MaidRules.AddLevel(maid, 1, Constants.MaidAffinityMax, exps.Count);
-                break;
-            case Command.AffinityUp:
-                MaidRules.AddExp(maid, exps.GetValueOrDefault(maid.Level), exps, Constants.MaidAffinityMax);
-                break;
-            case Command.AffinityReset:
-                MaidRules.ResetLevel(maid);
-                break;
-            case Command.MoodUp:
-                MaidRules.AddMood(maid, DebugMoodStep);
-                break;
-            case Command.MoodDown:
-                MaidRules.AddMood(maid, -DebugMoodStep);
-                break;
-            case Command.Expiry:
-                // flag 0: the expire buttons (a day, an hour, a minute earlier); 1: the extend buttons.
-                maid.ExpiryTime += flag == 0 ? -Math.Max(0, seconds) : Math.Max(0, seconds);
-                break;
-        }
-        session.Field.SaveMaid(maid);
+        int affinityMax = Constants.MaidAffinityMax;
+        field.Scheduler.Schedule(() => {
+            Maid? maid = field.GetMaid(maidUid);
+            if (maid == null || !session.Player.AdminPermissions.HasFlag(AdminPermissions.Debug)) {
+                return;
+            }
+            MaidRules.ApplyDebug(maid, (MaidRules.DebugCommand) command, flag, seconds, exps, affinityMax, DebugMoodStep);
+            field.SaveMaid(maid);
+        });
     }
 }

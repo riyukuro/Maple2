@@ -459,7 +459,8 @@ public sealed class NpcScriptManager {
     // The maid functions of a maid npc's script (maidMoodUp, maidAffinityUp, maidPay), for its owner only: the talk
     // menus that run them are behind maid_auth. maidPay takes the salary of table/maidsalary.xml (mesos for salary
     // type 0, else merets) and extends the contract by PeriodOfMaidEmployment days from its end, or from now when it
-    // has ended. The maid is changed on the field thread, which owns it.
+    // has ended. All of it runs on the field thread, which owns the maid: the salary is taken there, after the maid is
+    // found still placed, so no salary is taken for a maid removed meanwhile.
     private void MaidFunction(ScriptFunctionMetadata scriptFunction, long maidUid) {
         FieldManager? field = session.Field;
         Maid? maid = field?.GetMaid(maidUid);
@@ -468,26 +469,16 @@ public sealed class NpcScriptManager {
         }
         MaidTable table = session.TableMetadata.MaidTable;
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
-        bool pay = false;
-        if (scriptFunction.MaidPay) {
-            if (!table.Entries.TryGetValue(maid.MaidId, out MaidTable.Entry? entry)) {
-                logger.Warning("No salary for maid {MaidId}", maid.MaidId);
-            } else if (entry.SalaryType == 0) {
-                if (session.Currency.Meso >= entry.Salary) {
-                    session.Currency.Meso -= entry.Salary;
-                    pay = true;
-                }
-            } else if (session.Currency.Meret >= entry.Salary) {
-                session.Currency.Meret -= entry.Salary;
-                pay = true;
-            }
+        MaidTable.Entry? salary = null;
+        if (scriptFunction.MaidPay && !table.Entries.TryGetValue(maid.MaidId, out salary)) {
+            logger.Warning("No salary for maid {MaidId}", maid.MaidId);
         }
         int mood = scriptFunction.MaidMoodIncrease;
         int exp = scriptFunction.MaidClosenessIncrease;
         IReadOnlyDictionary<int, int> exps = table.Exps ?? new Dictionary<int, int>();
         field.Scheduler.Schedule(() => {
-            if (field.GetMaid(maidUid) != maid) {
-                return; // removed meanwhile
+            if (!MaidRules.StillPlaced(field.GetMaid(maidUid), maid) || maid.OwnerId != session.AccountId) {
+                return; // removed meanwhile: nothing was taken
             }
             bool changed = mood != 0 && MaidRules.AddMood(maid, mood);
             if (exp != 0) {
@@ -495,14 +486,32 @@ public sealed class NpcScriptManager {
                 MaidRules.AddExp(maid, exp, exps, constants.MaidAffinityMax);
                 changed |= maid.Level != level || maid.Exp != oldExp;
             }
-            if (pay) {
-                maid.ExpiryTime = MaidRules.PaidUntil(maid.ExpiryTime, DateTime.UtcNow.ToEpochSeconds(), constants.PeriodOfMaidEmployment);
-                changed = true;
+            if (salary != null) {
+                changed |= MaidRules.Pay(maid, () => TakeSalary(salary), DateTime.UtcNow.ToEpochSeconds(), constants.PeriodOfMaidEmployment);
             }
             if (changed) {
                 field.SaveMaid(maid);
             }
         });
+    }
+
+    // The salary of a maid row: mesos for salary type 0, else merets; false when the talker cannot pay it.
+    private bool TakeSalary(MaidTable.Entry salary) {
+        if (session.State is SessionState.Disconnected) {
+            return false;
+        }
+        if (salary.SalaryType == 0) {
+            if (session.Currency.Meso < salary.Salary) {
+                return false;
+            }
+            session.Currency.Meso -= salary.Salary;
+            return true;
+        }
+        if (session.Currency.Meret < salary.Salary) {
+            return false;
+        }
+        session.Currency.Meret -= salary.Salary;
+        return true;
     }
 
     #region EnchantTalk

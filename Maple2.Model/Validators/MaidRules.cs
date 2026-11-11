@@ -105,4 +105,46 @@ public static class MaidRules {
     public static long PaidUntil(long expiryTime, long now, int periodDays) {
         return Math.Max(expiryTime, now) + (long) Math.Max(periodDays, 0) * 24 * 60 * 60;
     }
+
+    // A maid change scheduled on the field thread runs only while maid is still the placed maid of its uid (current,
+    // read again on that thread): a maid removed or placed again meanwhile is left alone.
+    public static bool StillPlaced(Maid? current, Maid maid) => current != null && ReferenceEquals(current, maid);
+
+    // maidPay on the field thread: charge takes the salary and says whether it could; only a taken salary extends
+    // the contract. The caller runs it after StillPlaced, so no salary is taken for a gone maid.
+    public static bool Pay(Maid maid, Func<bool> charge, long now, int periodDays) {
+        if (!charge()) {
+            return false;
+        }
+        maid.ExpiryTime = PaidUntil(maid.ExpiryTime, now, periodDays);
+        return true;
+    }
+
+    // The maid dialog's debug buttons (Maid modes 5-9; 10 is Expiry). Mood moves by moodStep.
+    public enum DebugCommand { AffinityGrade = 5, AffinityUp = 6, AffinityReset = 7, MoodUp = 8, MoodDown = 9, Expiry = 10 }
+
+    // Applies a debug button to maid: Expiry moves the contract end by seconds, earlier for flag 0, later for 1.
+    public static void ApplyDebug(Maid maid, DebugCommand command, byte flag, long seconds, IReadOnlyDictionary<int, int> exps,
+                                  int affinityMax, int moodStep) {
+        switch (command) {
+            case DebugCommand.AffinityGrade:
+                AddLevel(maid, 1, affinityMax, exps.Count);
+                break;
+            case DebugCommand.AffinityUp:
+                AddExp(maid, exps.GetValueOrDefault(maid.Level), exps, affinityMax);
+                break;
+            case DebugCommand.AffinityReset:
+                ResetLevel(maid);
+                break;
+            case DebugCommand.MoodUp:
+                AddMood(maid, moodStep);
+                break;
+            case DebugCommand.MoodDown:
+                AddMood(maid, -moodStep);
+                break;
+            case DebugCommand.Expiry:
+                maid.ExpiryTime += flag == 0 ? -Math.Max(0, seconds) : Math.Max(0, seconds);
+                break;
+        }
+    }
 }

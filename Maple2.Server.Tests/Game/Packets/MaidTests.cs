@@ -263,4 +263,66 @@ public class MaidTests {
             Assert.That(table.Exps, Is.Null);
         });
     }
+
+    private static Maid PlacedMaid(long uid = 77) {
+        return new Maid { Uid = uid, OwnerId = 5, ItemId = CubeItemId, MaidId = MaidId, CreationTime = 1000, ExpiryTime = 2000 };
+    }
+
+    [Test]
+    public void StillPlaced_OnlyTheSameMaidObject() {
+        Maid maid = PlacedMaid();
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.StillPlaced(maid, maid), Is.True);
+            Assert.That(MaidRules.StillPlaced(null, maid), Is.False); // removed meanwhile
+            Assert.That(MaidRules.StillPlaced(PlacedMaid(), maid), Is.False); // placed again: a new record of the uid
+        });
+    }
+
+    [Test]
+    public void Pay_ExtendsOnlyWhenTheSalaryWasTaken() {
+        Maid maid = PlacedMaid();
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.Pay(maid, () => false, 1500, 7), Is.False);
+            Assert.That(maid.ExpiryTime, Is.EqualTo(2000));
+            Assert.That(MaidRules.Pay(maid, () => true, 1500, 7), Is.True);
+            Assert.That(maid.ExpiryTime, Is.EqualTo(2000 + 7L * 86400));
+        });
+    }
+
+    [Test]
+    public void ScheduledPay_TakesNoSalaryForAGoneMaid() {
+        // The scheduled step of maidPay: StillPlaced first, then Pay; the charge is never asked for a gone maid.
+        Maid maid = PlacedMaid();
+        int charged = 0;
+        bool Step(Maid? current) => MaidRules.StillPlaced(current, maid) && MaidRules.Pay(maid, () => { charged++; return true; }, 1500, 7);
+        Assert.Multiple(() => {
+            Assert.That(Step(null), Is.False);
+            Assert.That(charged, Is.EqualTo(0));
+            Assert.That(maid.ExpiryTime, Is.EqualTo(2000));
+            Assert.That(Step(maid), Is.True);
+            Assert.That(charged, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public void ApplyDebug_EachButton() {
+        var exps = new Dictionary<int, int> { [1] = 100, [2] = 200, [3] = 300 };
+        Maid maid = PlacedMaid();
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.AffinityGrade, 0, 0, exps, 10, 10);
+        Assert.That(maid.Level, Is.EqualTo(2));
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.AffinityUp, 0, 0, exps, 10, 10);
+        Assert.That(maid.Level, Is.EqualTo(3));
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.AffinityReset, 0, 0, exps, 10, 10);
+        Assert.That(maid.Level, Is.EqualTo(1));
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.MoodUp, 0, 0, exps, 10, 10);
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.MoodUp, 0, 0, exps, 10, 10);
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.MoodDown, 0, 0, exps, 10, 10);
+        Assert.That(maid.Mood, Is.EqualTo(10));
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.Expiry, 0, 500, exps, 10, 10);
+        Assert.That(maid.ExpiryTime, Is.EqualTo(1500));
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.Expiry, 1, 900, exps, 10, 10);
+        Assert.That(maid.ExpiryTime, Is.EqualTo(2400));
+        MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.Expiry, 1, -900, exps, 10, 10);
+        Assert.That(maid.ExpiryTime, Is.EqualTo(2400)); // a negative span is ignored
+    }
 }
