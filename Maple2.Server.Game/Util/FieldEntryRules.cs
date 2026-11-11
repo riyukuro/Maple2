@@ -68,6 +68,15 @@ public static class FieldEntryRules {
             : $"Map {name} ({mapId}) is not in this client version. Entry refused.";
     }
 
+    // The exp a field pays on entry: only on the first visit, and only when the map has an explore type
+    // (1 pays the common map exp, any other positive type the hidden map exp). Null when it pays none.
+    public static ExpType? ExploreExp(bool firstVisit, int exploreType) {
+        if (!firstVisit || exploreType <= 0) {
+            return null;
+        }
+        return exploreType == 1 ? ExpType.mapCommon : ExpType.mapHidden;
+    }
+
     // The name for log lines of a session; empty before the character is loaded (an arrival with a bad token).
     // A map entered with an owner id that has one room per owner instead of one room for everyone: the
     // map of a guild event, which each guild plays in its own room, and a guild house map, which is the

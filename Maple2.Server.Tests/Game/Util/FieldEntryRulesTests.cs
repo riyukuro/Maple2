@@ -104,4 +104,14 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.GuildHouse, 0, 0), Is.False);
         Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.ugcMap, 5, 0), Is.False, "homes have their own path");
     }
+
+    // The exp for the first visit of a map: paid once, by the map's explore type. The session pays it
+    // after the player is added to the field (the order itself is session code and has no test here).
+    [Test]
+    public void ExploreExp_FirstVisitOnly() {
+        Assert.That(FieldEntryRules.ExploreExp(true, 1), Is.EqualTo(ExpType.mapCommon));
+        Assert.That(FieldEntryRules.ExploreExp(true, 2), Is.EqualTo(ExpType.mapHidden));
+        Assert.That(FieldEntryRules.ExploreExp(true, 0), Is.Null, "a map with no explore type pays none");
+        Assert.That(FieldEntryRules.ExploreExp(false, 1), Is.Null, "a map seen before pays none");
+    }
 }

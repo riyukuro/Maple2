@@ -554,18 +554,6 @@ public sealed partial class GameSession : Core.Network.Session {
     public bool EnterField() {
         if (Field == null) return false;
 
-        if (!Player.Value.Unlock.Maps.Contains(Player.Value.Character.MapId)) {
-            if (Field.Metadata.Property.ExploreType > 0) {
-                ExpType expType = Field.Metadata.Property.ExploreType == 1 ? ExpType.mapCommon : ExpType.mapHidden;
-                Exp.AddExp(expType);
-            }
-
-            ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
-            ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
-            ConditionUpdate(ConditionType.explore, codeLong: Field.MapId);
-        }
-
-        Player.Value.Unlock.Maps.Add(Player.Value.Character.MapId);
         Config.LoadHotBars();
         Field.OnAddPlayer(Player);
         Scheduler.Start();
@@ -581,6 +569,21 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Send(StatsPacket.Init(Player));
         Field.Broadcast(StatsPacket.Update(Player), Player.Session);
+
+        // The first visit of a map pays exp. It comes after the player is added to the field: the client
+        // has no local player before its own FieldAddUser, so it shows no exp text for an earlier ExpUp, and
+        // a level-up is sent to the field's players, which the entering player is not before OnAddPlayer.
+        bool firstVisit = !Player.Value.Unlock.Maps.Contains(Player.Value.Character.MapId);
+        ExpType? exploreExp = FieldEntryRules.ExploreExp(firstVisit, Field.Metadata.Property.ExploreType);
+        if (exploreExp != null) {
+            Exp.AddExp(exploreExp.Value);
+        }
+        if (firstVisit) {
+            ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
+            ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
+            ConditionUpdate(ConditionType.explore, codeLong: Field.MapId);
+        }
+        Player.Value.Unlock.Maps.Add(Player.Value.Character.MapId);
 
         Send(AdminPacket.Level(AdminLevel.Of(Player.AdminPermissions)));
 
