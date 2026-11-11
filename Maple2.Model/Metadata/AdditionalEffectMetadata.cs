@@ -44,7 +44,8 @@ public record AdditionalEffectMetadataProperty(
     BuffKeepCondition KeepCondition,
     BuffResetCondition ResetCondition,
     BuffDotCondition DotCondition,
-    int ClearOnDistanceFromCaster);
+    int ClearOnDistanceFromCaster,
+    bool DisableRevivalHere = false); // BasicProperty disableRevivalHere: no revive in place while the buff is on
 
 public record AdditionalEffectMetadataConsume(
     float HpRate,

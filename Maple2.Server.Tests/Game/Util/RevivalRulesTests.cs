@@ -29,4 +29,10 @@ public class RevivalRulesTests {
         Assert.That(RevivalRules.DebuffAllows(90000001, 3, 3, true), Is.True);
         Assert.That(RevivalRules.DebuffAllows(0, 3, 3, false), Is.True);
     }
+    [Test]
+    public void DisableRevivalBuffBlocksReviveInPlace() {
+        Assert.That(RevivalRules.BuffBlocks([]), Is.False);
+        Assert.That(RevivalRules.BuffBlocks([false, false]), Is.False);
+        Assert.That(RevivalRules.BuffBlocks([false, true]), Is.True);
+    }
 }

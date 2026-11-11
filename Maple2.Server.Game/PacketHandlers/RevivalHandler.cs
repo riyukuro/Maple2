@@ -76,6 +76,9 @@ public class RevivalHandler : FieldPacketHandler {
         }
 
         bool useVoucher = packet.ReadBool();
+        if (HasNoRevivalBuff(session)) {
+            return;
+        }
 
         if (useVoucher) {
             if (!session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)])) {
@@ -118,6 +121,9 @@ public class RevivalHandler : FieldPacketHandler {
             return;
         }
         if (session.Field is DungeonFieldManager { DungeonMetadata.Limit.DisableMeretRevival: true }) {
+            return;
+        }
+        if (HasNoRevivalBuff(session)) {
             return;
         }
 
@@ -169,6 +175,13 @@ public class RevivalHandler : FieldPacketHandler {
         if (debuffCode != 0) {
             session.Player.Buffs.AddBuff(session.Player, session.Player, debuffCode, 1, session.Field.FieldTick);
         }
+    }
+
+    // Client UIRevivalDialog::FUN_141abdab0 (uirevivaldialog.cpp:801), called by both revive-in-place buttons
+    // (:441 merets or coupon, :496 mesos): a buff with disableRevivalHere refuses with
+    // s_msg_revival_merat_cannot_here_debuff. The return-to-town revive (mode 0) has no such test.
+    private static bool HasNoRevivalBuff(GameSession session) {
+        return RevivalRules.BuffBlocks(session.Player.Buffs.EnumerateBuffs().Select(buff => buff.Metadata.Property.DisableRevivalHere));
     }
 
     // Client StateSummonRevive: a dead summon owned by the player asks to revive; the fork has no summon revive state.
