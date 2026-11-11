@@ -142,7 +142,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                             Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
                             BreakDefense: vibrate.brokenDefence,
                             BreakTick: vibrate.brokenTick,
-                            VibrateIndex: vibrateObjectId++);
+                            VibrateIndex: vibrateObjectId++,
+                            HideGroupId: vibrate.hideGroupId);
 
                         break;
                     }

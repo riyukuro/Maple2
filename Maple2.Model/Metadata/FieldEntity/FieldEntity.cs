@@ -45,7 +45,9 @@ public record FieldVibrateEntity(
     BoundingBox3 Bounds,
     int BreakDefense,
     int BreakTick,
-    int VibrateIndex) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
+    int VibrateIndex,
+    // The map's hideGroupId: a vibrate object of a group starts hidden until an AI's showVibrate shows the group.
+    int HideGroupId = 0) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
 
 public record FieldSpawnTile(
     FieldEntityId Id,

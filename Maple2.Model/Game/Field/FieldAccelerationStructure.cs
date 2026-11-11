@@ -783,6 +783,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 writer.Write(vibrateEntity.VibrateIndex);
                 writer.WriteInt(vibrateEntity.BreakDefense);
                 writer.WriteInt(vibrateEntity.BreakTick);
+                writer.WriteInt(vibrateEntity.HideGroupId);
                 break;
             case FieldSpawnTile spawnTile:
                 break;
@@ -934,7 +935,8 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                     Bounds: bounds,
                     VibrateIndex: reader.ReadInt(),
                     BreakDefense: reader.ReadInt(),
-                    BreakTick: reader.ReadInt());
+                    BreakTick: reader.ReadInt(),
+                    HideGroupId: reader.ReadInt());
             case FieldEntityType.SpawnTile:
                 return new FieldSpawnTile(
                     Id: id,

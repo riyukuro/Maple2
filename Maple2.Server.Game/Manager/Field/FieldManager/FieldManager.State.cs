@@ -1123,6 +1123,10 @@ public partial class FieldManager {
         }
         added.Session.Send(LiftablePacket.Update(fieldLiftables.Values.Where(liftable => liftable.FinishTick == 0).ToList()));
         added.Session.Send(BreakablePacket.Update(fieldBreakables.Values));
+        // The client shows every vibrate object; the hidden groups are hidden for the newcomer.
+        foreach (string vibrateId in Vibrate.Hidden) {
+            added.Session.Send(VibratePacket.Hide(vibrateId));
+        }
         added.Session.Send(InteractObjectPacket.Load(fieldInteracts.Values));
         foreach (FieldInteract fieldInteract in fieldAdBalloons.Values) {
             added.Session.Send(InteractObjectPacket.Add(fieldInteract.Object));

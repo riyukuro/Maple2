@@ -65,6 +65,8 @@ public partial class FieldManager : IField {
     public Navigation Navigation { get; init; }
     public readonly PerformanceStageManager? PerformanceStage;
     public FieldAccelerationStructure? AccelerationStructure { get; private set; }
+    // The map's hidden vibrate groups (shown by an AI's showVibrate, hidden again by hideVibrateAll).
+    public AiVibrate Vibrate { get; private set; } = new([]);
     private readonly UgcMapMetadata ugcMetadata;
 
     internal readonly EventQueue Scheduler;
@@ -128,6 +130,7 @@ public partial class FieldManager : IField {
 
         if (MapData.TryGet(Metadata.XBlock, out FieldAccelerationStructure? accelerationStructure)) {
             AccelerationStructure = accelerationStructure;
+            Vibrate = new AiVibrate(accelerationStructure.VibrateEntities.ToArray());
         } else {
             logger.Error("Failed to load acceleration structure for map {MapId}", MapId);
         }

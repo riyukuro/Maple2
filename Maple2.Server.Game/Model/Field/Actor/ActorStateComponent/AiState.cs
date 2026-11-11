@@ -599,7 +599,12 @@ public class AiState {
         actor.Field.Broadcast(NpcNoticePacket.TargetEffect(actor.BattleState.TargetId, node.EffectName));
     }
 
-    private void ProcessNode(ShowVibrateNode node) { }
+    // The group's hidden vibrate objects fade in and drop onto their place (AiVibrate).
+    private void ProcessNode(ShowVibrateNode node) {
+        foreach (string vibrateId in actor.Field.Vibrate.Show(node.GroupId)) {
+            actor.Field.Broadcast(VibratePacket.Show(vibrateId));
+        }
+    }
 
     private void ProcessNode(SidePopupNode node) {
         actor.Field.Broadcast(NpcNoticePacket.SidePopup(node.Type, node.Duration, node.Illust, node.Voice, node.Script, node.Sound));
@@ -650,7 +655,15 @@ public class AiState {
         actor.Field.RoomTimer?.Modify(node.TimeTick, node.IsShowEffect);
     }
 
-    private void ProcessNode(HideVibrateAllNode node) { }
+    // Every shown vibrate object of a hidden group fades out again (AiVibrate).
+    private void ProcessNode(HideVibrateAllNode node) {
+        if (node.IsKeepBattle) {
+            actor.BattleState.KeepBattle = true;
+        }
+        foreach (string vibrateId in actor.Field.Vibrate.HideAll()) {
+            actor.Field.Broadcast(VibratePacket.Hide(vibrateId));
+        }
+    }
 
     private void ProcessNode(TriggerModifyUserValueNode node) {
         AiTriggerValue.Modify(actor.Field.UserValues, node.Key, node.Value);
