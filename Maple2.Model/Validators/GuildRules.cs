@@ -216,7 +216,8 @@ public static class GuildRules {
         if (next.RequireLevel > guildLevel) {
             return GuildError.s_guild_err_not_enough_guild_level;
         }
-        if (next.UpgradeCost < 0 || next.UpgradeCost > (IsEventFundSkill(skillId) ? 0 : funds)) {
+        // The event fund is not kept by the server: such a skill is refused whatever its cost.
+        if (IsEventFundSkill(skillId) || next.UpgradeCost < 0 || next.UpgradeCost > funds) {
             return GuildError.s_guild_err_not_enough_guild_fund;
         }
         return GuildError.none;
@@ -240,7 +241,7 @@ public static class GuildRules {
         if (row.RequireLevel > guildLevel) {
             return GuildError.s_guild_err_not_enough_guild_level;
         }
-        if (row.Cost < 0 || row.Cost > (IsEventFundSkill(skillId) ? 0 : funds)) {
+        if (IsEventFundSkill(skillId) || row.Cost < 0 || row.Cost > funds) {
             return GuildError.s_guild_err_not_enough_guild_fund;
         }
         if (SkillRemainingSeconds(row, useTime, now) > 0 || SkillCooldownSeconds(row, useTime, now) > 0) {

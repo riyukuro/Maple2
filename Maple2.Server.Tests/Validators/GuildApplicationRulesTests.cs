@@ -124,6 +124,7 @@ public class GuildApplicationRulesTests {
         // Paid from the event fund, which the server does not keep.
         Assert.That(GuildRules.CheckUpgradeSkill(true, 1001, current, next, 3, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
         Assert.That(GuildRules.CheckUpgradeSkill(true, 10000, current, next, 3, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1001, current, SkillRow(3, 0), 3, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund), "also at cost 0");
         Assert.That(GuildRules.CheckUpgradeSkill(true, 1000, current, next, 3, 500), Is.EqualTo(GuildError.none));
     }
 
@@ -141,6 +142,7 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.CheckUseSkill(true, 1, row with { Cost = -1 }, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
         // Paid from the event fund, which the server does not keep.
         Assert.That(GuildRules.CheckUseSkill(true, 1001, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUseSkill(true, 1001, row with { Cost = 0 }, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund), "also at cost 0");
         // 60 minutes from the time of use.
         Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 1000, 4599), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
         Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 1000, 4600), Is.EqualTo(GuildError.none));
