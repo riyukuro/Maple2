@@ -477,7 +477,7 @@ public class PartyManager : IDisposable {
         });
 
         Task.Factory.StartNew(() => {
-            // TODO: The duration is wrong.
+            // The client does not settle the kick vote's length; the ready check's is kept (FORK.md).
             Thread.Sleep(TimeSpan.FromSeconds(Constants.PartyVoteReadyDurationSeconds));
             PartyLookup.DungeonMatchStep(() => {
                 if (Party.Vote == null) {
