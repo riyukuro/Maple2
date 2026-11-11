@@ -58,7 +58,9 @@ public class HomeActionHandler : FieldPacketHandler {
                 HandleQuiz(session, packet);
                 break;
             case Command.PvpControl:
-                // Not handled: a constant 1 and the six values of the PvP control dialog.
+                // UIUGCPVPControlDialog "OnStart" (uiugcpvpcontroldialog.cpp:109): a constant 1 and the six values
+                // of the PvP control dialog. The server has no PvP mode for homes; the client reads only the six
+                // values back (HomeAction 14, 0) and has no refusal text. Read and logged.
                 Logger.Debug("HomeAction {Command} from {CharacterId}: {Type} {A} {B} {C} {D} {E} {F}", command, session.CharacterId,
                     packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte());
                 break;
@@ -89,7 +91,11 @@ public class HomeActionHandler : FieldPacketHandler {
         }
     }
 
-    // Not handled: the OX quiz event. Reads what the client writes for each of its sub-types.
+    // Not handled: the OX quiz event of a home (an event with an entry fee, its own map, a host and questions).
+    // Reads what the client writes for each of its sub-types. Client writers: 1, 3 and 5 in
+    // unit_140dfef30_ugcoxevent.cpp (FUN_140dff2b0, FUN_140dff210, FUN_140dff580), 7 uiquizoxwelcomedialog.cpp:97,
+    // 10 uiquizhostdialog.cpp:136, 11 uiquizoxselectdialog.cpp:80. The server has none of the event; the
+    // client's own refusal (s_ugcox_create_fail_shutdown) hangs on a content switch, not on an answer.
     private void HandleQuiz(GameSession session, IByteReader packet) {
         byte type = packet.ReadByte();
         switch (type) {
