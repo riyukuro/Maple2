@@ -36,6 +36,8 @@ public partial class ChannelService {
                 return Task.FromResult(StartVoteKick(request.ReceiverIds, request.PartyId, request.StartVoteKick));
             case PartyRequest.PartyOneofCase.SetDungeon:
                 return Task.FromResult(SetDungeon(request.ReceiverIds, request.SetDungeon));
+            case PartyRequest.PartyOneofCase.DungeonMatch:
+                return Task.FromResult(DungeonMatch(request.PartyId, request.ReceiverIds, request.DungeonMatch));
             case PartyRequest.PartyOneofCase.Recall:
                 return Task.FromResult(Recall(request.PartyId, request.ReceiverIds, request.Recall));
             default:
@@ -226,7 +228,18 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Party.SetDungeon(setDungeon.DungeonId, setDungeon.DungeonRoomId, setDungeon.Set);
+            session.Party.SetDungeon(setDungeon.DungeonId, setDungeon.DungeonRoomId, setDungeon.Set, setDungeon.Matched);
+        }
+
+        return new PartyResponse();
+    }
+
+    private PartyResponse DungeonMatch(int partyId, IEnumerable<long> receiverIds, PartyRequest.Types.DungeonMatch match) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Party.Party?.Id != partyId) {
+                continue;
+            }
+            session.Party.SetDungeonMatch((byte) match.Kind, match.Registered);
         }
 
         return new PartyResponse();

@@ -28,6 +28,8 @@ public class Party : IByteSerializable {
     public PartyVote? Vote;
     public PartySearch? Search;
     public long LastVoteTime = 0;
+    // The match kind of the party's dungeon match search, 0 when it does not search (the Load bits byte).
+    public byte DungeonMatchKind;
 
     [SetsRequiredMembers]
     public Party(int id, long leaderAccountId, long leaderCharacterId, string leaderName) {

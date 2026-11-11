@@ -318,7 +318,7 @@ public class PartyManager : IDisposable {
         session.Send(PartyPacket.StartVote(Party.Vote));
     }
 
-    public void SetDungeon(int dungeonId, int dungeonRoomId, bool set) {
+    public void SetDungeon(int dungeonId, int dungeonRoomId, bool set, bool matched = false) {
         if (Party == null) {
             return;
         }
@@ -328,13 +328,26 @@ public class PartyManager : IDisposable {
         session.Dungeon.SetDungeon(dungeonId, dungeonRoomId, set);
 
         session.Send(PartyPacket.DungeonReset(set, dungeonId));
-        if (set && dungeonId != 0 && Party.LeaderCharacterId != session.CharacterId) {
+        if (set && dungeonId != 0 && matched) {
+            // The dungeon matchmaker made the room: every member, the leader too, gets the match box, whose OK
+            // enters the party's room (RoomDungeon 3).
+            session.Send(PartyPacket.PartySearchDungeon());
+        } else if (set && dungeonId != 0 && Party.LeaderCharacterId != session.CharacterId) {
             // The leader made a dungeon room: the client asks this member whether to enter it.
             session.Send(PartyPacket.DungeonRoomCreate(dungeonId));
         }
         if (Party.DungeonId == 0) {
             session.Send(PartyPacket.PartyNotice(PartyMessage.s_field_enteracne_party_notify_reset_dungeon, "Field_Enterance_Reset_Dungeon"));
         }
+    }
+
+    // The party's dungeon match search started or ended (World DungeonMatch).
+    public void SetDungeonMatch(byte kind, bool registered) {
+        if (Party == null) {
+            return;
+        }
+        Party.DungeonMatchKind = registered ? kind : (byte) 0;
+        session.Send(PartyPacket.PartySearch(kind, registered));
     }
 
     public int GuildMemberCount() {

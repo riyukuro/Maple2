@@ -275,32 +275,111 @@ public class PartyHandler : FieldPacketHandler {
         session.Currency.Meret -= price;
     }
 
-    // Party 32: the dungeon match search (PartyDungeonMatch.ReadSearch). There is no matchmaker: the client
-    // and the data do not say when a group forms, from how many players, for which of the picked rooms or how
-    // long the confirm box waits. Nothing is answered; the client enters its searching state only on the
-    // register reply (0x1e), so its find button stays as it was.
+    // Party 32: the dungeon match search (PartyDungeonMatch.ReadSearch). World runs the matchmaker (the user's
+    // rules, FORK.md); Game picks the rooms the search may use. With no picked room the client asks for the
+    // recommended rooms (DungeonRoomTable::GetMatchRooms of the lowest member's level and gear score).
     private void HandleDungeonMatch(GameSession session, IByteReader packet) {
         PartyDungeonMatchRequest? request = PartyDungeonMatch.ReadSearch(packet);
         if (request == null) {
             return;
         }
-        Logger.Debug("Party dungeon match from {CharacterId}: kind {Kind}, {Count} rooms, rewarded {Rewarded}",
-            session.CharacterId, request.Value.Kind, request.Value.RoomIds.Count, request.Value.Rewarded);
+        (short level, int gearScore) = LowestMember(session);
+        IReadOnlyDictionary<int, DungeonRoomMetadata> table = session.TableMetadata.DungeonRoomTable.Entries;
+        List<DungeonRoomMetadata> rooms = request.Value.RoomIds.Count == 0
+            ? DungeonMatchRules.MatchRooms(table.Values, level, gearScore, Constants.DungeonMatchRecommendPickCount)
+            : DungeonMatchRules.PickedRooms(table, request.Value.RoomIds, request.Value.Kind, level);
+        RequestDungeonMatch(session, request.Value.Kind, rooms);
     }
 
-    // Party 33: the party search for one dungeon room (PartyDungeonMatch.ReadPartySearch). It registers under
-    // the same match kind as Party 32 and waits for the same matchmaker; not answered, as Party 32.
+    // Party 33: the party search for one dungeon room (PartyDungeonMatch.ReadPartySearch), under the match kind of
+    // the room's group type, the kind the room dialog's cancel (34) and IsMatchSearching use.
     private void HandlePartySearch(GameSession session, IByteReader packet) {
         int? roomId = PartyDungeonMatch.ReadPartySearch(packet);
-        if (roomId == null) {
+        if (roomId == null || !session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(roomId.Value, out DungeonRoomMetadata? room)) {
             return;
         }
-        Logger.Debug("Party search for room {RoomId} from {CharacterId}", roomId.Value, session.CharacterId);
+        byte kind = DungeonMatchRules.KindOf(room.GroupType);
+        (short level, _) = LowestMember(session);
+        RequestDungeonMatch(session, kind, DungeonMatchRules.PickedRooms(session.TableMetadata.DungeonRoomTable.Entries, [room.Id], kind, level));
     }
 
-    // Party 34: cancel the search; the byte is the match kind. Nothing is searching, so nothing to cancel.
+    // Party 34: cancel the search; the byte is the match kind. Any member can send it; World takes the leader's
+    // (rule 2: the party goes with the members found so far when they are enough) and answers others with error 40.
     private void HandleCancelPartySearch(GameSession session, IByteReader packet) {
         byte kind = packet.ReadByte();
+        if (session.Party.Party == null) {
+            return;
+        }
+
+        try {
+            PartyResponse response = World.Party(new PartyRequest {
+                RequestorId = session.CharacterId,
+                CancelDungeonMatch = new PartyRequest.Types.CancelDungeonMatch {
+                    PartyId = session.Party.Id,
+                    Kind = kind,
+                },
+            });
+            if (response.Error != (int) PartyError.none) {
+                session.Send(PartyPacket.Error((PartyError) response.Error));
+            }
+        } catch (RpcException) { }
+    }
+
+    private void RequestDungeonMatch(GameSession session, byte kind, List<DungeonRoomMetadata> rooms) {
+        if (kind == 0 || rooms.Count == 0) {
+            return;
+        }
+
+        var match = new PartyRequest.Types.DungeonMatch { Kind = kind };
+        match.Rooms.AddRange(rooms.Select(room => new PartyRequest.Types.DungeonMatch.Types.Room {
+            Id = room.Id,
+            MinUsers = room.Limit.MinUserCount,
+            MaxUsers = room.Limit.MaxUserCount,
+            ChangeMaxUsers = room.Limit.ChangeMaxUsers,
+        }));
+
+        PartyResponse response;
+        try {
+            response = World.Party(new PartyRequest {
+                RequestorId = session.CharacterId,
+                DungeonMatch = match,
+            });
+        } catch (RpcException) {
+            return;
+        }
+        if (response.Error != (int) PartyError.none) {
+            session.Send(PartyPacket.Error((PartyError) response.Error));
+            return;
+        }
+        if (response.InfoCase != PartyResponse.InfoOneofCase.Party || session.Party.Party != null) {
+            // A party's search: World tells every member (DungeonMatch, SetDungeon).
+            return;
+        }
+
+        // The searcher joined a searching party or got a party of their own; World's broadcasts went out before
+        // this session had the party.
+        if (!session.Party.SetParty(response.Party)) {
+            return;
+        }
+        session.Send(PartyPacket.Load(session.Party.Party!, true));
+        if (response.DungeonMatched) {
+            session.Send(PartyPacket.PartySearchDungeon());
+        } else {
+            session.Party.SetDungeonMatch(kind, true);
+        }
+    }
+
+    // The lowest level and gear score among the party (or the player alone): the client's GetAvailableRooms.
+    private static (short Level, int GearScore) LowestMember(GameSession session) {
+        if (session.Party.Party != null) {
+            PlayerInfo[] infos = session.Party.Party.Members.Values.Select(member => member.Info).ToArray();
+            if (infos.Length > 0) {
+                return (infos.Min(info => info.Level), infos.Min(info => info.GearScore));
+            }
+        }
+        return session.PlayerInfo.GetOrFetch(session.CharacterId, out PlayerInfo? self)
+            ? (self.Level, self.GearScore)
+            : (session.Player.Value.Character.Level, 0);
     }
 
     private void HandleVoteKick(GameSession session, IByteReader packet) {

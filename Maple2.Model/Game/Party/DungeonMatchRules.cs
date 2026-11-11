@@ -35,6 +35,32 @@ public static class DungeonMatchRules {
     public static bool CanStart(DungeonMatchRoom room, int users) =>
         users >= Math.Max(1, room.MinUsers) && users <= MaxUsers(room, users);
 
+    // The match kind of a room's group type (clubcommon.cpp FUN_1402178b0, the kind Party 34 and the room dialog's
+    // IsMatchSearching use): normal and raid 1, worldBossDungeon 2, event 3, lapenta 4; 0 for a room no search runs for.
+    public static byte KindOf(DungeonGroupType groupType) => groupType switch {
+        DungeonGroupType.normal or DungeonGroupType.raid => 1,
+        DungeonGroupType.worldBossDungeon => 2,
+        DungeonGroupType.@event => 3,
+        DungeonGroupType.lapenta => 4,
+        _ => 0,
+    };
+
+    // The searching bits of the register reply (0x1e) and Party Load: CPartyManager::IsMatchSearching(kind) tests
+    // bit kind.
+    public static byte SearchBits(byte kind) => kind is > 0 and < 8 ? (byte) (1 << kind) : (byte) 0;
+
+    // The rooms of a Party 32 with picked rooms, or Party 33, that the search may use: a room of the table whose
+    // group type has this match kind, with a level limit the lowest member meets.
+    public static List<DungeonRoomMetadata> PickedRooms(IReadOnlyDictionary<int, DungeonRoomMetadata> table, IEnumerable<int> roomIds, byte kind, short level) {
+        var result = new List<DungeonRoomMetadata>();
+        foreach (int id in roomIds.Distinct()) {
+            if (table.TryGetValue(id, out DungeonRoomMetadata? room) && KindOf(room.GroupType) == kind && kind != 0 && level >= room.Limit.MinLevel) {
+                result.Add(room);
+            }
+        }
+        return result;
+    }
+
     // DungeonRoomTable::GetMatchRooms (dungeonroom.cpp), the rooms of an empty Party 32 room set: the rooms of group
     // types 1 and 2 ordered by gear score, player level limit and id (the row's sortOrder is not ingested), taken from
     // the highest at or under (gear score, level) downwards, skipping a room whose level limit is above the level,

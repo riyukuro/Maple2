@@ -4,6 +4,9 @@ using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -174,6 +177,52 @@ public class DungeonMatchQueueTests {
         var reward = new DungeonRoomRewardMetadata(false, 0, 0, 0, 0, 0, [], [], 0, 0, 0);
         return new DungeonRoomMetadata(id, 0, DungeonPlayType.none, group, DungeonCooldownType.none, 0, 0, 0, [], reward, limit,
             0, 0, 0, false, 0, 0, false, [], [], false, default, false);
+    }
+
+    [Test]
+    public void KindAsTheClientGroupTypeMap() {
+        Assert.That(DungeonMatchRules.KindOf(DungeonGroupType.normal), Is.EqualTo(1));
+        Assert.That(DungeonMatchRules.KindOf(DungeonGroupType.raid), Is.EqualTo(1));
+        Assert.That(DungeonMatchRules.KindOf(DungeonGroupType.worldBossDungeon), Is.EqualTo(2));
+        Assert.That(DungeonMatchRules.KindOf(DungeonGroupType.@event), Is.EqualTo(3));
+        Assert.That(DungeonMatchRules.KindOf(DungeonGroupType.lapenta), Is.EqualTo(4));
+        Assert.That(DungeonMatchRules.KindOf(DungeonGroupType.chaosRaid), Is.EqualTo(0));
+        Assert.That(DungeonMatchRules.SearchBits(1), Is.EqualTo(2));
+        Assert.That(DungeonMatchRules.SearchBits(4), Is.EqualTo(16));
+        Assert.That(DungeonMatchRules.SearchBits(0), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void PickedRoomsKeepTheKindAndLevel() {
+        var table = new Dictionary<int, DungeonRoomMetadata> {
+            [1] = Room(1, DungeonGroupType.normal, 0, 10),
+            [2] = Room(2, DungeonGroupType.normal, 0, 50),
+            [3] = Room(3, DungeonGroupType.lapenta, 0, 10),
+        };
+        List<int> ids = DungeonMatchRules.PickedRooms(table, [1, 2, 3, 9, 1], 1, 40).Select(room => room.Id).ToList();
+        Assert.That(ids, Is.EqualTo(new[] { 1 }));
+        Assert.That(DungeonMatchRules.PickedRooms(table, [3], 4, 40).Select(room => room.Id), Is.EqualTo(new[] { 3 }));
+        Assert.That(DungeonMatchRules.PickedRooms(table, [3], 0, 40), Is.Empty);
+    }
+
+    // CPartyManager::OnPartyDungeonMatchRegister (0x1e): kind, registered, notice, then the bits IsMatchSearching tests.
+    [Test]
+    public void RegisterReplyCarriesTheSearchBit() {
+        var reader = new ByteReader(PartyPacket.PartySearch(1, true).Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Party));
+        Assert.That(reader.ReadByte(), Is.EqualTo(30));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadBool(), Is.True);
+        Assert.That(reader.ReadBool(), Is.True);
+        Assert.That(reader.ReadByte(), Is.EqualTo(2));
+
+        reader = new ByteReader(PartyPacket.PartySearch(1, false).Buffer, 0);
+        reader.Read<SendOp>();
+        reader.ReadByte();
+        reader.ReadByte();
+        Assert.That(reader.ReadBool(), Is.False);
+        reader.ReadBool();
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
     }
 
     [Test]

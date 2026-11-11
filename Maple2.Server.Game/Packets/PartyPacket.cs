@@ -127,7 +127,7 @@ public static class PartyPacket {
         }
         pWriter.WriteBool(party.DungeonSet);
         pWriter.WriteInt(party.DungeonId);
-        pWriter.WriteBool(false); // Party Search
+        pWriter.WriteByte(DungeonMatchRules.SearchBits(party.DungeonMatchKind)); // the match searching bits
         pWriter.WriteByte();
         pWriter.WriteBool(party.Search != null);
         if (party.Search != null) {
@@ -252,6 +252,8 @@ public static class PartyPacket {
         return pWriter;
     }
 
+    // CPartyManager::OnPartyDungeonMatchRegister: the kind, registered or not, the notice flag, and the searching bits
+    // the client keeps for IsMatchSearching.
     public static ByteWriter PartySearch(byte type, bool searching) {
         var pWriter = Packet.Of(SendOp.Party);
         pWriter.Write<Command>(Command.PartySearch);
@@ -271,7 +273,7 @@ public static class PartyPacket {
         pWriter.WriteByte(type); // Type
         pWriter.WriteBool(searching); // Searching
         pWriter.WriteBool(true); // always true?
-        pWriter.WriteByte();
+        pWriter.WriteByte(searching ? DungeonMatchRules.SearchBits(type) : (byte) 0);
 
         return pWriter;
     }
