@@ -998,13 +998,14 @@ public partial class FieldManager {
         return fieldInstrument;
     }
 
-    public FieldPortal SpawnEventPortal(FieldPlayer player, int fieldId, int portalDurationTick, string password) {
+    public FieldPortal SpawnEventPortal(FieldPlayer player, int fieldId, int portalDurationTick, string password, int maxCount) {
         var portal = new Portal(NextLocalId(), fieldId, -1, PortalType.Event, PortalActionType.Interact, player.Position, player.Rotation, new Vector3(200, 200, 250), 0, 0, true, false, true);
         FieldPortal fieldPortal = SpawnPortal(portal);
         fieldPortal.Model = "Eff_Com_Portal_E";
         fieldPortal.Password = password;
         fieldPortal.OwnerName = player.Value.Character.Name;
         fieldPortal.EndTick = (int) (Environment.TickCount64 + portalDurationTick);
+        fieldPortal.MassiveMaxCount = maxCount;
         Broadcast(PortalPacket.Add(fieldPortal));
         return fieldPortal;
     }

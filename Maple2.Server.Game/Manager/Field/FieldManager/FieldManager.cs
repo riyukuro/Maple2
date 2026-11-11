@@ -547,7 +547,12 @@ public partial class FieldManager : IField {
         }
 
         if (fieldPortal.RandomRoom is { } randomRoom) {
-            return UseRandomRoomPortal(session, fieldPortal, randomRoom);
+            return UseRoomPortal(session, fieldPortal, randomRoom.MaxUserCount, randomRoom.AutoClosing, randomRoom.DurationTick);
+        }
+        if (fieldPortal.MassiveMaxCount is { } massiveMaxCount) {
+            // A full OpenMassive portal takes nobody more, so it closes; its room has no time limit and goes
+            // when it is empty.
+            return UseRoomPortal(session, fieldPortal, massiveMaxCount, true, 0);
         }
 
         // MoveByPortal (same map)
@@ -661,35 +666,38 @@ public partial class FieldManager : IField {
         return true;
     }
 
-    // The room is made at the first entry, with its roomdurationTick on the clock; it takes maxUserCount players,
-    // and with autoClosing the portal goes when it is full. An ended room closes its portal.
-    private bool UseRandomRoomPortal(GameSession session, FieldPortal fieldPortal, RandomRoomFieldMetadata room) {
+    // The portal's own room is made at the first entry, with durationTick on the clock when above 0; it takes
+    // maxUserCount players (0 = no limit), and with autoClosing the portal goes when it is full. An ended room
+    // closes its portal.
+    private bool UseRoomPortal(GameSession session, FieldPortal fieldPortal, int maxUserCount, bool autoClosing, int durationTick) {
         FieldManager? roomField;
         bool close;
         lock (fieldPortal) {
-            if (RandomRoomRules.Full(fieldPortal.RandomRoomEntered, room.MaxUserCount)) {
+            if (RandomRoomRules.Full(fieldPortal.RoomEntered, maxUserCount)) {
                 session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_member_limit));
                 return false;
             }
-            if (fieldPortal.RandomRoomField is { Disposed: true }) {
+            if (fieldPortal.RoomField is { Disposed: true }) {
                 RemovePortal(fieldPortal.ObjectId);
                 session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_dungeon_not_exist));
                 return false;
             }
-            if (fieldPortal.RandomRoomField == null) {
+            if (fieldPortal.RoomField == null) {
                 FieldManager? created = FieldFactory.Create(fieldPortal.Value.TargetMapId);
                 if (created == null) {
                     session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
                     return false;
                 }
                 created.Init();
-                created.SetRoomTimer(RoomTimerType.Clock, room.DurationTick);
-                fieldPortal.RandomRoomField = created;
+                if (durationTick > 0) {
+                    created.SetRoomTimer(RoomTimerType.Clock, durationTick);
+                }
+                fieldPortal.RoomField = created;
             }
 
-            roomField = fieldPortal.RandomRoomField;
-            fieldPortal.RandomRoomEntered++;
-            close = room.AutoClosing && RandomRoomRules.Full(fieldPortal.RandomRoomEntered, room.MaxUserCount);
+            roomField = fieldPortal.RoomField;
+            fieldPortal.RoomEntered++;
+            close = autoClosing && RandomRoomRules.Full(fieldPortal.RoomEntered, maxUserCount);
         }
 
         if (close) {
@@ -701,7 +709,7 @@ public partial class FieldManager : IField {
             session.ConditionUpdate(ConditionType.map, codeLong: roomField.MapId);
         } else {
             lock (fieldPortal) {
-                fieldPortal.RandomRoomEntered--;
+                fieldPortal.RoomEntered--;
             }
         }
         session.Send(entered

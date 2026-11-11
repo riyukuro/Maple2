@@ -527,7 +527,8 @@ public class ItemUseHandler : FieldPacketHandler {
         string password = packet.ReadUnicodeString();
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
 
-        // TODO: Handle maxCount and weddingParty
+        // weddingParty (the wedding hall items 20001698-20001702) is not handled: no client or data source says what
+        // it changes.
         if (!parameters.ContainsKey("fieldID") || !int.TryParse(parameters["fieldID"], out int fieldId) ||
             !parameters.ContainsKey("portalDurationTick") || !int.TryParse(parameters["portalDurationTick"], out int portalDurationTick)) {
             return;
@@ -537,7 +538,7 @@ public class ItemUseHandler : FieldPacketHandler {
             throw new InvalidOperationException($"Failed to consume item: {item.Uid}");
         }
         session.Send(PlayerHostPacket.StartMiniGame(session.PlayerName, fieldId));
-        FieldPortal portal = session.Field.SpawnEventPortal(session.Player, fieldId, portalDurationTick, password);
+        FieldPortal portal = session.Field.SpawnEventPortal(session.Player, fieldId, portalDurationTick, password, OpenMassive.MaxCount(parameters));
         session.Field.UsePortal(session, portal.Value.Id, password);
     }
 

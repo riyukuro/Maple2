@@ -16,8 +16,12 @@ public class FieldPortal : FieldEntity<Portal> {
     public int RoomId;
     // A createRandomRoom portal: its room is made at the first entry, so the room's time starts then.
     public RandomRoomFieldMetadata? RandomRoom;
-    public FieldManager? RandomRoomField;
-    public int RandomRoomEntered;
+    // An OpenMassive item's portal: like a random room it leads to a room of its own, made at the first entry,
+    // that takes the item's maxCount players (0 = no limit).
+    public int? MassiveMaxCount;
+    // The room of a random-room or OpenMassive portal, and how many players went in through the portal.
+    public FieldManager? RoomField;
+    public int RoomEntered;
 
     public FieldPortal(FieldManager field, int objectId, Portal value) : base(field, objectId, value) {
         Visible = value.Visible;
