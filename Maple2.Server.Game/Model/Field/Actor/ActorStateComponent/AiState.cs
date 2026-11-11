@@ -668,9 +668,8 @@ public class AiState {
             return false;
         }
 
-        float targetDistance = (actor.BattleState.Target.Position - actor.Position).LengthSquared();
-
-        return node.Value * node.Value > (int) targetDistance;
+        // Both used to test the other way round.
+        return AiDistance.Over(actor.Position, actor.BattleState.Target.Position, node.Value);
     }
 
     private bool ProcessCondition(CombatTimeCondition node) {
@@ -682,9 +681,8 @@ public class AiState {
             return false;
         }
 
-        float targetDistance = (actor.BattleState.Target.Position - actor.Position).LengthSquared();
-
-        return node.Value * node.Value < (int) targetDistance;
+        // Both used to test the other way round.
+        return AiDistance.Less(actor.Position, actor.BattleState.Target.Position, node.Value);
     }
 
     private bool ProcessCondition(SkillRangeCondition node) {
