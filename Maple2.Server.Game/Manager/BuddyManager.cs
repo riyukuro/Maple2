@@ -165,10 +165,13 @@ public class BuddyManager : IDisposable {
         var self = new Buddy(entry, info);
         // DB written by sender as single transaction.
         buddies[self.Id] = self;
-        session.Send(BuddyPacket.Append(self));
-        if (Util.BuddyRules.DeclinesOnReceipt(AutoReject, self.Type)) {
+        if (!Util.BuddyRules.ShowsRequest(AutoReject, self.Type)) {
+            // The request is not shown to this client. A client that gets it with the option on sends its own
+            // decline for the same entry id (the first long of the entry), which then found the entry gone.
             SendDecline(self.Id);
+            return;
         }
+        session.Send(BuddyPacket.Append(self));
     }
 
     public void SendAccept(long entryId) {

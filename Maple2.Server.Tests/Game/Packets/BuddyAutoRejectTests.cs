@@ -27,6 +27,14 @@ public class BuddyAutoRejectTests {
     }
 
     [Test]
+    public void ADeclinedRequestIsNotShownToTheClient() {
+        // Shown and declined on receipt, the client sent its own decline for an entry that was already gone.
+        Assert.That(BuddyRules.ShowsRequest(true, BuddyType.InRequest), Is.False);
+        Assert.That(BuddyRules.ShowsRequest(false, BuddyType.InRequest), Is.True);
+        Assert.That(BuddyRules.ShowsRequest(true, BuddyType.Default), Is.True);
+    }
+
+    [Test]
     public void AskBytes() {
         ByteWriter writer = BuddyPacket.AskAutoReject();
         // opcode 0x0061, sub-type 20, no body

@@ -12,6 +12,11 @@ public static class BuddyRules {
 
     // The client declines an incoming request itself when the option is on (protocol 9 in the client's
     // buddy response handling); the server does the same for the option value the client reported.
+    // The request entry is sent to the receiving client only when the server does not decline it first.
+    public static bool ShowsRequest(bool autoReject, BuddyType type) {
+        return !DeclinesOnReceipt(autoReject, type);
+    }
+
     public static bool DeclinesOnReceipt(bool autoReject, BuddyType type) {
         return autoReject && type == BuddyType.InRequest;
     }
