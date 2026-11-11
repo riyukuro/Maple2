@@ -74,11 +74,16 @@ public class GuildHandler : PacketHandler<GameSession> {
     // ReSharper restore All
     #endregion
 
+    // Guild handling is off on this branch. A field, not a constant, so the switch below is not unreachable code (CS0162).
+    private static readonly bool HandlingOn = false;
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
 
-        Logger.Debug("Guild command {Command} from {CharacterId} ignored: guild handling is off", command, session.CharacterId);
-        return;
+        if (!HandlingOn) {
+            Logger.Debug("Guild command {Command} from {CharacterId} ignored: guild handling is off", command, session.CharacterId);
+            return;
+        }
         switch (command) {
             case Command.Create:
                 HandleCreate(session, packet);
