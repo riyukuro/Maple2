@@ -15,7 +15,7 @@ public static class TriggerPacket {
         Load = 2,
         Update = 3,
         CameraStart = 5,
-        CameraEnd = 6,
+        LookCenterCamera = 6,
         Ui = 9,
         EditScript = 12,
         Dialog = 15,
@@ -62,9 +62,16 @@ public static class TriggerPacket {
         return pWriter;
     }
 
-    public static ByteWriter CameraEnd() {
+    // The client reads a sub type after the command: 0 switches to the camera that looks at a centre point.
+    public static ByteWriter LookCenterCamera(Vector3 center, int outerRadius, int innerRadius) {
         var pWriter = Packet.Of(SendOp.Trigger);
-        pWriter.Write<Command>(Command.CameraEnd);
+        pWriter.WriteByte((byte) Command.LookCenterCamera);
+        pWriter.WriteByte(0);
+        pWriter.WriteFloat(center.X);
+        pWriter.WriteFloat(center.Y);
+        pWriter.WriteFloat(center.Z);
+        pWriter.WriteInt(outerRadius);
+        pWriter.WriteInt(innerRadius);
 
         return pWriter;
     }
@@ -159,7 +166,7 @@ public static class TriggerPacket {
         foreach (int objectId in objectIds) {
             pWriter.WriteInt(objectId);
         }
-        pWriter.WriteUnicodeString(effect);
+        pWriter.WriteString(effect); // the client reads a byte string here
 
         return pWriter;
     }
@@ -171,7 +178,7 @@ public static class TriggerPacket {
         foreach (int objectId in objectIds) {
             pWriter.WriteInt(objectId);
         }
-        pWriter.WriteUnicodeString(effect);
+        pWriter.WriteString(effect); // the client reads a byte string here
 
         return pWriter;
     }
