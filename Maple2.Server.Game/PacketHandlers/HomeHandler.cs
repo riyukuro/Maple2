@@ -46,8 +46,22 @@ public class HomeHandler : PacketHandler<GameSession> {
     }
 
     private void HandleAccept(GameSession session, IByteReader packet) {
-        string name = packet.ReadUnicodeString();
-        byte unknown = packet.ReadByte(); // 1,5
+        string name = packet.ReadUnicodeString(); // the inviter
+        byte answer = packet.ReadByte(); // 1 accept, 2 decline, 5 invites blocked in the options, 6 timed out
+
+        // The client shows the inviter one notice per answer (CSceneStateGame::OnHomeInviteResult).
+        if (answer is not (1 or 2 or 5 or 6) || string.IsNullOrEmpty(name)) {
+            return;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        long inviterId = db.GetCharacterId(name);
+        if (inviterId == 0 || inviterId == session.CharacterId) {
+            return;
+        }
+        if (session.FindSession(inviterId, out GameSession? inviter)) {
+            inviter.Send(HomeInvitePacket.Result((HomeInvitePacket.InviteResult) answer, session.Player.Value.Character.Name));
+        }
     }
 
     private void HandleInvite(GameSession session, IByteReader packet) {
@@ -59,7 +73,7 @@ public class HomeHandler : PacketHandler<GameSession> {
         }
 
         if (string.Equals(playerName, session.Player.Value.Character.Name, StringComparison.CurrentCultureIgnoreCase)) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_home_invite_self));
+            session.Send(HomeInvitePacket.Result(HomeInvitePacket.InviteResult.Self, string.Empty));
             return;
         }
 
@@ -77,11 +91,12 @@ public class HomeHandler : PacketHandler<GameSession> {
 
         session.FindSession(characterId, out GameSession? targetSession);
         if (targetSession is null) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_fail_enterfield_invaliduser));
+            session.Send(HomeInvitePacket.Result(HomeInvitePacket.InviteResult.Offline, playerName));
             return;
         }
 
         targetSession.Send(HomeInvitePacket.Invite(session.Player.Value.Character));
+        session.Send(HomeInvitePacket.Result(HomeInvitePacket.InviteResult.Waiting, playerName));
     }
 
     private void HandleWarp(GameSession session, IByteReader packet) {
