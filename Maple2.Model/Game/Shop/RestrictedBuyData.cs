@@ -93,10 +93,12 @@ public readonly struct BuyTimeOfDay {
     public int StartTimeOfDay { get; } // time begin in seconds. ex 1200 = 12:20 AM
     public int EndTimeOfDay { get; } // time end in seconds. ex 10600 = 2:56 AM
 
+    // System.Text.Json binds each constructor parameter to the property of the same name (case aside),
+    // so the parameter names must stay the property names or stored time ranges cannot be read back.
     [JsonConstructor]
-    public BuyTimeOfDay(int startTime, int endTime) {
-        StartTimeOfDay = startTime;
-        EndTimeOfDay = endTime;
+    public BuyTimeOfDay(int startTimeOfDay, int endTimeOfDay) {
+        StartTimeOfDay = startTimeOfDay;
+        EndTimeOfDay = endTimeOfDay;
     }
 
     public BuyTimeOfDay Clone() {
