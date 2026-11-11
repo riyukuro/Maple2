@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -97,5 +99,32 @@ public class DungeonRoomRulesTests {
     [Test]
     public void HasCountLeft_NoRecordHasACount() {
         Assert.That(DungeonRoomRules.HasCountLeft(null, 1, 0, 100), Is.True);
+    }
+
+    // PartyBlockingLimit: a member's enter state of 10 and above blocks the party (CPartyManager::CanEnterDungeonRoom).
+    private static IReadOnlyDictionary<int, DungeonEnterLimit> Limits(int dungeonId, DungeonEnterLimit limit) =>
+        new Dictionary<int, DungeonEnterLimit> { [dungeonId] = limit };
+
+    [TestCase(DungeonEnterLimit.Rookie, false)]
+    [TestCase(DungeonEnterLimit.Veteran, false)]
+    [TestCase(DungeonEnterLimit.MinLevel, true)]
+    [TestCase(DungeonEnterLimit.RecommendedWeapon, true)]
+    public void PartyBlockingLimit_TenAndAboveBlocks(DungeonEnterLimit limit, bool blocks) {
+        DungeonEnterLimit? result = DungeonRoomRules.PartyBlockingLimit(new[] { Limits(5, limit) }, 5);
+        Assert.That(result, blocks ? Is.EqualTo(limit) : Is.Null);
+    }
+
+    [Test]
+    public void PartyBlockingLimit_TheFirstBlockingMemberAndOnlyThisRoom() {
+        var members = new[] {
+            Limits(5, DungeonEnterLimit.Veteran),
+            Limits(6, DungeonEnterLimit.Vip),
+            Limits(5, DungeonEnterLimit.Gearscore),
+            Limits(5, DungeonEnterLimit.Achievement),
+        };
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.PartyBlockingLimit(members, 5), Is.EqualTo(DungeonEnterLimit.Gearscore));
+            Assert.That(DungeonRoomRules.PartyBlockingLimit(members, 7), Is.Null);
+        });
     }
 }

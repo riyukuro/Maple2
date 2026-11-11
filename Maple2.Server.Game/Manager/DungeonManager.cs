@@ -331,6 +331,13 @@ public class DungeonManager {
                 return;
             }
             size = Party.Members.Count;
+            // Each member's enter limit, as the client's room window shows it; the reply names the room and limit.
+            DungeonEnterLimit? blocking = DungeonRoomRules.PartyBlockingLimit(
+                Party.Members.Values.OrderBy(member => member.JoinTime).Select(member => (IReadOnlyDictionary<int, DungeonEnterLimit>) member.Info.DungeonEnterLimits), dungeonId);
+            if (blocking != null) {
+                session.Send(FieldEntrancePacket.Error(dungeonId, blocking.Value));
+                return;
+            }
         }
 
         // The client's enter buttons: solo only without a minimum user count, party only up to the maximum.

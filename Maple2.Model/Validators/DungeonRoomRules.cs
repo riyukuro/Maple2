@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
 
 namespace Maple2.Model.Validators;
@@ -41,6 +42,19 @@ public static class DungeonRoomRules {
         int taken = expired ? 0 : record.UnionClears;
         int max = rewardCount + (expired ? 0 : record.ExtraSubClears);
         return taken < max;
+    }
+
+    // A party member's enter state for a room blocks the party's entry at 10 and above, as the client tests it
+    // (CPartyManager::CanEnterDungeonRoom, partymanager.cpp:561; a missing room counts as 0). The room window
+    // shows each member's state but its party button sends the request anyway (UIDungeonRoomInfo::OnEnterParty).
+    // The first blocking limit in member order, null when none blocks.
+    public static DungeonEnterLimit? PartyBlockingLimit(IEnumerable<IReadOnlyDictionary<int, DungeonEnterLimit>> members, int dungeonId) {
+        foreach (IReadOnlyDictionary<int, DungeonEnterLimit> limits in members) {
+            if (limits.TryGetValue(dungeonId, out DungeonEnterLimit limit) && (byte) limit >= 10) {
+                return limit;
+            }
+        }
+        return null;
     }
 
     // limitDayOfWeeks: the days a room can be entered, none for every day. The client reads the list as day
