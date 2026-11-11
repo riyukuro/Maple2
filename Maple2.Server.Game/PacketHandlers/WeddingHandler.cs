@@ -20,7 +20,7 @@ public class WeddingHandler : FieldPacketHandler {
         Propose = 3,
         ProposalReply = 4,
         CancelProposal = 5,
-        DivorceReply = 8,
+        DivorceReply = 9,
         ReserveHall = 13,
         ReserveHallReply = 14,
         CancelReservation = 16,
@@ -32,6 +32,8 @@ public class WeddingHandler : FieldPacketHandler {
         InvitationFindUser = 27,
         SendInvitation = 28,
         StartCeremony = 30,
+        SetCoupleMessage = 34,
+        ReceiveSkillItem = 37,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -73,6 +75,18 @@ public class WeddingHandler : FieldPacketHandler {
                 return;
             case Command.SendInvitation:
                 HandleSendInvitation(session, packet);
+                return;
+            case Command.DivorceReply:
+                // Not handled: the answer to the divorce message box (13 = yes, 14 = no).
+                Logger.Debug("Wedding {Command} from {CharacterId}: {Answer}", command, session.CharacterId, packet.ReadShort());
+                return;
+            case Command.SetCoupleMessage:
+                // Not handled: the couple message typed in the wedding page.
+                Logger.Debug("Wedding {Command} from {CharacterId}: {Length} characters", command, session.CharacterId, packet.ReadUnicodeString().Length);
+                return;
+            case Command.ReceiveSkillItem:
+                // Not handled: the id of the wedding skill whose item is requested.
+                Logger.Debug("Wedding {Command} from {CharacterId}: skill {Id}", command, session.CharacterId, packet.ReadInt());
                 return;
         }
     }
