@@ -1218,6 +1218,31 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("nurturing", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.NurturingDaily", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Played")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("nurturing-daily", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.PetConfig", b =>
                 {
                     b.Property<long>("ItemUid")

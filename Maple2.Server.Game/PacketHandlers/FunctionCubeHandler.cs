@@ -204,6 +204,13 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // Client: CNurturingCubeObject (functioncubeobject.cpp:1957-1968): with NurturingEatMaxCount (m_eat,
+        // clientconstants.h:562) not 0 the feedings of the day, of all own pets, are compared with it.
+        if (Constants.NurturingEatMaxCount != 0 && db.CountNurturingDaily(session.AccountId, played: false) >= Constants.NurturingEatMaxCount) {
+            session.Send(FunctionCubePacket.NurturingError(session.CharacterId, fieldCube.InteractCube, 2));
+            return;
+        }
+
         RewardItem feedItem = nurturing.NurturingMetadata.Feed;
         Item? hasItem = session.Item.Inventory.Find(feedItem.ItemId, feedItem.Rarity).FirstOrDefault();
         if (hasItem is null) {
@@ -223,7 +230,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
         // drop the item
         session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
         nurturing.Feed(Constants.NurturingEatGrowth);
-        db.UpdateNurturing(session.AccountId, fieldCube.InteractCube);
+        db.RecordNurturing(session.AccountId, session.AccountId, fieldCube.InteractCube, played: false);
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldCube.InteractCube));
         SendDailyRecord(session, db, fieldCube, session.AccountId);
@@ -240,7 +247,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
         // Client: CNurturingCubeObject (functioncubeobject.cpp:1971-1981): a visitor who played with this cube
         // gets error 4; otherwise the plays of the day, of all pets, are compared with NurturingPlayMaxCount
         // (m_play, clientconstants.h:563) and error 3 is shown at the maximum.
-        if (db.GetNurturingPlayedBy(session.AccountId).Count >= Constants.NurturingPlayMaxCount) {
+        if (db.CountNurturingDaily(session.AccountId, played: true) >= Constants.NurturingPlayMaxCount) {
             session.Send(FunctionCubePacket.NurturingError(session.CharacterId, cube.InteractCube, 3));
             return;
         }
@@ -259,7 +266,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
         // drop the item
         session.Field.DropItem(cube.Position, cube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
 
-        db.UpdateNurturing(plot.OwnerId, cube.InteractCube);
+        db.RecordNurturing(session.AccountId, plot.OwnerId, cube.InteractCube, played: true);
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(cube.InteractCube));
         SendDailyRecord(session, db, cube, plot.OwnerId);
@@ -281,11 +288,11 @@ public class FunctionCubeHandler : FieldPacketHandler {
     }
 
     // The client replaces its whole daily record with each reply (MyPC::ReadDailyRecords, mypc.cpp:4060-4070,
-    // empties both lists first), so both lists are sent whole: the pets fed and the pets played with today.
+    // empties both lists first), so both lists are sent whole: one entry per feeding and one per play of today.
     private static void SendDailyRecord(GameSession session, GameStorage.Request db, FieldFunctionInteract cube, long ownerId) {
         int itemId = cube.InteractCube.Metadata.Id;
-        List<long> fed = NurturingRecord.CubeIds(db.GetNurturingFedSince(session.AccountId, DateTime.Now.Date), ownerId, itemId, cube.CubeId);
-        List<long> played = NurturingRecord.CubeIds(db.GetNurturingPlayedBy(session.AccountId), ownerId, itemId, cube.CubeId);
+        List<long> fed = NurturingRecord.CubeIds(db.GetNurturingDaily(session.AccountId, played: false), ownerId, itemId, cube.CubeId);
+        List<long> played = NurturingRecord.CubeIds(db.GetNurturingDaily(session.AccountId, played: true), ownerId, itemId, cube.CubeId);
         session.Send(FunctionCubePacket.Feed(session.CharacterId, cube.InteractCube, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), fed, played));
     }
 

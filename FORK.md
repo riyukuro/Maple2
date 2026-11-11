@@ -97,7 +97,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 
 ## Database migrations
-The servers do not migrate the game database when they start. After an update that adds a migration (`Maple2.Server.World/Migrations`), run `dotnet ef database update` in `Maple2.Server.World` (the ingest runs the same command) before the servers start. Without the `home-block` table of `AddHomeBlockTable` every login fails, because the home block list is read at login.
+The servers do not migrate the game database when they start. After an update that adds a migration (`Maple2.Server.World/Migrations`), run `dotnet ef database update` in `Maple2.Server.World` (the ingest runs the same command) before the servers start. Without the `home-block` table of `AddHomeBlockTable` every login fails, because the home block list is read at login. Without the `nurturing-daily` table of `AddNurturingDaily` feeding a housing pet or playing with one fails (the daily record of feedings and plays is kept there; the daily reset empties it).
 
 ## GM level
 The client has one GM level byte. The server sends it from the account's permissions (`AdminLevel.Of`), in the Admin packet at field entry and again when `perm` changes the permissions:

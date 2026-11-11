@@ -2,6 +2,7 @@
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Nurturing = Maple2.Database.Model.Nurturing;
+using NurturingDaily = Maple2.Database.Model.NurturingDaily;
 
 namespace Maple2.Database.Storage;
 
@@ -48,36 +49,63 @@ public partial class GameStorage {
             Context.TrySaveChanges();
         }
 
-        // The pets the account played with since the daily reset (PlayedBy is emptied by it), of every owner and
-        // every pet item: the client counts one list for all of them (MyPC, mypc.cpp:3985).
-        public IList<NurturingRecord> GetNurturingPlayedBy(long accountId) {
-            return Context.Nurturing.AsEnumerable()
-                .Where(row => row.PlayedBy.Contains(accountId))
-                .Select(row => (row.AccountId, row.InteractId))
-                .ToList()
-                .Select(row => new NurturingRecord(row.AccountId, row.InteractId, FindNurturingCubeId(row.AccountId, row.InteractId)))
-                .ToList();
+        // Saves the pet and adds the row of the daily record for it, in one save: `accountId` fed its own pet
+        // (`played` false) or played with the pet of `ownerId`.
+        public bool RecordNurturing(long accountId, long ownerId, InteractCube cube, bool played) {
+            Nurturing? result = Context.Nurturing.Find(ownerId, cube.Metadata.Id);
+            Maple2.Model.Game.Nurturing? interactNurturing = cube.Nurturing;
+            if (result is null || interactNurturing is null) {
+                return false;
+            }
+            result.Exp = interactNurturing.Exp;
+            result.ClaimedGiftForStage = interactNurturing.ClaimedGiftForStage;
+            result.PlayedBy = interactNurturing.PlayedBy.ToArray();
+            result.LastFeedTime = interactNurturing.LastFeedTime.DateTime;
+            Context.Nurturing.Update(result);
+
+            Context.NurturingDaily.Add(new NurturingDaily {
+                AccountId = accountId,
+                OwnerId = ownerId,
+                ItemId = cube.Metadata.Id,
+                Played = played,
+            });
+            return Context.TrySaveChanges();
         }
 
-        // The account's own pets that grew since `since`. LastFeedTime is the only time kept per pet: it is also
-        // written when the pet is placed and when a visitor plays with it, and it holds one time, not a count.
-        public IList<NurturingRecord> GetNurturingFedSince(long accountId, DateTime since) {
-            return Context.Nurturing
-                .Where(row => row.AccountId == accountId && row.LastFeedTime >= since)
-                .Select(row => row.InteractId)
-                .ToList()
-                .Select(itemId => new NurturingRecord(accountId, itemId, FindNurturingCubeId(accountId, itemId)))
-                .ToList();
+        // How often the account fed its pets (`played` false) or played with the pets of others since the daily
+        // reset. The client counts the same lists (MyPC, mypc.cpp:3978 and 3985).
+        public int CountNurturingDaily(long accountId, bool played) {
+            return Context.NurturingDaily.Count(row => row.AccountId == accountId && row.Played == played);
         }
 
-        // The placed cube of a pet (the lowest uid when the item is placed more than once), 0 when none is placed.
-        private long FindNurturingCubeId(long ownerId, int itemId) {
-            return Context.UgcMap.Where(map => map.OwnerId == ownerId)
-                .Join(Context.UgcMapCube, ugcMap => ugcMap.Id, cube => cube.UgcMapId, (ugcMap, cube) => cube)
-                .Where(cube => cube.ItemId == itemId)
-                .OrderBy(cube => cube.Id)
-                .Select(cube => cube.Id)
-                .FirstOrDefault();
+        // The daily record of the account, oldest first, one entry per feeding or play, each with the uid of the
+        // pet's placed cube (the lowest uid when the item is placed more than once, 0 when none is placed). Two
+        // queries: the account's rows, then the cubes of all their pets at once.
+        public IList<NurturingRecord> GetNurturingDaily(long accountId, bool played) {
+            var rows = Context.NurturingDaily
+                .Where(row => row.AccountId == accountId && row.Played == played)
+                .OrderBy(row => row.Id)
+                .Select(row => new { row.OwnerId, row.ItemId })
+                .ToList();
+            if (rows.Count == 0) {
+                return [];
+            }
+
+            List<long> owners = rows.Select(row => row.OwnerId).Distinct().ToList();
+            List<int> items = rows.Select(row => row.ItemId).Distinct().ToList();
+            var cubes = Context.UgcMap.Where(map => owners.Contains(map.OwnerId))
+                .Join(Context.UgcMapCube, ugcMap => ugcMap.Id, cube => cube.UgcMapId, (ugcMap, cube) => new { ugcMap.OwnerId, cube.ItemId, cube.Id })
+                .Where(cube => items.Contains(cube.ItemId))
+                .ToList();
+            var lowest = new Dictionary<(long, int), long>();
+            foreach (var cube in cubes) {
+                (long, int) key = (cube.OwnerId, cube.ItemId);
+                if (!lowest.TryGetValue(key, out long id) || cube.Id < id) {
+                    lowest[key] = cube.Id;
+                }
+            }
+
+            return rows.Select(row => new NurturingRecord(row.OwnerId, row.ItemId, lowest.GetValueOrDefault((row.OwnerId, row.ItemId)))).ToList();
         }
     }
 }

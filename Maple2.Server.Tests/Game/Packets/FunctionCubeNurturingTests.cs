@@ -63,4 +63,43 @@ public class FunctionCubeNurturingTests {
         Assert.That(NurturingRecord.CubeIds(played, ownerId: 1, itemId: 100, cubeId: 800), Is.EqualTo(new long[] { 900, 901 }));
         Assert.That(NurturingRecord.CubeIds([], ownerId: 1, itemId: 100, cubeId: 800), Is.Empty);
     }
+
+    // Client: the fed list is a list that is only counted (MyPC, mypc.cpp:3978, 4013), so a pet fed twice is in it
+    // twice, both times with the cube in use.
+    [Test]
+    public void DailyList_KeepsOneEntryPerFeeding() {
+        NurturingRecord[] fed = [
+            new NurturingRecord(OwnerId: 1, ItemId: 100, CubeId: 800),
+            new NurturingRecord(OwnerId: 1, ItemId: 101, CubeId: 801),
+            new NurturingRecord(OwnerId: 1, ItemId: 100, CubeId: 800),
+        ];
+        Assert.That(NurturingRecord.CubeIds(fed, ownerId: 1, itemId: 100, cubeId: 850), Is.EqualTo(new long[] { 850, 801, 850 }));
+    }
+
+    private static Nurturing PetOf() {
+        var data = new Maple2.Model.Metadata.FunctionCubeMetadata.NurturingData(default, default,
+            [new Maple2.Model.Metadata.FunctionCubeMetadata.NurturingData.Growth(1000, 1, default)], "tag");
+        return new Nurturing(data);
+    }
+
+    // NurturingPlayMaxGrowth is not read by the client and has no error: it only stops the growth.
+    [Test]
+    public void Play_GrowsOnlyUpToTheCap() {
+        Nurturing pet = PetOf();
+        Assert.That(pet.Play(accountId: 2, playGrowth: 10, maxGrowthPlays: 2), Is.True);
+        Assert.That(pet.Play(accountId: 3, playGrowth: 10, maxGrowthPlays: 2), Is.True);
+        Assert.That(pet.Exp, Is.EqualTo(20));
+        Assert.That(pet.Play(accountId: 4, playGrowth: 10, maxGrowthPlays: 2), Is.True);
+        Assert.That(pet.Exp, Is.EqualTo(20));
+        Assert.That(pet.PlayedBy, Is.EqualTo(new long[] { 2, 3, 4 }));
+    }
+
+    [Test]
+    public void Play_TwiceByOneAccount_Refused() {
+        Nurturing pet = PetOf();
+        Assert.That(pet.Play(accountId: 2, playGrowth: 10, maxGrowthPlays: 3), Is.True);
+        Assert.That(pet.Play(accountId: 2, playGrowth: 10, maxGrowthPlays: 3), Is.False);
+        Assert.That(pet.Exp, Is.EqualTo(10));
+        Assert.That(pet.PlayedBy, Is.EqualTo(new long[] { 2 }));
+    }
 }

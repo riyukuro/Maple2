@@ -4,15 +4,17 @@ using Maple2.Tools;
 
 namespace Maple2.Model.Game;
 
-// One pet of the daily record: the owner's account, the pet item and the uid of its placed cube (0: not placed).
+// One entry of the daily record: the owner's account, the pet item and the uid of its placed cube (0: not placed).
 public readonly record struct NurturingRecord(long OwnerId, int ItemId, long CubeId) {
     // The cube uids the client's daily list holds. The pet in use is listed with the cube that was used, so the
     // client finds it (MyPC list lookup by cube uid, mypc.cpp:4038); a pet with no placed cube has no uid to list.
+    // An entry stays per feeding: the client counts the fed list (CList, mypc.cpp:3978), so a pet fed twice is
+    // listed twice.
     public static List<long> CubeIds(IEnumerable<NurturingRecord> records, long ownerId, int itemId, long cubeId) {
         var ids = new List<long>();
         foreach (NurturingRecord record in records) {
             long id = record.OwnerId == ownerId && record.ItemId == itemId ? cubeId : record.CubeId;
-            if (id != 0 && !ids.Contains(id)) {
+            if (id != 0) {
                 ids.Add(id);
             }
         }
@@ -77,19 +79,18 @@ public class Nurturing : IByteSerializable {
         LastFeedTime = DateTimeOffset.Now;
     }
 
-    // `maxPlays`: how many accounts may play with this pet per day (a rule of this server; the client has no
-    // check for it).
-    public bool Play(long accountId, int playGrowth, int maxPlays) {
-        if (PlayedBy.Count >= maxPlays) {
-            return false;
-        }
-
+    // False when the account already played with this pet today. `maxGrowthPlays` (NurturingPlayMaxGrowth): only
+    // that many plays a day make the pet grow; a later play still counts for the visitor. The client does not
+    // read that constant and has no error for it, so the play is never refused for it.
+    public bool Play(long accountId, int playGrowth, int maxGrowthPlays) {
         if (PlayedBy.Contains(accountId)) {
             return false;
         }
 
+        if (PlayedBy.Count < maxGrowthPlays) {
+            Feed(playGrowth);
+        }
         PlayedBy.Add(accountId);
-        Feed(playGrowth);
         return true;
     }
 
