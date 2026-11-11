@@ -239,6 +239,35 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 4));
     }
 
+    // Client: UIItemExchangeScrollDialog::FUN_140f52ca0 (uiitemexchangescrolldialog.cpp:482): kind 0 is long
+    // scroll uid, long target uid, byte count, count x (int item id, int tag, int count).
+    [Test]
+    public void ItemExchangeSetTargetListsIngredients() {
+        ItemComponent[] ingredients = [new ItemComponent(30000001, 1, 5, ItemTag.None), new ItemComponent(0, 1, 2, ItemTag.SkinCrystal)];
+        ByteWriter writer = ItemExchangeScrollPacket.SetTarget(11L, 22L, ingredients);
+        var reader = new ByteReader(writer.ToArray(), 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ItemExchange));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadLong(), Is.EqualTo(11L));
+        Assert.That(reader.ReadLong(), Is.EqualTo(22L));
+        Assert.That(reader.ReadByte(), Is.EqualTo(2));
+        Assert.That(reader.ReadInt(), Is.EqualTo(30000001));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.None));
+        Assert.That(reader.ReadInt(), Is.EqualTo(5));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.SkinCrystal));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    // Client: UIItemRemakeOptionDialog::FUN_1412a3460 (unit_14129cfa0_itemremakeoptiondialog.cpp:1142): kind 8
+    // has no fields.
+    [Test]
+    public void ChangeAttributesRefreshCostHasNoFields() {
+        Assert.That(ChangeAttributesPacket.RefreshCost().ToArray(), Is.EqualTo(new byte[] { (byte) SendOp.ChangeAttributes, 0x00, 8 }));
+    }
+
     // A player entering a field is sent state 45 for each player whose guide object is the fishing one.
     [Test]
     public void FishingStateOnEntryIsForTheFishingGuideOnly() {

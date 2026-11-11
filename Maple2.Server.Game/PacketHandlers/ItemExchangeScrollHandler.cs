@@ -104,12 +104,27 @@ public class ItemExchangeScroll : FieldPacketHandler {
         session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_ok));
     }
 
-    // Client ItemExchangeSlot::vfunc_18: an item dropped on the exchange slot of a scroll.
-    // The reply the client expects for this mode is not known.
+    // Client ItemExchangeSlot::vfunc_18 (itemexchangeslot.cpp:87): an item dropped on the target slot of a
+    // scroll: long scroll uid, long item uid. The reply is ItemExchange kind 0 with the cost for that target.
+    // The scroll table has one cost list per scroll, so that list is sent for every target.
     private void HandleSetTarget(GameSession session, IByteReader packet) {
         long scrollItemUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
-        Logger.Debug("ItemExchangeScroll target {ItemUid} for scroll {ScrollItemUid} not implemented", itemUid, scrollItemUid);
+
+        Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
+        if (scrollItem == null) {
+            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
+            return;
+        }
+        if (!int.TryParse(scrollItem.Metadata.Function?.Parameters, out int scrollId) || !TableMetadata.ItemExchangeScrollTable.Entries.TryGetValue(scrollId, out ItemExchangeScrollMetadata? scrollMetadata)) {
+            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
+            return;
+        }
+        if (session.Item.Inventory.Get(itemUid) == null) {
+            return; // the client looks the target up in its inventory and drops the reply without it
+        }
+
+        session.Send(ItemExchangeScrollPacket.SetTarget(scrollItemUid, itemUid, scrollMetadata.RequiredItems));
     }
 
     // Client UIItemExchangeScrollDialog (uiitemexchangescrolldialog.cpp:885 and :902, only at admin level 0x32

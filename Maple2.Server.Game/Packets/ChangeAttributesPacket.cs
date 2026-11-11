@@ -15,6 +15,17 @@ public static class ChangeAttributesPacket {
         // Client: UIItemRemakeOptionDialog::vfunc_79 reads the error as kind 5.
         Error = 5,
         Pending = 6,
+        RefreshCost = 8,
+    }
+
+    // Client: UIItemRemakeOptionDialog::FUN_1412a3460 (unnamed/unit_14129cfa0_itemremakeoptiondialog.cpp:1142):
+    // no fields. Only a client with GM level 50 or above acts on it: with an item staged it asks for the cost
+    // again (c2s kind 4), as it does by itself when the SaleRemake game event changes.
+    public static ByteWriter RefreshCost() {
+        var pWriter = Packet.Of(SendOp.ChangeAttributes);
+        pWriter.Write<Command>(Command.RefreshCost);
+
+        return pWriter;
     }
 
     // Client: UIItemRemakeOptionDialog::FUN_14129f940 (unnamed/unit_14129cfa0_itemremakeoptiondialog.cpp:626):
