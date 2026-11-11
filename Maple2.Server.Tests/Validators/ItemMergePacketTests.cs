@@ -184,6 +184,27 @@ public class ItemMergePacketTests {
         Assert.That(packet.Available, Is.GreaterThan(0));
     }
 
+    // The dialog and the client's mode 6 reader know the inventory's items only: the uid of an equipped
+    // item is no target and gets the code of a missing item.
+    [Test]
+    public void RevertTargetIsAnInventoryItem() {
+        Item inBag = Merged(11300001, 4);
+        Item equipped = ItemOf(11300001, 4, 7);
+        equipped.Stats = new ItemStats();
+        equipped.Stats.SetMergeOption(new MergeRoll(BasicAttribute.Dexterity, SpecialAttribute.None, 12), 37000001);
+        var inventory = new Dictionary<long, Item> { [inBag.Uid] = inBag };
+        var equips = new Dictionary<long, Item> { [equipped.Uid] = equipped };
+        Item? Lookup(long uid) => inventory.GetValueOrDefault(uid);
+        Item revert = ItemOf(37000021, 4, 9, "1");
+
+        Assert.That(ItemMergeManager.RevertTarget(inBag.Uid, Lookup), Is.SameAs(inBag));
+        Assert.That(ItemMergeManager.CheckRevert(revert, ItemMergeManager.RevertTarget(inBag.Uid, Lookup)), Is.EqualTo(ItemMergeError.ok));
+        Assert.That(equips.ContainsKey(7), Is.True);
+        Assert.That(ItemMergeManager.RevertTarget(7, Lookup), Is.Null);
+        Assert.That(ItemMergeManager.CheckRevert(revert, ItemMergeManager.RevertTarget(7, Lookup)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
+        Assert.That(equipped.Stats!.HasMergeOption, Is.True);
+    }
+
     // The codes of the client's own check (UIItemMergeRevertDialog::CheckItem).
     [Test]
     public void RevertErrors() {

@@ -226,6 +226,9 @@ public sealed class ItemMergeManager {
     // Client UIItemMergeRevertDialog: a revert item removes the merge option of an item. The checks and
     // their codes are the dialog's own (CheckItem, uiitemmergerevertdialog.cpp:283); the price is the
     // one the dialog shows, by the item's rarity and equip type. The client waits for mode 6.
+    // The dialog takes the item from the inventory only (FindItemByUid of the inventory in onOk and in
+    // OnItemDropped, uiitemmergerevertdialog.cpp:150 and :234), and the client's mode 6 reader updates
+    // the inventory's item only (scenestategame.cpp, OnItemFusion), so an equipped item is no target.
     public void Revert(long revertItemUid, long itemUid) {
         if (pending != null) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown));
@@ -233,7 +236,7 @@ public sealed class ItemMergeManager {
         }
 
         Item? revertItem = session.Item.Inventory.Get(revertItemUid);
-        Item? item = Find(itemUid);
+        Item? item = RevertTarget(itemUid, uid => session.Item.Inventory.Get(uid));
         ItemMergeError error = CheckRevert(revertItem, item);
         if (error != ItemMergeError.ok || revertItem == null || item?.Stats == null) {
             session.Send(ItemMergePacket.Error(error == ItemMergeError.ok ? ItemMergeError.s_item_merge_option_error_unknown : error));
@@ -255,9 +258,12 @@ public sealed class ItemMergeManager {
         item.Stats.ClearMergeOption();
 
         session.Send(ItemMergePacket.Remove(item));
-        if (session.Item.Equips.Get(item.Uid) != null) {
-            session.Stats.Refresh();
-        }
+    }
+
+    // The revert's target: an item of the inventory. A uid of an equipped item finds nothing and the
+    // check answers with the code of a missing item.
+    public static Item? RevertTarget(long itemUid, Func<long, Item?> inventory) {
+        return inventory(itemUid);
     }
 
     // CItemData::GetEquipSubtype (itemdata.cpp:509): the item xml's property subtype when the property
