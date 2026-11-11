@@ -16,7 +16,6 @@ using Maple2.Tools;
 using Maple2.Tools.Extensions;
 using Microsoft.EntityFrameworkCore;
 
-const string locale = "NA";
 string language = "en";
 const string env = "Live";
 
@@ -46,6 +45,9 @@ if (languageEnv == null) {
     throw new ArgumentException("LANGUAGE environment variable was not set");
 }
 language = languageEnv.ToLower();
+
+// The feature.xml / feature_setting.xml column the data is filtered by. KR is the client's default region.
+string locale = (Environment.GetEnvironmentVariable("LOCALE") ?? "KR").ToUpperInvariant();
 
 string? ms2Root = Environment.GetEnvironmentVariable("MS2_DATA_FOLDER");
 if (ms2Root == null) {
