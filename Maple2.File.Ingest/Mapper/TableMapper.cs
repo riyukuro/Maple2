@@ -111,6 +111,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.SEASON_DATA, Table = ParseSeasonDataTable() };
         yield return new TableMetadata { Name = TableNames.SMART_PUSH, Table = ParseSmartPushTable() };
         yield return new TableMetadata { Name = TableNames.AUTO_ACTION, Table = ParseAutoActionTable() };
+        yield return new TableMetadata { Name = TableNames.MAID_PROPERTY, Table = ParseMaidTable() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -2315,6 +2316,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 RequiredItemId: requiredItemId));
         }
         return new SmartPushTable(results);
+    }
+
+    // table/maidproperty.xml: a maid's npc and recipe group by maid id (CMaidInfoTable, commonfiles/maid.cpp). The
+    // parser has no reader for it, so the rows are read from the played client's pack, else the data folder's.
+    private MaidTable ParseMaidTable() {
+        M2dReader reader = playedReader ?? xmlReader;
+        var results = new Dictionary<int, MaidTable.Entry>();
+        foreach (Maple2.File.IO.Crypto.Common.PackFileEntry entry in reader.Files.Where(entry => entry.Name.Equals("table/maidproperty.xml", StringComparison.OrdinalIgnoreCase))) {
+            foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/Property")!) {
+                if (node is not XmlElement row) continue;
+                MaidTable.Entry? parsed = MaidTable.Row(row.GetAttribute("MaidID"), row.GetAttribute("RecipeGroupID"), row.GetAttribute("NPCID"));
+                if (parsed != null) {
+                    results[parsed.MaidId] = parsed;
+                }
+            }
+        }
+
+        return new MaidTable(results);
     }
 
     private AutoActionTable ParseAutoActionTable() {

@@ -22,6 +22,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<Buddy> Buddy { get; set; } = null!;
     internal DbSet<UgcMap> UgcMap { get; set; } = null!;
     internal DbSet<UgcMapCube> UgcMapCube { get; set; } = null!;
+    internal DbSet<Maid> Maid { get; set; } = null!;
     internal DbSet<UgcResource> UgcResource { get; set; } = null!;
     internal DbSet<Mail> Mail { get; set; } = null!;
     internal DbSet<MesoListing> MesoMarket { get; set; } = null!;
@@ -74,6 +75,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<Buddy>(Maple2.Database.Model.Buddy.Configure);
         modelBuilder.Entity<UgcMap>(Maple2.Database.Model.UgcMap.Configure);
         modelBuilder.Entity<UgcMapCube>(Maple2.Database.Model.UgcMapCube.Configure);
+        modelBuilder.Entity<Maid>(Maple2.Database.Model.Maid.Configure);
         modelBuilder.Entity<UgcResource>(Maple2.Database.Model.UgcResource.Configure);
         modelBuilder.Entity<Mail>(Maple2.Database.Model.Mail.Configure);
         modelBuilder.Entity<SystemBanner>(Maple2.Database.Model.SystemBanner.Configure);

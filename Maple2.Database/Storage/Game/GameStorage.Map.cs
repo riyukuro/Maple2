@@ -10,6 +10,7 @@ using Z.EntityFramework.Plus;
 using Home = Maple2.Model.Game.Home;
 using InteractCube = Maple2.Model.Game.InteractCube;
 using HomeLayout = Maple2.Model.Game.HomeLayout;
+using Maid = Maple2.Model.Game.Maid;
 
 namespace Maple2.Database.Storage;
 
@@ -279,7 +280,26 @@ public partial class GameStorage {
             }
 
             Context.UgcMapCube.Remove(model);
+            // The maid row goes with its cube (a cascading key on a relational DB; removed here for the others).
+            Model.Maid? maid = Context.Maid.Find(cube.Id);
+            if (maid != null) {
+                Context.Maid.Remove(maid);
+            }
             return Context.TrySaveChanges();
+        }
+
+        public Maid? GetMaid(long cubeUid) {
+            return Context.Maid.Find(cubeUid);
+        }
+
+        // The maid of a placed cube; null when the cube row is gone or the save fails.
+        public Maid? CreateMaid(Maid maid) {
+            if (!Context.UgcMapCube.Any(cube => cube.Id == maid.Uid)) {
+                return null;
+            }
+            Model.Maid model = maid;
+            Context.Maid.Add(model);
+            return Context.TrySaveChanges() ? model : null;
         }
 
         public PlotCube? GetCube(long cubeId) {

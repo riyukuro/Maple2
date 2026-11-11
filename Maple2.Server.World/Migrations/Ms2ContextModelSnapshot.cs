@@ -1156,6 +1156,46 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("item-storage", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.Maid", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Exp")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiryTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaidId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Mood")
+                        .HasColumnType("int");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Profile")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("maid", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Mail", b =>
                 {
                     b.Property<long>("ReceiverId")
@@ -2117,6 +2157,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Account", null)
                         .WithOne()
                         .HasForeignKey("Maple2.Database.Model.ItemStorage", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.Maid", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.UgcMapCube", null)
+                        .WithOne()
+                        .HasForeignKey("Maple2.Database.Model.Maid", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

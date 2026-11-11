@@ -161,7 +161,7 @@ public static class FieldPacket {
             pWriter.WriteClass<Buff>(buff);
         }
 
-        pWriter.WriteLong(); // uid for PetNpc
+        pWriter.WriteLong(npc.MaidUid); // CNpc::SetMaidUid: the key of the npc's maid in FieldMaid
         pWriter.WriteBool(npc.Talkable); // CNpc+0xe50: the client offers an npc's interact only while set
         pWriter.WriteInt(npc.Value.Metadata.Basic.Level);
         pWriter.WriteInt();

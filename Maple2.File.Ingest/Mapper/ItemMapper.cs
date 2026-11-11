@@ -175,7 +175,8 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 TrophyLevel: data.housing.trophyLevel,
                 InteriorLevel: data.housing.interiorLevel,
                 HousingCategory: housingCategory,
-                IsNotAllowedInBlueprint: data.housing.doNotInstallBlueprint);
+                IsNotAllowedInBlueprint: data.housing.doNotInstallBlueprint,
+                MaidId: data.maid?.maidID ?? 0);
             ItemMetadataInstall? install = data.property.type != 6 ? null : new ItemMetadataInstall(
                 IsSolidCube: data.install.cubeProp == 1,
                 FunctionId: data.install.funcCode,

@@ -60,6 +60,7 @@ public class TableMetadataStorage {
     private readonly Lazy<SeasonDataTable> seasonDataTable;
     private readonly Lazy<SmartPushTable> smartPushTable;
     private readonly Lazy<AutoActionTable> autoActionTable;
+    private readonly Lazy<MaidTable> maidTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -138,6 +139,7 @@ public class TableMetadataStorage {
     public SeasonDataTable SeasonDataTable => seasonDataTable.Value;
     public SmartPushTable SmartPushTable => smartPushTable.Value;
     public AutoActionTable AutoActionTable => autoActionTable.Value;
+    public MaidTable MaidTable => maidTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -236,6 +238,7 @@ public class TableMetadataStorage {
         seasonDataTable = Retrieve<SeasonDataTable>(context, TableNames.SEASON_DATA);
         smartPushTable = Retrieve<SmartPushTable>(context, TableNames.SMART_PUSH);
         autoActionTable = Retrieve<AutoActionTable>(context, TableNames.AUTO_ACTION);
+        maidTable = Retrieve<MaidTable>(context, TableNames.MAID_PROPERTY);
 
     }
 

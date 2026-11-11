@@ -149,6 +149,10 @@ public partial class FieldManager : IField {
                     .ToList()
                     .ForEach(plotCube => AddFieldFunctionInteract(plotCube, plot));
 
+                foreach (PlotCube plotCube in plot.Cubes.Values) {
+                    AddMaid(plotCube, plot);
+                }
+
                 plot.Cubes.Values
                     .Where(plotCube => plotCube.Metadata.Install is { IndoorPortal: true })
                     .ToList()

@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour.Crowd;
+using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
@@ -1079,6 +1080,53 @@ public partial class FieldManager {
     public FieldFittingDoll? GetFittingDoll(long cubeUid) => fittingDolls.GetValueOrDefault(cubeUid);
     #endregion
 
+    #region Maids
+    // The placed maids by cube uid, with their npc's object id.
+    private readonly ConcurrentDictionary<long, (Maid Maid, int NpcObjectId)> maids = new();
+
+    // The maid of a maid cube placed on plot: its row, made on the first placement, and its npc on the cube. The
+    // FieldMaid add goes first: the client looks the npc's maid up by the maid uid of its FieldAddNpc.
+    public void AddMaid(PlotCube cube, Plot plot) {
+        int maidId = MaidRules.MaidId(cube.Metadata, plot.IsPlanner);
+        if (maidId == 0 || maids.ContainsKey(cube.Id)) {
+            return;
+        }
+        if (!TableMetadata.MaidTable.Entries.TryGetValue(maidId, out MaidTable.Entry? entry) || !NpcMetadata.TryGet(entry.NpcId, out NpcMetadata? npc)) {
+            logger.Warning("No maid data for maid {MaidId} of cube {CubeUid}", maidId, cube.Id);
+            return;
+        }
+
+        Maid? maid;
+        using (GameStorage.Request db = GameStorage.Context()) {
+            maid = db.GetMaid(cube.Id) ?? db.CreateMaid(MaidRules.Hire(cube, maidId, plot.OwnerId, DateTime.UtcNow.ToEpochSeconds(), Constants.PeriodOfMaidEmployment));
+        }
+        if (maid == null) {
+            logger.Warning("Failed to load the maid of cube {CubeUid}", cube.Id);
+            return;
+        }
+
+        FieldNpc? fieldNpc = SpawnNpc(npc, cube.Position, new Vector3(0, 0, cube.Rotation));
+        if (fieldNpc == null) {
+            return;
+        }
+        fieldNpc.MaidUid = maid.Uid;
+        maids[cube.Id] = (maid, fieldNpc.ObjectId);
+        Broadcast(FieldMaidPacket.Add(maid));
+        Broadcast(FieldPacket.AddNpc(fieldNpc));
+        Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
+    }
+
+    public void RemoveMaid(long cubeUid) {
+        if (!maids.TryRemove(cubeUid, out (Maid Maid, int NpcObjectId) removed)) {
+            return;
+        }
+        RemoveNpc(removed.NpcObjectId);
+        Broadcast(FieldMaidPacket.Remove(cubeUid));
+    }
+
+    public Maid? GetMaid(long cubeUid) => maids.TryGetValue(cubeUid, out (Maid Maid, int NpcObjectId) entry) ? entry.Maid : null;
+    #endregion
+
     public FieldFunctionInteract? TryGetFieldFunctionInteract(string entityId) {
         return fieldFunctionInteracts.TryGetValue(entityId, out FieldFunctionInteract? fieldFunctionInteract) ? fieldFunctionInteract : null;
     }
@@ -1258,6 +1306,10 @@ public partial class FieldManager {
             lock (doll.Lock) {
                 added.Session.Send(FittingDollPacket.Load(doll, doll.Items.Values));
             }
+        }
+        // Before the npcs: a maid npc's FieldAddNpc names its maid.
+        foreach ((Maid maid, int _) in maids.Values) {
+            added.Session.Send(FieldMaidPacket.Add(maid));
         }
 
         foreach (Plot plot in Plots.Values) {

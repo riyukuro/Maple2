@@ -124,7 +124,8 @@ public record ItemMetadataHousing(
     int TrophyLevel,
     int InteriorLevel,
     HousingCategory HousingCategory,
-    bool IsNotAllowedInBlueprint
+    bool IsNotAllowedInBlueprint,
+    int MaidId = 0 // <maid maidID>: the maid the furnishing places (MaidTable), 0 for other furnishings
 );
 
 public record ItemMetadataInstall(

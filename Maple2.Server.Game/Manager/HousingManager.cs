@@ -746,6 +746,7 @@ public class HousingManager {
         }
 
         plot.Cubes.Add(position, result);
+        session.Field.AddMaid(result, plot);
         return true;
     }
 
@@ -769,6 +770,7 @@ public class HousingManager {
         if (cube.Interact is not null) {
             session.Field?.RemoveFieldFunctionInteract(cube.Interact.Id);
         }
+        session.Field?.RemoveMaid(cube.Id);
 
         if (plot.MapId is not Constant.DefaultHomeMapId && cube.Metadata.Install is { IndoorPortal: true }) {
             FieldPortal? portal = session.Field?.GetPortals().FirstOrDefault(x => x.HomeId == plot.OwnerId);

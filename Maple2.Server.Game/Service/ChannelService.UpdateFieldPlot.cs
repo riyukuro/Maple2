@@ -107,6 +107,7 @@ public partial class ChannelService {
                     if (cube.Interact is not null) {
                         fieldManager.RemoveFieldFunctionInteract(cube.Interact.Id);
                     }
+                    fieldManager.RemoveMaid(cube.Id);
                 }
 
                 plotCube.PlotId = plot.Number;
@@ -115,6 +116,7 @@ public partial class ChannelService {
                 if (plotCube.Interact is not null) {
                     fieldManager.AddFieldFunctionInteract(plotCube, plot);
                 }
+                fieldManager.AddMaid(plotCube, plot);
                 if (isReplace) {
                     fieldManager.Broadcast(CubePacket.ReplaceCube(fieldManager.FieldActor.ObjectId, plotCube));
                 } else {
@@ -134,6 +136,7 @@ public partial class ChannelService {
                 if (cubeToRemove.Interact is not null) {
                     fieldManager.RemoveFieldFunctionInteract(cubeToRemove.Interact.Id);
                 }
+                fieldManager.RemoveMaid(cubeToRemove.Id);
                 fieldManager.Broadcast(CubePacket.RemoveCube(fieldManager.FieldActor.ObjectId, positionToRemove));
                 break;
             case FieldPlotRequest.Types.UpdateBlock.RequestOneofCase.Rotate:

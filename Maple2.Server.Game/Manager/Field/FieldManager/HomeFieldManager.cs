@@ -38,6 +38,10 @@ public class HomeFieldManager : FieldManager {
                 .Where(plotCube => plotCube.Interact != null)
                 .ToList()
                 .ForEach(plotCube => AddFieldFunctionInteract(plotCube, plot));
+
+            foreach (PlotCube plotCube in plot.Cubes.Values) {
+                AddMaid(plotCube, plot);
+            }
         }
     }
 
