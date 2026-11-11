@@ -647,7 +647,15 @@ public class UgcHandler : FieldPacketHandler {
                 continue;
             }
 
-            if (banner.Slots.Any(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour)) {
+            BannerSlot? held = banner.Slots.FirstOrDefault(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour);
+            if (held != null && UgcRules.BannerSlotClaimable(held.OwnerId, held.Template != null)) {
+                // Reserved before a restart: the owner was lost, so the first to ask for the hour again holds it.
+                held.OwnerId = session.CharacterId;
+                room--;
+                newSlots.Add(held);
+                continue;
+            }
+            if (held != null) {
                 Logger.Warning("Failed to reserve banner slot {BannerId} {Date} {Hour}", bannerId, reservation.Date, reservation.Hour);
                 continue;
             }

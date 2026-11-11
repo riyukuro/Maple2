@@ -83,6 +83,18 @@ public class UgcRulesTests {
         Assert.That(UgcRules.BannerUploadFee(Prices, [(1, true, own, 3), (2, true, other, 4)]), Is.EqualTo(-1));
     }
 
+    // After a restart: the slot has no owner and takes no upload; reserved again it is the asker's,
+    // and then no one else's.
+    [Test]
+    public void BannerSlotAfterRestart() {
+        Assert.That(UgcRules.BannerSlotOpenTo(0, 0, false, 7), Is.False);
+        Assert.That(UgcRules.BannerSlotClaimable(0, false), Is.True);
+        Assert.That(UgcRules.BannerSlotOpenTo(7, 0, false, 7), Is.True);
+        Assert.That(UgcRules.BannerSlotClaimable(7, false), Is.False);
+        Assert.That(UgcRules.BannerSlotClaimable(0, true), Is.False);
+        Assert.That(UgcRules.BannerSlotOpenTo(7, 0, false, 8), Is.False);
+    }
+
     [TestCase(0, 24)]
     [TestCase(20, 4)]
     [TestCase(24, 0)]

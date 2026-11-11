@@ -35,6 +35,13 @@ public static class UgcRules {
         return Math.Clamp(BannerReserveMax - unpaidOwned, 0, BannerReserveMax);
     }
 
+    // A reserved slot whose owner was lost (kept in memory only, so 0 after a restart) and that has
+    // no design may be reserved again; the one who asks first holds it. An owned slot or one with a
+    // design is never given to another.
+    public static bool BannerSlotClaimable(long ownerId, bool hasDesign) {
+        return ownerId == 0 && !hasDesign;
+    }
+
     // Whether the character may upload to a reserved slot. The slot belongs to the character that
     // reserved it (ownerId, 0 when not known: the owner is kept in memory only). A design on the slot
     // names its owner too: a finished one closes the slot, one without a picture (an upload that
