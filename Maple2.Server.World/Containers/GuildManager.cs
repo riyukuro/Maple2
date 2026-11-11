@@ -316,9 +316,24 @@ public class GuildManager : IDisposable {
                 return error;
             }
 
+            int oldFunds = Guild.Funds;
             Guild.Funds -= next!.UpgradeCost;
             upgraded = buff with { Level = buff.Level + 1 };
             Guild.Buffs[index] = upgraded;
+
+            // Saved before the answer, as the donation and the NPC upgrade; a failed save undoes both values.
+            bool saved;
+            try {
+                using GameStorage.Request db = GameStorage.Context();
+                saved = db.SaveGuild(Guild);
+            } catch (Exception) {
+                saved = false;
+            }
+            if (!saved) {
+                Guild.Funds = oldFunds;
+                Guild.Buffs[index] = buff;
+                return GuildError.s_guild_err_unknown;
+            }
         }
 
         // No contributor: the members get the new fund (51) without a contribution line.
