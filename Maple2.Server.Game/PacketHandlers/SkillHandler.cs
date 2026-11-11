@@ -354,7 +354,8 @@ public class SkillHandler : FieldPacketHandler {
 
         if (record.Metadata.Data.Motions.Length <= motionPoint) {
             Logger.Warning("Invalid motion point {MotionPoint} for {SkillRecord}", motionPoint, record);
-            session.Send(SkillUseFailedPacket.Fail(record));
+            session.Send(SkillUseFailedPacket.Fail(record.CastUid, record.SkillId, record.Metadata.Data.Condition.CooldownTime,
+                session.Config.GetSkillCooldown(record.SkillId), session.Field?.FieldTick ?? 0));
             return;
         }
 
@@ -398,7 +399,8 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         if (!session.Player.SkillCastConsume(record)) {
-            session.Send(SkillUseFailedPacket.Fail(record));
+            session.Send(SkillUseFailedPacket.Fail(record.CastUid, record.SkillId, record.Metadata.Data.Condition.CooldownTime,
+                session.Config.GetSkillCooldown(record.SkillId), session.Field?.FieldTick ?? 0));
             return;
         }
 

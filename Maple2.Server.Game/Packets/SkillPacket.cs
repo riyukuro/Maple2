@@ -61,18 +61,14 @@ public static class SkillPacket {
         return pWriter;
     }
 
-    public static ByteWriter Fail(SkillRecord skill) {
+    // Mode 0 of SkillUseFailed; SkillUseFailedPacket.Fail is mode 5 with the same fields.
+    public static ByteWriter Fail(long castUid, int skillId, float cooldownSeconds, SkillCooldown? cooldown, long currentTick) {
         var pWriter = Packet.Of(SendOp.SkillUseFailed);
-        pWriter.WriteByte(); // Type?
-        pWriter.WriteLong(skill.CastUid);
-        pWriter.WriteInt(skill.Caster.ObjectId);
-        pWriter.WriteByte(); // Unknown
-
-        // TODO: Handle Type=5, Type=6
-
-        pWriter.WriteInt();         // EndTick?
-        pWriter.WriteShort(0 * 10); // Unk * 10
-        pWriter.WriteInt();         // Same CooldownUnk in SkillCooldown packet?
+        pWriter.WriteByte();
+        pWriter.WriteLong(castUid);
+        pWriter.WriteInt(skillId);
+        pWriter.WriteByte(); // error
+        pWriter.WriteCooldown(cooldownSeconds, cooldown, currentTick);
 
         return pWriter;
     }

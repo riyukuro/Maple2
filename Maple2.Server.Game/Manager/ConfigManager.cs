@@ -205,6 +205,10 @@ public class ConfigManager {
         }
     }
 
+    public SkillCooldown? GetSkillCooldown(int skillId) {
+        return skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) ? cooldown : null;
+    }
+
     public void SetSkillCooldown(int skillId, short level = 1, int endTick = 0) {
         var cooldown = new SkillCooldown(skillId, level) {
             EndTick = endTick,
