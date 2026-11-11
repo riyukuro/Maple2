@@ -31,7 +31,7 @@ public static class ItemSocketScrollPacket {
         pWriter.WriteBool(success);
         pWriter.WriteLong(item.Uid);
         pWriter.WriteByte();
-        pWriter.WriteInt(10000);
+        pWriter.WriteInt(item.Transfer?.RemainTrades ?? 0); // the client stores this as the item's remaining trade count
         pWriter.WriteClass<ItemSocket>(item.Socket ?? ItemSocket.Default);
 
         return pWriter;
