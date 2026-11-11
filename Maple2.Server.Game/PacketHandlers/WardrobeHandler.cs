@@ -135,18 +135,23 @@ public class WardrobeHandler : FieldPacketHandler {
 
     private void HandleRename(GameSession session, IByteReader packet) {
         (int index, string name) = WardrobeRules.ReadRename(packet);
-        if (!WardrobeRules.NameAllowed(name, Constant.MaxClosetTabNameLength)) {
-            return;
-        }
-        if (WardrobeRules.NameBanned(name, BanWordStorage.ContainsBannedWord)) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
-            return;
-        }
-
-        if (session.Config.TryGetWardrobe(index, out Wardrobe? wardrobe)) {
-            wardrobe.Name = name;
-        } else {
-            session.Config.AddWardrobe(name);
+        bool allowed = WardrobeRules.NameAllowed(name, Constant.MaxClosetTabNameLength);
+        bool banned = allowed && WardrobeRules.NameBanned(name, BanWordStorage.ContainsBannedWord);
+        bool exists = session.Config.TryGetWardrobe(index, out Wardrobe? wardrobe);
+        switch (WardrobeRules.Rename(allowed, banned, exists)) {
+            case WardrobeRules.RenameStep.Refuse:
+                session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+                return;
+            case WardrobeRules.RenameStep.RefuseRestore:
+                session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+                session.Send(WardrobePacket.Load(index, wardrobe!));
+                return;
+            case WardrobeRules.RenameStep.Rename:
+                wardrobe!.Name = name;
+                return;
+            case WardrobeRules.RenameStep.Create:
+                session.Config.AddWardrobe(name);
+                return;
         }
     }
 }

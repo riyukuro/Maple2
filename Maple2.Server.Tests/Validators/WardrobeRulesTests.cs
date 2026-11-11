@@ -29,4 +29,15 @@ public class WardrobeRulesTests {
         Assert.That(WardrobeRules.NameBanned("Raid", name => name.Contains("xx")), Is.False);
         Assert.That(WardrobeRules.NameBanned("", _ => true), Is.False);
     }
+
+    // Only a refused name on an existing tab is answered with the tab; every other path sends no tab.
+    [TestCase(false, false, true, WardrobeRules.RenameStep.Ignore)]
+    [TestCase(false, true, true, WardrobeRules.RenameStep.Ignore)]
+    [TestCase(true, true, true, WardrobeRules.RenameStep.RefuseRestore)]
+    [TestCase(true, true, false, WardrobeRules.RenameStep.Refuse)]
+    [TestCase(true, false, true, WardrobeRules.RenameStep.Rename)]
+    [TestCase(true, false, false, WardrobeRules.RenameStep.Create)]
+    public void RenameSteps(bool allowed, bool banned, bool exists, WardrobeRules.RenameStep expected) {
+        Assert.That(WardrobeRules.Rename(allowed, banned, exists), Is.EqualTo(expected));
+    }
 }

@@ -21,4 +21,24 @@ public static class WardrobeRules {
     public static bool NameBanned(string name, System.Func<string, bool> isBanned) {
         return !string.IsNullOrWhiteSpace(name) && isBanned(name);
     }
+
+    public enum RenameStep {
+        Ignore,
+        Refuse,
+        RefuseRestore,
+        Rename,
+        Create,
+    }
+
+    // The client renames its tab before the answer. Only a refused name on a tab that exists is answered
+    // with the tab (mode 5, uiclosetdialog.cpp:963), which puts the stored name back.
+    public static RenameStep Rename(bool allowed, bool banned, bool tabExists) {
+        if (!allowed) {
+            return RenameStep.Ignore;
+        }
+        if (banned) {
+            return tabExists ? RenameStep.RefuseRestore : RenameStep.Refuse;
+        }
+        return tabExists ? RenameStep.Rename : RenameStep.Create;
+    }
 }
