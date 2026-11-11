@@ -5,6 +5,7 @@ using Maple2.Model.Game;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
 
@@ -25,6 +26,10 @@ public partial class ChannelService {
                 break;
             case FieldPlotRequest.RequestOneofCase.UpdateBlock:
                 HandleUpdateBlock(request.MapId, request.PlotNumber, request.UpdateBlock);
+                break;
+            case FieldPlotRequest.RequestOneofCase.ArchitectScore:
+                HomeArchitectScore.Apply(server.FindHome(request.ArchitectScore.OwnerId), server.GetSessionByAccountId(request.ArchitectScore.OwnerId),
+                    request.ArchitectScore.Current, request.ArchitectScore.Total);
                 break;
             case FieldPlotRequest.RequestOneofCase.None:
             default:

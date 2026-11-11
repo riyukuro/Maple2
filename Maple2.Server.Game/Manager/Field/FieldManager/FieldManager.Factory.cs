@@ -75,6 +75,11 @@ public partial class FieldManager {
             return homes.TryGetValue(ownerId, out HomeFieldManager? home) && !home.Disposed ? home : null;
         }
 
+        // The owners of the homes loaded on this channel.
+        public List<long> HomeOwners() {
+            return homes.Values.Where(home => !home.Disposed).Select(home => home.OwnerId).ToList();
+        }
+
         /// <summary>
         /// Create a new Field instance for the given mapId.
         /// If ownerId is provided, it will be a house field. (Player or Guild house)

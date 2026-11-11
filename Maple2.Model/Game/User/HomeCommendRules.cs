@@ -65,6 +65,12 @@ public static class HomeCommendRules {
         return MonthBounds(MonthOf(time, zone), zone)!.Value;
     }
 
+    // The month a monthly reset run at about that time is for: the month half a day later, so a reset fired a moment
+    // before midnight and one fired hours late both read the month that has just begun.
+    public static (long Begin, long End) MonthAtReset(long time, TimeZoneInfo zone) {
+        return MonthSpan(time + DaySeconds / 2, zone);
+    }
+
     private static DateTime Local(long time, TimeZoneInfo zone) {
         return TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeSeconds(time).UtcDateTime, zone);
     }

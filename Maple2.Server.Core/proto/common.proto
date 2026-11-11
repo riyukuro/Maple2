@@ -434,9 +434,17 @@ message FieldPlotRequest {
     }
   }
 
+  // The architect scores of a home (this month, all time) after a commendation: map_id is the home's indoor map.
+  message ArchitectScore {
+    int64 owner_id = 1;
+    int32 current = 2;
+    int32 total = 3;
+  }
+
   oneof request {
     UpdatePlot update_plot = 4;
     UpdateBlock update_block = 5;
+    ArchitectScore architect_score = 6;
   }
 }
 

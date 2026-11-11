@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
@@ -458,7 +459,7 @@ public class RequestCubeHandler : FieldPacketHandler {
 
     // CommendHome: the account commends the home it stands in, once a day (HomeCommendRules). The voter gets the time
     // of its commendation (ResponseCube 0x19, which turns its recommend button off), the field the home's new scores
-    // (ResponseCube 0x1c for the home info dialog, HomeCommand 1 for the owner when it is here).
+    // (ResponseCube 0x1c for the home info dialog, HomeCommand 1 for the owner, in whichever field and channel it is).
     private void HandleVoteHome(GameSession session) {
         if (session.Field is not HomeFieldManager home) {
             session.Send(CubePacket.ConfirmVote((byte) UgcMapError.s_ugcmap_no_owner_to_commend));
@@ -479,16 +480,14 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         (long monthBegin, long monthEnd) = HomeCommendRules.MonthSpan(now, TimeZoneInfo.Local);
         (int current, int total) = db.GetHomeCommendScore(ownerId, monthBegin, monthEnd);
-        home.Home.CurrentArchitectScore = current;
-        home.Home.ArchitectScore = total;
 
         session.Send(CubePacket.ConfirmVote(0, session.AccountId, now));
-        home.Broadcast(CubePacket.ArchitectScore(current, total));
-        FieldPlayer? owner = home.Players.Values.FirstOrDefault(player => player.Value.Account.Id == ownerId);
-        if (owner != null) {
-            owner.Value.Home.CurrentArchitectScore = current;
-            owner.Value.Home.ArchitectScore = total;
-            home.Broadcast(HomeCommandPacket.UpdateArchitectScore(owner.ObjectId, current, total));
+        // This channel's copies at once (the owner may be in any field here), the other channels through the World.
+        HomeArchitectScore.Apply(home, session.FindSessionByAccountId(ownerId), current, total);
+        try {
+            session.World.UpdateFieldPlot(HomeArchitectScore.Request(home.MapId, ownerId, current, total, GameServer.GetChannel()));
+        } catch (RpcException ex) {
+            Logger.Warning(ex, "Architect score of home {OwnerId} not sent to the other channels", ownerId);
         }
         session.ConditionUpdate(ConditionType.commend_home);
     }

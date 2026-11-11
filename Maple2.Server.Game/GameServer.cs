@@ -13,6 +13,7 @@ using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.DebugGraphics;
 
 namespace Maple2.Server.Game;
@@ -109,6 +110,11 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.Get(mapId, roomId: roomId);
     }
 
+    // The loaded home of an account on this channel, if any.
+    public HomeFieldManager? FindHome(long ownerId) {
+        return fieldFactory.FindHome(ownerId);
+    }
+
     public DungeonFieldManager? CreateDungeon(DungeonRoomMetadata metadata, long requesterId, int size, int partyId) {
         return fieldFactory.CreateDungeon(metadata, requesterId, size, partyId);
     }
@@ -188,6 +194,19 @@ public class GameServer : Server<GameSession> {
     public void MonthlyReset() {
         foreach (GameSession session in sessions.Values) {
             session.MonthlyReset();
+        }
+        ReloadArchitectScores();
+    }
+
+    // The month's architect score of a home counts this month's commendations only, so the loaded copies (the home
+    // fields' and the online owners') are read again when a month begins.
+    private void ReloadArchitectScores() {
+        HashSet<long> owners = [.. fieldFactory.HomeOwners(), .. sessions.Values.Select(session => session.AccountId)];
+        (long begin, long end) = HomeCommendRules.MonthAtReset(DateTimeOffset.UtcNow.ToUnixTimeSeconds(), TimeZoneInfo.Local);
+        using GameStorage.Request db = gameStorage.Context();
+        foreach (long ownerId in owners) {
+            (int current, int total) = db.GetHomeCommendScore(ownerId, begin, end);
+            HomeArchitectScore.Apply(fieldFactory.FindHome(ownerId), GetSessionByAccountId(ownerId), current, total);
         }
     }
 
