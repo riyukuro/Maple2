@@ -43,10 +43,10 @@ public class PartyLookup : IDisposable {
     public void Dispose() {
         foreach (PartyManager manager in parties.Values) {
             manager.Dispose();
-        }
-
-        if (partySearchLookup.TryGetByPartyId(nextPartyId, out PartySearchManager? partySearch)) {
-            partySearch.Dispose();
+            // Each party's own listing (it was the listing of the last party id given only, r60).
+            if (partySearchLookup.TryGetByPartyId(manager.Party.Id, out PartySearchManager? partySearch)) {
+                partySearch.Dispose();
+            }
         }
     }
 

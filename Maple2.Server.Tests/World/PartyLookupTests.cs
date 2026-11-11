@@ -126,6 +126,18 @@ public class PartyLookupTests {
         Assert.That(to.Party.Search!.MemberCount, Is.EqualTo(4));
     }
 
+    // Dispose ends every party's listing, not only the last party's.
+    [Test]
+    public void DisposeEndsEveryPartysListing() {
+        PartyManager first = Party(2);
+        PartyManager second = Party(2);
+        partySearch.Create(first.Party, "a", false, 4, out _);
+        partySearch.Create(second.Party, "b", false, 4, out _);
+        lookup.Dispose();
+        Assert.That(first.Party.Search, Is.Null);
+        Assert.That(second.Party.Search, Is.Null);
+    }
+
     // rv42 MAJOR 2: the pulled parties really move into the new group's party, and the cap holds.
     [Test]
     public void APullMovesThePartiesIn() {
