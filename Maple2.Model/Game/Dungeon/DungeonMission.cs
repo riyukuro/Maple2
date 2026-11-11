@@ -11,8 +11,12 @@ public class DungeonMission : IByteSerializable {
     public short Score { get; private set; }
     public short Counter { get; private set; }
 
-    public DungeonMission(DungeonMissionMetadata metadata) {
+    /// <summary>One of the room's userMissions (scored per player); else a party mission.</summary>
+    public readonly bool IsUserMission;
+
+    public DungeonMission(DungeonMissionMetadata metadata, bool isUserMission = false) {
         Metadata = metadata;
+        IsUserMission = isUserMission;
     }
 
     public bool Update(int counter = 1) {

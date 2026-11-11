@@ -13,7 +13,7 @@ public static class RoomStageDungeonPacket {
     // OnRoomStageDungeon case 0 (networkservice.cpp:1085) reads an int, a byte and a bool, then calls CreateStage.
     public static ByteWriter Set(int dungeonId, byte flag = 0, bool enabled = false) {
         var pWriter = Packet.Of(SendOp.RoomStageDungeon);
-        pWriter.Write<Command>(Command.Set);
+        pWriter.WriteByte((byte) Command.Set);
         pWriter.WriteInt(dungeonId);
         pWriter.WriteByte(flag);
         pWriter.WriteBool(enabled);
@@ -24,7 +24,7 @@ public static class RoomStageDungeonPacket {
     // OnRoomStageDungeon case 1 (networkservice.cpp:1092) reads nothing more: it calls ClearStage.
     public static ByteWriter Update() {
         var pWriter = Packet.Of(SendOp.RoomStageDungeon);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
 
         return pWriter;
     }

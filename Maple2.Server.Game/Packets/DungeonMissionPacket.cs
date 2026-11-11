@@ -6,6 +6,9 @@ using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Packets;
 
+// RoomStageDungeonCli::OnPacket reads one mode byte: 0 sets the mission list (count, then per mission its
+// id and its type's values), 1 updates missions already in the list, 4 sets the give-up flag. The client
+// registers this handler only after RoomStageDungeon mode 0.
 public static class DungeonMissionPacket {
     private enum Command : byte {
         Load = 0,
@@ -15,7 +18,7 @@ public static class DungeonMissionPacket {
 
     public static ByteWriter Load(IDictionary<int, DungeonMission> missions) {
         var pWriter = Packet.Of(SendOp.DungeonMission);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
         pWriter.WriteInt(missions.Count);
         foreach ((int id, DungeonMission mission) in missions) {
             pWriter.WriteClass<DungeonMission>(mission);
@@ -26,7 +29,7 @@ public static class DungeonMissionPacket {
 
     public static ByteWriter Update(params DungeonMission[] missions) {
         var pWriter = Packet.Of(SendOp.DungeonMission);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
         pWriter.WriteInt(missions.Length);
         foreach (DungeonMission mission in missions) {
             pWriter.WriteClass<DungeonMission>(mission);
@@ -37,7 +40,7 @@ public static class DungeonMissionPacket {
 
     public static ByteWriter SetAbandon(bool enable) {
         var pWriter = Packet.Of(SendOp.DungeonMission);
-        pWriter.Write<Command>(Command.SetAbandon);
+        pWriter.WriteByte((byte) Command.SetAbandon);
         pWriter.WriteBool(enable);
 
         return pWriter;

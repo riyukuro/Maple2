@@ -101,16 +101,13 @@ public class DungeonManager {
 
         if (session.Field.FieldInstance.Type == InstanceType.DungeonLobby) {
             session.Send(DungeonWaitingPacket.Set(Lobby.DungeonId, Lobby.Size));
-        } else {
-            // DEBUG
-            /*session.Send(RoomStageDungeonPacket.Set(Metadata.Id));
-            ByteWriter pWriter = Packet.Of(SendOp.DungeonMission);
-            pWriter.WriteByte(0);
-            pWriter.WriteInt(1);
-            pWriter.WriteInt(23023005);
-            pWriter.WriteShort(1);
-            pWriter.WriteShort(); // counter
-            session.Send(pWriter);*/
+        } else if (Metadata != null) {
+            // The client makes its mission list (RoomStageDungeonCli) only on RoomStageDungeon mode 0 and
+            // registers the DungeonMission handler there; it clears the list when the player leaves the field.
+            session.Send(RoomStageDungeonPacket.Set(Metadata.Id));
+            if (UserRecord != null && UserRecord.Missions.Count > 0) {
+                session.Send(DungeonMissionPacket.Load(UserRecord.Missions));
+            }
         }
     }
 
@@ -275,8 +272,21 @@ public class DungeonManager {
         UserRecord = field.DungeonRoomRecord.UserResults.GetOrAdd(session.CharacterId,
             _ => new DungeonUserRecord(field.DungeonId, session.CharacterId));
 
-        foreach (int missionId in Metadata.UserMissions) {
-            //TODO
+        FillMissions(UserRecord, Metadata.PartyMissions, Metadata.UserMissions, session.TableMetadata.DungeonMissionTable.Missions);
+    }
+
+    /// <summary>
+    /// A new record gets the room's missions in the client's order (DungeonRoom::GetMissions: the party
+    /// missions, then the user missions). Ids without a mission row are skipped, as the client does.
+    /// </summary>
+    public static void FillMissions(DungeonUserRecord record, int[] partyMissions, int[] userMissions, IReadOnlyDictionary<int, DungeonMissionMetadata> table) {
+        if (record.Missions.Count > 0) {
+            return;
+        }
+        foreach (int missionId in partyMissions.Concat(userMissions)) {
+            if (table.TryGetValue(missionId, out DungeonMissionMetadata? mission)) {
+                record.Missions.TryAdd(missionId, new DungeonMission(mission, userMissions.Contains(missionId)));
+            }
         }
     }
 
