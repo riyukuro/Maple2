@@ -37,6 +37,12 @@ public static partial class ClientPriceConstants {
         return ClientCaps.Contains(key);
     }
 
+    // The ingest option that names the Xml pack of the client that is really played (MS2_PLAYED_CLIENT_XML).
+    // Not set or blank: no such pack, the data folder's Xml pack alone is "the client".
+    public static string? PackOption(string? value) {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
     // rows: (key, value) in file order, already filtered by locale and feature. A later row replaces an earlier one.
     public static Dictionary<string, string> Select(IEnumerable<(string Key, string Value)> rows) {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

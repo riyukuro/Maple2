@@ -25,6 +25,28 @@ public class ClientPriceConstantsTests {
         ("UGCShopAdFeeMerat", "30"),
     ];
 
+    // MS2_PLAYED_CLIENT_XML: not set or blank means no second pack.
+    [TestCase(null, null)]
+    [TestCase("", null)]
+    [TestCase("  ", null)]
+    [TestCase(" /data/Xml.m2d ", "/data/Xml.m2d")]
+    public void PackOption(string? value, string? expected) {
+        Assert.That(ClientPriceConstants.PackOption(value), Is.EqualTo(expected));
+    }
+
+    // The data folder's rows, then the played client's: the played client's row wins where it has one, and a
+    // constant it has no row for keeps the data folder's value. Made-up numbers.
+    [Test]
+    public void Select_PlayedClientRowsWinOverTheDataFolder() {
+        (string, string)[] dataFolder = [("SlotExpandPrice", "900"), ("NameChangeFee", "100")];
+        (string, string)[] played = [("SlotExpandPrice", "300")];
+        Dictionary<string, string> client = ClientPriceConstants.Select(dataFolder.Concat(played));
+        List<ClientPriceConstants.Override> result = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("SlotExpandPrice", "900"), ("NameChangeFee", "50")]), client);
+        Assert.That(result.Select(entry => (entry.Key, entry.ClientValue)),
+            Is.EquivalentTo(new[] { ("SlotExpandPrice", "300"), ("NameChangeFee", "100") }));
+    }
+
     [Test]
     public void Differences_ClientValueWinsForPrices() {
         List<ClientPriceConstants.Override> result = ClientPriceConstants.Differences(

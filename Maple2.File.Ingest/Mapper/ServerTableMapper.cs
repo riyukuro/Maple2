@@ -39,8 +39,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private readonly ServerTableParser parser;
     // The client's Xml.m2d: its table/constants.xml holds the prices the client shows.
     private readonly M2dReader? clientReader;
+    // The Xml pack of the client that is played, when it is not the data folder's (MS2_PLAYED_CLIENT_XML).
+    private readonly M2dReader? playedReader;
 
-    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null) {
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null) {
+        this.playedReader = playedReader;
         parser = new ServerTableParser(xmlReader);
         this.clientReader = clientReader;
     }
@@ -2197,15 +2200,19 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return constants;
 
         Dictionary<string, string> ClientPriceRows() {
+            // The data folder's pack first, then the played client's: a later row replaces an earlier one, so
+            // the played client's row wins where it has one.
             var rows = new List<(string, string)>();
-            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = clientReader?.Files.FirstOrDefault(file => file.Name == "table/constants.xml");
-            if (clientReader == null || entry == null) {
-                return ClientPriceConstants.Select(rows);
-            }
-            foreach (XmlNode node in clientReader.GetXmlDocument(entry).SelectNodes("ms2/v")!) {
-                if (node is not XmlElement row) continue;
-                if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
-                rows.Add((row.GetAttribute("key"), row.GetAttribute("value")));
+            foreach (M2dReader? reader in new[] { clientReader, playedReader }) {
+                Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/constants.xml");
+                if (reader == null || entry == null) {
+                    continue;
+                }
+                foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/v")!) {
+                    if (node is not XmlElement row) continue;
+                    if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
+                    rows.Add((row.GetAttribute("key"), row.GetAttribute("value")));
+                }
             }
             return ClientPriceConstants.Select(rows);
         }

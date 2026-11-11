@@ -65,6 +65,13 @@ if (!File.Exists(xmlPath)) {
     throw new FileNotFoundException($"Could not find Xml.m2d file at path: {xmlPath}");
 }
 
+// Optional: the Xml.m2d of the client that is played, when it is another version than the data folder's.
+// Only the client rows of the constants table (prices, the client's cooltimes and caps) are read from it.
+string? playedXmlPath = Maple2.Model.Metadata.ClientPriceConstants.PackOption(Environment.GetEnvironmentVariable("MS2_PLAYED_CLIENT_XML"));
+if (playedXmlPath != null && !File.Exists(playedXmlPath)) {
+    throw new FileNotFoundException($"MS2_PLAYED_CLIENT_XML is set, but there is no file at path: {playedXmlPath}");
+}
+
 if (!File.Exists(exportedPath)) {
     throw new FileNotFoundException($"Could not find Exported.m2d file at path: {exportedPath}");
 }
@@ -155,6 +162,7 @@ Console.WriteLine("Game Migration complete!");
 using var xmlReader = new M2dReader(xmlPath);
 using var exportedReader = new M2dReader(exportedPath);
 using var serverReader = new M2dReader(serverPath);
+using M2dReader? playedReader = playedXmlPath == null ? null : new M2dReader(playedXmlPath);
 
 string dataDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
 
@@ -205,7 +213,7 @@ UpdateDatabase(metadataContext, new TriggerMapper(xmlReader));
 UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false));
 UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language));
 
-UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader));
+UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader));
 UpdateDatabase(metadataContext, new AiMapper(serverReader));
 
 UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader));
