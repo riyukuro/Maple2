@@ -264,6 +264,23 @@ public class GuildManager : IDisposable {
         return true;
     }
 
+    // Guild 55 (CGuildManager::FUN_1413c3460): the client replaces the skill it holds with the one sent and
+    // prints s_guild_notify_upgrade_skill.
+    public bool UpgradeBuff(string requestorName, GuildBuff buff) {
+        if (Guild == null) {
+            return false;
+        }
+
+        for (int i = 0; i < Guild.Buffs.Count; i++) {
+            if (Guild.Buffs[i].Id == buff.Id) {
+                Guild.Buffs[i] = buff;
+                session.Send(GuildPacket.UpgradeBuff(requestorName, buff));
+                return true;
+            }
+        }
+        return false;
+    }
+
     public bool UpdateNotice(string requestorName, string message) {
         if (Guild == null) {
             return false;

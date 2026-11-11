@@ -140,6 +140,13 @@ message GuildRequest {
     string applicant_name = 3;
     bool accepted = 4;
   }
+  // Guild 55: a guild skill at its new level.
+  message UpgradeBuff {
+    string requestor_name = 1;
+    int32 id = 2;
+    int32 level = 3;
+    int64 expiry_time = 4;
+  }
   // The answer, to the applicant.
   message ApplicationResult {
     int64 application_id = 1;
@@ -166,6 +173,7 @@ message GuildRequest {
     ApplicationRemoved application_removed = 16;
     ApplicationAnswered application_answered = 17;
     ApplicationResult application_result = 18;
+    UpgradeBuff upgrade_buff = 19;
   }
 }
 

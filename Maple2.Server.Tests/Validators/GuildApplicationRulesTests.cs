@@ -1,6 +1,7 @@
 using System.Linq;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 
 namespace Maple2.Server.Tests.Validators;
@@ -60,6 +61,28 @@ public class GuildApplicationRulesTests {
         // An applicant who joined a guild since cannot be accepted; a refusal still goes through.
         Assert.That(GuildRules.CheckRespond(true, true, 3, 40, row, true, 9), Is.EqualTo(GuildError.s_guild_err_has_guild));
         Assert.That(GuildRules.CheckRespond(true, true, 3, 40, row, false, 9), Is.EqualTo(GuildError.none));
+    }
+
+    private static GuildTable.Buff SkillRow(short requireLevel, int upgradeCost) =>
+        new(Id: 90000001, Level: 1, RequireLevel: requireLevel, Cost: 100, UpgradeCost: upgradeCost, Duration: 60);
+
+    [Test]
+    public void UpgradeSkill_Rules() {
+        GuildTable.Buff current = SkillRow(1, 0);
+        GuildTable.Buff next = SkillRow(3, 500);
+
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1, current, next, 3, 500), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 10001, current, next, 3, 500), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1, current, null, 3, 500), Is.EqualTo(GuildError.s_guild_err_unknown), "no next level");
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1, null, next, 3, 500), Is.EqualTo(GuildError.s_guild_err_unknown), "no row of the current level");
+        Assert.That(GuildRules.CheckUpgradeSkill(false, 1, current, next, 3, 500), Is.EqualTo(GuildError.s_guild_err_no_master));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1, current, next, 2, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1, current, next, 3, 499), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1, current, SkillRow(3, -1), 3, 499), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        // Paid from the event fund, which the server does not keep.
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1001, current, next, 3, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 10000, current, next, 3, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUpgradeSkill(true, 1000, current, next, 3, 500), Is.EqualTo(GuildError.none));
     }
 
     [Test]

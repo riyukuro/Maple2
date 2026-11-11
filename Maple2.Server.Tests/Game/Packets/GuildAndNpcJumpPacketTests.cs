@@ -42,6 +42,21 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c3460 (0x37): the name, then CGuildSkill::Read (id, level, expiry time).
+    [Test]
+    public void UpgradeBuff_IsMode55WithNameAndSkill() {
+        ByteWriter writer = GuildPacket.UpgradeBuff("Master", new GuildBuff(10002, 3, 0x0102030405060708));
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(55));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Master"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(10002));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x0102030405060708));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     [Test]
     public void SendMail_IsMode71WithNoBody() {
         ByteWriter writer = GuildPacket.SendMail();

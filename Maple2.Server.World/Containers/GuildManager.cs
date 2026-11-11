@@ -279,6 +279,59 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Guild 92: the skill goes up one level and the fund pays the upgrade cost of the new level.
+    public GuildError UpgradeBuff(long requestorId, int buffId) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        GuildBuff upgraded;
+        lock (joinLock) {
+            int index = -1;
+            for (int i = 0; i < Guild.Buffs.Count; i++) {
+                if (Guild.Buffs[i].Id == buffId) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0 || !TableMetadata.GuildTable.Buffs.TryGetValue(buffId, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)) {
+                return GuildError.s_guild_err_unknown;
+            }
+
+            GuildBuff buff = Guild.Buffs[index];
+            levels.TryGetValue((short) buff.Level, out GuildTable.Buff? current);
+            levels.TryGetValue((short) (buff.Level + 1), out GuildTable.Buff? next);
+            GuildError error = GuildRules.CheckUpgradeSkill(requestorId == Guild.LeaderCharacterId, buffId, current, next,
+                GuildProperty().Level, Guild.Funds);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            Guild.Funds -= next!.UpgradeCost;
+            upgraded = buff with { Level = buff.Level + 1 };
+            Guild.Buffs[index] = upgraded;
+        }
+
+        // No contributor: the members get the new fund (51) without a contribution line.
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = 0,
+                GuildExp = Guild.Experience,
+                GuildFund = Guild.Funds,
+            },
+        });
+        Broadcast(new GuildRequest {
+            UpgradeBuff = new GuildRequest.Types.UpgradeBuff {
+                RequestorName = requestor.Name,
+                Id = upgraded.Id,
+                Level = upgraded.Level,
+                ExpiryTime = upgraded.ExpiryTime,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     // Guild 113. The channel has checked the member's meso and takes it after this call succeeds.
     public GuildError Donate(long requestorId, int count, long fund, out GuildMember? member) {
         if (!Guild.Members.TryGetValue(requestorId, out member)) {

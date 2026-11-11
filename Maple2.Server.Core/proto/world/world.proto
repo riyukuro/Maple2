@@ -262,6 +262,11 @@ message GuildRequest {
   message Apply {
     int64 guild_id = 1;
   }
+  // Guild 92: the master raises a guild skill by one level.
+  message UpgradeBuff {
+    int64 guild_id = 1;
+    int32 buff_id = 2;
+  }
   // Guild 113: count donations, worth fund in all for the guild fund.
   message Donate {
     int64 guild_id = 1;
@@ -298,6 +303,7 @@ message GuildRequest {
     CancelApplication cancel_application = 18;
     RespondApplication respond_application = 19;
     Donate donate = 20;
+    UpgradeBuff upgrade_buff = 21;
   }
 }
 

@@ -41,6 +41,8 @@ public partial class ChannelService {
                 return Task.FromResult(GuildApplicationRemoved(request.ReceiverIds, request.ApplicationRemoved));
             case GuildRequest.GuildOneofCase.ApplicationAnswered:
                 return Task.FromResult(GuildApplicationAnswered(request.ReceiverIds, request.ApplicationAnswered));
+            case GuildRequest.GuildOneofCase.UpgradeBuff:
+                return Task.FromResult(UpgradeGuildBuff(request.ReceiverIds, request.UpgradeBuff));
             case GuildRequest.GuildOneofCase.ApplicationResult:
                 return Task.FromResult(GuildApplicationResult(request.GuildId, request.ReceiverIds, request.ApplicationResult));
             default:
@@ -163,6 +165,18 @@ public partial class ChannelService {
             }
 
             session.Guild.UpdateLeader(update.OldLeaderId, update.NewLeaderId);
+        }
+
+        return new GuildResponse();
+    }
+
+    private GuildResponse UpgradeGuildBuff(IEnumerable<long> receiverIds, GuildRequest.Types.UpgradeBuff update) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Guild.UpgradeBuff(update.RequestorName, new GuildBuff(update.Id, update.Level, update.ExpiryTime));
         }
 
         return new GuildResponse();

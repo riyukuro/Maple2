@@ -936,8 +936,30 @@ public class GuildHandler : PacketHandler<GameSession> {
         int buffId = packet.ReadInt();
     }
 
+    // CGuildManager::FUN_1413b9ac0: the id of the guild skill the master raises by one level. The World
+    // server checks and pays; every member gets the new fund (51) and the skill (55).
     private void HandleUpgradeBuff(GameSession session, IByteReader packet) {
         int buffId = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                UpgradeBuff = new GuildRequest.Types.UpgradeBuff {
+                    GuildId = session.Guild.Id,
+                    BuffId = buffId,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+            }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to upgrade guild skill");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleStartArcade(GameSession session, IByteReader packet) {

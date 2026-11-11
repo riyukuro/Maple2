@@ -55,6 +55,8 @@ public partial class WorldService {
                 return Task.FromResult(CancelGuildApplication(request.RequestorId, request.CancelApplication));
             case GuildRequest.GuildOneofCase.RespondApplication:
                 return Task.FromResult(RespondGuildApplication(request.RequestorId, request.RespondApplication));
+            case GuildRequest.GuildOneofCase.UpgradeBuff:
+                return Task.FromResult(UpgradeGuildBuff(request.RequestorId, request.UpgradeBuff));
             case GuildRequest.GuildOneofCase.Donate:
                 return Task.FromResult(DonateGuild(request.RequestorId, request.Donate));
             default:
@@ -418,6 +420,19 @@ public partial class WorldService {
             ApplicationId = row.Id,
             ApplicantName = applicant.Name,
         };
+    }
+
+    private GuildResponse UpgradeGuildBuff(long requestorId, GuildRequest.Types.UpgradeBuff upgrade) {
+        if (!guildLookup.TryGet(upgrade.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.UpgradeBuff(requestorId, upgrade.BuffId);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = upgrade.GuildId };
     }
 
     // Guild 113: a member gives meso to the guild fund.

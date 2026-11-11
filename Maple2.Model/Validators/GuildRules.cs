@@ -1,5 +1,6 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
 
@@ -128,6 +129,32 @@ public static class GuildRules {
             return false;
         }
         return (long) donationsToday + count <= donateMax && funds + addFunds <= fundMax;
+    }
+
+    // Guild 92 (CGuildManager::FUN_1413b9ac0): the master raises a guild skill by one level. The client asks
+    // for the row of the current level and of the next one (none: s_guild_err_max_level, which has no code in
+    // the error packet), the guild level of the next row, and the upgrade cost of the next row in the fund.
+    // Skills 1001 to 10000 are paid from the event fund (GuildSkill::FUN_1404d4e80), which the server does
+    // not keep: for them the fund counts as 0.
+    public static bool IsEventFundSkill(int skillId) {
+        return skillId is > 1000 and <= 10000;
+    }
+
+    public static GuildError CheckUpgradeSkill(bool isMaster, int skillId, GuildTable.Buff? current, GuildTable.Buff? next,
+                                               int guildLevel, int funds) {
+        if (current == null || next == null) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (!isMaster) {
+            return GuildError.s_guild_err_no_master;
+        }
+        if (next.RequireLevel > guildLevel) {
+            return GuildError.s_guild_err_not_enough_guild_level;
+        }
+        if (next.UpgradeCost < 0 || next.UpgradeCost > (IsEventFundSkill(skillId) ? 0 : funds)) {
+            return GuildError.s_guild_err_not_enough_guild_fund;
+        }
+        return GuildError.none;
     }
 
     // The master keeps rank 0 until the master changes.
