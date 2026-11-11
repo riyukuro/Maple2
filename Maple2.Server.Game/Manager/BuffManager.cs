@@ -61,11 +61,11 @@ public class BuffManager : IUpdatable {
     }
 
     public void LoadFieldBuffs() {
-        // Lapenshards
         // Game Events
         // Prestige
         EnterField();
         if (Actor is FieldPlayer player) {
+            player.Session.Config.RefreshLapenshardBuffs();
             player.Session.Config.RefreshPremiumClubBuffs();
             player.Session.Guild.LoadSkillBuffs();
 

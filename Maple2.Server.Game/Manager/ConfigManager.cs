@@ -4,6 +4,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Manager.Items;
@@ -532,6 +533,22 @@ public class ConfigManager {
         lapenshards[slot] = id;
     }
 
+    // Gives the effects of the worn lapenshards that the player does not have (LapenshardRules.MissingEffects).
+    // Called when a shard is put on or taken off and at every field entry.
+    public void RefreshLapenshardBuffs() {
+        if (session.Field is not { } field) {
+            return;
+        }
+
+        foreach ((int id, short level) in LapenshardRules.MissingEffects(lapenshards.Values.ToArray(),
+                     itemId => session.ItemMetadata.TryGet(itemId, out ItemMetadata? metadata) ? metadata.AdditionalEffects : null,
+                     (id, level) => session.Player.Buffs.HasBuff(id, level))) {
+            if (field.SkillMetadata.TryGetEffect(id, level, out _)) {
+                session.Player.Buffs.AddBuff(session.Player, session.Player, id, level, field.FieldTick);
+            }
+        }
+    }
+
     public bool EquipLapenshard(long itemUid, LapenshardSlot slot) {
         if (!Enum.IsDefined<LapenshardSlot>(slot)) {
             return false;
@@ -578,6 +595,7 @@ public class ConfigManager {
 
         lapenshards[slot] = lapenshard.Id;
         session.Send(LapenshardPacket.Equip(slot, lapenshard.Id));
+        RefreshLapenshardBuffs();
 
         return true;
     }
@@ -608,6 +626,11 @@ public class ConfigManager {
         }
 
         session.Send(LapenshardPacket.Unequip(slot));
+        // The shard's effects end with it; one that another worn shard gives too is given again.
+        if (session.ItemMetadata.TryGet(lapenshardId, out ItemMetadata? unequipped)) {
+            session.Player.Buffs.Remove(unequipped.AdditionalEffects.Select(effect => (effect.Id, session.Player.ObjectId)).ToArray());
+        }
+        RefreshLapenshardBuffs();
         return true;
     }
     #endregion

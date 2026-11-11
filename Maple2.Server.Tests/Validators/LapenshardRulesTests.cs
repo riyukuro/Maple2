@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -37,5 +39,25 @@ public class LapenshardRulesTests {
         Assert.That(Read(Entry(7, 3), owned: 3, upgradedUid: 7), Is.False);
         // A stack of three: one is upgraded, two may be materials.
         Assert.That(Read(Entry(7, 2), owned: 3, upgradedUid: 7), Is.True);
+    }
+
+    // The effects of the worn shards: every additional effect of each shard that the wearer lacks, once.
+    [Test]
+    public void MissingEffects_OfTheWornShards() {
+        var items = new Dictionary<int, ItemMetadataAdditionalEffect[]> {
+            [901] = [new ItemMetadataAdditionalEffect(5001, 1, false), new ItemMetadataAdditionalEffect(5002, 3, false)],
+            [902] = [new ItemMetadataAdditionalEffect(5002, 3, false), new ItemMetadataAdditionalEffect(5003, 1, true)],
+        };
+        IEnumerable<ItemMetadataAdditionalEffect>? EffectsOf(int itemId) => items.GetValueOrDefault(itemId);
+
+        // Nothing held: both effects of the first shard; the second adds none (one shared, one pick-up only).
+        Assert.That(LapenshardRules.MissingEffects([901, 902], EffectsOf, (_, _) => false),
+            Is.EqualTo(new List<(int, short)> { (5001, 1), (5002, 3) }));
+        // Held effects are not given again (a field change keeps them; a login has lost them).
+        Assert.That(LapenshardRules.MissingEffects([901, 902], EffectsOf, (id, _) => id == 5001),
+            Is.EqualTo(new List<(int, short)> { (5002, 3) }));
+        // No shard worn, or a shard the item data does not hold: nothing.
+        Assert.That(LapenshardRules.MissingEffects([], EffectsOf, (_, _) => false), Is.Empty);
+        Assert.That(LapenshardRules.MissingEffects([999], EffectsOf, (_, _) => false), Is.Empty);
     }
 }
