@@ -194,10 +194,12 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadSkyFortressMissions(ICollection<int> questIds) {
+    // Quest 0x1F, the day's alliance missions (CQuestManager, questmanager_2.cpp:1145): the client lets a daily alliance
+    // quest be started only when it is listed. drop: the client first removes its held daily alliance quests.
+    public static ByteWriter DailyAllianceMissions(bool drop, ICollection<int> questIds) {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.DailyReputationMissions);
-        pWriter.WriteBool(true);
+        pWriter.WriteBool(drop);
         pWriter.WriteInt(questIds.Count);
         foreach (int questId in questIds) {
             pWriter.WriteInt(questId);
@@ -206,10 +208,12 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadKritiasMissions(ICollection<int> questIds) {
+    // Quest 0x20, the week's alliance missions (questmanager_2.cpp:1152): the same for the weekly ones without a group;
+    // drop removes the held weekly alliance quests without a group.
+    public static ByteWriter WeeklyAllianceMissions(bool drop, ICollection<int> questIds) {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.WeeklyReputationMissions);
-        pWriter.WriteBool(true);
+        pWriter.WriteBool(drop);
         pWriter.WriteInt(questIds.Count);
         foreach (int questId in questIds) {
             pWriter.WriteInt(questId);

@@ -41,7 +41,11 @@ public record QuestMetadataBasic(
     // other value again at once (CQuestManagerCommon::vfunc_o10_21, questdata.cpp:376).
     int Repeat = 0,
     // basic usePeriod as a weekday, 1 (sun) to 7 (sat), the reset day of a weekly quest; 0 none (FUN_14028e160).
-    int ResetWeekday = 0);
+    int ResetWeekday = 0,
+    // basic alliance as the client's id (Parse_14021a330: darkwind 1 .. georg 9, 0 none) and basic rank (Parse_14021a570:
+    // S 0, A 1, B 2, C 3, D 4, anything else 5). The alliance window lists the alliance quests (type 9) of its alliance.
+    AllianceType Alliance = AllianceType.AnyFaction,
+    int Rank = 5);
 
 public record QuestMetadataRequire(
     short Level,
@@ -51,7 +55,9 @@ public record QuestMetadataRequire(
     int[] SelectableQuest,
     int Achievement,
     (int, int) UnrequiredAchievement, // (AchievementId, Grade) Player CANNOT have this achievement to start the quest.
-    int GearScore);
+    int GearScore,
+    // require groupID: a weekly alliance quest with a group is not one of the week's picked missions (CQuestManager::vfunc_1).
+    int GroupId = 0);
 
 public record QuestMetadataReward(
     int Meso,

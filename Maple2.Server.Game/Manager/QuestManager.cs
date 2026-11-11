@@ -33,6 +33,12 @@ public sealed class QuestManager {
 
     private readonly ILogger logger = Log.Logger.ForContext<QuestManager>();
 
+    // The alliance mission lists last sent (AllianceMissions, Quest 0x1F and 0x20) and the period each holds.
+    private readonly HashSet<int> dailyMissions = [];
+    private readonly HashSet<int> weeklyMissions = [];
+    private DateTime dailyMissionsStart;
+    private DateTime weeklyMissionsStart;
+
     public QuestManager(GameSession session) {
         this.session = session;
 
@@ -43,6 +49,7 @@ public sealed class QuestManager {
     }
 
     public void Load() {
+        DropEndedMissions(DateTime.Now);
         session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress));
 
         // A stored quest the played client lacks stays stored but is not sent: the client would read the list wrong
@@ -144,6 +151,12 @@ public sealed class QuestManager {
             return QuestError.s_quest_error_accept_fail;
         }
 
+        // An alliance mission only when it is in the list the client was sent (CQuestManager::vfunc_1).
+        if (!bypassRequirements && AllianceMissions.IsMission(metadata)
+            && !(metadata.Basic.Repeat == 2 ? dailyMissions : weeklyMissions).Contains(questId)) {
+            return QuestError.s_quest_error_accept_fail;
+        }
+
         Quest? quest;
         if (held != null) {
             // The stored row is reused: started again with fresh conditions, its completion count kept. The client
@@ -194,6 +207,9 @@ public sealed class QuestManager {
         session.Send(QuestPacket.Start(quest));
         if (quest.Metadata.SummonPortal != null) {
             SummonPortal(quest);
+        }
+        if (session.TableMetadata.FameTable.PickMethods.Any(method => method.ReloadOnAccept == quest.Id)) {
+            LoadAllianceMissions();
         }
         return QuestError.none;
     }
@@ -446,7 +462,86 @@ public sealed class QuestManager {
         session.Send(QuestPacket.Complete(quest));
         TryJobAdvance(quest.Id);
         CompleteChapter(quest.Id);
+        // The quest that opens the alliance missions (the methods' reloadOnComplete) makes the lists again.
+        if (session.TableMetadata.FameTable.PickMethods.Any(method => method.ReloadOnComplete == quest.Id)) {
+            LoadAllianceMissions();
+        }
         return true;
+    }
+
+    /// <summary>
+    /// Sends the day's and the week's alliance missions (Quest 0x1F and 0x20), at login and when the quest that opens
+    /// them is completed. The held missions stay.
+    /// </summary>
+    public void LoadAllianceMissions() {
+        DateTime now = DateTime.Now;
+        SendAllianceMissions(2, now, false);
+        SendAllianceMissions(3, now, false);
+    }
+
+    /// <summary>
+    /// At the daily reset: a list whose period ended is picked again, and the held missions of that repeat that are
+    /// not completed are dropped, on the client by the list's drop flag (RemoveQuestsByTypeAndState). A list whose
+    /// period goes on is sent again as it is.
+    /// </summary>
+    public void ResetAllianceMissions() {
+        DateTime now = DateTime.Now;
+        int weekday = MissionWeekday();
+        SendAllianceMissions(2, now, AllianceMissions.PeriodStart(2, 0, now) != dailyMissionsStart);
+        SendAllianceMissions(3, now, AllianceMissions.PeriodStart(3, weekday, now) != weeklyMissionsStart);
+    }
+
+    private void SendAllianceMissions(int repeat, DateTime now, bool drop) {
+        List<QuestMetadata> missions = session.QuestMetadata.GetQuestsByType(QuestType.AllianceQuest)
+            .Where(metadata => AllianceMissions.IsMission(metadata) && metadata.Basic.Repeat == repeat)
+            .ToList();
+        DateTime start = AllianceMissions.PeriodStart(repeat, MissionWeekday(), now);
+        if (drop) {
+            foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).ToList()) {
+                if (quest.State != QuestState.Completed && AllianceMissions.IsMission(quest.Metadata) && quest.Metadata.Basic.Repeat == repeat) {
+                    Remove(quest);
+                }
+            }
+        }
+
+        List<AllianceMissions.Candidate> candidates = missions.Where(CanStart)
+            .Select(metadata => new AllianceMissions.Candidate(metadata.Id, metadata.Basic.Alliance, metadata.Basic.Rank))
+            .ToList();
+        HashSet<int> picks = repeat == 2 ? dailyMissions : weeklyMissions;
+        picks.Clear();
+        IReadOnlyList<FameTable.PickMethod> methods = session.TableMetadata.FameTable.PickMethods;
+        for (int i = 0; i < methods.Count; i++) {
+            if (methods[i].Repeat == repeat) {
+                picks.UnionWith(AllianceMissions.Pick(methods[i], candidates, AllianceMissions.Seed(session.CharacterId, start, i)));
+            }
+        }
+        if (repeat == 2) {
+            dailyMissionsStart = start;
+            session.Send(QuestPacket.DailyAllianceMissions(drop, picks));
+        } else {
+            weeklyMissionsStart = start;
+            session.Send(QuestPacket.WeeklyAllianceMissions(drop, picks));
+        }
+    }
+
+    // The reset weekday of the weekly missions (all of them have the same, usePeriod "fri"); 0 none.
+    private int MissionWeekday() {
+        return session.QuestMetadata.GetQuestsByType(QuestType.AllianceQuest)
+            .Where(metadata => metadata.Basic.Repeat == 3 && AllianceMissions.IsMission(metadata))
+            .Select(metadata => metadata.Basic.ResetWeekday)
+            .FirstOrDefault(weekday => weekday != 0);
+    }
+
+    // At login, before the quests are sent: a held mission not completed whose period ended (the day, or the week from
+    // its reset day) is dropped, as the daily reset would have done.
+    private void DropEndedMissions(DateTime now) {
+        foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).ToList()) {
+            QuestMetadataBasic basic = quest.Metadata.Basic;
+            if (quest.State != QuestState.Completed && AllianceMissions.IsMission(quest.Metadata)
+                && QuestRules.CanStartAgain(basic.Repeat, basic.ResetWeekday, quest.StartTime, now)) {
+                Remove(quest);
+            }
+        }
     }
 
     /// <summary>

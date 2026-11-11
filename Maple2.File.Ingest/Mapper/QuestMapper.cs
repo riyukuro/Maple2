@@ -66,7 +66,9 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     UseReEntryHiddenMap: data.basic.useReEntryHiddenMap,
                     NotInPlayedClient: notInPlayedClient,
                     Repeat: data.basic.repeatable,
-                    ResetWeekday: QuestPeriod.ResetWeekday(data.basic.usePeriod)
+                    ResetWeekday: QuestPeriod.ResetWeekday(data.basic.usePeriod),
+                    Alliance: (Maple2.Model.Enum.AllianceType) (int) data.basic.alliance,
+                    Rank: (int) data.basic.rank
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,
@@ -76,7 +78,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     SelectableQuest: data.require.selectableQuest,
                     Achievement: data.require.achievement,
                     UnrequiredAchievement: unrequiredAchievement,
-                    GearScore: data.require.gearScore
+                    GearScore: data.require.gearScore,
+                    GroupId: data.require.groupID
                 ),
                 AcceptReward: Convert(data.acceptReward),
                 CompleteReward: Convert(data.completeReward),

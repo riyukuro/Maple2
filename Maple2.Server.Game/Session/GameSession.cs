@@ -413,8 +413,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Item.Furnishing.Load();
         // Load Quests
         Quest.Load();
-        // Send(QuestPacket.LoadSkyFortressMissions(Array.Empty<int>()));
-        // Send(QuestPacket.LoadKritiasMissions(Array.Empty<int>()));
+        Quest.LoadAllianceMissions();
         // Send(QuestPacket.LoadQuests(Array.Empty<int>()));
         Achievement.Load();
         // MaidCraftItem
@@ -834,6 +833,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Shop.DailyReset();
         // Dungeon daily clears
         Dungeon.ResetDailyClears();
+        // Alliance missions
+        Quest.ResetAllianceMissions();
         // Pet fusion count
         Player.Value.Character.PetFusionCount = 0;
         Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();

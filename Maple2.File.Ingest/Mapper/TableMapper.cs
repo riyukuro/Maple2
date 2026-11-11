@@ -18,6 +18,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Tools.Extensions;
 using DayOfWeek = System.DayOfWeek;
+using AllianceType = Maple2.Model.Enum.AllianceType;
 using ChatSticker = Maple2.File.Parser.Xml.Table.ChatSticker;
 using DungeonCooldownType = Maple2.Model.Enum.DungeonCooldownType;
 using DungeonGroupType = Maple2.Model.Enum.DungeonGroupType;
@@ -69,6 +70,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
+        yield return new TableMetadata { Name = TableNames.FAME, Table = ParseFame() };
         yield return new TableMetadata { Name = TableNames.DARK_STREAM, Table = ParseDarkStream() };
         yield return new TableMetadata { Name = TableNames.DUNGEON_SEASON, Table = ParseDungeonSeason() };
         yield return new TableMetadata { Name = TableNames.PET_EVOLUTION, Table = ParsePetEvolution() };
@@ -297,6 +299,78 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 AdditionalEffectLevel: int.Parse(node.GetAttribute("additionalEffectLevel").Trim(), CultureInfo.InvariantCulture));
         }
         return results;
+    }
+
+    // The parser reads neither file, so both are read as XML.
+    private FameTable ParseFame() {
+        return ReadFame(
+            xmlReader.GetXmlDocument(xmlReader.GetEntry("table/famepickmethod.xml")),
+            xmlReader.GetXmlDocument(xmlReader.GetEntry("table/famedef.xml")),
+            FeatureLocaleFilter.Locale,
+            FeatureLocaleFilter.FeatureEnabled);
+    }
+
+    // The client's alliance names (Parse_14021a330, commonenum.cpp:728), any case.
+    private static readonly string[] AllianceNames = [
+        "darkwind", "mapleunion", "lumiknight", "triaroyalguard", "greenhood",
+        "mapleunion_kritiasexped", "lumiknight_kritiasexped", "greenhood_kritiasexped", "georg",
+    ];
+
+    public static AllianceType ParseAlliance(string name) {
+        int index = Array.FindIndex(AllianceNames, entry => string.Equals(entry, name.Trim(), StringComparison.OrdinalIgnoreCase));
+        return (AllianceType) (index + 1);
+    }
+
+    // CFameTable::LoadPickMethod (famegradedata.cpp:571): the methods of one <environment>, the one of the locale or else
+    // one without a locale, whose feature is on (FUN_14028f8d0); each method only with its own feature on.
+    // CFameTable::LoadFameDef: every season's fame rows, officerNpcKind to alliance.
+    public static FameTable ReadFame(XmlDocument pickMethod, XmlDocument fameDef, string locale, Func<string, bool> featureEnabled) {
+        XmlElement? environment = null;
+        foreach (XmlElement node in (pickMethod.SelectNodes("/ms2/environment")?.OfType<XmlElement>() ?? [])) {
+            string nodeLocale = node.GetAttribute("locale");
+            if (!featureEnabled(node.GetAttribute("feature"))) {
+                continue;
+            }
+            if (string.Equals(nodeLocale, locale, StringComparison.OrdinalIgnoreCase)) {
+                environment = node;
+                break;
+            }
+            if (nodeLocale.Length == 0) {
+                environment ??= node;
+            }
+        }
+
+        var methods = new List<FameTable.PickMethod>();
+        foreach (XmlElement node in (environment?.SelectNodes("method")?.OfType<XmlElement>() ?? [])) {
+            if (!featureEnabled(node.GetAttribute("feature"))) {
+                continue;
+            }
+            int[] counts = node.GetAttribute("pickCountByRank").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(count => int.Parse(count.Trim(), CultureInfo.InvariantCulture)).ToArray();
+            List<FameTable.Alliance> alliances = node.SelectNodes("alliance")!.OfType<XmlElement>()
+                .Select(alliance => new FameTable.Alliance(ParseAlliance(alliance.GetAttribute("id")), ParseIntOrZero(alliance.GetAttribute("maxCount"))))
+                .Where(alliance => alliance.Type != AllianceType.AnyFaction)
+                .ToList();
+            methods.Add(new FameTable.PickMethod(
+                Combination: string.Equals(node.GetAttribute("type"), "RankAllianceCombination", StringComparison.OrdinalIgnoreCase),
+                Repeat: ParseIntOrZero(node.GetAttribute("repeatType")),
+                PickCountByRank: counts,
+                ReloadOnAccept: ParseIntOrZero(node.GetAttribute("reloadOnAccept")),
+                ReloadOnComplete: ParseIntOrZero(node.GetAttribute("reloadOnComplete")),
+                Alliances: alliances));
+        }
+
+        var officers = new Dictionary<int, AllianceType>();
+        foreach (XmlElement node in (fameDef.SelectNodes("/ms2/season/fame")?.OfType<XmlElement>() ?? [])) {
+            int kind = ParseIntOrZero(node.GetAttribute("officerNpcKind"));
+            AllianceType alliance = ParseAlliance(node.GetAttribute("alliance"));
+            if (kind != 0 && alliance != AllianceType.AnyFaction) {
+                officers[kind] = alliance;
+            }
+        }
+        return new FameTable(methods, officers);
+
+        static int ParseIntOrZero(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
     }
 
     // The parser has no reader for this table, so the rows are read as XML, with the feature and locale filter
