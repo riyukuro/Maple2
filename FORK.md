@@ -138,17 +138,19 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 56 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 54 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
-| EventReward | 12 | RequestItemEnchant | 5 | BuddyBadge | 2 |
-| RequestCube | 9 | Wedding | 2 | Party | 2 |
+| EventReward | 12 | RequestItemEnchant | 5 | Party | 2 |
+| RequestCube | 9 | Wedding | 2 | | |
 | Quest | 7 | HomeAction | 2 | | |
 | Guild | 6 | | | | |
 | RoomDungeon | 4 | | | | |
 
 These systems have one unhandled sub-type each: Achieve, FurnishingStorage, InteractObject, Mapleopoly, Ugc.
+
+Guild handling as a whole is switched off (`HandlingOn` in `GuildHandler.cs`): every guild request is logged and dropped, so no guild can be made, joined or used. The count of 6 above is of sub-types without code; the rest have code that does not run.
 
 Narrowed, with the reason:
 - FurnishingStorage 4 (take a stored furnishing item into the bag): the server keeps every furnishing item in the furnishing storage and has no bag tab for them, so the request is dropped and the item stays stored. Placing the item from the storage works.
