@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -191,12 +192,22 @@ public partial class TriggerContext {
 
     public void SetEffect(int[] triggerIds, bool visible, int startDelay, int interval) {
         DebugLog("[SetEffect] triggerIds:{Ids}, visible:{Visible}, startDelay:{StartDelay}, interval:{Interval}", string.Join(", ", triggerIds), visible, startDelay, interval);
-        foreach (int triggerId in triggerIds) {
-            if (!Objects.Effects.TryGetValue(triggerId, out TriggerObjectEffect? effect)) {
+        for (int i = 0; i < triggerIds.Length; i++) {
+            if (!Objects.Effects.TryGetValue(triggerIds[i], out TriggerObjectEffect? effect)) {
                 continue;
             }
+
+            int delay = TriggerStagger.Delay(i, startDelay, interval);
+            if (delay > 0) {
+                Events.Schedule(() => UpdateEffect(effect), TimeSpan.FromMilliseconds(delay));
+            } else {
+                UpdateEffect(effect);
+            }
+        }
+
+        void UpdateEffect(TriggerObjectEffect effect) {
             if (effect.Visible == visible) {
-                continue;
+                return;
             }
 
             effect.Visible = visible;
