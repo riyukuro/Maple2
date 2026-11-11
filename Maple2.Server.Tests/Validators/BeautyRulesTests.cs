@@ -39,4 +39,35 @@ public class BeautyRulesTests {
         Assert.That(BeautyRules.DyeItemMatches(11300001, 11300001), Is.True);
         Assert.That(BeautyRules.DyeItemMatches(11300001, 11300002), Is.False);
     }
+
+    [Test]
+    public void Fee() {
+        Assert.That(BeautyRules.Affords(100, 100), Is.True);
+        Assert.That(BeautyRules.Affords(99, 100), Is.False);
+        Assert.That(BeautyRules.Affords(0, 0), Is.True);
+        Assert.That(BeautyRules.Affords(100, -1), Is.False);
+        Assert.That(BeautyRules.Affords(-1, 0), Is.False);
+    }
+
+    // Modes 17 and 19.
+    [TestCase(0, 3, 9, 3)]
+    [TestCase(6, 3, 9, 9)]
+    [TestCase(9, 3, 9, -1)]
+    [TestCase(7, 3, 9, -1)]
+    [TestCase(0, 0, 9, -1)]
+    [TestCase(0, 3, 0, -1)]
+    [TestCase(-3, 3, 9, -1)]
+    public void Extend(int extended, int perExtension, int maxExtra, int expected) {
+        Assert.That(BeautyRules.ExtendedSlots(extended, perExtension, maxExtra), Is.EqualTo(expected));
+    }
+
+    // Mode 17: i64 item uid. Mode 19: nothing.
+    [Test]
+    public void ExtendBytes() {
+        var writer = new ByteWriter();
+        writer.WriteLong(0x1122334455667788);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x1122334455667788));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
 }

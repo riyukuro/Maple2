@@ -186,17 +186,14 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        if (useVoucher) {
-            if (!PayWithVoucher(session, session.BeautyShop)) {
-                return;
-            }
-        } else {
-            if (!PayWithCurrency(session, entry.Cost)) {
-                return;
-            }
+        // The fee is taken only once the new item is on the character.
+        Item? created = ReadBeauty(session, packet, entry.Id);
+        if (created == null || !CanPay(session, useVoucher, session.BeautyShop, entry.Cost)) {
+            return;
         }
 
-        if (ModifyBeauty(session, packet, entry.Id)) {
+        if (EquipBeauty(session, created)) {
+            Pay(session, useVoucher, session.BeautyShop, entry.Cost);
             session.ConditionUpdate(ConditionType.beauty_add, codeLong: itemId);
         }
     }
@@ -224,18 +221,18 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        if (useVoucher) {
-            if (!PayWithVoucher(session, shop)) {
-                return;
-            }
-        } else {
-            if (!PayWithCurrency(session, shop.Metadata.StyleCostMetadata)) {
-                return;
-            }
+        // The fee is taken only once the changed item is on the character.
+        Item? changed = ReadBeauty(session, packet, cosmetic.Id);
+        if (changed == null || !CanPay(session, useVoucher, shop, shop.Metadata.StyleCostMetadata)) {
+            return;
         }
 
         EquipColor? startColor = cosmetic.Appearance?.Color;
-        if (ModifyBeauty(session, packet, cosmetic.Id) && startColor != null) {
+        if (!EquipBeauty(session, changed)) {
+            return;
+        }
+        Pay(session, useVoucher, shop, shop.Metadata.StyleCostMetadata);
+        if (startColor != null) {
             Item newCosmetic = session.Item.Equips.Get(cosmetic.Metadata.SlotNames.First())!;
             if (!Equals(newCosmetic.Appearance?.Color, startColor)) {
                 session.ConditionUpdate(ConditionType.beauty_change_color, codeLong: cosmetic.Id);
@@ -392,8 +389,18 @@ public class BeautyHandler : FieldPacketHandler {
         session.Beauty.AddHair(uid);
     }
 
-    private void HandleAddSlots(GameSession session, IByteReader packet) {
+    // The client sends this instead of SaveHair when its slots are full, after the player agreed to the
+    // extension's price (uibeautyshopstyledialog.cpp:986, 1196; uibeautyshopdialog.cpp:1754).
+    private static void HandleAddSlots(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
+        if (session.BeautyShop == null || !session.Beauty.CanAddHair(uid)) {
+            return;
+        }
+
+        if (session.Beauty.OpenSlots <= 0 && !session.Beauty.ExtendSlots()) {
+            return;
+        }
+        session.Beauty.AddHair(uid);
     }
 
     private void HandleDeleteHair(GameSession session, IByteReader packet) {
@@ -406,7 +413,13 @@ public class BeautyHandler : FieldPacketHandler {
         session.Beauty.RemoveHair(uid);
     }
 
-    private void HandleAskAddSlots(GameSession session, IByteReader packet) { }
+    // The extend button of the saved style list, after the price box (uibeautyshopstyledialog.cpp:1007, 1136).
+    private static void HandleAskAddSlots(GameSession session, IByteReader packet) {
+        if (session.BeautyShop == null) {
+            return;
+        }
+        session.Beauty.ExtendSlots();
+    }
 
     private static void HandleApplySavedHair(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
@@ -421,11 +434,11 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        if (!PayWithCurrency(session, session.BeautyShop.Metadata.StyleCostMetadata)) {
-            return;
+        // The fee is taken only once the saved style is on the character.
+        BeautyShopCostMetadata cost = session.BeautyShop.Metadata.StyleCostMetadata;
+        if (CanPay(session, false, session.BeautyShop, cost) && session.Beauty.EquipSavedCosmetic(uid)) {
+            Pay(session, false, session.BeautyShop, cost);
         }
-
-        session.Beauty.EquipSavedCosmetic(uid);
     }
 
     private void HandleGearDye(GameSession session, IByteReader packet) {
@@ -452,17 +465,13 @@ public class BeautyHandler : FieldPacketHandler {
                 return;
             }
 
-            if (useVoucher) {
-                if (!PayWithVoucher(session, session.BeautyShop)) {
-                    return;
-                }
-            } else {
-                if (!PayWithCurrency(session, session.BeautyShop.Metadata.ColorCostMetadata)) {
-                    return;
-                }
+            // The colors are read before the fee is taken: a short packet charges nothing.
+            ItemAppearance appearance = item.EquipSlot() == EquipSlot.CP ? packet.ReadClass<CapAppearance>() : packet.ReadClass<ItemAppearance>();
+            if (!Pay(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata)) {
+                return;
             }
 
-            item.Appearance = item.EquipSlot() == EquipSlot.CP ? packet.ReadClass<CapAppearance>() : packet.ReadClass<ItemAppearance>();
+            item.Appearance = appearance;
             session.Field?.Broadcast(ItemUpdatePacket.Update(session.Player, item));
         }
     }
@@ -493,6 +502,54 @@ public class BeautyHandler : FieldPacketHandler {
 
         session.BeautyShop = shop;
         session.Send(BeautyPacket.BeautyShop(shop));
+    }
+
+    // Whether the fee can be taken; nothing is taken. Packets of one session are handled one at a time, so
+    // a Pay after the change finds what this found.
+    private static bool CanPay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
+        if (useVoucher) {
+            ItemTag voucherTag = shop.Metadata.CouponTag;
+            if (voucherTag == ItemTag.None) {
+                return false;
+            }
+            if (!BeautyRules.Affords(session.Item.Inventory.Find(voucherTag).Sum(item => (long) item.Amount), 1)) {
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert, StringCode.s_err_invalid_item));
+                return false;
+            }
+            return true;
+        }
+
+        long owned = cost.CurrencyType switch {
+            ShopCurrencyType.Meso => session.Currency.Meso,
+            ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret => session.Currency.Meret,
+            ShopCurrencyType.Item => session.Item.Inventory.Find(cost.PaymentItemId).Sum(item => (long) item.Amount),
+            _ => ToCurrencyType(cost.CurrencyType) is var type && type != CurrencyType.None ? session.Currency[type] : -1,
+        };
+        if (!BeautyRules.Affords(owned, cost.Price)) {
+            bool meret = cost.CurrencyType is ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret;
+            session.Send(BeautyPacket.Error(meret ? BeautyError.s_err_lack_merat_ask : BeautyError.lack_currency));
+            return false;
+        }
+        return true;
+    }
+
+    private static bool Pay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
+        return useVoucher ? PayWithVoucher(session, shop) : PayWithCurrency(session, cost);
+    }
+
+    private static CurrencyType ToCurrencyType(ShopCurrencyType type) {
+        return type switch {
+            ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
+            ShopCurrencyType.Treva => CurrencyType.Treva,
+            ShopCurrencyType.Rue => CurrencyType.Rue,
+            ShopCurrencyType.HaviFruit => CurrencyType.HaviFruit,
+            ShopCurrencyType.StarPoint => CurrencyType.StarPoint,
+            ShopCurrencyType.MenteeToken => CurrencyType.MenteeToken,
+            ShopCurrencyType.MentorToken => CurrencyType.MentorToken,
+            ShopCurrencyType.MesoToken => CurrencyType.MesoToken,
+            ShopCurrencyType.ReverseCoin => CurrencyType.ReverseCoin,
+            _ => CurrencyType.None,
+        };
     }
 
     private static bool PayWithVoucher(GameSession session, BeautyShop shop) {
@@ -539,19 +596,7 @@ public class BeautyHandler : FieldPacketHandler {
                 }
                 break;
             default:
-                CurrencyType currencyType = cost.CurrencyType switch {
-                    ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
-                    ShopCurrencyType.Treva => CurrencyType.Treva,
-                    ShopCurrencyType.Rue => CurrencyType.Rue,
-                    ShopCurrencyType.HaviFruit => CurrencyType.HaviFruit,
-                    ShopCurrencyType.StarPoint => CurrencyType.StarPoint,
-                    ShopCurrencyType.MenteeToken => CurrencyType.MenteeToken,
-                    ShopCurrencyType.MentorToken => CurrencyType.MentorToken,
-                    ShopCurrencyType.MesoToken => CurrencyType.MesoToken,
-                    ShopCurrencyType.ReverseCoin => CurrencyType.ReverseCoin,
-                    _ => CurrencyType.None,
-
-                };
+                CurrencyType currencyType = ToCurrencyType(cost.CurrencyType);
                 if (currencyType == CurrencyType.None || session.Currency[currencyType] < cost.Price) {
                     session.Send(BeautyPacket.Error(BeautyError.lack_currency));
                     return false;
@@ -563,10 +608,11 @@ public class BeautyHandler : FieldPacketHandler {
         return true;
     }
 
-    private static bool ModifyBeauty(GameSession session, IByteReader packet, int itemId) {
+    // The new item with the appearance the packet carries; nothing is stored yet.
+    private static Item? ReadBeauty(GameSession session, IByteReader packet, int itemId) {
         Item? newCosmetic = session.Field?.ItemDrop.CreateItem(itemId, 1, 1);
         if (newCosmetic == null) {
-            return false;
+            return null;
         }
 
         if (newCosmetic.Type.IsHair) {
@@ -578,12 +624,16 @@ public class BeautyHandler : FieldPacketHandler {
         } else {
             newCosmetic.Appearance = packet.ReadClass<ItemAppearance>();
         }
+        return newCosmetic;
+    }
 
+    private static bool EquipBeauty(GameSession session, Item newCosmetic) {
         using GameStorage.Request db = session.GameStorage.Context();
-        newCosmetic = db.CreateItem(session.CharacterId, newCosmetic);
-        if (newCosmetic == null) {
+        Item? stored = db.CreateItem(session.CharacterId, newCosmetic);
+        if (stored == null) {
             return false;
         }
+        newCosmetic = stored;
 
         if (!session.Item.Equips.EquipCosmetic(newCosmetic, newCosmetic.Metadata.SlotNames.First())) {
             db.SaveItems(0, newCosmetic);

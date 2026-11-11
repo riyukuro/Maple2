@@ -1,7 +1,9 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -35,6 +37,37 @@ public sealed class BeautyManager : IDisposable {
             session.Send(BeautyPacket.ListHair(items.OrderBy(hair => hair.CreationTime).ToList()));
             ;
         }
+    }
+
+    public short OpenSlots => items.OpenSlots;
+
+    // The equipped hair that is not saved yet.
+    public bool CanAddHair(long uid) {
+        Item? hair = session.Item.GetOutfit(uid);
+        return hair != null && hair.Type.IsHair && !items.Contains(uid);
+    }
+
+    // Beauty modes 17 and 19: one extension of the saved style slots, BeautyStyleExpandSlotCount1time slots
+    // for BeautyStyleExpandSlotPrice merets, up to BeautyStyleMaxSlotCount extra slots (the client's own
+    // test and price box, uibeautyshopstyledialog.cpp:986-1007). The client adds the slots on SaveSlots.
+    public bool ExtendSlots() {
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        int extended = BeautyRules.ExtendedSlots(session.Player.Value.Unlock.HairSlotExpand, constants.BeautyStyleExpandSlotCount1time, constants.BeautyStyleMaxSlotCount);
+        if (extended < 0) {
+            return false;
+        }
+
+        long price = constants.BeautyStyleExpandSlotPrice;
+        if (!BeautyRules.Affords(session.Currency.Meret, price)) {
+            session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
+            return false;
+        }
+
+        session.Currency.Meret -= price;
+        session.Player.Value.Unlock.HairSlotExpand = (short) extended;
+        items.Expand((short) (Constant.BaseStorageCount + extended));
+        session.Send(BeautyPacket.SaveSlots((short) extended));
+        return true;
     }
 
     public void AddHair(long uid) {
