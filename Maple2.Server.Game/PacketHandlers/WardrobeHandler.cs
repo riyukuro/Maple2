@@ -1,5 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -124,8 +126,10 @@ public class WardrobeHandler : FieldPacketHandler {
     }
 
     private void HandleRename(GameSession session, IByteReader packet) {
-        int index = packet.ReadInt();
-        string name = packet.ReadUnicodeString();
+        (int index, string name) = WardrobeRules.ReadRename(packet);
+        if (!WardrobeRules.NameAllowed(name, Constant.MaxClosetTabNameLength)) {
+            return;
+        }
 
         if (session.Config.TryGetWardrobe(index, out Wardrobe? wardrobe)) {
             wardrobe.Name = name;
