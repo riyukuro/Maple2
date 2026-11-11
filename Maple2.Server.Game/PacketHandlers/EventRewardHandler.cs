@@ -16,13 +16,22 @@ public class EventRewardHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.EventReward;
 
     private enum Command : byte {
+        ClaimStampReward = 0,
         ClaimTimeRunFinalReward = 3,
         ClaimTimeRunStepReward = 4,
+        VipGmClick = 5,
         FlipGalleryCard = 7,
+        ClaimGalleryQuestReward = 8,
         ClaimGalleryReward = 9,
+        ClaimSnowmanDailyReward = 12,
+        ClaimSnowmanAccumReward = 13,
+        ClaimLevelUpEventReward = 15,
+        SetEventCharacter = 16,
         OpenBingo = 20,
         CrossOffBingoNumber = 22,
         ClaimBingoReward = 23,
+        ClaimLongTermAttendReward = 25,
+        LongTermAttend = 26,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -48,6 +57,24 @@ public class EventRewardHandler : FieldPacketHandler {
                 return;
             case Command.ClaimBingoReward:
                 HandleClaimBingoReward(session, packet);
+                return;
+            // Sub-types the KMS 2525 client sends for events that have no logic here yet: read and log only.
+            case Command.ClaimStampReward: // stamp count, special flag
+                Logger.Debug("EventReward {Command} from {CharacterId}: count {Count}, special {Special}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
+                return;
+            case Command.VipGmClick: // always 1
+            case Command.ClaimGalleryQuestReward: // card index
+            case Command.ClaimSnowmanDailyReward: // snowman index
+            case Command.ClaimSnowmanAccumReward: // snowman index
+            case Command.LongTermAttend: // 1 = catch up a missed day with merat, 0 = with an attend point
+                Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
+                return;
+            case Command.ClaimLevelUpEventReward: // event id
+            case Command.ClaimLongTermAttendReward: // day
+                Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
+                return;
+            case Command.SetEventCharacter: // character id picked in the character list
+                Logger.Debug("EventReward {Command} from {CharacterId}: character {Target}", command, session.CharacterId, packet.ReadLong());
                 return;
         }
     }
