@@ -228,7 +228,7 @@ UpdateDatabase(metadataContext, new UgcMapMapper(xmlReader));
 UpdateDatabase(metadataContext, new ExportedUgcMapMapper(xmlReader));
 UpdateDatabase(metadataContext, new QuestMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new RideMapper(xmlReader));
-UpdateDatabase(metadataContext, new ScriptMapper(xmlReader, language));
+UpdateDatabase(metadataContext, new ScriptMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new SkillMapper(xmlReader, language));
 UpdateDatabase(metadataContext, new TableMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new AchievementMapper(xmlReader));

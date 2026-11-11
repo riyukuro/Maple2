@@ -1,4 +1,5 @@
-﻿using Maple2.File.IO;
+﻿using M2dXmlGenerator;
+using Maple2.File.IO;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Script;
 using Maple2.Model.Enum;
@@ -12,12 +13,40 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class ScriptMapper : TypeMapper<ScriptMetadata> {
     private readonly ScriptParser parser;
+    private readonly M2dReader? playedReader;
 
-    public ScriptMapper(M2dReader xmlReader, string language) {
+    public ScriptMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new ScriptParser(xmlReader, language);
+        this.playedReader = playedReader;
     }
 
     protected override IEnumerable<ScriptMetadata> Map() {
+        // The played client's choices of each script content (PlayedClientScripts): a pick indexes those.
+        Dictionary<PlayedClientScripts.Key, Model.Metadata.CinematicDistractor[]> played = playedReader == null ? []
+            : PlayedClientScripts.Distractors(
+                playedReader.Files.Where(file => PlayedClientScripts.IsNpcFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                playedReader.Files.Where(file => PlayedClientScripts.IsQuestFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+        int changed = 0;
+        foreach (ScriptMetadata metadata in MapAll()) {
+            if (played.Count == 0) {
+                yield return metadata;
+                continue;
+            }
+            var states = new Dictionary<int, ScriptState>();
+            foreach ((int stateId, ScriptState state) in metadata.States) {
+                states.Add(stateId, state with {
+                    Contents = PlayedClientScripts.Apply(played, metadata.Type, metadata.Id, stateId, state.Contents, ref changed),
+                });
+            }
+            yield return metadata with { States = states };
+        }
+        if (played.Count > 0) {
+            Console.WriteLine($"scripts: {changed} contents take the played client's choices ({played.Count} contents in its scripts)");
+        }
+    }
+
+    private IEnumerable<ScriptMetadata> MapAll() {
         foreach ((int id, NpcScript script) in parser.ParseNpc()) {
             var states = new Dictionary<int, ScriptState>();
             if (script.job != null) {
