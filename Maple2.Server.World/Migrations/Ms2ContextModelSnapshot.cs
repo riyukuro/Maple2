@@ -548,6 +548,24 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("club-member", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.DarkStreamRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SetTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("CharacterId");
+
+                    b.HasIndex("Score");
+
+                    b.ToTable("dark-stream-record", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.DungeonRecord", b =>
                 {
                     b.Property<long>("OwnerId")
@@ -1868,6 +1886,15 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
 
                     b.Navigation("Character");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.DarkStreamRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithOne()
+                        .HasForeignKey("Maple2.Database.Model.DarkStreamRecord", "CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.DungeonRecord", b =>

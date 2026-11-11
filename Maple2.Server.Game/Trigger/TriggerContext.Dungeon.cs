@@ -1,4 +1,6 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Extensions;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Server.Game.Manager.Field;
@@ -167,7 +169,8 @@ public partial class TriggerContext {
     // A Dark Stream run (see DarkStreamGame): start_game opens the score dialog, a cleared spawn sends the new
     // score, and clearing the last round gives each player in the field the reward row of the rounds cleared
     // (table/darkstream.xml: the exp, the meso, the habi and the items, an item to the bag or else by mail) and
-    // sends it in the result. The best score before the run is sent as 0 (no best score is kept).
+    // sends it in the result with the player's best score before the run (0 before a first run). The run's score
+// is then kept as the player's best when it is higher (DarkStreamBest.Replaces).
     public void DarkStreamSpawnMonster(int[] spawnIds, int score) {
         DebugLog("[DarkStreamSpawnMonster] spawnIds:{SpawnIds}, score:{Score}", string.Join(", ", spawnIds), score);
         foreach (int spawnId in spawnIds) {
@@ -195,9 +198,17 @@ public partial class TriggerContext {
         long roomExp = Field is DungeonFieldManager dungeonField ? dungeonField.DungeonMetadata.Reward.Exp : 0;
         DarkStreamGame.Reward reward = DarkStreamGame.RewardOf(Field.TableMetadata.DarkStreamTable.Entries, game.RoundsCleared, roomExp)
             ?? new DarkStreamGame.Reward(0, 0, 0, []);
+        long now = DateTime.Now.ToEpochSeconds();
         foreach (FieldPlayer player in Field.Players.Values) {
             GiveDarkStreamReward(player, reward);
-            player.Session.Send(DarkStreamPacket.Result(game.Score, 0, reward.Exp, reward.Meso, reward.Habi, reward.Items));
+            DarkStreamBest? best;
+            using (GameStorage.Request db = Field.GameStorage.Context()) {
+                best = db.GetDarkStreamBest(player.Value.Character.Id);
+                if (DarkStreamBest.Replaces(best, game.Score)) {
+                    db.SaveDarkStreamScore(player.Value.Character.Id, game.Score, now);
+                }
+            }
+            player.Session.Send(DarkStreamPacket.Result(game.Score, best?.Score ?? 0, reward.Exp, reward.Meso, reward.Habi, reward.Items));
         }
     }
 

@@ -65,6 +65,8 @@ public class WebController : ControllerBase {
             GameRankingType.PersonalTrophy => PersonalTrophy(characterId),
             GameRankingType.GuildTrophy => GuildTrophy(userName),
             GameRankingType.PersonalGuildTrophy => PersonalGuildTrophy(characterId),
+            GameRankingType.DarkDescent or GameRankingType.DarkDescentPreviousSeason => DarkStream(type, rankingId, userName),
+            GameRankingType.DarkDescentPersonal or GameRankingType.DarkDescentPersonalPreviousSeason => PersonalDarkStream(type, rankingId, characterId),
             _ => new ByteWriter(),
         };
 
@@ -375,6 +377,36 @@ public class WebController : ControllerBase {
                 writer = InGameRankPacket.PersonalRank(GameRankingType.PersonalGuildTrophy, cached?.Rank ?? 0);
             }
 
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter DarkStream(GameRankingType type, int jobCode, string userName) {
+        string cacheKey = $"DarkStream_{type}_{jobCode}_{userName ?? "all"}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = DarkStreamRanking.Board(db, type, jobCode, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalDarkStream(GameRankingType type, int jobCode, long characterId) {
+        string cacheKey = $"PersonalDarkStream_{type}_{jobCode}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = DarkStreamRanking.Personal(db, type, jobCode, characterId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }

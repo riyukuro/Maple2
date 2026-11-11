@@ -58,23 +58,25 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    // Can be used for previous season
-    public static ByteWriter DarkDescent(GameRankingType type) {
+    // The Dark Stream board (0x21, and 0x22 for the season before), as the client's GameRanking::DarkStream reads
+    // it: the header, then a count of rows, each a rank, the character id, the name, the profile image, two ints
+    // the client reads but never uses (sent as 0), the score and the time the score was set.
+    public static ByteWriter DarkStream(GameRankingType type, IList<DarkStreamRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
         pWriter.Write<GameRankingType>(type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(0); // rank
-        pWriter.WriteLong(0); // characterId
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt((int) JobCode.None); // jobCode
-        pWriter.WriteInt(); // level
-        pWriter.WriteLong(); // account id?
-        pWriter.WriteUnicodeStringWithLength(); // timeStamp
-
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (DarkStreamRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(0); // read, not used by the client
+            pWriter.WriteInt(0); // read, not used by the client
+            pWriter.WriteInt(info.Score);
+            pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.SetTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        }
 
         return pWriter;
     }
