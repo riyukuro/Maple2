@@ -163,6 +163,18 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
     }
 
+    // Client: UIItemExchangeScrollDialog::UpdateIngredientCounts (uiitemexchangescrolldialog.cpp:518): kind 3
+    // has no fields.
+    [Test]
+    public void ItemExchangeRefreshHasNoFields() {
+        ByteWriter writer = ItemExchangeScrollPacket.RefreshIngredients();
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ItemExchange));
+        Assert.That(reader.ReadByte(), Is.EqualTo(3));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1));
+    }
+
     // Client: CSceneStateGame::OnAutoRevive (scenestategame.cpp:4332): one int, the countdown in milliseconds.
     [Test]
     public void AutoReviveCountdownIsOneInt() {

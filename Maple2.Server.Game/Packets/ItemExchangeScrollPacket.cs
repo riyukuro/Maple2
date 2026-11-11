@@ -9,6 +9,16 @@ public static class ItemExchangeScrollPacket {
     private enum Command : byte {
         Unknown0 = 0,
         Error = 2,
+        RefreshIngredients = 3,
+    }
+
+    // Client: UIItemExchangeScrollDialog::UpdateIngredientCounts (uiitemexchangescrolldialog.cpp:518): no
+    // fields; the dialog counts its ingredients again. The reply to the GM fill buttons.
+    public static ByteWriter RefreshIngredients() {
+        var pWriter = Packet.Of(SendOp.ItemExchange);
+        pWriter.Write<Command>(Command.RefreshIngredients);
+
+        return pWriter;
     }
 
     public static ByteWriter Unknown0() {
