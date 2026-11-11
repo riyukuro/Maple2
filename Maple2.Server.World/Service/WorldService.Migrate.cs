@@ -104,6 +104,9 @@ public partial class WorldService {
                 return Task.FromResult(CreateDungeon(request));
             case FieldRequest.FieldOneofCase.DestroyDungeon:
                 return Task.FromResult(DestroyDungeon(request));
+            case FieldRequest.FieldOneofCase.CheckDungeon:
+                // Dungeon rooms live on the first channel, the one CreateDungeon is sent to.
+                return Task.FromResult(DestroyDungeon(request));
             default:
                 return Task.FromResult(new FieldResponse { Error = (int) MigrationError.ok });
         }

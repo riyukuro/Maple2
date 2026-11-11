@@ -1,4 +1,7 @@
-﻿namespace Maple2.Server.Game.Util;
+﻿using Maple2.Model.Enum;
+using Maple2.Model.Error;
+
+namespace Maple2.Server.Game.Util;
 
 public static class FieldEntryRules {
     // Fields to try, in order, when the field a character logs into cannot be made: the return field, then
@@ -20,6 +23,24 @@ public static class FieldEntryRules {
             return defaultMapId;
         }
         return returnMapId;
+    }
+
+    // The answer to "Enter Dungeon" for a room that is gone (closed after everyone left it): error 0x1D, which
+    // the client shows as its "dungeon does not exist" box (GetFieldMoveErrorMessage) from OnGameToGame without
+    // leaving the field. A running room is ok.
+    public static MigrationError DungeonRoomError(bool roomRuns) {
+        return roomRuns ? MigrationError.ok : MigrationError.s_move_err_dungeon_not_exist_2;
+    }
+
+    // A dungeon arrival whose room is gone when the character gets there is entered as a plain arrival in the
+    // return field: the client is already on its loading screen and an error there locks it out.
+    public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {
+        return type == MigrationType.Dungeon && !roomRuns;
+    }
+
+    // The name for log lines of a session; empty before the character is loaded (an arrival with a bad token).
+    public static string LogName(string? characterName) {
+        return characterName ?? string.Empty;
     }
 
     // A field with enterAdminLevel above 0 can be entered, or picked as a taxi destination, by a GM account only.

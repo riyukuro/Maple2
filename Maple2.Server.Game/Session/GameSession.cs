@@ -49,7 +49,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public int ClientTick;
 
     public int Latency;
-    public string PlayerName => Player.Value.Character.Name;
+    public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
 
@@ -218,6 +218,16 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         int fieldId = mapId == 0 ? player.Character.MapId : mapId;
+        // A dungeon arrival whose room was closed in the meantime: enter the return field as a plain arrival.
+        if (FieldEntryRules.ArrivesInReturnField(migrationType, server.HasDungeon(roomId))) {
+            Logger.Warning("Character:{CharacterId} arrives for dungeon Room:{RoomId} which is gone, enters the return field", characterId, roomId);
+            migrationType = MigrationType.Normal;
+            fieldId = player.Character.ReturnMaps.Peek();
+            position = player.Character.ReturnPosition;
+            ownerId = 0;
+            roomId = 0;
+            portalId = -1;
+        }
         // Arriving in another account's home (a channel change or a relog inside it): a blocked account
         // goes to its return field instead.
         if (ownerId != 0 && ownerId != AccountId
@@ -875,6 +885,22 @@ public sealed partial class GameSession : Core.Network.Session {
             });
 
             Party.CheckDisband();
+        }
+
+        // The character was never loaded (an arrival with a used or unknown token): there is nothing to save.
+        if (Player == null) {
+            try {
+                Scheduler.Stop();
+                if (OnLoop != null) OnLoop -= Scheduler.InvokeAll;
+                server.OnDisconnected(this);
+                State = SessionState.Disconnected;
+                base.Dispose(disposing);
+            } catch (Exception ex) {
+                Logger.Error(ex, "Error during cleanup of a session without a character");
+            } finally {
+                Interlocked.Exchange(ref gameDisposeState, 2);
+            }
+            return;
         }
 
         try {

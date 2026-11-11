@@ -113,6 +113,11 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.CreateDungeon(metadata, requesterId, size, partyId);
     }
 
+    // Whether the dungeon room still runs on this channel. Never creates a field.
+    public bool HasDungeon(int roomId) {
+        return fieldFactory.HasDungeon(roomId);
+    }
+
     public MigrationError DestroyDungeon(int roomId) {
         return fieldFactory.DestroyDungeon(roomId);
     }

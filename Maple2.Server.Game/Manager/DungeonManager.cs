@@ -347,6 +347,38 @@ public class DungeonManager {
             return;
         }
 
+        // The room is closed some time after everyone left it, and the party panel keeps its Enter Dungeon button.
+        // Ask before the move: once the client is told to move it leaves the field for the loading screen.
+        MigrationError error;
+        try {
+            error = (MigrationError) session.World.Field(new FieldRequest {
+                RequesterId = session.CharacterId,
+                CheckDungeon = new FieldRequest.Types.CheckDungeon {
+                    RoomId = LobbyRoomId,
+                },
+            }).Error;
+        } catch (RpcException) {
+            error = MigrationError.s_move_err_no_server;
+        }
+        if (error != MigrationError.ok) {
+            if (error == MigrationError.s_move_err_dungeon_not_exist_2) {
+                try {
+                    session.World.Party(new PartyRequest {
+                        RequestorId = session.CharacterId,
+                        SetDungeon = new PartyRequest.Types.SetDungeon {
+                            PartyId = Party.Id,
+                            DungeonId = 0,
+                            DungeonRoomId = 0,
+                            Set = false,
+                        },
+                    });
+                } catch (RpcException) { }
+                SetDungeon(0, 0, false);
+            }
+            session.Send(MigrationPacket.GameToGameError(error));
+            return;
+        }
+
         MigrateToDungeon();
     }
 

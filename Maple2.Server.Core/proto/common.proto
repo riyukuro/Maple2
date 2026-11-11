@@ -11,10 +11,15 @@ message FieldRequest {
   message DestroyDungeon {
     int32 room_id = 1;
   }
+  // Asks whether the dungeon room still runs. error is ok when it does.
+  message CheckDungeon {
+    int32 room_id = 1;
+  }
   int64 requester_id = 1;
   oneof field {
     CreateDungeon create_dungeon = 2;
     DestroyDungeon destroy_dungeon = 3;
+    CheckDungeon check_dungeon = 4;
   }
 }
 

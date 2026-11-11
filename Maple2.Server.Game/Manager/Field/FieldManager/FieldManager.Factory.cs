@@ -223,6 +223,13 @@ public partial class FieldManager {
             return lobbyField;
         }
 
+        /// <summary>
+        /// Whether the dungeon room still runs. Never creates a field.
+        /// </summary>
+        public bool HasDungeon(int roomId) {
+            return dungeons.TryGetValue(roomId, out DungeonFieldManager? dungeon) && !dungeon.Disposed;
+        }
+
         public MigrationError DestroyDungeon(int roomId) {
             if (!dungeons.TryGetValue(roomId, out DungeonFieldManager? dungeon)) {
                 return MigrationError.s_move_err_dungeon_not_exist;

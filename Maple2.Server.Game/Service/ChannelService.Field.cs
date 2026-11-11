@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
 
@@ -12,6 +13,11 @@ public partial class ChannelService {
                 return Task.FromResult(CreateDungeon(request.CreateDungeon, request.RequesterId));
             case FieldRequest.FieldOneofCase.DestroyDungeon:
                 return Task.FromResult(DestroyDungeon(request.DestroyDungeon));
+            case FieldRequest.FieldOneofCase.CheckDungeon:
+                return Task.FromResult(new FieldResponse {
+                    Error = (int) FieldEntryRules.DungeonRoomError(server.HasDungeon(request.CheckDungeon.RoomId)),
+                    RoomId = request.CheckDungeon.RoomId,
+                });
             default:
                 return Task.FromResult(new FieldResponse());
         }
