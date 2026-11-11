@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -43,6 +44,10 @@ public class BreakableHandler : FieldPacketHandler {
         }
 
         if (session.Field?.TryGetBreakable(entityId, out FieldBreakable? breakable) == true) {
+            // Without this every repeat of the packet dropped the box again and counted for the condition.
+            if (!BreakableRules.CanBreak(breakable.State, breakable.Visible)) {
+                return;
+            }
             if (breakable.Value.GlobalDropBoxId != 0) {
                 ICollection<Item> items = session.Field.ItemDrop.GetGlobalDropItems(breakable.Value.GlobalDropBoxId, session.Field.Metadata.Drop.Level);
                 foreach (Item item in items) {
