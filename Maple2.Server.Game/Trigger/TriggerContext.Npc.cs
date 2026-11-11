@@ -4,6 +4,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -204,7 +205,7 @@ public partial class TriggerContext {
         DebugLog("[SpawnNpcRange] spawnIds:{SpawnIds}, isAutoTargeting:{AutoTarget}, randomPickCount:{RandomCount}, score:{Score}",
             string.Join(", ", spawnIds), isAutoTargeting, randomPickCount, score);
 
-        foreach (int spawnId in spawnIds) {
+        foreach (int spawnId in TriggerRandomPick.Pick(spawnIds, randomPickCount, Random.Shared)) {
             SpawnNpc(spawnId);
         }
     }
