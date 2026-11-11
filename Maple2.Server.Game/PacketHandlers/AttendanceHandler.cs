@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -74,8 +75,8 @@ public class AttendanceHandler : FieldPacketHandler {
                 return;
             }
 
-            GetRewards(session, attendGift, gameEvent);
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds());
+            AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent),
+                () => session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds()));
         }
     }
 
@@ -93,19 +94,20 @@ public class AttendanceHandler : FieldPacketHandler {
         }
     }
 
-    private void GetRewards(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
+    // Mails the next reward. The claim is counted only after the mail and its item are stored; false
+    // when nothing was given (no reward left, no item, or the mail could not be stored).
+    private bool GetRewards(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
         int rewardsClaimed = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime).Int();
         int index = AttendanceRules.RewardIndex(rewardsClaimed, attendGift.Items.Length);
         if (index < 0) {
-            return;
+            return false;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceRewardsClaimed, rewardsClaimed + 1);
 
         RewardItem reward = attendGift.Items[index];
 
         Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
         if (item == null) {
-            return;
+            return false;
         }
 
         var receiverMail = new Mail() {
@@ -117,17 +119,25 @@ public class AttendanceHandler : FieldPacketHandler {
         };
 
         using GameStorage.Request db = session.GameStorage.Context();
-        receiverMail = db.CreateMail(receiverMail);
-        if (receiverMail == null) {
-            throw new InvalidOperationException($"Failed to create mail for attendance reward to user {session.CharacterId}");
-        }
+        try {
+            receiverMail = db.CreateMail(receiverMail);
+            if (receiverMail == null) {
+                Logger.Error("Failed to create mail for attendance reward to user {CharacterId}", session.CharacterId);
+                return false;
+            }
 
-        item = db.CreateItem(receiverMail.Id, item);
-        if (item == null) {
-            throw new InvalidOperationException($"Failed to create reward item: {reward.ItemId}");
+            item = db.CreateItem(receiverMail.Id, item);
+            if (item == null) {
+                Logger.Error("Failed to create attendance reward item {ItemId}", reward.ItemId);
+                return false;
+            }
+        } catch (Exception ex) {
+            Logger.Error(ex, "Failed to store attendance reward {ItemId} for {CharacterId}", reward.ItemId, session.CharacterId);
+            return false;
         }
 
         receiverMail.Items.Add(item);
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceRewardsClaimed, rewardsClaimed + 1);
 
         try {
             session.World.MailNotification(new MailNotificationRequest {
@@ -135,6 +145,7 @@ public class AttendanceHandler : FieldPacketHandler {
                 MailId = receiverMail.Id,
             });
         } catch { /* ignored */ }
+        return true;
     }
 
     private void HandleEarlyParticipation(GameSession session, IByteReader packet) {
@@ -148,7 +159,11 @@ public class AttendanceHandler : FieldPacketHandler {
         int attended = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime).Int();
         int paid = session.GameEvent.Get(GameEventUserValueType.AttendanceEarlyParticipationRemaining, gameEvent.Id, gameEvent.EndTime).Int();
         Item? coupon = couponUid != 0 ? session.Item.Inventory.Get(couponUid) : null;
-        switch (AttendanceRules.PayCheck(attendGift.Pay, attended, attendGift.Items.Length, paid, couponUid != 0, coupon?.Id ?? 0, session.Currency.Meso, session.Currency.Meret)) {
+        if (coupon != null && (coupon.IsExpired() || coupon.Amount < 1)) {
+            coupon = null; // cannot be consumed: answered as no coupon
+        }
+        AttendanceRules.PayStep step = AttendanceRules.PayCheck(attendGift.Pay, attended, attendGift.Items.Length, paid, couponUid != 0, coupon?.Id ?? 0, session.Currency.Meso, session.Currency.Meret);
+        switch (step) {
             case AttendanceRules.PayStep.NoCoupon:
                 session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_hasNotCoupon));
                 return;
@@ -159,22 +174,28 @@ public class AttendanceHandler : FieldPacketHandler {
                 session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMerat));
                 return;
             case AttendanceRules.PayStep.Coupon:
-                if (!session.Item.Inventory.Consume(couponUid, 1)) {
-                    session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_hasNotCoupon));
-                    return;
-                }
-                break;
             case AttendanceRules.PayStep.Meso:
-                session.Currency.Meso -= attendGift.Pay!.Price;
-                break;
             case AttendanceRules.PayStep.Meret:
-                session.Currency.Meret -= attendGift.Pay!.Price;
                 break;
             default:
                 return;
         }
 
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, paid + 1);
-        GetRewards(session, attendGift, gameEvent);
+        // The gift first: the price is taken and the bought day counted only when the mail is stored,
+        // so a failed gift costs nothing. The coupon was tested above, so its consume does not fail.
+        AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent), () => {
+            switch (step) {
+                case AttendanceRules.PayStep.Coupon:
+                    session.Item.Inventory.Consume(couponUid, 1);
+                    break;
+                case AttendanceRules.PayStep.Meso:
+                    session.Currency.Meso -= attendGift.Pay!.Price;
+                    break;
+                case AttendanceRules.PayStep.Meret:
+                    session.Currency.Meret -= attendGift.Pay!.Price;
+                    break;
+            }
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, paid + 1);
+        });
     }
 }

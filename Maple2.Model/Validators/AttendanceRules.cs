@@ -48,6 +48,16 @@ public static class AttendanceRules {
     // Mode 4, the client's own tests first (uiattendgiftdialog.cpp:436-469): a day is left to buy and the
     // paid-day limit is not used up. Then the coupon when its uid was sent, else the event's currency.
     // couponItemId is the id of the item behind the sent uid, 0 when the player has no such item.
+    // A claim or a bought day is counted, and its price taken, only once the gift is with the player:
+    // give returns false when there is no reward left, no item or no mail, and then nothing else runs.
+    public static bool GiveThenTake(Func<bool> give, Action take) {
+        if (!give()) {
+            return false;
+        }
+        take();
+        return true;
+    }
+
     public static PayStep PayCheck(AttendGift.PayAttend? pay, int attended, int rewardCount, int paid, bool useCoupon, int couponItemId, long meso, long meret) {
         if (pay == null || pay.Type == AttendGiftCurrencyType.None || RewardIndex(attended, rewardCount) < 0
             || paid < 0 || paid >= pay.MaxCount) {

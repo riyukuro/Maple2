@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
@@ -9,6 +10,21 @@ using Maple2.PacketLib.Tools;
 namespace Maple2.Server.Tests.Validators;
 
 public class AttendanceRulesTests {
+    // Claim and bought day: a gift that is not given takes nothing; a given one takes once, after it.
+    [Test]
+    public void GiveThenTake() {
+        var order = new List<string>();
+        Assert.That(AttendanceRules.GiveThenTake(() => { order.Add("give"); return false; }, () => order.Add("take")), Is.False);
+        Assert.That(order, Is.EqualTo(new[] { "give" }));
+
+        order.Clear();
+        long meso = 500;
+        int paid = 0;
+        Assert.That(AttendanceRules.GiveThenTake(() => { order.Add("give"); return true; }, () => { order.Add("take"); meso -= 200; paid++; }), Is.True);
+        Assert.That(order, Is.EqualTo(new[] { "give", "take" }));
+        Assert.That((meso, paid), Is.EqualTo((300L, 1)));
+    }
+
     [Test]
     public void EarlyParticipationBytes() {
         var writer = new ByteWriter();
