@@ -130,30 +130,37 @@ public class RevivalHandler : FieldPacketHandler {
             return;
         }
 
-        bool paid = false;
+        // The payment is tested first and taken only once the revive has happened.
+        long cost = 0;
         if (useCoupon) {
-            // The client sends the ticked box even when no coupon is left, and then expects the merets to go.
-            paid = session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)]);
-            if (paid) {
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
+            // The client sends the ticked box without a coupon only through its meret confirm box, which this
+            // mode does not carry; a ticked box with no coupon held is refused and no merets are taken.
+            if (!session.Item.Inventory.Find(ItemTag.FreeReviveCoupon).Any()) {
+                return;
             }
-        }
-        if (!paid) {
+        } else {
             float reduceRate = (float) session.Player.Stats.Values[SpecialAttribute.ReduceMeretRevivalFee].Multiplier();
-            long cost = RevivalRules.MeretCost(Lua.CalcRevivalMerat(session.Player.Value.Character.Level, stacks),
+            cost = RevivalRules.MeretCost(Lua.CalcRevivalMerat(session.Player.Value.Character.Level, stacks),
                 constants.MeratRevivalFeeReduceLimit, reduceRate);
             if (session.Currency.Meret < cost) {
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
                 return;
             }
-            session.Currency.Meret -= cost;
         }
 
-        if (session.Player.Revive(true)) {
-            session.Player.Tombstone = null;
-            if (debuffCode != 0) {
-                session.Player.Buffs.AddBuff(session.Player, session.Player, debuffCode, 1, session.Field.FieldTick);
+        if (!session.Player.Revive(true)) {
+            return;
+        }
+        session.Player.Tombstone = null;
+        if (useCoupon) {
+            if (session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)])) {
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
             }
+        } else {
+            session.Currency.Meret -= cost;
+        }
+        if (debuffCode != 0) {
+            session.Player.Buffs.AddBuff(session.Player, session.Player, debuffCode, 1, session.Field.FieldTick);
         }
     }
 
