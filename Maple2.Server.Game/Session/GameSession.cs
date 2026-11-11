@@ -77,6 +77,8 @@ public sealed partial class GameSession : Core.Network.Session {
     #endregion
 
     public ConfigManager Config { get; set; } = null!;
+    // 1 once GlobalFactor (0x82) has been answered on this connection.
+    public int GlobalFactorSent;
     public MailManager Mail { get; set; } = null!;
     public GuildManager Guild { get; set; } = null!;
     public BuddyManager Buddy { get; set; } = null!;
