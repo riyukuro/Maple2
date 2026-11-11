@@ -45,7 +45,7 @@ public class BreakableHandler : FieldPacketHandler {
 
         if (session.Field?.TryGetBreakable(entityId, out FieldBreakable? breakable) == true) {
             // Without this every repeat of the packet dropped the box again and counted for the condition.
-            if (!BreakableRules.CanBreak(breakable.State, breakable.Visible)) {
+            if (!BreakableRules.CanBreak(breakable.State)) {
                 return;
             }
             if (breakable.Value.GlobalDropBoxId != 0) {
