@@ -24,4 +24,21 @@ public class ItemLockRulesTests {
         Assert.That(packet.Available, Is.EqualTo(0));
         Assert.That(ItemLockRules.CanStage(unlock, owned, locked, staged), Is.EqualTo(expected));
     }
+
+    // CItem::CanBeItemLocked's type list.
+    [TestCase(1, true)]
+    [TestCase(5, true)]
+    [TestCase(9, true)]
+    [TestCase(11, true)]
+    [TestCase(12, true)]
+    [TestCase(13, true)]
+    [TestCase(21, true)]
+    [TestCase(0, false)]
+    [TestCase(2, false)]
+    [TestCase(6, false)]
+    [TestCase(7, false)]
+    [TestCase(20, false)]
+    public void LockableTypes(int type, bool expected) {
+        Assert.That(ItemLockRules.IsLockableType(type), Is.EqualTo(expected));
+    }
 }

@@ -4,6 +4,11 @@ namespace Maple2.Model.Validators;
 // The client refuses an item that is already in the window, a locked item in lock mode and an
 // item that is not locked in unlock mode.
 public static class ItemLockRules {
+    // CItem::CanBeItemLocked: the item data types (the item xml's property type) that take a lock.
+    public static bool IsLockableType(int type) {
+        return type is 1 or 5 or 9 or 11 or 12 or 13 or 21;
+    }
+
     public static bool CanStage(bool unlock, bool owned, bool locked, bool alreadyStaged) {
         if (!owned || alreadyStaged) {
             return false;

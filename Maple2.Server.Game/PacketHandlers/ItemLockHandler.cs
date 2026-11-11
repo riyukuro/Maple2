@@ -57,6 +57,10 @@ public class ItemLockHandler : FieldPacketHandler {
         if (!ItemLockRules.CanStage(unlock, item != null, item?.IsLocked ?? false, session.ItemLockStaging.Contains(itemUid))) {
             return;
         }
+        // Only lock mode asks the type; a locked item of any type can be unlocked.
+        if (!unlock && !ItemLockRules.IsLockableType(item!.Metadata.Property.Type)) {
+            return;
+        }
 
         for (short i = 0; i < session.ItemLockStaging.Length; i++) {
             if (session.ItemLockStaging[i] != default) {
