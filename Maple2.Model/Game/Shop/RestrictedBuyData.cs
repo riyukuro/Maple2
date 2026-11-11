@@ -30,7 +30,8 @@ public class RestrictedBuyData : IByteSerializable {
     // - without a schedule the item is refused only outside the dates, and only when an end date is set;
     // - with a schedule the dates must hold (a start date alone counts too), today must be one of the days
     //   unless none or all seven are given, and the time of day must fall in the first range that has not
-    //   ended yet, from its start (inclusive) to its end (exclusive).
+    //   ended yet, from its start (inclusive) to its end (exclusive);
+    // - all seven days without a time range give the client an empty window, so the item stays closed.
     public bool CanBuy(DateTime now) {
         long time = new DateTimeOffset(now).ToUnixTimeSeconds();
         bool outsideDates = EndTime > 0 && (time < StartTime || time >= EndTime);
@@ -40,11 +41,13 @@ public class RestrictedBuyData : IByteSerializable {
         if (outsideDates || (StartTime > 0 && time < StartTime)) {
             return false;
         }
-        if (Days.Count is > 0 and < 7 && !Days.Contains((ShopBuyDay) ((int) now.DayOfWeek + 1))) {
+        // The client keeps the days in a set, so a repeated day counts once.
+        int dayCount = Days.Distinct().Count();
+        if (dayCount is > 0 and < 7 && !Days.Contains((ShopBuyDay) ((int) now.DayOfWeek + 1))) {
             return false;
         }
         if (TimeRanges.Count == 0) {
-            return true;
+            return dayCount < 7;
         }
 
         int seconds = (int) now.TimeOfDay.TotalSeconds;
