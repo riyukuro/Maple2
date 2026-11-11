@@ -22,6 +22,13 @@ public class TombstoneRulesTests {
         Assert.That(packet.Available, Is.EqualTo(0));
     }
 
+    [TestCase((byte) 3, true)]
+    [TestCase((byte) 1, true)]
+    [TestCase((byte) 0, false)] // already broken: no hit, no hit_tombstone count
+    public void BrokenTombstoneTakesNoHit(byte remaining, bool expected) {
+        Assert.That(TombstoneRules.CanHit(remaining), Is.EqualTo(expected));
+    }
+
     [TestCase((byte) 3, (byte) 2)]
     [TestCase((byte) 1, (byte) 0)]
     [TestCase((byte) 0, (byte) 0)]

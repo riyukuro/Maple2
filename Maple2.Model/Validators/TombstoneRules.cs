@@ -7,6 +7,11 @@ public static class TombstoneRules {
         return hits == 1 && ownerObjectId != hitterObjectId;
     }
 
+    // A broken tombstone takes no more hits: a repeat packet must not count for hit_tombstone.
+    public static bool CanHit(byte hitsRemaining) {
+        return hitsRemaining > 0;
+    }
+
     public static byte AfterHit(byte hitsRemaining) {
         return hitsRemaining > 0 ? (byte) (hitsRemaining - 1) : (byte) 0;
     }

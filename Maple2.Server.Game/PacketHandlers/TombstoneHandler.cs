@@ -25,6 +25,9 @@ public class TombstoneHandler : FieldPacketHandler {
         if (!TombstoneRules.IsHit(hits, objectId, session.Player.ObjectId)) {
             return;
         }
+        if (!TombstoneRules.CanHit(player.Tombstone.HitsRemaining)) {
+            return;
+        }
 
         player.Tombstone.HitsRemaining = TombstoneRules.AfterHit(player.Tombstone.HitsRemaining);
         session.ConditionUpdate(ConditionType.hit_tombstone);
