@@ -1,5 +1,6 @@
 using System;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -51,5 +52,35 @@ public class SkillUseTailTests {
         Assert.That(tail.IsHold, Is.True);
         Assert.That(tail.HoldInt, Is.EqualTo(42));
         Assert.That(tail.HoldString, Is.EqualTo("node"));
+    }
+
+    [Test]
+    public void Read_FeatureOffEndsAtCooldownKey() {
+        // A client with feature 174 (HoldAttack) off writes nothing after the cooldown key.
+        byte[] bytes = ClientBytes(9, false, 3, 0x1122334455667788, false, 0, "").AsSpan(0, 21).ToArray();
+
+        var reader = new ByteReader(bytes, 0);
+        SkillUseTail tail = SkillUseTail.Read(reader);
+
+        Assert.That(reader.Position, Is.EqualTo(21));
+        Assert.That(tail.CooldownKey, Is.EqualTo(0x1122334455667788));
+        Assert.That(tail.IsHold, Is.False);
+    }
+
+    [Test]
+    public void Read_FeatureOffInARentedBuffer() {
+        // The field thread reads a copy in a rented buffer that is longer than the packet; the bytes after the
+        // packet's end are not the attach flag.
+        byte[] packet = ClientBytes(9, false, 3, 0x1122334455667788, false, 0, "").AsSpan(0, 21).ToArray();
+        byte[] rented = new byte[64];
+        Array.Fill(rented, (byte) 0xFF);
+        packet.CopyTo(rented, 0);
+
+        var reader = new FieldPacketReader(rented, packet.Length, 0);
+        SkillUseTail tail = SkillUseTail.Read(reader);
+
+        Assert.That(reader.Position, Is.EqualTo(21));
+        Assert.That(reader.Remaining(), Is.EqualTo(0));
+        Assert.That(tail.IsHold, Is.False);
     }
 }

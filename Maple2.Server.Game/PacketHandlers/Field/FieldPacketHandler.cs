@@ -20,7 +20,7 @@ public abstract class FieldPacketHandler : PacketHandler<GameSession> {
 
         byte[] bufferCopy = ArrayPool<byte>.Shared.Rent(packet.Length);
         Array.Copy(packet.Buffer, bufferCopy, packet.Length);
-        var packetCopy = new ByteReader(bufferCopy, packet.Position);
+        var packetCopy = new FieldPacketReader(bufferCopy, packet.Length, packet.Position);
 
         session.Field.QueuePacket(this, session, packetCopy);
 
