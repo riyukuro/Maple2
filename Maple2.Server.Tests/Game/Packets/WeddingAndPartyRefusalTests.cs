@@ -19,4 +19,19 @@ public class WeddingAndPartyRefusalTests {
             Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1));
         });
     }
+
+    // Party 39 and 43 (join from a recruiting link): the party error is one byte and a name string; 31 shows
+    // s_party_err_not_found.
+    [Test]
+    public void LinkJoinRefusalIs31() {
+        ByteWriter writer = PartyPacket.Error(PartyError.s_party_err_not_found);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.Multiple(() => {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Party));
+            Assert.That(reader.ReadByte(), Is.EqualTo(0));
+            Assert.That(reader.ReadByte(), Is.EqualTo(31));
+            Assert.That(reader.ReadUnicodeString(), Is.EqualTo(""));
+            Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + 2));
+        });
+    }
 }

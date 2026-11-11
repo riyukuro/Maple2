@@ -87,8 +87,13 @@ public class PartyHandler : FieldPacketHandler {
                 return;
             case Command.Unknown39:
             case Command.DungeonMemberConfirm:
-                // Not handled: party id and dungeon room id from a confirm box of the messenger.
+                // UIMessenger::FUN_141a17bc0 (uimessenger.cpp:2502, join as a dungeon helper) and
+                // UIMessenger::OnDungeonMemberConfirm (uimessenger.cpp:2520, join as a member): party id and
+                // dungeon room id from the confirm box of a recruiting link in the chat. The link comes from the
+                // recruiting notice, which the server never sends, so no party is recruiting: answered with
+                // the client's "party not found" text.
                 Logger.Debug("Party {Command} from {CharacterId}: party {PartyId}, room {RoomId}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
+                session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
                 return;
         }
 
