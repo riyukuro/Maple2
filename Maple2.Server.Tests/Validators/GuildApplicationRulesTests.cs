@@ -135,6 +135,7 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.CheckUseSkill(false, 1, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_no_master));
         Assert.That(GuildRules.CheckUseSkill(true, 1, null, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_unknown), "no row of the level");
         Assert.That(GuildRules.CheckUseSkill(true, 10001, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_unknown), "personal skill");
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row with { Duration = 0 }, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_unknown), "no duration");
         Assert.That(GuildRules.CheckUseSkill(true, 1, row, 2, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
         Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 499, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
         Assert.That(GuildRules.CheckUseSkill(true, 1, row with { Cost = -1 }, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
@@ -158,6 +159,7 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 3, 500, false), Is.EqualTo(GuildError.none));
         Assert.That(GuildRules.CheckUsePersonalSkill(10001, null, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_unknown));
         Assert.That(GuildRules.CheckUsePersonalSkill(10000, row, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_unknown), "a guild skill");
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, row with { Duration = 0 }, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_unknown), "no duration");
         Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 2, 500, false), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
         Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 3, 499, false), Is.EqualTo(GuildError.s_guild_err_no_money));
         Assert.That(GuildRules.CheckUsePersonalSkill(10001, row with { Cost = -1 }, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_no_money));

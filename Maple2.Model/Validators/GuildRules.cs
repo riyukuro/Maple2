@@ -232,7 +232,9 @@ public static class GuildRules {
         if (!isMaster) {
             return GuildError.s_guild_err_no_master;
         }
-        if (row == null || skillId > 10000) {
+        // A row without a duration is never "running": it could be paid for again at once and would leave
+        // no effect. The table has no such row for a guild skill, so it is refused.
+        if (row == null || skillId > 10000 || row.Duration <= 0) {
             return GuildError.s_guild_err_unknown;
         }
         if (row.RequireLevel > guildLevel) {
@@ -251,7 +253,7 @@ public static class GuildRules {
     // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
     // member's meso pays its cost, and the member does not have the effect already.
     public static GuildError CheckUsePersonalSkill(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect) {
-        if (row == null || skillId <= 10000) {
+        if (row == null || skillId <= 10000 || row.Duration <= 0) {
             return GuildError.s_guild_err_unknown;
         }
         if (row.RequireLevel > guildLevel) {
