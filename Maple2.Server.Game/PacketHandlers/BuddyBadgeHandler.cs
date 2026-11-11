@@ -15,6 +15,8 @@ public class BuddyBadgeHandler : FieldPacketHandler {
     private enum Command : byte {
         Start = 0,
         Stop = 1,
+        Unknown2 = 2,
+        Unknown3 = 3,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -25,6 +27,14 @@ public class BuddyBadgeHandler : FieldPacketHandler {
                 return;
             case Command.Stop:
                 HandleStop(session, packet);
+                return;
+            case Command.Unknown2:
+                // Not handled: own character id and one long.
+                Logger.Debug("BuddyBadge {Command} from {CharacterId}: {Id}, {Value}", command, session.CharacterId, packet.ReadLong(), packet.ReadLong());
+                return;
+            case Command.Unknown3:
+                // Not handled: the partner's character id.
+                Logger.Debug("BuddyBadge {Command} from {CharacterId}: partner {Id}", command, session.CharacterId, packet.ReadLong());
                 return;
         }
     }
