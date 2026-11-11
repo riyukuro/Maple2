@@ -213,6 +213,20 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // Guild 79 for a guild mail inside the server's 60 seconds: error 45, which the client shows as
+    // "Please try again later." (guildmanager.cpp:3351), not 1 ("Unknown Guild Error", :3234).
+    [Test]
+    public void MailCooldown_IsRefusedWithError45() {
+        ByteWriter writer = GuildPacket.Error(GuildRules.MailCooldownError);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(79));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadByte(), Is.EqualTo(45));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     // CGuildManager::OnPacketVsGameTicket (0x76): the ticket flag, then the notify flag.
     [TestCase(false, false)]
     [TestCase(true, false)]

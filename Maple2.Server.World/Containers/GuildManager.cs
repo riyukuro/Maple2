@@ -495,7 +495,7 @@ public class GuildManager : IDisposable {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         lock (lastMail) {
             if (!GuildRules.TakeMailTurn(lastMail, requestorId, now)) {
-                return GuildError.s_guild_err_unknown;
+                return GuildRules.MailCooldownError;
             }
         }
         return GuildError.none;

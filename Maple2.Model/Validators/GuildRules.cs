@@ -120,6 +120,11 @@ public static class GuildRules {
     // seconds, because one packet writes a mail for every other member.
     public const int MailCooldownSeconds = 60;
 
+    // What the sender is told inside the 60 seconds. The client has no text of its own for a mail sent too
+    // soon; CGuildManager::ShowGuildError (guildmanager.cpp:3230) shows "Please try again later." for 45
+    // (:3351) and "Unknown Guild Error" for 1 (:3234).
+    public const GuildError MailCooldownError = GuildError.s_guild_err_too_fast_to_search_by_name;
+
     public static bool CanSendMail(long now, long lastSent) {
         return lastSent <= 0 || now < lastSent || now - lastSent >= MailCooldownSeconds;
     }
