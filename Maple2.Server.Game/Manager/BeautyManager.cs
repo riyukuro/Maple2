@@ -17,9 +17,11 @@ public sealed class BeautyManager : IDisposable {
     private Item? previousHair;
     public BeautyManager(GameSession session) {
         this.session = session;
-        items = new ItemCollection((short) (Constant.BaseStorageCount + session.Player.Value.Unlock.HairSlotExpand));
         using GameStorage.Request db = session.GameStorage.Context();
-        foreach (Item item in db.GetSavedHairs(session.CharacterId).Where(item => items.Add(item).Count == 0)) {
+        ICollection<Item> saved = db.GetSavedHairs(session.CharacterId);
+        // Styles saved under an older, larger base stay listed; OpenSlots counts by the rule, not by this size.
+        items = new ItemCollection((short) Math.Max(Slots, saved.Count));
+        foreach (Item item in saved.Where(item => items.Add(item).Count == 0)) {
             Log.Error("Failed to add saved hair:{Uid}", item.Uid);
         }
     }
@@ -39,7 +41,19 @@ public sealed class BeautyManager : IDisposable {
         }
     }
 
-    public short OpenSlots => items.OpenSlots;
+    private int Slots {
+        get {
+            ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+            return BeautyRules.StyleSlots(constants.BeautyStyleDefaultSlotCount, session.Player.Value.Unlock.HairSlotExpand, constants.BeautyStyleMaxSlotCount);
+        }
+    }
+
+    public short OpenSlots {
+        get {
+            ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+            return (short) BeautyRules.OpenStyleSlots(constants.BeautyStyleDefaultSlotCount, session.Player.Value.Unlock.HairSlotExpand, constants.BeautyStyleMaxSlotCount, items.Count);
+        }
+    }
 
     // The equipped hair that is not saved yet.
     public bool CanAddHair(long uid) {
@@ -65,7 +79,7 @@ public sealed class BeautyManager : IDisposable {
 
         session.Currency.Meret -= price;
         session.Player.Value.Unlock.HairSlotExpand = (short) extended;
-        items.Expand((short) (Constant.BaseStorageCount + extended));
+        items.Expand((short) Slots);
         session.Send(BeautyPacket.SaveSlots((short) extended));
         return true;
     }
@@ -80,7 +94,7 @@ public sealed class BeautyManager : IDisposable {
             return;
         }
 
-        if (items.OpenSlots <= 0) {
+        if (OpenSlots <= 0) {
             return;
         }
 

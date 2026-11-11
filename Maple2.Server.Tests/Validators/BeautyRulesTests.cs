@@ -90,6 +90,35 @@ public class BeautyRulesTests {
         Assert.That(BeautyRules.ExtendedSlots(extended, perExtension, maxExtra), Is.EqualTo(expected));
     }
 
+    // The client's constants: 30 slots, 1 per extension, 5 extensions at most.
+    [TestCase(30, 0, 5, 30)]
+    [TestCase(30, 5, 5, 35)]
+    [TestCase(30, 11, 5, 35)]
+    [TestCase(0, 2, 5, 38)]
+    public void StyleSlots(int baseSlots, int extended, int maxExtra, int expected) {
+        Assert.That(BeautyRules.StyleSlots(baseSlots, extended, maxExtra), Is.EqualTo(expected));
+    }
+
+    // 30 saved styles in 30 slots: nothing is free, so the save has to pay for an extension first.
+    [Test]
+    public void FullAtClientBase() {
+        Assert.That(BeautyRules.OpenStyleSlots(30, 0, 5, 29), Is.EqualTo(1));
+        Assert.That(BeautyRules.OpenStyleSlots(30, 0, 5, 30), Is.EqualTo(0));
+        Assert.That(BeautyRules.OpenStyleSlots(30, 0, 5, 33), Is.EqualTo(0));
+    }
+
+    // Five paid extensions end at the client's 35 slots; a sixth is refused.
+    [Test]
+    public void FiveExtensions() {
+        int extended = 0;
+        for (int i = 0; i < 5; i++) {
+            extended = BeautyRules.ExtendedSlots(extended, 1, 5);
+            Assert.That(BeautyRules.OpenStyleSlots(30, extended, 5, 30 + i), Is.EqualTo(1));
+        }
+        Assert.That(BeautyRules.StyleSlots(30, extended, 5), Is.EqualTo(35));
+        Assert.That(BeautyRules.ExtendedSlots(extended, 1, 5), Is.EqualTo(-1));
+    }
+
     // Mode 17: i64 item uid. Mode 19: nothing.
     [Test]
     public void ExtendBytes() {

@@ -193,7 +193,9 @@ public class BeautyHandler : FieldPacketHandler {
         }
 
         if (EquipBeauty(session, created)) {
-            Pay(session, useVoucher, session.BeautyShop, entry.Cost);
+            if (!Pay(session, useVoucher, session.BeautyShop, entry.Cost)) {
+                Logger.Error("Beauty fee not taken after the new item {ItemId} of {CharacterId}", itemId, session.CharacterId);
+            }
             session.ConditionUpdate(ConditionType.beauty_add, codeLong: itemId);
         }
     }
@@ -231,7 +233,9 @@ public class BeautyHandler : FieldPacketHandler {
         if (!EquipBeauty(session, changed)) {
             return;
         }
-        Pay(session, useVoucher, shop, shop.Metadata.StyleCostMetadata);
+        if (!Pay(session, useVoucher, shop, shop.Metadata.StyleCostMetadata)) {
+            Logger.Error("Beauty fee not taken after the change of item {ItemId} of {CharacterId}", cosmetic.Id, session.CharacterId);
+        }
         if (startColor != null) {
             Item newCosmetic = session.Item.Equips.Get(cosmetic.Metadata.SlotNames.First())!;
             if (!Equals(newCosmetic.Appearance?.Color, startColor)) {
@@ -421,7 +425,7 @@ public class BeautyHandler : FieldPacketHandler {
         session.Beauty.ExtendSlots();
     }
 
-    private static void HandleApplySavedHair(GameSession session, IByteReader packet) {
+    private void HandleApplySavedHair(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
         byte index = packet.ReadByte();
 
@@ -437,7 +441,9 @@ public class BeautyHandler : FieldPacketHandler {
         // The fee is taken only once the saved style is on the character.
         BeautyShopCostMetadata cost = session.BeautyShop.Metadata.StyleCostMetadata;
         if (CanPay(session, false, session.BeautyShop, cost) && session.Beauty.EquipSavedCosmetic(uid)) {
-            Pay(session, false, session.BeautyShop, cost);
+            if (!Pay(session, false, session.BeautyShop, cost)) {
+                Logger.Error("Beauty fee not taken after the saved style {Uid} of {CharacterId}", uid, session.CharacterId);
+            }
         }
     }
 

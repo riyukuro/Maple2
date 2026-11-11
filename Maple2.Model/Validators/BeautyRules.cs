@@ -20,6 +20,21 @@ public static class BeautyRules {
         return extended + perExtension;
     }
 
+    // The saved style slots a character has: the client's base (BeautyStyleDefaultSlotCount,
+    // uibeautyshopstyledialog.cpp:426-428) plus the bought ones, never past the client's most
+    // (base + BeautyStyleMaxSlotCount, :420-423). 36 stands in only for a constant that is not loaded.
+    public static int StyleSlots(int baseSlots, int extended, int maxExtra) {
+        if (baseSlots <= 0) {
+            baseSlots = 36;
+        }
+        return baseSlots + Math.Clamp(extended, 0, Math.Max(maxExtra, 0));
+    }
+
+    // The slots still free for one more saved style.
+    public static int OpenStyleSlots(int baseSlots, int extended, int maxExtra, int saved) {
+        return Math.Max(StyleSlots(baseSlots, extended, maxExtra) - saved, 0);
+    }
+
     // Mode 3 (new item from the shop): u8 shop id, u8 free try, i32 item id, i64 the value the shop-open
     // packet carried, then the item's appearance data.
     public static (byte Shop, bool UseVoucher, int ItemId, long ShopValue) ReadCreate(IByteReader packet) {
