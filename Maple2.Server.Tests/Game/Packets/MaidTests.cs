@@ -113,4 +113,13 @@ public class MaidTests {
             Assert.That(maid.ExpiryTime, Is.EqualTo(1000 + 30L * 86400));
         });
     }
+
+    [Test]
+    public void Orphans_AreTheMaidsWhoseCubeIsGone() {
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.Orphans([77, 78, 79], [78, 90]), Is.EqualTo(new long[] { 77, 79 }));
+            Assert.That(MaidRules.Orphans([77], [77]), Is.Empty);
+            Assert.That(MaidRules.Orphans([77], []), Is.EqualTo(new long[] { 77 }));
+        });
+    }
 }

@@ -22,4 +22,10 @@ public static class MaidRules {
             ExpiryTime = now + (long) Math.Max(periodDays, 0) * 24 * 60 * 60,
         };
     }
+
+    // The maids (by cube uid) whose cube is not among cubeIds, the cubes now on the field's plots.
+    public static List<long> Orphans(IEnumerable<long> maidCubes, IEnumerable<long> cubeIds) {
+        var placed = new HashSet<long>(cubeIds);
+        return maidCubes.Where(uid => !placed.Contains(uid)).ToList();
+    }
 }

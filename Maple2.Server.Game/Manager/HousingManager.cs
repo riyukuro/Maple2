@@ -273,6 +273,8 @@ public class HousingManager {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_system_error));
             return null;
         }
+        // The forfeit deleted the plot's cubes (and their maid rows); the cubes are still on the plot in memory.
+        fieldManager.RemoveMaids(plot);
 
         fieldManager.Broadcast(CubePacket.ForfeitPlot(plotInfo));
         SetPlot(null);

@@ -72,7 +72,7 @@ public class FieldNpc : Actor<Npc> {
     public FieldMobSpawn? Owner { get; init; }
 
     // The uid of the maid this npc is (FieldMaidPacket), 0 for other npcs.
-    public long MaidUid { get; set; }
+    public long MaidUid { get; init; }
 
     // Npcs this npc summoned with an AI summon node, by the node's group.
     private readonly List<(int Group, FieldNpc Npc, bool LeavesWithSummoner)> summons = [];

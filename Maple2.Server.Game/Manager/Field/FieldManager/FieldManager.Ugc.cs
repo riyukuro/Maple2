@@ -194,5 +194,7 @@ public partial class FieldManager {
             Broadcast(LoadCubesPacket.PlotState(allPlots));
             Broadcast(LoadCubesPacket.PlotExpiry(updateExpirationTime));
         }
+        // A forfeited or expired plot comes back without its cubes: its maids go.
+        SyncMaids();
     }
 }

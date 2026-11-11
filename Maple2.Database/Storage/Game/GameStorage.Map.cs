@@ -280,10 +280,12 @@ public partial class GameStorage {
             }
 
             Context.UgcMapCube.Remove(model);
-            // The maid row goes with its cube (a cascading key on a relational DB; removed here for the others).
-            Model.Maid? maid = Context.Maid.Find(cube.Id);
-            if (maid != null) {
-                Context.Maid.Remove(maid);
+            // The maid row of a maid cube goes with it (a cascading key on a relational DB; removed here for the others).
+            if (cube.Metadata.Housing?.MaidId > 0) {
+                Model.Maid? maid = Context.Maid.Find(cube.Id);
+                if (maid != null) {
+                    Context.Maid.Remove(maid);
+                }
             }
             return Context.TrySaveChanges();
         }

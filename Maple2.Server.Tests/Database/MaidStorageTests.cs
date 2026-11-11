@@ -97,4 +97,18 @@ public class MaidStorageTests {
         using GameStorage.Request check = storage.Context();
         Assert.That(check.GetMaid(cube.Id), Is.Null);
     }
+
+    [Test]
+    public void SecondCreate_FailsAndTheFirstIsReadAgain() {
+        PlotCube cube = PlaceCube();
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.CreateMaid(new Maid { Uid = cube.Id, OwnerId = 5, ItemId = CubeItemId, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000 }), Is.Not.Null);
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.CreateMaid(new Maid { Uid = cube.Id, OwnerId = 6, ItemId = CubeItemId, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000 }), Is.Null);
+        }
+
+        using GameStorage.Request check = storage.Context();
+        Assert.That(check.GetMaid(cube.Id)?.OwnerId, Is.EqualTo(5));
+    }
 }

@@ -122,7 +122,7 @@ public partial class FieldManager {
         return fieldPlayer;
     }
 
-    public FieldNpc? SpawnNpc(NpcMetadata npc, Vector3 position, Vector3 rotation, bool disableAi = false, FieldMobSpawn? owner = null, SpawnPointNPC? spawnPointNpc = null, string spawnAnimation = "") {
+    public FieldNpc? SpawnNpc(NpcMetadata npc, Vector3 position, Vector3 rotation, bool disableAi = false, FieldMobSpawn? owner = null, SpawnPointNPC? spawnPointNpc = null, string spawnAnimation = "", long maidUid = 0) {
         // The played client creates no NPC it has no data for (PlayedClientNpcs).
         if (!PlayedClientNpcs.CanSpawn(npc)) {
             logger.Debug("[SpawnNpc] NPC {NpcId} is not in the played client's NPC data, not spawned", npc.Id);
@@ -163,6 +163,7 @@ public partial class FieldManager {
             Rotation = rotation,
             Origin = owner?.Position ?? spawnPosition,
             SpawnPointId = owner?.Value.Id ?? 0,
+            MaidUid = maidUid,
         };
 
         if (npc.Basic.Friendly > 0) {
@@ -1081,11 +1082,16 @@ public partial class FieldManager {
     #endregion
 
     #region Maids
-    // The placed maids by cube uid, with their npc's object id.
-    private readonly ConcurrentDictionary<long, (Maid Maid, int NpcObjectId)> maids = new();
+    // A placed maid by cube uid and its npc's object id, 0 until the field thread has spawned the npc.
+    private sealed class MaidSlot(Maid maid) {
+        public Maid Maid { get; } = maid;
+        public int NpcObjectId;
+    }
+    private readonly ConcurrentDictionary<long, MaidSlot> maids = new();
 
     // The maid of a maid cube placed on plot: its row, made on the first placement, and its npc on the cube. The
-    // FieldMaid add goes first: the client looks the npc's maid up by the maid uid of its FieldAddNpc.
+    // slot is held at once; the npc is spawned on the field thread (the crowd is not thread safe). The FieldMaid
+    // add goes first: the client looks the npc's maid up by the maid uid of its FieldAddNpc.
     public void AddMaid(PlotCube cube, Plot plot) {
         int maidId = MaidRules.MaidId(cube.Metadata, plot.IsPlanner);
         if (maidId == 0 || maids.ContainsKey(cube.Id)) {
@@ -1095,36 +1101,80 @@ public partial class FieldManager {
             logger.Warning("No maid data for maid {MaidId} of cube {CubeUid}", maidId, cube.Id);
             return;
         }
+        // The client draws a maid as a friendly npc; a hostile one would be a mob that can be hit and killed.
+        if (npc.Basic.Friendly <= 0) {
+            logger.Warning("Maid npc {NpcId} of maid {MaidId} is not friendly, not placed", npc.Id, maidId);
+            return;
+        }
 
         Maid? maid;
         using (GameStorage.Request db = GameStorage.Context()) {
             maid = db.GetMaid(cube.Id) ?? db.CreateMaid(MaidRules.Hire(cube, maidId, plot.OwnerId, DateTime.UtcNow.ToEpochSeconds(), Constants.PeriodOfMaidEmployment));
         }
         if (maid == null) {
+            // Another field may have made the row first (the create then fails on its key): read it again.
+            using GameStorage.Request db = GameStorage.Context();
+            maid = db.GetMaid(cube.Id);
+        }
+        if (maid == null) {
             logger.Warning("Failed to load the maid of cube {CubeUid}", cube.Id);
             return;
         }
 
-        FieldNpc? fieldNpc = SpawnNpc(npc, cube.Position, new Vector3(0, 0, cube.Rotation));
-        if (fieldNpc == null) {
+        var slot = new MaidSlot(maid);
+        if (!maids.TryAdd(cube.Id, slot)) {
             return;
         }
-        fieldNpc.MaidUid = maid.Uid;
-        maids[cube.Id] = (maid, fieldNpc.ObjectId);
-        Broadcast(FieldMaidPacket.Add(maid));
-        Broadcast(FieldPacket.AddNpc(fieldNpc));
-        Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
+        Vector3 position = cube.Position;
+        var rotation = new Vector3(0, 0, cube.Rotation);
+        Scheduler.Schedule(() => {
+            if (!maids.TryGetValue(slot.Maid.Uid, out MaidSlot? current) || current != slot) {
+                return; // removed before the field thread got to it
+            }
+            // No AI: the maid stands on its furnishing.
+            FieldNpc? fieldNpc = SpawnNpc(npc, position, rotation, disableAi: true, maidUid: slot.Maid.Uid);
+            if (fieldNpc == null) {
+                maids.TryRemove(new KeyValuePair<long, MaidSlot>(slot.Maid.Uid, slot));
+                return;
+            }
+            slot.NpcObjectId = fieldNpc.ObjectId;
+            Broadcast(FieldMaidPacket.Add(slot.Maid));
+            Broadcast(FieldPacket.AddNpc(fieldNpc));
+            Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
+        });
     }
 
+    // The npc goes first, then the maid, in one field-thread action: the client keeps no npc that names a gone maid.
     public void RemoveMaid(long cubeUid) {
-        if (!maids.TryRemove(cubeUid, out (Maid Maid, int NpcObjectId) removed)) {
+        if (!maids.TryRemove(cubeUid, out MaidSlot? removed)) {
             return;
         }
-        RemoveNpc(removed.NpcObjectId);
-        Broadcast(FieldMaidPacket.Remove(cubeUid));
+        Scheduler.Schedule(() => {
+            if (removed.NpcObjectId == 0) {
+                return; // never spawned, so never sent
+            }
+            RemoveNpcNow(removed.NpcObjectId);
+            Broadcast(FieldMaidPacket.Remove(cubeUid));
+        });
     }
 
-    public Maid? GetMaid(long cubeUid) => maids.TryGetValue(cubeUid, out (Maid Maid, int NpcObjectId) entry) ? entry.Maid : null;
+    // Removes the maids whose cube is no longer on any plot of the field (a plot forfeited or expired, its cubes
+    // swapped out by a reload).
+    public void SyncMaids() {
+        IEnumerable<long> cubeIds = Plots.Values.SelectMany(plot => plot.Cubes.Values).Select(cube => cube.Id);
+        foreach (long cubeUid in MaidRules.Orphans(maids.Keys, cubeIds)) {
+            RemoveMaid(cubeUid);
+        }
+    }
+
+    // Removes the maids of plot's cubes (the plot is forfeited while its cubes are still in memory).
+    public void RemoveMaids(Plot plot) {
+        foreach (PlotCube cube in plot.Cubes.Values) {
+            RemoveMaid(cube.Id);
+        }
+    }
+
+    public Maid? GetMaid(long cubeUid) => maids.TryGetValue(cubeUid, out MaidSlot? slot) ? slot.Maid : null;
     #endregion
 
     public FieldFunctionInteract? TryGetFieldFunctionInteract(string entityId) {
@@ -1220,18 +1270,21 @@ public partial class FieldManager {
             return false;
         }
 
-        Scheduler.Schedule(() => {
-            if (!Mobs.TryRemove(objectId, out FieldNpc? npc) && !Npcs.TryRemove(objectId, out npc)) {
-                // Already removed
-                return;
-            }
-            NpcEffects.TryRemove(objectId, out _);
-            npc.RemoveSummons();
-            Broadcast(FieldPacket.RemoveNpc(objectId));
-            Broadcast(ProxyObjectPacket.RemoveNpc(objectId));
-            npc.Dispose();
-        }, removeDelay);
+        Scheduler.Schedule(() => RemoveNpcNow(objectId), removeDelay);
         return true;
+    }
+
+    // On the field thread.
+    private void RemoveNpcNow(int objectId) {
+        if (!Mobs.TryRemove(objectId, out FieldNpc? npc) && !Npcs.TryRemove(objectId, out npc)) {
+            // Already removed
+            return;
+        }
+        NpcEffects.TryRemove(objectId, out _);
+        npc.RemoveSummons();
+        Broadcast(FieldPacket.RemoveNpc(objectId));
+        Broadcast(ProxyObjectPacket.RemoveNpc(objectId));
+        npc.Dispose();
     }
 
     public bool RemovePet(int objectId, TimeSpan removeDelay = default) {
@@ -1308,8 +1361,10 @@ public partial class FieldManager {
             }
         }
         // Before the npcs: a maid npc's FieldAddNpc names its maid.
-        foreach ((Maid maid, int _) in maids.Values) {
-            added.Session.Send(FieldMaidPacket.Add(maid));
+        foreach (MaidSlot slot in maids.Values) {
+            if (slot.NpcObjectId != 0) { // a maid not spawned yet is broadcast when it is
+                added.Session.Send(FieldMaidPacket.Add(slot.Maid));
+            }
         }
 
         foreach (Plot plot in Plots.Values) {
