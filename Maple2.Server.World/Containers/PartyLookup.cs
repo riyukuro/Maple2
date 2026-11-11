@@ -202,7 +202,13 @@ public class PartyLookup : IDisposable {
                 int partyId = manager.Party.Id;
                 long leaderId = manager.Party.LeaderCharacterId;
                 Defer(() => {
-                    int lobbyRoomId = CreateMatchedRoom(leaderId, partyId, result.RoomId, size);
+                    int lobbyRoomId = 0;
+                    try {
+                        lobbyRoomId = CreateMatchedRoom(leaderId, partyId, result.RoomId, size);
+                    } catch (Exception ex) {
+                        logger.Error(ex, "Dungeon match room for party {PartyId} failed", partyId);
+                    }
+                    // Always: the matching mark ends whatever the room call did (rv44 MINOR 2).
                     DungeonMatchStep(() => {
                         DungeonMatch.EndMatching(partyId);
                         if (!TryGet(partyId, out PartyManager? current)) {
@@ -256,7 +262,8 @@ public class PartyLookup : IDisposable {
                 },
             });
             return response.Error == (int) MigrationError.ok ? response.RoomId : 0;
-        } catch (RpcException) {
+        } catch (Exception ex) {
+            logger.Error(ex, "Dungeon match room for party {PartyId} not made", partyId);
             return 0;
         }
     }
@@ -270,6 +277,8 @@ public class PartyLookup : IDisposable {
             client.Field(new FieldRequest {
                 DestroyDungeon = new FieldRequest.Types.DestroyDungeon { RoomId = lobbyRoomId },
             });
-        } catch (RpcException) { }
+        } catch (Exception ex) {
+            logger.Error(ex, "Dungeon match room {RoomId} not destroyed", lobbyRoomId);
+        }
     }
 }

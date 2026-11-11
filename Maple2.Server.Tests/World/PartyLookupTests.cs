@@ -13,6 +13,7 @@ public class PartyLookupTests {
     private sealed class TestPartyLookup : PartyLookup {
         public int RoomId = 9000;
         public Action? WhileMakingRoom;
+        public bool Throw;
         public readonly List<int> Made = [];
         public readonly List<int> Destroyed = [];
 
@@ -21,6 +22,9 @@ public class PartyLookupTests {
         protected override int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
             Made.Add(partyId);
             WhileMakingRoom?.Invoke();
+            if (Throw) {
+                throw new InvalidOperationException("room");
+            }
             return RoomId;
         }
 
@@ -102,6 +106,19 @@ public class PartyLookupTests {
         Assert.That(lookup.Destroyed, Is.Empty);
         Assert.That(party.Party.DungeonSet, Is.False);
         Assert.That(lookup.DungeonMatch.IsMatching(party.Party.Id), Is.False);
+    }
+
+    // rv44 MINOR 2: a room call that throws still ends the matching mark; the party may search again.
+    [Test]
+    public void ARoomCallThatThrowsEndsTheMatchingMark() {
+        PartyManager party = Party(2);
+        var room = new DungeonMatchRoom(100, 1, 2, false);
+        DungeonMatchResult result = Start(party, room);
+        lookup.Throw = true;
+        lookup.CompleteDungeonMatch(party, result);
+        Assert.That(lookup.DungeonMatch.IsMatching(party.Party.Id), Is.False);
+        Assert.That(party.Party.DungeonSet, Is.False);
+        Assert.That(Start(party, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
 
     // rv42 MINOR 9: the Party Finder listing goes with a disbanded party and with a party that moves away.
