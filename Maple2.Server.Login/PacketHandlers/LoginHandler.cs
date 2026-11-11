@@ -28,14 +28,13 @@ public class LoginHandler : PacketHandler<LoginSession> {
     #endregion
 
     public override void Handle(LoginSession session, IByteReader packet) {
-        var command = packet.Read<Command>();
+        ResponseLoginData request = ResponseLoginData.Read(packet);
+        var command = (Command) request.Type;
+        string user = request.User;
+        string pass = request.Password;
+        Guid machineId = request.MachineId;
 
-        string user = packet.ReadUnicodeString();
-        string pass = packet.ReadUnicodeString();
-        packet.ReadShort(); // 1
-        var machineId = packet.Read<Guid>();
-
-        Logger.Debug("Logging in with user:{User}", user);
+        Logger.Debug("Logging in with user:{User} language:{Language}", user, request.Language);
         LoginResponse response = Global.Login(new LoginRequest {
             Username = user,
             Password = pass,
