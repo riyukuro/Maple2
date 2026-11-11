@@ -2,6 +2,10 @@
 
 This fork is upstream [Maple2](https://github.com/MS2Community/Maple2) with fixes for the Korean MapleStory 2 client, build 2525. The branch is `kms2525`. Upstream's README.md is unchanged, which keeps merges from upstream simple. Setup and running are the same as upstream.
 
+## How changes are made and checked
+
+The changes in this fork are written by AI agents. Before a change is published it passes automatic checks (commit author, message and leak scans), an AI review of its diff, a Release build of the servers and the full test suite with the KR and NA locales. No person reviews the code, and most changes have not been tried in a live game; where a change was tried live, its commit says so. Commits whose subject starts with `UNREVIEWED:` went through the same checks: the prefix was only a working marker, and newer commits leave it out.
+
 ## How packet layouts are checked
 
 Packet layouts are checked against the client source, not against another server. For each packet type and sub-type, a checker compares two things:
