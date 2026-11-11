@@ -95,6 +95,21 @@ public class BuddyEmoteRulesTests {
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 
+    // Mode 6 from the inviter ends its invite: the invited player's later accept or decline finds nothing.
+    // An invite of another player stays.
+    [Test]
+    public void CancelEndsTheInvite() {
+        var invites = new BuddyEmoteInvites();
+        invites.Add(5, 90200001);
+        invites.Add(6, 90200002);
+        Assert.That(invites.Cancel(5), Is.True);
+        Assert.That(invites.Has(5), Is.False);
+        Assert.That(invites.Take(5, 90200001), Is.False);
+        Assert.That(invites.Take(5), Is.False);
+        Assert.That(invites.Cancel(5), Is.False);
+        Assert.That(invites.Take(6, 90200002), Is.True);
+    }
+
     [Test]
     public void CancelNamesTheCanceller() {
         Assert.That(BuddyEmoteRules.CancelSubject(5, 77), Is.EqualTo(5));

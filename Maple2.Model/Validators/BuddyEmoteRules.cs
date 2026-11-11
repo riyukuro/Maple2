@@ -37,6 +37,11 @@ public sealed class BuddyEmoteInvites {
         }
     }
 
+    // Mode 6 from the inviter: the invite ends on the invited player's side, so a later answer from its
+    // still open box is not passed on. No packet closes that box: the client acts on modes 2 to 6 only
+    // while its own player is in the emote state (networkservice.cpp:1136-1190).
+    public bool Cancel(long inviterId) => Take(inviterId);
+
     // Mode 3: the invite ends, and the accepted emote has to be the invited one.
     public bool Take(long inviterId, int emoteId) {
         lock (pending) {

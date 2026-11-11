@@ -141,6 +141,10 @@ public class BuddyEmoteHandler : FieldPacketHandler {
             return;
         }
 
+        // The inviter gave up: its invite on the partner ends here, so the partner's later accept or
+        // decline finds nothing and is not passed back.
+        player.Session.BuddyEmoteInvites.Cancel(session.CharacterId);
+
         player.Session.Send(BuddyEmotePacket.Cancel(emoteId, BuddyEmoteRules.CancelSubject(session.CharacterId, characterId)));
     }
 }
