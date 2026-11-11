@@ -113,6 +113,9 @@ public sealed partial class GameSession : Core.Network.Session {
     public readonly PendingRecall?[] Recalls = new PendingRecall?[3];
     // The recall invite (s2c RecallUser 4) this player has not answered yet.
     public volatile PendingUserRecall? UserRecall;
+    // Set once this client picked an NPC with the debug camera (SetDebugMode 4, select), which opens its NPC
+    // control window. The client sends nothing when that window closes, so this stays set for the session.
+    public volatile bool NpcControlPicked;
     public ConcurrentDictionary<int, GroupChatManager> GroupChats { get; set; }
     public ConcurrentDictionary<long, ClubManager> Clubs { get; set; }
     public SurvivalManager Survival { get; set; } = null!;

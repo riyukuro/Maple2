@@ -261,4 +261,205 @@ public class GmDebugRequestsTests {
         Assert.That(packet.AsSpan(0, length).ToArray(), Is.EqualTo(DebugModePacket.GuideCommands("A", [("/a", "")]).ToArray()));
         Assert.That(sentToOther.Count, Is.EqualTo(0));
     }
+
+    // A bare target session on a bare channel server that also holds the caller's session (character id 9).
+    private static (GameSession Target, BlockingCollection<(byte[] packet, int length)> SentToCaller) RecallPair() {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        GameSession target = SessionOf(AdminPermissions.None);
+        GameSession caller = SessionOf(AdminPermissions.GameMaster);
+        BlockingCollection<(byte[] packet, int length)> sentToCaller = SendQueueOf(caller);
+        SendQueueOf(target);
+        var server = (Maple2.Server.Game.GameServer) RuntimeHelpers.GetUninitializedObject(typeof(Maple2.Server.Game.GameServer));
+        var sessions = new ConcurrentDictionary<long, GameSession>();
+        sessions[9] = caller;
+        typeof(Maple2.Server.Game.GameServer).GetField("sessions", flags)!.SetValue(server, sessions);
+        typeof(GameSession).GetField("server", flags)!.SetValue(target, server);
+        return (target, sentToCaller);
+    }
+
+    private static readonly byte[] NotFoundForA = RecallUserPacket.Fail("A", RecallUserPacket.FAIL_NOT_FOUND).ToArray();
+
+    [Test]
+    public void RecallUser_DropPendingTellsTheCallerOnce() {
+        (GameSession target, BlockingCollection<(byte[] packet, int length)> sentToCaller) = RecallPair();
+        target.UserRecall = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30);
+
+        UserRecallUtil.DropPending(target);
+        UserRecallUtil.DropPending(target);
+
+        Assert.That(target.UserRecall, Is.Null);
+        Assert.That(sentToCaller.Count, Is.EqualTo(1));
+        (byte[] packet, int length) = sentToCaller.Take();
+        Assert.That(packet.AsSpan(0, length).ToArray(), Is.EqualTo(NotFoundForA));
+    }
+
+    [Test]
+    public void RecallUser_DropPendingIsSilentWithoutAnOpenInvite() {
+        (GameSession target, BlockingCollection<(byte[] packet, int length)> sentToCaller) = RecallPair();
+
+        UserRecallUtil.DropPending(target); // no invite
+        target.UserRecall = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 1);
+        UserRecallUtil.DropPending(target); // run out
+
+        Assert.That(target.UserRecall, Is.Null);
+        Assert.That(sentToCaller.Count, Is.EqualTo(0));
+    }
+
+    // The hook itself: disposing the session of a player with an open invite tells the caller. The session is
+    // bare, so the rest of the cleanup fails inside its own try blocks; only the collections the cleanup walks
+    // outside of them are given.
+    [Test]
+    public void RecallUser_SessionEndTellsTheCaller() {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        (GameSession target, BlockingCollection<(byte[] packet, int length)> sentToCaller) = RecallPair();
+        typeof(Maple2.Server.Core.Network.Session).GetField("Logger", flags)!.SetValue(target, Serilog.Log.Logger);
+        target.GroupChats = new ConcurrentDictionary<int, Maple2.Server.Game.Manager.GroupChatManager>();
+        target.Clubs = new ConcurrentDictionary<long, Maple2.Server.Game.Manager.ClubManager>();
+        target.UserRecall = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30);
+
+        target.Dispose();
+
+        Assert.That(target.UserRecall, Is.Null);
+        Assert.That(sentToCaller.Count, Is.EqualTo(1));
+        (byte[] packet, int length) = sentToCaller.Take();
+        Assert.That(packet.AsSpan(0, length).ToArray(), Is.EqualTo(NotFoundForA));
+    }
+
+    // The answer and the end of the session race for the invite: whoever takes it first tells the caller.
+    [Test]
+    public void RecallUser_AnswerAfterTheSessionEndedTellsNothingMore() {
+        (GameSession target, BlockingCollection<(byte[] packet, int length)> sentToCaller) = RecallPair();
+        target.UserRecall = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30);
+
+        UserRecallUtil.DropPending(target);
+        var answer = new ByteWriter();
+        answer.WriteByte(4);
+        answer.WriteInt(3);
+        answer.WriteByte(0);
+        new RecallUserHandler().Handle(target, new ByteReader(answer.ToArray(), 0));
+
+        Assert.That(sentToCaller.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void RecallUser_SessionEndAfterTheAnswerTellsNothingMore() {
+        (GameSession target, BlockingCollection<(byte[] packet, int length)> sentToCaller) = RecallPair();
+        target.UserRecall = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30);
+
+        var answer = new ByteWriter();
+        answer.WriteByte(4);
+        answer.WriteInt(3);
+        answer.WriteByte(0);
+        new RecallUserHandler().Handle(target, new ByteReader(answer.ToArray(), 0));
+        UserRecallUtil.DropPending(target);
+
+        Assert.That(target.UserRecall, Is.Null);
+        Assert.That(sentToCaller.Count, Is.EqualTo(1));
+        (byte[] packet, int length) = sentToCaller.Take();
+        Assert.That(packet.AsSpan(0, length).ToArray(), Is.EqualTo(RecallUserPacket.Fail("A", RecallUserPacket.FAIL_REJECT).ToArray()));
+    }
+
+    [Test]
+    public void RecallUser_TakeAnsweredLeavesAnInviteWithAnotherId() {
+        GameSession target = SessionOf(AdminPermissions.None);
+        var pending = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30);
+        target.UserRecall = pending;
+
+        Assert.That(UserRecallUtil.TakeAnswered(target, 4), Is.Null);
+        Assert.That(target.UserRecall, Is.SameAs(pending));
+        Assert.That(UserRecallUtil.TakeAnswered(target, 3), Is.SameAs(pending));
+        Assert.That(target.UserRecall, Is.Null);
+    }
+
+    // Two threads, one invite: over many rounds exactly one of the two takes it.
+    [Test]
+    public void RecallUser_AnswerAndSessionEndTakeTheInviteOnce() {
+        GameSession target = SessionOf(AdminPermissions.None);
+        for (int round = 0; round < 500; round++) {
+            target.UserRecall = new PendingUserRecall(3, 9, "Gm", 2000001, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30);
+            int taken = 0;
+            System.Threading.Tasks.Parallel.Invoke(
+                () => { if (UserRecallUtil.TakeAnswered(target, 3) != null) System.Threading.Interlocked.Increment(ref taken); },
+                () => { if (UserRecallUtil.TakeOpen(target) != null) System.Threading.Interlocked.Increment(ref taken); });
+            Assert.That(taken, Is.EqualTo(1));
+        }
+    }
+
+    // The NPC control window reads 0x0087 kind 7 as an AI file and opens a window for it, and the server
+    // cannot see it close: after an NPC pick the guide lines are not sent back.
+    [Test]
+    public void Guide_IsNotSentBackAfterAnNpcPick() {
+        GameSession sender = SessionOf(AdminPermissions.GameMaster);
+        BlockingCollection<(byte[] packet, int length)> sent = SendQueueOf(sender);
+
+        var pick = new ByteWriter();
+        pick.WriteByte(4);
+        pick.WriteInt(77);
+        pick.WriteByte(GmNpcControlRequest.Select);
+        new SetDebugModeHandler().Handle(sender, new ByteReader(pick.ToArray(), 0));
+        Assert.That(sender.NpcControlPicked, Is.True);
+
+        var writer = new ByteWriter();
+        writer.WriteByte(7);
+        writer.WriteInt(1);
+        writer.WriteUnicodeString("/a");
+        writer.WriteUnicodeString("");
+        new SetDebugModeHandler().Handle(sender, new ByteReader(writer.ToArray(), 0));
+
+        Assert.That(sent.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Guide_OtherNpcControlButtonsDoNotStopTheGuide() {
+        GameSession sender = SessionOf(AdminPermissions.GameMaster);
+        var stop = new ByteWriter();
+        stop.WriteByte(4);
+        stop.WriteInt(77);
+        stop.WriteByte(GmNpcControlRequest.StopSkill);
+        new SetDebugModeHandler().Handle(sender, new ByteReader(stop.ToArray(), 0));
+        Assert.That(sender.NpcControlPicked, Is.False);
+    }
+
+    [Test]
+    public void Guide_LimitsAreInclusive() {
+        var full = new ByteWriter();
+        full.WriteInt(GmGuideRequest.MaxLines);
+        for (int i = 0; i < GmGuideRequest.MaxLines; i++) {
+            full.WriteUnicodeString(new string('c', GmGuideRequest.MaxLength));
+            full.WriteUnicodeString(new string('a', GmGuideRequest.MaxLength));
+        }
+        Assert.That(GmGuideRequest.Read(new ByteReader(full.ToArray(), 0))?.Count, Is.EqualTo(GmGuideRequest.MaxLines));
+
+        var longArgument = new ByteWriter();
+        longArgument.WriteInt(1);
+        longArgument.WriteUnicodeString("/a");
+        longArgument.WriteUnicodeString(new string('a', GmGuideRequest.MaxLength + 1));
+        Assert.That(GmGuideRequest.Read(new ByteReader(longArgument.ToArray(), 0)), Is.Null);
+    }
+
+    private sealed class StubWorld : Maple2.Server.World.Service.World.WorldClient {
+        public int Error;
+        public int Calls;
+
+        public override global::Maple2.PlayerWarpResponse PlayerWarp(global::Maple2.PlayerWarpRequest request, Grpc.Core.CallOptions options) {
+            Calls++;
+            return new global::Maple2.PlayerWarpResponse { Error = Error };
+        }
+    }
+
+    // GoToPlayer says false when nothing was started, so the recall answer can tell the caller "cannot move".
+    [Test]
+    public void GoToPlayer_IsFalseWithoutAFieldOrWhenTheWorldRefuses() {
+        GameSession session = SessionOf(AdminPermissions.None);
+        var world = new StubWorld { Error = 1 };
+        typeof(GameSession).GetField("<World>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, world);
+        var info = (PlayerInfo) RuntimeHelpers.GetUninitializedObject(typeof(PlayerInfo));
+
+        Assert.That(PlayerWarpUtil.GoToPlayer(session, info), Is.False);
+        Assert.That(world.Calls, Is.EqualTo(0));
+
+        session.Field = (FieldManager) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager));
+        Assert.That(PlayerWarpUtil.GoToPlayer(session, info), Is.False);
+        Assert.That(world.Calls, Is.EqualTo(1));
+    }
 }

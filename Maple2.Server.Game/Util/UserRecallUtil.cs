@@ -52,10 +52,33 @@ public static class UserRecallUtil {
     // The invited player's session ends (log off or a channel change) before the answer: the caller is told
     // "not found" instead of hearing nothing.
     public static void DropPending(GameSession target) {
-        PendingUserRecall? pending = target.UserRecall;
-        target.UserRecall = null;
-        if (PendingUserRecall.IsOpen(pending, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
-            TellCaller(target, target.PlayerName, pending!.CallerId, false, RecallUserPacket.FAIL_NOT_FOUND);
+        PendingUserRecall? pending = TakeOpen(target);
+        if (pending != null) {
+            TellCaller(target, target.PlayerName, pending.CallerId, false, RecallUserPacket.FAIL_NOT_FOUND);
+        }
+    }
+
+    // The answer and the end of the session can run on different threads. Each takes the invite out with one
+    // test-and-clear under the invite lock, so only one of them gets it and the caller is told once.
+
+    // The pending invite if the answer `inviteId` is for it and in time; it is then no longer pending.
+    public static PendingUserRecall? TakeAnswered(GameSession target, int inviteId) {
+        lock (InviteLock) {
+            PendingUserRecall? pending = target.UserRecall;
+            if (!PendingUserRecall.Matches(pending, inviteId, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+                return null;
+            }
+            target.UserRecall = null;
+            return pending;
+        }
+    }
+
+    // Clears the pending invite; returns it if its caller still waits for an answer.
+    public static PendingUserRecall? TakeOpen(GameSession target) {
+        lock (InviteLock) {
+            PendingUserRecall? pending = target.UserRecall;
+            target.UserRecall = null;
+            return PendingUserRecall.IsOpen(pending, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) ? pending : null;
         }
     }
 

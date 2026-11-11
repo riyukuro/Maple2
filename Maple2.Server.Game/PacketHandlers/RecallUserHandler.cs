@@ -40,21 +40,21 @@ public class RecallUserHandler : FieldPacketHandler {
         int inviteId = packet.ReadInt();
         bool accept = packet.ReadByte() != 0;
 
-        PendingUserRecall? recall = session.UserRecall;
-        if (!PendingUserRecall.Matches(recall, inviteId, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+        // One test-and-clear: the end of the session on another thread cannot answer the same invite too.
+        PendingUserRecall? recall = UserRecallUtil.TakeAnswered(session, inviteId);
+        if (recall == null) {
             return;
         }
-        session.UserRecall = null;
         string name = session.PlayerName;
 
         if (!accept) {
-            UserRecallUtil.TellCaller(session, name, recall!.CallerId, false, RecallUserPacket.FAIL_REJECT);
+            UserRecallUtil.TellCaller(session, name, recall.CallerId, false, RecallUserPacket.FAIL_REJECT);
             return;
         }
 
         // The caller must still be on the map the invite was sent from, and the player in a state to leave.
         if (!UserRecallUtil.CanBeMoved(session.Player.IsDead, session.Field is DungeonFieldManager)
-            || !session.PlayerInfo.GetOrFetch(recall!.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
+            || !session.PlayerInfo.GetOrFetch(recall.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
             || !PlayerWarpUtil.GoToPlayer(session, callerInfo)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
             UserRecallUtil.TellCaller(session, name, recall.CallerId, false, RecallUserPacket.FAIL_CANNOT_MOVE);

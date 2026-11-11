@@ -68,6 +68,10 @@ public class SetDebugModeHandler : FieldPacketHandler {
 
     private void HandleNpcControl(GameSession session, IByteReader packet) {
         GmNpcControlRequest request = GmNpcControlRequest.Read(packet);
+        if (request.Command == GmNpcControlRequest.Select) {
+            // The client opened its NPC control window before it sent this (camera.cpp:1064), found or not.
+            session.NpcControlPicked = true;
+        }
         if (session.Field == null) {
             return;
         }
@@ -140,6 +144,15 @@ public class SetDebugModeHandler : FieldPacketHandler {
     private void HandleGuide(GameSession session, IByteReader packet) {
         List<(string Command, string Argument)>? lines = GmGuideRequest.Read(packet);
         if (lines == null) {
+            return;
+        }
+
+        // Every open window of the client is handed every packet (networkservice.cpp:719, uiservice.cpp:1386),
+        // and the NPC control window reads 0x0087 kind 7 as an AI file name and an id and opens an AI debug
+        // window for it (uinpccontroldialog.cpp:233). The server cannot see that window close, so after an NPC
+        // pick the guide lines are not sent back for the rest of the session.
+        if (session.NpcControlPicked) {
+            Logger.Information("SetDebugMode: {Count} guide command lines from account {AccountId} not sent back, its NPC control window may be open", lines.Count, session.AccountId);
             return;
         }
 
