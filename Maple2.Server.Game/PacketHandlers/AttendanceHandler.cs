@@ -134,7 +134,7 @@ public class AttendanceHandler : FieldPacketHandler {
 
     private void HandleEarlyParticipation(GameSession session, IByteReader packet) {
         int eventId = packet.ReadInt();
-        // packet.ReadLong();
+        packet.ReadLong(); // uid of the pay-attend coupon item when the box's coupon checkbox is ticked, else 0
         GameEvent? gameEvent = session.FindEvent(eventId);
         if (gameEvent?.Metadata.Data is not AttendGift attendGift) {
             return;
