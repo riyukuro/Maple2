@@ -270,6 +270,7 @@ public class BeautyHandler : FieldPacketHandler {
     private void HandleRandomHair(GameSession session, IByteReader packet) {
         int shopId = packet.ReadInt();
         bool useVoucher = packet.ReadBool();
+        packet.ReadLong(); // the long the shop-open packet carried after its two flag bytes (UIBeautyShopDialog m_2a0), sent back unchanged
 
         if (session.BeautyShop == null || session.BeautyShop.Id != shopId) {
             return;
