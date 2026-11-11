@@ -849,6 +849,11 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new MasteryDifferentialFactorTable(results);
     }
 
+    // One row of table/guildevent.xml: the event id and the map its entry (Guild 100) goes to.
+    public static GuildTable.Event MapGuildEvent(int id, Maple2.File.Parser.Xml.Table.GuildEvent guildEvent) {
+        return new GuildTable.Event(Id: id, MapId: guildEvent.mapCode);
+    }
+
     // One row of table/guildbuff.xml. duration and cooltime are minutes, as the client reads them.
     public static GuildTable.Buff MapGuildBuff(GuildBuff buff) {
         return new GuildTable.Buff(
@@ -929,7 +934,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
         var guildEvents = new Dictionary<int, GuildTable.Event>();
         foreach ((int id, Maple2.File.Parser.Xml.Table.GuildEvent guildEvent) in parser.ParseGuildEvent()) {
-            guildEvents[id] = new GuildTable.Event(Id: id, MapId: guildEvent.mapCode);
+            guildEvents[id] = MapGuildEvent(id, guildEvent);
         }
 
         return new GuildTable(
