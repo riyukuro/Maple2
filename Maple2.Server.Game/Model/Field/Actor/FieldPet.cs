@@ -106,7 +106,7 @@ public sealed class FieldPet : FieldNpc {
             return MovementState.TryStandby(null, true);
         }
 
-        switch (PetFollow.Decide(Position, owner.Position, out Vector3 target)) {
+        switch (PetFollow.Decide(Position, owner.Position, Metadata.Distance, out Vector3 target)) {
             case PetFollow.Action.Warp:
                 followWalk = null;
                 WarpTo(target);

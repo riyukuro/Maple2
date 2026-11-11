@@ -1,4 +1,8 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
@@ -45,6 +49,52 @@ public class PetFollowTests {
     public void AnotherFloorWarpsThePet() {
         Vector3 pet = Owner + new Vector3(100, 0, -(PetFollow.WarpHeight + 1));
         Assert.That(PetFollow.Decide(pet, Owner, out _), Is.EqualTo(PetFollow.Action.Warp));
+    }
+
+    // petproperty rows give warpDistance/traceDistance 3000/300, 1200/200 or 1200/300; a row without them takes
+    // the fallback constants, and a warp under the trace distance is raised to it.
+    [TestCase(3000f, 300f, 300f, 3000f)]
+    [TestCase(1200f, 200f, 200f, 1200f)]
+    [TestCase(1200f, 300f, 300f, 1200f)]
+    [TestCase(0f, 0f, PetFollow.FollowDistance, PetFollow.WarpDistance)]
+    [TestCase(-1f, float.NaN, PetFollow.FollowDistance, PetFollow.WarpDistance)]
+    [TestCase(100f, 300f, 300f, 300f)]
+    public void RowDistances(float warp, float trace, float follow, float expectedWarp) {
+        (float Follow, float Warp) distances = PetFollow.Distances(new PetMetadataDistance(warp, trace, 0));
+        Assert.Multiple(() => {
+            Assert.That(distances.Follow, Is.EqualTo(follow));
+            Assert.That(distances.Warp, Is.EqualTo(expectedWarp));
+        });
+    }
+
+    [Test]
+    public void NoRowTakesTheFallback() {
+        Assert.That(PetFollow.Distances(null), Is.EqualTo((PetFollow.FollowDistance, PetFollow.WarpDistance)));
+    }
+
+    // A trace distance of 200: 250 away walks (the fallback 300 would stay), and the walk ends inside 200.
+    [Test]
+    public void RowTraceDistanceStartsTheWalk() {
+        var row = new PetMetadataDistance(1200, 200, 0);
+        Vector3 pet = Owner + new Vector3(250, 0, 0);
+        Assert.Multiple(() => {
+            Assert.That(PetFollow.Decide(pet, Owner, out _), Is.EqualTo(PetFollow.Action.Stay));
+            Assert.That(PetFollow.Decide(pet, Owner, row, out Vector3 target), Is.EqualTo(PetFollow.Action.Walk));
+            Assert.That(Vector3.Distance(target, Owner), Is.LessThan(200f));
+            Assert.That(PetFollow.Decide(target, Owner, row, out _), Is.EqualTo(PetFollow.Action.Stay));
+        });
+    }
+
+    // A warp distance of 1200 warps a pet 1300 away; one of 3000 walks it from 2000 (the fallback 1500 warps).
+    [Test]
+    public void RowWarpDistance() {
+        Assert.Multiple(() => {
+            Assert.That(PetFollow.Decide(Owner + new Vector3(0, 1300, 0), Owner, new PetMetadataDistance(1200, 300, 0), out _),
+                Is.EqualTo(PetFollow.Action.Warp));
+            Assert.That(PetFollow.Decide(Owner + new Vector3(0, 2000, 0), Owner, new PetMetadataDistance(3000, 300, 5000), out _),
+                Is.EqualTo(PetFollow.Action.Walk));
+            Assert.That(PetFollow.Decide(Owner + new Vector3(0, 2000, 0), Owner, out _), Is.EqualTo(PetFollow.Action.Warp));
+        });
     }
 
     // The broken goals in the logs had Y = -21474788: a target that far is never walked to.
