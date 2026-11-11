@@ -94,7 +94,7 @@ public partial class TriggerContext {
             return;
         }
 
-        FieldNpc? fieldNpc = Field.Npcs.Values.FirstOrDefault(npc => npc.SpawnPointId == spawnId);
+        FieldNpc? fieldNpc = SpawnPointNpcs(Field.Npcs.Values, Field.Mobs.Values, npc => npc.SpawnPointId, spawnId).FirstOrDefault();
         if (fieldNpc == null) {
             ErrorLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
             return;
@@ -105,12 +105,18 @@ public partial class TriggerContext {
 
     public void RemoveBalloonTalk(int spawnId) {
         DebugLog("[RemoveBalloonTalk] spawnId:{SpawnId}", spawnId);
-        foreach (FieldNpc npc in Field.Npcs.Values) {
-            if (spawnId == 0 || npc.SpawnPointId == spawnId) {
-                Broadcast(CinematicPacket.RemoveBalloonTalk(npc.ObjectId));
-            }
+        IEnumerable<FieldNpc> talkers = spawnId == 0
+            ? Field.Npcs.Values.Concat(Field.Mobs.Values)
+            : SpawnPointNpcs(Field.Npcs.Values, Field.Mobs.Values, npc => npc.SpawnPointId, spawnId);
+        foreach (FieldNpc npc in talkers) {
+            Broadcast(CinematicPacket.RemoveBalloonTalk(npc.ObjectId));
         }
     }
+
+    // The npcs and then the monsters of a spawn point: a balloon talk goes to either (the Colosseum's round boss
+    // is a monster).
+    public static IEnumerable<T> SpawnPointNpcs<T>(IEnumerable<T> npcs, IEnumerable<T> mobs, Func<T, int> spawnPointId, int spawnId) =>
+        npcs.Concat(mobs).Where(npc => spawnPointId(npc) == spawnId);
 
     public void ShowCaption(
         string type,
