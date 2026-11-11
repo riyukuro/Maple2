@@ -1277,8 +1277,19 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Send(GuildPacket.Error(error));
     }
 
+    // Guild 116 (CGuildManager::SendGuildMode116, guildmanager.cpp:1444): no body; the guild's vs-game
+    // ticket is withdrawn. The client sends it only while its ticket flag is set, and the server never sets
+    // it (115 is refused). The answer puts the flag back to the server's state: no ticket, without a line.
     private void HandleStartGuildEvent(GameSession session) {
+        if (session.Guild.Guild == null) {
+            return;
+        }
+        if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.StartMiniGame)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
+            return;
+        }
 
+        session.Send(GuildPacket.VsGameTicket(registered: false, notify: false));
     }
 
     private void HandleJoinGuildEvent(GameSession session) {

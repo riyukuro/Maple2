@@ -86,6 +86,7 @@ public static class GuildPacket {
         StorageGift = 109,
         StorageHistory = 112,
         Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
+        VsGameTicket = 118,
         // 114, 115, 116, 119, 120
     }
 
@@ -823,6 +824,17 @@ public static class GuildPacket {
         if (result == GuildError.none) {
             pWriter.WriteUnicodeString(receiver);
         }
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketVsGameTicket (0x76, guildmanager.cpp:2656): whether the guild holds a vs-game
+    // ticket, and whether the client prints the registered / unregistered line.
+    public static ByteWriter VsGameTicket(bool registered, bool notify) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.VsGameTicket);
+        pWriter.WriteBool(registered);
+        pWriter.WriteBool(notify);
 
         return pWriter;
     }

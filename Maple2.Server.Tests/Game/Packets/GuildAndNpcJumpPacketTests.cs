@@ -213,6 +213,21 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::OnPacketVsGameTicket (0x76): the ticket flag, then the notify flag.
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void VsGameTicket_IsMode118WithTwoBools(bool registered, bool notify) {
+        ByteWriter writer = GuildPacket.VsGameTicket(registered, notify);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(118));
+        Assert.That(reader.ReadBool(), Is.EqualTo(registered));
+        Assert.That(reader.ReadBool(), Is.EqualTo(notify));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
     [Test]
     public void StorageHistory_IsMode112WithZeroRows() {
