@@ -10,6 +10,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -19,7 +20,7 @@ public class HomeActionHandler : FieldPacketHandler {
     private enum Command : byte {
         Smite = 1,
         Kick = 2,
-        PopupMenu3 = 3,
+        Revive = 3,
         Survey = 5,
         ChangePortalSettings = 6,
         UpdateBallCoord = 7,
@@ -49,9 +50,8 @@ public class HomeActionHandler : FieldPacketHandler {
                 break;
             case Command.Smite:
             case Command.Kick:
-            case Command.PopupMenu3:
-                // Not handled: the character name picked in the player popup menu.
-                Logger.Debug("HomeAction {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
+            case Command.Revive:
+                HandleVisitor(session, command, packet);
                 break;
             case Command.Quiz:
                 HandleQuiz(session, packet);
@@ -60,6 +60,30 @@ public class HomeActionHandler : FieldPacketHandler {
                 // Not handled: a constant 1 and the six values of the PvP control dialog.
                 Logger.Debug("HomeAction {Command} from {CharacterId}: {Type} {A} {B} {C} {D} {E} {F}", command, session.CharacterId,
                     packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte());
+                break;
+        }
+    }
+
+    // The owner's entries in the player menu: 1 on a living visitor, 3 on a dead one, 2 on either.
+    private static void HandleVisitor(GameSession session, Command command, IByteReader packet) {
+        string name = packet.ReadUnicodeString();
+        if (session.Field is not HomeFieldManager home) {
+            return;
+        }
+
+        bool found = home.TryGetPlayer(name, out FieldPlayer? target);
+        switch (HomeVisitorRules.Pick((byte) command, home.OwnerId == session.AccountId, found,
+                    target?.Value.Character.Id == session.CharacterId, target?.IsDead ?? false)) {
+            case HomeVisitorRules.Action.Kill:
+                target!.ConsumeHp((int) Math.Min(int.MaxValue, target.Stats.Values[BasicAttribute.Health].Current));
+                break;
+            case HomeVisitorRules.Action.Revive:
+                if (target!.Revive(true)) {
+                    target.Tombstone = null;
+                }
+                break;
+            case HomeVisitorRules.Action.Kick:
+                target!.Session.ReturnField();
                 break;
         }
     }
