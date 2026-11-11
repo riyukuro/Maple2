@@ -98,10 +98,20 @@ public class PartyLookup : IDisposable {
             // The search goes with the party: the members are told it stopped first (0x1e), as for a cancel.
             BroadcastDungeonMatch(manager, removed.Kind, false);
         }
+        RemovePartyListing(partyId);
         manager.Dispose(notify);
 
         return PartyError.none;
     });
+
+    // The party's Party Finder listing goes with the party (a disband, or a dungeon match move, rv42 MINOR 9); the
+    // listing's removal message is a channel call, made after the step.
+    private void RemovePartyListing(int partyId) {
+        if (partySearchLookup.TryGetByPartyId(partyId, out PartySearchManager? listing)) {
+            long listingId = listing.PartySearch.Id;
+            Defer(() => partySearchLookup.Remove(listingId));
+        }
+    }
 
     // A dungeon match merge or join: the members of from move into to, whose group the queue already counts them
     // in. from goes without a Disband (its members load to in place of it); to's members are told of each mover.
@@ -114,6 +124,7 @@ public class PartyLookup : IDisposable {
             return PartyError.s_party_err_not_found;
         }
         DungeonMatch.Remove(from.Party.Id);
+        RemovePartyListing(from.Party.Id);
         to.AddMoved(movers);
         return PartyError.none;
     });
