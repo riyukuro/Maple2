@@ -36,8 +36,8 @@ public class DungeonRecord : IByteSerializable {
         writer.WriteLong(ClearTimestamp);
         writer.WriteInt(TotalClears);
         writer.WriteShort(LifetimeRecord);
-        writer.WriteLong(CooldownTimestamp);
         writer.WriteShort(CurrentRecord);
+        writer.WriteLong(CooldownTimestamp);
         writer.Write<DungeonRecordFlag>(Flag);
     }
 }
