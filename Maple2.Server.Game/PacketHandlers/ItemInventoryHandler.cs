@@ -71,11 +71,12 @@ public class ItemInventoryHandler : FieldPacketHandler {
 
     private void HandleSort(GameSession session, IByteReader packet) {
         var type = packet.Read<InventoryType>();
-        // The client sets this from the confirm box it shows only when the tab holds stackable items
-        // (UIInventoryDialog::OnSortConfirm), so it asks to merge stacks; it does not ask to remove expired items.
-        bool mergeStacks = packet.ReadBool();
+        // The client asks this in a confirm box it shows only when the tab holds expired items
+        // (UIInventoryDialog::OnClickSort counts IsExpired items, OnSortConfirm sends the answer), so it asks to
+        // remove the expired items. The client has no choice for merging, so a sort always merges stacks.
+        bool removeExpired = packet.ReadBool();
 
-        session.Item.Inventory.Sort(type, mergeStacks: mergeStacks);
+        session.Item.Inventory.Sort(type, removeExpired: removeExpired, mergeStacks: true);
     }
 
     private void HandleExpand(GameSession session, IByteReader packet) {

@@ -537,7 +537,7 @@ public class InventoryManager {
             }
 
             if (removeExpired) {
-                IEnumerable<Item> toRemove = items.Where(item => item.IsExpired());
+                List<Item> toRemove = items.Where(item => item.IsExpired()).ToList();
                 foreach (Item item in toRemove) {
                     if (items.Remove(item.Uid, out Item? removed)) {
                         Discard(removed);
