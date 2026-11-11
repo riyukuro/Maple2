@@ -271,12 +271,19 @@ message ClubInfoResponse {
 message MarriageRequest {
   message RemoveMarriage {}
   message RemoveWeddingHall {}
+  message Recall {
+    int64 caller_id = 1;
+    string name = 2;
+    int32 map_id = 3;
+    int64 end_time = 4;
+  }
 
   int64 id = 1;
   int64 receiver_id = 2;
   oneof marriage {
     RemoveMarriage remove_marriage = 3;
     RemoveWeddingHall remove_wedding_hall = 4;
+    Recall recall = 5;
   }
 }
 

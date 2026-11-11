@@ -128,6 +128,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.RecallParty:
                 HandleRecallParty(session, item);
                 break;
+            case ItemFunction.RecallWedding:
+                HandleRecallWedding(session, item);
+                break;
             case ItemFunction.CallAirTaxi:
                 HandleCallAirTaxi(session, packet, item);
                 break;
@@ -667,6 +670,14 @@ public class ItemUseHandler : FieldPacketHandler {
     // UIPartyDialog onPartyRecall: the party window's recall button casts StateRecall, then uses the scroll.
     private void HandleRecallParty(GameSession session, Item item) {
         if (!session.Party.Recall()) {
+            return;
+        }
+
+        session.Item.Inventory.Consume(item.Uid, 1);
+    }
+
+    private void HandleRecallWedding(GameSession session, Item item) {
+        if (!session.Marriage.Recall()) {
             return;
         }
 

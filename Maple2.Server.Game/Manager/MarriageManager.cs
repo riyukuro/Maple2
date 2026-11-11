@@ -175,6 +175,44 @@ public sealed class MarriageManager {
         RemoveMarriage(false);
     }
 
+    // WeddingManager::IsInProgress: the wedding recall works while married, also during a divorce.
+    public static bool CanRecall(MaritalStatus status) {
+        return status is MaritalStatus.Married or MaritalStatus.ConsensualDivorce or MaritalStatus.ForceDivorce;
+    }
+
+    // How long the partner's recall notice stays open. The server pack has no keep-time row for it.
+    private const long RecallKeepSeconds = 300;
+
+    /// <summary>
+    /// The wedding recall scroll (RecallWedding): offers the recall to the partner, who must be online
+    /// (WeddingManager::ApplyPartner). False when the field forbids recalls or the partner cannot get it.
+    /// </summary>
+    public bool Recall() {
+        if (session.Field == null || !session.Field.Metadata.CashCall.Recall || !CanRecall(Marriage.Status)) {
+            return false;
+        }
+        long partnerId = Partner.CharacterId;
+        if (partnerId == 0 || !session.PlayerInfo.GetOrFetch(partnerId, out PlayerInfo? partnerInfo) || !partnerInfo.Online) {
+            return false;
+        }
+
+        try {
+            MarriageResponse response = session.World.Marriage(new MarriageRequest {
+                ReceiverId = partnerId,
+                Recall = new MarriageRequest.Types.Recall {
+                    CallerId = session.CharacterId,
+                    Name = session.PlayerName,
+                    MapId = session.Field.MapId,
+                    EndTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + RecallKeepSeconds,
+                },
+            });
+            return response.Error == 0;
+        } catch (Grpc.Core.RpcException ex) {
+            logger.Error(ex, "Wedding recall by {CharacterId} failed", session.CharacterId);
+            return false;
+        }
+    }
+
     public void CheckMarriageHallExpiration() {
         if (WeddingHall.Id == 0 || WeddingHall.CeremonyTime.FromEpochSeconds().AddHours(1) > DateTime.Now) {
             return;

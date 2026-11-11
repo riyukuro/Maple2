@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
@@ -40,6 +41,11 @@ public class RecallScrollHandler : FieldPacketHandler {
         switch ((RecallScrollType) type) {
             case RecallScrollType.Party:
                 if (session.Party.Party?.Members.ContainsKey(recall.CallerId) != true) {
+                    return;
+                }
+                break;
+            case RecallScrollType.Wedding:
+                if (!MarriageManager.CanRecall(session.Marriage.Marriage.Status) || session.Marriage.Partner.CharacterId != recall.CallerId) {
                     return;
                 }
                 break;
