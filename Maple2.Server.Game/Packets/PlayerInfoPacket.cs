@@ -94,16 +94,19 @@ public static class PlayerInfoPacket {
                 buffer.WriteLong(fieldPlayer.Stats.Values[(BasicAttribute) j][i]);
             }
         }
-        for (int i = 0; i < Stats.BASIC_TOTAL; i++) {
-            buffer.WriteFloat(fieldPlayer.Stats.Values[(BasicAttribute) i].Rate);
-        }
-
+        // Client: CPCData::Read (commonfiles/pcdata.cpp:101): after the 3 x 35 longs an int pair count, then per pair
+        // a short special attribute and an int value. Only the non-zero ones are listed.
+        var specials = new List<(short Type, int Value)>();
         for (int i = 0; i < Stats.SPECIAL_TOTAL; i++) {
-            buffer.WriteFloat(fieldPlayer.Stats.Values[(SpecialAttribute) i].Rate);
+            long total = fieldPlayer.Stats.Values[(SpecialAttribute) i].Total;
+            if (total != 0) {
+                specials.Add(((short) i, (int) Math.Clamp(total, int.MinValue, int.MaxValue)));
+            }
         }
-
-        for (int i = 0; i < Stats.SPECIAL_TOTAL; i++) {
-            buffer.WriteFloat(fieldPlayer.Stats.Values[(SpecialAttribute) i].Base);
+        buffer.WriteInt(specials.Count);
+        foreach ((short type, int value) in specials) {
+            buffer.WriteShort(type);
+            buffer.WriteInt(value);
         }
         #endregion
 

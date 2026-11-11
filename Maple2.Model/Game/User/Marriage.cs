@@ -83,9 +83,11 @@ public class MarriageInfo : IByteSerializable {
     public string Partner1Name { get; set; } = string.Empty;
     public string Partner2Name { get; set; } = string.Empty;
     public void WriteTo(IByteWriter writer) {
-        writer.Write<MaritalStatus>(Status);
-        writer.WriteLong(CreationTime);
+        // Client: CPCData::Read (commonfiles/pcdata.cpp:142): short status, 2 names, long promise time, long marriage time.
+        writer.WriteShort((short) Status);
         writer.WriteUnicodeString(Partner1Name);
         writer.WriteUnicodeString(Partner2Name);
+        writer.WriteLong(Status == MaritalStatus.Engaged ? CreationTime : 0);
+        writer.WriteLong(Status == MaritalStatus.Married ? CreationTime : 0);
     }
 }
