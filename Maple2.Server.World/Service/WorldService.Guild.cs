@@ -63,6 +63,8 @@ public partial class WorldService {
                 return Task.FromResult(UpgradeGuildHouse(request.RequestorId, request.UpgradeHouse));
             case GuildRequest.GuildOneofCase.ChangeHouseTheme:
                 return Task.FromResult(ChangeGuildHouseTheme(request.RequestorId, request.ChangeHouseTheme));
+            case GuildRequest.GuildOneofCase.UseBuff:
+                return Task.FromResult(UseGuildBuff(request.RequestorId, request.UseBuff));
             case GuildRequest.GuildOneofCase.TakeMailTurn:
                 return Task.FromResult(TakeGuildMailTurn(request.RequestorId, request.TakeMailTurn));
             case GuildRequest.GuildOneofCase.Donate:
@@ -480,6 +482,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = change.GuildId };
+    }
+
+    private GuildResponse UseGuildBuff(long requestorId, GuildRequest.Types.UseBuff use) {
+        if (!guildLookup.TryGet(use.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.UseBuff(requestorId, use.BuffId);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = use.GuildId };
     }
 
     private GuildResponse TakeGuildMailTurn(long requestorId, GuildRequest.Types.TakeMailTurn take) {

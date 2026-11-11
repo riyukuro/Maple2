@@ -267,6 +267,11 @@ message GuildRequest {
     int64 guild_id = 1;
     int32 buff_id = 2;
   }
+  // Guild 90: the master uses a guild skill; the fund pays its cost.
+  message UseBuff {
+    int64 guild_id = 1;
+    int32 buff_id = 2;
+  }
   // Guild 101: the master raises the guild house by one level, with the theme chosen for it.
   message UpgradeHouse {
     int64 guild_id = 1;
@@ -327,6 +332,7 @@ message GuildRequest {
     UpgradeHouse upgrade_house = 23;
     ChangeHouseTheme change_house_theme = 24;
     TakeMailTurn take_mail_turn = 25;
+    UseBuff use_buff = 26;
   }
 }
 

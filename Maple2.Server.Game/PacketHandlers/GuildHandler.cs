@@ -947,8 +947,33 @@ public class GuildHandler : PacketHandler<GameSession> {
             .MinBy(entry => entry.Value.Experience > experience).Value.Capacity;
     }
 
+    // CGuildManager::FUN_1413b8fe0: the id of the guild skill the master uses. The World server checks and
+    // pays; every member gets the new fund (51) and the skill (54), the master the answer (90).
     private void HandleUseBuff(GameSession session, IByteReader packet) {
         int buffId = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                UseBuff = new GuildRequest.Types.UseBuff {
+                    GuildId = session.Guild.Id,
+                    BuffId = buffId,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Send(GuildPacket.UseBuff(buffId));
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to use guild skill");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUsePersonalBuff(GameSession session, IByteReader packet) {

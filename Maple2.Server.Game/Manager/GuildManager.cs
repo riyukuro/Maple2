@@ -4,6 +4,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Sync;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util.Sync;
@@ -262,6 +263,35 @@ public class GuildManager : IDisposable {
 
         session.Send(GuildPacket.NotifyUpdateLeader(oldLeader.Name, newLeader.Name));
         return true;
+    }
+
+    // Guild 54 (CGuildManager::FUN_1413c3170): the client replaces the skill it holds with the one sent, whose
+    // time is the time of use, and prints s_guild_notify_use_skill_user. The member gets the skill's effect
+    // for its duration, on the thread of the field the member is in.
+    public bool UseBuff(string requestorName, GuildBuff buff, int effectId, short effectLevel, int durationSeconds) {
+        if (Guild == null) {
+            return false;
+        }
+
+        for (int i = 0; i < Guild.Buffs.Count; i++) {
+            if (Guild.Buffs[i].Id != buff.Id) {
+                continue;
+            }
+
+            Guild.Buffs[i] = buff;
+            session.Send(GuildPacket.NotifyUseBuff(requestorName, buff));
+            FieldManager? field = session.Field;
+            if (field != null && effectId > 0) {
+                field.Scheduler.Schedule(() => {
+                    if (session.Field == field) {
+                        session.Player.Buffs.AddBuff(session.Player, session.Player, effectId, effectLevel, field.FieldTick,
+                            durationMs: (int) Math.Min(durationSeconds * 1000L, int.MaxValue));
+                    }
+                });
+            }
+            return true;
+        }
+        return false;
     }
 
     // Guild 55 (CGuildManager::FUN_1413c3460): the client replaces the skill it holds with the one sent and

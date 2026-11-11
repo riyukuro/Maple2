@@ -128,6 +128,24 @@ public class GuildApplicationRulesTests {
     }
 
     [Test]
+    public void UseSkill_Rules() {
+        var row = new GuildTable.Buff(Id: 1, Level: 1, RequireLevel: 3, Cost: 500, UpgradeCost: 0, Duration: 60);
+
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUseSkill(false, 1, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_no_master));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, null, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_unknown), "no row of the level");
+        Assert.That(GuildRules.CheckUseSkill(true, 10001, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_unknown), "personal skill");
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row, 2, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 499, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row with { Cost = -1 }, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        // Paid from the event fund, which the server does not keep.
+        Assert.That(GuildRules.CheckUseSkill(true, 1001, row, 3, 500, 0, 1000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        // 60 minutes from the time of use.
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 1000, 4599), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 1000, 4600), Is.EqualTo(GuildError.none));
+    }
+
+    [Test]
     public void Mail_GoesToEveryMemberButTheSender() {
         Assert.That(GuildRules.MailReceivers([5, 3, 9], 3), Is.EqualTo(new long[] { 5, 9 }));
         Assert.That(GuildRules.MailReceivers([3], 3), Is.Empty);

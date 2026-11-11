@@ -222,6 +222,35 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // Guild 90 (CGuildManager::FUN_1413b8fe0), in the client's order: the master asks, the row of the skill's
+    // level must exist, its requireLevel must not be above the guild level, the fund pays its cost, and the
+    // skill is not running (CGuildSkill::IsUsable: the time of use plus the duration is over). The skills
+    // above 10000 are the personal ones (Guild 91) and are refused here.
+    public static GuildError CheckUseSkill(bool isMaster, int skillId, GuildTable.Buff? row, int guildLevel, int funds,
+                                           long useTime, long now) {
+        if (!isMaster) {
+            return GuildError.s_guild_err_no_master;
+        }
+        if (row == null || skillId > 10000) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (row.RequireLevel > guildLevel) {
+            return GuildError.s_guild_err_not_enough_guild_level;
+        }
+        if (row.Cost < 0 || row.Cost > (IsEventFundSkill(skillId) ? 0 : funds)) {
+            return GuildError.s_guild_err_not_enough_guild_fund;
+        }
+        if (IsSkillRunning(row, useTime, now)) {
+            return GuildError.s_guild_err_cannot_use_skill;
+        }
+        return GuildError.none;
+    }
+
+    // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds.
+    public static bool IsSkillRunning(GuildTable.Buff row, long useTime, long now) {
+        return useTime != 0 && useTime + row.Duration * 60L > now;
+    }
+
     // The master keeps rank 0 until the master changes.
     public static bool CanChangeRankOf(byte memberRank) {
         return memberRank != MasterRank;

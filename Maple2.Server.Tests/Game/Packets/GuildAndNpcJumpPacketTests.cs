@@ -85,6 +85,33 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c3170 (0x36): the name, then CGuildSkill::Read (id, level, time of use).
+    [Test]
+    public void NotifyUseBuff_IsMode54WithNameAndSkill() {
+        ByteWriter writer = GuildPacket.NotifyUseBuff("Master", new GuildBuff(2, 3, 0x0102030405060708));
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(54));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Master"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x0102030405060708));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // CGuildManager::FUN_1413bf340 (0x5a): the skill id.
+    [Test]
+    public void UseBuff_IsMode90WithSkillId() {
+        ByteWriter writer = GuildPacket.UseBuff(2);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(90));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     [Test]
     public void SendMail_IsMode71WithNoBody() {
         ByteWriter writer = GuildPacket.SendMail();

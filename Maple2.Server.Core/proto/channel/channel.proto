@@ -147,6 +147,16 @@ message GuildRequest {
     int32 level = 3;
     int64 expiry_time = 4;
   }
+  // Guild 54: the skill with its time of use, and the effect it gives for the given seconds.
+  message UseBuff {
+    string requestor_name = 1;
+    int32 id = 2;
+    int32 level = 3;
+    int64 use_time = 4;
+    int32 effect_id = 5;
+    int32 effect_level = 6;
+    int32 duration = 7;
+  }
   // Guild 57: the guild house at its new level and theme.
   message UpdateHouse {
     string requestor_name = 1;
@@ -188,6 +198,7 @@ message GuildRequest {
     UpgradeBuff upgrade_buff = 19;
     UpgradeNpc upgrade_npc = 20;
     UpdateHouse update_house = 21;
+    UseBuff use_buff = 22;
   }
 }
 

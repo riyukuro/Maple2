@@ -365,6 +365,74 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Guild 90: the fund pays the cost of the skill at its level and the skill gets the time of use, which
+    // the client counts the duration from. Saved before the answer; a failed save undoes both values.
+    public GuildError UseBuff(long requestorId, int buffId) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        GuildBuff used;
+        GuildTable.Buff? row;
+        int guildExp;
+        int guildFund;
+        lock (guildLock) {
+            int index = -1;
+            for (int i = 0; i < Guild.Buffs.Count; i++) {
+                if (Guild.Buffs[i].Id == buffId) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0 || !TableMetadata.GuildTable.Buffs.TryGetValue(buffId, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)) {
+                return GuildError.s_guild_err_unknown;
+            }
+
+            GuildBuff buff = Guild.Buffs[index];
+            levels.TryGetValue((short) buff.Level, out row);
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            GuildError error = GuildRules.CheckUseSkill(requestorId == Guild.LeaderCharacterId, buffId, row,
+                GuildProperty().Level, Guild.Funds, buff.ExpiryTime, now);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            int oldFunds = Guild.Funds;
+            Guild.Funds -= row!.Cost;
+            used = buff with { ExpiryTime = now };
+            Guild.Buffs[index] = used;
+            if (!TrySave()) {
+                Guild.Funds = oldFunds;
+                Guild.Buffs[index] = buff;
+                return GuildError.s_guild_err_unknown;
+            }
+            guildExp = Guild.Experience;
+            guildFund = Guild.Funds;
+        }
+
+        // No contributor: the members get the new fund (51) without a contribution line, then the skill (54).
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = 0,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
+            },
+        });
+        Broadcast(new GuildRequest {
+            UseBuff = new GuildRequest.Types.UseBuff {
+                RequestorName = requestor.Name,
+                Id = used.Id,
+                Level = used.Level,
+                UseTime = used.ExpiryTime,
+                EffectId = row.Id,
+                EffectLevel = row.Level,
+                Duration = row.Duration * 60,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     // Guild 71. The server's own limit (GuildRules.MailCooldownSeconds), kept here so that it holds on every
     // channel; the mail right is checked here too. The turn is taken before the channel writes the mails.
     public GuildError TakeMailTurn(long requestorId) {
