@@ -1842,7 +1842,7 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
 
                     b.HasOne("Maple2.Database.Model.BossClear", null)
-                        .WithMany()
+                        .WithMany("Members")
                         .HasForeignKey("ClearId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2124,6 +2124,11 @@ namespace Maple2.Server.World.Migrations
             modelBuilder.Entity("Maple2.Database.Model.Account", b =>
                 {
                     b.Navigation("Characters");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.BossClear", b =>
+                {
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.Club", b =>

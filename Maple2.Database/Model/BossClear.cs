@@ -13,6 +13,8 @@ internal class BossClear {
     public long LeaderId { get; set; }
     public int Seconds { get; set; }
     public DateTime ClearTime { get; set; }
+    // Added with the clear, so the clear and its members are saved together.
+    public List<BossClearMember>? Members { get; set; }
 
     public static void Configure(EntityTypeBuilder<BossClear> builder) {
         builder.ToTable("boss-clear");
@@ -32,7 +34,7 @@ internal class BossClearMember {
         builder.ToTable("boss-clear-member");
         builder.HasKey(member => new { member.ClearId, member.CharacterId });
         builder.HasOne<BossClear>()
-            .WithMany()
+            .WithMany(clear => clear.Members)
             .HasForeignKey(member => member.ClearId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Character>()

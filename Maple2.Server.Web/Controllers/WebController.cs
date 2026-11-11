@@ -290,8 +290,12 @@ public class WebController : ControllerBase {
     #endregion
 
     #region Ranking
+    // The cache key part of a board's search: "all" for the whole board, "name:<name>" for a search (so a search
+    // for the name "all" is not the whole board).
+    private static string SearchKey(string? userName) => string.IsNullOrEmpty(userName) ? "all" : $"name:{userName}";
+
     private ByteWriter Trophy(string userName) {
-        string cacheKey = $"Trophy_{userName ?? "all"}";
+        string cacheKey = $"Trophy_{SearchKey(userName)}";
 
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             List<TrophyRankInfo> rankInfos = [];
@@ -389,7 +393,7 @@ public class WebController : ControllerBase {
     }
 
     private ByteWriter DarkStream(GameRankingType type, int jobCode, string userName) {
-        string cacheKey = $"DarkStream_{type}_{jobCode}_{userName ?? "all"}";
+        string cacheKey = $"DarkStream_{type}_{jobCode}_{SearchKey(userName)}";
 
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
@@ -419,7 +423,7 @@ public class WebController : ControllerBase {
     }
 
     private ByteWriter Boss(GameRankingType type, int rankingId, string userName) {
-        string cacheKey = $"Boss_{type}_{rankingId}_{userName ?? "all"}";
+        string cacheKey = $"Boss_{type}_{rankingId}_{(type == GameRankingType.BossClearCount ? SearchKey(userName) : "all")}";
 
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();

@@ -146,6 +146,9 @@ public class DungeonFieldManager : FieldManager {
     /// clear count or condition). The Colosseum is left out: its script goes back to its start after each end,
     /// and a new run in the same room ends with its own clear or fail.
     /// </summary>
+    public static bool TakesResult(DungeonState current, DungeonGroupType groupType) =>
+        current == DungeonState.None || groupType == DungeonGroupType.colosseum;
+
     /// <summary>
     /// Whether a clear of the room goes on a boss board: the room has a BossRanking and its group is one whose
     /// board asks for the clears (the ranking dialog's boss boards 7, 8, 9, 0xf and 0x11 list the rooms of
@@ -159,21 +162,24 @@ public class DungeonFieldManager : FieldManager {
     public readonly record struct BossClearPlayer(long CharacterId, int PartyId, long PartyLeaderId);
 
     /// <summary>
-    /// The party of a boss clear: with a room entered by a party, the players of that party in the field and its
-    /// leader; else the room's first user alone, when that user is in the field without a party. Null when nobody
-    /// is left to keep.
+    /// The party of a boss clear: with a room entered by a party, the players of that party in the field, led by
+    /// its leader when the leader is one of them, else by the first of them. When none of them is in the field (the
+    /// party broke up or was left during the run), or the room was entered without a party, the room's first user
+    /// alone, when in the field. Null when nobody is left to keep.
     /// </summary>
     public static (long LeaderId, long[] Members)? BossClearParty(int roomPartyId, long firstCharacterId, IEnumerable<BossClearPlayer> players) {
         BossClearPlayer[] present = players.ToArray();
         if (roomPartyId != 0) {
             BossClearPlayer[] party = present.Where(player => player.PartyId == roomPartyId).ToArray();
-            if (party.Length == 0) {
-                return null;
+            if (party.Length > 0) {
+                long leaderId = party.Any(player => player.CharacterId == party[0].PartyLeaderId)
+                    ? party[0].PartyLeaderId
+                    : party[0].CharacterId;
+                return (leaderId, party.Select(player => player.CharacterId).ToArray());
             }
-            return (party[0].PartyLeaderId, party.Select(player => player.CharacterId).ToArray());
         }
         foreach (BossClearPlayer player in present) {
-            if (player.CharacterId == firstCharacterId && player.PartyId == 0) {
+            if (player.CharacterId == firstCharacterId) {
                 return (player.CharacterId, [player.CharacterId]);
             }
         }
@@ -192,8 +198,11 @@ public class DungeonFieldManager : FieldManager {
                 players.Add(new BossClearPlayer(characterId, party?.Id ?? 0, party?.LeaderCharacterId ?? 0));
             }
         }
-        if (BossClearParty(PartyId, DungeonRoomRecord.FirstCharacterId, players) is not { } clear
-            || !DungeonRoomRecord.TryKeepBossClear()) {
+        if (BossClearParty(PartyId, DungeonRoomRecord.FirstCharacterId, players) is not { } clear) {
+            resultLogger.Debug("Dungeon {DungeonId} boss clear not kept: no player of the room is in the field", DungeonId);
+            return;
+        }
+        if (!DungeonRoomRecord.TryKeepBossClear()) {
             return;
         }
 
@@ -202,9 +211,6 @@ public class DungeonFieldManager : FieldManager {
             DateTime.Now.ToEpochSeconds(), clear.Members);
         resultLogger.Debug("Dungeon {DungeonId} boss clear {ClearId} kept for {Count} members", DungeonId, clearId, clear.Members.Length);
     }
-
-    public static bool TakesResult(DungeonState current, DungeonGroupType groupType) =>
-        current == DungeonState.None || groupType == DungeonGroupType.colosseum;
 
     /// <summary>PlayTime missions of every player of the room, scored at the clear. Returns the changed missions.</summary>
     public static Dictionary<long, List<DungeonMission>> ScorePlayTime(DungeonRoomRecord room, long seconds) {

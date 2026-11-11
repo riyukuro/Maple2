@@ -20,28 +20,17 @@ public partial class GameStorage {
                 return 0;
             }
 
-            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            // The clear and its members go in one SaveChanges (one transaction), so no clear is left without them.
             var clear = new Model.BossClear {
                 RankingId = rankingId,
                 DungeonId = dungeonId,
                 LeaderId = leaderId,
                 Seconds = seconds,
                 ClearTime = clearTime.FromEpochSeconds(),
+                Members = members.Select(characterId => new Model.BossClearMember { CharacterId = characterId }).ToList(),
             };
             Context.BossClear.Add(clear);
             if (!Context.TrySaveChanges()) {
-                return 0;
-            }
-
-            foreach (long characterId in members) {
-                Context.BossClearMember.Add(new Model.BossClearMember {
-                    ClearId = clear.Id,
-                    CharacterId = characterId,
-                });
-            }
-            if (!Context.TrySaveChanges()) {
-                Context.BossClear.Remove(clear);
-                Context.TrySaveChanges();
                 return 0;
             }
             return clear.Id;

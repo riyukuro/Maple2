@@ -177,8 +177,10 @@ public class BossClearStorageTests {
         Assert.That(rows.ConvertAll(row => row.Rank), Is.EqualTo(new[] { 1, 2, 3, 4 }));
     }
 
+    // The in-memory store does not run the boss-clear-member cascade (the migration's FK does on MySQL): this shows
+    // the read side, which joins the members to their characters.
     [Test]
-    public void DeletedCharacter_DropsOut_AndAClearWithNoMemberLeftIsSkipped() {
+    public void DeletedCharacter_NotRead_AndAClearWithNoMemberLeftIsSkipped() {
         long alpha = CreateCharacter("alpha", Job.Knight, accountId: 9);
         long beta = CreateCharacter("beta", Job.Wizard);
         long both = Clear(Board1, alpha, 300, 1_800_000_100, alpha, beta);
