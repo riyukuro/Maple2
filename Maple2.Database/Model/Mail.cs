@@ -50,6 +50,10 @@ internal class Mail {
             },
             ReadTime = other.ReadTime.FromEpochSeconds(),
             ExpiryTime = other.ExpiryTime.FromEpochSeconds(),
+            // A new mail gets its send time here, in the server's local time as ReadTime is. The column default
+            // (CURRENT_TIMESTAMP) is in the database's time zone, UTC in the MySQL container, and reads back with
+            // no kind, so ToEpochSeconds took it as local time and the client showed it off by the UTC offset.
+            SendTime = other.SendTime > 0 ? other.SendTime.FromEpochSeconds() : DateTime.Now,
         };
     }
 
