@@ -17,8 +17,8 @@ public static class DungeonMatchRules {
     // size of a room already made, so a search would be full at 2.
     public static int MaxUsers(DungeonMatchRoom room) => room.MaxUsers;
 
-    // One more searcher fits in a group of this size.
-    public static bool HasSpace(DungeonMatchRoom room, int users) => users + 1 <= MaxUsers(room);
+    // This many more searchers fit in a group of this size: the joined group is at most the room's maximum.
+    public static bool HasSpace(DungeonMatchRoom room, int users, int joining = 1) => users + joining <= MaxUsers(room);
 
     // The group has reached the room's maximum.
     public static bool IsFull(DungeonMatchRoom room, int users) => users > 0 && users >= MaxUsers(room);

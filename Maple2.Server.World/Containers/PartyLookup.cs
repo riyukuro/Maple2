@@ -100,7 +100,7 @@ public class PartyLookup : IDisposable {
     // A member joined or left a party: a searching party's group takes the new count.
     public void DungeonMatchResize(PartyManager manager) {
         lock (DungeonMatchLock) {
-            DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.Party.Members.Count);
+            DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.OnlineMembers());
             if (result.Outcome != DungeonMatchOutcome.NotSearching) {
                 CompleteDungeonMatch(manager, result);
             }

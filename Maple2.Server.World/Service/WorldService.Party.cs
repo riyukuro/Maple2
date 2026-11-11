@@ -270,7 +270,7 @@ public partial class WorldService {
                 if (manager.Party.Members.Values.Any(member => !member.Info.Online)) {
                     return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_hasOfflineUser };
                 }
-                DungeonMatchResult started = partyLookup.DungeonMatch.Start(manager.Party.Id, kind, rooms, manager.Party.Members.Count);
+                DungeonMatchResult started = partyLookup.DungeonMatch.Start(manager.Party.Id, kind, rooms, manager.OnlineMembers());
                 switch (started.Outcome) {
                     case DungeonMatchOutcome.AlreadySearching:
                         return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
@@ -288,14 +288,14 @@ public partial class WorldService {
                 return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
             }
 
-            DungeonMatchResult? joined = partyLookup.DungeonMatch.Join(kind, rooms);
+            DungeonMatchResult? joined = partyLookup.DungeonMatch.Join(kind, rooms, [requestorId]);
             if (joined != null) {
                 if (!partyLookup.TryGet(joined.Value.PartyId, out manager)) {
                     partyLookup.DungeonMatch.Remove(joined.Value.PartyId);
                 } else {
                     PartyError error = manager.Join(info);
                     if (error != PartyError.none) {
-                        DungeonMatchResult left = partyLookup.DungeonMatch.Leave(manager.Party.Id);
+                        DungeonMatchResult left = partyLookup.DungeonMatch.Leave(manager.Party.Id, [requestorId]);
                         if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
                             partyLookup.CompleteDungeonMatch(manager, joined.Value);
                         } else if (left.Outcome == DungeonMatchOutcome.Stopped) {
@@ -321,7 +321,7 @@ public partial class WorldService {
             if (!partyLookup.TryGet(partyId, out manager)) {
                 return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
             }
-            DungeonMatchResult own = partyLookup.DungeonMatch.Start(partyId, kind, rooms, 1);
+            DungeonMatchResult own = partyLookup.DungeonMatch.Start(partyId, kind, rooms, [requestorId]);
             if (own.Outcome == DungeonMatchOutcome.Stopped) {
                 partyLookup.Disband(partyId);
                 return new PartyResponse();
@@ -342,7 +342,7 @@ public partial class WorldService {
                 return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_isNotChief };
             }
 
-            DungeonMatchResult result = partyLookup.DungeonMatch.Cancel(manager.Party.Id);
+            DungeonMatchResult result = partyLookup.DungeonMatch.Cancel(manager.Party.Id, (byte) cancel.Kind);
             if (result.Outcome == DungeonMatchOutcome.NotSearching) {
                 PartyLookup.BroadcastDungeonMatch(manager, (byte) cancel.Kind, false);
             } else {

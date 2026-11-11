@@ -83,6 +83,9 @@ public class PartyManager : IDisposable {
         }
     }
 
+    // The members who count for a dungeon match search: the online ones.
+    public long[] OnlineMembers() => Party.Members.Values.Where(member => member.Info.Online).Select(member => member.CharacterId).ToArray();
+
     public void FindNewLeader(long characterId) {
         PartyMember? newLeader = Party.Members.Values.FirstOrDefault(m => m.CharacterId != characterId && m.Info.Online);
         if (newLeader == null) {
