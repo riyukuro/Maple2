@@ -13,13 +13,32 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class QuestMapper : TypeMapper<QuestMetadata> {
     private readonly QuestParser parser;
+    private readonly M2dReader? playedReader;
 
-    public QuestMapper(M2dReader xmlReader, string language) {
+    public QuestMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new QuestParser(xmlReader, language);
+        this.playedReader = playedReader;
     }
 
     protected override IEnumerable<QuestMetadata> Map() {
+        // The quests of the played client's quest table (PlayedClientQuests); null without a played client or when
+        // its pack has no quest table, and then no quest is marked.
+        HashSet<int>? known = null;
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, PlayedClientQuests.QuestTable, StringComparison.OrdinalIgnoreCase));
+        if (playedReader != null && entry != null) {
+            known = PlayedClientQuests.Ids(playedReader.GetXmlDocument(entry), node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")));
+            if (known.Count == 0) {
+                known = null;
+            }
+        }
+        int notInPlayed = 0, inPlayed = 0;
         foreach ((int id, string name, QuestData data) in parser.Parse()) {
+            bool notInPlayedClient = known != null && !known.Contains(id);
+            if (known != null) {
+                if (notInPlayedClient) notInPlayed++;
+                else inPlayed++;
+            }
             Debug.Assert(Enum.IsDefined((QuestType) data.basic.questType), $"Invalid QuestType: {data.basic.questType}");
             var unrequiredAchievement = (0, 0);
             if (data.require.unreqAchievement.Length == 2 &&
@@ -44,7 +63,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     CompleteNpc: data.complete?.npc ?? 0,
                     CompleteMaps: data.complete?.map,
                     ProgressMaps: data.progressMap.progressMap,
-                    UseReEntryHiddenMap: data.basic.useReEntryHiddenMap
+                    UseReEntryHiddenMap: data.basic.useReEntryHiddenMap,
+                    NotInPlayedClient: notInPlayedClient
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,
@@ -99,6 +119,9 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     GuildPartyCount: condition.guildPartyCount
                 )).ToArray()
             );
+        }
+        if (known != null) {
+            Console.WriteLine($"quests: {notInPlayed} not in the played client's quest table (the server neither starts, offers nor sends them), {inPlayed} in it");
         }
     }
 

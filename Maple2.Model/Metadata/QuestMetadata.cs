@@ -33,7 +33,10 @@ public record QuestMetadataBasic(
     int CompleteNpc,
     int[]? CompleteMaps,
     int[]? ProgressMaps,
-    bool UseReEntryHiddenMap = false); // the quest's hidden field can be entered again (Quest sub-type 19)
+    bool UseReEntryHiddenMap = false, // the quest's hidden field can be entered again (Quest sub-type 19)
+    // With a played client: its quest table has no such quest (PlayedClientQuests), so the server neither starts,
+    // offers nor sends it.
+    bool NotInPlayedClient = false);
 
 public record QuestMetadataRequire(
     short Level,

@@ -213,7 +213,7 @@ public class QuestHandler : FieldPacketHandler {
     private static void HandleForfeit(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !quest.Metadata.Basic.Forfeitable) {
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !quest.Metadata.Basic.Forfeitable || !PlayedClientQuests.Known(quest.Metadata.Basic)) {
             return;
         }
 
@@ -267,7 +267,7 @@ public class QuestHandler : FieldPacketHandler {
         int questId = packet.ReadInt();
         bool tracking = packet.ReadBool();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.State is QuestState.Completed) {
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.State is QuestState.Completed || !PlayedClientQuests.Known(quest.Metadata.Basic)) {
             return;
         }
 

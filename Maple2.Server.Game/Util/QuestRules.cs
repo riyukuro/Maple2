@@ -1,9 +1,16 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
 
 public static class QuestRules {
+    // The stored quests a condition of this type can move on: not completed, with such a condition, and known to
+    // the played client (PlayedClientQuests). The client would get an update for a quest it never loaded otherwise.
+    public static IEnumerable<Quest> UpdateCandidates(IEnumerable<Quest> quests, ConditionType type) =>
+        quests.Where(quest => quest.State != QuestState.Completed && PlayedClientQuests.Known(quest.Metadata.Basic)
+                              && quest.Conditions.Values.Any(condition => condition.Metadata.Type == type));
+
     // The quests the client asks to start by itself (Quest, sub-type 8) when it enters a field: a quest that is
     // not an exploration quest, starts by itself and is not locked, or an exploration quest whose first
     // progress map is the field the player is in.

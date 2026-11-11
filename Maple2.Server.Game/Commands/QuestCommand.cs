@@ -31,6 +31,11 @@ public class QuestCommand : GameCommand {
             ctx.ExitCode = 1;
             return;
         }
+        if (!PlayedClientQuests.Known(metadata.Basic)) {
+            ctx.Console.Error.WriteLine($"Quest id {id} is not in the played client's quest table.");
+            ctx.ExitCode = 1;
+            return;
+        }
 
         session.Quest.TryGetQuest(id, out Quest? quest);
         switch (state) {

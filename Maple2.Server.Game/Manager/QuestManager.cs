@@ -45,10 +45,12 @@ public sealed class QuestManager {
     public void Load() {
         session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress));
 
-        foreach (ImmutableList<Quest> batch in accountValues.Values.Batch(BATCH_SIZE)) {
+        // A stored quest the played client lacks stays stored but is not sent: the client would read the list wrong
+        // from it on (PlayedClientQuests).
+        foreach (ImmutableList<Quest> batch in accountValues.Values.Where(quest => PlayedClientQuests.Known(quest.Metadata.Basic)).Batch(BATCH_SIZE)) {
             session.Send(QuestPacket.LoadQuestStates(batch));
         }
-        foreach (ImmutableList<Quest> batch in characterValues.Values.Batch(BATCH_SIZE)) {
+        foreach (ImmutableList<Quest> batch in characterValues.Values.Where(quest => PlayedClientQuests.Known(quest.Metadata.Basic)).Batch(BATCH_SIZE)) {
             session.Send(QuestPacket.LoadQuestStates(batch));
         }
     }
@@ -132,7 +134,8 @@ public sealed class QuestManager {
             return QuestError.s_quest_error_accept_fail;
         }
 
-        if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata)) {
+        // Not even with bypassRequirements: the played client has no such quest.
+        if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || !PlayedClientQuests.Known(metadata.Basic)) {
             return QuestError.s_quest_error_accept_fail;
         }
 
@@ -189,9 +192,7 @@ public sealed class QuestManager {
     /// <param name="codeString">condition code parameter in string.</param>
     /// <param name="codeLong">condition code parameter in long.</param>
     public void Update(ConditionType type, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
-        IEnumerable<Quest> quests = characterValues.Values.Where(quest => quest.State != QuestState.Completed)
-            .Concat(accountValues.Values.Where(quest => quest.State != QuestState.Completed))
-            .Where(x => x.Conditions.Values.Any(quest => quest.Metadata.Type == type));
+        IEnumerable<Quest> quests = QuestRules.UpdateCandidates(characterValues.Values.Concat(accountValues.Values), type);
         foreach (Quest quest in quests) {
             // TODO: Not sure if ProgressMap really means that only progress counts in this map. It doesn't make sense for some quests.
             // Testing only on FieldMission for now.
@@ -242,7 +243,7 @@ public sealed class QuestManager {
     // Quest sub-type 28: the player used the quest action on another player. Each user_find condition of the
     // started quest that is not full yet and that the found player meets goes up by one.
     public bool UpdateUserFind(int questId, in QuestRules.FoundUser user) {
-        if (!TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started) {
+        if (!TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started || !PlayedClientQuests.Known(quest.Metadata.Basic)) {
             return false;
         }
 
@@ -270,7 +271,7 @@ public sealed class QuestManager {
     /// </summary>
     /// <param name="metadata">Metadata of the quest.</param>
     public bool CanStart(QuestMetadata metadata) {
-        if (metadata.Basic.Disabled) {
+        if (metadata.Basic.Disabled || !PlayedClientQuests.Known(metadata.Basic)) {
             return false;
         }
 
@@ -340,7 +341,8 @@ public sealed class QuestManager {
     /// Gives the player the rewards for completing the quest.
     /// </summary>
     public bool Complete(Quest quest, bool bypassConditions = false) {
-        if (quest.State == QuestState.Completed) {
+        // A quest the played client lacks is not completed (no reward, no packet), also not with bypassConditions.
+        if (quest.State == QuestState.Completed || !PlayedClientQuests.Known(quest.Metadata.Basic)) {
             return false;
         }
 
@@ -446,7 +448,7 @@ public sealed class QuestManager {
 
         // Get any quests that are in progress and npc is the completion npc
         foreach ((int id, Quest quest) in session.Quest.characterValues) {
-            if (quest.Metadata.Basic.CompleteNpc == npcId && quest.State != QuestState.Completed) {
+            if (quest.Metadata.Basic.CompleteNpc == npcId && quest.State != QuestState.Completed && PlayedClientQuests.Known(quest.Metadata.Basic)) {
                 if (!results.TryAdd(id, quest.Metadata)) {
                     // error
                 }
@@ -454,7 +456,7 @@ public sealed class QuestManager {
         }
 
         foreach ((int id, Quest quest) in session.Quest.accountValues) {
-            if (quest.Metadata.Basic.CompleteNpc == npcId && quest.State != QuestState.Completed) {
+            if (quest.Metadata.Basic.CompleteNpc == npcId && quest.State != QuestState.Completed && PlayedClientQuests.Known(quest.Metadata.Basic)) {
                 if (!results.TryAdd(id, quest.Metadata)) {
                     // error
                 }

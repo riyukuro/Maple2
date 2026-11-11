@@ -226,7 +226,7 @@ UpdateDatabase(metadataContext, new PetMapper(xmlReader));
 UpdateDatabase(metadataContext, new MapMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new UgcMapMapper(xmlReader));
 UpdateDatabase(metadataContext, new ExportedUgcMapMapper(xmlReader));
-UpdateDatabase(metadataContext, new QuestMapper(xmlReader, language));
+UpdateDatabase(metadataContext, new QuestMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new RideMapper(xmlReader));
 UpdateDatabase(metadataContext, new ScriptMapper(xmlReader, language));
 UpdateDatabase(metadataContext, new SkillMapper(xmlReader, language));
