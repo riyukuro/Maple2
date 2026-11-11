@@ -522,9 +522,11 @@ public class GuildHandler : PacketHandler<GameSession> {
             return;
         }
 
-        // Check that player has not already checked in today.
-        DateTimeOffset today = DateTimeOffset.UtcNow.Date;
-        if (self.CheckinTime >= today.ToUnixTimeSeconds()) {
+        // The client sends no check-in on the day the member joined or after one today
+        // (CGuildManager::SendGuildMode15, guildmanager.cpp:617, with its own texts), so a request that comes
+        // anyway gets no answer. The World server tests the same again on its own member.
+        long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+        if (!GuildRules.CanCheckIn(self.JoinTime, self.CheckinTime, dayStart)) {
             return;
         }
 

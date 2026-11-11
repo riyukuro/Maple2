@@ -144,6 +144,14 @@ public static class GuildRules {
         return true;
     }
 
+    // Guild 15 (CGuildManager::SendGuildMode15, guildmanager.cpp:617): the client sends a check-in only from
+    // the day after the member joined (s_guild_err_can_next_day, :623) and once a day
+    // (s_guild_err_attend_already, :627). Both texts are the client's own; the error packet has no code for
+    // them. The day is the server's UTC day, as for the donation.
+    public static bool CanCheckIn(long joinTime, long checkinTime, long dayStart) {
+        return joinTime < dayStart && checkinTime < dayStart;
+    }
+
     // Guild 113 (CGuildManager::FUN_1413b8540): the count of donations made at once. The client refuses a
     // count under 1, a member who joined today, more donations in a day than the guild level allows, and a
     // donation that takes the guild fund over its maximum. The count of an earlier day does not carry over.

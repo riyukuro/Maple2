@@ -258,9 +258,18 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_member;
         }
 
-        requestor.CheckinTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        requestor.WeeklyContribution += contribution;
-        requestor.TotalContribution += contribution;
+        // Tested and taken under the member's lock, as the donation: two check-ins that arrive together
+        // (the channel tests its own copy of the member, which is behind until the update comes back) must
+        // not both pay the guild and the member.
+        lock (requestor) {
+            long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+            if (!GuildRules.CanCheckIn(requestor.JoinTime, requestor.CheckinTime, dayStart)) {
+                return GuildError.s_guild_err_unknown;
+            }
+            requestor.CheckinTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            requestor.WeeklyContribution += contribution;
+            requestor.TotalContribution += contribution;
+        }
 
         // Under the guild lock, as every other change of the fund (donation, skill upgrade): an add made
         // outside it could be lost against one of those.

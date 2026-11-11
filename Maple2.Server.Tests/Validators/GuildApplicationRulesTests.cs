@@ -233,6 +233,17 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.DonationsToday(4, 1000, 1000), Is.EqualTo(4));
     }
 
+    // joinTime, checkinTime, dayStart
+    [TestCase(500, 0, 1000, true, Description = "joined before today, never checked in")]
+    [TestCase(500, 999, 1000, true, Description = "checked in yesterday")]
+    [TestCase(1000, 0, 1000, false, Description = "joined today")]
+    [TestCase(1500, 0, 1000, false)]
+    [TestCase(500, 1000, 1000, false, Description = "checked in today")]
+    [TestCase(500, 1200, 1000, false)]
+    public void CheckIn_Rules(long joinTime, long checkinTime, long dayStart, bool expected) {
+        Assert.That(GuildRules.CanCheckIn(joinTime, checkinTime, dayStart), Is.EqualTo(expected));
+    }
+
     // count, joinTime, dayStart, donationsToday, donateMax, funds, addFunds, fundMax
     [TestCase(1, 500, 1000, 0, 3, 0, 10000, 50000, true)]
     [TestCase(3, 500, 1000, 0, 3, 0, 30000, 50000, true)]
