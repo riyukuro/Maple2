@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -113,7 +114,7 @@ public class LapenshardHandler : FieldPacketHandler {
         if (!TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(lapenshardId, out LapenshardUpgradeTable.Entry? entry)) {
             return;
         }
-        if (fodders.Values.Sum() != entry.RequireCount) {
+        if (fodders.Values.Sum(amount => (long) amount) != entry.RequireCount) {
             return;
         }
 
@@ -123,7 +124,7 @@ public class LapenshardHandler : FieldPacketHandler {
             }
             foreach ((long uid, int amount) in fodders) {
                 Item? fodder = session.Item.Inventory.Get(uid, InventoryType.Lapenshard);
-                if (fodder == null || fodder.Amount < amount) {
+                if (fodder == null || !LapenshardRules.IsMaterialAmount(amount, fodder.Amount, uid == lapenshardUid)) {
                     return; // Invalid amount for fodder
                 }
                 if (!TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(fodder.Id, out LapenshardUpgradeTable.Entry? fodderEntry)) {
