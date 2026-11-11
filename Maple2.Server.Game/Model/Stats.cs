@@ -197,8 +197,8 @@ public sealed class Stat {
     }
 
     public void AddTotal(SpecialOption option) {
-        AddTotal((int) option.Rate);
-        // Rate += option.Rate;
+        // A special rate is kept in thousandths, which is what Multiplier() divides by.
+        AddTotal(option.Value);
     }
 
     public void AddRate(float rate) {

@@ -117,16 +117,15 @@ public class BlackMarketLookup : IDisposable {
         }
 
         foreach (KeyValuePair<SpecialAttribute, SpecialOption> specialOption in specialOptions) {
-            float rate = 0f;
-            float value = 0;
+            int value = 0;
 
             foreach (ItemStats.Type type in Enum.GetValues(typeof(ItemStats.Type))) {
                 if (stats[type].Special.TryGetValue(specialOption.Key, out SpecialOption option)) {
-                    rate += option.Rate;
+                    value += option.Value;
                 }
             }
 
-            if (rate < specialOption.Value.Rate) {
+            if (value < specialOption.Value.Value) {
                 return false;
             }
         }

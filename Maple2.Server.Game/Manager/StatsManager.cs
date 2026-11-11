@@ -174,8 +174,13 @@ public class StatsManager {
 
             // Add enhancement attributes to character attributes
             if (item.Enchant is not null) {
+                // An enchant option is a rate in thousandths of the item's constant option of the same
+                // attribute (client: CItemStatus::GetStatValue(key, 0, 0) scaled by the enchant ratio,
+                // uienchantscrolldialog.cpp:390-394).
                 foreach (KeyValuePair<BasicAttribute, BasicOption> kvp in item.Enchant.BasicOptions) {
-                    Values[kvp.Key].AddTotal(kvp.Value);
+                    if (item.Stats != null && item.Stats[ItemStats.Type.Constant].Basic.TryGetValue(kvp.Key, out BasicOption constant)) {
+                        Values[kvp.Key].AddTotal((long) (constant.Value * (kvp.Value.Value / 1000.0)));
+                    }
                 }
             }
 

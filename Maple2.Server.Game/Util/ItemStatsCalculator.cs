@@ -251,10 +251,10 @@ public sealed class ItemStatsCalculator {
         foreach (SpecialAttribute attribute in option.Special.Keys) {
             if (table.SpecialValues.TryGetValue(attribute, out ItemEquipVariationTable.Set<int>[]? values)) {
                 int value = GetValue(specialAttribute: attribute, tableValues: values, rollMax: rollMax);
-                option.Special[attribute] = new SpecialOption(value * option.MultiplyFactor);
+                option.Special[attribute] = new SpecialOption((int) (value * option.MultiplyFactor));
             } else if (table.SpecialRates.TryGetValue(attribute, out ItemEquipVariationTable.Set<float>[]? rates)) {
                 int rateInt = GetValue(specialAttribute: attribute, tableRates: rates, rollMax: rollMax);
-                option.Special[attribute] = new SpecialOption((rateInt / 1000f) * option.MultiplyFactor);
+                option.Special[attribute] = new SpecialOption((int) (rateInt * option.MultiplyFactor)); // rateInt is in thousandths
             }
         }
 

@@ -64,7 +64,7 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
             writer.WriteShort((short) option.Special.Count);
             foreach ((SpecialAttribute type, SpecialOption specialOption) in option.Special) {
                 writer.WriteShort((short) type);
-                writer.Write<SpecialOption>(specialOption);
+                writer.WriteInt(specialOption.Value);
             }
         }
 
@@ -82,7 +82,7 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
             short specialCount = reader.ReadShort();
             for (int j = 0; j < specialCount; j++) {
                 var type = (SpecialAttribute) reader.ReadShort();
-                option.Special[type] = reader.Read<SpecialOption>();
+                option.Special[type] = new SpecialOption(reader.ReadInt());
             }
         }
 

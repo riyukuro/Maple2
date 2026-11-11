@@ -17,13 +17,18 @@ public readonly record struct BasicOption(int Value) {
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 4)]
-public readonly record struct SpecialOption(float Rate) {
+// The client keeps a special option as one int, like a basic option (BaseOption, read as an int by
+// CItemOption::Deserialize, itemoptiondata_1.cpp:252-257). A rate is stored as rate * 1000, rounded
+// down (BaseOption::SetRate); a value is stored as it is.
+public readonly record struct SpecialOption(int Value) {
+    public SpecialOption(float rate) : this((int) MathF.Floor(rate * 1000f)) { }
+
     public static SpecialOption operator +(SpecialOption self, SpecialOption other) {
-        return new SpecialOption(self.Rate + other.Rate);
+        return new SpecialOption(self.Value + other.Value);
     }
 
     public static SpecialOption operator -(SpecialOption self, SpecialOption other) {
-        return new SpecialOption(Math.Max(self.Rate - other.Rate, 0));
+        return new SpecialOption(Math.Max(self.Value - other.Value, 0));
     }
 }
 
