@@ -249,7 +249,13 @@ public class ItemDropManager {
 
             createdItem.AnnounceOnOpen = selectedItem.Announce;
 
-            // TODO: SockDataId, DisableBreak
+            // The row's socketDataID replaces the item's own socket row (23 of today's 49 rows differ from the item's,
+            // e.g. accessories without one get 1003-1005).
+            if (selectedItem.SocketDataId != 0) {
+                createdItem.Socket = field.ItemStatsCalc.GetSockets(createdItem, selectedItem.SocketDataId) ?? createdItem.Socket;
+            }
+
+            // TODO: DisableBreak
 
             yield return createdItem;
         }

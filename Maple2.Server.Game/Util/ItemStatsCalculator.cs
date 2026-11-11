@@ -4,6 +4,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Tools.Extensions;
 using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.LuaFunctions;
@@ -121,25 +122,41 @@ public sealed class ItemStatsCalculator {
         return stats;
     }
 
-    public ItemSocket? GetSockets(Item item) {
-        // Only Earring, Necklace, and Ring have sockets.
-        if (!item.Type.IsAccessory || !item.Type.IsEarring && !item.Type.IsNecklace && !item.Type.IsRing) {
+    public ItemSocket? GetSockets(Item item, int socketId = 0) {
+        return CreateSockets(item.Metadata, item.Type, item.Rarity, TableMetadata.ItemSocketTable, socketId);
+    }
+
+    // The sockets of a new item, as the client counts them (CItemSocketTable::GetMaxSocketCount and
+    // GetInitialSocketCount, commonfiles/itemsocketsystemutil.cpp; CItem::FUN_14052b420 only fills sockets of item type 1).
+    // An equipment item with its own socketDataId (mostly outfits, e.g. 1002 or 9001-9008) takes the itemsocket row's
+    // max and fixed open count, whatever its slot. Without one, calcItemSocketMaxCount decides from the item's slot,
+    // rank, level limit and skin type (only earrings, necklaces and rings of level 50 and up get sockets).
+    // A non-zero socketId (a drop row's socketDataID, ItemDropResult::Set) is used in place of the item's own.
+    public static ItemSocket? CreateSockets(ItemMetadata metadata, ItemType type, int rarity, ItemSocketTable table, int socketId = 0) {
+        if (metadata.Property.Type != 1) {
             return null;
         }
 
-        int socketId = item.Metadata.Property.SocketId;
-        if (item.Metadata.Property.SocketId != 0) {
-            if (!TableMetadata.ItemSocketTable.Entries.TryGetValue(socketId, item.Rarity, out ItemSocketMetadata? metadata)) {
+        if (socketId == 0 || !ItemSocketRules.KeepsDropSocketId(metadata.Property.SkinType, metadata.Property.SocketId)) {
+            socketId = metadata.Property.SocketId;
+        }
+        if (socketId != 0) {
+            if (!table.Entries.TryGetValue(socketId, rarity, out ItemSocketMetadata? socket)) {
                 // Fallback to rarity 0 which means any rarity.
-                if (!TableMetadata.ItemSocketTable.Entries.TryGetValue(socketId, 0, out metadata)) {
+                if (!table.Entries.TryGetValue(socketId, 0, out socket)) {
                     return null;
                 }
             }
 
-            return new ItemSocket(metadata.MaxCount, metadata.OpenCount);
+            return new ItemSocket(socket.MaxCount, Math.Min(socket.OpenCount, socket.MaxCount));
         }
 
-        int maxSockets = Lua.CalcItemSocketMaxCount(item.Type.Type, item.Rarity, (ushort) (item.Metadata.Option?.LevelFactor ?? 0), item.Metadata.Property.IsSkin ? 1 : 0);
+        // Only Earring, Necklace, and Ring have sockets without a socket id.
+        if (!type.IsEarring && !type.IsNecklace && !type.IsRing) {
+            return null;
+        }
+
+        int maxSockets = Lua.CalcItemSocketMaxCount(type.Type, rarity, metadata.Limit.Level, metadata.Property.SkinType);
         byte openSocketCount = ItemSocketSlots.OpenSocketCount(maxSockets);
         return new ItemSocket((byte) maxSockets, openSocketCount);
     }

@@ -51,6 +51,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             }
         }
 
+        bool skinSocketEnabled = FeatureLocaleFilter.FeatureEnabled("SkinSocket");
         foreach ((int id, string name, ItemData data) in parser.Parse()) {
             int transferType = data.limit.transferType;
             int tradableCount = data.property.tradableCount;
@@ -208,7 +209,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     RepackConsumeCount: repackingItemConsumeCount,
                     RepackScrollIds: repackingScrollIds,
                     DisableDrop: data.property.disableDrop,
-                    SocketId: data.property.socketDataId,
+                    SocketId: ItemSocketRules.SocketId(data.property.socketDataId, data.property.skinType, skinSocketEnabled),
                     IsFragment: data.property.functionTags == "piece",
                     // A set lists a piece under its origin id when it has one (SetItemRules.SetKey).
                     SetOptionIds: itemSetBonuses.GetValueOrDefault(SetItemRules.SetKey(id, data.basic.originID))?.ToArray() ?? [],
