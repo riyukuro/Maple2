@@ -48,6 +48,18 @@ public static class SetItemRules {
         return counted && layer is 0 or 1;
     }
 
+    // What an item's enchant and limit break add to one basic stat in a PvP field (map type 9), given what
+    // they add elsewhere. Only the ratio stats (defense, weapon attack) keep them, and defense keeps 0.159 of
+    // their sum, cut to an int (CItemStatus::GetTotalStatValue, itemsocketsystemutil.cpp:1877, used by
+    // equipment.cpp:3015 in place of GetStatValue). The item's own options are added in full either way.
+    public static long PvpUpgrade(bool ratio, bool defense, long enchant, long limitBreak) {
+        if (!ratio) {
+            return 0;
+        }
+        long extra = enchant + limitBreak;
+        return defense ? (int) ((float) extra * 0.159f) : extra;
+    }
+
     // An item's expiry time has passed (CItem::IsExpired, item.cpp:1303; 0 = no expiry). A pet item is never
     // held back by it (item.cpp:1719).
     public static bool Expired(long expiryTime, long now, bool pet) {

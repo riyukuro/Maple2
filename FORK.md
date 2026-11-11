@@ -100,6 +100,8 @@ The four server-to-client warnings are kept on purpose; in each the client reads
   - Revival: coupon revive and summon revive.
   - Meret Market: UGC sale details, the by-id lists (at most 20 ids) and the random sale requests.
   - System shop: every shop kind; closing one clears the open shop.
+- **Pets:** a summoned pet comes back after a field change and after a channel or game server change (the pet item's uid rides in the migration request, so Game and World must be of the same build). A pet is not summoned in a map whose `usePet` is 0 or by a character below the pet item's level, as the client refuses; in a no-pet map the pet is kept for the next map that allows one.
+- **PvP maps:** in a map of type 9 an item's enchant and limit break count for defense and weapon attack only, and defense keeps 0.159 of them, as the client's own totals do.
 - **World:** a channel change is not shown to buddies, party, guild, club, group chat and spouse as a logout and a login. While the migration token is valid (30 s), a failed heartbeat of the channel being left does not mark the player offline. The span equals the heartbeat period, so a client that is closed during a channel change is shown as logged out by the second heartbeat after the change began: after 30 s at the earliest and about 60 s at the latest (the commit that added this says "within about 30 s").
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 

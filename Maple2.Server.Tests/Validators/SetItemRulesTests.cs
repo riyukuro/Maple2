@@ -58,6 +58,14 @@ public class SetItemRulesTests {
     }
 
     [Test]
+    public void PvpUpgrade_RatioStatsOnlyAndDefenseCut() {
+        Assert.That(SetItemRules.PvpUpgrade(ratio: false, defense: false, enchant: 40, limitBreak: 10), Is.EqualTo(0));
+        Assert.That(SetItemRules.PvpUpgrade(ratio: true, defense: false, enchant: 40, limitBreak: 10), Is.EqualTo(50));
+        // 0.159 of the sum 110 is 17.49, cut to 17; cut apart the two parts would give 15 + 1.
+        Assert.That(SetItemRules.PvpUpgrade(ratio: true, defense: true, enchant: 100, limitBreak: 10), Is.EqualTo(17));
+    }
+
+    [Test]
     public void GivesStats_CountedItemOfTheEquipOrOutfitTab() {
         Assert.That(SetItemRules.GivesStats(layer: 0, counted: true), Is.True);
         Assert.That(SetItemRules.GivesStats(layer: 1, counted: true), Is.True);

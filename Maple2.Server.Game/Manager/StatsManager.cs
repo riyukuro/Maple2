@@ -180,6 +180,7 @@ public class StatsManager {
         bool vip = player.Session.Config.IsPremiumClubActive();
         long characterId = player.Value.Character.Id;
         int characterLevel = player.Value.Character.Level;
+        bool pvp = player.Field.Metadata.Property.Type == MapType.Pvp;
         // An item the client does not count gives it no stats either (SetItemRules.GivesStats).
         bool Gives(Item item, int layer) {
             return SetItemRules.GivesStats(layer, SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
@@ -202,14 +203,18 @@ public class StatsManager {
                 AddItemStats(item.Stats);
             }
 
+            if (pvp) {
+                AddPvpUpgrades(item);
+            }
+
             // Add enhancement attributes to character attributes
-            if (item.Enchant is not null) {
+            if (!pvp && item.Enchant is not null) {
                 foreach (KeyValuePair<BasicAttribute, BasicOption> kvp in item.Enchant.BasicOptions) {
                     AddUpgradeOption(item, kvp.Key, kvp.Value);
                 }
             }
 
-            if (item.LimitBreak is not null) {
+            if (!pvp && item.LimitBreak is not null) {
                 foreach (KeyValuePair<BasicAttribute, BasicOption> kvp in item.LimitBreak.BasicOptions) {
                     AddUpgradeOption(item, kvp.Key, kvp.Value);
                 }
@@ -338,8 +343,26 @@ public class StatsManager {
             Values[attribute].AddTotal(option);
             return;
         }
+        Values[attribute].AddTotal(RatioUpgrade(item, attribute, option));
+    }
+
+    private static long RatioUpgrade(Item item, BasicAttribute attribute, BasicOption option) {
         if (item.Stats != null && item.Stats[ItemStats.Type.Constant].Basic.TryGetValue(attribute, out BasicOption constant)) {
-            Values[attribute].AddTotal((long) (constant.Value * (option.Value / 1000.0)));
+            return (long) (constant.Value * (option.Value / 1000.0));
+        }
+        return 0;
+    }
+
+    // In a PvP field the client counts an item's enchant and limit break for the ratio stats only
+    // (SetItemRules.PvpUpgrade); the limit break's special options are not counted there either
+    // (CItemStatus::FUN_14062ff70) and the server never adds those.
+    private void AddPvpUpgrades(Item item) {
+        foreach (BasicAttribute attribute in new[] { BasicAttribute.Defense, BasicAttribute.MinWeaponAtk, BasicAttribute.MaxWeaponAtk }) {
+            long enchant = item.Enchant != null && item.Enchant.BasicOptions.TryGetValue(attribute, out BasicOption enchantOption)
+                ? RatioUpgrade(item, attribute, enchantOption) : 0;
+            long limitBreak = item.LimitBreak != null && item.LimitBreak.BasicOptions.TryGetValue(attribute, out BasicOption limitOption)
+                ? RatioUpgrade(item, attribute, limitOption) : 0;
+            Values[attribute].AddTotal(SetItemRules.PvpUpgrade(BasicOption.IsRatio(attribute), attribute == BasicAttribute.Defense, enchant, limitBreak));
         }
     }
 
