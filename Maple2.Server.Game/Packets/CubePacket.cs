@@ -14,7 +14,7 @@ namespace Maple2.Server.Game.Packets;
 
 public static class CubePacket {
     private enum Command : byte {
-        // 0
+        BuildMode = 0,
         HoldCube = 1,
         BuyPlot = 2,
         ConfirmBuyPlot = 4,
@@ -73,6 +73,19 @@ public static class CubePacket {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.BuyPlot);
         pWriter.Write<UgcMapError>(error);
+
+        return pWriter;
+    }
+
+    // Client: CSceneStateGame ResponseCube case 0 (scenestategame.cpp:9883): int player object id, int mode. For a
+    // player in cube mode it calls Unk_PCCubeCraft::SetMode (cubecraft_2.cpp:693), which stores the mode and rebuilds
+    // the guides. The client never sets the mode on its own: it sends request mode 0 (1 from the cube palette when no
+    // cube is selected, 0 before it asks for a cube while in mode 1) and waits for this answer.
+    public static ByteWriter BuildMode(int objectId, int mode) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.WriteByte((byte) Command.BuildMode);
+        pWriter.WriteInt(objectId);
+        pWriter.WriteInt(mode);
 
         return pWriter;
     }
@@ -298,14 +311,14 @@ public static class CubePacket {
         return pWriter;
     }
 
-    // Client: CSceneStateGame::OnResponseCube case 0x19 (scenestategame.cpp:10320): byte error; when 0, the character id
-    // and a value the client keeps when the id is its own character.
-    public static ByteWriter ConfirmVote(byte error = 0, long characterId = 0, long value = 0) {
+    // Client: CSceneStateGame::OnResponseCube case 0x19 (scenestategame.cpp:10320): byte error; when 0, the account id
+    // (the id of the login result) and a value the client keeps when the id is its own.
+    public static ByteWriter ConfirmVote(byte error = 0, long accountId = 0, long value = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ConfirmVote);
         pWriter.WriteByte(error);
         if (error == 0) {
-            pWriter.WriteLong(characterId);
+            pWriter.WriteLong(accountId);
             pWriter.WriteLong(value);
         }
 
@@ -377,6 +390,9 @@ public static class CubePacket {
         return pWriter;
     }
 
+    // Client: CSceneStateGame::OnResponseCube case 0x27 (scenestategame.cpp:10560): long account id (dropped unless it is
+    // the id of the login result, set in UIServerListDialog::OnLoginResult), long reward time, long level (kept as a
+    // short), long exp, int count, count x int claimed reward id.
     public static ByteWriter DesignRankReward(Home home) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.DesignRankReward);
@@ -457,12 +473,12 @@ public static class CubePacket {
         return pWriter;
     }
 
-    // Client: CSceneStateGame::OnResponseCube case 0x35 (scenestategame.cpp:10592): the character id, the house owner's
-    // character id, and the two build budget values of UpdateBuildBudget; the client ignores it for another character.
-    public static ByteWriter GrantBuildPermissions(long characterId = 0, long ownerId = 0, long value1 = 0, long value2 = 0) {
+    // Client: CSceneStateGame::OnResponseCube case 0x35 (scenestategame.cpp:10592): the account id (the id of the login
+    // result), the house owner's id, and the two build budget values of UpdateBuildBudget; the client ignores it for another account.
+    public static ByteWriter GrantBuildPermissions(long accountId = 0, long ownerId = 0, long value1 = 0, long value2 = 0) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.GrantBuildPermissions);
-        pWriter.WriteLong(characterId);
+        pWriter.WriteLong(accountId);
         pWriter.WriteLong(ownerId);
         pWriter.WriteLong(value1);
         pWriter.WriteLong(value2);

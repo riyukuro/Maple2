@@ -182,7 +182,14 @@ public class RequestCubeHandler : FieldPacketHandler {
                 HandlePreviewBlueprint(session, packet);
                 break;
             // Sub-types the KMS 2525 client sends that have no logic here yet: read and log only.
-            case Command.BuildState: // sent with 0 before HoldCube in build mode, with 1 from the cube palette
+            case Command.BuildState: { // sent with 0 before HoldCube in build mode, with 1 from the cube palette
+                // The client changes its cube mode only on the answer (ResponseCube 0), so the field gets it back.
+                int mode = packet.ReadInt();
+                if (mode is 0 or 1) {
+                    session.Field?.Broadcast(CubePacket.BuildMode(session.Player.ObjectId, mode));
+                }
+                break;
+            }
             case Command.RemoveCube13: // cube position
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 break;
