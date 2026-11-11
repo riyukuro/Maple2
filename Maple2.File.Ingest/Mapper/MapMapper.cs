@@ -11,9 +11,17 @@ public class MapMapper : TypeMapper<MapMetadata> {
     private readonly TableParser spawnParser;
     private readonly MapParser parser;
 
-    public MapMapper(M2dReader xmlReader, string language) {
+    // Maps the played client cannot load (MS2_PLAYED_CLIENT_XML); empty when the option is not set.
+    private readonly HashSet<int> notInPlayedClient = [];
+
+    public MapMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         spawnParser = PackTables.NewParser(xmlReader, language);
         parser = new MapParser(xmlReader, language);
+
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientMaps.FieldTable);
+        if (playedReader != null && entry != null) {
+            notInPlayedClient = PlayedClientMaps.Missing(playedReader.GetXmlDocument(entry));
+        }
     }
 
     protected override IEnumerable<MapMetadata> Map() {
@@ -37,7 +45,11 @@ public class MapMapper : TypeMapper<MapMetadata> {
             ).ToList();
         }
 
+        int marked = 0;
         foreach ((int id, string name, MapData data) in parser.Parse()) {
+            if (notInPlayedClient.Contains(id)) {
+                marked++;
+            }
             yield return new MapMetadata(
                 Id: id,
                 Name: name,
@@ -65,7 +77,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     CanFly: data.property.checkFly,
                     CanClimb: data.property.checkClimb,
                     IndoorType: data.indoor.type,
-                    MinimapPing: data.property.minimapPing),
+                    MinimapPing: data.property.minimapPing,
+                    NotInPlayedClient: notInPlayedClient.Contains(id)),
                 Limit: new MapMetadataLimit(
                     Capacity: data.property.capacity,
                     MinLevel: data.property.enterMinLevel,
@@ -94,6 +107,9 @@ public class MapMapper : TypeMapper<MapMetadata> {
                 // TODO: There are also EntranceBuffs for Survival
                 EntranceBuffs: data.property.enteranceBuffIDs.Zip(data.property.enteranceBuffLevels,
                         (skillId, level) => new MapEntranceBuff(skillId, level)).ToArray());
+        }
+        if (notInPlayedClient.Count > 0) {
+            Console.WriteLine($"maps: {marked} marked as not in the played client (entry refused)");
         }
     }
 }

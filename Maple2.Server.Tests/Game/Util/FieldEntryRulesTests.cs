@@ -29,6 +29,30 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.ReturnMap(2000001, true, 0, false, 2000062), Is.EqualTo(2000001));
     }
 
+    // A map the played client does not have is no return field, whoever asks.
+    [Test]
+    public void ReturnMap_NotInPlayedClient_IsDefault() {
+        Assert.That(FieldEntryRules.ReturnMap(900001, true, 0, true, 900009, notInPlayedClient: true), Is.EqualTo(900009));
+        Assert.That(FieldEntryRules.ReturnMap(900001, true, 0, true, 900009, notInPlayedClient: false), Is.EqualTo(900001));
+    }
+
+    // Arriving (login, channel change) on a map the played client does not have: the return field, then the
+    // default one, whichever the client has; an unmarked map is entered as it is.
+    [Test]
+    public void ArrivalMap_SkipsMapsThePlayedClientLacks() {
+        Assert.That(FieldEntryRules.ArrivalMap(900001, false, 900002, 900009, _ => false), Is.EqualTo(900001));
+        Assert.That(FieldEntryRules.ArrivalMap(900001, true, 900002, 900009, _ => true), Is.EqualTo(900002));
+        Assert.That(FieldEntryRules.ArrivalMap(900001, true, 900002, 900009, id => id != 900002), Is.EqualTo(900009));
+        Assert.That(FieldEntryRules.ArrivalMap(900001, true, 900001, 900009, _ => true), Is.EqualTo(900009), "the return field is the same map");
+        Assert.That(FieldEntryRules.ArrivalMap(900001, true, 900002, 900009, _ => false), Is.EqualTo(0), "nothing usable");
+    }
+
+    [Test]
+    public void NotInPlayedClientNotice_NamesTheMap() {
+        Assert.That(FieldEntryRules.NotInPlayedClientNotice(900001, "Test Park"), Is.EqualTo("Map Test Park (900001) is not in this client version. Entry refused."));
+        Assert.That(FieldEntryRules.NotInPlayedClientNotice(900001, null), Is.EqualTo("Map 900001 is not in this client version. Entry refused."));
+    }
+
     [Test]
     public void ReturnMap_UnknownField_IsDefault() {
         Assert.That(FieldEntryRules.ReturnMap(123, false, 0, true, 2000062), Is.EqualTo(2000062));

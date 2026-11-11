@@ -260,12 +260,30 @@ public sealed partial class GameSession : Core.Network.Session {
             roomId = 0;
             portalId = -1;
         }
+        // Arriving on a map the played client does not have (saved there before the map was marked, or sent
+        // from another channel): enter the return field, else the default one, as a plain arrival.
+        if (MapMetadata.TryGet(fieldId, out MapMetadata? arrival) && arrival.Property.NotInPlayedClient) {
+            int returnId = player.Character.ReturnMaps.Peek();
+            int arrivalId = FieldEntryRules.ArrivalMap(fieldId, true, returnId, Constant.DefaultReturnMapId,
+                id => MapMetadata.TryGet(id, out MapMetadata? fallback) && !fallback.Property.NotInPlayedClient);
+            if (arrivalId == 0) {
+                Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
+                return false;
+            }
+            Logger.Warning("Character:{CharacterId} enters Map:{ArrivalId}, Map:{MapId} is not in the played client", characterId, arrivalId, fieldId);
+            position = arrivalId == returnId ? player.Character.ReturnPosition : default;
+            fieldId = arrivalId;
+            migrationType = MigrationType.Normal;
+            ownerId = 0;
+            roomId = 0;
+            portalId = -1;
+        }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
             // The saved field cannot be made (for one, its map has no navmesh file). A plain entry goes to the
             // return field, then to the default one, so the character is not locked out of the game.
             if (migrationType == MigrationType.Normal) {
                 foreach (int fallbackId in FieldEntryRules.Fallbacks(fieldId, player.Character.ReturnMaps.Peek(), Constant.DefaultReturnMapId)) {
-                    if (!MapMetadata.TryGet(fallbackId, out _)) {
+                    if (!MapMetadata.TryGet(fallbackId, out MapMetadata? fallbackMap) || fallbackMap.Property.NotInPlayedClient) {
                         continue;
                     }
                     Vector3 fallbackPosition = fallbackId == player.Character.ReturnMaps.Peek() ? player.Character.ReturnPosition : default;
@@ -495,6 +513,14 @@ public sealed partial class GameSession : Core.Network.Session {
             return false;
         }
 
+        // A map the played client does not have is closed on every way in: the client hangs on it. The
+        // client has no text for this, so the player gets a chat line naming the map and stays in the field.
+        if (target is { Property.NotInPlayedClient: true }) {
+            Send(NoticePacket.Message(FieldEntryRules.NotInPlayedClientNotice(target.Id, target.Name)));
+            newField = null;
+            return false;
+        }
+
         if (Field is DungeonFieldManager dungeonField) {
             if (dungeonField.Lobby!.RoomFields.TryGetValue(mapId, out DungeonFieldManager? nextDungeonField)) {
                 newField = nextDungeonField;
@@ -609,7 +635,8 @@ public sealed partial class GameSession : Core.Network.Session {
         int mapId = Player.Value.Character.ReturnMaps.Peek();
         bool known = MapMetadata.TryGet(mapId, out MapMetadata? metadata);
         return FieldEntryRules.ReturnMap(mapId, known, metadata?.Limit.EnterAdminLevel ?? 0,
-            GmCheck.IsGm(Player.Value.Account.AdminPermissions), Constant.DefaultReturnMapId);
+            GmCheck.IsGm(Player.Value.Account.AdminPermissions), Constant.DefaultReturnMapId,
+            metadata?.Property.NotInPlayedClient ?? false);
     }
 
     public void ReturnField() {
@@ -820,6 +847,12 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     public void Migrate(int mapId, long ownerId = 0) {
+        // Not to a map the played client does not have (see PrepareFieldInternal).
+        if (MapMetadata.TryGet(mapId, out MapMetadata? target) && target.Property.NotInPlayedClient) {
+            Send(NoticePacket.Message(FieldEntryRules.NotInPlayedClientNotice(target.Id, target.Name)));
+            return;
+        }
+
         bool isInstanced = ServerTableMetadata.InstanceFieldTable.Entries.ContainsKey(mapId);
 
         try {

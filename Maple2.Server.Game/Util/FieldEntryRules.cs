@@ -16,10 +16,11 @@ public static class FieldEntryRules {
     }
 
     // The field a character goes back to (leaving a dungeon, a home, a mini-game): its saved return field, or
-    // the default return field when the saved one is unknown or is a GM-only field for a plain account
-    // (an account that lost its GM rights while its return field was one of those).
-    public static int ReturnMap(int returnMapId, bool known, int enterAdminLevel, bool gm, int defaultMapId) {
-        if (!known || !AdminFieldAllowed(enterAdminLevel, gm)) {
+    // the default return field when the saved one is unknown, is a GM-only field for a plain account
+    // (an account that lost its GM rights while its return field was one of those), or is a map the played
+    // client does not have.
+    public static int ReturnMap(int returnMapId, bool known, int enterAdminLevel, bool gm, int defaultMapId, bool notInPlayedClient = false) {
+        if (!known || notInPlayedClient || !AdminFieldAllowed(enterAdminLevel, gm)) {
             return defaultMapId;
         }
         return returnMapId;
@@ -42,6 +43,29 @@ public static class FieldEntryRules {
     // return field: the client is already on its loading screen and an error there locks it out.
     public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {
         return type == MigrationType.Dungeon && !roomRuns;
+    }
+
+    // The field a character arrives in when the one it was saved on (or sent to from another channel) is a
+    // map the played client does not have: the first of the return field and the default return field that
+    // the client has. The client is on its loading screen and hangs on a map it cannot load, so it must not
+    // be sent there. 0 when neither can be used; the arrival then fails.
+    public static int ArrivalMap(int mapId, bool notInPlayedClient, int returnMapId, int defaultMapId, Func<int, bool> usable) {
+        if (!notInPlayedClient) {
+            return mapId;
+        }
+        foreach (int fallbackId in Fallbacks(mapId, returnMapId, defaultMapId)) {
+            if (usable(fallbackId)) {
+                return fallbackId;
+            }
+        }
+        return 0;
+    }
+
+    // The chat line for a refused entry to a map the played client does not have.
+    public static string NotInPlayedClientNotice(int mapId, string? name) {
+        return string.IsNullOrEmpty(name)
+            ? $"Map {mapId} is not in this client version. Entry refused."
+            : $"Map {name} ({mapId}) is not in this client version. Entry refused.";
     }
 
     // The name for log lines of a session; empty before the character is loaded (an arrival with a bad token).

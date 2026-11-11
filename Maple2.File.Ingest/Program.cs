@@ -66,7 +66,8 @@ if (!File.Exists(xmlPath)) {
 }
 
 // Optional: the Xml.m2d of the client that is played, when it is another version than the data folder's.
-// Only the client rows of the constants table (prices, the client's cooltimes and caps) are read from it.
+// Read from it: the client rows of the constants table (prices, the client's cooltimes and caps), and the
+// field table, whose empty rows mark the maps that client cannot load.
 string? playedXmlPath = Maple2.Model.Metadata.ClientPriceConstants.PackOption(Environment.GetEnvironmentVariable("MS2_PLAYED_CLIENT_XML"));
 if (playedXmlPath != null && !File.Exists(playedXmlPath)) {
     throw new FileNotFoundException($"MS2_PLAYED_CLIENT_XML is set, but there is no file at path: {playedXmlPath}");
@@ -219,7 +220,7 @@ UpdateDatabase(metadataContext, new AiMapper(serverReader));
 UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader));
 UpdateDatabase(metadataContext, new AnimationMapper(xmlReader));
 UpdateDatabase(metadataContext, new PetMapper(xmlReader));
-UpdateDatabase(metadataContext, new MapMapper(xmlReader, language));
+UpdateDatabase(metadataContext, new MapMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new UgcMapMapper(xmlReader));
 UpdateDatabase(metadataContext, new ExportedUgcMapMapper(xmlReader));
 UpdateDatabase(metadataContext, new QuestMapper(xmlReader, language));
