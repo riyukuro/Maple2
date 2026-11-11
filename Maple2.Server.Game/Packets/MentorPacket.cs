@@ -35,23 +35,13 @@ public static class MentorPacket {
         return pWriter;
     }
 
+    // Client: CMentoringManager::OnMentorList (mentoringmanager.cpp:320) and OnMenteeList (:333) read an int count and
+    // per entry CMentor::Read (commonfiles/mentor.cpp:230): long, long, long, text name, short level, text, int,
+    // bool online, int. The server keeps no mentoring pairs yet, so both lists are sent empty.
     public static ByteWriter MenteeInvitations() {
         var pWriter = Packet.Of(SendOp.Mentor);
         pWriter.Write<Command>(Command.MenteeInvitations);
-
-        int count = 2;
-        pWriter.WriteInt(count);
-        for (int i = 0; i < count; i++) {
-            pWriter.WriteLong(4); // char id
-            pWriter.WriteLong(6); // account id
-            pWriter.WriteLong(1789798785); // timestamp?
-            pWriter.WriteUnicodeString("Test1"); // name
-            pWriter.WriteShort(12); // level
-            pWriter.WriteUnicodeString($""); // profile photo
-            pWriter.WriteInt(0);
-            pWriter.WriteBool(true); // online
-            pWriter.Write<Job>(Job.Knight);
-        }
+        pWriter.WriteInt(0);
 
         return pWriter;
     }
@@ -62,20 +52,7 @@ public static class MentorPacket {
     public static ByteWriter MyList() {
         var pWriter = Packet.Of(SendOp.Mentor);
         pWriter.Write<Command>(Command.MyList);
-
-        int count = 1;
-        pWriter.WriteInt(count);
-        for (int i = 0; i < count; i++) {
-            pWriter.WriteLong();
-            pWriter.WriteLong();
-            pWriter.WriteLong();
-            pWriter.WriteUnicodeString("Test2");
-            pWriter.WriteShort();
-            pWriter.WriteUnicodeString("data/profiles/avatar/20000000003/0bd1edb5-7e52-482b-b773-d45098ae0fea.png");
-            pWriter.WriteInt();
-            pWriter.WriteByte();
-            pWriter.WriteInt();
-        }
+        pWriter.WriteInt(0);
 
         return pWriter;
     }
