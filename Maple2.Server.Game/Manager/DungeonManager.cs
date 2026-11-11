@@ -13,6 +13,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Maple2.Tools.Extensions;
 using Serilog;
@@ -361,7 +362,10 @@ public class DungeonManager {
             error = MigrationError.s_move_err_no_server;
         }
         if (error != MigrationError.ok) {
-            if (error == MigrationError.s_move_err_dungeon_not_exist_2) {
+            if (error == MigrationError.s_move_err_dungeon_not_exist_2 && !FieldEntryRules.ClearsPartyDungeon(LobbyRoomId, Party.DungeonLobbyRoomId)) {
+                // This session held an older room id; take over what the party has now.
+                SetDungeon(Party.DungeonId, Party.DungeonLobbyRoomId, Party.DungeonSet);
+            } else if (error == MigrationError.s_move_err_dungeon_not_exist_2) {
                 try {
                     session.World.Party(new PartyRequest {
                         RequestorId = session.CharacterId,

@@ -59,4 +59,13 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.LogName(null), Is.EqualTo(string.Empty));
         Assert.That(FieldEntryRules.LogName("abc"), Is.EqualTo("abc"));
     }
+
+    // A stale room id on one member's session must not clear the dungeon the party has now.
+    [Test]
+    public void OnlyThePartysOwnRoomClearsThePartyDungeon() {
+        Assert.That(FieldEntryRules.ClearsPartyDungeon(7, 7), Is.True);
+        Assert.That(FieldEntryRules.ClearsPartyDungeon(7, 9), Is.False);
+        Assert.That(FieldEntryRules.ClearsPartyDungeon(7, 0), Is.False);
+        Assert.That(FieldEntryRules.ClearsPartyDungeon(0, 0), Is.False);
+    }
 }

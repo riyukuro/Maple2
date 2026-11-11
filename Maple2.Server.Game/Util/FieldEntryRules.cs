@@ -32,6 +32,12 @@ public static class FieldEntryRules {
         return roomRuns ? MigrationError.ok : MigrationError.s_move_err_dungeon_not_exist_2;
     }
 
+    // "Enter Dungeon" failed for a room that is gone. The party's dungeon is cleared only when the party still
+    // names that room: a member whose session holds an older room id must not wipe a dungeon the leader made since.
+    public static bool ClearsPartyDungeon(int failedRoomId, int partyRoomId) {
+        return failedRoomId != 0 && failedRoomId == partyRoomId;
+    }
+
     // A dungeon arrival whose room is gone when the character gets there is entered as a plain arrival in the
     // return field: the client is already on its loading screen and an error there locks it out.
     public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {
