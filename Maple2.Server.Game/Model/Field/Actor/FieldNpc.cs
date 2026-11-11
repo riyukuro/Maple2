@@ -503,10 +503,26 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
 
-        bool isIdle = sequenceName.Contains("idle", StringComparison.OrdinalIgnoreCase) || sequenceName.Contains("sit", StringComparison.OrdinalIgnoreCase);
-
-        idleTask = MovementState.TryEmote(sequence.Name, isIdle, duration);
+        idleTask = MovementState.TryEmote(sequence.Name, IsIdleSequence(sequenceName), duration);
     }
+
+    /// <summary>Plays a set_npc_emotion_sequence list (see <see cref="TriggerSequenceList"/>): each name once, in order.</summary>
+    public void AnimateSequence(string sequenceNames) {
+        var missing = new List<string>();
+        string[] names = TriggerSequenceList.Playable(TriggerSequenceList.Split(sequenceNames),
+            name => Value.Animations.TryGetValue(name, out AnimationSequenceMetadata? sequence) ? sequence.Name : null, missing);
+        if (missing.Count > 0) {
+            Logger.Error("Invalid sequence: {Sequence} for npc {NpcId}", string.Join(",", missing), Value.Metadata.Id);
+        }
+        if (names.Length == 0) {
+            return;
+        }
+
+        idleTask = MovementState.TryEmote(names, IsIdleSequence(names[0]));
+    }
+
+    private static bool IsIdleSequence(string sequenceName) =>
+        sequenceName.Contains("idle", StringComparison.OrdinalIgnoreCase) || sequenceName.Contains("sit", StringComparison.OrdinalIgnoreCase);
 
     public void Talk() {
         if (!string.IsNullOrEmpty(SpawnAnimation)) {

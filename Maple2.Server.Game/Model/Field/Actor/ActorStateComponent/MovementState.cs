@@ -108,6 +108,11 @@ public partial class MovementState {
         return new NpcEmoteTask(actor.TaskState, this, sequenceName, priority, isIdle, duration);
     }
 
+    public NpcTask TryEmote(IReadOnlyList<string> sequenceNames, bool isIdle) {
+        NpcTaskPriority priority = isIdle ? NpcTaskPriority.Emote : NpcTaskPriority.BattleStandby;
+        return new NpcEmoteTask(actor.TaskState, this, sequenceNames, priority, isIdle);
+    }
+
     public NpcTask TryTalk() {
         return new NpcTalkTask(actor.TaskState, this, NpcTaskPriority.Interrupt);
     }

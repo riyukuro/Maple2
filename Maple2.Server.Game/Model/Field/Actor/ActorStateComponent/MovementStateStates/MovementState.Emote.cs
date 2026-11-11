@@ -22,6 +22,10 @@ public partial class MovementState {
                     return;
                 }
 
+                if (emoteActionTask is NpcEmoteTask listTask && PlayNext(listTask)) {
+                    return;
+                }
+
                 emoteActionTask?.Completed();
 
                 if (dontIdleOnStateEnd) {

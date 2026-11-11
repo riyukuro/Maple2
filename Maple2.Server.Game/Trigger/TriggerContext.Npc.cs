@@ -187,7 +187,7 @@ public partial class TriggerContext {
         WarnLog("[SetNpcEmotionSequence] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, durationTick);
 
         FieldNpc? fieldNpc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
-        fieldNpc?.Animate(sequenceName);
+        fieldNpc?.AnimateSequence(sequenceName);
     }
 
     public void SetNpcRotation(int spawnId, float rotation) {
