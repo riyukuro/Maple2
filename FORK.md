@@ -89,6 +89,9 @@ The four server-to-client warnings are kept on purpose; in each the client reads
   - System shop: every shop kind; closing one clears the open shop.
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 
+## GM-only packets
+Some packets and packet modes are sent by the client only from a GM command, a debug hotkey or a developer dialog (the client tests its GM level or its debug mode before it writes them). A handler for one of those starts with `GmCheck.Allow(session, OpCode, mode)` (`Maple2.Server.Game/Util/GmCheck.cs`): the account needs the GameMaster or Admin permission, as set with the `perm` command. Any other sender is dropped with one warning (account id, opcode, mode) and gets no reply. A new handler or mode of that kind must start the same way.
+
 ## Known not to work
 
 The client sends 67 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:

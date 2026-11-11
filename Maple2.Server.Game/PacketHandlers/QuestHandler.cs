@@ -9,6 +9,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -97,6 +98,10 @@ public class QuestHandler : FieldPacketHandler {
                 HandleCompleteFieldMission(session, packet);
                 break;
             case Command.DebugQuestList: {
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 // Not handled: the client's debug quest commands. Read what it writes.
                 int action = packet.ReadInt();
                 int count = packet.ReadInt();

@@ -3,6 +3,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -25,6 +26,10 @@ public class AchievementHandler : FieldPacketHandler {
                 HandleToggleFavorite(session, packet);
                 break;
             case Command.Debug:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 // Not handled: the debug buttons of the achievement dialog: id and which button (0-3).
                 Logger.Debug("Achievement {Command} from {CharacterId}: {Id}, {Button}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
                 break;

@@ -7,6 +7,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -29,6 +30,10 @@ public class InteractObjectHandler : FieldPacketHandler {
                 HandleEnd(session, packet);
                 return;
             case Command.DebugCreate:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 // Not handled: the client's object create dialog. Read what it writes.
                 int kind = packet.ReadInt();
                 packet.ReadUnicodeString();

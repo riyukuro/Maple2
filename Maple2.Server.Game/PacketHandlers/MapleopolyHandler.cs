@@ -9,6 +9,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -41,6 +42,10 @@ public class MapleopolyHandler : FieldPacketHandler {
                 HandleResult(session);
                 return;
             case Command.DebugDice:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 // Not handled: the debug dice button: the two dice values (1-6).
                 Logger.Debug("Mapleopoly {Command} from {CharacterId}: {Dice1}, {Dice2}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
                 return;

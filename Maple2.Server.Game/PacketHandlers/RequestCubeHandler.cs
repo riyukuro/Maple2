@@ -12,6 +12,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -183,7 +184,13 @@ public class RequestCubeHandler : FieldPacketHandler {
             // Sub-types the KMS 2525 client sends that have no logic here yet: read and log only.
             case Command.BuildState: // sent with 0 before HoldCube in build mode, with 1 from the cube palette
             case Command.RemoveCube13: // cube position
+                Logger.Debug("RequestCube {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
+                break;
             case Command.GodModeIndex: // debug index
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 break;
             case Command.OwnPlotSign: // the owner used the sign of their own plot: plot number, 0

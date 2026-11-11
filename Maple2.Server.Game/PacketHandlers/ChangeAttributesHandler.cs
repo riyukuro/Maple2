@@ -41,10 +41,17 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             case Command.Select:
                 HandleSelect(session, packet);
                 return;
-            case Command.Unknown5:
+            case Command.Unknown5: // GM button of the pet remake page (GM level 50 or more)
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
                 HandleUnknown5(session, packet);
                 return;
-            case Command.ForceFill:
+            case Command.ForceFill: // GM buttons of the remake dialog (GM level 50 or more)
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleForceFill(session, packet);
                 return;
             case Command.KeepCurrent:

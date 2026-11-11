@@ -7,6 +7,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -47,7 +48,11 @@ public class LapenshardHandler : FieldPacketHandler {
             case Command.Upgrade:
                 HandleUpgrade(session, packet);
                 return;
-            case Command.Unknown:
+            case Command.Unknown: // "OnFillIngredientDebug": the dialog's debug-mode button
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleUnknown(session, packet);
                 return;
         }

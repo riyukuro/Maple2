@@ -3,6 +3,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -59,13 +60,25 @@ public class ItemEnchantHandler : FieldPacketHandler {
                 return;
             case Command.DebugForceEnchant:
             case Command.Debug19:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 Logger.Debug("Enchant debug request {Command} from {CharacterId} not implemented", command, session.CharacterId);
                 return;
             case Command.DebugFillIngredient:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleDebugFillIngredient(session, packet);
                 return;
             case Command.DebugFillFailStack:
             case Command.DebugUseAllFailStack:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleDebugFailStack(session, packet, command);
                 return;
         }

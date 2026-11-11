@@ -7,6 +7,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -36,6 +37,10 @@ public class ItemExchangeScroll : FieldPacketHandler {
                 HandleSetTarget(session, packet);
                 break;
             case Command.ForceFillIngredient:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleForceFillIngredient(session, packet);
                 break;
         }
