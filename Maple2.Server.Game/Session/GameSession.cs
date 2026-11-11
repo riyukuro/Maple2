@@ -131,6 +131,11 @@ public sealed partial class GameSession : Core.Network.Session {
         return server.GetSession(characterId, out other);
     }
 
+    // The session of an account on this channel, whichever character it plays.
+    public GameSession? FindSessionByAccountId(long accountId) {
+        return server.GetSessionByAccountId(accountId);
+    }
+
     public bool FindField(int mapId, [NotNullWhen(true)] out FieldManager? field) {
         field = server.GetField(mapId);
         return field is not null;
@@ -210,6 +215,22 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         int fieldId = mapId == 0 ? player.Character.MapId : mapId;
+        // Arriving in another account's home (a channel change or a relog inside it): a blocked account
+        // goes to its return field instead.
+        if (ownerId != 0 && ownerId != AccountId
+            && ServerTableMetadata.InstanceFieldTable.Entries.TryGetValue(fieldId, out InstanceFieldMetadata? instanceField)
+            && instanceField.Type == InstanceType.ugcMap
+            && db.IsHomeBlocked(ownerId, AccountId)) {
+            fieldId = player.Character.ReturnMaps.Peek();
+            position = player.Character.ReturnPosition;
+            if (!MapMetadata.TryGet(fieldId, out _)) {
+                fieldId = Constant.DefaultReturnMapId;
+                position = default;
+            }
+            ownerId = 0;
+            roomId = 0;
+            portalId = -1;
+        }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
             Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
             return false;

@@ -7,6 +7,15 @@ namespace Maple2.Database.Storage;
 
 public partial class GameStorage {
     public partial class Request {
+        // A row whose character was deleted is not part of the list: it is not shown, does not block and
+        // does not count (DeleteCharacter removes such rows; this keeps older rows out as well).
+        private IQueryable<HomeBlock> LiveHomeBlocks(long ownerId) {
+            return from block in Context.HomeBlock
+                   where block.OwnerId == ownerId
+                   join character in Context.Character on block.CharacterId equals character.Id
+                   select block;
+        }
+
         public IList<HomeBlockEntry> GetHomeBlocks(long ownerId) {
             return (from block in Context.HomeBlock.AsNoTracking()
                     where block.OwnerId == ownerId
@@ -26,11 +35,17 @@ public partial class GameStorage {
         }
 
         public bool IsHomeBlocked(long ownerId, long accountId) {
-            return Context.HomeBlock.Any(block => block.OwnerId == ownerId && block.AccountId == accountId);
+            return LiveHomeBlocks(ownerId).Any(block => block.AccountId == accountId);
         }
 
         public int CountHomeBlocks(long ownerId) {
-            return Context.HomeBlock.Count(block => block.OwnerId == ownerId);
+            return LiveHomeBlocks(ownerId).Count();
+        }
+
+        // Rows that name a deleted character, and every row of an account without characters, go away
+        // with the character.
+        public void RemoveHomeBlocksOf(long characterId) {
+            Context.HomeBlock.RemoveRange(Context.HomeBlock.Where(block => block.CharacterId == characterId));
         }
 
         // Null when the character does not exist. The caller checks the account and the existing rows first.
@@ -39,6 +54,9 @@ public partial class GameStorage {
             if (character == null) {
                 return null;
             }
+
+            // A leftover row for the same account (its character was deleted) would collide with the new one.
+            Context.HomeBlock.RemoveRange(Context.HomeBlock.Where(old => old.OwnerId == ownerId && old.AccountId == character.AccountId));
 
             var block = new HomeBlock {
                 OwnerId = ownerId,

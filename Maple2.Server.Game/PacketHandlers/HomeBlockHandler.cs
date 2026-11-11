@@ -43,7 +43,8 @@ public class HomeBlockHandler : FieldPacketHandler {
         using GameStorage.Request db = session.GameStorage.Context();
         long? targetAccountId = db.GetHomeBlockAccountId(characterId);
         bool alreadyBlocked = targetAccountId != null && db.IsHomeBlocked(session.AccountId, targetAccountId.Value);
-        HomeBlockPacket.Error? error = HomeBlockRules.CheckAdd(session.AccountId, targetAccountId, alreadyBlocked, db.CountHomeBlocks(session.AccountId));
+        HomeBlockPacket.Error? error = HomeBlockRules.CheckAdd(session.AccountId, targetAccountId, alreadyBlocked, db.CountHomeBlocks(session.AccountId),
+            HomeBlockRules.MaxBlocks(session.ServerTableMetadata.ConstantsTable.MaxBlockCount));
         if (error != null) {
             session.Send(HomeBlockPacket.Result(error.Value));
             return;
@@ -57,16 +58,11 @@ public class HomeBlockHandler : FieldPacketHandler {
 
         session.Send(HomeBlockPacket.Add(entry));
 
-        // A blocked visitor who is in the owner's home right now is sent out.
-        if (session.Field is HomeFieldManager home && home.OwnerId == session.AccountId) {
-            foreach (FieldPlayer visitor in home.Players.Values) {
-                if (visitor.Session.AccountId != entry.AccountId) {
-                    continue;
-                }
-
-                visitor.Session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.Kicked));
-                visitor.Session.ReturnField();
-            }
+        // A blocked visitor who is in this account's home right now is sent out, wherever the owner is.
+        GameSession? visitor = session.FindSessionByAccountId(entry.AccountId);
+        if (visitor?.Field is HomeFieldManager home && home.OwnerId == session.AccountId) {
+            visitor.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.Kicked));
+            visitor.ReturnField();
         }
     }
 

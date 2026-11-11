@@ -89,6 +89,9 @@ The four server-to-client warnings are kept on purpose; in each the client reads
   - System shop: every shop kind; closing one clears the open shop.
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 
+## Database migrations
+The servers do not migrate the game database when they start. After an update that adds a migration (`Maple2.Server.World/Migrations`), run `dotnet ef database update` in `Maple2.Server.World` (the ingest runs the same command) before the servers start. Without the `home-block` table of `AddHomeBlockTable` every login fails, because the home block list is read at login.
+
 ## GM-only packets
 Some packets and packet modes are sent by the client only from a GM command, a debug hotkey or a developer dialog (the client tests its GM level or its debug mode before it writes them). A handler for one of those starts with `GmCheck.Allow(session, OpCode, mode)` (`Maple2.Server.Game/Util/GmCheck.cs`): the account needs the GameMaster or Admin permission, as set with the `perm` command. Any other sender is dropped with one warning (account id, opcode, mode) and gets no reply. A new handler or mode of that kind must start the same way.
 

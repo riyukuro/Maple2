@@ -4,12 +4,17 @@ namespace Maple2.Server.Game.Util;
 
 public static class HomeBlockRules {
     // The client has no limit of its own (it only shows the server's "cannot block any more" notice).
-    public const int MaxBlocks = 100;
-    // The memo field of the client's dialog; the column holds 255.
-    public const int MaxMemoLength = 255;
+    // The server uses the block limit of the buddy list (constant MaxBlockCount); this is the fallback.
+    public const int DefaultMaxBlocks = 100;
+    // The memo input of the client's dialog takes 50 characters (the same input as the buddy memo).
+    public const int MaxMemoLength = 50;
+
+    public static int MaxBlocks(int maxBlockCount) {
+        return maxBlockCount > 0 ? maxBlockCount : DefaultMaxBlocks;
+    }
 
     // Null when the block may be added.
-    public static HomeBlockPacket.Error? CheckAdd(long ownerAccountId, long? targetAccountId, bool alreadyBlocked, int blockCount) {
+    public static HomeBlockPacket.Error? CheckAdd(long ownerAccountId, long? targetAccountId, bool alreadyBlocked, int blockCount, int maxBlocks) {
         if (targetAccountId == null) {
             return HomeBlockPacket.Error.NoUser;
         }
@@ -19,7 +24,7 @@ public static class HomeBlockRules {
         if (alreadyBlocked) {
             return HomeBlockPacket.Error.AlreadyBlocked;
         }
-        if (blockCount >= MaxBlocks) {
+        if (blockCount >= maxBlocks) {
             return HomeBlockPacket.Error.MaxBlock;
         }
         return null;
