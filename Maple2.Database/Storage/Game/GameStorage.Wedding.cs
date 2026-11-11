@@ -1,6 +1,9 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Marriage = Maple2.Model.Game.Marriage;
 using MarriageExp = Maple2.Model.Game.MarriageExp;
 using WeddingHall = Maple2.Model.Game.WeddingHall;
@@ -63,45 +66,77 @@ public partial class GameStorage {
         }
 
         // One partner files a divorce alone. Only from married; the stored state names the filer by the stored
-        // order of the partners.
-        public bool FileDivorce(long marriageId, long filerId, DateTime time) {
+        // order of the partners. The state changes in one update that tests the stored state, so of two filings
+        // at the same time one is stored. With a payer, that player's currency (the fee already taken off) is
+        // saved in the same transaction: the filing and the paid fee are stored together or not at all.
+        public bool FileDivorce(long marriageId, long filerId, DateTime time, Player? payer = null) {
             Model.Marriage? model = Context.Marriage.Find(marriageId);
             if (model == null || model.Status != MaritalStatus.Married || (model.Partner1Id != filerId && model.Partner2Id != filerId)) {
                 return false;
             }
 
-            model.Status = DivorceRules.FiledStatus(filerId, model.Partner1Id);
-            model.DivorceTime = time;
-            Context.Marriage.Update(model); // requests do not track what they load
-            return Context.TrySaveChanges();
+            MaritalStatus filed = DivorceRules.FiledStatus(filerId, model.Partner1Id);
+            DateTime? divorceTime = time;
+            QueryTrackingBehavior tracking = Context.ChangeTracker.QueryTrackingBehavior;
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                int rows = Context.Marriage
+                    .Where(marriage => marriage.Id == marriageId && marriage.Status == MaritalStatus.Married)
+                    .ExecuteUpdate(update => update
+                        .SetProperty(marriage => marriage.Status, filed)
+                        .SetProperty(marriage => marriage.DivorceTime, divorceTime));
+                if (!DivorceRules.Stored(rows) || (payer != null && !SaveCurrency(payer))) {
+                    return false; // the transaction is rolled back when it is disposed
+                }
+
+                transaction.Commit();
+                return true;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to file the divorce of marriage {MarriageId}", marriageId);
+                return false;
+            } finally {
+                Context.ChangeTracker.QueryTrackingBehavior = tracking;
+            }
         }
 
-        // The filer takes the divorce back: married again, as if it was never filed.
+        // The filer takes the divorce back: married again, as if it was never filed. One update that tests the
+        // stored state.
         public bool CancelDivorce(long marriageId, long filerId) {
             Model.Marriage? model = Context.Marriage.Find(marriageId);
             if (model == null || !DivorceRules.IsFiled(model.Status) || DivorceRules.FilerId(model.Status, model.Partner1Id, model.Partner2Id) != filerId) {
                 return false;
             }
 
-            model.Status = MaritalStatus.Married;
-            model.DivorceTime = null;
-            Context.Marriage.Update(model); // requests do not track what they load
-            return Context.TrySaveChanges();
+            MaritalStatus filed = model.Status;
+            DateTime? divorceTime = null;
+            return TryUpdate(() => Context.Marriage
+                .Where(marriage => marriage.Id == marriageId && marriage.Status == filed)
+                .ExecuteUpdate(update => update
+                    .SetProperty(marriage => marriage.Status, MaritalStatus.Married)
+                    .SetProperty(marriage => marriage.DivorceTime, divorceTime)));
         }
 
         // The divorce is complete at the given time: from a filed one (the other partner agreed or the cooling
-        // off ended) or, for a mutual one, from married. Refused from any other state, so that of two requests
-        // that complete the same divorce only one sends its mails.
+        // off ended) or, for a mutual one, from married. One update that tests the stored state, so of two
+        // requests that complete the same divorce one changes the row and only that one sends its mails.
         public bool CompleteDivorce(long marriageId, bool filed, DateTime time) {
-            Model.Marriage? model = Context.Marriage.Find(marriageId);
-            if (model == null || (filed ? !DivorceRules.IsFiled(model.Status) : model.Status != MaritalStatus.Married)) {
+            DateTime? divorceTime = time;
+            IQueryable<Model.Marriage> from = filed
+                ? Context.Marriage.Where(marriage => marriage.Id == marriageId
+                    && (marriage.Status == MaritalStatus.DivorceFiledByGroom || marriage.Status == MaritalStatus.DivorceFiledByBride))
+                : Context.Marriage.Where(marriage => marriage.Id == marriageId && marriage.Status == MaritalStatus.Married);
+            return TryUpdate(() => from.ExecuteUpdate(update => update
+                .SetProperty(marriage => marriage.Status, MaritalStatus.Divorced)
+                .SetProperty(marriage => marriage.DivorceTime, divorceTime)));
+        }
+
+        private bool TryUpdate(Func<int> update) {
+            try {
+                return DivorceRules.Stored(update());
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to update a marriage");
                 return false;
             }
-
-            model.Status = MaritalStatus.Divorced;
-            model.DivorceTime = time;
-            Context.Marriage.Update(model); // requests do not track what they load
-            return Context.TrySaveChanges();
         }
 
         // The propose cooltime after a divorce is over: the marriage is gone.

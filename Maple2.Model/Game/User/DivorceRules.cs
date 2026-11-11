@@ -132,6 +132,37 @@ public static class DivorceRules {
         return IsFiled(status) ? WeddingError.none : WeddingError.s_wedding_result_invaild_state_divorce;
     }
 
+    // The move of Wedding 7 is allowed from where a map move is: not dead, not from a dungeon room and not
+    // from a wedding hall room.
+    public static bool CanVisitFrom(bool inField, bool dead, bool dungeonField, bool weddingHall) {
+        return inField && !dead && !dungeonField && !weddingHall;
+    }
+
+    // A change of the stored state is one update that tests the state it starts from; it is stored when it
+    // changed that one row. Of two requests for the same change the second changes none.
+    public static bool Stored(int rows) {
+        return rows == 1;
+    }
+
+    // The fee that is in the wallet after a filing that was not stored: all of it back.
+    public static long MesoAfterFiling(long meso, long fee, bool stored) {
+        return stored ? meso : meso + fee;
+    }
+
+    // How long an ask for a mutual divorce waits for its answer. The server's own time; the client has none.
+    public const long AskTimeoutMs = 30000;
+
+    // An ask waits on the asked player: someone asked and its time is not over.
+    public static bool AskOpen(long askFrom, long expireTick, long nowTick) {
+        return askFrom != 0 && nowTick < expireTick;
+    }
+
+    // The answer (Wedding 9) holds for an ask that still waits, came from the partner, and whose asker is
+    // still in the field of the asked player.
+    public static bool CanAnswerAsk(long askFrom, long expireTick, long nowTick, long partnerId, bool askerInField) {
+        return AskOpen(askFrom, expireTick, nowTick) && askFrom == partnerId && askerInField;
+    }
+
     // A proposal by someone in this state: refused while a divorce is filed (0x19) and during the propose
     // cooltime after one (0x1a).
     public static WeddingError ProposeFrom(MaritalStatus status) {

@@ -296,8 +296,9 @@ public sealed class MarriageManager {
     private const int MailMutual = 40000011; // to both
 
     // A mutual divorce the partner asked for and this player has not answered: the partner's character id.
-    // Taken under ProposalLock; dropped when this player leaves the field.
+    // Taken under ProposalLock; dropped when this player leaves the field and after DivorceRules.AskTimeoutMs.
     private long divorceAskFrom;
+    private long divorceAskExpireTick;
 
     private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -446,7 +447,15 @@ public sealed class MarriageManager {
             }
 
             lock (ProposalLock) {
-                partner.Session.Marriage.divorceAskFrom = session.CharacterId;
+                MarriageManager other = partner.Session.Marriage;
+                long tick = Environment.TickCount64;
+                // One ask at a time, in either direction: the box is not opened again while one waits.
+                if (DivorceRules.AskOpen(other.divorceAskFrom, other.divorceAskExpireTick, tick)
+                    || DivorceRules.AskOpen(divorceAskFrom, divorceAskExpireTick, tick)) {
+                    return false;
+                }
+                other.divorceAskFrom = session.CharacterId;
+                other.divorceAskExpireTick = tick + DivorceRules.AskTimeoutMs;
             }
             partner.Session.Send(WeddingPacket.DivorceRequest());
             return true;
@@ -456,9 +465,13 @@ public sealed class MarriageManager {
         using (GameStorage.Request db = session.GameStorage.Context()) {
             switch (function) {
                 case DivorceRules.FunctionFile:
-                    stored = db.FileDivorce(marriageId, session.CharacterId, now.FromEpochSeconds());
-                    if (stored) {
-                        session.Currency.Meso -= fee;
+                    // The fee is taken first and saved in the transaction of the filing, so that no filed
+                    // divorce is stored without its fee paid; a filing that is not stored gives it back.
+                    session.Currency.Meso -= fee;
+                    stored = db.FileDivorce(marriageId, session.CharacterId, now.FromEpochSeconds(), session.Player);
+                    if (!stored) {
+                        session.Currency.Meso = DivorceRules.MesoAfterFiling(session.Currency.Meso, fee, stored);
+                    } else {
                         string end = MailDate(DivorceRules.CoolingOffEnd(now, constants.WeddingCoolingOffDay));
                         SendDivorceMail(db, session.CharacterId, MailFiled, 0, partnerName, end);
                         SendDivorceMail(db, partnerId, MailFiledOn, 0, session.PlayerName, end);
@@ -494,13 +507,16 @@ public sealed class MarriageManager {
     // Wedding 9: the answer to the partner's ask for a mutual divorce.
     public void DivorceAnswer(short answer) {
         long askerId;
+        long expireTick;
         lock (ProposalLock) {
             askerId = divorceAskFrom;
+            expireTick = divorceAskExpireTick;
             divorceAskFrom = 0;
         }
 
-        if (askerId == 0 || askerId != Partner.CharacterId) {
-            // Nothing was asked: the client's text for a marriage that is in no state to divorce.
+        bool askerInField = askerId != 0 && session.Field != null && session.Field.TryGetPlayerById(askerId, out _);
+        if (!DivorceRules.CanAnswerAsk(askerId, expireTick, Environment.TickCount64, Partner.CharacterId, askerInField)) {
+            // Nothing is asked (any more): the client's text for a marriage that is in no state to divorce.
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_invaild_state_divorce));
             return;
         }
@@ -532,6 +548,10 @@ public sealed class MarriageManager {
         WeddingError error = DivorceRules.CheckVisit(Marriage.Status, IsFiler);
         if (error != WeddingError.none) {
             session.Send(WeddingPacket.Error(error));
+            return;
+        }
+        if (!DivorceRules.CanVisitFrom(session.Field != null, session.Player.IsDead, session.Field is Field.DungeonFieldManager, session.Field?.Wedding != null)) {
+            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
             return;
         }
 

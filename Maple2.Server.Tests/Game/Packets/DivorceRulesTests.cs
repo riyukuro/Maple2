@@ -225,6 +225,45 @@ public class DivorceRulesTests {
     }
 
     [Test]
+    public void Visit_OnlyFromWhereAMapMoveIsAllowed() {
+        Assert.That(DivorceRules.CanVisitFrom(inField: true, dead: false, dungeonField: false, weddingHall: false), Is.True);
+        Assert.That(DivorceRules.CanVisitFrom(inField: false, dead: false, dungeonField: false, weddingHall: false), Is.False);
+        Assert.That(DivorceRules.CanVisitFrom(inField: true, dead: true, dungeonField: false, weddingHall: false), Is.False);
+        Assert.That(DivorceRules.CanVisitFrom(inField: true, dead: false, dungeonField: true, weddingHall: false), Is.False);
+        Assert.That(DivorceRules.CanVisitFrom(inField: true, dead: false, dungeonField: false, weddingHall: true), Is.False);
+    }
+
+    [Test]
+    public void StateChange_IsStoredOnlyByTheRequestThatChangedTheRow() {
+        // Two filings, or two ends of one cooling off, at the same time: the update that tests the stored
+        // state changes the row for the first and no row for the second.
+        Assert.That(DivorceRules.Stored(1), Is.True);
+        Assert.That(DivorceRules.Stored(0), Is.False);
+    }
+
+    [Test]
+    public void Fee_IsBackWhenTheFilingIsNotStored() {
+        long held = 3 * Fee;
+        Assert.That(DivorceRules.MesoAfterFiling(held - Fee, Fee, stored: true), Is.EqualTo(held - Fee));
+        Assert.That(DivorceRules.MesoAfterFiling(held - Fee, Fee, stored: false), Is.EqualTo(held));
+    }
+
+    [Test]
+    public void MutualAsk_ExpiresAndNeedsTheAskerInTheField() {
+        const long tick = 5000;
+        long expire = tick + DivorceRules.AskTimeoutMs;
+        Assert.That(DivorceRules.AskOpen(First, expire, tick), Is.True);
+        Assert.That(DivorceRules.AskOpen(0, expire, tick), Is.False);
+        Assert.That(DivorceRules.AskOpen(First, expire, expire), Is.False, "time over");
+
+        Assert.That(DivorceRules.CanAnswerAsk(First, expire, tick + 1, First, askerInField: true), Is.True);
+        Assert.That(DivorceRules.CanAnswerAsk(First, expire, expire, First, askerInField: true), Is.False, "time over");
+        Assert.That(DivorceRules.CanAnswerAsk(First, expire, tick + 1, First, askerInField: false), Is.False, "asker left");
+        Assert.That(DivorceRules.CanAnswerAsk(First, expire, tick + 1, Second, askerInField: true), Is.False, "not the partner");
+        Assert.That(DivorceRules.CanAnswerAsk(0, expire, tick + 1, First, askerInField: true), Is.False, "nothing asked");
+    }
+
+    [Test]
     public void DivorceRequestPacket_IsTheModeAlone() {
         ByteWriter packet = WeddingPacket.DivorceRequest();
         var reader = new ByteReader(packet.Buffer, 0);
