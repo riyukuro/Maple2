@@ -142,6 +142,40 @@ public class ItemMergePacketTests {
         return new Item(metadata, rarity) { Uid = uid };
     }
 
+    private static ItemMetadata Leveled(int id, int type, int subType, int level) {
+        ItemMetadata metadata = ItemOf(id, 4, 5, null, type, subType).Metadata;
+        return metadata with { Limit = metadata.Limit with { Level = level } };
+    }
+
+    // The merge table's part is the item's xml equip subtype, not its id digits, and only for a material of
+    // subtype 1; the material is of property type 19; the item's level limit is 50 or more and not above the
+    // material's (CItemMergeOptionTable::FindMergeData and GetMergeData).
+    [Test]
+    public void MergeSlot_KeyedAsTheClientAsks() {
+        static ItemMergeTable.Entry Row(int slot) => new(slot, 100, [],
+            new Dictionary<BasicAttribute, ItemMergeTable.Option>(), new Dictionary<SpecialAttribute, ItemMergeTable.Option>());
+        var table = new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
+            [37000001] = new() { [13] = Row(13), [22] = Row(22) },
+            [37000002] = new() { [0] = Row(0) },
+        });
+        ItemMetadata byPart = Leveled(37000001, 19, 1, 60);
+        ItemMetadata anyPart = Leveled(37000002, 19, 2, 60);
+
+        // An item whose id digits say 13 and whose xml subtype says 22 gets the row of part 22.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 22, 50), byPart)?.Slot, Is.EqualTo(22));
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(12200001, 1, 13, 50), byPart)?.Slot, Is.EqualTo(13));
+        // An item that is no equip (property type other than 1) has equip subtype 0, which this table has not.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 2, 13, 50), byPart), Is.Null);
+        // A material of another subtype asks part 0 whatever the item.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 50), anyPart)?.Slot, Is.EqualTo(0));
+        // Not a merge material.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 50), Leveled(37000001, 3, 1, 60)), Is.Null);
+        // Level limits.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 49), byPart), Is.Null);
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 60), byPart)?.Slot, Is.EqualTo(13));
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 61), byPart), Is.Null);
+    }
+
     private static Item Merged(int id, int rarity, int type = 1, int subType = 13, EquipSlot[]? slots = null) {
         Item item = ItemOf(id, rarity, 5, null, type, subType, slots);
         item.Stats = new ItemStats();

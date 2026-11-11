@@ -70,7 +70,6 @@ public sealed class ItemMergeManager {
                 return;
             }
         }
-        int type = item.Type.Type;
         upgradeItem = item;
 
         List<long> catalystUids = [];
@@ -80,16 +79,10 @@ public sealed class ItemMergeManager {
                 continue;
             }
 
-            if (catalysts.FirstOrDefault()?.Metadata.Limit.Level < item.Metadata.Limit.Level) {
-                continue;
-            }
-
-            if (!options.ContainsKey(type)) {
-                continue;
-            }
-
             foreach (Item catalyst in catalysts) {
-                catalystUids.Add(catalyst.Uid);
+                if (MergeSlot(session.ServerTableMetadata.ItemMergeTable, item.Metadata, catalyst.Metadata) != null) {
+                    catalystUids.Add(catalyst.Uid);
+                }
             }
         }
 
@@ -109,8 +102,8 @@ public sealed class ItemMergeManager {
 
         catalystItem = catalyst;
 
-        if (!session.ServerTableMetadata.ItemMergeTable.Entries.TryGetValue(catalyst.Id, out Dictionary<int, ItemMergeTable.Entry>? options) ||
-            (!options.TryGetValue(upgradeItem.Type.Type, out ItemMergeTable.Entry? mergeSlot))) {
+        ItemMergeTable.Entry? mergeSlot = MergeSlot(session.ServerTableMetadata.ItemMergeTable, upgradeItem.Metadata, catalyst.Metadata);
+        if (mergeSlot == null) {
             return;
         }
 
@@ -142,9 +135,8 @@ public sealed class ItemMergeManager {
             return;
         }
 
-        if (!session.ServerTableMetadata.ItemMergeTable.Entries.TryGetValue(catalystItem.Id, out Dictionary<int, ItemMergeTable.Entry>? options) ||
-            !options.TryGetValue(upgradeItem.Type.Type, out ItemMergeTable.Entry? mergeSlot) ||
-            mergeSlot.BasicOptions.Count + mergeSlot.SpecialOptions.Count == 0) {
+        ItemMergeTable.Entry? mergeSlot = MergeSlot(session.ServerTableMetadata.ItemMergeTable, upgradeItem.Metadata, catalystItem.Metadata);
+        if (mergeSlot == null || mergeSlot.BasicOptions.Count + mergeSlot.SpecialOptions.Count == 0) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
             return;
         }
@@ -264,6 +256,29 @@ public sealed class ItemMergeManager {
     // check answers with the code of a missing item.
     public static Item? RevertTarget(long itemUid, Func<long, Item?> inventory) {
         return inventory(itemUid);
+    }
+
+    // The merge table's row for an item and a material, as the client finds it
+    // (CItemMergeOptionTable::FindMergeData and GetMergeData, itemmergeoptiontable.cpp:674 and :434): the
+    // material is of property type 19; the part is the item's equip subtype when the material's subtype is 1,
+    // else 0; the item's level limit is 50 or more and not above the material's.
+    // Two things the client asks are not in the server's data: the table id is the material's property
+    // param1 (CItemData::GetMergeOptionId, itemdata.cpp:1197), which the item parser does not read, so the
+    // table is asked by the material's item id and the ingest copies the rows of the materials that share
+    // one; and the row's partLimit list.
+    public static ItemMergeTable.Entry? MergeSlot(ItemMergeTable table, ItemMetadata item, ItemMetadata material) {
+        if (material.Property.Type != 19) {
+            return null;
+        }
+        int part = material.Property.SubType == 1 ? EquipSubtype(item) : 0;
+        if (!table.Entries.TryGetValue(material.Id, out Dictionary<int, ItemMergeTable.Entry>? parts) ||
+            !parts.TryGetValue(part, out ItemMergeTable.Entry? entry)) {
+            return null;
+        }
+        if (item.Limit.Level < 50 || item.Limit.Level > material.Limit.Level) {
+            return null;
+        }
+        return entry;
     }
 
     // CItemData::GetEquipSubtype (itemdata.cpp:509): the item xml's property subtype when the property
