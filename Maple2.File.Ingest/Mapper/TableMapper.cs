@@ -2020,7 +2020,18 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 ApplyCount: (short) mission.applyCount,
                 IsPenaltyType: mission.isPenaltyType));
         }
-        return new DungeonMissionTable(results);
+
+        // A played client of another version builds only the missions of its own table; an id it cannot
+        // build stops its dungeon at room entry (PlayedClientMissions), so such ids are not kept.
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientMissions.MissionTable);
+        if (playedReader == null || entry == null) {
+            return new DungeonMissionTable(results);
+        }
+        HashSet<int> buildable = PlayedClientMissions.Buildable(playedReader.GetXmlDocument(entry),
+            node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+        Dictionary<int, DungeonMissionMetadata> kept = PlayedClientMissions.Keep(results, buildable);
+        Console.WriteLine($"dungeon missions: {results.Count - kept.Count} of {results.Count} not in the played client's mission table, dropped");
+        return new DungeonMissionTable(kept);
     }
 
     private RewardContentTable ParseRewardContentTable() {
