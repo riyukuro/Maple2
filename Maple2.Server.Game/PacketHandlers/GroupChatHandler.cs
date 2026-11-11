@@ -33,7 +33,7 @@ public class GroupChatHandler : FieldPacketHandler {
         var command = packet.Read<Command>();
         switch (command) {
             case Command.Create:
-                HandleCreate(session);
+                HandleCreate(session, packet);
                 break;
             case Command.Invite:
                 HandleInvite(session, packet);
@@ -47,7 +47,10 @@ public class GroupChatHandler : FieldPacketHandler {
         }
     }
 
-    private void HandleCreate(GameSession session) {
+    private void HandleCreate(GameSession session, IByteReader packet) {
+        // CGroupChatManager::Create: the player to invite into the new chat, empty for an empty chat.
+        string targetPlayerName = packet.ReadUnicodeString();
+
         if (session.GroupChats.Count >= Constant.GroupChatMaxCapacity) {
             session.Send(GroupChatPacket.Error(GroupChatError.s_err_groupchat_maxgroup, session.PlayerName, session.PlayerName));
             return;
@@ -69,12 +72,18 @@ public class GroupChatHandler : FieldPacketHandler {
         }
 
         session.Send(GroupChatPacket.Create(response.GroupChat.Id));
+        if (!string.IsNullOrEmpty(targetPlayerName)) {
+            Invite(session, targetPlayerName, response.GroupChat.Id);
+        }
     }
 
     private void HandleInvite(GameSession session, IByteReader packet) {
         string targetPlayerName = packet.ReadUnicodeString();
         int groupChatId = packet.ReadInt();
+        Invite(session, targetPlayerName, groupChatId);
+    }
 
+    private void Invite(GameSession session, string targetPlayerName, int groupChatId) {
         using GameStorage.Request db = session.GameStorage.Context();
         long characterId = db.GetCharacterId(targetPlayerName);
         if (characterId == 0) {
