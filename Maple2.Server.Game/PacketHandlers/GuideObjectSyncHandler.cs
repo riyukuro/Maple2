@@ -31,6 +31,7 @@ public class GuideObjectSyncHandler : FieldPacketHandler {
         for (int i = 0; i < segments; i++) {
             var playerState = packet.Peek<ActorState>();
             StateSync stateSync = playerState switch {
+                ActorState.CoupleEmotion => new StateSyncCoupleEmotion(),
                 ActorState.MicroGameRps => new StateSyncRps(),
                 ActorState.MicroGameCoupleDance => new StateSyncCoupleDance(),
                 ActorState.WeddingEmotion => new StateSyncWeddingEmotion(),
