@@ -123,6 +123,7 @@ public class GroupChatHandler : FieldPacketHandler {
 
     private void HandleLeave(GameSession session, IByteReader packet) {
         int groupChatId = packet.ReadInt();
+        packet.ReadBool(); // 1 when the client's refuse-invites option turned down an invite, 0 when the player leaves
 
         if (!session.GroupChats.ContainsKey(groupChatId)) {
             return;
