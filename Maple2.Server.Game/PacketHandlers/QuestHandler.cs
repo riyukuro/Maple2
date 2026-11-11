@@ -141,18 +141,18 @@ public class QuestHandler : FieldPacketHandler {
                 break;
             case Command.AllianceAcceptAll:
                 // UIAllianceQuestDialog::SendQuestMode34 (unit_140bf60f0_uialliancequestdialog.cpp:681): no
-                // body; the player confirmed "accept all" in the alliance quest window. The request does not
-                // name the alliance and the server keeps none for a player, so no quest is started; the
-                // answer is the client's text for a quest that could not be accepted (Quest error 3).
-                session.Send(QuestPacket.Error(QuestError.s_quest_error_accept_fail));
+                // body; the player confirmed "accept all" in the alliance quest window of the talk npc. The client
+                // offers it when one of the npc's alliance quests of repeat 2 or 3 without an unrequireGroup may be
+                // started (CanAcceptAllQuests, :612), which are the alliance missions it was sent (Quest 0x1F and
+                // 0x20); each of them is started, then Quest 0x22 names the alliance.
+                HandleAllianceAll(session, true);
                 break;
             case Command.AllianceCompleteAll:
                 // UIAllianceQuestDialog::SendQuestMode35 (unit_140bf60f0_uialliancequestdialog.cpp:693): no
-                // body. Not handled: the client offers it only when an alliance quest in progress of the talk
-                // npc's alliance can be completed (CanCompleteAllQuests, :632), and the server's quest data
-                // does not name a quest's alliance, so it cannot tell which quests are meant. Each quest is
-                // completed from the window on its own (NpcTalk 8).
-                Logger.Debug("Quest {Command} from {CharacterId}", command, session.CharacterId);
+                // body. The client offers it when one of the npc's alliance quests of repeat 2 or 3 in progress
+                // has its conditions done (CanCompleteAllQuests, :632); each of them is completed, then Quest 0x23
+                // names the alliance.
+                HandleAllianceAll(session, false);
                 break;
             case Command.EpicRestart:
                 // UIGameMenuDialog::SendQuest (uigamemenudialog.cpp:2294): no body. Not handled: the client
@@ -286,6 +286,30 @@ public class QuestHandler : FieldPacketHandler {
         session.Send(session.PrepareField(quest.Metadata.GoToNpc.MapId, portalId: quest.Metadata.GoToNpc.PortalId)
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+    }
+
+    // The alliance of the talk npc: its kind is an alliance's officerNpcKind (CFameTable::GetAllianceByNpc,
+    // famegradedata.cpp:830).
+    private static void HandleAllianceAll(GameSession session, bool accept) {
+        int kind = session.NpcScript?.Npc?.Value.Metadata.Basic.Kind ?? 0;
+        if (!session.TableMetadata.FameTable.OfficerNpcKinds.TryGetValue(kind, out AllianceType alliance)) {
+            session.Send(QuestPacket.Error(accept ? QuestError.s_quest_error_accept_fail : QuestError.s_quest_error_consume_fail));
+            return;
+        }
+
+        if (accept) {
+            if (session.Quest.StartAllianceMissions(alliance) > 0) {
+                session.Send(QuestPacket.AllianceAccept(alliance));
+            } else {
+                session.Send(QuestPacket.Error(QuestError.s_quest_error_accept_fail));
+            }
+            return;
+        }
+        if (session.Quest.CompleteAllianceQuests(alliance) > 0) {
+            session.Send(QuestPacket.AllianceComplete(alliance));
+        } else {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
+        }
     }
 
     // CQuestManager::SendQuestMode19 (questmanager_2.cpp:1459): the quest id. The quest window's re-entry

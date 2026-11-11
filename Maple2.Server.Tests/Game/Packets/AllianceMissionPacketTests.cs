@@ -23,4 +23,17 @@ public class AllianceMissionPacketTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(daily ? 91000102 : 91000202));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+
+    // Quest 0x22 and 0x23: the alliance as a short, the {0} of s_quest_alliance_accept_all_{0} / complete_all_{0}.
+    [TestCase(true, 34)]
+    [TestCase(false, 35)]
+    public void AcceptAndCompleteAllBytes(bool accept, int command) {
+        ByteWriter packet = accept ? QuestPacket.AllianceAccept(AllianceType.KritiasGreenHoods) : QuestPacket.AllianceComplete(AllianceType.KritiasGreenHoods);
+        var reader = new ByteReader(packet.ToArray(), 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Quest));
+        Assert.That(reader.ReadByte(), Is.EqualTo(command));
+        Assert.That(reader.ReadShort(), Is.EqualTo(8));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
 }

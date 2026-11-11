@@ -524,6 +524,38 @@ public sealed class QuestManager {
         }
     }
 
+    /// <summary>
+    /// Accept all (Quest 34): starts each of the alliance's missions in the lists sent that can be started.
+    /// </summary>
+    /// <returns>The number of quests started.</returns>
+    public int StartAllianceMissions(AllianceType alliance) {
+        int started = 0;
+        foreach (int questId in dailyMissions.Concat(weeklyMissions).Order().ToList()) {
+            if (session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) && metadata.Basic.Alliance == alliance
+                && Start(questId) == QuestError.none) {
+                started++;
+            }
+        }
+        return started;
+    }
+
+    /// <summary>
+    /// Complete all (Quest 35): completes each held alliance quest of the alliance of repeat 2 or 3 whose conditions are
+    /// done (CanCompleteAllQuests).
+    /// </summary>
+    /// <returns>The number of quests completed.</returns>
+    public int CompleteAllianceQuests(AllianceType alliance) {
+        int completed = 0;
+        foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).OrderBy(quest => quest.Id).ToList()) {
+            QuestMetadataBasic basic = quest.Metadata.Basic;
+            if (basic.Type == QuestType.AllianceQuest && basic.Alliance == alliance && basic.Repeat is 2 or 3
+                && CanComplete(quest) && Complete(quest)) {
+                completed++;
+            }
+        }
+        return completed;
+    }
+
     // The reset weekday of the weekly missions (all of them have the same, usePeriod "fri"); 0 none.
     private int MissionWeekday() {
         return session.QuestMetadata.GetQuestsByType(QuestType.AllianceQuest)

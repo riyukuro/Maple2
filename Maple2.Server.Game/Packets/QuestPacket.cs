@@ -222,20 +222,20 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    // s_quest_alliance_accept_all_*
+    // Quest 0x22: the client closes the alliance quest window and shows s_quest_alliance_accept_all_{alliance}.
     public static ByteWriter AllianceAccept(AllianceType type) {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.AllianceAccept);
-        pWriter.Write<AllianceType>(type);
+        pWriter.WriteShort((short) type);
 
         return pWriter;
     }
 
-    // s_quest_alliance_complete_all_*
+    // Quest 0x23: the same with s_quest_alliance_complete_all_{alliance}.
     public static ByteWriter AllianceComplete(AllianceType type) {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.AllianceComplete);
-        pWriter.Write<AllianceType>(type);
+        pWriter.WriteShort((short) type);
 
         return pWriter;
     }
