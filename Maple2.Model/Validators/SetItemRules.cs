@@ -21,6 +21,38 @@ public static class SetItemRules {
         return counts;
     }
 
+    // Whether a worn item counts as a set piece. The client counts it only when the character can use it
+    // (PC::CanUseItem, pc.cpp:4683) at its level (CItem::CanUseAtLevel, item.cpp:653; equipment.cpp:3000-3004):
+    // not expired (CItem::FUN_140528980, item.cpp:1717: an expiry time that has passed, pets excepted),
+    // a premium-club item only for a premium-club account (pc.cpp:4691), not bound to another character
+    // (FUN_1406343b0, itemsocketsystemutil.cpp:2534), and the item's level limit not above the character's
+    // level (CItemData::IsLevelAllowed, itemdata.cpp:618).
+    public static bool Counted(bool expired, bool requireVip, bool vip, long boundTo, long characterId, int levelLimit, int level) {
+        if (expired) {
+            return false;
+        }
+        if (requireVip && !vip) {
+            return false;
+        }
+        if (boundTo != 0 && boundTo != characterId) {
+            return false;
+        }
+        return levelLimit <= level;
+    }
+
+    // An item's expiry time has passed (CItem::IsExpired, item.cpp:1303; 0 = no expiry). A pet item is never
+    // held back by it (item.cpp:1719).
+    public static bool Expired(long expiryTime, long now, bool pet) {
+        return !pet && expiryTime > 0 && expiryTime <= now;
+    }
+
+    // The item id a set lists a piece under: the item's origin id when it has one, else its own id
+    // (CItemData::GetOriginOrItemId, itemdata.cpp:477; used by CSetItemManager::AddItemCount,
+    // setiteminfo_2.cpp:70-73, and the tooltip, astooltip.cpp:924).
+    public static int SetKey(int itemId, int originId) {
+        return originId != 0 ? originId : itemId;
+    }
+
     // The parts of a set that hold with this many pieces worn: every part asking for 1 to count pieces, not
     // only the highest one (SetItemInfo::GetOptionParts, setiteminfo.cpp:148).
     public static IEnumerable<SetBonusMetadata> Active(SetBonusMetadata[] options, int count) {

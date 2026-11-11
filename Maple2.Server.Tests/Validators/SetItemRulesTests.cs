@@ -33,6 +33,37 @@ public class SetItemRulesTests {
     }
 
     [Test]
+    public void Counted_ExpiredItemIsNot() {
+        Assert.That(SetItemRules.Expired(expiryTime: 0, now: 5000, pet: false), Is.False);
+        Assert.That(SetItemRules.Expired(expiryTime: 5001, now: 5000, pet: false), Is.False);
+        Assert.That(SetItemRules.Expired(expiryTime: 5000, now: 5000, pet: false), Is.True);
+        Assert.That(SetItemRules.Expired(expiryTime: 4000, now: 5000, pet: true), Is.False);
+        Assert.That(SetItemRules.Counted(expired: false, false, false, 0, 77, 0, 10), Is.True);
+        Assert.That(SetItemRules.Counted(expired: true, false, false, 0, 77, 0, 10), Is.False);
+    }
+
+    [Test]
+    public void Counted_UnusableItemIsNot() {
+        // A premium-club item without the premium club; an item bound to another character.
+        Assert.That(SetItemRules.Counted(false, requireVip: true, vip: false, 0, 77, 0, 10), Is.False);
+        Assert.That(SetItemRules.Counted(false, requireVip: true, vip: true, 0, 77, 0, 10), Is.True);
+        Assert.That(SetItemRules.Counted(false, false, false, boundTo: 78, characterId: 77, 0, 10), Is.False);
+        Assert.That(SetItemRules.Counted(false, false, false, boundTo: 77, characterId: 77, 0, 10), Is.True);
+    }
+
+    [Test]
+    public void Counted_OverLevelItemIsNot() {
+        Assert.That(SetItemRules.Counted(false, false, false, 0, 77, levelLimit: 50, level: 49), Is.False);
+        Assert.That(SetItemRules.Counted(false, false, false, 0, 77, levelLimit: 50, level: 50), Is.True);
+    }
+
+    [Test]
+    public void SetKey_OriginIdWhenTheItemHasOne() {
+        Assert.That(SetItemRules.SetKey(itemId: 7002, originId: 7001), Is.EqualTo(7001));
+        Assert.That(SetItemRules.SetKey(itemId: 7002, originId: 0), Is.EqualTo(7002));
+    }
+
+    [Test]
     public void Active_AllPartsUpToTheCount() {
         SetBonusMetadata[] options = Sets()[801].Options;
 

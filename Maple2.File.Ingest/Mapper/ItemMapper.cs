@@ -6,6 +6,7 @@ using Maple2.File.Parser.Xml.Item;
 using Maple2.File.Parser.Xml.Table;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Slot = Maple2.File.Parser.Xml.Item.Slot;
 
 namespace Maple2.File.Ingest.Mapper;
@@ -194,7 +195,8 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     DisableDrop: data.property.disableDrop,
                     SocketId: data.property.socketDataId,
                     IsFragment: data.property.functionTags == "piece",
-                    SetOptionIds: itemSetBonuses.GetValueOrDefault(id)?.ToArray() ?? [],
+                    // A set lists a piece under its origin id when it has one (SetItemRules.SetKey).
+                    SetOptionIds: itemSetBonuses.GetValueOrDefault(SetItemRules.SetKey(id, data.basic.originID))?.ToArray() ?? [],
                     SellPrices: data.property.sell.price,
                     CustomSellPrices: data.property.sell.priceCustom,
                     ShopId: data.Shop?.systemShopID ?? 0,

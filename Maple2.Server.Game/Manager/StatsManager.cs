@@ -1,3 +1,4 @@
+using Maple2.Database.Extensions;
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -228,9 +229,19 @@ public class StatsManager {
     // the missing ones are given, and the ones given earlier that no longer hold are taken. These effects
     // have no duration, so the logout save drops them; this runs at login and on every equip change.
     private List<SetBonusMetadata> RefreshSetEffects(FieldPlayer player) {
+        long now = DateTime.Now.ToEpochSeconds();
+        bool vip = player.Session.Config.IsPremiumClubActive();
+        long characterId = player.Value.Character.Id;
+        int characterLevel = player.Value.Character.Level;
+        // Only the items the client counts (SetItemRules.Counted).
+        int[][] Pieces(IEnumerable<Item> worn) {
+            return worn.Where(item => SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
+                    item.Metadata.Limit.RequireVip, vip, item.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel))
+                .Select(item => item.Metadata.Property.SetOptionIds).ToArray();
+        }
         List<SetBonusMetadata> bonuses = SetItemRules.Bonuses([
-            player.Session.Item.Equips.Gear.Values.Select(item => item.Metadata.Property.SetOptionIds).ToArray(),
-            player.Session.Item.Equips.Outfit.Values.Select(item => item.Metadata.Property.SetOptionIds).ToArray(),
+            Pieces(player.Session.Item.Equips.Gear.Values),
+            Pieces(player.Session.Item.Equips.Outfit.Values),
         ], player.Session.TableMetadata.SetItemTable.Entries);
 
         List<(int Id, short Level)> effects = SetItemRules.Effects(bonuses);
