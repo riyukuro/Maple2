@@ -53,9 +53,18 @@ public class ItemEnchantHandler : FieldPacketHandler {
                 HandleRefund(session, packet);
                 return;
             case Command.SimulateSelect:
+                // Nothing in the client opens the simulation dialog (UI id 0x4e9c): GM accounts only.
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleSimulateSelect(session, packet);
                 return;
             case Command.SimulateEnchant:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
                 HandleSimulateEnchant(session, packet);
                 return;
             case Command.DebugForceEnchant:
@@ -135,15 +144,20 @@ public class ItemEnchantHandler : FieldPacketHandler {
         session.ItemEnchant.Enchant(itemUid);
     }
 
-    // Client SendRequestItemEnchant (0x1419028d0): button 0 of the refund box, with the item from the box.
-    // The answer is ItemEnchantPacket.Refund (enchant exp reset and materials refunded); which materials
-    // come back is not known, so nothing is refunded yet.
+    // Client SendRequestItemEnchant (uicommon.cpp:1999): button 0 of the refund box, with the item from the box.
+    // The box opens (uicommon.cpp:2009) only for an item whose enchant record has charge and a version byte
+    // other than the client's own, 1 (CItemEnchantInfo::NeedsChargeVersionUpdate). ItemEnchant writes that
+    // byte and nothing here sets it to anything but 1, so the box never opens. The answer would be
+    // ItemEnchantPacket.Refund (enchant exp reset and materials refunded); which materials come back is not
+    // shown by the client, so nothing is refunded.
     private void HandleRefund(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         Logger.Debug("Enchant refund of item {ItemUid} from {CharacterId} not implemented", itemUid, session.CharacterId);
     }
 
-    // Client UIItemEnchantSimulateDialog OnSelect: the three values of the selected simulation entry.
+    // Client UIItemEnchantSimulateDialog OnSelect (uiitemenchantsimulatedialog.cpp:60): the three values of
+    // the selected simulation entry. The client reads no answer under 13 or 14 (OnItemEnchant,
+    // scenestategame.cpp:6101).
     private void HandleSimulateSelect(GameSession session, IByteReader packet) {
         int value1 = packet.ReadInt();
         int value2 = packet.ReadInt();
@@ -152,7 +166,7 @@ public class ItemEnchantHandler : FieldPacketHandler {
             value1, value2, value3, session.CharacterId);
     }
 
-    // Client UIItemEnchantSimulateDialog OnEnchant: sent after an OpenDialog (0) with the same three values
+    // Client UIItemEnchantSimulateDialog OnEnchant (uiitemenchantsimulatedialog.cpp:85): sent after an OpenDialog (0) with the same three values
     // as SimulateSelect and a sixth dialog value.
     private void HandleSimulateEnchant(GameSession session, IByteReader packet) {
         int value1 = packet.ReadInt();
