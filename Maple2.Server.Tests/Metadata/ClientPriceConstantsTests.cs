@@ -62,6 +62,21 @@ public class ClientPriceConstantsTests {
         Assert.That(result.All(entry => entry.ClientValue == "60000"), Is.True);
     }
 
+    // The multi open cap of item boxes: the client cuts the count with its own row before it sends.
+    [Test]
+    public void Differences_ClientValueWinsForItemBoxCap() {
+        List<ClientPriceConstants.Override> noRow = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("MaxChatLength", "50")]),
+            ClientPriceConstants.Select([("ItemBoxMultiOpenMaxCount", "50"), ("ItemBoxMultiOpenLimitCount", "30")]));
+        Assert.That(noRow.Select(entry => entry.Key), Is.EquivalentTo(new[] { "ItemBoxMultiOpenMaxCount" }));
+        Assert.That(noRow[0].ClientValue, Is.EqualTo("50"));
+
+        List<ClientPriceConstants.Override> smaller = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("ItemBoxMultiOpenMaxCount", "20")]),
+            ClientPriceConstants.Select([("ItemBoxMultiOpenMaxCount", "50")]));
+        Assert.That(smaller.Single().ServerValue, Is.EqualTo("20"));
+    }
+
     [Test]
     public void Select_LaterRowReplacesEarlier() {
         Dictionary<string, string> rows = ClientPriceConstants.Select([("MeratAirTaxiPrice", "90"), (" meratairtaxiprice ", "15")]);

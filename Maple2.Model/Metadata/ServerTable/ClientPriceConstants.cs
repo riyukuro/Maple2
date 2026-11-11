@@ -27,6 +27,16 @@ public static partial class ClientPriceConstants {
         return ClientCooltimes.Contains(key);
     }
 
+    // Caps the client applies from its own table before it sends: a server row below the client's would drop
+    // a request the client's window allows.
+    private static readonly HashSet<string> ClientCaps = new(StringComparer.OrdinalIgnoreCase) {
+        "ItemBoxMultiOpenMaxCount",
+    };
+
+    public static bool IsClientCap(string key) {
+        return ClientCaps.Contains(key);
+    }
+
     // rows: (key, value) in file order, already filtered by locale and feature. A later row replaces an earlier one.
     public static Dictionary<string, string> Select(IEnumerable<(string Key, string Value)> rows) {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -36,11 +46,11 @@ public static partial class ClientPriceConstants {
         return result;
     }
 
-    // The price and cooltime constants whose client value differs from the server's (or that the server pack has no row for).
+    // The price, cooltime and cap constants whose client value differs from the server's (or that the server pack has no row for).
     public static List<Override> Differences(IReadOnlyDictionary<string, string> server, IReadOnlyDictionary<string, string> client) {
         var result = new List<Override>();
         foreach ((string key, string clientValue) in client.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)) {
-            if (!IsPrice(key) && !IsClientCooltime(key)) {
+            if (!IsPrice(key) && !IsClientCooltime(key) && !IsClientCap(key)) {
                 continue;
             }
             server.TryGetValue(key, out string? serverValue);
