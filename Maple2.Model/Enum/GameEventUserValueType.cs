@@ -35,6 +35,9 @@ public enum GameEventUserValueType {
     AccumCompleteCount = 1702,
     AccumCompleteRewardReceived = 1703,
 
+    // Reactor event (flower pots, chocolate): rewards taken today; the client refuses at the event's limit.
+    ReactorRewardCount = 1901,
+
     // Rock Paper Scissors Event
     RPSDailyMatches = 1800,
     RPSRewardsClaimed = 1801,

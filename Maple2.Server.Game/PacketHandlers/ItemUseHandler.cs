@@ -113,6 +113,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.LevelPotion:
                 HandleLevelPotion(session, item);
                 break;
+            case ItemFunction.CreateReactor:
+                HandleCreateReactor(session, item);
+                break;
             case ItemFunction.HongBao:
                 HandleHongBao(session, item);
                 break;
@@ -589,6 +592,25 @@ public class ItemUseHandler : FieldPacketHandler {
             Level = level,
             Async = true,
         });
+
+        session.Item.Inventory.Consume(item.Uid, 1);
+    }
+
+    // The client checks all of this before it sends the use (CanCreateReactor); the server repeats the event,
+    // field, daily count and free cell checks.
+    private static void HandleCreateReactor(GameSession session, Item item) {
+        if (session.Field == null || !int.TryParse(item.Metadata.Function?.Parameters, out int reactorId)) {
+            return;
+        }
+        if (!session.TableMetadata.ReactorTable.Entries.TryGetValue(reactorId, out ReactorTable.Entry? metadata)) {
+            return;
+        }
+        if (!ReactorEvent.Check(session, metadata, out _)) {
+            return;
+        }
+        if (!session.Field.TryAddReactor(metadata, session.Player.Position, out _)) {
+            return;
+        }
 
         session.Item.Inventory.Consume(item.Uid, 1);
     }

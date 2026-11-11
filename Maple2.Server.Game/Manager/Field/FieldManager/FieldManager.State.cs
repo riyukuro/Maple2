@@ -53,6 +53,7 @@ public partial class FieldManager {
     private readonly ConcurrentDictionary<int, FieldPortal> fieldPortals = new();
 
     private readonly ConcurrentDictionary<int, HongBao> hongBaos = new();
+    private readonly ConcurrentDictionary<int, FieldReactor> fieldReactors = new();
 
     public IEnumerable<FieldSkill> DebugFieldSkills => fieldSkills.Values;
     public IEnumerable<FieldSkill> DebugCubeSkills => cubeSkills.Values;
@@ -801,6 +802,36 @@ public partial class FieldManager {
         Broadcast(PlayerHostPacket.UseHongBao(hongBao, item.Amount));
     }
 
+    // False when the cell already holds a reactor (the client checks the same by name).
+    public bool TryAddReactor(ReactorTable.Entry metadata, Vector3 position, [NotNullWhen(true)] out FieldReactor? reactor) {
+        (int X, int Y, int Z) cell = ReactorRules.Cell(position);
+        string name = ReactorRules.Name(ReactorRules.CellKey(cell));
+        reactor = null;
+        if (metadata.States.Length == 0 || fieldReactors.Values.Any(other => other.Name == name)) {
+            return false;
+        }
+
+        reactor = new FieldReactor(this, NextLocalId(), name, metadata, ReactorRules.CellCenter(cell), default);
+        if (!fieldReactors.TryAdd(reactor.ObjectId, reactor)) {
+            reactor = null;
+            return false;
+        }
+
+        Broadcast(ReactorPacket.Add(reactor.ObjectId, reactor.Name, metadata.Id, reactor.Position, reactor.Rotation,
+            reactor.StateIndex, reactor.StateTime, reactor.Connected));
+        return true;
+    }
+
+    public void RemoveReactor(int objectId) {
+        if (fieldReactors.TryRemove(objectId, out _)) {
+            Broadcast(ReactorPacket.Remove(objectId));
+        }
+    }
+
+    public bool TryGetReactor(int objectId, [NotNullWhen(true)] out FieldReactor? reactor) {
+        return fieldReactors.TryGetValue(objectId, out reactor);
+    }
+
     public void RemoveHongBao(int objectId) {
         hongBaos.TryRemove(objectId, out _);
     }
@@ -1058,6 +1089,10 @@ public partial class FieldManager {
         }
         foreach (FieldPet fieldPet in Pets.Values) {
             added.Session.Send(FieldPacket.AddPet(fieldPet));
+        }
+        foreach (FieldReactor reactor in fieldReactors.Values) {
+            added.Session.Send(ReactorPacket.Add(reactor.ObjectId, reactor.Name, reactor.Metadata.Id, reactor.Position, reactor.Rotation,
+                reactor.StateIndex, reactor.StateTime, reactor.Connected));
         }
         foreach (FieldPortal fieldPortal in fieldPortals.Values) {
             switch (fieldPortal) {

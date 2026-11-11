@@ -355,6 +355,7 @@ public partial class FieldManager : IField {
         foreach (FieldSkill skill in fieldSkills.Values) skill.Update(FieldTick);
         foreach (FieldSkill skill in cubeSkills.Values) skill.Update(FieldTick);
         foreach (FieldPortal portal in fieldPortals.Values) portal.Update(FieldTick);
+        foreach (FieldReactor reactor in fieldReactors.Values) reactor.Update(FieldTick);
         UpdateBanners();
 
         RoomTimer?.Update(FieldTick);
