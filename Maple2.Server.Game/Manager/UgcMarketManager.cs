@@ -67,6 +67,7 @@ public sealed class UgcMarketManager {
         sales.Remove(id);
 
         session.Currency.Meret += sale.Profit;
+        session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));
         session.Send(MeretMarketPacket.UpdateProfit(sale.Id));
     }
 

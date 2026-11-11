@@ -85,6 +85,21 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
+    // Client reader: meratmarketman.cpp:2334. The sale leaves the client's list on any answer;
+    // with result 1018 the amount is added to the collected total the client shows at the end,
+    // and the client then asks for its next settled sale.
+    public const int COLLECT_PROFIT_OK = 0x3FA;
+
+    public static ByteWriter CollectProfit(long saleId, long profit) {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.Write<Command>(Command.CollectProfit);
+        pWriter.WriteLong(saleId);
+        pWriter.WriteInt(COLLECT_PROFIT_OK);
+        pWriter.WriteLong(profit);
+
+        return pWriter;
+    }
+
     public static ByteWriter UpdateProfit(long saleId) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.UpdateProfit);
