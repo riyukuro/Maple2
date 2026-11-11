@@ -522,7 +522,7 @@ public class ItemUseHandler : FieldPacketHandler {
             Asset = functionParameters.TryGetValue("asset", out string? parameter) ? parameter : string.Empty,
             NormalState = functionParameters["normal"],
             Reactable = functionParameters["reactable"],
-            Scale = functionParameters.TryGetValue("scale", out string? scaleString) && !float.TryParse(scaleString, out float scale) ? scale : 1f,
+            Scale = BillboardRules.Scale(functionParameters.GetValueOrDefault("scale")),
         };
 
         FieldInteract? fieldInteract = session.Field.AddInteract(interactMesh, billboard);

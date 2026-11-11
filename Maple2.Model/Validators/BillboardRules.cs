@@ -17,4 +17,11 @@ public static class BillboardRules {
             ? BillboardInstallResult.Success
             : BillboardInstallResult.Fail;
     }
+
+    // The item's scale parameter is the float the client sets as the billboard entity's scale; none or unreadable is 1.
+    public static float Scale(string? parameter) {
+        return float.TryParse(parameter, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float scale) && scale > 0f
+            ? scale
+            : 1f;
+    }
 }

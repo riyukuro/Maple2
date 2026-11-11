@@ -1,3 +1,5 @@
+using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Packets;
@@ -16,6 +18,39 @@ public class BillboardRulesTests {
         var packet = new ByteReader(writer.ToArray(), 0);
         int parts = packet.ReadUnicodeString().Split("'").Length;
         Assert.That(BillboardRules.InstallResult(parts, itemParameters, placed), Is.EqualTo(expected));
+    }
+
+    // InteractObject add: after the four strings the client reads f32 scale, bool, and for a billboard i64 owner, name.
+    [TestCase("1.5", 1.5f)]
+    [TestCase("2", 2f)]
+    [TestCase(null, 1f)]
+    [TestCase("", 1f)]
+    [TestCase("big", 1f)]
+    [TestCase("0", 1f)]
+    public void ScaleOfInstalledBillboard(string? parameter, float expected) {
+        var owner = new Character { Id = 77, Name = "Owner", Mastery = new Mastery() };
+        var mesh = new Ms2InteractMesh(5, default, default);
+        var billboard = new InteractBillBoardObject("BillBoard_x", mesh, owner) {
+            Model = "MS2InteractMesh",
+            Scale = BillboardRules.Scale(parameter),
+        };
+        var writer = new ByteWriter();
+        billboard.WriteTo(writer);
+        var packet = new ByteReader(writer.ToArray(), 0);
+        Assert.That(packet.ReadString(), Is.EqualTo("BillBoard_x"));
+        packet.ReadByte();
+        Assert.That(packet.ReadByte(), Is.EqualTo(8));
+        Assert.That(packet.ReadInt(), Is.EqualTo(5));
+        packet.Skip(24);
+        Assert.That(packet.ReadUnicodeString(), Is.EqualTo("MS2InteractMesh"));
+        packet.ReadUnicodeString();
+        packet.ReadUnicodeString();
+        packet.ReadUnicodeString();
+        Assert.That(packet.ReadFloat(), Is.EqualTo(expected));
+        Assert.That(packet.ReadBool(), Is.False);
+        Assert.That(packet.ReadLong(), Is.EqualTo(77));
+        Assert.That(packet.ReadUnicodeString(), Is.EqualTo("Owner"));
+        Assert.That(packet.Available, Is.EqualTo(0));
     }
 
     // The answer the billboard dialog reads: u8 mode 7, i32 result.
