@@ -456,6 +456,15 @@ public sealed partial class GameSession : Core.Network.Session {
             ownerId = AccountId;
         }
 
+        // A field with enterAdminLevel above 0 takes GM accounts only, whatever the way in (portal, taxi,
+        // command, login into a saved field). The client only tests it for the taxi, in fielddatacli.cpp.
+        if (MapMetadata.TryGet(mapId, out MapMetadata? target)
+            && !FieldEntryRules.AdminFieldAllowed(target.Limit.EnterAdminLevel, GmCheck.IsGm(Player.Value.Account.AdminPermissions))) {
+            Send(NoticePacket.MessageBox(StringCode.s_field_limit_admin));
+            newField = null;
+            return false;
+        }
+
         if (Field is DungeonFieldManager dungeonField) {
             if (dungeonField.Lobby!.RoomFields.TryGetValue(mapId, out DungeonFieldManager? nextDungeonField)) {
                 newField = nextDungeonField;

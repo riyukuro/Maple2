@@ -12,7 +12,7 @@ public static class FieldEntryRules {
         }
     }
 
-    // A field with enterAdminLevel above 0 can be picked as a taxi destination by a GM account only.
+    // A field with enterAdminLevel above 0 can be entered, or picked as a taxi destination, by a GM account only.
     public static bool AdminFieldAllowed(int enterAdminLevel, bool gm) {
         return enterAdminLevel <= 0 || gm;
     }
