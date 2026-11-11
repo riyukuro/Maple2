@@ -1,4 +1,5 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
@@ -9,8 +10,9 @@ public class TakeBoatHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.TakeBoat;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        int npcObjectId = packet.ReadInt();
+        int npcObjectId = NpcTalkRules.ReadNpc(packet);
 
-        // do nothing? this is all handled in the job script
+        // The client closed the talk before this (cinematiccomponent.cpp:1157-1161). Nothing is built for it:
+        // the boat ride is handled in the job script.
     }
 }
