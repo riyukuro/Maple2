@@ -273,6 +273,17 @@ Packets the client reads that the server never sends, although a player can ask 
 
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
+- Trigger actions and conditions that only log and return a fixed result. The numbers are shipped trigger files using each one. The fixed result stays wherever a real result would block a shipped script.
+  - Dungeon room timer: dungeon_set_end_time (20), dungeon_timeout (19, stays false), dungeon_close_timer (13), dungeon_reset_time (8), dungeon_stop_timer (5), dungeon_set_lap_time (1), dungeon_move_lap_time_to_now (1). The server sends no room timer commands, so these have nothing to act on.
+  - dungeon_first_user_mission_score (5, the fame challenge rooms): the server does not score user missions (DungeonManager leaves them empty). A real sum would always be 0 and every run would take the "below A rank" branch, so the old result by operator stays.
+  - Colosseum continue-play: set_user_value_from_dungeon_reward_count (2; no record of rounds already rewarded), dungeon_disable_ranking (2), talk_npc (2; a talk the server starts with Nagi).
+  - Modes the server does not run: npc_to_patrol_in_box (96, Maple Survival), dark_stream_* (Dark Stream), wedding_* and room_expire (the hall steps that move or turn the couple; the server does not store which partner is which), shadow_expedition_* and give_reward_content (Shadow Expedition), create_field_game and field_game_* (field games), pvp_zone_* and set_pvp_zone, field_war_end (4, field war), guild_vs_game_*, show_event_result, set_user_value_from_user_count, set_user_value_from_guild_vs_game_score and user_value_to_number_mesh (guild vs guild, 66200001_gd), and arcade_* (the arcade games).
+  - patrol_condition_user (3): it moves players along a patrol path with an effect, which the server cannot do for a player.
+  - give_guild_exp (13): type 2 gives an amount that no table states.
+  - set_mini_game_area_for_hack and unset_mini_game_area_for_hack (13): anti-hack areas. The client's check for them is not known.
+  - give_exp (1) and start_tutorial (1): one use each, and the script does not settle the rule.
+  - npc_is_dead_by_string_id and announce: no shipped script uses them.
+
 ## Two local changes a server operator must know
 
 1. **All servers bind to loopback (127.0.0.1) by default.** To serve other machines, set `MS2_BIND_IP` to the address to listen on (`0.0.0.0` for all interfaces, as upstream); the server has no hardening for the open internet beyond upstream's.
