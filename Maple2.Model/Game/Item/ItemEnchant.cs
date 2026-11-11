@@ -11,23 +11,21 @@ public sealed class ItemEnchant : IByteSerializable, IByteDeserializable {
     public int EnchantExp { get; set; }
     // Enchant based peachy charges, otherwise always require 10 charges
     public byte EnchantCharges { get; set; }
-    public bool Tradeable { get; private set; }
     public int Charges { get; set; }
 
     public readonly Dictionary<BasicAttribute, BasicOption> BasicOptions;
 
-    public ItemEnchant(int enchants = 0, int enchantExp = 0, byte enchantCharges = 1, bool tradeable = true, int charges = 0,
+    public ItemEnchant(int enchants = 0, int enchantExp = 0, byte enchantCharges = 1, int charges = 0,
                        Dictionary<BasicAttribute, BasicOption>? basicOptions = null) {
         Enchants = enchants;
         EnchantExp = enchantExp;
         EnchantCharges = enchantCharges;
-        Tradeable = tradeable;
         Charges = charges;
         BasicOptions = basicOptions ?? new Dictionary<BasicAttribute, BasicOption>();
     }
 
     public ItemEnchant Clone() {
-        return new ItemEnchant(Enchants, EnchantExp, EnchantCharges, Tradeable, Charges, new Dictionary<BasicAttribute, BasicOption>(BasicOptions));
+        return new ItemEnchant(Enchants, EnchantExp, EnchantCharges, Charges, new Dictionary<BasicAttribute, BasicOption>(BasicOptions));
     }
 
     public void WriteTo(IByteWriter writer) {
@@ -39,7 +37,12 @@ public sealed class ItemEnchant : IByteSerializable, IByteDeserializable {
         writer.WriteLong();
         writer.WriteInt();
         writer.WriteInt();
-        writer.WriteBool(Tradeable);
+        // The bool is not "tradeable". The client's own default is true (Reset, itemenchantinfo.cpp:17), and
+        // while it is false the client refuses, whatever the transfer flags say, to destroy the item
+        // (itemsocketsystemutil.cpp:2316), to trade it (:2440), to list it on the black market (:2468) and to
+        // repack it (itemrepackingscrolldata.cpp:154), and hides the repack count line of the tooltip
+        // (astooltip.cpp:3524). The server has no state that locks an item this way, so it is always true.
+        writer.WriteBool(true);
         writer.WriteInt(Charges);
 
         writer.WriteByte((byte) BasicOptions.Count);
@@ -56,7 +59,7 @@ public sealed class ItemEnchant : IByteSerializable, IByteDeserializable {
         reader.ReadLong();
         reader.ReadInt();
         reader.ReadInt();
-        Tradeable = reader.ReadBool();
+        reader.ReadBool();
         Charges = reader.ReadInt();
 
         byte count = reader.ReadByte();

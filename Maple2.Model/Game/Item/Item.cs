@@ -68,7 +68,7 @@ public class Item : IByteSerializable, IByteDeserializable {
         };
 
         Transfer = new ItemTransfer(GetTransferFlag(), Metadata.Property.TradableCount);
-        Enchant = new ItemEnchant(tradeable: Transfer.Flag.HasFlag(TransferFlag.Trade) || Transfer.Flag.HasFlag(TransferFlag.LimitTrade));
+        Enchant = new ItemEnchant();
 
         ExpiryTime = GetExpiryTime();
 

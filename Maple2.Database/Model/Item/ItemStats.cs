@@ -34,13 +34,13 @@ internal record ItemEnchant(int Enchants, int EnchantExp, byte EnchantCharges, b
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator ItemEnchant?(Maple2.Model.Game.ItemEnchant? other) {
         return other == null ? null : new ItemEnchant(other.Enchants, other.EnchantExp, other.EnchantCharges,
-            other.Tradeable, other.Charges, other.BasicOptions);
+            true, other.Charges, other.BasicOptions); // Tradeable: an old column of the stored record, no longer used
     }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Maple2.Model.Game.ItemEnchant?(ItemEnchant? other) {
         return other == null ? null : new Maple2.Model.Game.ItemEnchant(other.Enchants, other.EnchantExp,
-            other.EnchantCharges, other.Tradeable, other.Charges, other.BasicOptions);
+            other.EnchantCharges, other.Charges, other.BasicOptions);
     }
 }
 

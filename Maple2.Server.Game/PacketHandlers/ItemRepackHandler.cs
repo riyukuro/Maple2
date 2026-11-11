@@ -46,7 +46,8 @@ public class ItemRepackHandler : FieldPacketHandler {
 
             // CItemRePackingScrollTable::Check order: enchant state, transfer type, trades left,
             // (binding, above), repacks left, lock.
-            if (!ScrollRules.RepackEnchantAllowed(targetItem.Enchant != null, targetItem.Enchant?.Tradeable ?? true)) {
+            // The enchant record's flag is never cleared by this server (ItemEnchant.WriteTo sends it set).
+            if (!ScrollRules.RepackEnchantAllowed(targetItem.Enchant != null, true)) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_remain_count));
                 return;
             }
