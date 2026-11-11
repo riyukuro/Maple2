@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -12,8 +13,8 @@ public class FallDamageHandler : FieldPacketHandler {
     private const float BASE_FALL_DISTANCE = Constant.BlockSize * 5;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        float distance = packet.ReadFloat();
-        distance -= 1000f;
+        // The client sends nothing in a field without fall damage (pcbase.cpp:4356-4358).
+        float distance = FallDamageRules.Distance(packet.ReadFloat(), session.Field.Metadata.Limit.FallDamage);
         if (distance <= 0) {
             return;
         }
