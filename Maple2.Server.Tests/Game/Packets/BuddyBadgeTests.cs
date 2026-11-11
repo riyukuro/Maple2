@@ -27,6 +27,21 @@ public class BuddyBadgeTests {
         }));
     }
 
+    // Modes 0 and 1: i64 character id, and only the sender's own id is passed on.
+    [Test]
+    public void Subject_IsOneLongAndTheSendersOwn() {
+        var writer = new ByteWriter();
+        writer.WriteLong(0x1122334455667788);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        long subject = BuddyBadgeRule.ReadSubject(reader);
+        Assert.That(subject, Is.EqualTo(0x1122334455667788));
+        Assert.That(reader.Available, Is.EqualTo(0));
+
+        Assert.That(BuddyBadgeRule.OwnSubject(subject, 0x1122334455667788), Is.True);
+        Assert.That(BuddyBadgeRule.OwnSubject(subject, 5), Is.False);
+        Assert.That(BuddyBadgeRule.OwnSubject(0, 0), Is.False);
+    }
+
     [Test]
     public void Renamed_OnlyForThisPartnerAndANewName() {
         var info = new ItemCoupleInfo(7, "old", true);

@@ -109,7 +109,10 @@ public class BuddyBadgeHandler : FieldPacketHandler {
     }
 
     private static void HandleStop(GameSession session, IByteReader packet) {
-        long characterId = packet.ReadLong();
+        long characterId = BuddyBadgeRule.ReadSubject(packet);
+        if (!BuddyBadgeRule.OwnSubject(characterId, session.CharacterId)) {
+            return;
+        }
 
         session.Field?.Broadcast(BuddyBadgePacket.Stop(characterId), session);
     }
