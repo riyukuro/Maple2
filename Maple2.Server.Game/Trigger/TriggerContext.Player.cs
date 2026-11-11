@@ -303,8 +303,15 @@ public partial class TriggerContext {
         return negate ? !result : result;
     }
 
+    // Waits as many seconds, since the state was entered, as the user value key holds (the shipped desc: the
+    // time event gives the hold time; when it ends the script goes back). An unset key reads 0, as user_value does.
     public bool WaitSecondsUserValue(string key, string desc) {
-        return false;
+        DebugLog("[WaitSecondsUserValue] key:{Key}", key);
+        return WaitSecondsElapsed(StartTick, Environment.TickCount64, Field.UserValues.GetValueOrDefault(key, 0));
+    }
+
+    public static bool WaitSecondsElapsed(long startTick, long nowTick, int seconds) {
+        return nowTick > startTick + seconds * 1000L;
     }
     #endregion
 
