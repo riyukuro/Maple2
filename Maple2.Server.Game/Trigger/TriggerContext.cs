@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using BasicAttribute = Maple2.Model.Enum.BasicAttribute;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
@@ -98,13 +99,27 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
+    // The hp of the npc of that spawn point, in percent of its max hp when relative (all shipped uses), else in
+    // points. With no such npc in the field the test fails.
     public bool NpcHp(int spawnPointId, bool isRelative, int value, CompareType compareType) {
-        ErrorLog("[GetNpcHpRate] spawnPointId:{Id}, isRelative:{IsRelative}, value:{Value}, compareType:{CompareType}", spawnPointId, isRelative, value, compareType);
+        DebugLog("[GetNpcHpRate] spawnPointId:{Id}, isRelative:{IsRelative}, value:{Value}, compareType:{CompareType}", spawnPointId, isRelative, value, compareType);
+        FieldNpc? npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnPointId);
+        if (npc == null) {
+            return false;
+        }
+
+        long current = Math.Max(0, npc.Stats.Values[BasicAttribute.Health].Current);
+        long total = npc.Stats.Values[BasicAttribute.Health].Total;
+        return CompareNpcHp(current, total, isRelative, value, compareType);
+    }
+
+    public static bool CompareNpcHp(long current, long total, bool isRelative, int value, CompareType compareType) {
+        double hp = isRelative ? (total > 0 ? current * 100.0 / total : 0) : current;
         return compareType switch {
-            CompareType.lower => value > 100,
-            CompareType.lowerEqual => value >= 100,
-            CompareType.higher => value < 100,
-            CompareType.higherEqual => value <= 100,
+            CompareType.lower => hp < value,
+            CompareType.lowerEqual => hp <= value,
+            CompareType.higher => hp > value,
+            CompareType.higherEqual => hp >= value,
             _ => false,
         };
     }
@@ -216,13 +231,20 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
-    public bool UserValue(string key, int value, bool negate) {
+    public bool UserValue(string key, int value, OperatorType operatorType, bool negate) {
         WarnLog("[GetUserValue] key:{Key}", key);
-        int userValue = Field.UserValues.GetValueOrDefault(key, 0);
-        if (negate) {
-            return userValue != value;
-        }
-        return userValue == value;
+        bool result = CompareUserValue(Field.UserValues.GetValueOrDefault(key, 0), value, operatorType);
+        return negate ? !result : result;
+    }
+
+    public static bool CompareUserValue(int userValue, int value, OperatorType operatorType) {
+        return operatorType switch {
+            OperatorType.Greater => userValue > value,
+            OperatorType.GreaterEqual => userValue >= value,
+            OperatorType.LessEqual => userValue <= value,
+            OperatorType.Less => userValue < value,
+            _ => userValue == value,
+        };
     }
 
     public void DebugString(string value, string feature) {

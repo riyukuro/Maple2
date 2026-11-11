@@ -248,7 +248,7 @@ public interface ITriggerContext {
     public bool ShadowExpeditionPoints(int score);
     public bool TimeExpired(string timerId);
     public bool UserDetected(int[] boxIds, JobCode jobCode, bool negate);
-    public bool UserValue(string key, int value, bool negate);
+    public bool UserValue(string key, int value, OperatorType operatorType, bool negate);
     public bool WaitAndResetTick(int waitTick);
     public bool WaitSecondsUserValue(string key, string desc);
     public bool WaitTick(int waitTick);

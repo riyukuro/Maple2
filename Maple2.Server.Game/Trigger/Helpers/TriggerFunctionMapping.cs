@@ -224,7 +224,7 @@ public static class TriggerFunctionMapping {
         { "check_npc_additional_effect", attrs => new Trigger.CheckNpcAdditionalEffect(ParseInt(attrs?["spawn_id"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "npc_damage", attrs => new Trigger.NpcDamage(ParseInt(attrs?["spawn_id"]?.Value), ParseFloat(attrs?["damageRate"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "npc_extra_data", attrs => new Trigger.NpcExtraData(ParseInt(attrs?["spawn_point_id"]?.Value), attrs?["extra_data_key"]?.Value ?? string.Empty, ParseInt(attrs?["extra_data_value"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
-        { "npc_hp", attrs => new Trigger.NpcHp(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_relative"]?.Value), ParseInt(attrs?["value"]?.Value), ParseCompareType(attrs?["compare_type"]?.Value)) },
+        { "npc_hp", attrs => new Trigger.NpcHp(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_relative"]?.Value), ParseInt(attrs?["value"]?.Value), ParseCompareType(attrs?["compare"]?.Value ?? attrs?["compare_type"]?.Value)) },
         { "check_same_user_tag", attrs => new Trigger.CheckSameUserTag(ParseInt(attrs?["box_id"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "check_user", attrs => new Trigger.CheckUser(ParseBool(attrs?["negate"]?.Value)) },
         { "user_count", attrs => new Trigger.UserCount(ParseInt(attrs?["check_count"]?.Value)) },
@@ -256,7 +256,7 @@ public static class TriggerFunctionMapping {
         { "shadow_expedition_points", attrs => new Trigger.ShadowExpeditionPoints(ParseInt(attrs?["score"]?.Value)) },
         { "time_expired", attrs => new Trigger.TimeExpired(attrs?["timer_id"]?.Value ?? string.Empty) },
         { "user_detected", attrs => new Trigger.UserDetected(ParseIntArray(attrs?["box_ids"]?.Value), ParseJobCode(attrs?["job_code"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
-        { "user_value", attrs => new Trigger.UserValue(attrs?["key"]?.Value ?? string.Empty, ParseInt(attrs?["value"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
+        { "user_value", attrs => new Trigger.UserValue(attrs?["key"]?.Value ?? string.Empty, ParseInt(attrs?["value"]?.Value), ParseUserValueOperator(attrs?["operator"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "wait_and_reset_tick", attrs => new Trigger.WaitAndResetTick(ParseInt(attrs?["wait_tick"]?.Value)) },
         { "wait_seconds_user_value", attrs => new Trigger.WaitSecondsUserValue(attrs?["key"]?.Value ?? string.Empty, attrs?["desc"]?.Value ?? string.Empty) },
         { "wait_tick", attrs => new Trigger.WaitTick(ParseInt(attrs?["wait_tick"]?.Value)) },
@@ -314,6 +314,12 @@ public static class TriggerFunctionMapping {
 
     private static OperatorType ParseOperatorType(string? operatorType) {
         if (string.IsNullOrEmpty(operatorType)) return OperatorType.GreaterEqual;
+        return (OperatorType) Enum.Parse(typeof(OperatorType), operatorType, true);
+    }
+
+    // user_value without an operator tests equality; shipped scripts write GreaterEqual and LessEqual.
+    private static OperatorType ParseUserValueOperator(string? operatorType) {
+        if (string.IsNullOrEmpty(operatorType)) return OperatorType.Equal;
         return (OperatorType) Enum.Parse(typeof(OperatorType), operatorType, true);
     }
 

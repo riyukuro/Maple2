@@ -269,11 +269,11 @@ public partial class Trigger {
         public bool Evaluate(TriggerContext context) => context.UserDetected(boxIds, jobCode, negate);
     }
 
-    public class UserValue(string key, int value, bool negate) : ICondition {
+    public class UserValue(string key, int value, OperatorType operatorType, bool negate) : ICondition {
         public string Name => "user_value";
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
-        public bool Evaluate(TriggerContext context) => context.UserValue(key, value, negate);
+        public bool Evaluate(TriggerContext context) => context.UserValue(key, value, operatorType, negate);
     }
 
     public class WaitAndResetTick(int waitTick) : ICondition {
