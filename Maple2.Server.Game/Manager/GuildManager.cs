@@ -393,14 +393,12 @@ public class GuildManager : IDisposable {
             return false;
         }
 
-        for (int i = 0; i < Guild.Events.Count; i++) {
-            if (Guild.Events[i].Id == opened.Id) {
-                Guild.Events[i] = opened;
-                session.Send(GuildPacket.NotifyOpenEvent(requestorName, opened));
-                return true;
-            }
+        if (!Guild.SetEvent(opened)) {
+            return false;
         }
-        return false;
+
+        session.Send(GuildPacket.NotifyOpenEvent(requestorName, opened));
+        return true;
     }
 
     // Guild 55 (CGuildManager::FUN_1413c3460): the client replaces the skill it holds with the one sent and

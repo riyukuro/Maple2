@@ -33,6 +33,26 @@ public class Guild : IByteSerializable {
     public required IList<GuildRank> Ranks { get; init; }
     public required IList<GuildBuff> Buffs { get; init; }
     public required IList<GuildEvent> Events { get; init; }
+
+    // The time the event was opened, 0 when it never was. Under the list's lock, as its writers are.
+    public int EventOpenTime(int eventId) {
+        lock (Events) {
+            return Events.FirstOrDefault(entry => entry.Id == eventId).Value;
+        }
+    }
+
+    // Sets the open time of an event the guild lists. False when it lists no such event.
+    public bool SetEvent(GuildEvent opened) {
+        lock (Events) {
+            for (int i = 0; i < Events.Count; i++) {
+                if (Events[i].Id == opened.Id) {
+                    Events[i] = opened;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     public required IList<GuildPoster> Posters { get; init; }
     public required IList<GuildNpc> Npcs { get; init; }
     public required IList<RewardItem> Bank { get; init; }
@@ -97,9 +117,12 @@ public class Guild : IByteSerializable {
         foreach (GuildBuff buff in Buffs) {
             writer.Write<GuildBuff>(buff);
         }
-        writer.WriteByte((byte) Events.Count);
-        foreach (GuildEvent @event in Events) {
-            writer.Write<GuildEvent>(@event);
+        // The list is written by the channel's gRPC thread (Guild 56) while a session thread reads it.
+        lock (Events) {
+            writer.WriteByte((byte) Events.Count);
+            foreach (GuildEvent @event in Events) {
+                writer.Write<GuildEvent>(@event);
+            }
         }
 
         writer.WriteInt(HouseRank);

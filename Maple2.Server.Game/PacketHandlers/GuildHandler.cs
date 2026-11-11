@@ -1074,7 +1074,7 @@ public class GuildHandler : PacketHandler<GameSession> {
 
         GuildTable.Event? row = null;
         TableMetadata.GuildTable.Events?.TryGetValue(eventId, out row);
-        int openTime = guild.Events.FirstOrDefault(entry => entry.Id == eventId).Value;
+        int openTime = guild.EventOpenTime(eventId);
         if (!GuildRules.CanEnterEvent(row?.MapId ?? 0, openTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.Field.MapId)) {
             return;
         }
