@@ -99,11 +99,12 @@ public class WorldServer {
                             CharacterId = playerInfo.CharacterId,
                         }, cancellationToken: tokenSource.Token);
                         if (response is { Success: false }) {
-                            // A player between two channels has no session on the old one. Only the answer of
-                            // the channel the player is still recorded on counts, and the record is changed at
-                            // once: a queued change would be applied after the login on the new channel and
-                            // leave the player recorded as offline there.
-                            if (HeartbeatRules.StillOn(askedChannel, playerInfo.Channel)) {
+                            // A player between two channels has no session on the old one, so the answer does
+                            // not count while the player is on the way out of that channel. Otherwise only
+                            // the answer of the channel the player is still recorded on counts, and the record
+                            // is changed at once: a queued change would be applied after the login on the new
+                            // channel and leave the player recorded as offline there.
+                            if (MarksOffline(playerInfo, askedChannel)) {
                                 SetOffline(playerInfo, async: false);
                             }
                             continue;
@@ -114,7 +115,7 @@ public class WorldServer {
                             playerInfo.RetryHeartbeat--;
                             continue;
                         }
-                        if (HeartbeatRules.StillOn(askedChannel, playerInfo.Channel)) {
+                        if (MarksOffline(playerInfo, askedChannel)) {
                             SetOffline(playerInfo, async: false);
                         }
                     }
@@ -126,6 +127,15 @@ public class WorldServer {
                 logger.Warning(ex, "Heartbeat loop error");
             }
         }
+    }
+
+    // The channel changes under way, noted when the World server hands out the migration token.
+    public MigrationTracker Migrations { get; } = new(MigrationLifetime);
+    public static readonly TimeSpan MigrationLifetime = TimeSpan.FromSeconds(30);
+
+    private bool MarksOffline(PlayerInfo playerInfo, int askedChannel) {
+        return HeartbeatRules.MarksOffline(askedChannel, playerInfo.Channel,
+            Migrations.IsLeaving(playerInfo.CharacterId, askedChannel, DateTime.UtcNow));
     }
 
     public void SetOffline(PlayerInfo playerInfo, bool async = true) {

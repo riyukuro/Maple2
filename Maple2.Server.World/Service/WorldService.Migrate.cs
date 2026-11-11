@@ -11,7 +11,7 @@ public partial class WorldService {
     private readonly record struct TokenEntry(Server Server, long AccountId, long CharacterId, Guid MachineId, int Channel, int MapId, int PortalId, int RoomId, long OwnerId, MigrationType Type);
 
     // Duration for which a token remains valid.
-    private static readonly TimeSpan AuthExpiry = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan AuthExpiry = WorldServer.MigrationLifetime;
 
     private readonly IMemoryCache tokenCache;
 
@@ -49,6 +49,12 @@ public partial class WorldService {
 
                 if (!channelClients.TryGetActiveEndpoint(channel, out IPEndPoint? endpoint)) {
                     throw new RpcException(new Status(StatusCode.Unavailable, $"Channel {channel} not found"));
+                }
+
+                // A player who is online leaves the channel of the record: the heartbeat of that channel
+                // must not mark them offline while the token is valid.
+                if (playerLookup.TryGet(request.CharacterId, out Maple2.Model.Game.PlayerInfo? leaving) && leaving.Online) {
+                    worldServer.Migrations.Begin(request.CharacterId, leaving.Channel, DateTime.UtcNow);
                 }
 
                 var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type);
