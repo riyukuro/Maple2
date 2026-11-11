@@ -112,40 +112,55 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
-        if (useVoucher) {
-            Item? voucher = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeDesignCoupon).FirstOrDefault();
-            if (voucher != null) {
-                if (!session.Item.Inventory.Consume(voucher.Uid, 1)) {
+        // The voucher byte is the client's. Every path below either takes a coupon or the full price, or returns.
+        long price = ugcMetadata.CreatePrice;
+        if (price < 0) {
+            return;
+        }
+        Item? voucher = useVoucher
+            ? session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeDesignCoupon).FirstOrDefault()
+            : null;
+        bool canPay = ugcMetadata.CurrencyType switch {
+            MeretMarketCurrencyType.Meso => session.Currency.CanAddMeso(-price) == -price,
+            MeretMarketCurrencyType.Meret => session.Currency.CanAddMeret(-price) == -price,
+            MeretMarketCurrencyType.RedMeret => session.Currency.CanAddGameMeret(-price) == -price,
+            _ => false,
+        };
+        switch (UgcUploadPayment.Decide(useVoucher, voucher != null, ugcMetadata.CurrencyType, canPay)) {
+            case UgcUploadPayment.Result.Voucher:
+                if (!session.Item.Inventory.Consume(voucher!.Uid, 1)) {
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
                     return;
                 }
-            }
-        } else {
-            switch (ugcMetadata.CurrencyType) {
-                case MeretMarketCurrencyType.Meso:
-                    if (session.Currency.CanAddMeso(-ugcMetadata.CreatePrice) != -ugcMetadata.CreatePrice) {
-                        session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
+                break;
+            case UgcUploadPayment.Result.Pay:
+                switch (ugcMetadata.CurrencyType) {
+                    case MeretMarketCurrencyType.Meso:
+                        session.Currency.Meso -= price;
+                        break;
+                    case MeretMarketCurrencyType.Meret:
+                        session.Currency.Meret -= price;
+                        break;
+                    case MeretMarketCurrencyType.RedMeret:
+                        session.Currency.GameMeret -= price;
+                        break;
+                    default:
                         return;
-                    }
-                    session.Currency.Meso -= ugcMetadata.CreatePrice;
-                    break;
-                case MeretMarketCurrencyType.Meret:
-                    if (session.Currency.CanAddMeret(-ugcMetadata.CreatePrice) != -ugcMetadata.CreatePrice) {
-                        session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
-                        return;
-                    }
-                    session.Currency.Meret -= ugcMetadata.CreatePrice;
-                    break;
-                case MeretMarketCurrencyType.RedMeret:
-                    if (session.Currency.CanAddGameMeret(-ugcMetadata.CreatePrice) != -ugcMetadata.CreatePrice) {
-                        session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat_red));
-                    }
-                    session.Currency.GameMeret -= ugcMetadata.CreatePrice;
-                    break;
-                default:
-                    Logger.Error("Unhandled currency type {UgcMetadataCurrencyType}", ugcMetadata.CurrencyType);
-                    return;
-            }
+                }
+                break;
+            case UgcUploadPayment.Result.NoVoucher:
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
+                return;
+            case UgcUploadPayment.Result.Lack:
+                session.Send(NoticePacket.MessageBox(ugcMetadata.CurrencyType switch {
+                    MeretMarketCurrencyType.Meso => StringCode.s_err_lack_meso,
+                    MeretMarketCurrencyType.Meret => StringCode.s_err_lack_merat,
+                    _ => StringCode.s_err_lack_merat_red,
+                }));
+                return;
+            default:
+                Logger.Error("Unhandled currency type {UgcMetadataCurrencyType}", ugcMetadata.CurrencyType);
+                return;
         }
 
         Item? item = session.Field?.ItemDrop.CreateItem(itemId, ugcMetadata.ItemRarity);
