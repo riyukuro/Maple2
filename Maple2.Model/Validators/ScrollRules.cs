@@ -32,6 +32,17 @@ public static class ScrollRules {
     }
 
     // Scrolls charged for one repack; the client counts every stack of the scroll's item id.
+    // CItemRePackingScrollTable::Check: an item whose enchant history is switched off is refused
+    // with the remain-count message (10).
+    public static bool RepackEnchantAllowed(bool hasEnchant, bool enabled) {
+        return !hasEnchant || enabled;
+    }
+
+    // CItemData: only transfer types 3 and 5 (bind on equip, bind on trade) can be repacked (8).
+    public static bool RepackTransferTypeAllowed(int transferType) {
+        return transferType is 3 or 5;
+    }
+
     public static bool HasRepackScrolls(int have, int need) {
         return have >= Math.Max(1, need);
     }

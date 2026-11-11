@@ -44,9 +44,31 @@ public class ItemRepackHandler : FieldPacketHandler {
                 return;
             }
 
+            // CItemRePackingScrollTable::Check order: enchant state, transfer type, trades left,
+            // (binding, above), repacks left, lock.
+            if (!ScrollRules.RepackEnchantAllowed(targetItem.Enchant != null, targetItem.Enchant?.Tradeable ?? true)) {
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_remain_count));
+                return;
+            }
+
+            if (!ScrollRules.RepackTransferTypeAllowed((int) targetItem.Metadata.Limit.TransferType)) {
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_not_limit_tradable_item));
+                return;
+            }
+
+            if (targetItem.Transfer.Flag.HasFlag(TransferFlag.LimitTrade) && targetItem.Transfer.RemainTrades > 0) {
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_tradable_item));
+                return;
+            }
+
+            if (!ScrollRules.HasRepackLeft(targetItem.Metadata.Property.RepackCount, targetItem.Transfer.RepackageCount)) {
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_remain_count));
+                return;
+            }
+
             // The client refuses a locked item and one whose unlock is still running.
             if (targetItem.IsLocked || targetItem.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
-                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_not_unlock_item));
                 return;
             }
 
@@ -55,16 +77,6 @@ public class ItemRepackHandler : FieldPacketHandler {
             List<Item> scrolls = session.Item.Inventory.Find(scroll.Id).ToList();
             if (!ScrollRules.HasRepackScrolls(scrolls.Sum(stack => stack.Amount), need)) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_server_fail_consume_scroll));
-                return;
-            }
-
-            if (targetItem.Transfer.Flag.HasFlag(TransferFlag.LimitTrade) && targetItem.Transfer.RemainTrades > 0) {
-                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
-                return;
-            }
-
-            if (!ScrollRules.HasRepackLeft(targetItem.Metadata.Property.RepackCount, targetItem.Transfer.RepackageCount)) {
-                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
                 return;
             }
 

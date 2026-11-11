@@ -75,6 +75,25 @@ public class ScrollRulesTests {
         Assert.That(ScrollRules.RepackScrollAllowed([3], 7), Is.False);
     }
 
+    [TestCase(false, false, true)] // no enchant block
+    [TestCase(true, true, true)]
+    [TestCase(true, false, false)]
+    public void RepackEnchant(bool hasEnchant, bool enabled, bool expected) {
+        Assert.That(ScrollRules.RepackEnchantAllowed(hasEnchant, enabled), Is.EqualTo(expected));
+    }
+
+    [TestCase(3, true)]
+    [TestCase(5, true)]
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(2, false)]
+    [TestCase(4, false)]
+    [TestCase(6, false)]
+    [TestCase(7, false)]
+    public void RepackTransferType(int transferType, bool expected) {
+        Assert.That(ScrollRules.RepackTransferTypeAllowed(transferType), Is.EqualTo(expected));
+    }
+
     [Test]
     public void RepackSlot() {
         Assert.That(ScrollRules.RepackSlotAllowed(false, false, [12, 13], 13), Is.True);

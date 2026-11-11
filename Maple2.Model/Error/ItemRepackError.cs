@@ -18,6 +18,10 @@ public enum ItemRepackError {
     s_item_repacking_scroll_error_impossible_level = 5,
     [Description("This item is no longer valid.")]
     s_item_repacking_scroll_error_invalid_scroll = 7,
+    s_item_repacking_scroll_error_not_limit_tradable_item = 8,
+    s_item_repacking_scroll_error_tradable_item = 9,
+    s_item_repacking_scroll_error_remain_count = 10,
+    s_item_repacking_scroll_error_not_unlock_item = 11,
     [Description("Item packaging failed.")]
     s_item_repacking_scroll_error_server_fail_consume_scroll = 12,
 }
