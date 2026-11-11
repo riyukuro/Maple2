@@ -18,6 +18,7 @@ public class QuestHandler : FieldPacketHandler {
     private enum Command : byte {
         Accept = 2,
         Complete = 4,
+        DebugQuestList = 5,
         Abandon = 6,
         Expired = 7,
         Exploration = 8,
@@ -25,12 +26,19 @@ public class QuestHandler : FieldPacketHandler {
         GoToNpc = 12,
         GoToDungeon = 13,
         SkyFortress = 14,
+        SkyFortressMission = 15,
         MapleGuide = 16,
         EpicRestart = 17,
+        CinematicProgress = 18,
         ResumeDungeon = 19,
         Dispatch = 20,
         RemoteComplete = 24, // Maybe? This is mainly used for Navigator
         CompleteFieldMission = 26,
+        ClaimEventQuestReward = 27,
+        FindUser = 28,
+        ClaimMentoringQuestReward = 29,
+        AllianceQuest = 33,
+        ClaimWeddingQuestReward = 39,
     }
 
     #region Autofac Autowired
@@ -82,6 +90,35 @@ public class QuestHandler : FieldPacketHandler {
                 return;
             case Command.CompleteFieldMission:
                 HandleCompleteFieldMission(session, packet);
+                break;
+            case Command.DebugQuestList: {
+                // Not handled: the client's debug quest commands. Read what it writes.
+                int action = packet.ReadInt();
+                int count = packet.ReadInt();
+                for (int i = 0; i < count; i++) {
+                    packet.ReadInt(); // quest id
+                    if (action != 0 && action != 3) {
+                        int conditions = packet.ReadInt();
+                        for (int j = 0; j < conditions; j++) {
+                            packet.ReadInt(); // condition value
+                        }
+                    }
+                }
+                Logger.Debug("Quest {Command} from {CharacterId}: action {Action}, {Count} quests", command, session.CharacterId, action, count);
+                break;
+            }
+            case Command.SkyFortressMission:
+            case Command.CinematicProgress:
+            case Command.ClaimEventQuestReward:
+            case Command.ClaimMentoringQuestReward:
+            case Command.AllianceQuest:
+            case Command.ClaimWeddingQuestReward:
+                // Not handled: one quest id.
+                Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}", command, session.CharacterId, packet.ReadInt());
+                break;
+            case Command.FindUser:
+                // Not handled: quest id, then the character the player used the quest action on.
+                Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}, target {Target}", command, session.CharacterId, packet.ReadInt(), packet.ReadLong());
                 break;
         }
     }
