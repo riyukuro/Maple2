@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -46,6 +47,20 @@ public sealed class BlackMarketManager {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_lack_sale_count, 2));
             return;
         }
+        if (!BlackMarketRules.IsSaleCount(quantity, item.Amount)) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_invalid_sale_count, 2));
+            return;
+        }
+        if (!BlackMarketRules.IsSalePrice(price, Constants.BlackMarketSellMinPrice, Constants.BlackMarketSellMaxPrice)
+            || !BlackMarketRules.IsSaleTotal(price, quantity)) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2));
+            return;
+        }
+        if (!BlackMarketRules.CanList(item.IsLocked, item.Transfer != null, item.Transfer?.Flag ?? TransferFlag.None,
+                item.Transfer?.RemainTrades ?? 0, item.Transfer?.Binding != null)) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2));
+            return;
+        }
 
         if (item.IsExpired()) {
             return;
@@ -59,11 +74,10 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        session.Currency.Meso -= depositFee;
-
         if (!session.Item.Inventory.Remove(itemUid, out item, quantity)) {
             return;
         }
+        session.Currency.Meso -= depositFee;
 
         var listing = new BlackMarketListing(item) {
             AccountId = session.AccountId,
@@ -171,7 +185,11 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        if (listing.Quantity < quantity) {
+        if (BlackMarketRules.IsOwnListing(listing.AccountId, session.AccountId)) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_cannot_buy_ownProduct, 5, listingId));
+            return;
+        }
+        if (!BlackMarketRules.IsPurchaseCount(quantity, listing.Quantity)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }
