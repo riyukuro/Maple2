@@ -1,4 +1,5 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
@@ -10,12 +11,6 @@ public class GuideRecordHandler : FieldPacketHandler {
 
 
     public override void Handle(GameSession session, IByteReader packet) {
-        int recordCount = packet.ReadInt();
-        for (int record = 0; record < recordCount; record++) {
-            int guideId = packet.ReadInt();
-            int step = packet.ReadInt();
-
-            session.Config.GuideRecords[guideId] = step;
-        }
+        GuideRecordRules.Read(packet, session.Config.GuideRecords);
     }
 }
