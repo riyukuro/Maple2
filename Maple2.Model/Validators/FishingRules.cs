@@ -8,6 +8,12 @@ public static class FishingRules {
     // Room for the gap between the client's server clock and the field's tick.
     public const int BiteSlackTicks = 1000;
 
+    // Fishing start: whether this cast opens the reel game. Decided anew for every cast, from this cast's
+    // bite and roll only, so the start answer never promises a game to a cast whose fish does not bite.
+    public static bool IsFightGame(bool bite, bool autoFish, int roll, int fightChance) {
+        return bite && !autoFish && roll < fightChance;
+    }
+
     public static bool IsCatch(bool clientSuccess, bool bite, long nowTick, long biteTick) {
         return clientSuccess && bite && nowTick >= biteTick - BiteSlackTicks;
     }

@@ -16,4 +16,21 @@ public class FishingRulesTests {
         Assert.That(packet.Available, Is.EqualTo(0));
         Assert.That(FishingRules.IsCatch(success, bite, nowTick, biteTick), Is.EqualTo(expected));
     }
+
+    // A cast whose reel game was won, then the next cast: the game flag of the start answer comes from the
+    // new cast only. Without a bite there is no game, so the client does not send a "great" result that
+    // the server would then refuse.
+    [Test]
+    public void ReelGameDoesNotCarryToTheNextCast() {
+        // Cast 1: bite, fight roll under the chance: game, and the won catch counts.
+        Assert.That(FishingRules.IsFightGame(true, false, 100, 3000), Is.True);
+        Assert.That(FishingRules.IsCatch(true, true, 20000, 15000), Is.True);
+        // Cast 2: no bite, whatever the roll: no game.
+        Assert.That(FishingRules.IsFightGame(false, false, 100, 3000), Is.False);
+        // Cast 3: bite, roll over the chance: no game, a plain catch.
+        Assert.That(FishingRules.IsFightGame(true, false, 3000, 3000), Is.False);
+        Assert.That(FishingRules.IsCatch(true, true, 20000, 15000), Is.True);
+        // Auto fishing never opens the game.
+        Assert.That(FishingRules.IsFightGame(true, true, 100, 3000), Is.False);
+    }
 }

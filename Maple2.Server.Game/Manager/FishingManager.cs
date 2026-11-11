@@ -250,11 +250,9 @@ public class FishingManager {
 
         // Fishing Success
         bite = Random.Shared.Next(0, 10000) < selectedFish.BaitProbability;
+        // The reel game belongs to this cast alone: a game won on an earlier cast must not carry over.
+        fishFightGame = FishingRules.IsFightGame(bite, hasAutoFish, Random.Shared.Next(0, 10000), Constants.fishFightingProp);
         if (bite) {
-            if (!hasAutoFish && Random.Shared.Next(0, 10000) < Constants.fishFightingProp) {
-                fishFightGame = true;
-            }
-
             fishingTick -= rodMetadata.ReduceTime;
             fishingTick = Random.Shared.Next(fishingTick - fishingTick / 3, fishingTick); // Chance for early catch
         } else {
@@ -300,6 +298,7 @@ public class FishingManager {
         // One catch per cast: the next one needs a new start.
         selectedFish = null;
         bite = false;
+        fishFightGame = false;
 
         return FishingError.none;
     }
