@@ -467,6 +467,8 @@ public class FieldNpc : Actor<Npc> {
 
         SequenceCounter++;
         Field.Broadcast(NpcControlPacket.Dead(this));
+        // After RemoveSummons: 44 battleEnd trees summon at the death.
+        AiState.RunDeathBattleEnd();
 
         if (Value.Metadata.Corpse?.HitAble == true) {
             IsCorpse = true;

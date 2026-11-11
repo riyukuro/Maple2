@@ -1,5 +1,7 @@
-﻿using M2dXmlGenerator;
+﻿using System.Text.RegularExpressions;
+using M2dXmlGenerator;
 using Maple2.File.IO;
+using Maple2.File.IO.Crypto.Common;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.AI;
 using Maple2.Model.Enum;
@@ -9,9 +11,27 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class AiMapper : TypeMapper<AiMetadata> {
     private readonly AiParser parser;
+    private readonly M2dReader xmlReader;
 
     public AiMapper(M2dReader xmlReader) {
         parser = new AiParser(xmlReader);
+        this.xmlReader = xmlReader;
+    }
+
+    // The parser reads no attribute of <battleEnd>; 452 of the 545 shipped battleEnd trees carry onlyDead="true".
+    private static readonly Regex OnlyDeadPattern = new(@"<battleEnd\b[^>]*\bonlyDead\s*=\s*""\s*(true|1)\s*""",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // In 12 files with a plain battleEnd a comment quotes <battleEnd onlyDead="true"> to explain it, so comments are
+    // left out.
+    /// <summary>The onlyDead flag of an AI file's battleEnd tree.</summary>
+    public static bool BattleEndOnlyDead(string xml) => OnlyDeadPattern.IsMatch(CommentPattern.Replace(xml, ""));
+
+    private static readonly Regex CommentPattern = new("<!--.*?-->", RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    private bool BattleEndOnlyDeadOf(string name) {
+        PackFileEntry? entry = xmlReader.GetEntry($"AI/{name}");
+        return entry != null && BattleEndOnlyDead(xmlReader.GetString(entry));
     }
 
     protected override IEnumerable<AiMetadata> Map() {
@@ -37,8 +57,10 @@ public class AiMapper : TypeMapper<AiMetadata> {
                 MapEntry(battle, entry);
             }
 
+            // The battleEnd tree went into the battle tree, so it ran on every battle pass (a death signal to
+            // the triggers or the master while the npc was still fighting) and never at the battle's end.
             foreach (Entry entry in data.BattleEnd) {
-                MapEntry(battle, entry);
+                MapEntry(battleEnd, entry);
             }
 
             foreach (Entry node in data.AiPresets) {
@@ -59,7 +81,8 @@ public class AiMapper : TypeMapper<AiMetadata> {
                 Reserved: reserved.ToArray(),
                 Battle: battle.ToArray(),
                 BattleEnd: battleEnd.ToArray(),
-                AiPresets: aiPresets.ToArray()
+                AiPresets: aiPresets.ToArray(),
+                BattleEndOnlyDead: battleEnd.Count > 0 && BattleEndOnlyDeadOf(name)
             );
         }
     }

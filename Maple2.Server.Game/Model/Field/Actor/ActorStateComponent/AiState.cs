@@ -113,14 +113,24 @@ public class AiState {
         bool isInBattle = actor.BattleState.InBattle;
 
         if (!isInBattle) {
+            // A battle that ends with the npc alive runs the battleEnd tree, unless it is onlyDead (then it runs
+            // at the death, RunDeathBattleEnd). The tree was set here and then never pushed.
             if (currentTree == DecisionTreeType.Battle) {
                 aiStack.Clear();
 
-                currentTree = battleEnd is not null ? DecisionTreeType.BattleEnd : DecisionTreeType.None;
+                if (battleEnd is not null && !AiMetadata.BattleEndOnlyDead) {
+                    currentTree = DecisionTreeType.BattleEnd;
+                    Push(battleEnd);
+                } else {
+                    currentTree = DecisionTreeType.None;
+                }
             } else if (currentTree == DecisionTreeType.BattleEnd && aiStack.Count == 0) {
                 currentTree = DecisionTreeType.None;
             }
 
+            if (currentTree == DecisionTreeType.BattleEnd) {
+                RunStack(tickCount);
+            }
             return;
         } else if (currentTree == DecisionTreeType.BattleEnd) {
             aiStack.Clear();
@@ -157,32 +167,71 @@ public class AiState {
             }
         }
 
-        while (aiStack.Count > 0) {
-            StackEntry entry = aiStack.Last();
+        RunStack(tickCount);
+    }
 
-            int index = entry.Index;
-            int last = aiStack.Count - 1;
+    // Both battleEnd kinds run at the death: onlyDead="true" only then, a plain one also when a battle ends
+    // (the AI file's comment says onlyDead makes battleEnd run only at death). The npc stops, so the tree
+    // runs through at once: a node that starts a task (a move, a skill) does not wait, and the task is cancelled.
+    public void RunDeathBattleEnd() {
+        currentTask?.Cancel();
+        currentTask = null;
+        currentLimitTick = 0;
+        aiStack.Clear();
+        if (battleEnd is null) {
+            currentTree = DecisionTreeType.None;
+            return;
+        }
 
-            if (index >= entry.Node.Entries.Length) {
-                aiStack.RemoveAt(last);
-
+        currentTree = DecisionTreeType.BattleEnd;
+        Push(battleEnd);
+        // A locked or looping tree must not hold the field thread.
+        for (int steps = 0; aiStack.Count > 0 && steps < MaxDeathSteps; steps++) {
+            if (!Step()) {
                 continue;
             }
+            currentTask?.Cancel();
+            currentTask = null;
+            currentLimitTick = 0;
+        }
 
-            int nextIndex = entry.LockIndex ? entry.Node.Entries.Length : index + 1;
+        aiStack.Clear();
+        currentTree = DecisionTreeType.None;
+    }
 
-            aiStack[last] = new StackEntry() {
-                Node = entry.Node,
-                Index = nextIndex,
-                LockIndex = entry.LockIndex,
-            };
+    private const int MaxDeathSteps = 1000;
 
-            Process(entry.Node.Entries[index]);
-
-            if (IsWaitingOnTask(tickCount)) {
+    private void RunStack(long tickCount) {
+        while (aiStack.Count > 0) {
+            if (Step() && IsWaitingOnTask(tickCount)) {
                 break;
             }
         }
+    }
+
+    // Runs the next entry of the top of the stack; false when that node was done and popped.
+    private bool Step() {
+        StackEntry entry = aiStack.Last();
+
+        int index = entry.Index;
+        int last = aiStack.Count - 1;
+
+        if (index >= entry.Node.Entries.Length) {
+            aiStack.RemoveAt(last);
+
+            return false;
+        }
+
+        int nextIndex = entry.LockIndex ? entry.Node.Entries.Length : index + 1;
+
+        aiStack[last] = new StackEntry() {
+            Node = entry.Node,
+            Index = nextIndex,
+            LockIndex = entry.LockIndex,
+        };
+
+        Process(entry.Node.Entries[index]);
+        return true;
     }
 
     private void SetNodeTask(NpcTask? task, long limit = 0) {

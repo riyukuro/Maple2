@@ -9,7 +9,10 @@ public record AiMetadata(
     AiMetadata.Condition[] Reserved,
     AiMetadata.Entry[] Battle,
     AiMetadata.Entry[] BattleEnd,
-    AiMetadata.AiPresetDefinition[] AiPresets) {
+    AiMetadata.AiPresetDefinition[] AiPresets,
+    // <battleEnd onlyDead="true">: the battleEnd tree runs only when the npc dies, not when a battle ends with
+    // the npc alive (the AI files' own comments say so).
+    bool BattleEndOnlyDead = false) {
 
     [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]
     [JsonDerivedType(typeof(AiPreset), typeDiscriminator: nameof(AiPreset))]
