@@ -10,6 +10,7 @@ using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager;
 
@@ -161,7 +162,7 @@ public class ConfigManager {
     public void LoadKeyTable() {
         session.Send(keyBinds.Count == 0
             ? KeyTablePacket.LoadDefault()
-            : KeyTablePacket.Load(keyBinds.Values, activeHotBar, hotBars));
+            : KeyTablePacket.Load(KeyBindRules.ForSend(keyBinds.Values, GmCheck.IsGm(session.Player.Value.Account.AdminPermissions)), activeHotBar, hotBars));
     }
 
     public void LoadHotBars() {

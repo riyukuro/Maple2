@@ -130,6 +130,8 @@ The client's GM create windows are handled, each behind that check (a plain acco
 
 The item and NPC windows need the same permission as the chat command that does the same thing (`item`: SpawnItem, `npc`: SpawnNpc), on top of the GM check. GameMaster alone holds neither flag, so a GameMaster account gets them with `perm` or is an Admin.
 
+The client's debug mode (the GM buttons of the enchant, remake, exchange scroll and other dialogs) is toggled by key action 600001, the ` key in the client's default key file; the client turns it on only at GM level 50 or more. The key table the server sends holds that bind for a GM account only (added on ` or Scroll Lock when the saved table lacks it, taken out for a plain account). Every packet those buttons send is behind the GM check or has no handler.
+
 The client reads no reply of its own for these three; it shows the normal item, NPC and buff packets.
 
 ## Known not to work
