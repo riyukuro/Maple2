@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -50,16 +51,22 @@ public class InteractObjectHandler : FieldPacketHandler {
 
     // Start and End carry a count, then that many object names (CInteractObject and StateInteraction senders).
     private void HandleStart(GameSession session, IByteReader packet) {
-        int count = packet.ReadInt();
-        for (int i = 0; i < count; i++) {
-            packet.ReadString(); // object name; nothing is done on start
+        // The names are kept: an end is taken only for an object this start named.
+        session.InteractStarted.Clear();
+        foreach (string name in InteractRules.ReadNames(packet)) {
+            if (session.InteractStarted.Count >= InteractRules.MaxStarted) {
+                break;
+            }
+            session.InteractStarted.Add(name);
         }
     }
 
     private void HandleEnd(GameSession session, IByteReader packet) {
-        int count = packet.ReadInt();
-        for (int i = 0; i < count; i++) {
-            End(session, packet.ReadString());
+        foreach (string name in InteractRules.ReadNames(packet)) {
+            // One end per started object.
+            if (InteractRules.CanEnd(session.InteractStarted, name) && session.InteractStarted.Remove(name)) {
+                End(session, name);
+            }
         }
     }
 

@@ -105,6 +105,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public FieldManager? Field { get; set; }
     public FieldPlayer Player { get; private set; } = null!;
     public PartyManager Party { get; set; } = null!;
+    // The object names of the last InteractObject start packet; used by the session's own packet thread only.
+    public readonly HashSet<string> InteractStarted = [];
     // The recall offered to this player per RecallScrollType (party, guild, wedding); lock the array to use it.
     public readonly PendingRecall?[] Recalls = new PendingRecall?[3];
     // The recall invite (s2c RecallUser 4) this player has not answered yet.
