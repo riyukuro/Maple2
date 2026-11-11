@@ -45,11 +45,18 @@ public static class AiSummon {
         return summonRot != Vector3.Zero || summonPos != Vector3.Zero ? summonRot : summoner;
     }
 
-    // lifeTime is in seconds: the values run from 14 to 180000. In milliseconds the 30 and 60 of the Blackbean
-    // phases would remove the summon in the tick it appears; the large values (99900, 180000) last longer than any
-    // fight. 0 is no limit. The one decimal value, AI_DevilHugeRed's lifeTime="15.6", does not break the file's
-    // parse: the file parser reads it as 15600 (its 14 other summons give 6000).
-    public static TimeSpan LifeTime(int lifeTime) => lifeTime > 0 ? TimeSpan.FromSeconds(lifeTime) : TimeSpan.Zero;
+    // lifeTime has two units in the AI files: a value under 1000 is seconds, one of 1000 or more milliseconds (a
+    // server choice). The values fall in two groups, 14..80 (the 30 and 60 of the Blackbean phases would end the
+    // summon in the tick it appears as milliseconds) and 3000..180000 (as seconds 3000 s and more, longer than any
+    // fight), so both read as 3 s to 180 s. AI_DevilHugeRed's lifeTime="15.6" is read by the file parser as 15600,
+    // 15.6 s, the literal read as seconds; its 14 other summons give 6000, 6 s. 0 is no limit.
+    public const int LifeTimeMillisecondsFrom = 1000;
+
+    public static TimeSpan LifeTime(int lifeTime) => lifeTime switch {
+        <= 0 => TimeSpan.Zero,
+        < LifeTimeMillisecondsFrom => TimeSpan.FromSeconds(lifeTime),
+        _ => TimeSpan.FromMilliseconds(lifeTime),
+    };
 
     // delayTick is milliseconds, like every other tick in the AI files (cooltime 10000, sayNode durationTick).
     public static TimeSpan Delay(int delayTick) => delayTick > 0 ? TimeSpan.FromMilliseconds(delayTick) : TimeSpan.Zero;

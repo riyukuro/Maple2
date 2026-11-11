@@ -86,12 +86,18 @@ public class AiSummonTests {
         });
     }
 
-    [TestCase(30, 30)]
+    // Under 1000 seconds, from 1000 milliseconds; AI_DevilHugeRed's "15.6" is parsed as 15600.
+    [TestCase(30, 30000)]
+    [TestCase(80, 80000)]
+    [TestCase(999, 999000)]
+    [TestCase(1000, 1000)]
+    [TestCase(6000, 6000)]
+    [TestCase(15600, 15600)]
     [TestCase(180000, 180000)]
     [TestCase(0, 0)]
     [TestCase(-1, 0)]
-    public void LifeTimeIsSeconds(int lifeTime, int seconds) {
-        Assert.That(AiSummon.LifeTime(lifeTime), Is.EqualTo(TimeSpan.FromSeconds(seconds)));
+    public void LifeTimeUnit(int lifeTime, int milliseconds) {
+        Assert.That(AiSummon.LifeTime(lifeTime), Is.EqualTo(TimeSpan.FromMilliseconds(milliseconds)));
     }
 
     [TestCase(1500, 1500)]
