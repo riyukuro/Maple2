@@ -195,4 +195,21 @@ public class AiSummonTests {
     public void SetValueModify(bool hasOld, int oldValue, int value, bool isModify, int expected) {
         Assert.That(AiSummon.ModifiedValue(hasOld, oldValue, value, isModify), Is.EqualTo(expected));
     }
+
+    // SetSlaveValue: every slave gets the value; isRandom picks one of them.
+    [Test]
+    public void SlaveValueTargets() {
+        int[] slaves = [11, 12];
+        var random = new Random(7);
+        Assert.Multiple(() => {
+            Assert.That(AiSummon.ValueTargets(slaves, false, random), Is.EqualTo(slaves));
+            for (int i = 0; i < 20; i++) {
+                IReadOnlyList<int> one = AiSummon.ValueTargets(slaves, true, random);
+                Assert.That(one, Has.Count.EqualTo(1));
+                Assert.That(slaves, Does.Contain(one[0]));
+            }
+            Assert.That(Enumerable.Range(0, 50).Select(_ => AiSummon.ValueTargets(slaves, true, random)[0]).Distinct().Count(), Is.EqualTo(2));
+            Assert.That(AiSummon.ValueTargets(Array.Empty<int>(), true, random), Is.Empty);
+        });
+    }
 }

@@ -77,6 +77,15 @@ public static class AiSummon {
     public static int ModifiedValue(bool hasOld, int oldValue, int value, bool isModify) =>
         isModify && hasOld ? oldValue + value : value;
 
+    // SetSlaveValue sets the key on every live slave; isRandom (5 nodes, AI_BarkhantBlue and BarkhantBlue_Quest,
+    // whose comment says to tell one of its two clones at random) on one slave picked at random.
+    public static IReadOnlyList<T> ValueTargets<T>(IReadOnlyList<T> slaves, bool isRandom, Random random) {
+        if (!isRandom || slaves.Count <= 1) {
+            return slaves;
+        }
+        return [slaves[random.Next(slaves.Count)]];
+    }
+
     // SlaveCount count="N" passes when exactly N slaves are alive. The Yeti bosses test 0, 1, 2, 3, 4 in that order in
     // one conditions node (first passing wins), so ">= N" would always take 0; AI_Primadonna tests 2 then 1 with
     // npcCountMax 2, so "<= N" would never reach its count="1" (berserk) branch. Only "== N" fits both.
