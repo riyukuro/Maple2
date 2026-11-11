@@ -91,6 +91,15 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.MailReceivers([3], 3), Is.Empty);
     }
 
+    [TestCase(1000, 0, true, Description = "first mail")]
+    [TestCase(1000, 1000, false)]
+    [TestCase(1059, 1000, false)]
+    [TestCase(1060, 1000, true)]
+    [TestCase(900, 1000, true, Description = "the clock went back")]
+    public void Mail_OnePerSenderInSixtySeconds(long now, long last, bool expected) {
+        Assert.That(GuildRules.CanSendMail(now, last), Is.EqualTo(expected));
+    }
+
     [Test]
     public void Donate_CountOfAnEarlierDayDoesNotCarryOver() {
         Assert.That(GuildRules.DonationsToday(4, 999, 1000), Is.EqualTo(0));

@@ -116,6 +116,14 @@ public static class GuildRules {
         return memberIds.Where(id => id != senderId).Distinct().OrderBy(id => id).ToList();
     }
 
+    // A server rule, not in the client (which sends 71 without a wait): one guild mail per sender in 60
+    // seconds, because one packet writes a mail for every other member.
+    public const int MailCooldownSeconds = 60;
+
+    public static bool CanSendMail(long now, long lastSent) {
+        return lastSent <= 0 || now < lastSent || now - lastSent >= MailCooldownSeconds;
+    }
+
     // Guild 113 (CGuildManager::FUN_1413b8540): the count of donations made at once. The client refuses a
     // count under 1, a member who joined today, more donations in a day than the guild level allows, and a
     // donation that takes the guild fund over its maximum. The count of an earlier day does not carry over.

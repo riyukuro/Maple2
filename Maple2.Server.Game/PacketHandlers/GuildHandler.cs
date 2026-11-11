@@ -703,6 +703,8 @@ public class GuildHandler : PacketHandler<GameSession> {
         } catch (RpcException) { /* ignored */ }
     }
 
+    private static readonly Dictionary<long, long> lastGuildMail = new();
+
     // CGuildManager::SendGuildMail: a title of 1 to 100 characters and a text of 1 to 2000, sent by a member
     // with the mail right (128). Every other member gets the mail; the reply (71, no body) prints "mail sent".
     private void HandleSendMail(GameSession session, IByteReader packet) {
@@ -718,6 +720,17 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (!MailRules.CanSend(title, content)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
             return;
+        }
+        // Server rule: one guild mail per sender in GuildRules.MailCooldownSeconds. The time is kept per
+        // character for the life of the channel process, so a new login does not clear it.
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        lock (lastGuildMail) {
+            lastGuildMail.TryGetValue(session.CharacterId, out long last);
+            if (!GuildRules.CanSendMail(now, last)) {
+                session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+                return;
+            }
+            lastGuildMail[session.CharacterId] = now;
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
