@@ -6,6 +6,11 @@ namespace Maple2.Model.Metadata;
 
 public record ItemMergeTable(
     IReadOnlyDictionary<int, Dictionary<int, ItemMergeTable.Entry>> Entries) : ServerTable {
+    // Material item id -> table id: the material's property param1 in the played client's item data
+    // (CItemData::GetMergeOptionId, itemdata.cpp:1197). Null when the ingest had no played client pack: the
+    // table is then asked by the material's item id.
+    public IReadOnlyDictionary<int, int>? TableIds { get; init; }
+
     public record Entry(
         int Slot,
         long MesoCost,

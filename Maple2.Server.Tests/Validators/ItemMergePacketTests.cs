@@ -134,7 +134,12 @@ public class ItemMergePacketTests {
         Assert.That(read[ItemStats.Type.Empowerment].Special[SpecialAttribute.Experience].Value, Is.EqualTo(35));
     }
 
+    // For an equip (type 1) made with an 113xxxxx id and another subType, the id is changed to the kind
+    // that subType names (102xxxxx for one outside 12..83), since the equip subtype is taken from the id.
     private static Item ItemOf(int id, int rarity, long uid, string? revertParameter = null, int type = 1, int subType = 13, EquipSlot[]? slots = null) {
+        if (type == 1 && id / 100000 == 113 && subType != 13) {
+            id = (subType is >= 12 and <= 83 ? 100 + subType : 102) * 100000 + id % 100000;
+        }
         var property = new ItemMetadataProperty(false, 0, 100, type, subType, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
         var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
         ItemMetadataFunction? function = revertParameter == null ? null : new ItemMetadataFunction(ItemFunction.ItemMergeRevert, "ItemMergeRevert", revertParameter, false);
@@ -143,13 +148,14 @@ public class ItemMergePacketTests {
     }
 
     private static ItemMetadata Leveled(int id, int type, int subType, int level) {
-        ItemMetadata metadata = ItemOf(id, 4, 5, null, type, subType).Metadata;
+        ItemMetadata metadata = ItemOf(id, 4, 5, null, type, 13).Metadata;
+        metadata = metadata with { Property = metadata.Property with { SubType = subType } };
         return metadata with { Limit = metadata.Limit with { Level = level } };
     }
 
-    // The merge table's part is the item's xml equip subtype, not its id digits, and only for a material of
-    // subtype 1; the material is of property type 19; the item's level limit is 50 or more and not above the
-    // material's (CItemMergeOptionTable::FindMergeData and GetMergeData).
+    // The merge table's part is the item's equip subtype (given by the id, as in the played client's item
+    // data) for a material of subtype 1; the material is of property type 19; the item's level limit is 50
+    // or more and not above the material's (CItemMergeOptionTable::FindMergeData and GetMergeData).
     [Test]
     public void MergeSlot_KeyedAsTheClientAsks() {
         static ItemMergeTable.Entry Row(int slot) => new(slot, 100, [],
@@ -161,9 +167,22 @@ public class ItemMergePacketTests {
         ItemMetadata byPart = Leveled(37000001, 19, 1, 60);
         ItemMetadata anyPart = Leveled(37000002, 19, 2, 60);
 
-        // An item whose id digits say 13 and whose xml subtype says 22 gets the row of part 22.
-        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 22, 50), byPart)?.Slot, Is.EqualTo(22));
-        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(12200001, 1, 13, 50), byPart)?.Slot, Is.EqualTo(13));
+        // The stored xml subtype (the data folder's, 0 or 16 for equips) does not pick the row; the id does.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(12200001, 1, 0, 50), byPart)?.Slot, Is.EqualTo(22));
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 16, 50), byPart)?.Slot, Is.EqualTo(13));
+        // The data folder's material subtype (21 where the client has 1): a table without a part 0 row is
+        // asked by the item's part.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(12200001, 1, 0, 50), Leveled(37000001, 19, 21, 60))?.Slot, Is.EqualTo(22));
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11400001, 1, 0, 50), Leveled(37000001, 19, 21, 60)), Is.Null);
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 0, 50), Leveled(37000002, 19, 22, 60))?.Slot, Is.EqualTo(0));
+        // The table id is the played client's param1 when the ingest read it, else the material's id.
+        ItemMergeTable shared = table with { TableIds = new Dictionary<int, int> { [37000009] = 37000001 } };
+        Assert.That(ItemMergeManager.MergeSlot(shared, Leveled(11300001, 1, 0, 50), Leveled(37000009, 19, 1, 60))?.Slot, Is.EqualTo(13));
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 0, 50), Leveled(37000009, 19, 1, 60)), Is.Null);
+        Assert.That(ItemMergeManager.MergeSlot(shared, Leveled(11300001, 1, 0, 50), byPart)?.Slot, Is.EqualTo(13));
+        Assert.That(ItemMergeManager.EquipSubtype(Leveled(11100001, 1, 16, 50)), Is.EqualTo(0));
+        Assert.That(ItemMergeManager.EquipSubtype(Leveled(18300001, 1, 0, 50)), Is.EqualTo(83));
+        Assert.That(ItemMergeManager.EquipSubtype(Leveled(19000001, 1, 0, 50)), Is.EqualTo(0));
         // An item that is no equip (property type other than 1) has equip subtype 0, which this table has not.
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 2, 13, 50), byPart), Is.Null);
         // A material of another subtype asks part 0 whatever the item.
@@ -189,9 +208,9 @@ public class ItemMergePacketTests {
         });
         ItemMetadata material = Leveled(37000002, 19, 2, 60);
         Assert.That(ItemMergeManager.MergeSlot(Table([13, 14]), Leveled(11300001, 1, 13, 50), material), Is.Not.Null);
-        Assert.That(ItemMergeManager.MergeSlot(Table([13, 14]), Leveled(11300001, 1, 22, 50), material), Is.Null);
-        Assert.That(ItemMergeManager.MergeSlot(Table([]), Leveled(11300001, 1, 22, 50), material), Is.Not.Null);
-        Assert.That(ItemMergeManager.MergeSlot(Table(null), Leveled(11300001, 1, 22, 50), material), Is.Not.Null);
+        Assert.That(ItemMergeManager.MergeSlot(Table([13, 14]), Leveled(12200001, 1, 22, 50), material), Is.Null);
+        Assert.That(ItemMergeManager.MergeSlot(Table([]), Leveled(12200001, 1, 22, 50), material), Is.Not.Null);
+        Assert.That(ItemMergeManager.MergeSlot(Table(null), Leveled(12200001, 1, 22, 50), material), Is.Not.Null);
 
         string json = System.Text.Json.JsonSerializer.Serialize(Table([13, 14]).Entries[37000002][0]);
         Assert.That(System.Text.Json.JsonSerializer.Deserialize<ItemMergeTable.Entry>(json)!.PartLimit, Is.EqualTo(new[] { 13, 14 }));
@@ -321,8 +340,9 @@ public class ItemMergePacketTests {
         Assert.That(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_revert_slot).ToArray()[2..], Is.EqualTo(new byte[] { 5, 8, 0 }));
     }
 
-    // The kind and the price follow the item xml's property type and subtype (CItemData::GetEquipSubtype,
-    // FUN_14053e410), not the digits of the id.
+    // The kind and the price follow the item's property type and equip subtype (CItemData::GetEquipSubtype,
+    // FUN_14053e410). The equip subtype is the played client's, which the id gives; the stored xml subtype
+    // is the data folder's and has no say.
     [Test]
     public void RevertSlotAndPriceFollowTheEquipType() {
         static int Slot(int type, int subType, params EquipSlot[] slots) => ItemMergeManager.RevertSlot(ItemOf(11300001, 4, 5, null, type, subType, slots).Metadata);
@@ -340,8 +360,8 @@ public class ItemMergePacketTests {
         // The subtype counts only for property type 1.
         Assert.That(Slot(2, 22), Is.EqualTo(1));
         Assert.That(Slot(18, 50), Is.EqualTo(1));
-        // An id whose digits say 22 or 50 has no say.
-        Assert.That(ItemMergeManager.RevertSlot(ItemOf(12200001, 4, 5).Metadata), Is.EqualTo(1));
+        // The stored subtype (13 here) has no say against an id of kind 22.
+        Assert.That(ItemMergeManager.RevertSlot(ItemOf(12200001, 4, 5).Metadata), Is.EqualTo(2));
         Assert.That(ItemMergeManager.RevertSlot(ItemOf(11300001, 4, 5, null, 1, 50).Metadata), Is.EqualTo(2));
 
         Assert.That(ItemMergeManager.RevertPrice(Merged(11300001, 4)), Is.EqualTo(250000));

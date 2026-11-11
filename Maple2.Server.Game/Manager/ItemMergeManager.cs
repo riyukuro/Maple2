@@ -263,17 +263,24 @@ public sealed class ItemMergeManager {
     // material is of property type 19; the part is the item's equip subtype when the material's subtype is 1,
     // else 0; the item's level limit is 50 or more and not above the material's.
     // The row's partLimit list, when the ingest read one, must hold the item's equip subtype.
-    // One thing the client asks is not in the server's data: the table id is the material's property
-    // param1 (CItemData::GetMergeOptionId, itemdata.cpp:1197), which the item parser does not read, so the
-    // table is asked by the material's item id and the ingest copies the rows of the materials that share
-    // one.
+    // The table id is the material's property param1 (CItemData::GetMergeOptionId, itemdata.cpp:1197). The
+    // item parser does not read it; the ingest takes it from the played client's item data when it has that
+    // pack (ItemMergeTable.TableIds). Without it the table is asked by the material's item id and the ingest
+    // copies the rows of some materials that share one.
+    // The data folder's item xml is of another version than the played client's: its merge materials have
+    // subtype 21 and 22 where the client's have 1 and 2. So a material that is not of subtype 1 and whose
+    // table has no row of part 0 is asked by the item's equip subtype too (a table has rows by part or one
+    // row of part 0, never both).
     public static ItemMergeTable.Entry? MergeSlot(ItemMergeTable table, ItemMetadata item, ItemMetadata material) {
         if (material.Property.Type != 19) {
             return null;
         }
-        int part = material.Property.SubType == 1 ? EquipSubtype(item) : 0;
-        if (!table.Entries.TryGetValue(material.Id, out Dictionary<int, ItemMergeTable.Entry>? parts) ||
-            !parts.TryGetValue(part, out ItemMergeTable.Entry? entry)) {
+        int tableId = table.TableIds != null && table.TableIds.TryGetValue(material.Id, out int id) ? id : material.Id;
+        if (!table.Entries.TryGetValue(tableId, out Dictionary<int, ItemMergeTable.Entry>? parts)) {
+            return null;
+        }
+        bool byPart = material.Property.SubType == 1 || !parts.ContainsKey(0);
+        if (!parts.TryGetValue(byPart ? EquipSubtype(item) : 0, out ItemMergeTable.Entry? entry)) {
             return null;
         }
         if (entry.PartLimit is { Length: > 0 } && !entry.PartLimit.Contains(EquipSubtype(item))) {
@@ -286,9 +293,17 @@ public sealed class ItemMergeManager {
     }
 
     // CItemData::GetEquipSubtype (itemdata.cpp:509): the item xml's property subtype when the property
-    // type is 1, else 0. The client reads both from the item xml (itemdata.cpp:340), not from the id.
+    // type is 1, else 0. The client reads both from the item xml (itemdata.cpp:340). The server's item rows
+    // come from the data folder's item xml, whose subtype is not the played client's (0 for most equips, 16
+    // for some of every kind). In the played client's item data every item of property type 1 with an id of
+    // 112xxxxx to 183xxxxx has the subtype id / 100000 - 100, and the ones below 112 have none, so the id
+    // gives the client's value.
     public static int EquipSubtype(ItemMetadata metadata) {
-        return metadata.Property.Type == 1 ? metadata.Property.SubType : 0;
+        if (metadata.Property.Type != 1) {
+            return 0;
+        }
+        int kind = metadata.Id / 100000;
+        return kind is >= 112 and <= 183 ? kind - 100 : 0;
     }
 
     // ItemModelData::HasGroupType (itemdatastruct.cpp:2087): the first slot named OH answers for LH and

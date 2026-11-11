@@ -1598,13 +1598,52 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
             results.Add(id, slots);
         }
-        // Hardcoding values seeing as the missing ids here are utilizing table id 37000055
-        for (int i = 37000056; i < 37000064; i++) {
-            if (results.TryGetValue(37000055, out Dictionary<int, ItemMergeTable.Entry>? dictionary)) {
-                results.Add(i, dictionary);
+        Dictionary<int, int>? tableIds = PlayedTableIds();
+        if (tableIds == null) {
+            // Without the played client's item data: the old hand copies, materials taken to use table 37000055.
+            for (int i = 37000056; i < 37000064; i++) {
+                if (results.TryGetValue(37000055, out Dictionary<int, ItemMergeTable.Entry>? dictionary)) {
+                    results.Add(i, dictionary);
+                }
             }
         }
-        return new ItemMergeTable(results);
+        return new ItemMergeTable(results) { TableIds = tableIds };
+
+        // The table id of a merge material is its property param1 (CItemData::GetMergeOptionId), which the item
+        // parser does not read. The played client's pack keeps its items in itemdata/*.xml; the property nodes
+        // of type 19 there give material id -> param1. An id with two different values is left out. Null
+        // without that pack, when it has no such files, or when none could be read.
+        Dictionary<int, int>? PlayedTableIds() {
+            if (playedReader == null) {
+                return null;
+            }
+            var ids = new Dictionary<int, int>();
+            var twice = new HashSet<int>();
+            try {
+                foreach (Maple2.File.IO.Crypto.Common.PackFileEntry entry in playedReader.Files.Where(file => file.Name.StartsWith("itemdata/"))) {
+                    foreach (XmlNode node in playedReader.GetXmlDocument(entry).SelectNodes("//property[@type='19']")!) {
+                        if (node is not XmlElement property || !int.TryParse(property.GetAttribute("param1"), out int tableId) || tableId == 0) continue;
+                        XmlNode? item = property.ParentNode;
+                        while (item is XmlElement element && !element.HasAttribute("id")) {
+                            item = item.ParentNode;
+                        }
+                        if (item is not XmlElement owner || !int.TryParse(owner.GetAttribute("id"), out int itemId)) continue;
+                        if (ids.TryGetValue(itemId, out int known) && known != tableId) {
+                            twice.Add(itemId);
+                        }
+                        ids[itemId] = tableId;
+                    }
+                }
+            } catch (Exception ex) {
+                Console.WriteLine($"item merge: the played client's material table ids were not read ({ex.GetType().Name}: {ex.Message})");
+                return null;
+            }
+            foreach (int itemId in twice) {
+                ids.Remove(itemId);
+            }
+            Console.WriteLine($"item merge: {ids.Count} material table ids from the played client's item data");
+            return ids.Count == 0 ? null : ids;
+        }
 
         // The server pack's table has no partLimit; the client's Table/itemMergeOptionBase.xml has it per
         // (mergeOption id, slot part). The data folder's pack first, then the played client's, whose row wins.
