@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Ugc;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -206,26 +207,34 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         List<BannerSlot> slots = [];
+        List<(long SlotId, bool Found, bool Taken, int Hour)> asked = [];
 
+        // Every slot is read and tested before any meret is taken: the hour priced is the reserved
+        // slot's own, a slot that already shows a design is not given to a second player, and one
+        // refused slot refuses the upload with nothing charged.
         byte hours = packet.ReadByte();
         for (int i = 0; i < hours; i++) {
             var reservation = packet.Read<UgcBannerReservation>();
-
-            long price = bannerMetadata.Price[reservation.Hour];
-            if (session.Currency.Meret < price) {
-                session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
-                return;
-            }
-
             BannerSlot? bannerSlot = banner.Slots.FirstOrDefault(slot => slot.Id == reservation.Uid);
-            if (bannerSlot is null) {
-                Logger.Warning("Failed to find banner slot {BannerId} {SlotId}", bannerId, reservation.Uid);
-                return;
+            // A design of this character that never got its picture (an upload that failed) may be replaced.
+            UgcItemLook? shown = bannerSlot?.Template;
+            bool taken = shown != null && (shown.CharacterId != session.CharacterId || !string.IsNullOrEmpty(shown.Url));
+            asked.Add((reservation.Uid, bannerSlot != null, taken, bannerSlot?.Hour ?? -1));
+            if (bannerSlot != null) {
+                slots.Add(bannerSlot);
             }
-
-            slots.Add(bannerSlot);
-            session.Currency.Meret -= price;
         }
+
+        long fee = UgcRules.BannerUploadFee(bannerMetadata.Price, asked);
+        if (fee < 0) {
+            Logger.Warning("Refused banner upload {BannerId} from {CharacterId}", bannerId, session.CharacterId);
+            return;
+        }
+        if (session.Currency.Meret < fee) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
+            return;
+        }
+        session.Currency.Meret -= fee;
 
         using WebStorage.Request request = WebStorage.Context();
         UgcResource? resource = request.CreateUgc(UgcType.Banner, session.CharacterId);
@@ -538,6 +547,11 @@ public class UgcHandler : FieldPacketHandler {
         using GameStorage.Request db = session.GameStorage.Context();
         for (int i = 0; i < hours; i++) {
             var reservation = packet.Read<UgcBannerReservation>();
+
+            // The slot's start time is built from the date and the hour: values that are no time are skipped.
+            if (!UgcRules.BannerTimeValid(reservation.Date, reservation.Hour)) {
+                continue;
+            }
 
             if (banner.Slots.Any(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour)) {
                 Logger.Warning("Failed to reserve banner slot {BannerId} {Date} {Hour}", bannerId, reservation.Date, reservation.Hour);
