@@ -32,8 +32,10 @@ public class GuildManager : IDisposable {
     }
 
     public void Dispose() {
-        using GameStorage.Request db = GameStorage.Context();
-        db.SaveGuild(Guild);
+        lock (guildLock) {
+            using GameStorage.Request db = GameStorage.Context();
+            db.SaveGuild(Guild);
+        }
     }
 
     public bool HasPermission(long characterId, GuildPermission permission) {
@@ -695,10 +697,13 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_invalid_grade_data;
         }
 
-        rank.Name = name;
-        rank.Permission = permission;
+        // Under the guild lock, as every save of the guild: a save may not run while a donation or an
+        // upgrade is between its change and its own save.
+        lock (guildLock) {
+            rank.Name = name;
+            rank.Permission = permission;
 
-        using (GameStorage.Request db = GameStorage.Context()) {
+            using GameStorage.Request db = GameStorage.Context();
             db.SaveGuild(Guild);
         }
 
@@ -728,10 +733,11 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_unknown;
         }
 
-        Guild.Listed = listed;
-        Guild.Focus = (GuildFocus) focus;
+        lock (guildLock) {
+            Guild.Listed = listed;
+            Guild.Focus = (GuildFocus) focus;
 
-        using (GameStorage.Request db = GameStorage.Context()) {
+            using GameStorage.Request db = GameStorage.Context();
             db.SaveGuild(Guild);
         }
 
@@ -755,9 +761,10 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_no_authority;
         }
 
-        Guild.Emblem = emblem;
+        lock (guildLock) {
+            Guild.Emblem = emblem;
 
-        using (GameStorage.Request db = GameStorage.Context()) {
+            using GameStorage.Request db = GameStorage.Context();
             db.SaveGuild(Guild);
         }
 
