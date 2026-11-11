@@ -481,4 +481,19 @@ public class LuaTests {
         int ours = Server.Game.LuaFunctions.Lua.CalcPetEnchantBookCost(rarity);
         Assert.That(ours, Is.EqualTo((int) maple2Lua.CalcPetEnchantBookCost((ushort) rarity)));
     }
+
+    // Rank D (4) of a main alliance with useMainFamePoint 1: 700 in KR, 90 elsewhere.
+    [Test]
+    public void TestCalcQuestRewardFamePoint() {
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcQuestRewardFamePoint(4, 0, 1, 3), Is.EqualTo(V(90, 700)));
+        for (int rank = -1; rank <= 6; rank++) {
+            for (int use = 0; use <= 3; use++) {
+                foreach (int alliance in new[] { 1, 5, 6, 9 }) {
+                    int ours = Server.Game.LuaFunctions.Lua.CalcQuestRewardFamePoint(rank, 0, use, alliance);
+                    Assert.That(ours, Is.EqualTo((int) maple2Lua.CalcQuestRewardFamePoint(rank, 0, use, alliance)),
+                        $"rank {rank} use {use} alliance {alliance}");
+                }
+            }
+        }
+    }
 }

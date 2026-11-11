@@ -78,7 +78,9 @@ public record QuestMetadataReward(
     int Treva,
     int Rue,
     List<QuestMetadataReward.Item> EssentialItem,
-    List<QuestMetadataReward.Item> EssentialJobItem) {
+    List<QuestMetadataReward.Item> EssentialJobItem,
+    // useMainFamePoint: when set, the reward gives the quest's alliance fame points (Lua calcQuestRewardFamePoint).
+    int UseMainFamePoint = 0) {
 
     public record Item(int Id, int Rarity, int Amount);
 }

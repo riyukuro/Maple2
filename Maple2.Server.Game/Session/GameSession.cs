@@ -423,6 +423,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(UserEnvPacket.InteractedObjects(Player.Value.Unlock.InteractedObjects));
         Send(UserEnvPacket.GatheringCounts(Config.GatheringCounts));
         Send(UserEnvPacket.LoadClaimedRewards(Player.Value.Unlock.MasteryRewardsClaimed));
+        Send(UserEnvPacket.FamePoints(Player.Value.Unlock.FamePoints));
         Send(FishingPacket.LoadAlbum(Player.Value.Unlock.FishAlbum.Values));
         Pet?.Load();
         Send(PetPacket.LoadCollection(Player.Value.Unlock.Pets));

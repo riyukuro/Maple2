@@ -359,4 +359,41 @@ public class AllianceMissionsTests {
             Assert.That(QuestPeriod.DurationMinutes(usePeriod), Is.EqualTo(minutes));
         });
     }
+
+    private static QuestMetadata FameQuest(AllianceType alliance, int rank, int useMainFamePoint) {
+        var basic = new QuestMetadataBasic(ChapterId: 0, Type: QuestType.AllianceQuest, Account: 0, StandardLevel: 1,
+            Forfeitable: true, EventTag: string.Empty, AutoStart: false, Disabled: false, UsePostbox: false, StartNpc: 0,
+            CompleteNpc: 0, CompleteMaps: null, ProgressMaps: null, Repeat: 2, Alliance: alliance, Rank: rank);
+        var require = new QuestMetadataRequire(0, 0, [], [], [], 0, (0, 0), 0);
+        var reward = new QuestMetadataReward(0, 0, ExpType.none, 0, 0, 0, 0, 0, 0, 0, [], [], useMainFamePoint);
+        return new QuestMetadata(1, null, basic, require, null!, reward, null!, null!, null!, null!,
+            null, null, null, QuestEventMissionType.none, []);
+    }
+
+    // The fame a completed mission gives: the reward's useMainFamePoint and an alliance are needed; rank D of a main
+    // alliance gives 700 in KR (the window's +700), 90 elsewhere.
+    [NonParallelizable]
+    [TestCase("KR", AllianceType.DarkWind, 4, 1, 700)]
+    [TestCase("KR", AllianceType.GreenHoods, 0, 2, 4000)]
+    [TestCase("KR", AllianceType.KritiasGreenHoods, 4, 1, 90)]
+    [TestCase("NA", AllianceType.DarkWind, 4, 1, 90)]
+    [TestCase("NA", AllianceType.DarkWind, 1, 2, 2000)]
+    [TestCase("KR", AllianceType.DarkWind, 4, 0, 0)]
+    [TestCase("KR", AllianceType.AnyFaction, 4, 1, 0)]
+    public void FameReward(string locale, AllianceType alliance, int rank, int useMainFamePoint, int expected) {
+        string old = Maple2.Server.Game.LuaFunctions.Lua.Locale;
+        Maple2.Server.Game.LuaFunctions.Lua.Locale = locale;
+        try {
+            Assert.That(AllianceMissions.FameReward(FameQuest(alliance, rank, useMainFamePoint)), Is.EqualTo(expected));
+        } finally {
+            Maple2.Server.Game.LuaFunctions.Lua.Locale = old;
+        }
+    }
+
+    [TestCase(0, 700, 700)]
+    [TestCase(700, 700, 1400)]
+    [TestCase(int.MaxValue - 10, 700, int.MaxValue)]
+    public void AddFame(int points, int amount, int expected) {
+        Assert.That(AllianceMissions.AddFame(points, amount), Is.EqualTo(expected));
+    }
 }

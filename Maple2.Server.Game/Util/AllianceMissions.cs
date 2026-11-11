@@ -1,6 +1,7 @@
 using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.LuaFunctions;
 
 namespace Maple2.Server.Game.Util;
 
@@ -49,6 +50,22 @@ public static class AllianceMissions {
     public static bool CompleteAll(QuestMetadataBasic basic, QuestState state, AllianceType alliance) {
         return basic.Type == QuestType.AllianceQuest && basic.Alliance == alliance && basic.Repeat is 2 or 3
                && state != QuestState.Completed;
+    }
+
+    // The fame points completing the quest gives its alliance: with the complete reward's useMainFamePoint, Lua
+    // calcQuestRewardFamePoint of the rank, the flag and the alliance, as the client shows the reward
+    // (FUN_140762c80). None without the flag or an alliance.
+    public static int FameReward(QuestMetadata metadata) {
+        int useMainFamePoint = metadata.CompleteReward.UseMainFamePoint;
+        if (useMainFamePoint == 0 || metadata.Basic.Alliance == AllianceType.AnyFaction) {
+            return 0;
+        }
+        return Lua.CalcQuestRewardFamePoint(metadata.Basic.Rank, 0, useMainFamePoint, (int) metadata.Basic.Alliance);
+    }
+
+    // The points after adding, kept at int.MaxValue.
+    public static int AddFame(int points, int amount) {
+        return (int) Math.Clamp((long) points + amount, 0, int.MaxValue);
     }
 
     // One method's pick from the missions of its repeat. All of them are shuffled, so the order does not depend on

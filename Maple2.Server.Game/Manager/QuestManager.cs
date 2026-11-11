@@ -444,6 +444,11 @@ public sealed class QuestManager {
             session.Currency[CurrencyType.Rue] += reward.Rue;
         }
 
+        int fame = AllianceMissions.FameReward(quest.Metadata);
+        if (fame > 0) {
+            AddFamePoints(quest.Metadata.Basic.Alliance, fame);
+        }
+
         foreach (Item item in rewards) {
             if (!session.Item.Inventory.Add(item, true)) {
                 session.Item.MailItem(item);
@@ -709,6 +714,14 @@ public sealed class QuestManager {
         session.Config.Skill.SkillInfo.SetJob(changeJobMetadata.ChangeJob);
         session.Stats.Refresh();
         session.Field?.Broadcast(JobPacket.Advance(session.Player, session.Config.Skill.SkillInfo));
+    }
+
+    // The alliance's fame points, sent to the client (the alliance mission window's reputation).
+    public void AddFamePoints(AllianceType alliance, int amount) {
+        IDictionary<AllianceType, int> famePoints = session.Player.Value.Unlock.FamePoints;
+        int points = AllianceMissions.AddFame(famePoints.GetValueOrDefault(alliance), amount);
+        famePoints[alliance] = points;
+        session.Send(UserEnvPacket.FamePoint(alliance, points));
     }
 
     private void CompleteChapter(int questId, bool ignoreItemRewards = false) {

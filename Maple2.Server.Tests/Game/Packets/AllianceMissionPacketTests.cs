@@ -54,4 +54,27 @@ public class AllianceMissionPacketTests {
         Assert.That(reader.ReadInt(), Is.EqualTo((int) NpcTalkButton.QuestAccept));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+
+    // UserEnv 10 and 11 as CSceneStateGame::OnUserEnv reads them: the count, then per alliance the short id and the
+    // int points; 11 one alliance.
+    [Test]
+    public void FamePointsBytes() {
+        var points = new System.Collections.Generic.SortedDictionary<AllianceType, int> { { AllianceType.DarkWind, 700 }, { AllianceType.GreenHoods, 1400 } };
+        var reader = new ByteReader(UserEnvPacket.FamePoints(points).ToArray(), 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.UserEnv));
+        Assert.That(reader.ReadByte(), Is.EqualTo(10));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.ReadShort(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(700));
+        Assert.That(reader.ReadShort(), Is.EqualTo(5));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1400));
+        Assert.That(reader.Available, Is.EqualTo(0));
+
+        reader = new ByteReader(UserEnvPacket.FamePoint(AllianceType.Lumiknights, 2100).ToArray(), 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.UserEnv));
+        Assert.That(reader.ReadByte(), Is.EqualTo(11));
+        Assert.That(reader.ReadShort(), Is.EqualTo(3));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2100));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
 }

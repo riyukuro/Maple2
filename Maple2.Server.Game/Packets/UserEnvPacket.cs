@@ -14,7 +14,8 @@ public static class UserEnvPacket {
         InteractedObjects = 4,
         GatheringCounts = 8,
         MasteryRewardsClaimed = 9,
-        Reputation = 10,
+        FamePoints = 10,
+        FamePoint = 11,
     }
 
     public static ByteWriter AddTitle(int titleId) {
@@ -90,14 +91,25 @@ public static class UserEnvPacket {
         return pWriter;
     }
 
-    public static ByteWriter Reputation(IDictionary<ReputationType, int> reputations) {
+    // The alliance fame points (CSceneStateGame::OnUserEnv modes 10 and 11): the client's GetFamePoints, by the
+    // alliance id (AllianceType), which the alliance mission window shows. 10 replaces them all, 11 sets one.
+    public static ByteWriter FamePoints(IDictionary<AllianceType, int> famePoints) {
         var pWriter = Packet.Of(SendOp.UserEnv);
-        pWriter.Write<Command>(Command.Reputation);
-        pWriter.WriteInt(reputations.Count);
-        foreach ((ReputationType type, int amount) in reputations) {
-            pWriter.Write<ReputationType>(type);
-            pWriter.WriteInt(amount);
+        pWriter.Write<Command>(Command.FamePoints);
+        pWriter.WriteInt(famePoints.Count);
+        foreach ((AllianceType alliance, int points) in famePoints) {
+            pWriter.WriteShort((short) alliance);
+            pWriter.WriteInt(points);
         }
+
+        return pWriter;
+    }
+
+    public static ByteWriter FamePoint(AllianceType alliance, int points) {
+        var pWriter = Packet.Of(SendOp.UserEnv);
+        pWriter.Write<Command>(Command.FamePoint);
+        pWriter.WriteShort((short) alliance);
+        pWriter.WriteInt(points);
 
         return pWriter;
     }

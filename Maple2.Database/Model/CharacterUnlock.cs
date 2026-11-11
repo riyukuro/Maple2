@@ -19,6 +19,8 @@ internal class CharacterUnlock {
     public required IList<FishEntry> FishAlbum { get; set; }
     public required ISet<int> InteractedObjects { get; set; }
     public required IDictionary<int, byte> CollectedItems { get; set; }
+    // Null in rows from before the column (AddFamePoints).
+    public IDictionary<AllianceType, int>? FamePoints { get; set; }
     public required InventoryExpand Expand { get; set; }
     public short HairSlotExpand { get; set; }
     public DateTime LastModified { get; set; }
@@ -36,6 +38,7 @@ internal class CharacterUnlock {
             Expand = new InventoryExpand(),
             InteractedObjects = new SortedSet<int>(),
             CollectedItems = new Dictionary<int, byte>(),
+            FamePoints = new Dictionary<AllianceType, int>(),
             DungeonRankRewards = new Dictionary<int, DungeonRankReward>(),
         } : new CharacterUnlock {
             LastModified = other.LastModified,
@@ -68,6 +71,7 @@ internal class CharacterUnlock {
             FishAlbum = other.FishAlbum.Values.Select<Maple2.Model.Game.FishEntry, FishEntry>(fish => fish).ToArray(),
             InteractedObjects = other.InteractedObjects,
             CollectedItems = other.CollectedItems,
+            FamePoints = other.FamePoints,
         };
     }
 
@@ -121,6 +125,11 @@ internal class CharacterUnlock {
         foreach ((int itemId, byte quantity) in other.CollectedItems) {
             unlock.CollectedItems[itemId] = quantity;
         }
+        if (other.FamePoints != null) {
+            foreach ((AllianceType alliance, int points) in other.FamePoints) {
+                unlock.FamePoints[alliance] = points;
+            }
+        }
 
         return unlock;
     }
@@ -142,6 +151,7 @@ internal class CharacterUnlock {
         builder.Property(unlock => unlock.InteractedObjects).HasJsonConversion().IsRequired();
         builder.Property(unlock => unlock.CollectedItems).HasJsonConversion().IsRequired();
         builder.Property(unlock => unlock.DungeonRankRewards).HasJsonConversion().IsRequired();
+        builder.Property(unlock => unlock.FamePoints).HasJsonConversion();
 
         builder.Property(unlock => unlock.LastModified).IsRowVersion();
     }

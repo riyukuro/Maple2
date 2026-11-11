@@ -55,6 +55,9 @@ public class Unlock {
     // Used for trophies
     public readonly ISet<int> InteractedObjects = new SortedSet<int>();
     public readonly IDictionary<int, byte> CollectedItems = new Dictionary<int, byte>();
+
+    // The alliance fame points (reputation), by alliance: the client's GetFamePoints, sent by UserEnv 10 and 11.
+    public readonly IDictionary<AllianceType, int> FamePoints = new SortedDictionary<AllianceType, int>();
 }
 
 public class Currency {

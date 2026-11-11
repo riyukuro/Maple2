@@ -563,6 +563,20 @@ public static class Lua {
         int[] counts = [90, 60, 50, 20, 10, 0];
         return rank >= 0 && rank < counts.Length ? counts[rank] : 0;
     }
+
+    // calcQuestRewardFamePoint (the client's and the server's script): the fame points a quest's complete reward gives
+    // when its useMainFamePoint is set, by the quest's rank (S 0 .. D 4, none 5) and alliance; the grade is not read.
+    // In KR and CN the first five alliances get the larger table and a useMainFamePoint of 2 or more doubles it,
+    // elsewhere it gives ten times.
+    public static int CalcQuestRewardFamePoint(int rank, int grade, int useMainFamePoint, int alliance) {
+        int[] points = [230, 200, 140, 100, 90, 0];
+        int[] multipliers = [1, 10];
+        if ((Locale == LocaleKr || Locale == LocaleCn) && alliance <= 5) {
+            points = [2000, 1500, 1000, 800, 700, 0];
+            multipliers = [1, 2];
+        }
+        return points[Math.Clamp(rank, 0, points.Length - 1)] * multipliers[Math.Clamp(useMainFamePoint, 1, multipliers.Length) - 1];
+    }
     #endregion
 
     #region KillCount

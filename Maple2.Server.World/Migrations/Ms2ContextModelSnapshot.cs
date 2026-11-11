@@ -496,6 +496,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<string>("FamePoints")
+                        .HasColumnType("json");
+
                     b.Property<string>("FishAlbum")
                         .IsRequired()
                         .HasColumnType("json");
