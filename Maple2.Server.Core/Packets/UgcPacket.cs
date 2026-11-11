@@ -219,6 +219,7 @@ public static class UgcPacket {
         pWriter.WriteUnicodeString(activeSlot.Template.Id.ToString());
         pWriter.WriteByte(3);
         pWriter.WriteByte(1);
+        pWriter.WriteUnicodeString(); // upload path
         pWriter.WriteLong(activeSlot.BannerId);
         byte loopCounter = 1; // Usually it's all slots but only one can be active at a time, so why have more than one?
         pWriter.WriteByte(loopCounter);
