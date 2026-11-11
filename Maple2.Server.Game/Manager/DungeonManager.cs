@@ -409,7 +409,8 @@ public class DungeonManager {
         }
 
         if (firstField.DungeonRoomRecord.StartTick == 0) {
-            firstField.DungeonRoomRecord.StartTick = Lobby.FieldTick;
+            // The clock every FieldTick reads; Lobby.FieldTick stops while the lobby is empty.
+            firstField.DungeonRoomRecord.StartTick = Environment.TickCount64;
         }
         session.Send(session.PrepareField(firstField.MapId, roomId: firstField.RoomId) ? FieldEnterPacket.Request(session.Player) :
             FieldEnterPacket.Error(MigrationError.s_move_err_default));

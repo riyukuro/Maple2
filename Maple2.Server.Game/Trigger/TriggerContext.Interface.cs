@@ -61,12 +61,12 @@ public partial class TriggerContext {
     }
 
     public void ScoreBoardCreate(string type, string title, int maxScore) {
-        Field.ScoreBoardScore = 0;
+        Field.ScoreBoardScore = null;
         ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
     }
 
     public void ScoreBoardRemove() {
-        Field.ScoreBoardScore = 0;
+        Field.ScoreBoardScore = null;
         ErrorLog("[ScoreBoardRemove]");
     }
 

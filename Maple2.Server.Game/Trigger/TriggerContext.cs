@@ -255,11 +255,16 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
-    // The field's score board score (set by score_board_set_score, reset by score_board_create and
-    // score_board_remove) compared with score.
+    // The field's score board score compared with score, once a script in this field has called
+    // score_board_set_score. Before that (no score source feeds the board) the test passes, as it always did,
+    // so a battle waiting on a score of 800 does not wait for ever.
     public bool ScoreBoardScore(int score, OperatorType operatorType) {
         DebugLog("[GetScoreBoardScore] score:{Score}, operator:{Operator}", score, operatorType);
-        return CompareUserValue(Field.ScoreBoardScore, score, operatorType);
+        return CompareScoreBoard(Field.ScoreBoardScore, score, operatorType);
+    }
+
+    public static bool CompareScoreBoard(int? boardScore, int score, OperatorType operatorType) {
+        return boardScore is not { } value || CompareUserValue(value, score, operatorType);
     }
 
     public bool UserValue(string key, int value, OperatorType operatorType, bool negate) {

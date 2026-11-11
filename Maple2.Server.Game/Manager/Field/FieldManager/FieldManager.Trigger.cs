@@ -16,9 +16,9 @@ public partial class FieldManager {
     public readonly Dictionary<string, int> UserValues = new();
     public readonly Dictionary<string, Widget> Widgets = new();
     public readonly Dictionary<int, List<TriggerState>> States = new();
-    // The score the score_board_score condition tests; only score_board_set_score writes it, since no kill or
-    // pickup score reaches it yet.
-    public int ScoreBoardScore;
+    // The score the score_board_score condition tests. Only score_board_set_score writes it (no kill, pickup or
+    // packet score reaches it); null until a script sets it, and score_board_create/remove clear it.
+    public int? ScoreBoardScore;
     // Dungeon variables of a field that is not part of a dungeon instance (a dungeon's fields use their room
     // record's store instead).
     public readonly ConcurrentDictionary<int, int> DungeonVariables = new();

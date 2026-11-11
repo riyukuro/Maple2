@@ -26,6 +26,18 @@ public class TriggerStubConditionTests {
     }
 
     [Test]
+    public void ScoreBoardScore_PassesUntilAScriptSetsTheScore() {
+        // No score source feeds the board: a field whose scripts never call score_board_set_score keeps the
+        // old pass for any operator, so a battle waiting on 800 points still ends.
+        Assert.That(TriggerContext.CompareScoreBoard(null, 800, OperatorType.GreaterEqual), Is.True);
+        Assert.That(TriggerContext.CompareScoreBoard(null, 800, OperatorType.Less), Is.True);
+        // After score_board_set_score="0" (the bonus maps' start), the settlement's score test is real.
+        Assert.That(TriggerContext.CompareScoreBoard(0, 18000, OperatorType.GreaterEqual), Is.False);
+        Assert.That(TriggerContext.CompareScoreBoard(0, 18000, OperatorType.Less), Is.True);
+        Assert.That(TriggerContext.CompareScoreBoard(18000, 18000, OperatorType.GreaterEqual), Is.True);
+    }
+
+    [Test]
     public void DungeonPlayTime_KeepsItsOperatorAndCountsFromTheStart() {
         var condition = (TriggerConditions.DungeonPlayTime) Condition("""<condition name="dungeon_play_time" play_seconds="70" operator="LessEqual" />""");
         Assert.That(condition.Operator, Is.EqualTo(OperatorType.LessEqual));
