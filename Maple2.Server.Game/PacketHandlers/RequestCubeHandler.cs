@@ -220,21 +220,25 @@ public class RequestCubeHandler : FieldPacketHandler {
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {First}, {Second}", command, session.CharacterId, packet.ReadUnicodeString(), packet.ReadUnicodeString());
                 break;
             // UIHomeInfoDialog::FUN_1412c7ff0 (uihomeinfodialog.cpp:776) and the user command SetUgcMapBalance
-            // (usercommandcli.cpp:1145): meso, merat. The balance box sits on a panel the client shows only after
-            // ResponseCube 0x35 named the home's owner (scenestategame.cpp:10592), which the server never sends.
-            // No budget is stored and the answer's error byte has no text for this: read and logged.
-            case Command.SetBuildBudget:
-                Logger.Debug("RequestCube {Command} from {CharacterId}: meso {Meso}, merat {Merat}", command, session.CharacterId, packet.ReadLong(), packet.ReadLong());
+            // (usercommandcli.cpp:1145): meso, merat. The budget of the sender's own home, which pays for the
+            // cubes its build helpers place; the answer is ResponseCube 0x38.
+            case Command.SetBuildBudget: {
+                long meso = packet.ReadLong();
+                long merat = packet.ReadLong();
+                session.Housing.SetBuildBudget(meso, merat);
                 break;
+            }
             // UIPopUpMenu::SendRequestCube (uipartydialog.cpp:3428, a menu entry that needs client feature 0x100)
-            // and the user command AddUgcMapPriv (usercommandcli.cpp:1151): character name. No helper list is
-            // stored and the answer's error byte (0x39) has no text for this: read and logged.
+            // and the user command AddUgcMapPriv (usercommandcli.cpp:1151): character name. Adds a build helper
+            // to the sender's own home; the answer is ResponseCube 0x39.
             case Command.AddBuildPermission:
+                session.Housing.AddBuilder(packet.ReadUnicodeString());
+                break;
             // UIHomeInfoDialog::SendRequestCubeMode58 (uihomeinfodialog.cpp:674, the remove button of the helper
-            // list) and the user command RemoveUgcMapPriv (usercommandcli.cpp:1157): character name. The list is
-            // filled only by ResponseCube 0x3b, which the server never sends, so it is always empty.
+            // list) and the user command RemoveUgcMapPriv (usercommandcli.cpp:1157): character name. The answer
+            // is ResponseCube 0x3a.
             case Command.RemoveBuildPermission:
-                Logger.Debug("RequestCube {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
+                session.Housing.RemoveBuilder(packet.ReadUnicodeString());
                 break;
             case Command.ApplyBlueprint:
                 HandleApplyBlueprint(session, packet);
@@ -294,12 +298,12 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (session.Field == null) return;
         var position = packet.Read<Vector3B>();
 
-        Plot? plot = session.Housing.GetOwnFieldPlot();
+        Plot? plot = session.Housing.GetBuildFieldPlot(out GameSession owner);
         if (plot == null) {
             return;
         }
 
-        if (!session.Housing.TryRemoveCube(plot, position, out PlotCube? cube)) {
+        if (!owner.Housing.TryRemoveCube(plot, position, out PlotCube? cube, owner == session ? null : session)) {
             return;
         }
 
@@ -329,7 +333,7 @@ public class RequestCubeHandler : FieldPacketHandler {
         var position = packet.Read<Vector3B>();
         bool clockwise = packet.ReadBool();
 
-        Plot? plot = session.Housing.GetOwnFieldPlot();
+        Plot? plot = session.Housing.GetBuildFieldPlot(out _);
         if (plot == null) {
             return;
         }
@@ -374,7 +378,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             packet.ReadByte(); // the side the cube is attached to; the rotation above is the angle of that side
         }
 
-        Plot? plot = session.Housing.GetOwnFieldPlot();
+        Plot? plot = session.Housing.GetBuildFieldPlot(out GameSession owner);
         if (plot == null) {
             return;
         }
@@ -383,7 +387,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Housing.TryPlaceCube(cubeItem, plot, metadata, position, rotation, out PlotCube? placedCube, isReplace: true)) {
+        if (!owner.Housing.TryPlaceCube(cubeItem, plot, metadata, position, rotation, out PlotCube? placedCube, isReplace: true, helper: owner == session ? null : session)) {
             return;
         }
 

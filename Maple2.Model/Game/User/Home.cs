@@ -34,6 +34,12 @@ public class Home : IByteSerializable {
     public long DecorationLevel { get; set; }
     public long DecorationRewardTimestamp { get; set; }
     public List<int> InteriorRewardsClaimed { get; set; } = [];
+
+    // The build budget (ResponseCube 0x35 and 0x38) and the account ids of the build helpers (0x39 to 0x3b).
+    public long BuildMeso { get; set; }
+    public long BuildMerat { get; set; }
+    public List<long> Builders { get; set; } = [];
+
     public List<HomeLayout> Layouts { get; set; } = [];
     public List<HomeLayout> Blueprints { get; set; } = [];
 

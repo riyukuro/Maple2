@@ -112,12 +112,12 @@ public partial class FieldManager {
                     logger.Error("Item {CubeItemItemId} is not a housing item.", cubeItem.ItemId);
                     return;
                 }
-                plot = session.Housing.GetOwnFieldPlot();
+                plot = session.Housing.GetBuildFieldPlot(out GameSession owner);
                 if (plot == null) {
                     return;
                 }
 
-                if (!session.Housing.TryPlaceCube(cubeItem, plot, itemMetadata, position, rotation, out PlotCube? plotCube)) {
+                if (!owner.Housing.TryPlaceCube(cubeItem, plot, itemMetadata, position, rotation, out PlotCube? plotCube, helper: owner == session ? null : session)) {
                     return;
                 }
 

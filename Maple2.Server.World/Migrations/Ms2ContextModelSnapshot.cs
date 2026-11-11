@@ -775,6 +775,16 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<long>("BuildMerat")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("BuildMeso")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Builders")
+                        .IsRequired()
+                        .HasColumnType("json");
+
                     b.Property<byte>("Camera")
                         .HasColumnType("tinyint unsigned");
 

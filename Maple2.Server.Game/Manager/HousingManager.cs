@@ -562,24 +562,26 @@ public class HousingManager {
     }
 
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
-                             [NotNullWhen(true)] out PlotCube? result, bool isReplace = false) {
+                             [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null) {
         result = null;
+        // A build helper edits through the owner's manager; what the edit refuses goes to the helper.
+        GameSession notify = helper ?? session;
         if (session.Field is null || itemMetadata.Install is null) return false;
 
         tableMetadata.FurnishingShopTable.Entries.TryGetValue(cube.ItemId, out FurnishingShopTable.Entry? shopEntry);
 
         switch (plot.PlotMode) {
             case PlotMode.BlueprintPlanner when itemMetadata.Housing!.IsNotAllowedInBlueprint:
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_install_blueprint));
+                notify.Send(CubePacket.Error(UgcMapError.s_err_cannot_install_blueprint));
                 return false;
             case PlotMode.BlueprintPlanner when itemMetadata.Housing!.HousingCategory is HousingCategory.Farming or HousingCategory.Ranching:
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_install_nurturing_in_design_home));
+                notify.Send(CubePacket.Error(UgcMapError.s_err_cannot_install_nurturing_in_design_home));
                 return false;
             case PlotMode.BlueprintPlanner when cube.ItemId is Constant.InteriorPortalCubeId:
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_install_magic_portal));
+                notify.Send(CubePacket.Error(UgcMapError.s_err_cannot_install_magic_portal));
                 return false;
             case PlotMode.BlueprintPlanner when shopEntry is null:
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
+                notify.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
                 return false;
         }
 
@@ -588,7 +590,7 @@ public class HousingManager {
         if (outdoor) {
             FieldSellableTile? groundTile = session.Field.AccelerationStructure?.FirstSellableTile(position, (x) => x.SellableGroup == plot.Number);
             if (groundTile is null) {
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
+                notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
                 return false;
             }
 
@@ -596,13 +598,13 @@ public class HousingManager {
         }
 
         if (!outdoor && itemMetadata.Install.IndoorPortal) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_be_created));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_be_created));
             return false;
         }
 
         // can only place one indoor portal per plot
         if (outdoor && plot.Cubes.Any(x => x.Value.Metadata.Install is { IndoorPortal: true }) && itemMetadata.Install.IndoorPortal) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
             return false;
         }
 
@@ -612,28 +614,28 @@ public class HousingManager {
 
         // If the cube is not a solid cube and it's replacing ground, it's not allowed.
         if ((!isSolidCube && isOnGround) && !allowWaterOnGround) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
             return false;
         }
 
         // Cannot overlap cubes if not replacing
         if (plot.Cubes.ContainsKey(position) && !isReplace) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_create_on_place));
             return false;
         }
 
         if (isReplace && plot.Cubes.ContainsKey(position)) {
-            TryRemoveCube(plot, position, out _);
+            TryRemoveCube(plot, position, out _, helper);
         }
 
         if (plot.MapId is Constant.DefaultHomeMapId && IsCoordOutsideArea(position)) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
             return false;
         }
 
         // Only check height on outside plots since we already check if it's inside the area when getting the ground height
         if (outdoor && position.Z - groundHeight > plot.Metadata.Limit.Height) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
             return false;
         }
 
@@ -641,13 +643,13 @@ public class HousingManager {
 
         if (plot.IsPlanner) {
             if (shopEntry is null && cube.Id == 0) {
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_additionalbuy));
+                notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_additionalbuy));
                 return false;
             }
             Item? existingItem = session.Item.Furnishing.GetItem(cube.ItemId);
             int existingCubeCount = plot.Cubes.Count(x => x.Value.ItemId == cube.ItemId);
             if (shopEntry is null && (existingItem is null || existingCubeCount >= existingItem.Amount)) {
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
+                notify.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
                 return false;
             }
 
@@ -667,21 +669,26 @@ public class HousingManager {
 
         result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation);
         if (result is null) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return false;
         }
 
-        if (!session.Item.Furnishing.TryAddCube(cube.Id, result)) {
+        if (helper != null) {
+            if (!TryBuyFromBudget(helper, cube, shopEntry, result)) {
+                DeleteCube(result);
+                return false;
+            }
+        } else if (!session.Item.Furnishing.TryAddCube(cube.Id, result)) {
             long itemUid = session.Item.Furnishing.AddCube(cube);
             if (itemUid == 0) {
                 DeleteCube(result);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
+                notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
                 return false;
             }
 
             if (shopEntry is null) {
                 DeleteCube(result);
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
+                notify.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
                 return false;
             }
 
@@ -694,7 +701,7 @@ public class HousingManager {
             // Now that we have purchased the cube, it must be placeable.
             if (!session.Item.Furnishing.TryAddCube(itemUid, result)) {
                 DeleteCube(result);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
+                notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
                 return false;
             }
         }
@@ -707,7 +714,7 @@ public class HousingManager {
             FieldPortal? fieldPortal = session.Field.SpawnFieldToHomePortal(result, plot.OwnerId);
             if (fieldPortal is null) {
                 DeleteCube(result);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
+                notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
                 return false;
             }
             session.Field.Broadcast(PortalPacket.Add(fieldPortal));
@@ -717,9 +724,10 @@ public class HousingManager {
         return true;
     }
 
-    public bool TryRemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube) {
+    public bool TryRemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube, GameSession? helper = null) {
+        GameSession notify = helper ?? session;
         if (!plot.Cubes.Remove(position, out cube)) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_remove));
+            notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_remove));
             return false;
         }
 
@@ -751,6 +759,237 @@ public class HousingManager {
 
         return true;
     }
+
+    #region Build budget and helpers
+    // The owner whose home this session was told it may build in (ResponseCube 0x35); 0 when none.
+    public long BuildOwnerId { get; private set; }
+
+    public bool IsBuilder(long accountId) {
+        lock (Home.Builders) {
+            return Home.Builders.Contains(accountId);
+        }
+    }
+
+    // The plot a session may place, remove, rotate and replace cubes on: its own, or the plot of the home it
+    // is in when that home's owner is in the field and lists the session's account as a build helper.
+    // owner is the session whose home, storage and budget the edit uses.
+    public Plot? GetBuildFieldPlot(out GameSession owner) {
+        owner = session;
+        Plot? plot = GetOwnFieldPlot();
+        if (plot != null) {
+            return plot;
+        }
+
+        GameSession? host = FindHost();
+        plot = host?.Housing.GetOwnFieldPlot();
+        if (host == null || plot == null || plot.IsPlanner) {
+            return null;
+        }
+        lock (host.Housing.Home.Builders) {
+            if (!HomeEditRules.MayBuild(plot.OwnerId, session.AccountId, host.Housing.Home.Builders)) {
+                return null;
+            }
+        }
+
+        owner = host;
+        return plot;
+    }
+
+    // The owner of the home this session is in, when another account's and in the field.
+    private GameSession? FindHost() {
+        if (session.Field is not HomeFieldManager homeField || homeField.OwnerId == session.AccountId) {
+            return null;
+        }
+        return homeField.Players.Values.Select(player => player.Session).FirstOrDefault(other => other.AccountId == homeField.OwnerId);
+    }
+
+    private IEnumerable<GameSession> HelpersInField() {
+        if (session.Field is not HomeFieldManager homeField || homeField.OwnerId != session.AccountId) {
+            return [];
+        }
+        return homeField.Players.Values.Select(player => player.Session).Where(other => other != session && IsBuilder(other.AccountId)).ToList();
+    }
+
+    private void GrantBuild(GameSession owner) {
+        Home ownerHome = owner.Housing.Home;
+        BuildOwnerId = owner.AccountId;
+        session.Send(CubePacket.GrantBuildPermissions(session.AccountId, owner.AccountId, ownerHome.BuildMeso, ownerHome.BuildMerat));
+    }
+
+    // The client keeps the owner 0x35 named until its next login, so the server takes it back.
+    private void RevokeBuild() {
+        if (BuildOwnerId == 0) {
+            return;
+        }
+        BuildOwnerId = 0;
+        session.Send(CubePacket.GrantBuildPermissions(session.AccountId));
+    }
+
+    // After the session entered a field. In its own home the owner gets the helper list (0x3b) and the budget
+    // (0x38: 0x35 would put the owner's client in helper mode); helpers already there are told. In a home it
+    // may build in, a helper gets 0x35.
+    public void EnterBuildField() {
+        if (session.Field is HomeFieldManager homeField && homeField.OwnerId == session.AccountId) {
+            RevokeBuild();
+            lock (Home.Builders) {
+                session.Send(CubePacket.LoadBuildPermission(Home.Builders));
+            }
+            session.Send(CubePacket.UpdateBuildBudget(0, Home.BuildMeso, Home.BuildMerat));
+            foreach (GameSession helper in HelpersInField()) {
+                helper.Housing.GrantBuild(session);
+            }
+            return;
+        }
+
+        GameSession? host = FindHost();
+        if (host != null && !host.Housing.Home.IsPlanner && host.Housing.IsBuilder(session.AccountId)) {
+            GrantBuild(host);
+            return;
+        }
+        RevokeBuild();
+    }
+
+    // Before the session leaves a field: the helpers in the owner's home cannot build without the owner.
+    public void LeaveBuildField() {
+        foreach (GameSession helper in HelpersInField()) {
+            helper.Housing.RevokeBuild();
+        }
+    }
+
+    private void SendBuildBudget() {
+        session.Send(CubePacket.UpdateBuildBudget(0, Home.BuildMeso, Home.BuildMerat));
+        foreach (GameSession helper in HelpersInField()) {
+            helper.Housing.GrantBuild(session);
+        }
+    }
+
+    // RequestCube 56.
+    public void SetBuildBudget(long meso, long merat) {
+        if (!Home.IsHomeSetup) {
+            session.Send(CubePacket.UpdateBuildBudget((byte) UgcMapError.s_ugcmap_no_home));
+            return;
+        }
+
+        lock (session.Item) {
+            lock (Home) {
+                long mesoCost = meso - Home.BuildMeso;
+                long meratCost = merat - Home.BuildMerat;
+                UgcMapError error = HomeBuildRules.CheckBudget(meso, merat, Home.BuildMeso, Home.BuildMerat,
+                    session.Currency.Meso, session.Currency.Meret);
+                if (error != UgcMapError.s_ugcmap_ok) {
+                    session.Send(CubePacket.UpdateBuildBudget((byte) error));
+                    return;
+                }
+
+                if (mesoCost != 0) {
+                    session.Currency.Meso -= mesoCost;
+                }
+                if (meratCost != 0) {
+                    session.Currency.Meret -= meratCost;
+                }
+                Home.BuildMeso = meso;
+                Home.BuildMerat = merat;
+            }
+        }
+
+        if (!SaveHome()) {
+            logger.Error("Failed to save the build budget of home {AccountId}.", session.AccountId);
+        }
+        SendBuildBudget();
+    }
+
+    private long FindAccountId(string name) {
+        if (string.IsNullOrWhiteSpace(name)) {
+            return 0;
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        long characterId = db.GetCharacterId(name);
+        if (characterId == 0 || !session.PlayerInfo.GetOrFetch(characterId, out PlayerInfo? info)) {
+            return 0;
+        }
+        return info.AccountId;
+    }
+
+    private GameSession? FindInField(long accountId) {
+        return session.Field?.Players.Values.Select(player => player.Session).FirstOrDefault(other => other != session && other.AccountId == accountId);
+    }
+
+    // RequestCube 57: a character name; the list holds the character's account.
+    public void AddBuilder(string name) {
+        long targetId = Home.IsHomeSetup ? FindAccountId(name) : 0;
+        lock (Home.Builders) {
+            UgcMapError error = HomeBuildRules.CheckAdd(session.AccountId, targetId, Home.Builders);
+            if (error != UgcMapError.s_ugcmap_ok) {
+                session.Send(CubePacket.AddBuildPermission((byte) error));
+                return;
+            }
+            Home.Builders.Add(targetId);
+        }
+
+        if (!SaveHome()) {
+            logger.Error("Failed to save the build helpers of home {AccountId}.", session.AccountId);
+        }
+        session.Send(CubePacket.AddBuildPermission(0, targetId));
+        if (session.Field is HomeFieldManager homeField && homeField.OwnerId == session.AccountId && !Home.IsPlanner) {
+            FindInField(targetId)?.Housing.GrantBuild(session);
+        }
+    }
+
+    // RequestCube 58.
+    public void RemoveBuilder(string name) {
+        long targetId = FindAccountId(name);
+        lock (Home.Builders) {
+            UgcMapError error = HomeBuildRules.CheckRemove(targetId, Home.Builders);
+            if (error != UgcMapError.s_ugcmap_ok) {
+                session.Send(CubePacket.RemoveBuildPermission((byte) error));
+                return;
+            }
+            Home.Builders.Remove(targetId);
+        }
+
+        if (!SaveHome()) {
+            logger.Error("Failed to save the build helpers of home {AccountId}.", session.AccountId);
+        }
+        session.Send(CubePacket.RemoveBuildPermission(0, targetId));
+        GameSession? target = FindInField(targetId);
+        if (target != null && target.Housing.BuildOwnerId == session.AccountId) {
+            target.Housing.RevokeBuild();
+        }
+    }
+
+    // A helper cannot use the owner's stored cubes or its own (the client's palette lists none for it), so
+    // each cube it places is bought, from the home's budget, into the owner's storage and placed from there.
+    private bool TryBuyFromBudget(GameSession helper, HeldCube cube, FurnishingShopTable.Entry? shopEntry, PlotCube result) {
+        if (shopEntry is not { Buyable: true }) {
+            helper.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
+            return false;
+        }
+
+        bool merat = shopEntry.FurnishingTokenType == FurnishingCurrencyType.Meret;
+        lock (Home) {
+            UgcMapError error = HomeBuildRules.Charge(Home, merat, shopEntry.Price);
+            if (error != UgcMapError.s_ugcmap_ok) {
+                helper.Send(CubePacket.Error(error));
+                return false;
+            }
+        }
+
+        long itemUid = session.Item.Furnishing.AddCube(cube);
+        if (itemUid == 0 || !session.Item.Furnishing.TryAddCube(itemUid, result)) {
+            lock (Home) {
+                HomeBuildRules.Refund(Home, merat, shopEntry.Price);
+            }
+            helper.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
+            return false;
+        }
+
+        helper.Send(CubePacket.PurchaseCube(helper.Player.ObjectId));
+        if (shopEntry.Price > 0) {
+            SendBuildBudget();
+        }
+        return true;
+    }
+    #endregion
 
     public bool IsCoordOutsideArea(Vector3B position) {
         int height = Home.IsPlanner ? Home.PlannerHeight : Home.Height;

@@ -20,6 +20,17 @@ public static class HomeEditRules {
         return accountId != 0 && plotOwnerId == accountId;
     }
 
+    // Placing, removing, rotating and replacing cubes is also open to the build helpers the plot's owner
+    // named: the client lets an account do these four on a plot whose owner ResponseCube 0x35 named to it
+    // (CUgcBuildValidator vfunc_10 and vfunc_11, ugcbuildvalidator.cpp:694 and :722; rotate and remove in
+    // cubemapinformationservice_3.cpp:2220). Every other edit stays with the owner.
+    public static bool MayBuild(long plotOwnerId, long accountId, ICollection<long>? builders) {
+        if (OwnsPlot(plotOwnerId, accountId)) {
+            return true;
+        }
+        return accountId != 0 && plotOwnerId != 0 && builders != null && builders.Contains(accountId);
+    }
+
     // HomeAction 6 after the sub-type byte: u8 0, i32 cube cell, string name, u8 method, u8 destination,
     // string target (UIUGCPortalDialog::OnApply).
     public static (Vector3B Cell, string Name, byte Method, byte Destination, string Target) ReadPortal(IByteReader packet) {

@@ -22,6 +22,10 @@ internal class Home {
     public long DecorationRewardTimestamp { get; set; }
     public List<int> InteriorRewardsClaimed { get; set; } = [];
 
+    public long BuildMeso { get; set; }
+    public long BuildMerat { get; set; }
+    public List<long> Builders { get; set; } = [];
+
     // Interior Settings
     public HomeBackground Background { get; set; }
     public HomeLighting Lighting { get; set; }
@@ -55,6 +59,9 @@ internal class Home {
             DecorationExp = other.DecorationExp,
             DecorationRewardTimestamp = other.DecorationRewardTimestamp,
             InteriorRewardsClaimed = other.InteriorRewardsClaimed,
+            BuildMeso = other.BuildMeso,
+            BuildMerat = other.BuildMerat,
+            Builders = other.Builders,
         };
     }
 
@@ -75,6 +82,9 @@ internal class Home {
             DecorationExp = other.DecorationExp,
             DecorationRewardTimestamp = other.DecorationRewardTimestamp,
             InteriorRewardsClaimed = other.InteriorRewardsClaimed,
+            BuildMeso = other.BuildMeso,
+            BuildMerat = other.BuildMerat,
+            Builders = other.Builders,
         };
 
         home.SetArea(other.Area);
@@ -104,6 +114,7 @@ internal class Home {
         builder.Property(home => home.Layouts).HasJsonConversion();
         builder.Property(home => home.Blueprints).HasJsonConversion();
         builder.Property(home => home.InteriorRewardsClaimed).HasJsonConversion();
+        builder.Property(home => home.Builders).HasJsonConversion();
 
         builder.Property(map => map.LastModified)
             .ValueGeneratedOnAddOrUpdate();

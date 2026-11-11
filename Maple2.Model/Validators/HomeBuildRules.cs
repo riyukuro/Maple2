@@ -1,0 +1,72 @@
+using Maple2.Model.Error;
+using Maple2.Model.Game;
+
+namespace Maple2.Model.Validators;
+
+// The build budget and the build helpers of a home: RequestCube 56 (budget), 57 (add a helper) and 58 (remove
+// a helper). The client shows the answers' error byte through the build notices (CCubeMapInformationService
+// ShowBuildNotice, cubemapinformationservice_head.cpp:306), which have a text for a short budget (96, 97)
+// and none for a refused helper, so those refusals use the code the client shows nothing for.
+public static class HomeBuildRules {
+    // Server limit: the client has no limit of its own on the helper list.
+    public const int MaxBuilders = 20;
+
+    public const UgcMapError Refused = UgcMapError.s_empty_string;
+
+    // RequestCube 56 sets the budget to the two values. The difference to the stored budget comes out of the
+    // owner's wallet, or goes back to it when the budget is lowered.
+    public static UgcMapError CheckBudget(long meso, long merat, long budgetMeso, long budgetMerat, long walletMeso, long walletMerat) {
+        if (meso < 0 || merat < 0) {
+            return Refused;
+        }
+        if (meso - budgetMeso > walletMeso) {
+            return UgcMapError.s_err_ugcmap_not_enough_meso_balance;
+        }
+        if (merat - budgetMerat > walletMerat) {
+            return UgcMapError.s_err_ugcmap_not_enough_merat_balance;
+        }
+        return UgcMapError.s_ugcmap_ok;
+    }
+
+    public static UgcMapError CheckAdd(long ownerId, long targetId, ICollection<long> builders) {
+        if (targetId == 0 || targetId == ownerId || builders.Contains(targetId) || builders.Count >= MaxBuilders) {
+            return Refused;
+        }
+        return UgcMapError.s_ugcmap_ok;
+    }
+
+    public static UgcMapError CheckRemove(long targetId, ICollection<long> builders) {
+        return targetId != 0 && builders.Contains(targetId) ? UgcMapError.s_ugcmap_ok : Refused;
+    }
+
+    // A cube a helper places is bought from the budget, in the currency of its shop entry.
+    public static UgcMapError Charge(Home home, bool merat, long price) {
+        if (price <= 0) {
+            return UgcMapError.s_ugcmap_ok;
+        }
+        if (merat) {
+            if (home.BuildMerat < price) {
+                return UgcMapError.s_err_ugcmap_not_enough_merat_balance;
+            }
+            home.BuildMerat -= price;
+            return UgcMapError.s_ugcmap_ok;
+        }
+        if (home.BuildMeso < price) {
+            return UgcMapError.s_err_ugcmap_not_enough_meso_balance;
+        }
+        home.BuildMeso -= price;
+        return UgcMapError.s_ugcmap_ok;
+    }
+
+    // Gives a charge back when the cube could not be placed after it.
+    public static void Refund(Home home, bool merat, long price) {
+        if (price <= 0) {
+            return;
+        }
+        if (merat) {
+            home.BuildMerat += price;
+        } else {
+            home.BuildMeso += price;
+        }
+    }
+}

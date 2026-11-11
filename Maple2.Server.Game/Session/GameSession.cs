@@ -486,6 +486,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
         if (Field != null) {
             Scheduler.Stop();
+            Housing?.LeaveBuildField();
             Field.RemovePlayer(Player.ObjectId, out _);
         }
     }
@@ -558,6 +559,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Field.OnAddPlayer(Player);
         Scheduler.Start();
         State = SessionState.Connected;
+        Housing.EnterBuildField();
 
         PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = AccountId,
