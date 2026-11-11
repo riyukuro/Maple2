@@ -6,6 +6,7 @@ using Maple2.Model.Game;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -211,14 +212,14 @@ public partial class TriggerContext {
 
     public void AddUserValue(string key, int value) {
         WarnLog("[AddUserValue] key:{Key}, value:{Value}", key, value);
-        if (Field.UserValues.TryGetValue(key, out int userValue)) {
-            Field.UserValues[key] = userValue + value;
+        if (Field.UserValues.Contains(TriggerId, key)) {
+            Field.UserValues.Add(TriggerId, key, value);
         }
     }
 
     public void SetUserValue(int triggerId, string key, int value) {
         WarnLog("[SetUserValue] key:{Key}, value:{Value}, triggerId:{TriggerId}", key, value, triggerId);
-        Field.UserValues[key] = value;
+        Field.UserValues.Set(TriggerUserValues.Target(TriggerId, triggerId), key, value);
     }
 
     public void FaceEmotion(int spawnId, string emotionName) {
@@ -334,7 +335,7 @@ public partial class TriggerContext {
     // time event gives the hold time; when it ends the script goes back). An unset key reads 0, as user_value does.
     public bool WaitSecondsUserValue(string key, string desc) {
         DebugLog("[WaitSecondsUserValue] key:{Key}", key);
-        return WaitSecondsElapsed(StartTick, Environment.TickCount64, Field.UserValues.GetValueOrDefault(key, 0));
+        return WaitSecondsElapsed(StartTick, Environment.TickCount64, Field.UserValues.Get(TriggerId, key));
     }
 
     public static bool WaitSecondsElapsed(long startTick, long nowTick, int seconds) {

@@ -19,6 +19,8 @@ public partial class TriggerContext : ITriggerContext {
     private readonly ILogger logger = Log.Logger.ForContext<TriggerContext>();
 
     private FieldManager Field => owner.Field;
+    // The trigger model id of this script; its user values are kept under it.
+    private int TriggerId => owner.Value.Id;
     private TriggerCollection Objects => owner.Field.TriggerObjects;
 
     private float currentRandom = float.MaxValue;
@@ -332,7 +334,7 @@ public partial class TriggerContext : ITriggerContext {
 
     public bool UserValue(string key, int value, OperatorType operatorType, bool negate) {
         DebugLog("[GetUserValue] key:{Key}", key);
-        bool result = CompareUserValue(Field.UserValues.GetValueOrDefault(key, 0), value, operatorType);
+        bool result = CompareUserValue(Field.UserValues.Get(TriggerId, key), value, operatorType);
         return negate ? !result : result;
     }
 

@@ -396,7 +396,7 @@ public sealed class NpcScriptManager {
 
         if (!string.IsNullOrEmpty(scriptFunction.SetTriggerValueKey)) {
             if (int.TryParse(scriptFunction.SetTriggerValue, out int value)) {
-                session.Field.UserValues[scriptFunction.SetTriggerValueKey] = value;
+                session.Field.UserValues.Set(scriptFunction.SetTriggerValueTriggerId, scriptFunction.SetTriggerValueKey, value);
             }
         }
 

@@ -4,6 +4,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager.Field;
 
@@ -13,7 +14,7 @@ public partial class FieldManager {
     private readonly ConcurrentDictionary<int, FieldBreakable> triggerBreakable = new();
     private readonly ConcurrentDictionary<string, FieldTrigger> fieldTriggers = new();
     public readonly Dictionary<string, TickTimer> Timers = new();
-    public readonly Dictionary<string, int> UserValues = new();
+    public readonly TriggerUserValues UserValues = new();
     public readonly Dictionary<string, Widget> Widgets = new();
     public readonly Dictionary<int, List<TriggerState>> States = new();
     // The score the score_board_score condition tests. Only score_board_set_score writes it (no kill, pickup or

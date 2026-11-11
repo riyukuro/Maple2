@@ -158,7 +158,7 @@ public partial class TriggerContext {
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {
         DebugLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
         FieldPlayer? player = Field.Players.Values.FirstOrDefault();
-        Field.UserValues[key] = player?.Session.Dungeon.RewardCount(dungeonRewardId) ?? 0;
+        Field.UserValues.Set(TriggerId, key, player?.Session.Dungeon.RewardCount(dungeonRewardId) ?? 0);
     }
 
     public void StartTutorial() {

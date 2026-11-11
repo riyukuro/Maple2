@@ -557,7 +557,7 @@ public class AiState {
     }
 
     private void ProcessNode(TriggerSetUserValueNode node) {
-        actor.Field.UserValues[node.Key] = node.Value;
+        actor.Field.UserValues.Set(node.TriggerID, node.Key, node.Value);
     }
 
     private void ProcessNode(RideNode node) { }
@@ -715,7 +715,7 @@ public class AiState {
     }
 
     private void ProcessNode(TriggerModifyUserValueNode node) {
-        AiTriggerValue.Modify(actor.Field.UserValues, node.Key, node.Value);
+        actor.Field.UserValues.Add(node.TriggerID, node.Key, node.Value);
     }
 
     // The one isKeepBattle node (a boss clearing its slaves just before a skill break) keeps the boss in battle.
