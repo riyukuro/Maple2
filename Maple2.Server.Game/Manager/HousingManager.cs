@@ -813,7 +813,11 @@ public class HousingManager {
             Home.SetHeight(layout.Height);
         }
 
-        session.Field.Broadcast(CubePacket.UpdateHomeAreaAndHeight(Home.Area, Home.Height));
+        if (plot.IsPlanner) {
+            session.Field.Broadcast(CubePacket.UpdateHomeAreaAndHeight(Home.PlannerArea, Home.PlannerHeight));
+        } else {
+            session.Field.Broadcast(CubePacket.UpdateHomeAreaAndHeight(Home.Area, Home.Height));
+        }
         if (isBlueprint && plot.IsPlanner) {
             // If it's planner, only send packets don't save properties
             session.Field.Broadcast(CubePacket.SetBackground(layout.Background));

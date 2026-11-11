@@ -18,7 +18,7 @@ public class Home : IByteSerializable {
 
     public byte PlannerArea { get; private set; }
     public byte PlannerHeight { get; private set; }
-    public bool IsPlanner => Indoor.PlotMode is PlotMode.DecorPlanner or PlotMode.BlueprintPlanner;
+    public bool IsPlanner => Indoor.PlotMode is PlotMode.DecorPlanner or PlotMode.BlueprintPlanner or PlotMode.ModelHome;
 
     public int CurrentArchitectScore { get; set; }
     public int ArchitectScore { get; set; }
