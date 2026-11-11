@@ -16,13 +16,15 @@ public class ItemEnchantHandler : FieldPacketHandler {
         UpdateCharges = 3,
         Ophelia = 4,
         Peachy = 6,
-        ConfirmRefund = 9,
-        Unknown13 = 13,
+        Refund = 9,
+        SimulateSelect = 13,
         SimulateEnchant = 14,
-        Unknown15 = 15,
-        DebugEnchant16 = 16,
-        DebugEnchant17 = 17,
-        DebugEnchant18 = 18,
+        // 15 to 19 come only from GM debug buttons of the enchant dialog (GM level 50 or more).
+        DebugForceEnchant = 15,
+        DebugFillIngredient = 16,
+        DebugFillFailStack = 17,
+        DebugUseAllFailStack = 18,
+        Debug19 = 19,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -46,25 +48,25 @@ public class ItemEnchantHandler : FieldPacketHandler {
             case Command.Peachy:
                 HandlePeachy(session, packet);
                 return;
-            case Command.Unknown13:
-                HandleUnknown13(session, packet);
+            case Command.Refund:
+                HandleRefund(session, packet);
                 return;
-            case Command.ConfirmRefund:
-            case Command.DebugEnchant17:
-            case Command.DebugEnchant18:
-                // Not handled: one item uid.
-                Logger.Debug("ItemEnchant {Command} from {CharacterId}: item {ItemUid}", command, session.CharacterId, packet.ReadLong());
+            case Command.SimulateSelect:
+                HandleSimulateSelect(session, packet);
                 return;
             case Command.SimulateEnchant:
-                // Not handled: the simulate dialog's three values (int, int, short) and one more int.
-                Logger.Debug("ItemEnchant {Command} from {CharacterId}: {A} {B} {C} {D}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt(), packet.ReadShort(), packet.ReadInt());
+                HandleSimulateEnchant(session, packet);
                 return;
-            case Command.DebugEnchant16:
-                // Not handled: item uid and an int (0 or 10).
-                Logger.Debug("ItemEnchant {Command} from {CharacterId}: item {ItemUid}, {Value}", command, session.CharacterId, packet.ReadLong(), packet.ReadInt());
+            case Command.DebugForceEnchant:
+            case Command.Debug19:
+                Logger.Debug("Enchant debug request {Command} from {CharacterId} not implemented", command, session.CharacterId);
                 return;
-            case Command.Unknown15:
-                HandleUnknown15(session);
+            case Command.DebugFillIngredient:
+                HandleDebugFillIngredient(session, packet);
+                return;
+            case Command.DebugFillFailStack:
+            case Command.DebugUseAllFailStack:
+                HandleDebugFailStack(session, packet, command);
                 return;
         }
     }
@@ -112,14 +114,44 @@ public class ItemEnchantHandler : FieldPacketHandler {
         session.ItemEnchant.Enchant(itemUid);
     }
 
-    private static void HandleUnknown13(GameSession session, IByteReader packet) {
-        // The simulate dialog's selection: int, int, short.
-        packet.ReadInt();
-        packet.ReadInt();
-        packet.ReadShort();
+    // Client SendRequestItemEnchant (0x1419028d0): button 0 of the refund box, with the item from the box.
+    // The answer is ItemEnchantPacket.Refund (enchant exp reset and materials refunded); which materials
+    // come back is not known, so nothing is refunded yet.
+    private void HandleRefund(GameSession session, IByteReader packet) {
+        long itemUid = packet.ReadLong();
+        Logger.Debug("Enchant refund of item {ItemUid} from {CharacterId} not implemented", itemUid, session.CharacterId);
     }
 
-    private static void HandleUnknown15(GameSession session) {
+    // Client UIItemEnchantSimulateDialog OnSelect: the three values of the selected simulation entry.
+    private void HandleSimulateSelect(GameSession session, IByteReader packet) {
+        int value1 = packet.ReadInt();
+        int value2 = packet.ReadInt();
+        short value3 = packet.ReadShort();
+        Logger.Debug("Enchant simulation select {Value1} {Value2} {Value3} from {CharacterId} not implemented",
+            value1, value2, value3, session.CharacterId);
+    }
 
+    // Client UIItemEnchantSimulateDialog OnEnchant: sent after an OpenDialog (0) with the same three values
+    // as SimulateSelect and a sixth dialog value.
+    private void HandleSimulateEnchant(GameSession session, IByteReader packet) {
+        int value1 = packet.ReadInt();
+        int value2 = packet.ReadInt();
+        short value3 = packet.ReadShort();
+        int value6 = packet.ReadInt();
+        Logger.Debug("Enchant simulation {Value1} {Value2} {Value3} {Value6} from {CharacterId} not implemented",
+            value1, value2, value3, value6, session.CharacterId);
+    }
+
+    // GM buttons m_debugBtnFillIngredient (amount 0) and m_debugBtnFillIngredientUnit (amount 10).
+    private void HandleDebugFillIngredient(GameSession session, IByteReader packet) {
+        long itemUid = packet.ReadLong();
+        int amount = packet.ReadInt();
+        Logger.Debug("Enchant debug fill ingredient {ItemUid} {Amount} from {CharacterId} not implemented", itemUid, amount, session.CharacterId);
+    }
+
+    // GM buttons m_debugBtnFillFailStack (17) and m_debugBtnUseAllFailStack (18).
+    private void HandleDebugFailStack(GameSession session, IByteReader packet, Command command) {
+        long itemUid = packet.ReadLong();
+        Logger.Debug("Enchant debug {Command} {ItemUid} from {CharacterId} not implemented", command, itemUid, session.CharacterId);
     }
 }
