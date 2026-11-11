@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Game.Shop;
 using Maple2.Server.Game.Manager;
@@ -18,6 +19,7 @@ public partial class GameSession {
 
     public Item? StagedUgcItem = null;
     public GuildPoster? StagedGuildPoster = null;
+    public readonly UgcFeeBook UgcFees = new();
 
     public Item? StagedInstrumentItem = null;
     public Item? StagedScoreItem = null;

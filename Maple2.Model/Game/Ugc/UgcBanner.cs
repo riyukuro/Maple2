@@ -23,6 +23,8 @@ public class BannerSlot : IByteSerializable {
     public bool Active;
     public UgcItemLook? Template;
     public bool Expired;
+    // The character that reserved the slot (Ugc mode 19). Kept in memory only: 0 after a restart.
+    public long OwnerId;
 
     public readonly DateTimeOffset ActivateTime;
 

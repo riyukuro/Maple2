@@ -15,6 +15,38 @@ public static class UgcRules {
         return year is >= 1 and <= 9999 && month is >= 1 and <= 12 && day >= 1 && day <= DateTime.DaysInMonth(year, month);
     }
 
+    // The slot's hour has not ended yet (slot times are UTC, as the banner's own clock).
+    public static bool BannerTimeOpen(int date, int hour, DateTimeOffset now) {
+        if (!BannerTimeValid(date, hour)) {
+            return false;
+        }
+        var start = new DateTimeOffset(date / 10000, date % 10000 / 100, date % 100, hour, 0, 0, TimeSpan.Zero);
+        return start.AddHours(1) > now;
+    }
+
+    // Mode 19 costs nothing, and the client sends the hours of one day in one request (24 at most).
+    // Server rule: a character holds at most this many reserved slots that it has not paid for.
+    public const int BannerReserveMax = 24;
+
+    // How many more slots the character may reserve.
+    public static int BannerReserveRoom(int unpaidOwned) {
+        return Math.Clamp(BannerReserveMax - unpaidOwned, 0, BannerReserveMax);
+    }
+
+    // Whether the character may upload to a reserved slot. The slot belongs to the character that
+    // reserved it (ownerId, 0 when not known: the owner is kept in memory only). A design on the slot
+    // names its owner too: a finished one closes the slot, one without a picture (an upload that
+    // failed) may be replaced by its own character.
+    public static bool BannerSlotOpenTo(long ownerId, long designCharacterId, bool hasPicture, long characterId) {
+        if (characterId == 0 || (ownerId != 0 && ownerId != characterId)) {
+            return false;
+        }
+        if (designCharacterId != 0) {
+            return designCharacterId == characterId && !hasPicture;
+        }
+        return ownerId == characterId;
+    }
+
     // The price of one hour of the banner, -1 when the table has none for it.
     public static long BannerPrice(IReadOnlyList<long> prices, int hour) {
         if (hour < 0 || hour >= prices.Count || prices[hour] < 0) {
@@ -24,7 +56,7 @@ public static class UgcRules {
     }
 
     // The fee of an upload over its slots, or -1 when the upload is refused whole: a slot that is not
-    // reserved, one that already shows a design, one named twice, or an hour without a price. Nothing
+    // reserved, one that is not open to the sender (BannerSlotOpenTo), one named twice, or an hour without a price. Nothing
     // is taken before every slot has passed.
     public static long BannerUploadFee(IReadOnlyList<long> prices, IReadOnlyList<(long SlotId, bool Found, bool Taken, int Hour)> slots) {
         if (slots.Count == 0) {

@@ -34,6 +34,7 @@ public class UgcHandler : FieldPacketHandler {
     #endregion
 
     private enum Command : byte {
+        UploadFailed = 0,
         Upload = 1,
         Confirmation = 3,
         ProfilePicture = 11,
@@ -45,6 +46,11 @@ public class UgcHandler : FieldPacketHandler {
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
+            case Command.UploadFailed:
+                // One byte. See UgcFeeBook: the fee of this character's paid, unfinished upload goes
+                // back once; with nothing pending the request does nothing.
+                GiveBack(session, session.UgcFees.TakeBack(session.CharacterId));
+                return;
             case Command.Upload:
                 HandleUpload(session, packet);
                 return;
@@ -72,6 +78,10 @@ public class UgcHandler : FieldPacketHandler {
         packet.ReadLong();
         UgcUploadHeader info = UgcUploadHeader.Read(packet);
 
+        // The client has one upload at a time: a paid one that never finished is given back before
+        // the next is charged, so a retry costs the fee once.
+        GiveBack(session, session.UgcFees.TakeBack(session.CharacterId));
+
         switch (info.Type) {
             case UgcType.Item:
             case UgcType.Furniture:
@@ -93,6 +103,44 @@ public class UgcHandler : FieldPacketHandler {
             default:
                 Logger.Information("Unimplemented Ugc Type: {type}", info.Type);
                 return;
+        }
+    }
+
+    // Gives a fee back and drops what the upload staged: the item, and on this field the banner
+    // designs of the upload that have no picture (their slots stay reserved for the character).
+    private void GiveBack(GameSession session, UgcPendingFee? fee) {
+        if (fee == null) {
+            return;
+        }
+
+        if (session.StagedUgcItem?.Template?.Id == fee.UgcUid) {
+            session.StagedUgcItem = null;
+        }
+        if (session.Field != null && fee.UgcUid != 0) {
+            foreach (BannerSlot slot in session.Field.Banners.Values.SelectMany(banner => banner.Slots)) {
+                if (slot.Template?.Id == fee.UgcUid && slot.Template.CharacterId == session.CharacterId && string.IsNullOrEmpty(slot.Template.Url)) {
+                    slot.Template = null;
+                }
+            }
+        }
+
+        if (fee.VoucherItemId != 0) {
+            Item? voucher = session.Field?.ItemDrop.CreateItem(fee.VoucherItemId);
+            if (voucher == null || !session.Item.Inventory.Add(voucher, true)) {
+                Logger.Error("Failed to give back design coupon {ItemId} to {CharacterId}", fee.VoucherItemId, session.CharacterId);
+            }
+            return;
+        }
+        switch (fee.Currency) {
+            case MeretMarketCurrencyType.Meso:
+                session.Currency.Meso += fee.Amount;
+                break;
+            case MeretMarketCurrencyType.Meret:
+                session.Currency.Meret += fee.Amount;
+                break;
+            case MeretMarketCurrencyType.RedMeret:
+                session.Currency.GameMeret += fee.Amount;
+                break;
         }
     }
 
@@ -121,6 +169,7 @@ public class UgcHandler : FieldPacketHandler {
         Item? voucher = useVoucher
             ? session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeDesignCoupon).FirstOrDefault()
             : null;
+        var paid = new UgcPendingFee(session.CharacterId, 0, ugcMetadata.CurrencyType, price, 0);
         bool canPay = ugcMetadata.CurrencyType switch {
             MeretMarketCurrencyType.Meso => session.Currency.CanAddMeso(-price) == -price,
             MeretMarketCurrencyType.Meret => session.Currency.CanAddMeret(-price) == -price,
@@ -133,6 +182,7 @@ public class UgcHandler : FieldPacketHandler {
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
                     return;
                 }
+                paid = paid with { VoucherItemId = voucher.Id };
                 break;
             case UgcUploadPayment.Result.Pay:
                 switch (ugcMetadata.CurrencyType) {
@@ -166,6 +216,7 @@ public class UgcHandler : FieldPacketHandler {
 
         Item? item = session.Field?.ItemDrop.CreateItem(itemId, ugcMetadata.ItemRarity);
         if (item == null) {
+            GiveBack(session, paid);
             Logger.Fatal("Failed to create UGC item {ItemId}", itemId);
             throw new InvalidOperationException($"Fatal: Creating UGC item: {itemId}");
         }
@@ -173,6 +224,7 @@ public class UgcHandler : FieldPacketHandler {
         using WebStorage.Request request = WebStorage.Context();
         UgcResource? resource = request.CreateUgc(ugcType, session.CharacterId);
         if (resource == null) {
+            GiveBack(session, paid);
             Logger.Fatal("Failed to create UGC resource for item {ItemUid}", item.Uid);
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {item.Uid}");
         }
@@ -187,6 +239,7 @@ public class UgcHandler : FieldPacketHandler {
         };
 
         session.StagedUgcItem = item;
+        session.UgcFees.Paid(paid with { UgcUid = resource.Id });
         session.Send(UgcPacket.Upload(resource));
     }
 
@@ -210,15 +263,15 @@ public class UgcHandler : FieldPacketHandler {
         List<(long SlotId, bool Found, bool Taken, int Hour)> asked = [];
 
         // Every slot is read and tested before any meret is taken: the hour priced is the reserved
-        // slot's own, a slot that already shows a design is not given to a second player, and one
-        // refused slot refuses the upload with nothing charged.
+        // slot's own, a slot is open only to the character that reserved it, and one refused slot
+        // refuses the upload with nothing charged.
         byte hours = packet.ReadByte();
         for (int i = 0; i < hours; i++) {
             var reservation = packet.Read<UgcBannerReservation>();
             BannerSlot? bannerSlot = banner.Slots.FirstOrDefault(slot => slot.Id == reservation.Uid);
-            // A design of this character that never got its picture (an upload that failed) may be replaced.
             UgcItemLook? shown = bannerSlot?.Template;
-            bool taken = shown != null && (shown.CharacterId != session.CharacterId || !string.IsNullOrEmpty(shown.Url));
+            bool taken = bannerSlot == null || !UgcRules.BannerSlotOpenTo(bannerSlot.OwnerId, shown?.CharacterId ?? 0,
+                !string.IsNullOrEmpty(shown?.Url), session.CharacterId);
             asked.Add((reservation.Uid, bannerSlot != null, taken, bannerSlot?.Hour ?? -1));
             if (bannerSlot != null) {
                 slots.Add(bannerSlot);
@@ -234,14 +287,16 @@ public class UgcHandler : FieldPacketHandler {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
             return;
         }
-        session.Currency.Meret -= fee;
 
+        // The resource is made first, so a failure here takes nothing.
         using WebStorage.Request request = WebStorage.Context();
         UgcResource? resource = request.CreateUgc(UgcType.Banner, session.CharacterId);
         if (resource == null) {
             Logger.Fatal("Failed to create UGC resource for banner {BannerId}", bannerId);
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {bannerId}");
         }
+        session.Currency.Meret -= fee;
+        session.UgcFees.Paid(new UgcPendingFee(session.CharacterId, resource.Id, MeretMarketCurrencyType.Meret, fee, 0));
 
         UgcItemLook ugc = new() {
             Id = resource.Id,
@@ -254,6 +309,7 @@ public class UgcHandler : FieldPacketHandler {
 
         foreach (BannerSlot slot in slots) {
             slot.Template = ugc;
+            slot.OwnerId = session.CharacterId;
 
             BannerSlot oldSlot = banner.Slots.First(x => x.Id == slot.Id);
             banner.Slots.Remove(oldSlot);
@@ -364,6 +420,9 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
+        // True for the upload that mode 1 charged; after it a mode 0 gives nothing back.
+        bool paidUpload = session.UgcFees.Finish(session.CharacterId, ugcUid);
+
         switch (info.Type) {
             case UgcType.Item or UgcType.Furniture or UgcType.Mount:
                 ConfirmItem();
@@ -451,7 +510,12 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         void ConfirmBanner() {
-            UgcBanner? banner = session.Field?.Banners.Values.FirstOrDefault(x => x.Slots.Any(slot => slot.Template?.Id == ugcUid));
+            // Only the charged upload of this character: one that was given back shows nothing.
+            if (!paidUpload) {
+                Logger.Warning("Banner confirmation without a paid upload {UgcUid}", ugcUid);
+                return;
+            }
+            UgcBanner? banner = session.Field?.Banners.Values.FirstOrDefault(x => x.Slots.Any(slot => slot.Template?.Id == ugcUid && slot.Template.CharacterId == session.CharacterId));
             if (banner is null) {
                 Logger.Warning("Failed to find banner for UGC {UgcUid}", ugcUid);
                 return;
@@ -469,7 +533,7 @@ public class UgcHandler : FieldPacketHandler {
 
         void ConfirmItem() {
             Item? item = session.StagedUgcItem;
-            if (item?.Template == null || !TableMetadata.UgcDesignTable.Entries.TryGetValue(item.Id, out UgcDesignTable.Entry? ugcMetadata)) {
+            if (item?.Template == null || item.Template.Id != ugcUid || !paidUpload || !TableMetadata.UgcDesignTable.Entries.TryGetValue(item.Id, out UgcDesignTable.Entry? ugcMetadata)) {
                 return;
             }
 
@@ -544,12 +608,22 @@ public class UgcHandler : FieldPacketHandler {
 
         List<BannerSlot> newSlots = [];
 
+        // Reserving is free, so it is bounded: the slots this character holds on the field without
+        // a design, and the ones of this request, stay within UgcRules.BannerReserveMax.
+        int room = UgcRules.BannerReserveRoom(session.Field.Banners.Values.Sum(other =>
+            other.Slots.Count(slot => slot.OwnerId == session.CharacterId && slot.Template == null && !slot.Expired)));
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
         using GameStorage.Request db = session.GameStorage.Context();
         for (int i = 0; i < hours; i++) {
             var reservation = packet.Read<UgcBannerReservation>();
 
-            // The slot's start time is built from the date and the hour: values that are no time are skipped.
-            if (!UgcRules.BannerTimeValid(reservation.Date, reservation.Hour)) {
+            // The slot's start time is built from the date and the hour: values that are no time, or an
+            // hour that is over, are skipped.
+            if (!UgcRules.BannerTimeOpen(reservation.Date, reservation.Hour, now)) {
+                continue;
+            }
+            if (room <= 0) {
                 continue;
             }
 
@@ -560,6 +634,8 @@ public class UgcHandler : FieldPacketHandler {
 
             BannerSlot slot = new(banner.Id, reservation.Date, reservation.Hour);
             slot = db.AddBannerSlot(slot);
+            slot.OwnerId = session.CharacterId;
+            room--;
             newSlots.Add(slot);
             banner.Slots.Add(slot);
         }
