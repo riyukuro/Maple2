@@ -12,9 +12,21 @@ public record DungeonSeasonTable(IReadOnlyList<DungeonSeasonTable.Entry> Entries
         int MaxSeasonScore,
         int SystemMailId,
         int DayOfWeeks,
-        Reward[] Rewards);
+        Reward[] Rewards) {
+        // DungeonSeason::GetReward: the first reward, highest requireScore first, whose requireScore the score meets.
+        public Reward? GetReward(int score) {
+            foreach (Reward reward in Rewards) {
+                if (reward.RequireScore <= score) {
+                    return reward;
+                }
+            }
+            return null;
+        }
+    }
 
-    public record Reward(int RequireScore, int ItemId);
+    // DungeonSeasonItemGift: an ItemEntity row (itemID, grade, count) with its requireScore.
+    public record Reward(int RequireScore, int ItemId, int Grade = 0, int Count = 1);
+
 
     // DungeonSeason::GetCurrentSeason: the first row whose period holds the time.
     public Entry? Current(DateTime now) {

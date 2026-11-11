@@ -67,4 +67,27 @@ public static class DungeonScoreRules {
         record.CurrentRecord = Math.Max(live, score);
         record.CooldownTimestamp = expiry;
     }
+
+    // The season total: the sum of the live CurrentRecords of the player's season rank rooms, as the client adds it
+    // (DungeonRecordManagerCli::GetTotalScore, dungeonrecordcli.cpp:580: IsSeasonRankRoom records, Get68 at the
+    // server time, scores above 0). The client never calls it and has no cap; the cap at the season's
+    // maxSeasonScore (when set) is the server's reading of that name.
+    public static int SeasonTotal(IEnumerable<short> scores, int maxSeasonScore) {
+        int total = 0;
+        foreach (short score in scores) {
+            if (score > 0) {
+                total += score;
+            }
+        }
+        return maxSeasonScore > 0 ? Math.Min(total, maxSeasonScore) : total;
+    }
+
+    // The season weeks that have ended with a score: season rank records whose CurrentRecord has expired (now at or
+    // after its expiry) and is above 0, by the week's end (the expiry). The week's total is then SeasonTotal of them.
+    public static IEnumerable<IGrouping<long, DungeonRecord>> FinishedWeeks(IEnumerable<DungeonRecord> seasonRecords, long now) {
+        return seasonRecords
+            .Where(record => record.CurrentRecord > 0 && record.CooldownTimestamp > 0 && now >= record.CooldownTimestamp)
+            .GroupBy(record => record.CooldownTimestamp)
+            .OrderBy(week => week.Key);
+    }
 }

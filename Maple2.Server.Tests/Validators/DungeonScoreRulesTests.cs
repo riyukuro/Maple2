@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml;
 using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
@@ -111,7 +112,7 @@ public class DungeonScoreRulesTests {
         <ms2>
             <DungeonSeason seasonID="901" locale="KR" feature="Rank" startTime="2025-01-01-00-00-00" endTime="2025-06-30-23-59-59" maxSeasonScore="5000" systemMailID="900100" dayOfWeeks="6">
                 <Reward requireScore="1000" itemID="900201" />
-                <Reward requireScore="4000" itemID="900203" />
+                <Reward requireScore="4000" itemID="900203" grade="3" count="2" />
                 <Reward requireScore="2000" itemID="900202" />
             </DungeonSeason>
             <DungeonSeason seasonID="902" locale="KR" feature="Rank" startTime="2025-07-01-00-00-00" endTime="2999-12-31-23-59-59" maxSeasonScore="6000" systemMailID="900100" dayOfWeeks="6" />
@@ -137,7 +138,7 @@ public class DungeonScoreRulesTests {
         Assert.That(first.SystemMailId, Is.EqualTo(900100));
         Assert.That(first.DayOfWeeks, Is.EqualTo(6));
         Assert.That(first.Rewards, Is.EqualTo(new[] {
-            new DungeonSeasonTable.Reward(4000, 900203),
+            new DungeonSeasonTable.Reward(4000, 900203, 3, 2),
             new DungeonSeasonTable.Reward(2000, 900202),
             new DungeonSeasonTable.Reward(1000, 900201),
         }));
@@ -153,5 +154,45 @@ public class DungeonScoreRulesTests {
         Assert.That(kr.Current(new DateTime(2025, 3, 1))?.SeasonId, Is.EqualTo(901));
         Assert.That(kr.Current(new DateTime(2025, 8, 1))?.SeasonId, Is.EqualTo(902));
         Assert.That(kr.Current(new DateTime(2024, 12, 31)), Is.Null);
+    }
+
+    [Test]
+    public void SeasonRewardIsTheFirstTheScoreMeets() {
+        DungeonSeasonTable.Entry season = ReadSeasons("KR").Entries[0];
+        Assert.That(season.GetReward(5000)?.ItemId, Is.EqualTo(900203));
+        Assert.That(season.GetReward(4000)?.ItemId, Is.EqualTo(900203));
+        Assert.That(season.GetReward(3999)?.ItemId, Is.EqualTo(900202));
+        Assert.That(season.GetReward(1000)?.ItemId, Is.EqualTo(900201));
+        Assert.That(season.GetReward(999), Is.Null);
+        Assert.That(ReadSeasons("KR").Entries[1].GetReward(5000), Is.Null);
+    }
+
+    [Test]
+    public void SeasonTotalSumsPositiveScores() {
+        Assert.That(DungeonScoreRules.SeasonTotal(new short[] { 1500, 0, -1, 2000 }, 0), Is.EqualTo(3500));
+        Assert.That(DungeonScoreRules.SeasonTotal(new short[] { 3000, 3000 }, 5000), Is.EqualTo(5000));
+        Assert.That(DungeonScoreRules.SeasonTotal(Array.Empty<short>(), 5000), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void FinishedWeeksGroupExpiredScores() {
+        long weekEnd = new DateTimeOffset(new DateTime(2025, 1, 3)).ToUnixTimeSeconds();
+        long nextEnd = new DateTimeOffset(new DateTime(2025, 1, 10)).ToUnixTimeSeconds();
+        var records = new[] {
+            new DungeonRecord(1) { CurrentRecord = 1500, CooldownTimestamp = weekEnd },
+            new DungeonRecord(2) { CurrentRecord = 2000, CooldownTimestamp = weekEnd },
+            new DungeonRecord(3) { CurrentRecord = 0, CooldownTimestamp = weekEnd },
+            new DungeonRecord(4) { CurrentRecord = 900, CooldownTimestamp = nextEnd },
+            new DungeonRecord(5) { CurrentRecord = 700, CooldownTimestamp = 0 },
+        };
+
+        Assert.That(DungeonScoreRules.FinishedWeeks(records, weekEnd - 1), Is.Empty);
+        var weeks = new List<IGrouping<long, DungeonRecord>>(DungeonScoreRules.FinishedWeeks(records, weekEnd));
+        Assert.That(weeks, Has.Count.EqualTo(1));
+        Assert.That(weeks[0].Key, Is.EqualTo(weekEnd));
+        Assert.That(weeks[0].Select(record => record.DungeonId), Is.EquivalentTo(new[] { 1, 2 }));
+
+        weeks = new List<IGrouping<long, DungeonRecord>>(DungeonScoreRules.FinishedWeeks(records, nextEnd));
+        Assert.That(weeks.Select(week => week.Key), Is.EqualTo(new[] { weekEnd, nextEnd }));
     }
 }

@@ -66,6 +66,7 @@ public class DungeonManager {
     }
 
     public void Load() {
+        MailSeasonRewards();
         session.Send(DungeonRoomPacket.Load(Records));
         session.Send(DungeonRoomPacket.RankRewards(RankRewards));
         session.Send(FieldEntrancePacket.Load(EnterLimits));
@@ -80,7 +81,79 @@ public class DungeonManager {
         session.Send(DungeonRoomPacket.Load(Records));
     }
 
+    // The weekly season reward. When a season week has ended with scores (DungeonScoreRules.FinishedWeeks), the
+    // week's total (SeasonTotal) picks the season's reward (DungeonSeason::GetReward), mailed with the season's
+    // systemMailID; the week's scores are then set to 0 (the client shows CurrentRecord only before its expiry, so
+    // nothing it shows changes). Run at login and at the weekly reset; a week that ended while the player was
+    // offline is mailed at the next login. The season of a week is the one holding the second before its end.
+    // A week whose reward item cannot be made keeps its scores and is tried again.
+    public void MailSeasonRewards() {
+        FieldManager? field = session.Field;
+        if (field == null) {
+            return;
+        }
+        int minLevel = session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel;
+        IEnumerable<DungeonRecord> seasonRecords = Records.Values.Where(record =>
+            session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(record.DungeonId, out DungeonRoomMetadata? metadata)
+            && DungeonScoreRules.IsSeasonRankRoom(metadata.GroupType, metadata.Limit.MinLevel, minLevel));
+        List<IGrouping<long, DungeonRecord>> weeks = DungeonScoreRules.FinishedWeeks(seasonRecords, DateTime.Now.ToEpochSeconds()).ToList();
+        if (weeks.Count == 0) {
+            return;
+        }
+
+        bool changed = false;
+        foreach (IGrouping<long, DungeonRecord> week in weeks) {
+            DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(week.Key.FromEpochSeconds().AddSeconds(-1));
+            if (season != null) {
+                int total = DungeonScoreRules.SeasonTotal(week.Select(record => record.CurrentRecord), season.MaxSeasonScore);
+                DungeonSeasonTable.Reward? reward = season.GetReward(total);
+                if (reward != null && reward.ItemId != 0 && !MailSeasonReward(field, season, reward)) {
+                    continue;
+                }
+            }
+            foreach (DungeonRecord record in week) {
+                record.CurrentRecord = 0;
+            }
+            changed = true;
+        }
+        if (changed) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
+        }
+    }
+
+    private bool MailSeasonReward(FieldManager field, DungeonSeasonTable.Entry season, DungeonSeasonTable.Reward reward) {
+        Item? item = field.ItemDrop.CreateItem(reward.ItemId, reward.Grade, reward.Count);
+        if (item == null) {
+            logger.Warning("Dungeon season {SeasonId} reward item {ItemId} could not be made", season.SeasonId, reward.ItemId);
+            return false;
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        Mail? mail = db.CreateMail(new Mail {
+            Type = MailType.System,
+            ReceiverId = session.CharacterId,
+            Content = season.SystemMailId.ToString(), // an id of string/systemmailcontent
+        });
+        if (mail == null) {
+            return false;
+        }
+        Item? added = db.CreateItem(mail.Id, item);
+        if (added == null) {
+            logger.Error("Dungeon season {SeasonId} reward item {ItemId} could not be added to mail {MailId}", season.SeasonId, reward.ItemId, mail.Id);
+            return true; // the mail exists; a retry would send a second one
+        }
+        mail.Items.Add(added);
+        try {
+            session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = session.CharacterId,
+                MailId = mail.Id,
+            });
+        } catch { /* ignored */ }
+        return true;
+    }
+
     public void ResetWeeklyClears() {
+        MailSeasonRewards();
         foreach (DungeonRecord record in Records.Values) {
             record.UnionClears = 0;
             record.ExtraClears = 0;

@@ -318,7 +318,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
             DungeonSeasonTable.Reward[] rewards = node.SelectNodes("Reward")?.OfType<XmlElement>()
                 .Select(reward => new DungeonSeasonTable.Reward(
                     RequireScore: ParseIntOr(reward.GetAttribute("requireScore")),
-                    ItemId: ParseIntOr(reward.GetAttribute("itemID"))))
+                    ItemId: ParseIntOr(reward.GetAttribute("itemID")),
+                    Grade: ParseIntOr(reward.GetAttribute("grade")),
+                    Count: Math.Max(1, ParseIntOr(reward.GetAttribute("count")))))
                 .OrderByDescending(reward => reward.RequireScore)
                 .ToArray() ?? [];
             results.Add(new DungeonSeasonTable.Entry(
