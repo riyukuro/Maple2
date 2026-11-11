@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
@@ -12,17 +13,18 @@ public class SmartPushHandler : PacketHandler<GameSession> {
     public override RecvOp OpCode => RecvOp.SmartPush;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        int smartPushId = packet.ReadInt();
+        // The same four fields on every push; the last one only marks an extension of a running effect.
+        (int smartPushId, int arg, int recipeId, bool _) = SmartPushRules.Read(packet);
         if (!session.TableMetadata.SmartPushTable.Entries.TryGetValue(smartPushId, out SmartPushMetadata? metadata)) {
             return;
         }
 
         switch (metadata.Type) {
             case SmartPushType.autoInteraction:
-                HandleAutoInteraction(session, packet, metadata);
+                HandleAutoInteraction(session, arg, recipeId, metadata);
                 break;
             case SmartPushType.additionalEffect:
-                HandleAdditionalEffect(session, packet, metadata);
+                HandleAdditionalEffect(session, arg, metadata);
                 break;
             default:
                 Logger.Error("Unhandled smart push type: {SmartPushType}", metadata.Type);
@@ -31,9 +33,10 @@ public class SmartPushHandler : PacketHandler<GameSession> {
 
     }
 
-    private void HandleAutoInteraction(GameSession session, IByteReader packet, SmartPushMetadata metadata) {
-        int amount = packet.ReadInt();
-        int recipeId = packet.ReadInt();
+    private void HandleAutoInteraction(GameSession session, int amount, int recipeId, SmartPushMetadata metadata) {
+        if (!SmartPushRules.AutoCountAllowed(amount)) {
+            return;
+        }
 
         if (!session.TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out MasteryRecipeTable.Entry? recipeMetadata)) {
             return;
@@ -42,7 +45,8 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         int successCount = 0;
         for (int i = 0; i < amount; i++) {
             if (metadata.RequiredItem.Tag != ItemTag.None && !session.Item.Inventory.Consume([metadata.RequiredItem])) {
-                return;
+                // Out of items part way: the gathers already done are still reported.
+                break;
             }
 
             float successRate = session.Mastery.GatherSuccessRate(recipeMetadata);
@@ -55,31 +59,43 @@ public class SmartPushHandler : PacketHandler<GameSession> {
             successCount++;
         }
 
+        if (successCount == 0) {
+            return;
+        }
         session.Send(SmartPushPacket.ActivateGather(metadata.Id, successCount));
     }
 
-    private void HandleAdditionalEffect(GameSession session, IByteReader packet, SmartPushMetadata metadata) {
+    private void HandleAdditionalEffect(GameSession session, int packageId, SmartPushMetadata metadata) {
         if (session.Field is null) return;
-        int packageId = packet.ReadInt();
+
+        // The price is settled before the required item is taken: a package that does not exist or
+        // cannot be paid no longer costs the item.
+        bool isPackage = metadata.Content is "AutoFishing" or "AutoPlayInstrument";
+        AutoActionMetaData? package = null;
+        if (isPackage) {
+            package = FindPackage(session, metadata, packageId);
+            if (package == null || !SmartPushRules.Affords(session.Currency.Meret, package.MeretCost)
+                                || (package.MeretCost <= 0 && !SmartPushRules.Affords(session.Currency.Meso, package.MesoCost))) {
+                return;
+            }
+        } else if (!SmartPushRules.Affords(session.Currency.Meret, metadata.MeretCost)) {
+            return;
+        }
+
         if (metadata.RequiredItem.Tag != ItemTag.None && !session.Item.Inventory.Consume([metadata.RequiredItem])) {
             return;
         }
 
-        if (metadata.Content is "AutoFishing" or "AutoPlayInstrument") {
-            if (!AutoActionPackage(session, metadata, packageId)) {
-                return;
-            }
+        if (package != null) {
+            PayPackage(session, metadata, package);
         } else {
-            if (session.Currency.Meret < metadata.MeretCost) {
-                return;
-            }
             session.Currency.Meret -= metadata.MeretCost;
         }
 
         session.Buffs.AddBuff(session.Player, session.Player, (int) metadata.Value, 1, session.Field.FieldTick);
     }
 
-    private bool AutoActionPackage(GameSession session, SmartPushMetadata smartPushMetadata, int packageId) {
+    private AutoActionMetaData? FindPackage(GameSession session, SmartPushMetadata smartPushMetadata, int packageId) {
         string content = smartPushMetadata.Content;
         switch (content) {
             case "AutoFishing":
@@ -94,15 +110,19 @@ public class SmartPushHandler : PacketHandler<GameSession> {
                 break;
             default:
                 Logger.Error("Unhandled auto action content: {Content}", content);
-                return false;
+                return null;
         }
 
 
         if (!session.TableMetadata.AutoActionTable.Entries.TryGetValue(content, out IReadOnlyDictionary<int, AutoActionMetaData>? packages) ||
-            !packages.TryGetValue(packageId, out AutoActionMetaData? packageMetadata)) {
-            return false;
+            !packages.TryGetValue(packageId, out AutoActionMetaData? found)) {
+            return null;
         }
+        return found;
+    }
 
+    // The caller has tested the price.
+    private static void PayPackage(GameSession session, SmartPushMetadata smartPushMetadata, AutoActionMetaData packageMetadata) {
         SmartPushCurrencyType currencyType;
         if (packageMetadata.MeretCost > 0) {
             currencyType = SmartPushCurrencyType.Meret;
@@ -115,15 +135,9 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         // Check if player has enough currency
         switch (currencyType) {
             case SmartPushCurrencyType.Meret:
-                if (session.Currency.Meret < packageMetadata.MeretCost) {
-                    return false;
-                }
                 session.Currency.Meret -= packageMetadata.MeretCost;
                 break;
             case SmartPushCurrencyType.Meso:
-                if (session.Currency.Meso < packageMetadata.MesoCost) {
-                    return false;
-                }
                 session.Currency.Meso -= packageMetadata.MesoCost;
                 break;
             case SmartPushCurrencyType.None:
@@ -131,6 +145,5 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         }
 
         session.Send(SmartPushPacket.ActivateEffect(currencyType, (int) smartPushMetadata.Value));
-        return true;
     }
 }
