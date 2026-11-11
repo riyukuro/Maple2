@@ -8,6 +8,7 @@ namespace Maple2.Server.Game.Packets;
 public static class ItemScriptPacket {
     private enum Command : byte {
         LulluBox = 0,
+        PetBox = 1,
         TreasureChest = 4,
         Gacha = 5,
     }
@@ -21,6 +22,21 @@ public static class ItemScriptPacket {
             pWriter.WriteInt(item.Amount);
             pWriter.WriteInt(item.Rarity);
             pWriter.WriteBool(true); // Enables sparkling animation around item icon
+        }
+
+        return pWriter;
+    }
+
+    // UIItemPetBoxDialog::vfunc_79: the special flag marks the entry for the firework effect.
+    public static ByteWriter PetBox(ICollection<(Item Item, bool Special)> items) {
+        var pWriter = Packet.Of(SendOp.ItemScript);
+        pWriter.Write<Command>(Command.PetBox);
+        pWriter.WriteInt(items.Count);
+        foreach ((Item item, bool special) in items) {
+            pWriter.WriteInt(item.Id);
+            pWriter.WriteInt(item.Amount);
+            pWriter.WriteInt(item.Rarity);
+            pWriter.WriteBool(special);
         }
 
         return pWriter;

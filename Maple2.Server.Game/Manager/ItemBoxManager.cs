@@ -25,6 +25,28 @@ public class ItemBoxManager {
         BoxCount = 0;
     }
 
+    // Item id -> tick of the last use, for boxes with a cooldown (the client keeps the same map per item id).
+    private readonly Dictionary<int, long> lastUseTicks = new();
+
+    // The client measures the cooldown between its own sends, so a use may arrive a little early here.
+    public const int CooldownSlackMs = 250;
+
+    public static bool IsCooldownOver(long lastUseTick, long nowTick, int cooldownSeconds) {
+        return nowTick - lastUseTick >= cooldownSeconds * 1000L - CooldownSlackMs;
+    }
+
+    public bool TryStartCooldown(int itemId, int cooldownSeconds, long nowTick) {
+        if (cooldownSeconds <= 0) {
+            return true;
+        }
+        if (lastUseTicks.TryGetValue(itemId, out long lastUseTick) && !IsCooldownOver(lastUseTick, nowTick, cooldownSeconds)) {
+            return false;
+        }
+
+        lastUseTicks[itemId] = nowTick;
+        return true;
+    }
+
     public ItemBoxError Open(Item item, int count = 1, int index = -1) {
         if (string.IsNullOrEmpty(item.Metadata.Function?.Parameters)) {
             logger.Error("Item {ItemId} has no parameters for item box function", item.Id);
@@ -44,6 +66,14 @@ public class ItemBoxManager {
                 individualDropBoxId = 0;
             }
             return OpenItemBox(item, globalDropBoxId, 0, 0, individualDropBoxId, 1, count);
+        }
+        if (item.Metadata.Function.Type == ItemFunction.OpenItemBoxLimitedQuantity) {
+            Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function.Parameters);
+            if (!parameters.TryGetValue("individualDropBoxId", out string? boxIdStr) || !int.TryParse(boxIdStr, out int boxId)) {
+                logger.Error("Invalid parameters for item box: {ItemId}", item.Id);
+                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+            }
+            return OpenItemBox(item, 0, 0, 0, boxId, 1, count);
         }
         int[] itemBoxParams = item.Metadata.Function.Parameters.Split(',').Select(int.Parse).ToArray();
         return item.Metadata.Function?.Type switch {
@@ -162,6 +192,54 @@ public class ItemBoxManager {
 
         session.Send(ItemScriptPacket.LulluBox(totalItems));
         return ItemBoxError.ok;
+    }
+
+    // UIItemPetBoxDialog: each open takes one item with the tag of the xml parameter itemTag and rolls the boxes of
+    // unCommonBoxId (the list the dialog previews as special) and, when present, commonBoxId.
+    public ItemBoxError OpenPetBox(Item item, int count = 1) {
+        if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
+        if (!parameters.TryGetValue("itemTag", out string? tagName) || !Enum.TryParse(tagName, out ItemTag tag) || tag == ItemTag.None) {
+            logger.Error("Invalid parameters for pet box: {ItemId}", item.Id);
+            return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        }
+
+        int[] unCommonBoxIds = ItemUseParameters.ParseIntArray(parameters.GetValueOrDefault("unCommonBoxId"));
+        int[] commonBoxIds = ItemUseParameters.ParseIntArray(parameters.GetValueOrDefault("commonBoxId"));
+        if (unCommonBoxIds.Length + commonBoxIds.Length == 0) {
+            logger.Error("Invalid parameters for pet box: {ItemId}", item.Id);
+            return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        }
+
+        var ingredient = new IngredientInfo(tag, 1);
+        var results = new List<(Item Item, bool Special)>();
+        for (int i = 0; i < count; i++) {
+            if (!session.Item.Inventory.Consume([ingredient])) {
+                break;
+            }
+
+            foreach (int boxId in unCommonBoxIds) {
+                foreach (Item newItem in session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)) {
+                    results.Add((newItem, true));
+                }
+            }
+            foreach (int boxId in commonBoxIds) {
+                foreach (Item newItem in session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)) {
+                    results.Add((newItem, false));
+                }
+            }
+            BoxCount++;
+        }
+
+        foreach ((Item newItem, _) in results) {
+            if (!session.Item.Inventory.Add(newItem, true)) {
+                session.Item.MailItem(newItem);
+            }
+        }
+
+        // The dialog waits for this packet before it takes another click, so it is sent for an empty result too.
+        session.Send(ItemScriptPacket.PetBox(results));
+        return BoxCount > 0 ? ItemBoxError.ok : ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
     }
 
     private ItemBoxError SelectItemBox(Item item, int groupId, int boxId, int index, int count = 1) {

@@ -137,6 +137,15 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.ItemActiveCodiTab:
                 HandleItemActiveCodiTab(session, item);
                 break;
+            case ItemFunction.OpenItemBoxLimitedQuantity:
+                HandleOpenItemBoxLimitedQuantity(session, item);
+                break;
+            case ItemFunction.OpenPetBox:
+                HandleOpenPetBox(session, packet, item);
+                break;
+            case ItemFunction.QuestStart:
+                HandleQuestStart(session, item);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -708,6 +717,44 @@ public class ItemUseHandler : FieldPacketHandler {
         character.SkinTabStart = start;
         character.SkinTabEnd = end;
         session.Field.Broadcast(ItemUsePacket.ActiveCodiTab(session.Player.ObjectId, start, end, (long) days * SkinTabPeriod.SecondsPerDay));
+    }
+
+    // The client's OpenItemBoxLimitedQuantity: an item box with a per-item cooldown between uses
+    // (xml parameter cooldownTime, seconds). The client drops an early use without sending it.
+    private static void HandleOpenItemBoxLimitedQuantity(GameSession session, Item item) {
+        Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
+        int cooldownSeconds = parameters.TryGetValue("cooldownTime", out string? cooldown) && int.TryParse(cooldown, out int seconds) ? seconds : 0;
+        if (!session.ItemBox.TryStartCooldown(item.Id, cooldownSeconds, Environment.TickCount64)) {
+            return;
+        }
+
+        ItemBoxError error = session.ItemBox.Open(item);
+        session.Send(ItemBoxPacket.Open(item.Id, session.ItemBox.BoxCount, error));
+        session.ItemBox.Reset();
+    }
+
+    // UIItemPetBoxDialog::SendOpenBox: "single" or "multi" (10 boxes).
+    private static void HandleOpenPetBox(GameSession session, IByteReader packet, Item item) {
+        string amountString = packet.ReadUnicodeString();
+        session.ItemBox.OpenPetBox(item, amountString == "multi" ? 10 : 1);
+        session.ItemBox.Reset();
+    }
+
+    // The client's QuestStart: parameter "questId[,level]", level 10 when it is absent or 0. The client checks the
+    // level and the quest state, then asks before sending.
+    private void HandleQuestStart(GameSession session, Item item) {
+        if (!ItemUseParameters.TryParseQuestStart(item.Metadata.Function?.Parameters, out int questId, out short level)) {
+            Logger.Warning("QuestStart item {ItemId} has an invalid parameter", item.Id);
+            return;
+        }
+        if (session.Player.Value.Character.Level < level) {
+            return;
+        }
+        if (session.Quest.Start(questId) != QuestError.none) {
+            return;
+        }
+
+        session.Item.Inventory.Consume(item.Uid, 1);
     }
 
     private void HandleCallAirTaxi(GameSession session, IByteReader packet, Item item) {
