@@ -205,7 +205,7 @@ UpdateDatabase(metadataContext, new TriggerMapper(xmlReader));
 UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false));
 UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language));
 
-UpdateDatabase(metadataContext, new ServerTableMapper(serverReader));
+UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader));
 UpdateDatabase(metadataContext, new AiMapper(serverReader));
 
 UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader));

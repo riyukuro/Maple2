@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Extensions;
+﻿using M2dXmlGenerator;
+using Maple2.Database.Extensions;
 using Maple2.File.Ingest.Utils;
 using Maple2.File.IO;
 using Maple2.File.Parser;
@@ -35,9 +36,12 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private readonly ServerTableParser parser;
+    // The client's Xml.m2d: its table/constants.xml holds the prices the client shows.
+    private readonly M2dReader? clientReader;
 
-    public ServerTableMapper(M2dReader xmlReader) {
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null) {
         parser = new ServerTableParser(xmlReader);
+        this.clientReader = clientReader;
     }
 
     protected override IEnumerable<ServerTableMetadata> Map() {
@@ -2159,13 +2163,36 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         var constants = new ConstantsTable();
         Dictionary<string, PropertyInfo> propertyLookup = typeof(ConstantsTable).GetProperties()
             .ToDictionary(p => p.Name.Trim(), p => p, StringComparer.OrdinalIgnoreCase);
+        var serverRows = new List<(string, string)>();
         foreach ((string key, Constants.Key constant) in parser.ParseConstants()) {
             string trimmedKey = key.Trim();
+            serverRows.Add((trimmedKey, constant.value));
             if (!propertyLookup.TryGetValue(trimmedKey, out PropertyInfo? property)) continue;
             string cleanValue = CleanInput(constant.value.Trim(), trimmedKey, property.PropertyType);
             GenericHelper.SetValue(property, constants, cleanValue);
         }
+
+        // Prices: the client's own row for this locale wins, so the server takes what the client's box shows.
+        foreach (ClientPriceConstants.Override price in ClientPriceConstants.Differences(ClientPriceConstants.Select(serverRows), ClientPriceRows())) {
+            if (!propertyLookup.TryGetValue(price.Key, out PropertyInfo? property)) continue;
+            Console.WriteLine($"constants: {property.Name} = {price.ClientValue} from the client table (server pack: {price.ServerValue ?? "no row"})");
+            GenericHelper.SetValue(property, constants, CleanInput(price.ClientValue, property.Name, property.PropertyType));
+        }
         return constants;
+
+        Dictionary<string, string> ClientPriceRows() {
+            var rows = new List<(string, string)>();
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = clientReader?.Files.FirstOrDefault(file => file.Name == "table/constants.xml");
+            if (clientReader == null || entry == null) {
+                return ClientPriceConstants.Select(rows);
+            }
+            foreach (XmlNode node in clientReader.GetXmlDocument(entry).SelectNodes("ms2/v")!) {
+                if (node is not XmlElement row) continue;
+                if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
+                rows.Add((row.GetAttribute("key"), row.GetAttribute("value")));
+            }
+            return ClientPriceConstants.Select(rows);
+        }
 
         string CleanInput(string input, string propName, Type type) {
             // check if string contains the ending 'f' for float designation, strip it if it does.
