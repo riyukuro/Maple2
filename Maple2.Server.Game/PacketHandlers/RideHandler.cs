@@ -21,6 +21,7 @@ public class RideHandler : FieldPacketHandler {
         Change = 2,
         Join = 3,
         Leave = 4,
+        Unknown6 = 6,
     }
 
     #region Autofac Autowired
@@ -46,6 +47,10 @@ public class RideHandler : FieldPacketHandler {
                 return;
             case Command.Leave:
                 HandleLeave(session);
+                return;
+            case Command.Unknown6:
+                // Not handled: one byte.
+                Logger.Debug("Ride {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
                 return;
         }
     }
