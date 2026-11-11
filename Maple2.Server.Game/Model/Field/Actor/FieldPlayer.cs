@@ -9,6 +9,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
 using Maple2.Tools.Scheduler;
 using System.Numerics;
@@ -39,6 +40,8 @@ public class FieldPlayer : Actor<Player> {
             StateSyncTimeTracking = 0; // Reset time tracking on state change
         }
     }
+    // The actor the last state sync names for a hold or a grab (AiTargetState), else 0.
+    public int StateActorId { get; private set; }
     private bool isDead;
     public override bool IsDead {
         get => isDead;
@@ -282,6 +285,7 @@ public class FieldPlayer : Actor<Player> {
 
         State = stateSync.State;
         SubState = stateSync.SubState;
+        StateActorId = AiTargetState.ActorOf(stateSync);
 
         if (stateSync.SyncNumber != int.MaxValue) {
             LastGroundPosition = stateSync.Position;

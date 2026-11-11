@@ -813,25 +813,10 @@ public class AiState {
     }
 
     private bool ProcessCondition(StateCondition node) {
-        if (actor.BattleState.Target is null) {
+        if (actor.BattleState.Target is not FieldPlayer player) {
             return false;
         }
-
-        ActorState state = ActorState.None;
-
-        if (actor.BattleState.Target is FieldPlayer player) {
-            state = player.State;
-        }
-
-        if (actor.BattleState.Target is FieldNpc npc) {
-            state = npc.MovementState.State;
-        }
-
-        return node.TargetState switch {
-            AiConditionTargetState.GrabTarget => state == ActorState.GrabTarget,
-            AiConditionTargetState.HoldMe => state == ActorState.Hold,
-            _ => false,
-        };
+        return AiTargetState.Passes(node.TargetState, player.State, player.StateActorId, actor.ObjectId);
     }
 
     private bool ProcessCondition(AdditionalCondition node) {
