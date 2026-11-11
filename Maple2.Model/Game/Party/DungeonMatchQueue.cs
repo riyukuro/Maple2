@@ -49,6 +49,8 @@ public sealed class DungeonMatchQueue {
     private readonly object mutex = new();
     private readonly Dictionary<int, Group> groups = new();
     private readonly Func<int, int> capacityOf;
+    // Parties matched whose room is not made yet (rv42 MINOR 6): a new search is refused until EndMatching.
+    private readonly HashSet<int> matching = new();
     private long nextOrder;
 
     // capacityOf: the most members a party may hold (Party.Capacity); a merge never makes a party larger.
@@ -69,6 +71,7 @@ public sealed class DungeonMatchQueue {
     // again (the pulls whose move went through), and checks it as Start does.
     public DungeonMatchResult Restore(DungeonMatchGroup before, IEnumerable<DungeonMatchGroup>? kept = null) {
         lock (mutex) {
+            matching.Remove(before.PartyId);
             var group = new Group {
                 PartyId = before.PartyId, Kind = before.Kind, Rooms = before.Rooms.ToList(),
                 Members = before.Members.ToHashSet(), FoundIds = before.FoundIds.ToHashSet(), Order = before.Order,
@@ -97,6 +100,20 @@ public sealed class DungeonMatchQueue {
         }
     }
 
+    // The party was matched and its room is being made.
+    public bool IsMatching(int partyId) {
+        lock (mutex) {
+            return matching.Contains(partyId);
+        }
+    }
+
+    // The matched party's room is set, or could not be made: it may search again.
+    public void EndMatching(int partyId) {
+        lock (mutex) {
+            matching.Remove(partyId);
+        }
+    }
+
     public byte KindOf(int partyId) {
         lock (mutex) {
             return groups.TryGetValue(partyId, out Group? group) ? group.Kind : (byte) 0;
@@ -122,6 +139,9 @@ public sealed class DungeonMatchQueue {
         lock (mutex) {
             if (groups.TryGetValue(partyId, out Group? searching)) {
                 return new DungeonMatchResult(DungeonMatchOutcome.AlreadySearching, partyId, searching.Kind);
+            }
+            if (matching.Contains(partyId)) {
+                return new DungeonMatchResult(DungeonMatchOutcome.AlreadySearching, partyId);
             }
             var ids = members.ToHashSet();
             List<DungeonMatchRoom> usable = rooms
@@ -244,9 +264,11 @@ public sealed class DungeonMatchQueue {
                 .OrderBy(candidate => candidate.Id)
                 .Cast<DungeonMatchRoom?>()
                 .FirstOrDefault();
-            return room == null
-                ? new DungeonMatchResult(DungeonMatchOutcome.Stopped, partyId, group.Kind)
-                : new DungeonMatchResult(DungeonMatchOutcome.Matched, partyId, group.Kind, room.Value.Id);
+            if (room == null) {
+                return new DungeonMatchResult(DungeonMatchOutcome.Stopped, partyId, group.Kind);
+            }
+            matching.Add(partyId);
+            return new DungeonMatchResult(DungeonMatchOutcome.Matched, partyId, group.Kind, room.Value.Id);
         }
     }
 
@@ -294,7 +316,8 @@ public sealed class DungeonMatchQueue {
         }
     }
 
-    // Called under the lock: when the group is full for a room it leaves the queue matched to the lowest such room.
+    // Called under the lock: when the group is full for a room it leaves the queue matched to the lowest such room,
+    // marked matching until its room is set.
     private DungeonMatchResult CheckFull(Group group) {
         DungeonMatchRoom? full = group.Rooms
             .Where(room => DungeonMatchRules.IsFull(room, group.Users))
@@ -305,6 +328,7 @@ public sealed class DungeonMatchQueue {
             return new DungeonMatchResult(DungeonMatchOutcome.Searching, group.PartyId, group.Kind);
         }
         groups.Remove(group.PartyId);
+        matching.Add(group.PartyId);
         return new DungeonMatchResult(DungeonMatchOutcome.Matched, group.PartyId, group.Kind, full.Value.Id);
     }
 }

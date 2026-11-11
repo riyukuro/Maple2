@@ -283,9 +283,9 @@ public partial class WorldService {
                 if (partyLookup.DungeonMatch.IsSearching(manager.Party.Id)) {
                     return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
                 }
-                if (manager.Party.DungeonSet) {
-                    // A party with a dungeon room set does not search (rv42 MINOR 8); the client has no error of its
-                    // own for it, 43 is the nearest.
+                if (manager.Party.DungeonSet || partyLookup.DungeonMatch.IsMatching(manager.Party.Id)) {
+                    // A party with a dungeon room set (rv42 MINOR 8), or matched with its room being made (MINOR 6),
+                    // does not search; the client has no error of its own for it, 43 is the nearest.
                     return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
                 }
                 ids = manager.MemberIds();
@@ -298,6 +298,7 @@ public partial class WorldService {
             if (joined != null) {
                 if (!partyLookup.TryGet(joined.Value.PartyId, out PartyManager? target)) {
                     partyLookup.DungeonMatch.Remove(joined.Value.PartyId);
+                    partyLookup.DungeonMatch.EndMatching(joined.Value.PartyId);
                 } else {
                     PartyError error = manager != null ? partyLookup.MoveMembers(manager, target) : JoinSolo(target, info!);
                     if (error != PartyError.none) {

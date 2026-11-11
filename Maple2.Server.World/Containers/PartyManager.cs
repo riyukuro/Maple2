@@ -155,7 +155,7 @@ public class PartyManager : IDisposable {
     // leavingId: the member leaving, kicked, or going offline.
     public bool CheckForDisband(long leavingId = 0) {
         int online = Party.Members.Values.Count(member => member.Info.Online);
-        bool searching = PartyLookup.DungeonMatch.IsSearching(Party.Id);
+        bool searching = PartyLookup.DungeonMatch.IsSearching(Party.Id) || PartyLookup.DungeonMatch.IsMatching(Party.Id);
         if (DungeonMatchRules.Disbands(Party.Members.Count, online, OnlineMembers(leavingId).Length, searching)) {
             PartyLookup.Disband(Party.Id);
             return true;

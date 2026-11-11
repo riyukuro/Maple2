@@ -119,7 +119,7 @@ public class PartyLookup : IDisposable {
     });
 
     // A party that may take or be taken in a dungeon match merge: it exists and has no dungeon room set (rv42 MINOR 8).
-    public bool MayMerge(int partyId) => TryGet(partyId, out PartyManager? manager) && !manager.Party.DungeonSet;
+    public bool MayMerge(int partyId) => TryGet(partyId, out PartyManager? manager) && !manager.Party.DungeonSet && !DungeonMatch.IsMatching(partyId);
 
     // Runs body under the matchmaker lock; the channel calls it defers (Defer) are made after the lock is released.
     public T DungeonMatchStep<T>(Func<T> body) => steps.Run(body);
@@ -160,19 +160,31 @@ public class PartyLookup : IDisposable {
 
     // What a queue step leaves to the party: a matched group gets its room (made on the first channel, as the
     // leader's CreateDungeon would) and the enter box; a stopped one is told the search ended. Searching: nothing.
-    // The room is made after the step's lock is released.
+    // The room is made after the step's lock is released; the party stays marked matching until then (it cannot
+    // search again), and a party gone meanwhile has its room destroyed (rv42 MINOR 6).
     public void CompleteDungeonMatch(PartyManager manager, DungeonMatchResult result) => DungeonMatchStep(() => {
         switch (result.Outcome) {
             case DungeonMatchOutcome.Matched:
                 BroadcastDungeonMatch(manager, result.Kind, false);
                 int size = manager.Party.Members.Count;
+                int partyId = manager.Party.Id;
+                long leaderId = manager.Party.LeaderCharacterId;
                 Defer(() => {
-                    int lobbyRoomId = CreateMatchedRoom(manager, result.RoomId, size);
-                    if (lobbyRoomId != 0) {
-                        manager.SetDungeon(manager.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true);
-                    } else {
-                        EndSearchParty(manager);
-                    }
+                    int lobbyRoomId = CreateMatchedRoom(leaderId, partyId, result.RoomId, size);
+                    DungeonMatchStep(() => {
+                        DungeonMatch.EndMatching(partyId);
+                        if (!TryGet(partyId, out PartyManager? current)) {
+                            if (lobbyRoomId != 0) {
+                                Defer(() => DestroyMatchedRoom(lobbyRoomId));
+                            }
+                            return;
+                        }
+                        if (lobbyRoomId != 0) {
+                            current.SetDungeon(current.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true);
+                        } else {
+                            EndSearchParty(current);
+                        }
+                    });
                 });
                 break;
             case DungeonMatchOutcome.Stopped:
@@ -197,22 +209,34 @@ public class PartyLookup : IDisposable {
         });
     }
 
-    private int CreateMatchedRoom(PartyManager manager, int dungeonId, int size) {
+    private int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
             return 0;
         }
         try {
             FieldResponse response = client.Field(new FieldRequest {
-                RequesterId = manager.Party.LeaderCharacterId,
+                RequesterId = leaderId,
                 CreateDungeon = new FieldRequest.Types.CreateDungeon {
                     DungeonId = dungeonId,
                     Size = size,
-                    PartyId = manager.Party.Id,
+                    PartyId = partyId,
                 },
             });
             return response.Error == (int) MigrationError.ok ? response.RoomId : 0;
         } catch (RpcException) {
             return 0;
         }
+    }
+
+    // The room made for a party that went before it was set: it is destroyed on the channel that made it.
+    private void DestroyMatchedRoom(int lobbyRoomId) {
+        if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
+            return;
+        }
+        try {
+            client.Field(new FieldRequest {
+                DestroyDungeon = new FieldRequest.Types.DestroyDungeon { RoomId = lobbyRoomId },
+            });
+        } catch (RpcException) { }
     }
 }

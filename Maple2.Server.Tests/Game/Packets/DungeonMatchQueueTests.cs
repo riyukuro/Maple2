@@ -515,4 +515,27 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.CountOf(4), Is.EqualTo((5, 2)));
         Assert.That(queue.CountOf(2), Is.EqualTo((1, 0)));
     }
+
+    // rv42 MINOR 6: a matched party stays marked until its room is set or failed; a new search is refused then.
+    [Test]
+    public void AMatchedPartyCannotSearchUntilItsRoomIsSet() {
+        var queue = new DungeonMatchQueue();
+        Assert.That(queue.Start(1, 1, [Four], M(4)).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.IsMatching(1), Is.True);
+        Assert.That(queue.IsSearching(1), Is.False);
+        Assert.That(queue.Start(1, 1, [Four], M(2)).Outcome, Is.EqualTo(DungeonMatchOutcome.AlreadySearching));
+        queue.EndMatching(1);
+        Assert.That(queue.Start(1, 1, [Four], M(2)).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+
+        // An early start is a match too; a group put back is no longer matching.
+        queue.Join(1, [Four], M(1));
+        Assert.That(queue.Cancel(1, 1).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.IsMatching(1), Is.True);
+        queue.EndMatching(1);
+        queue.Start(2, 1, [Four], M(3));
+        Assert.That(queue.Join(1, [Four], M(1), out DungeonMatchGroup? before)!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.IsMatching(2), Is.True);
+        queue.Restore(before!);
+        Assert.That(queue.IsMatching(2), Is.False);
+    }
 }
