@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using Maple2.Server.Game.Manager.Field;
 using System.Collections.Generic;
 using System.Reflection;
 using Maple2.Model.Enum;
@@ -218,5 +220,45 @@ public class GmDebugRequestsTests {
 
         Assert.That(DebugModePacket.GuideCommands("A", [("/a", "")]).ToArray(),
             Is.EqualTo(new byte[] { 0x87, 0, 7, 1, 0, (byte) 'A', 0, 1, 0, 0, 0, 2, 0, (byte) '/', 0, (byte) 'a', 0, 0, 0 }));
+    }
+
+    // Gives a bare session the two collections Send needs and returns the queue the packets land in.
+    private static BlockingCollection<(byte[] packet, int length)> SendQueueOf(GameSession session) {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        Type type = typeof(Maple2.Server.Core.Network.Session);
+        var queue = new BlockingCollection<(byte[] packet, int length)>();
+        type.GetField("sendQueue", flags)!.SetValue(session, queue);
+        type.GetField("lastSentPackets", flags)!.SetValue(session, new ConcurrentDictionary<SendOp, byte[]>());
+        return queue;
+    }
+
+    // The debug guide lines go back to the sender only: another GM in the same field receives nothing.
+    [Test]
+    public void Guide_IsSentToTheSenderOnly() {
+        GameSession sender = SessionOf(AdminPermissions.GameMaster);
+        GameSession other = SessionOf(AdminPermissions.GameMaster);
+        BlockingCollection<(byte[] packet, int length)> sent = SendQueueOf(sender);
+        BlockingCollection<(byte[] packet, int length)> sentToOther = SendQueueOf(other);
+        var field = (FieldManager) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager));
+        var players = new ConcurrentDictionary<int, FieldPlayer>();
+        players[1] = sender.Player;
+        players[2] = other.Player;
+        typeof(FieldManager).GetField("<Players>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(field, players);
+        typeof(FieldPlayer).GetField(nameof(FieldPlayer.Session))!.SetValue(other.Player, other);
+        typeof(FieldPlayer).GetField(nameof(FieldPlayer.Session))!.SetValue(sender.Player, sender);
+        sender.Field = field;
+        other.Field = field;
+
+        var writer = new ByteWriter();
+        writer.WriteByte(7);
+        writer.WriteInt(1);
+        writer.WriteUnicodeString("/a");
+        writer.WriteUnicodeString("");
+        new SetDebugModeHandler().Handle(sender, new ByteReader(writer.ToArray(), 0));
+
+        Assert.That(sent.Count, Is.EqualTo(1));
+        (byte[] packet, int length) = sent.Take();
+        Assert.That(packet.AsSpan(0, length).ToArray(), Is.EqualTo(DebugModePacket.GuideCommands("A", [("/a", "")]).ToArray()));
+        Assert.That(sentToOther.Count, Is.EqualTo(0));
     }
 }

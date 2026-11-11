@@ -17,8 +17,8 @@ namespace Maple2.Server.Game.PacketHandlers;
 // Mode 4: the NPC control window. Picking an NPC is answered with its skill list and state (0x87 DebugMode,
 // kinds 6 and 5); the health, additional effect, skill and stop skill buttons are applied; the others are read
 // and logged.
-// Mode 7: the debug guide window's "multi execute": the lines go to every GM in the sender's field (0x87
-// kind 7), whose client enters them in its chat.
+// Mode 7: the debug guide window's "multi execute": the lines go back to the sender only (0x87 kind 7),
+// whose client enters them in its chat.
 public class SetDebugModeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.SetDebugMode;
 
@@ -139,18 +139,14 @@ public class SetDebugModeHandler : FieldPacketHandler {
 
     private void HandleGuide(GameSession session, IByteReader packet) {
         List<(string Command, string Argument)>? lines = GmGuideRequest.Read(packet);
-        if (lines == null || session.Field == null) {
+        if (lines == null) {
             return;
         }
 
         // The client that gets the lines enters them in its own chat, so each one comes back as a chat
-        // command of that account and passes that command's own permission check. Plain accounts get nothing.
+        // command of that account and passes that command's own permission check. Only the sender gets them:
+        // one GM must not make another client run commands.
         Logger.Information("SetDebugMode: {Count} guide command lines from account {AccountId}", lines.Count, session.AccountId);
-        ByteWriter reply = DebugModePacket.GuideCommands(session.PlayerName, lines);
-        foreach (FieldPlayer player in session.Field.Players.Values) {
-            if (GmCheck.IsGm(player.AdminPermissions)) {
-                player.Session.Send(reply);
-            }
-        }
+        session.Send(DebugModePacket.GuideCommands(session.PlayerName, lines));
     }
 }
