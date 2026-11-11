@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -148,13 +149,113 @@ public class PetHandler : FieldPacketHandler {
         session.Pet.UpdateLootConfig(config);
     }
 
+    // Mode 12 (TabContentsPetCompose::SendComposeRequest): the pet gains exp from the picked pets and pet exp
+    // books (uid and count per entry, one entry per uid). The window has made its checks already; the server
+    // makes them again in the order the entries come, pays the meso, binds a pet with a bind rule (the window
+    // asked first, s_msg_transfer_bind_pet_compose) and answers mode 10 (exp), mode 11 (level, when it
+    // changed) and mode 12 (today's fusion count, which lowers the exp of later pet fodders).
     private void HandleFusion(GameSession session, IByteReader packet) {
         long petUid = packet.ReadLong();
         short count = packet.ReadShort();
+        var entries = new List<(long Uid, int Amount)>();
         for (int i = 0; i < count; i++) {
-            packet.ReadLong(); // fodder uid
-            packet.ReadInt(); // count
+            long uid = packet.ReadLong();
+            int amount = packet.ReadInt();
+            entries.Add((uid, amount));
         }
+        if (entries.Count is 0 or > PetFusionRules.MaxFodders || entries.Select(entry => entry.Uid).Distinct().Count() != entries.Count) {
+            return;
+        }
+
+        lock (session.Item) {
+            Item? pet = FindOwnPet(session, petUid);
+            if (pet?.Pet == null || !session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? petMetadata)) {
+                return;
+            }
+
+            ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+            int maxLevel = constants.PetMaxLevel;
+            if (!PetFusionRules.IsTarget(petMetadata.Type, pet.Pet.Level, maxLevel)) {
+                return;
+            }
+
+            Character character = session.Player.Value.Character;
+            PetExpTable table = session.TableMetadata.PetExpTable;
+            long summonedUid = session.Pet?.Pet.Uid ?? 0;
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            int dailyCount = PetFusionRules.DailyCount(character.PetFusionCount, character.PetFusionTime, PetFusionRules.LastResetTime());
+            int bonusLimit = constants.DailyPetEnchantMaxCount;
+            int saleRate = PetComposeSaleRate(session);
+
+            int units = 0;
+            int petFodders = 0;
+            long gain = 0;
+            long cost = 0;
+            var taken = new List<(Item Item, PetFusionRules.FodderKind Kind, int Amount)>();
+            foreach ((long uid, int amount) in entries) {
+                Item? fodder = session.Item.Inventory.Get(uid);
+                int? fodderType = fodder?.Pet != null && session.ItemMetadata.TryGetPet(fodder.Metadata.Property.PetId, out PetMetadata? fodderMetadata)
+                    ? fodderMetadata.Type : null;
+                PetFusionRules.FodderKind kind = fodder == null ? PetFusionRules.FodderKind.None : PetFusionRules.KindOf(fodder, fodderType);
+                if (PetFusionRules.CheckFodder(pet, fodder, kind, amount, summonedUid, now) != PetFusionRules.FodderError.None) {
+                    return;
+                }
+
+                for (int i = 0; i < amount; i++) {
+                    (int predicted, _) = PetFusionRules.Apply(table, pet.Pet.Level, pet.Pet.Exp, pet.Rarity, pet.Metadata.Limit.Level, gain, maxLevel);
+                    if (PetFusionRules.CheckUnit(units, predicted, maxLevel) != PetFusionRules.FodderError.None) {
+                        return;
+                    }
+
+                    if (kind == PetFusionRules.FodderKind.Pet) {
+                        (long baseExp, long bonusExp) = PetFusionRules.PetExp(pet, fodder!, dailyCount + petFodders, bonusLimit);
+                        gain += baseExp + bonusExp;
+                        petFodders++;
+                    } else {
+                        gain += PetFusionRules.BookExp(fodder!.Metadata.Function);
+                    }
+                    units++;
+                }
+                cost += PetFusionRules.ApplySale(PetFusionRules.UnitCost(pet, fodder!, kind), saleRate) * amount;
+                taken.Add((fodder!, kind, amount));
+            }
+
+            if (session.Currency.Meso < cost) {
+                session.Send(PetPacket.Error(PetError.s_err_lack_meso));
+                return;
+            }
+
+            foreach ((Item fodder, PetFusionRules.FodderKind kind, int amount) in taken) {
+                if (!session.Item.Inventory.Consume(fodder.Uid, kind == PetFusionRules.FodderKind.Pet ? -1 : amount)) {
+                    throw new InvalidOperationException($"Failed to consume fusion fodder: {fodder.Uid} after validating");
+                }
+            }
+            session.Currency.Meso -= cost;
+            session.Item.Bind(pet);
+
+            int oldLevel = pet.Pet.Level;
+            (int level, long exp) = PetFusionRules.Apply(table, pet.Pet.Level, pet.Pet.Exp, pet.Rarity, pet.Metadata.Limit.Level, gain, maxLevel);
+            pet.Pet.Level = (short) level;
+            pet.Pet.Exp = exp;
+            character.PetFusionCount = dailyCount + petFodders;
+            character.PetFusionTime = now;
+
+            session.Send(PetPacket.Fusion(session.Player.ObjectId, pet));
+            if (level != oldLevel) {
+                session.Send(PetPacket.LevelUp(session.Player.ObjectId, pet));
+                if (session.Pet?.Pet.Uid == pet.Uid) {
+                    // The summoned pet's stats count in the owner's totals.
+                    session.Player.Stats.Refresh();
+                }
+            }
+            session.Send(PetPacket.FusionCount(character.PetFusionCount));
+        }
+    }
+
+    // The rate of an active PetComposeSale event in 1/10000, 0 without one.
+    private static int PetComposeSaleRate(GameSession session) {
+        GameEvent? saleEvent = session.FindEvent(GameEventType.PetComposeSale).FirstOrDefault();
+        return saleEvent != null && int.TryParse(saleEvent.Metadata.Value1, out int rate) ? rate : 0;
     }
 
     private void HandleToggleAuto(GameSession session, IByteReader packet) {
