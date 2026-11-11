@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -6,7 +6,8 @@ using Maple2.Model.Metadata;
 namespace Maple2.Server.Game.Model;
 
 // A placed home mannequin and the items on it. The items are rows of group FittingDoll owned by the cube uid, so
-// they stay with the cube while it is placed; Lock guards Items.
+// they stay with the cube while it is placed; Lock guards Items. The rows are the authority: another field instance
+// of the same home (one per channel) may have changed them, so Items is reloaded before each change.
 public class FieldFittingDoll {
     public readonly int ObjectId;
     public readonly PlotCube Cube;
@@ -14,6 +15,8 @@ public class FieldFittingDoll {
     public readonly FunctionCubeMetadata.FittingDollData Data;
     public readonly Dictionary<EquipSlot, Item> Items = new();
     public readonly object Lock = new();
+    // Set under Lock when the cube leaves the field; the doll's items are then returned from the DB rows.
+    public bool Removed;
 
     public long Uid => Cube.Id;
     public Vector3 Position => Cube.Position;

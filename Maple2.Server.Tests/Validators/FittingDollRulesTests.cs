@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -25,6 +25,23 @@ public class FittingDollRulesTests {
             Assert.That(FittingDollRules.CanWear(EquipDoll, false, Gender.Male), Is.EqualTo(FittingDollRules.Error.None));
             Assert.That(FittingDollRules.CanWear(EquipDoll, false, Gender.Female), Is.EqualTo(FittingDollRules.Error.Male));
             Assert.That(FittingDollRules.CanWear(OutfitDoll, true, Gender.Male), Is.EqualTo(FittingDollRules.Error.Female));
+        });
+    }
+
+    [Test]
+    public void CanWear_RefusesCharacterBoundItem() {
+        Assert.Multiple(() => {
+            Assert.That(FittingDollRules.CanWear(EquipDoll, false, Gender.All, boundToCharacter: true), Is.EqualTo(FittingDollRules.Error.InvalidBinding));
+            Assert.That(FittingDollRules.CanWear(OutfitDoll, true, Gender.All, boundToCharacter: true), Is.EqualTo(FittingDollRules.Error.InvalidBinding));
+            Assert.That((int) FittingDollRules.Error.InvalidBinding, Is.EqualTo(0x12));
+        });
+    }
+
+    [Test]
+    public void Allowed_OnlyInTheIndoorHome() {
+        Assert.Multiple(() => {
+            Assert.That(FittingDollRules.Allowed(Constant.DefaultHomeMapId), Is.True);
+            Assert.That(FittingDollRules.Allowed(99000001), Is.False);
         });
     }
 

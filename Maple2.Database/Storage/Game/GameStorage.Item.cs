@@ -4,6 +4,7 @@ using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Item = Maple2.Model.Game.Item;
 using PetConfig = Maple2.Model.Game.PetConfig;
@@ -174,6 +175,30 @@ public partial class GameStorage {
             }
 
             return Context.TrySaveChanges();
+        }
+
+        // Saves item to toOwnerId only while its row is still owned by fromOwnerId in fromGroup, so a copy of the item
+        // kept in memory by another server (a fitting doll loaded in two field instances) cannot move the row twice.
+        // On a relational DB the test is one conditional update in the same transaction as the save; false when the
+        // row has moved, or the save failed (nothing is changed then).
+        public bool MoveItem(Item item, long fromOwnerId, ItemGroup fromGroup, long toOwnerId) {
+            long uid = item.Uid;
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                IQueryable<Model.Item> held = Context.Item.Where(row => row.Id == uid && row.OwnerId == fromOwnerId && row.Group == fromGroup);
+                int rows = Context.Database.IsRelational()
+                    ? held.ExecuteUpdate(update => update.SetProperty(row => row.OwnerId, toOwnerId))
+                    : held.AsNoTracking().Count();
+                if (rows != 1 || !SaveItems(toOwnerId, item)) {
+                    return false; // the transaction is rolled back when it is disposed
+                }
+
+                transaction.Commit();
+                return true;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to move item {ItemUid} from {FromOwnerId} to {ToOwnerId}", uid, fromOwnerId, toOwnerId);
+                return false;
+            }
         }
 
         public bool UpdateItem(Item item) {

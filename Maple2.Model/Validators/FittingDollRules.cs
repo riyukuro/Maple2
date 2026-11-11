@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
@@ -17,12 +17,17 @@ public static class FittingDollRules {
         InvalidItem = 0xc, // s_fittingdoll_InvalidItem
         InvalidDoll = 0xd, // s_fittingdoll_Invalid_doll
         InvalidSlot = 0x10, // s_fittingdoll_Invalid_slot
+        InvalidBinding = 0x12, // s_fittingdoll_Invalid_binding
     }
 
     // Whether an item fits the doll, as the client tests it before it sends a put (FittingDollPC::FUN_14121c910,
     // fittingdollslot_1.cpp:490): the item is a skin exactly when the doll is an outfit doll (type not 0), and the
     // item's gender limit allows the doll's gender.
-    public static Error CanWear(FunctionCubeMetadata.FittingDollData doll, bool isSkin, Gender itemGender) {
+    // A character-bound item is refused: any character of the owner's account can take items off the doll.
+    public static Error CanWear(FunctionCubeMetadata.FittingDollData doll, bool isSkin, Gender itemGender, bool boundToCharacter = false) {
+        if (boundToCharacter) {
+            return Error.InvalidBinding;
+        }
         bool outfitDoll = doll.Type != 0;
         if (isSkin != outfitDoll) {
             return outfitDoll ? Error.ItemIsEquip : Error.ItemIsSkin;
@@ -32,6 +37,10 @@ public static class FittingDollRules {
         }
         return Error.None;
     }
+
+    // Mannequins work only in the indoor home. An outdoor plot can be forfeited or expire without its cubes being
+    // removed one by one, which would leave the items on a cube that no longer exists.
+    public static bool Allowed(int plotMapId) => plotMapId == Constant.DefaultHomeMapId;
 
     // Whether the slot the client names is one of the item's (InvenSlot::FUN_141405a60, invenslot.cpp:675: a slot the
     // item's model has no group for is refused with 0x10). A one-handed weapon goes to either hand.

@@ -10,6 +10,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
@@ -1040,7 +1041,7 @@ public partial class FieldManager {
 
         Broadcast(FunctionCubePacket.AddFunctionCube(cube.Interact));
 
-        if (plot != null && cube.Interact.Metadata.FittingDoll is { } dollData) {
+        if (plot != null && FittingDollRules.Allowed(plot.MapId) && cube.Interact.Metadata.FittingDoll is { } dollData) {
             AddFittingDoll(cube, plot, dollData);
         }
 
@@ -1052,6 +1053,10 @@ public partial class FieldManager {
             return false;
         }
         if (fittingDolls.TryRemove(removed.CubeId, out FieldFittingDoll? doll)) {
+            // A put on or take off that holds the lock finishes first; one that waits for it finds the doll gone.
+            lock (doll.Lock) {
+                doll.Removed = true;
+            }
             Broadcast(FittingDollPacket.Remove(doll));
         }
         return true;

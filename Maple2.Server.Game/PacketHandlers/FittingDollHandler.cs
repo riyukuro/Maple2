@@ -1,4 +1,4 @@
-using Maple2.Database.Storage;
+﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
@@ -70,6 +70,10 @@ public class FittingDollHandler : FieldPacketHandler {
 
         lock (session.Item) {
             lock (doll.Lock) {
+                if (doll.Removed) {
+                    return FittingDollRules.Error.InvalidDoll;
+                }
+                Reload(session, doll);
                 Item? item = session.Item.Inventory.Get(itemUid);
                 if (item == null || (item.ExpiryTime > 0 && item.ExpiryTime <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
                     return FittingDollRules.Error.InvalidItem;
@@ -77,7 +81,8 @@ public class FittingDollHandler : FieldPacketHandler {
                 if (!FittingDollRules.SlotFits(slot, item.Metadata.SlotNames)) {
                     return FittingDollRules.Error.InvalidSlot;
                 }
-                FittingDollRules.Error error = FittingDollRules.CanWear(doll.Data, item.Metadata.Property.IsSkin, item.Metadata.Limit.Gender);
+                FittingDollRules.Error error = FittingDollRules.CanWear(doll.Data, item.Metadata.Property.IsSkin,
+                    item.Metadata.Limit.Gender, boundToCharacter: item.Transfer?.Binding != null);
                 if (error != FittingDollRules.Error.None) {
                     return error;
                 }
@@ -94,17 +99,28 @@ public class FittingDollHandler : FieldPacketHandler {
                 if (!session.Item.Inventory.Remove(itemUid, out item)) {
                     return FittingDollRules.Error.InvalidItem;
                 }
+                short inventorySlot = item.Slot;
                 item.Group = ItemGroup.FittingDoll;
                 item.Slot = (short) slot;
+                bool moved;
                 using (GameStorage.Request db = session.GameStorage.Context()) {
-                    db.SaveItems(doll.Uid, item);
+                    moved = db.MoveItem(item, session.CharacterId, ItemGroup.Default, doll.Uid);
+                }
+                if (!moved) {
+                    // Nothing was written: the item goes back where it was and the doll is unchanged.
+                    item.Group = ItemGroup.Default;
+                    item.Slot = inventorySlot;
+                    if (!session.Item.Inventory.Add(item)) {
+                        Serilog.Log.Logger.Error("Failed to put item {ItemUid} back after a failed fitting doll save", item.Uid);
+                    }
+                    return FittingDollRules.Error.InvalidItem;
                 }
 
                 foreach (Item worn in displaced) {
                     var wornSlot = (EquipSlot) worn.Slot;
                     doll.Items.Remove(wornSlot);
                     session.Field?.Broadcast(FittingDollPacket.PutOff(doll, wornSlot));
-                    ToInventoryOrMail(session, worn);
+                    ToInventoryOrMail(session, doll.Uid, worn);
                 }
                 doll.Items[slot] = item;
                 session.Field?.Broadcast(FittingDollPacket.PutOn(doll, item));
@@ -124,6 +140,10 @@ public class FittingDollHandler : FieldPacketHandler {
 
         lock (session.Item) {
             lock (doll.Lock) {
+                if (doll.Removed) {
+                    return FittingDollRules.Error.InvalidDoll;
+                }
+                Reload(session, doll);
                 if (!doll.Items.TryGetValue(slot, out Item? item)) {
                     return FittingDollRules.Error.InvalidItem;
                 }
@@ -132,16 +152,9 @@ public class FittingDollHandler : FieldPacketHandler {
                     return FittingDollRules.Error.InventoryFull;
                 }
 
-                item.Group = ItemGroup.Default;
-                item.Slot = -1;
-                if (!session.Item.Inventory.Add(item, commit: true)) {
-                    item.Group = ItemGroup.FittingDoll;
-                    item.Slot = (short) slot;
-                    return FittingDollRules.Error.InventoryFull;
-                }
                 doll.Items.Remove(slot);
                 session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
-                return FittingDollRules.Error.None;
+                return ToInventoryOrMail(session, doll.Uid, item) ? FittingDollRules.Error.None : FittingDollRules.Error.InvalidItem;
             }
         }
     }
@@ -152,10 +165,7 @@ public class FittingDollHandler : FieldPacketHandler {
         FieldFittingDoll? doll = owner.Field?.GetFittingDoll(cubeUid);
         lock (owner.Item) {
             lock (doll?.Lock ?? new object()) {
-                List<Item> items;
-                using (GameStorage.Request db = owner.GameStorage.Context()) {
-                    items = db.GetItemGroups(cubeUid, ItemGroup.FittingDoll).TryGetValue(ItemGroup.FittingDoll, out List<Item>? held) ? held : [];
-                }
+                List<Item> items = Rows(owner, cubeUid);
                 if (doll != null) {
                     foreach (EquipSlot slot in doll.Items.Keys.ToList()) {
                         doll.Items.Remove(slot);
@@ -163,20 +173,56 @@ public class FittingDollHandler : FieldPacketHandler {
                     }
                 }
                 foreach (Item item in items) {
-                    ToInventoryOrMail(owner, item);
+                    ToInventoryOrMail(owner, cubeUid, item);
                 }
             }
         }
     }
 
-    private static void ToInventoryOrMail(GameSession owner, Item item) {
+    private static List<Item> Rows(GameSession session, long cubeUid) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        return db.GetItemGroups(cubeUid, ItemGroup.FittingDoll).TryGetValue(ItemGroup.FittingDoll, out List<Item>? held) ? held : [];
+    }
+
+    // The DB rows are the authority: the same home open on another channel may have changed them. Entries that left
+    // the cube are dropped, and new or changed ones shown, before the doll is changed here.
+    private static void Reload(GameSession session, FieldFittingDoll doll) {
+        var rows = new Dictionary<EquipSlot, Item>();
+        foreach (Item row in Rows(session, doll.Uid)) {
+            rows[(EquipSlot) row.Slot] = row;
+        }
+        foreach ((EquipSlot slot, Item held) in doll.Items.ToList()) {
+            if (!rows.TryGetValue(slot, out Item? row) || row.Uid != held.Uid) {
+                doll.Items.Remove(slot);
+                session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
+            }
+        }
+        foreach ((EquipSlot slot, Item row) in rows) {
+            bool shown = doll.Items.ContainsKey(slot);
+            doll.Items[slot] = row;
+            if (!shown) {
+                session.Field?.Broadcast(FittingDollPacket.PutOn(doll, row));
+            }
+        }
+    }
+
+    // Moves the row off the doll to the owner, only while it is still on this cube; false when another instance of
+    // the field already took it (the memory entry was stale and nothing is given).
+    private static bool ToInventoryOrMail(GameSession owner, long cubeUid, Item item) {
         item.Group = ItemGroup.Default;
         item.Slot = -1;
+        using (GameStorage.Request db = owner.GameStorage.Context()) {
+            if (!db.MoveItem(item, cubeUid, ItemGroup.FittingDoll, owner.CharacterId)) {
+                return false;
+            }
+        }
         if (owner.Field != null && owner.Item.Inventory.FreeSlots(item.Inventory) > 0 && owner.Item.Inventory.Add(item, commit: true)) {
-            return;
+            return true;
         }
         if (!owner.Item.MailHeldItem(item)) {
+            // The row is the character's now (group Default), so it is in the inventory at the next login.
             Serilog.Log.Logger.Error("Failed to return fitting doll item {ItemUid} to {CharacterId}", item.Uid, owner.CharacterId);
         }
+        return true;
     }
 }

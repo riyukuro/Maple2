@@ -781,7 +781,9 @@ public class HousingManager {
             return true;
         }
 
-        // A mannequin's items go back to the owner; another builder's removal leaves them on the cube's uid.
+        // A mannequin's items go back to the plot owner. Removal always runs on the owner's housing manager (a build
+        // helper's removal goes through owner.Housing), so the owner check only guards that; the doll has already
+        // left the field above, so no put on can add an item after the rows are read.
         if (cube.Interact?.Metadata.FittingDoll != null && plot.OwnerId == session.AccountId) {
             FittingDollHandler.ReturnItems(session, cube.Id);
         }
