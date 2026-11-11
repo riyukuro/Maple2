@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Channel.Service;
+using Maple2.Server.Core.Helpers;
 using Maple2.Server.World.Containers;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
@@ -92,12 +93,19 @@ public class WorldServer {
                         continue;
                     }
 
+                    int askedChannel = playerInfo.Channel;
                     try {
                         HeartbeatResponse? response = channel.Heartbeat(new HeartbeatRequest {
                             CharacterId = playerInfo.CharacterId,
                         }, cancellationToken: tokenSource.Token);
                         if (response is { Success: false }) {
-                            SetOffline(playerInfo);
+                            // A player between two channels has no session on the old one. Only the answer of
+                            // the channel the player is still recorded on counts, and the record is changed at
+                            // once: a queued change would be applied after the login on the new channel and
+                            // leave the player recorded as offline there.
+                            if (HeartbeatRules.StillOn(askedChannel, playerInfo.Channel)) {
+                                SetOffline(playerInfo, async: false);
+                            }
                             continue;
                         }
                         playerInfo.RetryHeartbeat = 3;
@@ -106,7 +114,9 @@ public class WorldServer {
                             playerInfo.RetryHeartbeat--;
                             continue;
                         }
-                        SetOffline(playerInfo);
+                        if (HeartbeatRules.StillOn(askedChannel, playerInfo.Channel)) {
+                            SetOffline(playerInfo, async: false);
+                        }
                     }
 
                 }
@@ -118,13 +128,13 @@ public class WorldServer {
         }
     }
 
-    public void SetOffline(PlayerInfo playerInfo) {
+    public void SetOffline(PlayerInfo playerInfo, bool async = true) {
         playerInfoLookup.Update(new PlayerUpdateRequest {
             AccountId = playerInfo.AccountId,
             CharacterId = playerInfo.CharacterId,
             LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
             Channel = -1,
-            Async = true,
+            Async = async,
         });
     }
 
