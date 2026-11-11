@@ -4,6 +4,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Packets;
@@ -80,5 +81,47 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.DungeonReviveCount));
         Assert.That(reader.ReadInt(), Is.EqualTo(2));
         Assert.That(writer.Length, Is.EqualTo(2 + 4));
+    }
+
+    // The field xml's autoRevivalTime is seconds (the data holds 1, 3, 8, 9 and 20); the packet's int is milliseconds
+    // (UIAutoReviveCountdownDialog, uiautorevivecountdowndialog.cpp:78).
+    [Test]
+    public void AutoReviveDelayIsFieldSecondsInMs() {
+        MapMetadataProperty Property(AutoReviveType type, int time) => new(Continent: default, Region: default,
+            Category: 0, Type: default, BigCity: false, ExploreType: 0, TutorialType: 0, RevivalReturnId: 0,
+            EnterReturnId: 0, AutoRevivalType: type, AutoRevivalTime: time, InfiniteMeretRevival: false,
+            NoRevivalHere: false, ReviveFullHp: false, UseTimeEvent: false, HomeReturnable: false,
+            DeathPenalty: false, OnlyDarkTomb: false, PkMode: false, CanFly: false, CanClimb: false, IndoorType: 0);
+
+        Assert.That(FieldPlayer.AutoReviveDelayMs(Property(AutoReviveType.Countdown, 20)), Is.EqualTo(20000));
+        Assert.That(FieldPlayer.AutoReviveDelayMs(Property(AutoReviveType.Trigger, 3)), Is.EqualTo(3000));
+        Assert.That(FieldPlayer.AutoReviveDelayMs(Property(AutoReviveType.None, 3)), Is.EqualTo(0));
+        Assert.That(FieldPlayer.AutoReviveDelayMs(Property(AutoReviveType.Countdown, 0)), Is.EqualTo(0));
+    }
+
+    // Client: CMeratMarketMan::OnSaleNoticeTimes (meratmarketman.cpp:2454): command 26, long sales total, long.
+    [Test]
+    public void MeretMarketSalesTotalIsTwoLongs() {
+        ByteWriter writer = MeretMarketPacket.UpdateProfit(4500);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.MeretMarket));
+        Assert.That(reader.ReadByte(), Is.EqualTo(26));
+        Assert.That(reader.ReadLong(), Is.EqualTo(4500));
+        Assert.That(reader.ReadLong(), Is.EqualTo(0));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 8));
+    }
+
+    // Client: CMeratMarketMan::OnMySaleProducts (meratmarketman.cpp:2211): command 11, long sales total, int count.
+    [Test]
+    public void MeretMarketOwnListingsStartWithSalesTotal() {
+        ByteWriter writer = MeretMarketPacket.LoadPersonalListings([], 4500);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.MeretMarket));
+        Assert.That(reader.ReadByte(), Is.EqualTo(11));
+        Assert.That(reader.ReadLong(), Is.EqualTo(4500));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 4));
     }
 }

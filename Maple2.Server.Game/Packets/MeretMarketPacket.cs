@@ -21,7 +21,7 @@ public static class MeretMarketPacket {
         AddDesigner = 23,
         LoadDesignerItems = 25,
         RemoveDesigner = 24,
-        UpdateProfit = 26, // unconfirmed
+        UpdateProfit = 26, // the seller's sales total
         LoadItems = 27,
         LoadBlueprints = 28,
         Purchase = 30,
@@ -32,10 +32,12 @@ public static class MeretMarketPacket {
         Unknown201 = 201,
     }
 
-    public static ByteWriter LoadPersonalListings(ICollection<UgcMarketItem> items) {
+    // Client reader: CMeratMarketMan::OnMySaleProducts (meratmarketman.cpp:2211). The first long is the seller's
+    // sales total, the same member that command 26 sets (see UpdateProfit).
+    public static ByteWriter LoadPersonalListings(ICollection<UgcMarketItem> items, long salesTotal) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.LoadPersonalListings);
-        pWriter.WriteLong();
+        pWriter.WriteLong(salesTotal);
         pWriter.WriteInt(items.Count);
 
         foreach (UgcMarketItem item in items) {
@@ -100,11 +102,17 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter UpdateProfit(long saleId) {
+    // Client reader: CMeratMarketMan::OnSaleNoticeTimes (meratmarketman.cpp:2454), two longs.
+    // 1. The seller's sales total. The my-shop fee tooltip shows it as a meret amount and marks the fee step it
+    //    falls in (uimeratmarketdialog.cpp:1127, uimeratmarketcommon.cpp:999), and the sale notice appears once it
+    //    reaches the client's seller limit (IsSellerLimitReached, meratmarketman.cpp:1623).
+    // 2. Copied into every own listing, into the long that follows the promotion end time in the listing itself
+    //    (ugcdef.cpp:2077). The client only stores it, and the server writes 0 there in each listing, so 0 here.
+    public static ByteWriter UpdateProfit(long salesTotal) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.UpdateProfit);
-        pWriter.WriteLong(); // sales total, compared with the seller limit
-        pWriter.WriteLong(); // time until which the player's listings show as sold out
+        pWriter.WriteLong(salesTotal);
+        pWriter.WriteLong();
 
         return pWriter;
     }

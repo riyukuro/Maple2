@@ -37,7 +37,17 @@ public sealed class UgcMarketManager {
     }
 
     public void Load() {
-        session.Send(MeretMarketPacket.LoadPersonalListings(items.Values));
+        session.Send(MeretMarketPacket.LoadPersonalListings(items.Values, SalesTotal(items.Values)));
+    }
+
+    // The seller's sales total as far as the server records it: no running total is stored, so this is the
+    // price times the sales count of the listings the account still has. A removed listing no longer counts.
+    public static long SalesTotal(IEnumerable<UgcMarketItem> listings) {
+        long total = 0;
+        foreach (UgcMarketItem listing in listings) {
+            total += listing.Price * listing.SalesCount;
+        }
+        return total;
     }
 
     public void RefreshSales() {
@@ -68,7 +78,7 @@ public sealed class UgcMarketManager {
 
         session.Currency.Meret += sale.Profit;
         session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));
-        session.Send(MeretMarketPacket.UpdateProfit(sale.Id));
+        session.Send(MeretMarketPacket.UpdateProfit(SalesTotal(items.Values)));
     }
 
     public void RemoveListing(long id) {
