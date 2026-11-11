@@ -256,15 +256,25 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     // The field's score board score compared with score, once a script in this field has called
-    // score_board_set_score. Before that (no score source feeds the board) the test passes, as it always did,
-    // so a battle waiting on a score of 800 does not wait for ever.
+    // score_board_set_score. Before that (no score source feeds the board) the test is the old one, the
+    // threshold compared with 0, so a battle waiting on a GreaterEqual 800 does not wait for ever.
     public bool ScoreBoardScore(int score, OperatorType operatorType) {
         DebugLog("[GetScoreBoardScore] score:{Score}, operator:{Operator}", score, operatorType);
         return CompareScoreBoard(Field.ScoreBoardScore, score, operatorType);
     }
 
     public static bool CompareScoreBoard(int? boardScore, int score, OperatorType operatorType) {
-        return boardScore is not { } value || CompareUserValue(value, score, operatorType);
+        if (boardScore is { } value) {
+            return CompareUserValue(value, score, operatorType);
+        }
+        return operatorType switch {
+            OperatorType.Greater => score > 0,
+            OperatorType.GreaterEqual => score >= 0,
+            OperatorType.Equal => score == 0,
+            OperatorType.LessEqual => score <= 0,
+            OperatorType.Less => score < 0,
+            _ => false,
+        };
     }
 
     public bool UserValue(string key, int value, OperatorType operatorType, bool negate) {

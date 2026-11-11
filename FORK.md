@@ -41,7 +41,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Emote:** the list entry is 26 bytes; the favorite request (sub-type 4) is read as the client writes it.
 - **Trigger:** the sub-type numbers are the client's (skip cutscene, UI, load script, save script, discard script).
 - **Trigger dungeon variables:** a variable never set reads 0; no client code or table gives a start value.
-- **Trigger score board:** score_board_score compares only in a field whose script called score_board_set_score; elsewhere it passes as before. No kill, pickup or packet score reaches the board (the client only shows it), so 02020063/02020065 battle_1 (800 points) and 99999840/99999841 would otherwise never end.
+- **Trigger score board:** score_board_score compares only in a field whose script called score_board_set_score; elsewhere it is the old test (the threshold compared with 0, so GreaterEqual passes). No kill, pickup or packet score reaches the board (the client only shows it), so 02020063/02020065 battle_1 (800 points) and 99999840/99999841 would otherwise never end.
 - **Item merge:**
   - Request and response sub-types are renumbered to the client's.
   - The option preview (Select) is written in the client's layout.

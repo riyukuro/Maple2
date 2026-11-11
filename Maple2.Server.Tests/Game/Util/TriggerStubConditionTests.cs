@@ -28,9 +28,11 @@ public class TriggerStubConditionTests {
     [Test]
     public void ScoreBoardScore_PassesUntilAScriptSetsTheScore() {
         // No score source feeds the board: a field whose scripts never call score_board_set_score keeps the
-        // old pass for any operator, so a battle waiting on 800 points still ends.
+        // old test (the threshold compared with 0), so a battle waiting on 800 points still ends.
         Assert.That(TriggerContext.CompareScoreBoard(null, 800, OperatorType.GreaterEqual), Is.True);
-        Assert.That(TriggerContext.CompareScoreBoard(null, 800, OperatorType.Less), Is.True);
+        Assert.That(TriggerContext.CompareScoreBoard(null, 800, OperatorType.Less), Is.False);
+        Assert.That(TriggerContext.CompareScoreBoard(null, 800, OperatorType.LessEqual), Is.False);
+        Assert.That(TriggerContext.CompareScoreBoard(null, 0, OperatorType.Equal), Is.True);
         // After score_board_set_score="0" (the bonus maps' start), the settlement's score test is real.
         Assert.That(TriggerContext.CompareScoreBoard(0, 18000, OperatorType.GreaterEqual), Is.False);
         Assert.That(TriggerContext.CompareScoreBoard(0, 18000, OperatorType.Less), Is.True);
