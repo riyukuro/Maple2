@@ -480,6 +480,7 @@ public class FieldNpc : Actor<Npc> {
 
         HandleDamageDealers();
         DarkStreamSpawnCleared();
+        Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
         if (Field is DungeonFieldManager dungeonField && GetLastAttacker() is FieldPlayer lastHitter) {
             dungeonField.CountMissions(lastHitter, mission => mission.AddLastHit(Value.Metadata.Id));
         }

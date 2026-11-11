@@ -269,8 +269,8 @@ public partial class TriggerContext {
     }
 
     public bool NpcIsDeadByStringId(string stringId) {
-        ErrorLog("[NpcIsDeadByStringId] stringId:{Round}", stringId);
-        return false;
+        DebugLog("[NpcIsDeadByStringId] stringId:{StringId}", stringId);
+        return Field.StringIdDeaths.IsDead(stringId, Field.Mobs.Values.Select(mob => (mob.Value.Metadata.Basic.StringId, mob.IsDead)));
     }
     #endregion
 

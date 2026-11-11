@@ -36,6 +36,8 @@ public partial class FieldManager {
     public ConcurrentDictionary<int, FieldPet> Pets { get; } = [];
     // Set by the limit_spawn_npc_count trigger action: trigger spawns stop once the field holds this many monsters. 0 = no limit.
     public int TriggerMobLimit { get; set; }
+    // The string ids of the monsters that died here (npc_is_dead_by_string_id).
+    public NpcStringIdDeaths StringIdDeaths { get; } = new();
 
     // Entities
     private readonly ConcurrentDictionary<string, FieldBreakable> fieldBreakables = new();

@@ -71,7 +71,10 @@ public record NpcMetadataBasic(
     string[]? PropertyTags = null,
     // The aiInfo summonNpcIDs list: the npc ids an AI summon node's npcId (1-based) picks from. Null in rows
     // ingested before the field existed.
-    int[]? SummonNpcIds = null) {
+    int[]? SummonNpcIds = null,
+    // The basic stringID (a boss name shared by its variants, read by npc_is_dead_by_string_id). Null when the
+    // row has none or was ingested before the field existed.
+    string? StringId = null) {
     public bool HasPropertyTag(string tag) => PropertyTags != null && PropertyTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
 }
 

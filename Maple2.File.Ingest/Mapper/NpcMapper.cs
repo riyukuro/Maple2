@@ -122,7 +122,8 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                     Difficulty: data.basic.difficulty,
                     CustomExp: data.exp.customExp,
                     PropertyTags: data.basic.propertyTags,
-                    SummonNpcIds: summonNpcIds.GetValueOrDefault(id)),
+                    SummonNpcIds: summonNpcIds.GetValueOrDefault(id),
+                    StringId: string.IsNullOrEmpty(data.basic.stringID) ? null : data.basic.stringID),
                 Property: new NpcMetadataProperty(
                     Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
                     Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),
