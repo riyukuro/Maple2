@@ -281,14 +281,27 @@ public partial class TriggerContext {
         return Field.EnumerateNpcs().Where(mob => boxes.Any(box => box.Contains(mob.Position) || box.Intersects(mob.Shape)));
     }
 
+    // The event spawn point of that id, else the map's plain npc spawn point of that id: scripts also spawn
+    // on plain spawn points, which the event table does not hold.
+    public static SpawnPointNPC? FindSpawnPoint(IReadOnlyDictionary<int, EventSpawnPointNPC> eventSpawns, IEnumerable<SpawnPointNPC> npcSpawns, int spawnId) {
+        if (eventSpawns.TryGetValue(spawnId, out EventSpawnPointNPC? eventSpawn)) {
+            return eventSpawn;
+        }
+        return npcSpawns.FirstOrDefault(spawn => spawn.SpawnPointId == spawnId);
+    }
+
     private void SpawnNpc(int spawnId, bool useSpawnAnimation = false) {
-        if (!Field.Entities.EventNpcSpawns.TryGetValue(spawnId, out EventSpawnPointNPC? spawn)) {
+        SpawnPointNPC? spawn = FindSpawnPoint(Field.Entities.EventNpcSpawns, Field.Entities.NpcSpawns, spawnId);
+        if (spawn == null) {
             logger.Error("[SpawnNpc] Invalid spawnId:{SpawnId}", spawnId);
             return;
         }
+        var eventSpawn = spawn as EventSpawnPointNPC;
+        // A plain spawn point has no npc count: it spawns its whole list.
+        int npcCount = eventSpawn?.NpcCount ?? spawn.NpcList.Sum(entry => entry.Count);
 
         DebugLog("[SpawnNpc] spawnId:{SpawnId}, SpawnRadius:{SpawnRadius}, NpcCount:{NpcCount}, Position:{Position}",
-            spawnId, spawn.SpawnRadius, spawn.NpcCount, spawn.Position);
+            spawnId, spawn.SpawnRadius, npcCount, spawn.Position);
 
         // NpcCount is the total number of NPCs that can exist at this spawn point.
         // Each NpcList entry's Count is how many of that type can spawn.
@@ -301,7 +314,7 @@ public partial class TriggerContext {
         }
 
         // Shuffle and cap at NpcCount
-        IEnumerable<int> npcIdsToSpawn = npcPool.OrderBy(_ => Random.Shared.Next()).Take(spawn.NpcCount);
+        IEnumerable<int> npcIdsToSpawn = npcPool.OrderBy(_ => Random.Shared.Next()).Take(npcCount);
 
         foreach (int npcId in npcIdsToSpawn) {
             if (!Field.NpcMetadata.TryGet(npcId, out NpcMetadata? npc)) {
@@ -310,8 +323,8 @@ public partial class TriggerContext {
             }
 
             string spawnAnimationString = string.Empty;
-            if (!string.IsNullOrEmpty(spawn.SpawnAnimation) && useSpawnAnimation) {
-                spawnAnimationString = spawn.SpawnAnimation;
+            if (!string.IsNullOrEmpty(eventSpawn?.SpawnAnimation) && useSpawnAnimation) {
+                spawnAnimationString = eventSpawn.SpawnAnimation;
             }
             FieldNpc? fieldNpc = Field.SpawnNpc(npc, spawn.Position, spawn.Rotation, spawnPointNpc: spawn, spawnAnimation: spawnAnimationString);
             if (fieldNpc == null) {
