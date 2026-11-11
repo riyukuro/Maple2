@@ -254,6 +254,37 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // A cancelled reservation: the hall row is deleted under the same lock as in AddWeddingGuests, and
+        // the guests it held at that moment are returned for the cancel mails. An invitation is stored before
+        // the cancel (its guest is in the returned list) or finds the hall gone. Null when the hall is gone or
+        // the delete failed.
+        public Dictionary<long, long>? CancelWeddingHall(long hallId) {
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `wedding-hall` WHERE `Id` = {0} FOR UPDATE", hallId);
+                Model.WeddingHall? hall = Context.WeddingHall.Find(hallId);
+                if (hall == null) {
+                    return null;
+                }
+                Context.Entry(hall).Reload();
+                if (Context.Entry(hall).State == EntityState.Detached) {
+                    return null;
+                }
+
+                var guests = new Dictionary<long, long>(hall.GuestList);
+                Context.WeddingHall.Remove(hall);
+                if (!Context.TrySaveChanges()) {
+                    return null;
+                }
+
+                transaction.Commit();
+                return guests;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to cancel wedding hall {HallId}", hallId);
+                return null;
+            }
+        }
+
         // A changed reservation: the old hall row is replaced by a new one that keeps the old row's guests.
         // The old row is locked as in AddWeddingGuests for the read of its guests, the delete and the insert,
         // so an invitation is stored either before the change (and is carried over) or finds the old hall gone

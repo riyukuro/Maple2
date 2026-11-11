@@ -264,13 +264,6 @@ public sealed class MarriageManager {
         }
     }
 
-    // The guests of the stored hall, read before it is deleted: the partner may have invited since this
-    // session loaded it.
-    private Dictionary<long, long> StoredGuests(GameStorage.Request db) {
-        WeddingHall? stored = db.GetWeddingHall(Marriage);
-        return new Dictionary<long, long>(stored?.GuestList ?? WeddingHall.GuestList);
-    }
-
     // The vow was completed in the hall (trigger WeddingVowComplete) and the marriage is stored as married.
     public void SetMarried(long marriageTime) {
         if (Marriage.Id == 0) {
@@ -1019,8 +1012,9 @@ public sealed class MarriageManager {
         } catch { /* ignored */
         }
 
-        Dictionary<long, long> cancelGuests = StoredGuests(db);
-        if (!db.DeleteWeddingHall(WeddingHall.Id)) {
+        // The guests are read and the row deleted under the row's lock.
+        Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(WeddingHall.Id);
+        if (cancelGuests == null) {
             logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
         } else {
             MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
@@ -1043,8 +1037,9 @@ public sealed class MarriageManager {
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
-        Dictionary<long, long> cancelGuests = StoredGuests(db);
-        if (!db.DeleteWeddingHall(WeddingHall.Id)) {
+        // The guests are read and the row deleted under the row's lock.
+        Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(WeddingHall.Id);
+        if (cancelGuests == null) {
             logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
         } else {
             MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
