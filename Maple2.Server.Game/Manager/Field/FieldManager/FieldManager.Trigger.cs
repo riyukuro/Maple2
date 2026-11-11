@@ -19,6 +19,9 @@ public partial class FieldManager {
     // The score the score_board_score condition tests; only score_board_set_score writes it, since no kill or
     // pickup score reaches it yet.
     public int ScoreBoardScore;
+    // Dungeon variables of a field that is not part of a dungeon instance (a dungeon's fields use their room
+    // record's store instead).
+    public readonly ConcurrentDictionary<int, int> DungeonVariables = new();
 
     // The ceremony of a wedding hall room, set when the first character enters it by Wedding 0x1a; null in every
     // other field.

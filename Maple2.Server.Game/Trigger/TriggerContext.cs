@@ -82,9 +82,18 @@ public partial class TriggerContext : ITriggerContext {
         return 0 >= score;
     }
 
+    // The instance's dungeon variable equals value; an id never set reads 0.
     public bool DungeonVariable(int id, int value) {
-        ErrorLog("[GetDungeonVariable] id:{Id}", id);
-        return false;
+        DebugLog("[GetDungeonVariable] id:{Id}, value:{Value}", id, value);
+        return DungeonVariableEquals(DungeonVariables, id, value);
+    }
+
+    // The store of the dungeon instance the field belongs to, else the field's own.
+    private System.Collections.Concurrent.ConcurrentDictionary<int, int> DungeonVariables =>
+        Field is DungeonFieldManager dungeonField ? dungeonField.DungeonRoomRecord.Variables : Field.DungeonVariables;
+
+    public static bool DungeonVariableEquals(IReadOnlyDictionary<int, int> variables, int id, int value) {
+        return variables.GetValueOrDefault(id, 0) == value;
     }
 
     // The damage the first npc of the spawn point took so far, over its max hp (1.0 = its whole hp), as the

@@ -126,7 +126,8 @@ public partial class TriggerContext {
     }
 
     public void SetDungeonVariable(int varId, int value) {
-        ErrorLog("[SetDungeonVariable] varId:{VarId}, value:{Value}", varId, value);
+        DebugLog("[SetDungeonVariable] varId:{VarId}, value:{Value}", varId, value);
+        DungeonVariables[varId] = value;
     }
 
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {

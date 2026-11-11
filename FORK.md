@@ -40,6 +40,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Opcodes:** client-to-server opcodes 0xAB to 0xBC are renumbered to the client's list.
 - **Emote:** the list entry is 26 bytes; the favorite request (sub-type 4) is read as the client writes it.
 - **Trigger:** the sub-type numbers are the client's (skip cutscene, UI, load script, save script, discard script).
+- **Trigger dungeon variables:** a variable never set reads 0; no client code or table gives a start value.
 - **Item merge:**
   - Request and response sub-types are renumbered to the client's.
   - The option preview (Select) is written in the client's layout.
