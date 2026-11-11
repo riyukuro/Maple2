@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Validators;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -122,8 +123,12 @@ public class JobHandler : FieldPacketHandler {
     }
 
     private void HandleReset(GameSession session, IByteReader packet) {
-        var rank = (SkillRank) packet.ReadInt();
-        session.Config.Skill.ResetSkills(rank);
+        // The client sends its job rank number: 0 every rank, 1 base job, 2 awakening.
+        SkillRank? rank = JobRules.ReadResetRank(packet);
+        if (rank == null) {
+            return;
+        }
+        session.Config.Skill.ResetSkills(rank.Value);
 
         session.Send(JobPacket.Reset(session.Player, session.Config.Skill.SkillInfo));
         session.Config.UpdateHotbarSkills();
