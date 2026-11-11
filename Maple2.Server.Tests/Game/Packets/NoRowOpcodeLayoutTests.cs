@@ -76,6 +76,27 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 8 + 2 + 20 + transferBytes.Length));
     }
 
+    // Client: CSceneStateGame::OnStateFishingData (scenestategame.cpp:8510): int player object id, int state,
+    // int sub state. Fishing is state 45, sub state 0 (fishingmanager.cpp:1306); leaving it is state 1 (:1336).
+    [Test]
+    public void StateFishingDataIsThreeInts() {
+        ByteWriter writer = StateFishingPacket.State(1234, StateFishingPacket.STATE_FISHING);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.StateFishingData));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1234));
+        Assert.That(reader.ReadInt(), Is.EqualTo(45));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(writer.Length, Is.EqualTo(2 + 4 + 4 + 4));
+
+        writer = StateFishingPacket.State(1234, StateFishingPacket.STATE_IDLE);
+        reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.StateFishingData));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1234));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+    }
+
     // Client: CSceneStateGame::OnAutoRevive (scenestategame.cpp:4332): one int, the countdown in milliseconds.
     [Test]
     public void AutoReviveCountdownIsOneInt() {

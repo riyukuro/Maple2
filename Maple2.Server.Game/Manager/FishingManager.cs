@@ -48,6 +48,8 @@ public class FishingManager {
         }
         session.Send(FishingPacket.Stop());
         session.Field?.Broadcast(GuideObjectPacket.Remove(GuideObject));
+        // The player's own client leaves the state by itself; the others are told.
+        session.Field?.Broadcast(StateFishingPacket.State(session.Player.ObjectId, StateFishingPacket.STATE_IDLE), session);
         GuideObject = null;
         rod = null;
         fishFightGame = false;
@@ -95,6 +97,8 @@ public class FishingManager {
         session.Send(FishingPacket.LoadTiles(tiles.Values));
         session.Field.Broadcast(GuideObjectPacket.Create(session.GuideObject));
         session.Send(FishingPacket.Prepare(fishingRodUid));
+        // The player's own client enters the fishing state on the packet above; the others are told here.
+        session.Field.Broadcast(StateFishingPacket.State(session.Player.ObjectId, StateFishingPacket.STATE_FISHING), session);
         return FishingError.none;
     }
 
