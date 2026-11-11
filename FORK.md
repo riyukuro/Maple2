@@ -387,6 +387,8 @@ The checker follows the client's item reader (CItem::ReadFromStream, commonfiles
    - `TST_CMD_FILE`: once a second, the game server reads a file named after this prefix and the character id, and runs each line as a chat command **as the logged-in player**. Never set it on a server that others can reach.
    - `TST_PKT_DIR`: the server appends every packet that clients send, including chat, to a log file per character in this directory.
 
+**LOCALE must be the played client's locale.** The server takes script branches and locale rows from LOCALE, the client from its own region; with a KR client and LOCALE=NA, for example, the client lets an outfit with no break row be dismantled (its KR script gives lucky bag coupons) while the server's NA branch previews and pays nothing. The ingest prints a warning when MS2_PLAYED_CLIENT_XML is set and its pack's region (its one table/<region>/ folder) is not LOCALE.
+
 ## Errata in commit subjects
 
 Published commits are not rewritten, so wrong numbers in their subjects are listed here.

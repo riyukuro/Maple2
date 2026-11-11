@@ -199,6 +199,9 @@ Filter.Load(xmlReader, locale, env);
 FeatureLevels.Apply();
 PackTables.Load(xmlReader, locale);
 Console.WriteLine($"Rows filtered for {locale}; table/<region> files read from {PackTables.Locale}.");
+if (playedReader != null && PackTables.PlayedLocaleWarning(PackTables.RegionFolders(playedReader.Files.Select(file => file.Name)), locale) is { } playedLocaleWarning) {
+    Console.WriteLine(playedLocaleWarning);
+}
 
 // new TriggerGenerator(xmlReader).Generate();
 
