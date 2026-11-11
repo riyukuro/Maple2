@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -519,8 +519,10 @@ public class PartyLookupTests {
         Assert.That(party.Party.Members, Has.Count.EqualTo(1));
     }
 
+    // The join that fills the room closes the recruit, so a later one is refused as closed (31); JoinDungeonRecruit's
+    // own cap branch (19) is not reached through World, only the rule is.
     [Test]
-    public void AJoinOverTheRoomsCapIsRefused() {
+    public void AFullPartyClosesItsRecruitAndRefuses() {
         PartyManager party = Party(3);
         Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 0, 4));
         Assert.That(lookup.JoinDungeonRecruit(Player(), party.Party.Id, 200), Is.EqualTo(PartyError.none));
@@ -534,7 +536,8 @@ public class PartyLookupTests {
     [Test]
     public void AJoinerBelowTheRoomsLimitsIsRefused() {
         PartyManager party = Party(1);
-        Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 1000, 4));
+        Leader(party).GearScore = 1000; // the requester is held to the room too
+        Assert.That(Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 1000, 4)).Error, Is.EqualTo(0));
         PlayerInfo weak = Player();
         weak.GearScore = 999;
         Assert.That(lookup.JoinDungeonRecruit(weak, party.Party.Id, 200), Is.EqualTo(PartyError.s_party_err_lack_gear_score));
@@ -594,5 +597,74 @@ public class PartyLookupTests {
         Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 0, 10));
         Assert.That(party.Join(Player()), Is.EqualTo(PartyError.none));
         Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Null);
+    }
+    // rv46 MAJOR 1: the wait goes with the requester, not with the party, so leaving and recruiting again waits.
+    [Test]
+    public void ARecruitAfterLeavingThePartyStillWaits() {
+        PlayerInfo solo = Player();
+        PartyResponse first = Recruit(solo, [solo]);
+        Assert.That(lookup.Disband(first.PartyId), Is.EqualTo(PartyError.none));
+        lookup.Now += TimeSpan.FromSeconds(4);
+        PartyResponse again = Recruit(solo, [solo]);
+        Assert.That(again.CooldownMilliseconds, Is.EqualTo(6000));
+        Assert.That(again.PartyId, Is.EqualTo(0));
+        Assert.That(lookup.TryGetByCharacter(solo.CharacterId, out _), Is.False);
+        Assert.That(lookup.Notices, Has.Count.EqualTo(1));
+
+        lookup.Now += TimeSpan.FromSeconds(6);
+        Assert.That(Recruit(solo, [solo]).CooldownMilliseconds, Is.EqualTo(0));
+        Assert.That(lookup.Notices, Has.Count.EqualTo(2));
+    }
+
+    // A leader who recruited in one party waits in the next one too, the larger time left counting.
+    [Test]
+    public void ALeaderWhoDisbandsAndLeadsAnotherPartyWaits() {
+        PartyManager party = Party(1);
+        PlayerInfo leader = Leader(party);
+        Recruit(leader, []);
+        Assert.That(lookup.Disband(party.Party.Id), Is.EqualTo(PartyError.none));
+        lookup.Now += TimeSpan.FromSeconds(3);
+        Assert.That(lookup.Create(leader.CharacterId, out int nextId, leader), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.TryGet(nextId, out PartyManager? next), Is.True);
+        Assert.That(next!.Join(Player()), Is.EqualTo(PartyError.none));
+        Assert.That(Recruit(leader, []).CooldownMilliseconds, Is.EqualTo(7000));
+        Assert.That(lookup.Notices, Has.Count.EqualTo(1));
+        Assert.That(next.Party.Members, Has.Count.EqualTo(2));
+    }
+
+    // Waits past the cooldown are dropped when a notice starts.
+    [Test]
+    public void OldWaitsAreDropped() {
+        Recruit(Player(), []);
+        Recruit(Player(), []);
+        Assert.That(lookup.DungeonRecruits.RequestersKept, Is.EqualTo(2));
+        lookup.Now += TimeSpan.FromSeconds(10);
+        Recruit(Player(), []);
+        Assert.That(lookup.DungeonRecruits.RequestersKept, Is.EqualTo(1));
+    }
+
+    // rv46 MINOR 2: a party with another room set does not recruit for this one (43); for its own room it does.
+    [Test]
+    public void APartyWithAnotherRoomSetDoesNotRecruit() {
+        PartyManager party = Party(1);
+        long leaderId = party.Party.LeaderCharacterId;
+        Assert.That(party.SetDungeon(leaderId, RecruitRoom.Id + 1, true), Is.EqualTo(PartyError.none));
+        Assert.That(Recruit(Leader(party), []).Error, Is.EqualTo((int) PartyError.s_party_err_dungeon_match_another));
+        Assert.That(lookup.Notices, Is.Empty);
+        Assert.That(party.SetDungeon(leaderId, RecruitRoom.Id, true), Is.EqualTo(PartyError.none));
+        Assert.That(Recruit(Leader(party), []).Error, Is.EqualTo(0));
+        Assert.That(lookup.Notices, Has.Count.EqualTo(1));
+    }
+
+    // rv46 MINOR 4: the requester is held to the room's level and gear score (17, 18), with no party of one made.
+    [Test]
+    public void ARequesterBelowTheRoomsLimitsDoesNotRecruit() {
+        PlayerInfo low = Player();
+        low.Level = 10;
+        Assert.That(Recruit(low, [low]).Error, Is.EqualTo((int) PartyError.s_party_err_lack_level));
+        Assert.That(lookup.TryGetByCharacter(low.CharacterId, out _), Is.False);
+        PlayerInfo weak = Player();
+        Assert.That(Recruit(weak, [weak], new DungeonRecruitRoom(200, 50, 1000, 4)).Error, Is.EqualTo((int) PartyError.s_party_err_lack_gear_score));
+        Assert.That(lookup.Notices, Is.Empty);
     }
 }

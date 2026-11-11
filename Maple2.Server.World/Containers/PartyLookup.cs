@@ -251,8 +251,13 @@ public class PartyLookup : IDisposable {
 
     // RoomDungeon 15/16 (r63): the leader, or a player with no party (who gets a party of one), recruits for a room.
     // The notice goes to the party's members and to the online players at the room's level outside a full or
-    // matching party. A party sends one notice per cooldown; inside it the requester gets the time left.
+    // matching party. A party, and a requester in any party, sends one notice per cooldown; inside it the
+    // requester gets the larger time left. The requester is held to the room's level and gear score as a joiner.
     public PartyResponse StartDungeonRecruit(PlayerInfo requestor, DungeonRecruitKind kind, DungeonRecruitRoom room, IReadOnlyCollection<PlayerInfo> online) => DungeonMatchStep(() => {
+        PartyError own = DungeonRecruitRules.RefusesJoin(requestor, room, 0);
+        if (own != PartyError.none) {
+            return new PartyResponse { Error = (int) own };
+        }
         bool made = false;
         if (TryGetByCharacter(requestor.CharacterId, out PartyManager? manager)) {
             int partyId = manager.Party.Id;
@@ -262,14 +267,22 @@ public class PartyLookup : IDisposable {
             if (DungeonMatch.IsSearching(partyId) || DungeonMatch.IsMatching(partyId)) {
                 return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
             }
+            // The party has another room set: a joiner would be held to one room and join for the other.
+            if (manager.Party.DungeonSet && manager.Party.DungeonId != room.Id) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+            }
             if (room.MaxUsers > 0 && manager.Party.Members.Count >= room.MaxUsers) {
                 return new PartyResponse { Error = (int) PartyError.s_party_err_full_limit_player };
             }
-            TimeSpan left = DungeonRecruits.CooldownLeft(partyId);
+            TimeSpan left = DungeonRecruits.CooldownLeft(partyId, requestor.CharacterId);
             if (left > TimeSpan.Zero) {
-                return new PartyResponse { CooldownMilliseconds = Math.Max(1, (int) Math.Ceiling(left.TotalMilliseconds)) };
+                return Cooldown(left);
             }
         } else {
+            TimeSpan left = DungeonRecruits.CooldownLeftFor(requestor.CharacterId);
+            if (left > TimeSpan.Zero) {
+                return Cooldown(left);
+            }
             PartyError createError = Create(requestor.CharacterId, out int partyId, requestor);
             if (createError != PartyError.none) {
                 return new PartyResponse { Error = (int) createError };
@@ -280,13 +293,16 @@ public class PartyLookup : IDisposable {
             made = true;
         }
 
-        DungeonRecruit recruit = DungeonRecruits.Start(manager.Party.Id, kind, room);
+        DungeonRecruit recruit = DungeonRecruits.Start(manager.Party.Id, requestor.CharacterId, kind, room);
         if (made) {
             manager.SendLoad(manager.Party.Members.Values);
         }
         SendDungeonRecruit(manager, recruit, DungeonRecruitTargets(manager, room, online));
         return new PartyResponse { PartyId = manager.Party.Id };
     });
+
+    private static PartyResponse Cooldown(TimeSpan left) =>
+        new() { CooldownMilliseconds = Math.Max(1, (int) Math.Ceiling(left.TotalMilliseconds)) };
 
     // Who gets a party's notice: its members, and the players DungeonRecruitRules.Receives takes.
     public List<PlayerInfo> DungeonRecruitTargets(PartyManager manager, DungeonRecruitRoom room, IEnumerable<PlayerInfo> online) {

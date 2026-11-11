@@ -53,28 +53,49 @@ public class DungeonRecruitBoard {
     private readonly Func<DateTime> now;
     private readonly Dictionary<int, DungeonRecruit> open = new();
     private readonly Dictionary<int, DateTime> lastNotice = new();
+    // The last notice of each requester, kept when the party goes (Forget), so that leaving the party and
+    // recruiting again does not skip the wait; entries past the cooldown are dropped on each Start.
+    private readonly Dictionary<long, DateTime> lastNoticeBy = new();
 
     public DungeonRecruitBoard(Func<DateTime>? now = null) {
         this.now = now ?? (() => DateTime.UtcNow);
     }
 
     // Zero: the party may send a notice now.
-    public TimeSpan CooldownLeft(int partyId) {
-        if (!lastNotice.TryGetValue(partyId, out DateTime last)) {
-            return TimeSpan.Zero;
-        }
+    public TimeSpan CooldownLeft(int partyId) =>
+        lastNotice.TryGetValue(partyId, out DateTime last) ? Left(last) : TimeSpan.Zero;
+
+    // Zero: the character may send a notice now, in any party.
+    public TimeSpan CooldownLeftFor(long characterId) =>
+        lastNoticeBy.TryGetValue(characterId, out DateTime last) ? Left(last) : TimeSpan.Zero;
+
+    // The larger of the party's and the requester's time left.
+    public TimeSpan CooldownLeft(int partyId, long characterId) {
+        TimeSpan party = CooldownLeft(partyId);
+        TimeSpan character = CooldownLeftFor(characterId);
+        return party > character ? party : character;
+    }
+
+    private TimeSpan Left(DateTime last) {
         TimeSpan left = last + DungeonRecruitRules.Cooldown - now();
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
     // A new notice: it takes the place of the party's open recruit.
-    public DungeonRecruit Start(int partyId, DungeonRecruitKind kind, DungeonRecruitRoom room) {
+    public DungeonRecruit Start(int partyId, long requesterId, DungeonRecruitKind kind, DungeonRecruitRoom room) {
         DateTime at = now();
+        foreach (long stale in lastNoticeBy.Where(entry => at - entry.Value >= DungeonRecruitRules.Cooldown).Select(entry => entry.Key).ToList()) {
+            lastNoticeBy.Remove(stale);
+        }
         var recruit = new DungeonRecruit(partyId, kind, room, at);
         open[partyId] = recruit;
         lastNotice[partyId] = at;
+        lastNoticeBy[requesterId] = at;
         return recruit;
     }
+
+    // Requesters whose wait is still kept (for tests).
+    public int RequestersKept => lastNoticeBy.Count;
 
     // The party's open recruit; one past its time is closed.
     public DungeonRecruit? Get(int partyId) {
@@ -96,7 +117,7 @@ public class DungeonRecruitBoard {
 
     public void Close(int partyId) => open.Remove(partyId);
 
-    // The party is gone.
+    // The party is gone; its requesters' waits stay.
     public void Forget(int partyId) {
         open.Remove(partyId);
         lastNotice.Remove(partyId);
