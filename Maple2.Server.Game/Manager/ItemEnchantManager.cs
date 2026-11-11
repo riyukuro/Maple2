@@ -100,7 +100,9 @@ public class ItemEnchantManager {
         }
 
         Item? item = session.Item.GetGear(itemUid);
-        if (item == null || !item.Metadata.Limit.EnableEnchant) {
+        // The client's own test (itemenchantlimittable.cpp:185): an item at the last grade or limit broken
+        // is not staged. Without it the grade passed the last row of every table.
+        if (item == null || !ItemEnchantRules.CanEnchant(item.Metadata.Limit.EnableEnchant, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0)) {
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
             return false;
@@ -281,6 +283,12 @@ public class ItemEnchantManager {
         }
 
         upgradeItem.Enchant ??= new ItemEnchant();
+        // The staged item may have reached the last grade by the enchant before this one.
+        if (!ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0)) {
+            session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
+            NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
+            return false;
+        }
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
         if (!force && fodderWeight < RequireFodder[enchants]) {
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.not_enough_fodder);
