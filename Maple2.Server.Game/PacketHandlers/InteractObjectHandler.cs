@@ -43,17 +43,22 @@ public class InteractObjectHandler : FieldPacketHandler {
         }
     }
 
+    // Start and End carry a count, then that many object names (CInteractObject and StateInteraction senders).
     private void HandleStart(GameSession session, IByteReader packet) {
-        string entityId = packet.ReadString();
-
-        if (session.Field?.TryGetInteract(entityId, out FieldInteract? interact) != true) {
-            return;
+        int count = packet.ReadInt();
+        for (int i = 0; i < count; i++) {
+            packet.ReadString(); // object name; nothing is done on start
         }
     }
 
     private void HandleEnd(GameSession session, IByteReader packet) {
-        string entityId = packet.ReadString();
+        int count = packet.ReadInt();
+        for (int i = 0; i < count; i++) {
+            End(session, packet.ReadString());
+        }
+    }
 
+    private void End(GameSession session, string entityId) {
         if (session.Field?.TryGetInteract(entityId, out FieldInteract? interact) == true && interact.React()) {
             session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
             session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id);
