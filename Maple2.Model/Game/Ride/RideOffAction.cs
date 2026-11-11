@@ -65,8 +65,8 @@ public class RideOffActionTakeLr() : RideOffAction(RideOffType.TakeLr) {
 
     public override void WriteTo(IByteWriter writer) {
         base.WriteTo(writer);
-        writer.WriteInt();  // RideOffAction+28
-        writer.WriteByte(); // RideOffAction+32
+        writer.WriteByte();
+        writer.WriteInt();
     }
 }
 
@@ -128,9 +128,9 @@ public class RideOffActionAutoInteraction() : RideOffAction(RideOffType.AutoInte
 
     public override void WriteTo(IByteWriter writer) {
         base.WriteTo(writer);
-        writer.WriteInt();  // RideOffAction+28
-        writer.WriteByte(); // RideOffAction+32
-        writer.WriteShort(); // RideOffAction+36
+        writer.WriteInt();
+        writer.WriteShort();
+        writer.WriteInt();
     }
 }
 
