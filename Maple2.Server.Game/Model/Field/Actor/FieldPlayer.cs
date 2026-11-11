@@ -424,13 +424,14 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
-    // The client only tests autoRevivalTime > 0 (CFieldData::HasAutoRevivalType1/2, fielddata.cpp:827); the unit of
-    // the field xml value is not visible there. Values under 1000 are taken as seconds, larger ones as milliseconds.
+    // The field xml's autoRevivalTime is in seconds: the client only tests it for > 0 (CFieldData::HasAutoRevivalType1/2,
+    // fielddata.cpp:827), and the field data holds only 1, 3, 8, 9 and 20. The packet's int is in milliseconds: the
+    // countdown dialog adds it to the tick count and shows it divided by 1000 (uiautorevivecountdowndialog.cpp:78).
     public static int AutoReviveDelayMs(MapMetadataProperty property) {
         if (property.AutoRevivalType == AutoReviveType.None || property.AutoRevivalTime <= 0) {
             return 0;
         }
-        return property.AutoRevivalTime < 1000 ? property.AutoRevivalTime * 1000 : property.AutoRevivalTime;
+        return property.AutoRevivalTime * 1000;
     }
 
     /// <summary>
