@@ -5,6 +5,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Trigger;
@@ -62,19 +63,38 @@ public partial class TriggerContext {
         }
     }
 
+    // score_board_create opens the 0xE1 board of its type: "ShadowGauge" the boss gauge (with most points),
+    // "ScoreBoardTopCenter" the top-center score dialog. The type "" (02020063_bf, 02020065_bf, 99999840,
+    // 99999841) names no kind the client shows, so it only logs. set_score sends the points to the open board.
     public void ScoreBoardCreate(string type, string title, int maxScore) {
         Field.ScoreBoardScore = null;
-        ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
+        byte? kind = ScoreBoard.Kind(type, maxScore);
+        if (kind == null) {
+            Field.ScoreBoardKind = null;
+            ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
+            return;
+        }
+
+        DebugLog("[ScoreBoardCreate] type:{Type}, kind:{Kind}, maxScore:{MaxScore}", type, kind, maxScore);
+        Field.ScoreBoardKind = kind;
+        Field.Broadcast(ShadowExpeditionPacket.Open(kind.Value, title, 0, maxScore));
     }
 
     public void ScoreBoardRemove() {
         Field.ScoreBoardScore = null;
-        ErrorLog("[ScoreBoardRemove]");
+        DebugLog("[ScoreBoardRemove] kind:{Kind}", Field.ScoreBoardKind);
+        if (Field.ScoreBoardKind != null) {
+            Field.ScoreBoardKind = null;
+            Field.Broadcast(ShadowExpeditionPacket.Close());
+        }
     }
 
     public void ScoreBoardSetScore(int score) {
         Field.ScoreBoardScore = score;
-        ErrorLog("[ScoreBoardSetScore] score:{Score}", score);
+        DebugLog("[ScoreBoardSetScore] score:{Score}, kind:{Kind}", score, Field.ScoreBoardKind);
+        if (Field.ScoreBoardKind != null) {
+            Field.Broadcast(ShadowExpeditionPacket.SetPoints(score));
+        }
     }
 
     public void SetEventUiRound(int[] rounds, int arg3, int vOffset) {
