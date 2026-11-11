@@ -161,6 +161,7 @@ public static class BeautyPacket {
     private static void WriteBeautyShopItems(this IByteWriter pWriter, BeautyShopItem[] items) {
         pWriter.WriteByte(); // Unknown1
         pWriter.WriteByte(); // Unknown2
+        pWriter.WriteLong(); // the client sends this value back in the random hair request (sub-type 7)
         pWriter.WriteShort((short) items.Length);
         foreach (BeautyShopItem item in items) {
             pWriter.WriteInt(item.Id);
