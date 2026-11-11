@@ -7,6 +7,19 @@ namespace Maple2.Server.Tests.Validators;
 
 public class NameValidatorTests {
     [Test]
+    public void CharacterNameWidth_FollowsTheClientRegion() {
+        Assert.That(NameValidator.CharacterNameWidth("Test123", "KR"), Is.EqualTo(7));
+        Assert.That(NameValidator.CharacterNameWidth("\uAE40\uCCA0\uC218", "KR"), Is.EqualTo(6));
+        Assert.That(NameValidator.CharacterNameWidth("\uAE40\uCCA0\uC218", "NA"), Is.EqualTo(-1));
+        Assert.That(NameValidator.CharacterNameWidth("Fran\u00E7ois", "NA"), Is.EqualTo(8));
+        Assert.That(NameValidator.CharacterNameWidth("Fran\u00E7ois", "KR"), Is.EqualTo(-1));
+        Assert.That(NameValidator.CharacterNameWidth("\u738B\u5C0F\u660E", "CN"), Is.EqualTo(6));
+        Assert.That(NameValidator.CharacterNameWidth("Cool-Name", "NA"), Is.EqualTo(-1));
+        Assert.That(NameValidator.ValidCharacterName(new string('\uAE40', 7), "KR"), Is.False);
+        Assert.That(NameValidator.ValidCharacterName(new string('\uAE40', 6), "KR"), Is.True);
+    }
+
+    [Test]
     public void ValidName_ShouldReturnFalse() {
         // Valid names should return null (no error)
         Assert.That(NameValidator.ValidName("ValidName"), Is.True);

@@ -5,6 +5,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
@@ -364,12 +365,18 @@ public class ItemUseHandler : FieldPacketHandler {
     private void HandleChangeCharacterName(GameSession session, IByteReader packet, Item item) {
         string newName = packet.ReadUnicodeString();
 
-        if (newName.Length < Constant.CharacterNameLengthMin) {
+        // Counted the way the client counts for its region (Hangul and CJK count twice).
+        int width = NameValidator.CharacterNameWidth(newName, Target.LOCALE);
+        if (width < 0) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
+            return;
+        }
+        if (width < Constant.CharacterNameLengthMin) {
             session.Send(CharacterListPacket.CreateError(s_char_err_name));
             return;
         }
 
-        if (newName.Length > Constant.CharacterNameLengthMax) {
+        if (width > Constant.CharacterNameLengthMax) {
             session.Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
         }

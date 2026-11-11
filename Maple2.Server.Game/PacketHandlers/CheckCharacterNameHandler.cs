@@ -30,23 +30,23 @@ public class CheckCharacterNameHandler : FieldPacketHandler {
             return;
         }
 
-        if (characterName.Length < Constant.CharacterNameLengthMin) {
+        // Counted the way the client counts for its region (Hangul and CJK count twice).
+        int width = NameValidator.CharacterNameWidth(characterName, Target.LOCALE);
+        if (width < 0) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
+            return;
+        }
+        if (width < Constant.CharacterNameLengthMin) {
             session.Send(CharacterListPacket.CreateError(s_char_err_name));
             return;
         }
-        if (characterName.Length > Constant.CharacterNameLengthMax) {
+        if (width > Constant.CharacterNameLengthMax) {
             session.Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
         }
 
         if (BanWordStorage.ContainsBannedWord(characterName)) {
             session.Send(CharacterListPacket.CreateError(s_char_err_ban_any));
-            return;
-        }
-
-        // Validate character name
-        if (!NameValidator.ValidName(characterName)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
             return;
         }
 

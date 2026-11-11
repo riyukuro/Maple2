@@ -126,23 +126,23 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             return;
         }
 
-        if (name.Length < Constant.CharacterNameLengthMin) {
+        // Counted the way the client counts for its region (Hangul and CJK count twice).
+        int width = NameValidator.CharacterNameWidth(name, Target.LOCALE);
+        if (width < 0) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
+            return;
+        }
+        if (width < Constant.CharacterNameLengthMin) {
             session.Send(CharacterListPacket.CreateError(s_char_err_name));
             return;
         }
-        if (name.Length > Constant.CharacterNameLengthMax) {
+        if (width > Constant.CharacterNameLengthMax) {
             session.Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
         }
 
         if (BanWordStorage.ContainsBannedWord(name)) {
             session.Send(CharacterListPacket.CreateError(s_char_err_ban_any));
-            return;
-        }
-
-        // Validate character name
-        if (!NameValidator.ValidName(name)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
             return;
         }
 
