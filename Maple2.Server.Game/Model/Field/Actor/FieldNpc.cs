@@ -1,4 +1,5 @@
-﻿using DotRecast.Detour.Crowd;
+﻿using System.Collections.Concurrent;
+using DotRecast.Detour.Crowd;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -79,7 +80,13 @@ public class FieldNpc : Actor<Npc> {
     public readonly AnimationSequenceMetadata? FlySequence;
     public readonly string? SpawnAnimation;
     private readonly WeightedSet<string> defaultRoutines;
-    public readonly AiState AiState;
+    public AiState AiState { get; private set; }
+    // The AI file the GM NPC control window asked for (SetDebugMode 4, AI file). The field thread takes it
+    // at the NPC's next update, so the AI is never replaced while it runs.
+    private string? pendingAiFile;
+    public string? PendingAiFile => Volatile.Read(ref pendingAiFile);
+    public void RequestAiFile(string name) => Volatile.Write(ref pendingAiFile, name);
+
     public readonly MovementState MovementState;
     public readonly BattleState BattleState;
     public readonly TaskState TaskState;
@@ -103,7 +110,9 @@ public class FieldNpc : Actor<Npc> {
     private NpcTask? idleTask;
     private long idleTaskLimitTick;
 
-    public readonly Dictionary<string, int> AiExtraData = new();
+    // Written on the field thread (AI nodes, triggers) and read from a session thread by the GM NPC control
+    // window, so it is a store that is safe to read while it changes.
+    public readonly ConcurrentDictionary<string, int> AiExtraData = new();
     // Set by the GM NPC control window (SetDebugMode 4, AI off): the NPC stops choosing what to do next.
     // What it already does (a move, a cast) runs to its end.
     public volatile bool AiOff;
@@ -176,6 +185,10 @@ public class FieldNpc : Actor<Npc> {
         bool isSpawning = MovementState.State is ActorState.Spawn or ActorState.Regen;
 
         if (!isSpawning) {
+            string? aiFile = Interlocked.Exchange(ref pendingAiFile, null);
+            if (aiFile != null) {
+                AiState = new AiState(this, aiFile);
+            }
             BattleState.Update(tickCount);
             if (!AiOff) {
                 AiState.Update(tickCount);

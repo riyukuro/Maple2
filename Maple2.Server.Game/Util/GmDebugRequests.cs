@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Server.Game.Util;
@@ -79,6 +80,33 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
     // The NPC's AI values for the window's extra data list: by key, at most MaxExtra.
     public static List<(string Key, int Value)> ExtraList(IEnumerable<KeyValuePair<string, int>> values) {
         return values.OrderBy(entry => entry.Key, StringComparer.Ordinal).Take(MaxExtra).Select(entry => (entry.Key, entry.Value)).ToList();
+    }
+
+    // The AI file button sends the path of a file picked under the client's Data/Xml/AI folder
+    // (uinpccontroldialog.cpp:576-591). The server's name of an AI file is that path below the AI folder,
+    // with forward slashes; null for a text that is no xml file name or tries to leave the folder.
+    public const int MaxAiFile = 260;
+
+    public static string? AiFileName(string? text) {
+        if (string.IsNullOrEmpty(text) || text.Length > MaxAiFile) {
+            return null;
+        }
+        string path = text.Replace('\\', '/');
+        int index = path.LastIndexOf("/xml/ai/", StringComparison.OrdinalIgnoreCase);
+        string name = index >= 0 ? path[(index + "/xml/ai/".Length)..] : path[(path.LastIndexOf('/') + 1)..];
+        if (name.Length <= ".xml".Length || !name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+        if (name.Split('/').Any(part => part.Length == 0 || part == "." || part == "..") || name.Any(char.IsControl)) {
+            return null;
+        }
+        return name;
+    }
+
+    // The same from the NPC's live store. ConcurrentDictionary.ToArray copies under the store's locks; a LINQ
+    // call on the store itself copies in two steps and throws when a key is added in between.
+    public static List<(string Key, int Value)> ExtraList(ConcurrentDictionary<string, int> values) {
+        return ExtraList(values.ToArray());
     }
 
     // The headline of the window's text: the AI file, marked while the AI is switched off.

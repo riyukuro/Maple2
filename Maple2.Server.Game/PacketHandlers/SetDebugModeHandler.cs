@@ -135,6 +135,19 @@ public class SetDebugModeHandler : FieldPacketHandler {
                 // The window has no reader of its own for this button; its extra data is part of kind 5.
                 SendNpcState(session, npc);
                 return;
+            case GmNpcControlRequest.AiFile:
+                // The NPC takes the named AI file at its next update, on the field thread. A name the
+                // server has no AI for changes nothing.
+                string? aiFile = GmNpcControlRequest.AiFileName(request.Text);
+                if (aiFile == null || !session.Field.AiMetadata.TryGet(aiFile, out AiMetadata? ai)) {
+                    Logger.Warning("SetDebugMode: no AI file for the name sent by account {AccountId} (name {AiFile})", session.AccountId, aiFile ?? "-");
+                    return;
+                }
+                npc.RequestAiFile(ai.Name);
+                Logger.Information("SetDebugMode: NPC {NpcId} (object {ObjectId}) in field {MapId} gets the AI file {AiFile} from account {AccountId}",
+                    npc.Value.Id, npc.ObjectId, session.Field.MapId, ai.Name, session.AccountId);
+                SendNpcState(session, npc);
+                return;
             default:
                 Logger.Debug("SetDebugMode: NPC control command {Command} on {ObjectId} from account {AccountId} not handled", request.Command, request.ObjectId, session.AccountId);
                 return;
@@ -145,15 +158,10 @@ public class SetDebugModeHandler : FieldPacketHandler {
     // the six stats it lists. The server keeps no AI trace, so "tracking" is off and there is no extra data.
     private static void SendNpcState(GameSession session, FieldNpc npc) {
         Stat health = npc.Stats.Values[BasicAttribute.Health];
-        List<(string Key, int Value)> extra;
-        try {
-            extra = GmNpcControlRequest.ExtraList(npc.AiExtraData);
-        } catch (InvalidOperationException) {
-            // The field thread changed the values while they were read; the next state text has them.
-            extra = [];
-        }
-        session.Send(DebugModePacket.NpcState(npc.ObjectId, npc.MovementState.State.ToString(), GmNpcControlRequest.Headline(npc.AiState.AiMetadata?.Name, npc.AiOff),
-            npc.BattleState.TargetId, false, extra,
+        // An AI file that waits for the NPC's next update is already shown as its AI file.
+        string? aiName = npc.PendingAiFile ?? npc.AiState.AiMetadata?.Name;
+        session.Send(DebugModePacket.NpcState(npc.ObjectId, npc.MovementState.State.ToString(), GmNpcControlRequest.Headline(aiName, npc.AiOff),
+            npc.BattleState.TargetId, false, GmNpcControlRequest.ExtraList(npc.AiExtraData),
             npc.Stats.Values[BasicAttribute.PhysicalAtk].Total, npc.Stats.Values[BasicAttribute.MagicalAtk].Total,
             npc.Stats.Values[BasicAttribute.Defense].Total, npc.Stats.Values[BasicAttribute.CriticalRate].Total,
             health.Current, health.Total));

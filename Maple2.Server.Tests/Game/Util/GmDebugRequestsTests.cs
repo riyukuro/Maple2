@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using Maple2.Server.Game.Manager.Field;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -535,5 +536,91 @@ public class GmDebugRequestsTests {
 
         Assert.That(npc.AiOff, Is.False);
         Assert.That(reader.Position, Is.EqualTo(0));
+    }
+
+    // Login and Game share the address check of a migration answer.
+    [Test]
+    public void Migration_EndpointHelperRefusesABadAddressOrPort() {
+        Assert.That(Maple2.Server.Core.Helpers.EndpointHelper.TryEndpoint("10.0.0.2", 65535, out System.Net.IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint!.Port, Is.EqualTo(65535));
+        Assert.That(Maple2.Server.Core.Helpers.EndpointHelper.TryEndpoint("", 20001, out endpoint), Is.False);
+        Assert.That(Maple2.Server.Core.Helpers.EndpointHelper.TryEndpoint(null, 20001, out endpoint), Is.False);
+        Assert.That(Maple2.Server.Core.Helpers.EndpointHelper.TryEndpoint("10.0.0.2", 0, out endpoint), Is.False);
+        Assert.That(endpoint, Is.Null);
+    }
+
+    // The NPC's AI values are written by the field thread while a session thread lists them for the window.
+    [Test]
+    public void NpcControl_ExtraListReadsWhileTheValuesChange() {
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(FieldNpc).GetField(nameof(FieldNpc.AiExtraData))!.SetValue(npc, new ConcurrentDictionary<string, int>());
+        Assert.That(npc.AiExtraData, Is.InstanceOf<ConcurrentDictionary<string, int>>());
+
+        using var stop = new System.Threading.CancellationTokenSource();
+        System.Threading.Tasks.Task writer = System.Threading.Tasks.Task.Run(() => {
+            for (int i = 0; !stop.IsCancellationRequested; i++) {
+                npc.AiExtraData["k" + (i % 200)] = i;
+                npc.AiExtraData.TryRemove("k" + ((i + 100) % 200), out _);
+            }
+        });
+        try {
+            for (int i = 0; i < 2000; i++) {
+                List<(string Key, int Value)> list = GmNpcControlRequest.ExtraList(npc.AiExtraData);
+                Assert.That(list.Count, Is.LessThanOrEqualTo(GmNpcControlRequest.MaxExtra));
+                Assert.That(list.Select(entry => entry.Key).Distinct().Count(), Is.EqualTo(list.Count));
+            }
+        } finally {
+            stop.Cancel();
+            writer.Wait();
+        }
+    }
+
+    // The AI file button (uinpccontroldialog.cpp:576-591) sends the path of the picked file.
+    [Test]
+    public void NpcControl_AiFileNameIsThePathBelowTheAiFolder() {
+        Assert.That(GmNpcControlRequest.AiFileName(@"C:\Game\Data\Xml\AI\AI_Default.xml"), Is.EqualTo("AI_Default.xml"));
+        Assert.That(GmNpcControlRequest.AiFileName(@"C:\Game\Data\Xml\AI\Boss\AI_Some.xml"), Is.EqualTo("Boss/AI_Some.xml"));
+        Assert.That(GmNpcControlRequest.AiFileName("D:/x/data/xml/ai/Sub/a.XML"), Is.EqualTo("Sub/a.XML"));
+        Assert.That(GmNpcControlRequest.AiFileName(@"C:\Elsewhere\AI_Default.xml"), Is.EqualTo("AI_Default.xml"));
+        Assert.That(GmNpcControlRequest.AiFileName("AI_Default.xml"), Is.EqualTo("AI_Default.xml"));
+        foreach (string? text in new[] { null, "", ".xml", "AI_Default.txt", @"C:\Game\Data\Xml\AI\..\secret.xml", "x/Xml/AI//a.xml",
+                     "a\nb.xml", new string('a', GmNpcControlRequest.MaxAiFile) + ".xml" }) {
+            Assert.That(GmNpcControlRequest.AiFileName(text), Is.Null, text);
+        }
+    }
+
+    // The AI file button parses to one string, and a plain account cannot hand an NPC another AI file.
+    [Test]
+    public void NpcControl_AiFileFromAPlainAccountChangesNothing() {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var body = new ByteWriter();
+        body.WriteInt(77);
+        body.WriteByte(GmNpcControlRequest.AiFile);
+        body.WriteUnicodeString("C:/Game/Data/Xml/AI/AI_Default.xml");
+        var bodyReader = new ByteReader(body.ToArray(), 0);
+        GmNpcControlRequest request = GmNpcControlRequest.Read(bodyReader);
+        Assert.That(request.Command, Is.EqualTo(GmNpcControlRequest.AiFile));
+        Assert.That(GmNpcControlRequest.AiFileName(request.Text), Is.EqualTo("AI_Default.xml"));
+        Assert.That(bodyReader.Available, Is.EqualTo(0));
+
+        GameSession session = SessionOf(AdminPermissions.None);
+        var field = (FieldManager) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager));
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        var mobs = new ConcurrentDictionary<int, FieldNpc>();
+        mobs[77] = npc;
+        typeof(FieldManager).GetField("<Mobs>k__BackingField", flags)!.SetValue(field, mobs);
+        session.Field = field;
+
+        var writer = new ByteWriter();
+        writer.WriteByte(4);
+        writer.WriteBytes(body.ToArray());
+        var reader = new ByteReader(writer.ToArray(), 0);
+        new SetDebugModeHandler().Handle(session, reader);
+
+        Assert.That(npc.PendingAiFile, Is.Null);
+        Assert.That(reader.Position, Is.EqualTo(0));
+
+        npc.RequestAiFile("AI_Default.xml");
+        Assert.That(npc.PendingAiFile, Is.EqualTo("AI_Default.xml"));
     }
 }
