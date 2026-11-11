@@ -275,4 +275,14 @@ public class GuildApplicationRulesTests {
     public void EnterEvent_Rules(int eventMapId, long openTime, long now, int currentMapId, bool expected) {
         Assert.That(GuildRules.CanEnterEvent(eventMapId, openTime, now, currentMapId), Is.EqualTo(expected));
     }
+
+    // PvP map, the effect is kept on entering a PvP map, the effect is removed in a PvP map
+    [TestCase(false, false, false, true)]
+    [TestCase(false, false, true, true)]
+    [TestCase(true, true, false, true)]
+    [TestCase(true, false, false, false)]
+    [TestCase(true, true, true, false)]
+    public void SkillEffectOnEntry_Rules(bool isPvpMap, bool keep, bool remove, bool expected) {
+        Assert.That(GuildRules.GivesEffectOnEntry(isPvpMap, keep, remove), Is.EqualTo(expected));
+    }
 }

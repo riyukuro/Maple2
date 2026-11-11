@@ -318,6 +318,12 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // A member who enters a PvP map loses every effect that is not marked to be kept there
+    // (BuffManager.EnterField); the guild skill effects given on entry follow the same rule.
+    public static bool GivesEffectOnEntry(bool isPvpMap, bool keepOnEnterPvpZone, bool removeOnPvpZone) {
+        return !isPvpMap || (keepOnEnterPvpZone && !removeOnPvpZone);
+    }
+
     // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds (the
     // client's table reader GuildSkill::FUN_1404d4cb0 stores duration * 60 and cooltime * 60, and the
     // getters add them to the time of use). A skill that was never used has the time 0.

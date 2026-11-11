@@ -346,10 +346,16 @@ public class GuildManager : IDisposable {
             return;
         }
 
+        bool isPvpMap = field.Metadata.Property.Type == MapType.Pvp;
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         foreach (GuildBuff buff in Guild.Buffs) {
             if (buff.Id > 10000 || !session.TableMetadata.GuildTable.Buffs.TryGetValue(buff.Id, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)
                                 || !levels.TryGetValue((short) buff.Level, out GuildTable.Buff? row) || row.Id <= 0) {
+                continue;
+            }
+
+            if (!field.SkillMetadata.TryGetEffect(row.Id, row.Level, out AdditionalEffectMetadata? effect)
+                || !GuildRules.GivesEffectOnEntry(isPvpMap, effect.Property.KeepOnEnterPvpZone, effect.Property.RemoveOnPvpZone)) {
                 continue;
             }
 
