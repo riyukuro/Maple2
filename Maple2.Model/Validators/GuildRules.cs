@@ -375,6 +375,15 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // Guild 115 (CGuildManager::SendGuildMode115, guildmanager.cpp:1425): the mini game right, and a time
+    // when the vs-game takes applications. The server runs no vs-game, so `isVsGameTime` is false there.
+    public static GuildError CheckVsGameRegister(bool hasMiniGameRight, bool isVsGameTime) {
+        if (!hasMiniGameRight) {
+            return GuildError.s_guild_err_no_authority;
+        }
+        return isVsGameTime ? GuildError.none : GuildError.s_guild_err_isNotVsGameTime;
+    }
+
     // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds (the
     // client's table reader GuildSkill::FUN_1404d4cb0 stores duration * 60 and cooltime * 60, and the
     // getters add them to the time of use). A skill that was never used has the time 0.

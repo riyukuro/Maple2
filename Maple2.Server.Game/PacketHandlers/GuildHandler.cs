@@ -1261,8 +1261,20 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
+    // Guild 115 (CGuildManager::SendGuildMode115, guildmanager.cpp:1425): no body; the guild asks for a
+    // ticket of the guild vs-game. The client tests the mini game right (0x400) itself. The server runs no
+    // vs-game, so no time takes applications and the answer is error 47.
     private void HandleCreateGuildEvent(GameSession session) {
+        if (session.Guild.Guild == null) {
+            return;
+        }
 
+        bool hasRight = session.Guild.HasPermission(session.CharacterId, GuildPermission.StartMiniGame);
+        GuildError error = GuildRules.CheckVsGameRegister(hasRight, isVsGameTime: false);
+        if (error == GuildError.none) {
+            error = GuildError.s_guild_err_isNotVsGameTime; // not reached: no vs-game time
+        }
+        session.Send(GuildPacket.Error(error));
     }
 
     private void HandleStartGuildEvent(GameSession session) {

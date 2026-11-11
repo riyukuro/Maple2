@@ -195,6 +195,24 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // Guild 115 is answered with the error packet (mode 79): byte 1, the error byte 47, int 0.
+    [Test]
+    public void VsGameRegister_IsRefusedWithError47() {
+        Assert.That(GuildRules.CheckVsGameRegister(true, false), Is.EqualTo(GuildError.s_guild_err_isNotVsGameTime));
+        Assert.That(GuildRules.CheckVsGameRegister(false, false), Is.EqualTo(GuildError.s_guild_err_no_authority));
+        Assert.That(GuildRules.CheckVsGameRegister(false, true), Is.EqualTo(GuildError.s_guild_err_no_authority));
+        Assert.That(GuildRules.CheckVsGameRegister(true, true), Is.EqualTo(GuildError.none));
+
+        ByteWriter writer = GuildPacket.Error(GuildRules.CheckVsGameRegister(true, false));
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(79));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadByte(), Is.EqualTo(47));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
     [Test]
     public void StorageHistory_IsMode112WithZeroRows() {
