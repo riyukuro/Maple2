@@ -3,6 +3,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -306,17 +307,21 @@ public class ItemSocketHandler : FieldPacketHandler {
             // item.Socket cannot be null after CheckSocketSlot()
             // itemGemstone cannot be null if SocketState.Used
             ItemGemstone itemGemstone = item.Socket!.Sockets[socketSlot]!;
-            if (!ConsumeGemstoneUnequipIngredients(itemGemstone)) {
-                return;
-            }
-
+            // The price is taken only for a gemstone that exists and has a slot to go to.
             Item? gem = session.Field?.ItemDrop.CreateItem(itemGemstone.ItemId, rarity: Constant.GemstoneGrade);
-            if (gem == null) {
-                session.Send(ItemSocketPacket.Error(11, error: s_itemsocketsystem_error_server_default));
-                return;
+            switch (GemstoneUnequipRules.TakeOut(gem != null, gem != null && session.Item.Inventory.CanAdd(gem),
+                        () => ConsumeGemstoneUnequipIngredients(itemGemstone))) {
+                case GemstoneUnequipRules.Result.NoGemstone:
+                    session.Send(ItemSocketPacket.Error(11, error: s_itemsocketsystem_error_server_default));
+                    return;
+                case GemstoneUnequipRules.Result.NoRoom:
+                    session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
+                    return;
+                case GemstoneUnequipRules.Result.NotPaid:
+                    return; // the price check sent its own error
             }
 
-            if (!session.Item.Inventory.Add(gem, true)) {
+            if (!session.Item.Inventory.Add(gem!, true)) {
                 return; // Failed to add to inventory
             }
 
