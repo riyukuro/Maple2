@@ -20,7 +20,7 @@ public class FurnishingStorageHandler : FieldPacketHandler {
                 HandleDelete(session, packet);
                 return;
             case Command.Retrieve:
-                // Not handled: CNetworkService::SendRetrieveFurnishingItem moves a stored furnishing item, whole
+                // Not handled: CNetworkService::SendRetrieveFurnishingItem (networkservice.cpp:497) moves a stored furnishing item, whole
                 // count, to a bag slot the client picked. This server keeps every furnishing item in the
                 // furnishing storage (InventoryManager.Add sends one straight back), so there is no bag to move
                 // it to; the request is dropped and the item stays where it is.
