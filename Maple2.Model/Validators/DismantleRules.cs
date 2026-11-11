@@ -24,4 +24,21 @@ public static class DismantleRules {
             yield return stack;
         }
     }
+
+    // The stacks the confirm can pay at most: every reward at its max, one entry per stack. A reward id
+    // without a stack size (no item metadata) gives nothing and takes no room.
+    public static List<(int Id, int Amount)> MaxRewardStacks(IReadOnlyDictionary<int, (int Min, int Max)> rewards,
+            Func<int, int?> slotMax) {
+        var stacks = new List<(int Id, int Amount)>();
+        foreach ((int id, (int _, int max)) in rewards.OrderBy(entry => entry.Key)) {
+            int? size = slotMax(id);
+            if (size == null) {
+                continue;
+            }
+            foreach (int stack in Stacks(max, size.Value)) {
+                stacks.Add((id, stack));
+            }
+        }
+        return stacks;
+    }
 }

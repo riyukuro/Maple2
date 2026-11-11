@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -117,11 +118,29 @@ public class ItemDismantleHandler : FieldPacketHandler {
             return;
         }
 
-        // TODO: Confirm inventory can hold all the items.
         lock (session.Item) {
             // Nothing staged: the client's result 5 says so and resets the dialog's pending break.
             if (Array.TrueForAll(session.DismantleStaging, staged => staged == default)) {
                 session.Send(ItemDismantlePacket.Error(5));
+                return;
+            }
+
+            // The item can have changed since it was staged (locked, split, its pet summoned): drop those slots.
+            for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
+                (long uid, int amount) = session.DismantleStaging[slot];
+                if (uid == 0) {
+                    continue;
+                }
+                Item? item = session.Item.Inventory.Get(uid);
+                if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLocked, uid, session.Pet?.Pet.Uid ?? 0)) {
+                    session.DismantleStaging[slot] = default;
+                }
+            }
+
+            // Room for every reward at its max before anything is broken. The client's result 3 shows
+            // s_err_inventory ("Your inventory is full.") and keeps the staged items.
+            if (!CanHoldRewards(session, GetRewards(session))) {
+                session.Send(ItemDismantlePacket.Error(3));
                 return;
             }
 
@@ -130,11 +149,6 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 (long uid, int amount) = session.DismantleStaging[slot];
                 Item? item = session.Item.Inventory.Get(uid);
                 if (item == null) {
-                    continue;
-                }
-                // The item can have changed since it was staged (locked, split, its pet summoned).
-                if (!DismantleRules.CanStage(amount, item.Amount, item.IsLocked, uid, session.Pet?.Pet.Uid ?? 0)) {
-                    session.DismantleStaging[slot] = default;
                     continue;
                 }
 
@@ -167,7 +181,10 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     if (item == null) {
                         break;
                     }
-                    session.Item.Inventory.Add(item, true);
+                    // The room check counts each stack on its own, so a stack it misjudged goes by mail.
+                    if (!session.Item.Inventory.Add(item, true)) {
+                        session.Item.MailItem(item);
+                    }
                 }
             }
 
@@ -230,6 +247,24 @@ public class ItemDismantleHandler : FieldPacketHandler {
         // One list packet (client mode 6) for the whole auto-add, as the client's reader for this request expects.
         session.Send(ItemDismantlePacket.StageList(added));
         session.Send(ItemDismantlePacket.Preview(GetRewards(session)));
+    }
+
+    private bool CanHoldRewards(GameSession session, IDictionary<int, (int Min, int Max)> rewards) {
+        List<(int Id, int Amount)> stacks = DismantleRules.MaxRewardStacks(rewards.AsReadOnly(),
+            id => ItemMetadata.TryGet(id, out ItemMetadata? metadata) ? metadata.Property.SlotMax : null);
+        var items = new List<Item>();
+        foreach ((int id, int amount) in stacks) {
+            Item? item = session.Field?.ItemDrop.CreateItem(id, amount: amount);
+            if (item == null) {
+                continue;
+            }
+            // Currency, medals and furnishings go elsewhere (InventoryManager.Add) and take no slot.
+            if (item.IsCurrency() || item.Type.IsMedal || item.Type.IsFurnishing) {
+                continue;
+            }
+            items.Add(item);
+        }
+        return items.Count == 0 || session.Item.Inventory.CanAdd(items);
     }
 
     private IDictionary<int, (int Min, int Max)> GetRewards(GameSession session) {

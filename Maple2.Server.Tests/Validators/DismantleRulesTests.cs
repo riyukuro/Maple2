@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -37,5 +38,25 @@ public class DismantleRulesTests {
         int[] stacks = DismantleRules.Stacks(total, slotMax).ToArray();
         Assert.That(stacks, Is.EqualTo(expected));
         Assert.That(stacks.Sum(), Is.EqualTo(total));
+    }
+
+    // The confirm's room check counts every reward at its max, one entry per stack.
+    [Test]
+    public void MaxRewardStacks_TakesTheMaxPerStack() {
+        var rewards = new Dictionary<int, (int Min, int Max)> {
+            [40100023] = (1400, 2000),
+            [20000001] = (3, 3),
+        };
+        List<(int Id, int Amount)> stacks = DismantleRules.MaxRewardStacks(rewards, id => id == 40100023 ? 999 : 1);
+        Assert.That(stacks, Is.EqualTo(new[] {
+            (20000001, 1), (20000001, 1), (20000001, 1),
+            (40100023, 999), (40100023, 999), (40100023, 2),
+        }));
+    }
+
+    [Test]
+    public void MaxRewardStacks_UnknownIdTakesNoRoom() {
+        var rewards = new Dictionary<int, (int Min, int Max)> { [1] = (5, 5), [2] = (0, 0) };
+        Assert.That(DismantleRules.MaxRewardStacks(rewards, id => id == 1 ? null : 10), Is.Empty);
     }
 }
