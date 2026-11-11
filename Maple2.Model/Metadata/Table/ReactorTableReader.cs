@@ -80,7 +80,13 @@ public static class ReactorTableReader {
         }
 
         var document = new XmlDocument();
-        document.LoadXml(xml);
+        try {
+            document.LoadXml(xml);
+        } catch (XmlException ex) {
+            // One bad attribute must not stop the ingest: the row keeps its states and has no rewards.
+            Console.WriteLine($"reactor.xml: rewardItemListXml is not valid xml, rewards skipped ({ex.Message})");
+            return [];
+        }
         var rewards = new List<ReactorTable.Reward>();
         foreach (XmlElement node in document.DocumentElement?.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "v") ?? []) {
             if (!TryInt(node.GetAttribute("itemID"), out int itemId)) {
