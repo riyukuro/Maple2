@@ -7,6 +7,7 @@ using Maple2.Database.Model.Metadata;
 using Maple2.File.Ingest;
 using Maple2.File.Ingest.Helpers;
 using Maple2.File.Ingest.Mapper;
+using Maple2.File.Ingest.Utils;
 using Maple2.File.IO;
 using Maple2.File.IO.Nif;
 using Maple2.File.Parser.Flat;
@@ -191,6 +192,8 @@ Console.WriteLine("Starting data ingestion...");
 
 // Filter Xml results based on feature settings.
 Filter.Load(xmlReader, locale, env);
+// The client turns off a feature with no level for the locale; the parser's filter keeps it (FeatureLevels).
+FeatureLevels.Apply();
 PackTables.Load(xmlReader, locale);
 Console.WriteLine($"Rows filtered for {locale}; table/<region> files read from {PackTables.Locale}.");
 

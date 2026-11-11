@@ -32,7 +32,8 @@ public class AiMapper : TypeMapper<AiMetadata> {
     // A feature condition is decided here, by the locale's feature level, as the client's CFeatureManager decides
     // a feature: on when its feature.xml level is not above the feature_setting.xml level of the locale. The client
     // skips a feature whose level is 0 (no column for the locale), so such a feature is unknown and off; the parser's
-    // filter keeps it on (0 is not above a level of 0). An off condition is left out, so the conditions node takes
+    // filter keeps it on (0 is not above a level of 0), and FeatureLevels takes it out of the filter for every table.
+    // An off condition is left out, so the conditions node takes
     // its next branch (the shipped uses all have a true branch after it); an on one is kept as a true condition.
     /// <summary>Whether an AI feature condition is on, given the parser's enabled features and their levels.</summary>
     public static bool FeatureOn(string feature, IReadOnlyDictionary<string, int> enabled) =>
