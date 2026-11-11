@@ -101,13 +101,13 @@ public class SkillHandler : FieldPacketHandler {
         SkillMetadataMotionProperty motion = record.Metadata.Data.Motions.First().MotionProperty;
         session.Animation.TryPlaySequence(motion.SequenceName, motion.SequenceSpeed, AnimationType.Skill, record.Metadata);
 
-        packet.ReadInt(); // ClientTick
-        record.Unknown = packet.ReadBool(); // UnkBool
-        record.ItemUid = packet.ReadLong();
-        record.IsHold = packet.ReadBool();
+        SkillUseTail tail = SkillUseTail.Read(packet);
+        record.Unknown = tail.Unknown; // UnkBool
+        record.ItemUid = tail.ItemUid;
+        record.IsHold = tail.IsHold;
         if (record.IsHold) {
-            record.HoldInt = packet.ReadInt();
-            record.HoldString = packet.ReadUnicodeString().Trim('\0');
+            record.HoldInt = tail.HoldInt;
+            record.HoldString = tail.HoldString;
 
             if (session.Player.DebugSkills) {
                 session.Send(NoticePacket.Message($"Skill.Use: {skillId}, {skillUid}; IsHold: true; HoldInt: {record.HoldInt}; HoldString: {record.HoldString}; UnkBool: {record.Unknown}"));
