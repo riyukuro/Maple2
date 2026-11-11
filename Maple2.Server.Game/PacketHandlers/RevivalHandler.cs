@@ -122,6 +122,13 @@ public class RevivalHandler : FieldPacketHandler {
         }
 
         ConstantsTable constants = ServerTableMetadata.ConstantsTable;
+        // The constant LimitMeratRevival closes the meret revive for a whole locale (1 for NA in the client's
+        // table; UIRevivalDialog::FUN_141abc930 hides the button). Ingest takes the client's row for it.
+        if (constants.LimitMeratRevival != 0) {
+            return;
+        }
+        // "Can pay" on the client is CClientPlatformBase::vfunc_40 (ms2clientplatformbase.cpp:316): the meret
+        // balance alone. The red meret balance (vfunc_41) counts only with feature 0x43, which is off here.
         int debuffCode = constants.MeratRevivalDebuffCode;
         Buff? debuff = debuffCode == 0 ? null : session.Player.Buffs.EnumerateBuffs(debuffCode).FirstOrDefault();
         int stacks = debuff?.Stacks ?? 0;
