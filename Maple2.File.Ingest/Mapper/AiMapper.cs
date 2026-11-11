@@ -29,6 +29,17 @@ public class AiMapper : TypeMapper<AiMetadata> {
 
     private static readonly Regex CommentPattern = new("<!--.*?-->", RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
+    // A feature condition is decided here, by the locale's feature level, as the client's CFeatureManager decides
+    // a feature: on when its feature.xml level is not above the feature_setting.xml level of the locale. The client
+    // skips a feature whose level is 0 (no column for the locale), so such a feature is unknown and off; the parser's
+    // filter keeps it on (0 is not above a level of 0). An off condition is left out, so the conditions node takes
+    // its next branch (the shipped uses all have a true branch after it); an on one is kept as a true condition.
+    /// <summary>Whether an AI feature condition is on, given the parser's enabled features and their levels.</summary>
+    public static bool FeatureOn(string feature, IReadOnlyDictionary<string, int> enabled) =>
+        string.IsNullOrEmpty(feature) || (enabled.TryGetValue(feature, out int level) && level > 0);
+
+    private static bool FeatureOn(FeatureCondition condition) => FeatureOn(condition.feature, FeatureLocaleFilter.Features);
+
     private bool BattleEndOnlyDeadOf(string name) {
         PackFileEntry? entry = xmlReader.GetEntry($"AI/{name}");
         return entry != null && BattleEndOnlyDead(xmlReader.GetString(entry));
@@ -46,7 +57,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
                     continue;
                 }
 
-                if (node is FeatureCondition feature && !FeatureLocaleFilter.FeatureEnabled(feature.feature)) {
+                if (node is FeatureCondition feature && !FeatureOn(feature)) {
                     continue;
                 }
 
@@ -183,11 +194,8 @@ public class AiMapper : TypeMapper<AiMetadata> {
                     Entries: childNodes.ToArray(),
                     Value: hpLess.value
                 );
-            case FeatureCondition feature: // feature was converted to TrueCondition
-            case TrueCondition trueNode:
-                if (node.name == "feature") {
-                    Console.WriteLine("AI feature condition node is being convered to a true node");
-                }
+            case FeatureCondition: // only an on feature gets here (FeatureOn)
+            case TrueCondition:
                 return new AiMetadata.TrueCondition(
                     Name: node.name,
                     Entries: childNodes.ToArray()
@@ -232,7 +240,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
                 continue;
             }
 
-            if (child is FeatureCondition feature && !FeatureLocaleFilter.FeatureEnabled(feature.feature)) {
+            if (child is FeatureCondition feature && !FeatureOn(feature)) {
                 continue;
             }
 
