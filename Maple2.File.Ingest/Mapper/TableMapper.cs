@@ -35,6 +35,8 @@ using MeretMarketCategory = Maple2.File.Parser.Xml.Table.MeretMarketCategory;
 using WeddingHall = Maple2.File.Parser.Xml.Table.WeddingHall;
 using WeddingPackage = Maple2.Model.Metadata.WeddingPackage;
 using WeddingReward = Maple2.Model.Metadata.WeddingReward;
+using WeddingSkill = Maple2.Model.Metadata.WeddingSkill;
+using WeddingSkillType = Maple2.Model.Metadata.WeddingSkillType;
 
 namespace Maple2.File.Ingest.Mapper;
 
@@ -1760,7 +1762,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 PlannerId: package.planner,
                 Halls: hallDataDic));
         }
-        return new WeddingTable(rewardsResults, packageResults);
+        var skillResults = new Dictionary<int, WeddingSkill>();
+        foreach ((int id, Parser.Xml.Table.WeddingSkill skill) in parser.ParseWeddingSkill()) {
+            // Client ParseWeddingSkillType: "item" is 1, anything else 0 (passive).
+            WeddingSkillType type = skill.type == Parser.Enum.WeddingSkillType.item ? WeddingSkillType.Item : WeddingSkillType.Passive;
+            skillResults[id] = new WeddingSkill(
+                Id: id,
+                Type: type,
+                RequireGrade: skill.requireGrade,
+                ItemId: skill.itemID,
+                ItemRarity: skill.grade,
+                ItemAmount: skill.count);
+        }
+
+        var gradeResults = new Dictionary<int, long>();
+        foreach ((int grade, Parser.Xml.Table.WeddingExp exp) in parser.ParseWeddingExp()) {
+            gradeResults[grade] = exp.value;
+        }
+        return new WeddingTable(rewardsResults, packageResults, skillResults, gradeResults);
     }
 
     private DungeonRoomTable ParseDungeonRoom() {

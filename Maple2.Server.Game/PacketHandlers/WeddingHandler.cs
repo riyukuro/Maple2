@@ -99,11 +99,30 @@ public class WeddingHandler : FieldPacketHandler {
                 session.Marriage.SetCoupleMessage(packet.ReadUnicodeString());
                 return;
             case Command.ReceiveSkillItem:
-                // UIWeddingPageSkill::vfunc_3 (uiweddingpage.cpp:310): the id of a wedding skill of type 1 whose
-                // item the character does not hold. The skills and their items are in the client's wedding table,
-                // which the server's data does not have; the result texts have none for this. Read and logged.
-                Logger.Debug("Wedding {Command} from {CharacterId}: skill {Id}", command, session.CharacterId, packet.ReadInt());
+                HandleReceiveSkillItem(session, packet);
                 return;
+        }
+    }
+
+    // Wedding 37 (UIWeddingPageSkill::vfunc_3, uiweddingpage.cpp:310): the id of a wedding skill of type item.
+    // The item is given when WeddingSkillRules allows it. The client has no result text for this request, so a
+    // refusal sends nothing; a full bag gets the inventory alert.
+    private void HandleReceiveSkillItem(GameSession session, IByteReader packet) {
+        int skillId = packet.ReadInt();
+        Marriage marriage = session.Marriage.Marriage;
+        WeddingSkill? skill = WeddingSkillRules.ItemToGive(skillId, marriage.Status, marriage.Exp,
+            session.TableMetadata.WeddingTable, itemId => session.Item.Inventory.Find(itemId).Any());
+        if (skill == null) {
+            Logger.Debug("Wedding skill item {Id} refused for {CharacterId}", skillId, session.CharacterId);
+            return;
+        }
+
+        Item? item = session.Field?.ItemDrop.CreateItem(skill.ItemId, skill.ItemRarity, skill.ItemAmount);
+        if (item == null) {
+            return;
+        }
+        if (!session.Item.Inventory.Add(item, true)) {
+            session.Send(ChatPacket.Alert(StringCode.s_err_inventory));
         }
     }
 

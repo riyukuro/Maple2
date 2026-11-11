@@ -2,8 +2,27 @@
 
 namespace Maple2.Model.Metadata;
 
+// Skills (weddingskill.xml) and Grades (weddingexp.xml: grade -> exp) are null in metadata ingested before they
+// were added; a new ingest fills them.
 public record WeddingTable(IReadOnlyDictionary<MarriageExpType, WeddingReward> Rewards,
-                                 IReadOnlyDictionary<int, WeddingPackage> Packages) : Table;
+                                 IReadOnlyDictionary<int, WeddingPackage> Packages,
+                                 IReadOnlyDictionary<int, WeddingSkill>? Skills = null,
+                                 IReadOnlyDictionary<int, long>? Grades = null) : Table;
+
+// A couple skill unlocked by the wedding grade. The client's types: passive (an additional effect whose level
+// grows with the grade) and item (an item the couple can take from the skill page).
+public record WeddingSkill(
+    int Id,
+    WeddingSkillType Type,
+    int RequireGrade,
+    int ItemId,
+    int ItemRarity,
+    int ItemAmount);
+
+public enum WeddingSkillType {
+    Passive = 0,
+    Item = 1,
+}
 
 public record WeddingReward(
     MarriageExpType Type,
