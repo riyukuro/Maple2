@@ -162,20 +162,34 @@ public partial class TriggerContext {
     }
 
     #region DarkStream
+    // A Dark Stream run (see DarkStreamGame): start_game opens the score dialog, a cleared spawn sends the new
+    // score, and clearing the last round sends the result. The best score before the run, the exp, the meso,
+    // the habi and the reward items are sent as 0 (FORK.md names what is missing for them).
     public void DarkStreamSpawnMonster(int[] spawnIds, int score) {
-        ErrorLog("[DarkStreamSpawnMonster]");
+        DebugLog("[DarkStreamSpawnMonster] spawnIds:{SpawnIds}, score:{Score}", string.Join(", ", spawnIds), score);
+        foreach (int spawnId in spawnIds) {
+            Field.DarkStream?.SetSpawnScore(spawnId, score);
+            SpawnNpc(spawnId);
+        }
     }
 
     public void DarkStreamStartGame(int round) {
-        ErrorLog("[DarkStreamStartGame]");
+        DebugLog("[DarkStreamStartGame] round:{Round}", round);
+        Field.DarkStream = new DarkStreamGame(round);
+        Field.Broadcast(DarkStreamPacket.Open());
     }
 
     public void DarkStreamStartRound(int round, int uiDuration, int damagePenalty) {
-        ErrorLog("[DarkStreamStartRound]");
+        DebugLog("[DarkStreamStartRound] round:{Round}, uiDuration:{UiDuration}, damagePenalty:{DamagePenalty}", round, uiDuration, damagePenalty);
+        Field.DarkStream?.StartRound(round, damagePenalty);
     }
 
     public void DarkStreamClearRound(int round) {
-        ErrorLog("[DarkStreamClearRound]");
+        DebugLog("[DarkStreamClearRound] round:{Round}", round);
+        if (Field.DarkStream is not { } game || !game.ClearRound(round)) {
+            return;
+        }
+        Field.Broadcast(DarkStreamPacket.Result(game.Score, 0, 0, 0, 0));
     }
     #endregion
 

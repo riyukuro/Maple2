@@ -67,6 +67,8 @@ public partial class FieldManager {
     private readonly ConcurrentDictionary<FieldProperty, IFieldProperty> fieldProperties = new();
 
     public RoomTimer? RoomTimer { get; private set; }
+    // The Dark Stream run of the field, from the script's start_game on.
+    public DarkStreamGame? DarkStream { get; set; }
 
 
     #region Helpers

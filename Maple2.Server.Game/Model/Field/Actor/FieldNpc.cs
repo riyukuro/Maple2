@@ -474,11 +474,25 @@ public class FieldNpc : Actor<Npc> {
         }
 
         HandleDamageDealers();
+        DarkStreamSpawnCleared();
         if (Field is DungeonFieldManager dungeonField && GetLastAttacker() is FieldPlayer lastHitter) {
             dungeonField.CountMissions(lastHitter, mission => mission.AddLastHit(Value.Metadata.Id));
         }
 
         Remove(delay: TimeSpan.FromSeconds(Value.Metadata.Dead.Time));
+    }
+
+    // Dark Stream: the last monster of a scored spawn point died, so the run gets the spawn's score.
+    private void DarkStreamSpawnCleared() {
+        if (Field.DarkStream is not { } game || SpawnPointId == 0) {
+            return;
+        }
+        if (Field.Mobs.Values.Any(mob => mob != this && mob.SpawnPointId == SpawnPointId && !mob.IsDead)) {
+            return;
+        }
+        if (game.SpawnCleared(SpawnPointId)) {
+            Field.Broadcast(DarkStreamPacket.Score(game.Score));
+        }
     }
 
     public virtual void Animate(string sequenceName, float duration = -1f) {
