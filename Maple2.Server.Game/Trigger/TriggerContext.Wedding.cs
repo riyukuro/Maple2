@@ -18,9 +18,28 @@ public partial class TriggerContext {
     // notice and moving everyone out. Left without effect.
     public void WeddingBroken() { }
 
-    // The five below place and move the groom, the bride and the guests. Which of the couple is the groom is
-    // not stored by the server, so they are left without effect.
-    public void WeddingMoveUser(string type, int mapId, int[] portalIds, int boxId) { }
+    // Moves the players of one role. Guest: the players in the box who are not the couple each go to a random
+    // portal of the list, in this hall (the hall scripts' own note on the action). Groom and Bride, like the four
+    // actions below, need to know which of the couple is the groom, which the server does not store (each of the
+    // two sees the other as the partner), so they are left without effect, as is a move to another map.
+    public void WeddingMoveUser(string type, int mapId, int[] portalIds, int boxId) {
+        DebugLog("[WeddingMoveUser] type:{Type}, mapId:{MapId}, boxId:{BoxId}", type, mapId, boxId);
+        WeddingCeremony? ceremony = Field.Wedding;
+        if (ceremony == null || type != WeddingGuest || portalIds.Length == 0 || (mapId != 0 && mapId != Field.MapId)) {
+            return;
+        }
+
+        foreach (FieldPlayer player in WeddingGuests(PlayersInBox(boxId), ceremony, player => player.Session.CharacterId)) {
+            if (Field.TryGetPortal(portalIds[Random.Shared.Next(portalIds.Length)], out FieldPortal? portal)) {
+                player.MoveToPortal(portal);
+            }
+        }
+    }
+
+    public const string WeddingGuest = "Guest";
+
+    public static IEnumerable<T> WeddingGuests<T>(IEnumerable<T> players, WeddingCeremony ceremony, Func<T, long> characterId) =>
+        players.Where(player => !ceremony.IsCouple(characterId(player)));
 
     // Asks the couple a question: Wedding 0x1e to each of the two in the room. The answers arrive as Wedding
     // 0x1e from the client and WeddingMutualAgreeResult reads them.
