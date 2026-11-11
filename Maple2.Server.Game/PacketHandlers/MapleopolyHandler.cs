@@ -25,6 +25,7 @@ public class MapleopolyHandler : FieldPacketHandler {
         Load = 0,
         Roll = 1,
         Result = 3,
+        DebugDice = 5,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -38,6 +39,10 @@ public class MapleopolyHandler : FieldPacketHandler {
                 return;
             case Command.Result:
                 HandleResult(session);
+                return;
+            case Command.DebugDice:
+                // Not handled: the debug dice button: the two dice values (1-6).
+                Logger.Debug("Mapleopoly {Command} from {CharacterId}: {Dice1}, {Dice2}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
                 return;
         }
     }
