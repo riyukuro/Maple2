@@ -199,9 +199,21 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool DungeonRound(int round) {
-        ErrorLog("[GetDungeonRoundsRequired]");
-        return int.MaxValue == round;
+        DebugLog("[DungeonRound] round:{Round}", round);
+        if (Field is not DungeonFieldManager dungeonField || Field.Players.IsEmpty) {
+            return false;
+        }
+        if (!Field.TableMetadata.DungeonRoundDataTable.Entries.TryGetValue(dungeonField.DungeonMetadata.RoundId, out DungeonRoundMetadata[]? rounds)) {
+            return false;
+        }
+
+        return DungeonRoundMet(rounds, round, Field.Players.Values.Min(player => player.Session.Stats.Values.GearScore));
     }
+
+    // DungeonRoundRequire round=N passes when the room's round N (dungeonrounddata.xml entry N-1, as DungeonRoundGroup::GetRound
+    // indexes it) asks for no more gear score than the players have; the colosseum rooms are single-user, the lowest score counts.
+    public static bool DungeonRoundMet(IReadOnlyList<DungeonRoundMetadata> rounds, int round, int gearScore) =>
+        round >= 1 && round <= rounds.Count && gearScore >= rounds[round - 1].GearScore;
 
     public bool CheckUser(bool negate) {
         if (negate) {

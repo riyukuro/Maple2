@@ -78,6 +78,7 @@ public class TableMetadataStorage {
     private readonly Lazy<DungeonRankRewardTable> dungeonRankRewardTable;
     private readonly Lazy<DungeonConfigTable> dungeonConfigTable;
     private readonly Lazy<DungeonMissionTable> dungeonMissionTable;
+    private readonly Lazy<DungeonRoundDataTable> dungeonRoundDataTable;
 
     public ChatStickerTable ChatStickerTable => chatStickerTable.Value;
     public DefaultItemsTable DefaultItemsTable => defaultItemsTable.Value;
@@ -152,6 +153,7 @@ public class TableMetadataStorage {
     public DungeonRankRewardTable DungeonRankRewardTable => dungeonRankRewardTable.Value;
     public DungeonConfigTable DungeonConfigTable => dungeonConfigTable.Value;
     public DungeonMissionTable DungeonMissionTable => dungeonMissionTable.Value;
+    public DungeonRoundDataTable DungeonRoundDataTable => dungeonRoundDataTable.Value;
 
     public TableMetadataStorage(MetadataContext context) {
         chatStickerTable = Retrieve<ChatStickerTable>(context, TableNames.CHAT_EMOTICON);
@@ -221,6 +223,7 @@ public class TableMetadataStorage {
         dungeonRankRewardTable = Retrieve<DungeonRankRewardTable>(context, TableNames.DUNGEON_RANK_REWARD);
         dungeonConfigTable = Retrieve<DungeonConfigTable>(context, TableNames.DUNGEON_CONFIG);
         dungeonMissionTable = Retrieve<DungeonMissionTable>(context, TableNames.DUNGEON_MISSION);
+        dungeonRoundDataTable = Retrieve<DungeonRoundDataTable>(context, TableNames.DUNGEON_ROUND_DATA);
         seasonDataTable = Retrieve<SeasonDataTable>(context, TableNames.SEASON_DATA);
         smartPushTable = Retrieve<SmartPushTable>(context, TableNames.SMART_PUSH);
         autoActionTable = Retrieve<AutoActionTable>(context, TableNames.AUTO_ACTION);

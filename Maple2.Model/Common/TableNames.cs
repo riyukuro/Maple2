@@ -84,6 +84,7 @@ public static class TableNames {
     public const string DUNGEON_RANK_REWARD = "dungeonrankreward.xml";
     public const string DUNGEON_CONFIG = "dungeonconfig.xml";
     public const string DUNGEON_MISSION = "dungeonmission.xml";
+    public const string DUNGEON_ROUND_DATA = "dungeonrounddata.xml";
 
     public static readonly Dictionary<string, string> ItemOptionVariationTableNames = new Dictionary<string, string> {
         { "acc", ITEM_OPTION_VARIATION_ACC },

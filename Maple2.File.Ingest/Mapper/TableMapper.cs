@@ -137,6 +137,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.DUNGEON_RANK_REWARD, Table = ParseDungeonRankReward() };
         yield return new TableMetadata { Name = TableNames.DUNGEON_CONFIG, Table = ParseDungeonConfigTable() };
         yield return new TableMetadata { Name = TableNames.DUNGEON_MISSION, Table = ParseDungeonMissionTable() };
+        yield return new TableMetadata { Name = TableNames.DUNGEON_ROUND_DATA, Table = ParseDungeonRoundDataTable() };
     }
 
     private ChatStickerTable ParseChatSticker() {
@@ -1937,6 +1938,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         return new DungeonConfigTable(unitedWeeklyResults, missionRankResults);
+    }
+
+    private DungeonRoundDataTable ParseDungeonRoundDataTable() {
+        var results = new Dictionary<int, DungeonRoundMetadata[]>();
+        foreach ((int id, DungeonRoundGroup group) in parser.ParseDungeonRoundData()) {
+            results[id] = group.v.Select(round => new DungeonRoundMetadata(RewardId: round.rewardID, GearScore: round.gearScore)).ToArray();
+        }
+
+        return new DungeonRoundDataTable(results);
     }
 
     private DungeonMissionTable ParseDungeonMissionTable() {

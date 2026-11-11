@@ -1,12 +1,13 @@
 using System.Xml;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using TriggerConditions = Maple2.Server.Game.Trigger.Helpers.Trigger;
 
 namespace Maple2.Server.Tests.Game.Util;
 
-// dungeon_id, dungeon_level and dungeon_max_user_count read the field's DungeonRoom.xml row. Made-up ids.
+// dungeon_id, dungeon_level, dungeon_max_user_count and dungeon_round read the field's DungeonRoom.xml row. Made-up ids.
 public class TriggerDungeonRoomConditionTests {
     private static ICondition Condition(string xml) {
         var document = new XmlDocument();
@@ -53,5 +54,18 @@ public class TriggerDungeonRoomConditionTests {
         // A 10 user room: no script tests 10, so the old answer (1) keeps checkusercount going.
         Assert.That(TriggerContext.DungeonMaxUserCountMatches(10, 4), Is.False);
         Assert.That(TriggerContext.DungeonMaxUserCountMatches(10, 1), Is.True);
+    }
+
+    [Test]
+    public void DungeonRound_PassesWhenTheGearScoreMeetsTheRound() {
+        Assert.That(Condition("""<condition name="dungeon_round" round="2" />"""), Is.TypeOf<TriggerConditions.DungeonRound>());
+        DungeonRoundMetadata[] rounds = [new(RewardId: 1, GearScore: 100), new(RewardId: 2, GearScore: 200)];
+        // Round N is entry N-1.
+        Assert.That(TriggerContext.DungeonRoundMet(rounds, 1, 100), Is.True);
+        Assert.That(TriggerContext.DungeonRoundMet(rounds, 2, 199), Is.False);
+        Assert.That(TriggerContext.DungeonRoundMet(rounds, 2, 200), Is.True);
+        // A round the group does not list fails, as the old stub did.
+        Assert.That(TriggerContext.DungeonRoundMet(rounds, 3, 1000), Is.False);
+        Assert.That(TriggerContext.DungeonRoundMet(rounds, 0, 1000), Is.False);
     }
 }
