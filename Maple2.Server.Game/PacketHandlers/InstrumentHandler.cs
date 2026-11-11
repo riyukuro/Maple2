@@ -6,8 +6,10 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -41,6 +43,7 @@ public class InstrumentHandler : FieldPacketHandler {
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required TableMetadataStorage TableMetadata { private get; init; }
+    public required BanWordStorage BanWordStorage { private get; init; }
     // ReSharper restore All
     #endregion
 
@@ -250,6 +253,16 @@ public class InstrumentHandler : FieldPacketHandler {
         var instrument = packet.Read<Instrument>();
         string title = packet.ReadUnicodeString();
         string mml = packet.ReadString();
+
+        // The client's score writer makes these checks before it sends; a score that fails them was not written there.
+        int noteLengthMax = score.Metadata.Music?.NoteLengthMax ?? 0;
+        if (!InstrumentRules.IsComposable(title, BanWordStorage.ContainsBannedWord, mml, noteLengthMax, length)) {
+            if (!string.IsNullOrWhiteSpace(title) && BanWordStorage.ContainsBannedWord(title)) {
+                // The server's list can hold a word the client's filter passed.
+                session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+            }
+            return;
+        }
 
         score.Music.Length = length;
         score.Music.Instrument = instrument;
