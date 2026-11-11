@@ -38,6 +38,38 @@ public class PartyManager : IDisposable {
         }
     }
 
+    // How long a recall offer stays open. The server pack has no RecallPartyPortalKeepTime row; this is a guess.
+    private const int RecallKeepSeconds = 300;
+
+    /// <summary>
+    /// Offers a party recall to the other members (s2c RecallScroll on their channels).
+    /// False when there is no one to call, the field forbids recalls or the World refuses.
+    /// </summary>
+    public bool Recall() {
+        if (Party == null || session.Field == null) {
+            return false;
+        }
+        // UIPartyDialog checks the field's cashCall recall flag and that someone else is in the party.
+        if (!session.Field.Metadata.CashCall.Recall || Party.Members.Count <= 1) {
+            return false;
+        }
+
+        try {
+            PartyResponse response = world.Party(new PartyRequest {
+                RequestorId = session.CharacterId,
+                Recall = new PartyRequest.Types.Recall {
+                    PartyId = Party.Id,
+                    MapId = session.Field.MapId,
+                    EndTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + RecallKeepSeconds,
+                },
+            });
+            return response.Error == (int) PartyError.none;
+        } catch (Grpc.Core.RpcException ex) {
+            logger.Error(ex, "Party recall by {CharacterId} failed", session.CharacterId);
+            return false;
+        }
+    }
+
     public void Dispose() {
         session.Dispose();
         tokenSource.Dispose();

@@ -192,6 +192,12 @@ message PartyRequest {
     int32 dungeon_room_id = 3;
     bool set = 4;
   }
+  message Recall {
+    int64 character_id = 1;
+    string name = 2;
+    int32 map_id = 3;
+    int64 end_time = 4;
+  }
 
   int32 party_id = 1;
   repeated int64 receiver_ids = 2;
@@ -209,6 +215,7 @@ message PartyRequest {
     StartVoteKick start_vote_kick = 13;
     CreateSearch create_search = 14;
     SetDungeon set_dungeon = 15;
+    Recall recall = 16;
   }
 }
 

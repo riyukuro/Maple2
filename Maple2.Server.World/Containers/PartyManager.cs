@@ -421,6 +421,23 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     }
 
+    // A party recall scroll: every member's channel offers the recall to its members but the requestor.
+    public PartyError Recall(long requestorId, int mapId, long endTime) {
+        if (!Party.Members.TryGetValue(requestorId, out PartyMember? requestor)) {
+            return PartyError.s_party_err_not_found;
+        }
+
+        Broadcast(new PartyRequest {
+            Recall = new PartyRequest.Types.Recall {
+                CharacterId = requestorId,
+                Name = requestor.Info.Name,
+                MapId = mapId,
+                EndTime = endTime,
+            },
+        });
+        return PartyError.none;
+    }
+
     public PartyError SetDungeon(long requestorId, int dungeonId, bool set, int dungeonRoomId = 0) {
         if (requestorId != Party.LeaderCharacterId) {
             return PartyError.s_party_err_not_chief;

@@ -255,8 +255,17 @@ public class PartyHandler : FieldPacketHandler {
         }
     }
 
+    // StateRecall with no scroll: the player agreed to pay PartyRecallMerat merets instead.
     private void HandleSummonParty(GameSession session) {
-        // This only reaches if player does not have a summon scroll
+        int price = Constants.PartyRecallMerat;
+        if (session.Currency.CanAddMeret(-price) != -price) {
+            return;
+        }
+        if (!session.Party.Recall()) {
+            return;
+        }
+
+        session.Currency.Meret -= price;
     }
 
     private void HandleUnknown(GameSession session, IByteReader packet) {

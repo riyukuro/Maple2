@@ -13,6 +13,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using MigrationType = Maple2.Server.World.Service.MigrationType;
 
@@ -124,8 +125,6 @@ public class GotoCommand : GameCommand {
 
     private class PlayerCommand : Command {
         private readonly GameSession session;
-        // Vertical offset to prevent players from spawning inside the ground or other players
-        private const float VERTICAL_SPAWN_OFFSET = 75f;
         public PlayerCommand(GameSession session) : base("player", "Go to player.") {
             this.session = session;
 
@@ -148,59 +147,11 @@ public class GotoCommand : GameCommand {
                 return;
             }
 
-            PlayerWarpResponse? warpResponse = session.World.PlayerWarp(new PlayerWarpRequest {
-                RequesterId = session.CharacterId,
-                GoToPlayer = new PlayerWarpRequest.Types.GoToPlayer {
-                    Channel = playerInfo.Channel,
-                    CharacterId = playerInfo.CharacterId,
-                },
-            });
-
-            if (warpResponse is not { Error: 0 }) {
+            if (!PlayerWarpUtil.GoToPlayer(session, playerInfo)) {
                 ctx.Console.Out.WriteLine($"Failed to warp to '{playerName}'.");
                 return;
             }
-
-            if (warpResponse.RoomId == session.Field.RoomId && playerInfo.MapId == session.Player.Value.Character.MapId) {
-                session.Send(PortalPacket.MoveByPortal(session.Player, new Vector3(warpResponse.X, warpResponse.Y, warpResponse.Z + VERTICAL_SPAWN_OFFSET), session.Player.Rotation));
-                return;
-            }
-
-            if (playerInfo.Channel == session.Player.Value.Character.Channel) {
-                session.Send(session.PrepareField(playerInfo.MapId, roomId: warpResponse.RoomId, position: new Vector3(warpResponse.X, warpResponse.Y, warpResponse.Z + VERTICAL_SPAWN_OFFSET))
-                    ? FieldEnterPacket.Request(session.Player)
-                    : FieldEnterPacket.Error(MigrationError.s_move_err_default));
-
-                ctx.ExitCode = 0;
-                return;
-            }
-
-            session.MigrationSave();
-            try {
-                var request = new MigrateOutRequest {
-                    AccountId = session.AccountId,
-                    CharacterId = session.CharacterId,
-                    MachineId = session.MachineId.ToString(),
-                    Server = Server.World.Service.Server.Game,
-                    Channel = playerInfo.Channel,
-                    MapId = playerInfo.MapId,
-                    RoomId = warpResponse.RoomId,
-                    PositionX = warpResponse.X,
-                    PositionY = warpResponse.Y,
-                    PositionZ = warpResponse.Z + 75,
-                    Type = MigrationType.Normal,
-                };
-
-                MigrateOutResponse response = session.World.MigrateOut(request);
-                var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
-                session.Send(MigrationPacket.GameToGame(endpoint, response.Token, playerInfo.MapId));
-                session.State = SessionState.ChangeMap;
-            } catch (RpcException ex) {
-                session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-                session.Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
-            } finally {
-                session.Disconnect();
-            }
+            ctx.ExitCode = 0;
         }
     }
 }

@@ -102,6 +102,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public FieldManager? Field { get; set; }
     public FieldPlayer Player { get; private set; } = null!;
     public PartyManager Party { get; set; } = null!;
+    // The recall offered to this player per RecallScrollType (party, guild, wedding); lock the array to use it.
+    public readonly PendingRecall?[] Recalls = new PendingRecall?[3];
     public ConcurrentDictionary<int, GroupChatManager> GroupChats { get; set; }
     public ConcurrentDictionary<long, ClubManager> Clubs { get; set; }
     public SurvivalManager Survival { get; set; } = null!;

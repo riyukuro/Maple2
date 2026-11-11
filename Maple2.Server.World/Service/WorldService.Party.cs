@@ -43,6 +43,8 @@ public partial class WorldService {
                 return Task.FromResult(JoinByPartySearch(request.RequestorId, request.JoinByPartySearch));
             case PartyRequest.PartyOneofCase.SetDungeon:
                 return Task.FromResult(SetDungeon(request.RequestorId, request.SetDungeon));
+            case PartyRequest.PartyOneofCase.Recall:
+                return Task.FromResult(Recall(request.RequestorId, request.Recall));
             default:
                 return Task.FromResult(new PartyResponse { Error = (int) PartyError.none });
         }
@@ -234,6 +236,14 @@ public partial class WorldService {
         manager.SetDungeon(requestorId, setDungeon.DungeonId, setDungeon.Set, setDungeon.DungeonRoomId);
 
         return new PartyResponse();
+    }
+
+    private PartyResponse Recall(long requestorId, PartyRequest.Types.Recall recall) {
+        if (!partyLookup.TryGet(recall.PartyId, out PartyManager? manager)) {
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+        }
+
+        return new PartyResponse { Error = (int) manager.Recall(requestorId, recall.MapId, recall.EndTime) };
     }
 
     private static PartyInfo ToPartyInfo(Party party) {

@@ -3,6 +3,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
 using Maple2.Server.Channel.Service;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
@@ -35,6 +36,8 @@ public partial class ChannelService {
                 return Task.FromResult(StartVoteKick(request.ReceiverIds, request.PartyId, request.StartVoteKick));
             case PartyRequest.PartyOneofCase.SetDungeon:
                 return Task.FromResult(SetDungeon(request.ReceiverIds, request.SetDungeon));
+            case PartyRequest.PartyOneofCase.Recall:
+                return Task.FromResult(Recall(request.PartyId, request.ReceiverIds, request.Recall));
             default:
                 return Task.FromResult(new PartyResponse { Error = (int) PartyError.s_party_err_not_found });
         }
@@ -224,6 +227,25 @@ public partial class ChannelService {
             }
 
             session.Party.SetDungeon(setDungeon.DungeonId, setDungeon.DungeonRoomId, setDungeon.Set);
+        }
+
+        return new PartyResponse();
+    }
+
+    private PartyResponse Recall(int partyId, IEnumerable<long> receiverIds, PartyRequest.Types.Recall recall) {
+        foreach (long characterId in receiverIds) {
+            if (characterId == recall.CharacterId || !server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            if (session.Party.Party?.Id != partyId) {
+                continue;
+            }
+
+            lock (session.Recalls) {
+                session.Recalls[(int) RecallScrollType.Party] = new PendingRecall(recall.CharacterId, recall.Name, recall.MapId, recall.EndTime);
+            }
+            session.Send(RecallScrollPacket.Notify(RecallScrollType.Party, recall.Name, recall.MapId, recall.EndTime));
         }
 
         return new PartyResponse();
