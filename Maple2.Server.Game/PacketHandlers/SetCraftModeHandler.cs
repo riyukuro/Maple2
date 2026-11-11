@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Maple2.Model.Game;
+﻿using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -31,8 +30,9 @@ public class SetCraftModeHandler : FieldPacketHandler {
     }
 
     private void HandleStop(GameSession session, IByteReader packet) {
-        bool isStart = packet.ReadBool();
-        Debug.Assert(!isStart);
+        // The client writes the cube it holds for any mode (mypc.cpp:4175-4187), so a stop may carry
+        // one. It is read and not used.
+        CraftModeRules.ReadCube(packet);
 
         if (session.Field == null || session.GuideObject == null) {
             return;

@@ -35,4 +35,23 @@ public class CraftModeRulesTests {
         Assert.That(cube.Id, Is.EqualTo(0x1122334455667788));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+
+    // Stop while a cube is held: u8 0, u8 1 and the cube. With none: u8 0, u8 0.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Stop(bool withCube) {
+        var writer = new ByteWriter();
+        writer.WriteByte(0);
+        writer.WriteBool(withCube);
+        if (withCube) {
+            writer.WriteInt(50200001);
+            writer.WriteLong(0x1122334455667788);
+            writer.WriteLong(0);
+            writer.WriteByte(0);
+        }
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(CraftModeRules.ReadCube(reader) != null, Is.EqualTo(withCube));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
 }
