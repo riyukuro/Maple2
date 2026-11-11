@@ -127,29 +127,35 @@ public static class PetPacket {
         return pWriter;
     }
 
-    public static ByteWriter Fusion(FieldPet pet) {
+    // Client reader: CPetManager, pet mode 10 (int owner object id, long exp, long pet item uid): sets the
+    // pet item's exp after a fusion.
+    public static ByteWriter Fusion(int ownerId, Item pet) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.Fusion);
-        pWriter.WriteInt(pet.OwnerId);
-        pWriter.WriteLong(pet.Pet.Pet?.Exp ?? 0);
-        pWriter.WriteLong(pet.Pet.Uid);
+        pWriter.WriteByte((byte) Command.Fusion);
+        pWriter.WriteInt(ownerId);
+        pWriter.WriteLong(pet.Pet?.Exp ?? 0);
+        pWriter.WriteLong(pet.Uid);
 
         return pWriter;
     }
 
-    public static ByteWriter LevelUp(FieldPet pet) {
+    // Client reader: CPetManager, pet mode 11 (int owner object id, int level, long pet item uid): sets the
+    // pet item's level and plays the level-up effect.
+    public static ByteWriter LevelUp(int ownerId, Item pet) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.LevelUp);
-        pWriter.WriteInt(pet.OwnerId);
-        pWriter.WriteInt(pet.Pet.Pet?.Level ?? 1);
-        pWriter.WriteLong(pet.Pet.Uid);
+        pWriter.WriteByte((byte) Command.LevelUp);
+        pWriter.WriteInt(ownerId);
+        pWriter.WriteInt(pet.Pet?.Level ?? 1);
+        pWriter.WriteLong(pet.Uid);
 
         return pWriter;
     }
 
+    // Client reader: CPetManager, pet mode 12 (int count): today's pet fusion count (PC +0x11f4); refreshes
+    // the fusion window.
     public static ByteWriter FusionCount(int count) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.FusionCount);
+        pWriter.WriteByte((byte) Command.FusionCount);
         pWriter.WriteInt(count);
 
         return pWriter;

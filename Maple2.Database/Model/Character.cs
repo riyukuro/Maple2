@@ -62,6 +62,8 @@ internal class Character {
                 Doctor = other.DoctorCooldown,
                 Storage = other.StorageCooldown,
                 AbilityReset = other.AbilityResetTime,
+                PetFusionCount = other.PetFusionCount,
+                PetFusionTime = other.PetFusionTime,
             },
             Currency = new CharacterCurrency(),
             Mastery = new Mastery() {
@@ -112,6 +114,8 @@ internal class Character {
             DoctorCooldown = other.Cooldown.Doctor,
             StorageCooldown = other.Cooldown.Storage,
             AbilityResetTime = other.Cooldown.AbilityReset,
+            PetFusionCount = other.Cooldown.PetFusionCount,
+            PetFusionTime = other.Cooldown.PetFusionTime,
             DeleteTime = other.DeleteTime.ToEpochSeconds(),
             Channel = other.Channel,
             ReturnChannel = other.ReturnChannel,
@@ -170,6 +174,8 @@ internal class Cooldown {
     public long Storage { get; set; }
     public long Doctor { get; set; }
     public long AbilityReset { get; set; }
+    public int PetFusionCount { get; set; }
+    public long PetFusionTime { get; set; }
 }
 
 internal class CharacterCurrency {

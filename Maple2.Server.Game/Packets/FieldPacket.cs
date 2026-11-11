@@ -350,8 +350,11 @@ public static class FieldPacket {
         writer.WriteBool(false); // read and discarded by client
         writer.WriteLong(); // Birthday (charObj+0x11e8, set by BirthdayCard 0x111)
         writer.WriteInt(session.SuperChatId); // charObj+0x11f0, set/cleared by SuperWorldChat (0x112)
-        writer.WriteInt(); // charObj+0x11f4, SuperChat cosmetic/effect ID
-        writer.WriteLong(DateTime.Now.ToEpochSeconds()); // charObj+0x11f8
+        // charObj+0x11f4/+0x11f8: today's pet fusion count and when it was stored (PC::IsDailyCountExpired).
+        (int petFusionCount, long petFusionTime) = PetFusionRules.LoginCount(character.PetFusionCount, character.PetFusionTime,
+            PetFusionRules.LastResetTime(), DateTime.Now.ToEpochSeconds());
+        writer.WriteInt(petFusionCount);
+        writer.WriteLong(petFusionTime);
         writer.WriteInt(account.PrestigeLevel);
         writer.WriteLong(character.LastModified.ToEpochSeconds());
         writer.WriteInt(1); // count for long list (charObj+0x1B8 region)

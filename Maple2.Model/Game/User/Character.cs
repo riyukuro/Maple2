@@ -42,6 +42,11 @@ public class Character {
     public List<int> Abilities = [];
     public long AbilityResetTime;
 
+    // Pet fusion: the pet fodders used today and when the count was last stored (seconds, 0 = never). The
+    // client gets both at login (+0x11f4/+0x11f8) and the count after each fusion (RequestPet mode 12).
+    public int PetFusionCount;
+    public long PetFusionTime;
+
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;
     public string Picture = string.Empty;

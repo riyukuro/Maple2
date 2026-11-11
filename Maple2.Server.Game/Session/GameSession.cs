@@ -825,6 +825,10 @@ public sealed partial class GameSession : Core.Network.Session {
         Shop.DailyReset();
         // Dungeon daily clears
         Dungeon.ResetDailyClears();
+        // Pet fusion count
+        Player.Value.Character.PetFusionCount = 0;
+        Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();
+        Send(PetPacket.FusionCount(0));
     }
 
     public void WeeklyReset() {
