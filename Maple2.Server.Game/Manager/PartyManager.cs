@@ -274,8 +274,10 @@ public class PartyManager : IDisposable {
             return;
         }
 
-        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, characterId);
         Party.LastVoteTime = DateTime.Now.ToEpochSeconds();
+        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, characterId) {
+            EndTime = VoteEndTime(Party.LastVoteTime),
+        };
         session.Send(PartyPacket.StartVote(Party.Vote));
     }
 
@@ -337,10 +339,14 @@ public class PartyManager : IDisposable {
         Party.LastVoteTime = DateTime.Now.ToEpochSeconds();
         Party.Vote = new PartyVote(PartyVoteType.Kick, receiverIds, requestorId) {
             TargetMember = target,
-            VoteTime = Party.LastVoteTime,
+            EndTime = VoteEndTime(Party.LastVoteTime),
         };
         session.Send(PartyPacket.StartVote(Party.Vote));
     }
+
+    // World ends both kinds of vote after PartyVoteReadyDurationSeconds.
+    private long VoteEndTime(long startTime) =>
+        startTime + session.ServerTableMetadata.ConstantsTable.PartyVoteReadyDurationSeconds;
 
     public void SetDungeon(int dungeonId, int dungeonRoomId, bool set, bool matched = false) {
         if (Party == null) {

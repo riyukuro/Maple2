@@ -11,7 +11,8 @@ public class PartyVote : IByteSerializable {
     public readonly ICollection<long> Disapprovals;
     public readonly long InitiatorId;
     public PartyMember? TargetMember;
-    public long VoteTime { get; init; }
+    // When the vote ends, unix seconds: the client counts its timer down to it (PartyVoteCli::vfunc_1).
+    public long EndTime { get; init; }
     public readonly byte VotesNeeded;
 
     public PartyVote(PartyVoteType type, ICollection<long> voters, long requestorId) {
@@ -28,7 +29,7 @@ public class PartyVote : IByteSerializable {
     public void WriteTo(IByteWriter writer) {
         writer.Write<PartyVoteType>(Type);
         writer.WriteInt(); // Counter
-        writer.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds()); // TODO: This is wrong. Will not display a proper time on vote kicking.
+        writer.WriteLong(EndTime);
 
         writer.WriteInt(Voters.Count);
         foreach (long characterId in Voters) {
@@ -49,7 +50,7 @@ public class PartyVote : IByteSerializable {
             writer.WriteLong(InitiatorId);
             writer.WriteLong(TargetMember!.CharacterId);
             writer.WriteUnicodeString(TargetMember.Name);
-            writer.WriteByte(VotesNeeded);
+            writer.WriteByte(VotesNeeded); // The client's reason byte; see FORK.md.
         }
     }
 }
