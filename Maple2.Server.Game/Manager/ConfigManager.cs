@@ -437,7 +437,11 @@ public class ConfigManager {
     #endregion
 
     #region StatPoints
-    public void AllocateStatPoint(BasicAttribute type) {
+    public void AllocateStatPoint(BasicAttribute type, int amount) {
+        if (amount <= 0) {
+            return;
+        }
+
         // Invalid stat type.
         if (StatAttributes.PointAllocation.StatLimit(type, statLimits) <= 0) {
             return;
@@ -448,14 +452,16 @@ public class ConfigManager {
             return;
         }
 
+        amount = Math.Min(amount, statAttributes.TotalPoints - statAttributes.UsedPoints);
+
         // Reached limit for allocation.
-        if (session.Config.statAttributes.Allocation[type] >= StatAttributes.PointAllocation.StatLimit(type, statLimits)) {
+        if (session.Config.statAttributes.Allocation[type] + amount > StatAttributes.PointAllocation.StatLimit(type, statLimits)) {
             session.Send(NoticePacket.Message("s_char_info_limit_stat_point"));
             return;
         }
 
-        session.Config.statAttributes.Allocation[type]++;
-        UpdateStatAttribute(type, 1);
+        session.Config.statAttributes.Allocation[type] += amount;
+        UpdateStatAttribute(type, amount);
         session.Send(AttributePointPacket.Allocation(session.Config.statAttributes));
     }
 
