@@ -209,7 +209,11 @@ public class RequestCubeHandler : FieldPacketHandler {
             case Command.OwnPlotSign:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: plot {Plot}, {Value}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
                 break;
-            case Command.HomeSummon: // home summon dialog: two strings
+            // UIHomeSummonDialog::Summon (unit_141299650_uihomesummondialog.cpp:137): the dialog of a function cube
+            // of sub-kind 7 (CFunctionCubeObject::OpenSubKindDialog) sends the cube's id string and a typed text of
+            // two or more letters. The client reads no answer under sub-type 30 and does not show which packet the
+            // named player gets: read and logged.
+            case Command.HomeSummon:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {First}, {Second}", command, session.CharacterId, packet.ReadUnicodeString(), packet.ReadUnicodeString());
                 break;
             case Command.SetBuildBudget: // meso, merat
