@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -69,7 +70,10 @@ public class ItemDismantleHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         int amount = packet.ReadInt();
         Item? item = session.Item.Inventory.Get(itemUid);
-        if (item == null || (!item.Metadata.Limit.EnableBreak && item.GachaDismantleId == 0) || item.Amount < amount) {
+        if (item == null || (!item.Metadata.Limit.EnableBreak && item.GachaDismantleId == 0)) {
+            return;
+        }
+        if (!DismantleRules.CanStage(amount, item.Amount, item.IsLocked, itemUid, session.Pet?.Pet.Uid ?? 0)) {
             return;
         }
 
@@ -128,6 +132,11 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 if (item == null) {
                     continue;
                 }
+                // The item can have changed since it was staged (locked, split, its pet summoned).
+                if (!DismantleRules.CanStage(amount, item.Amount, item.IsLocked, uid, session.Pet?.Pet.Uid ?? 0)) {
+                    session.DismantleStaging[slot] = default;
+                    continue;
+                }
 
                 // If failed to consume, remove slot.
                 if (!session.Item.Inventory.Consume(uid, amount)) {
@@ -147,14 +156,17 @@ public class ItemDismantleHandler : FieldPacketHandler {
             foreach ((int id, (int min, int max)) in rewards) {
                 int total = Random.Shared.Next(min, max);
                 result[id] = total;
-                while (total > 0) {
-
-                    Item? item = session.Field?.ItemDrop.CreateItem(id, amount: total);
+                // An unknown reward id gives nothing (the loop used to spin on it forever).
+                if (!ItemMetadata.TryGet(id, out ItemMetadata? rewardMetadata)) {
+                    continue;
+                }
+                // One item per stack: the whole remainder was given on every pass, so a reward above
+                // the stack size was paid more than once.
+                foreach (int stack in DismantleRules.Stacks(total, rewardMetadata.Property.SlotMax)) {
+                    Item? item = session.Field?.ItemDrop.CreateItem(id, amount: stack);
                     if (item == null) {
-                        continue;
+                        break;
                     }
-                    int rewarded = Math.Min(item.Metadata.Property.SlotMax, total);
-                    total -= rewarded;
                     session.Item.Inventory.Add(item, true);
                 }
             }
