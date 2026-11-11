@@ -1,0 +1,47 @@
+using Maple2.Model.Common;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
+
+namespace Maple2.Server.Tests.Validators;
+
+public class StateSyncRulesTests {
+    // A base record: state, sub state, position (3 x i16), rotation i16, animation u8,
+    // speed (3 x i16), the bounded byte, two i16, flags u8, sync number i32.
+    private static byte[] Record(byte afterSpeed) {
+        var writer = new ByteWriter();
+        writer.WriteByte((byte) ActorState.Idle);
+        writer.WriteByte(0);
+        writer.WriteShort(1);
+        writer.WriteShort(2);
+        writer.WriteShort(3);
+        writer.WriteShort(900);
+        writer.WriteByte(0);
+        writer.WriteShort(0);
+        writer.WriteShort(0);
+        writer.WriteShort(0);
+        writer.WriteByte(afterSpeed);
+        writer.WriteShort(0);
+        writer.WriteShort(0);
+        writer.WriteByte(0);
+        writer.WriteInt(7);
+        return writer.ToArray();
+    }
+
+    [TestCase((byte) 0, true)]
+    [TestCase((byte) 2, true)]
+    [TestCase((byte) 0x13, true)]
+    [TestCase((byte) 0x14, false)]
+    [TestCase((byte) 0xFF, false)]
+    public void ByteAfterSpeedOfARecord(byte value, bool expected) {
+        byte[] bytes = Record(value);
+        var packet = new ByteReader(bytes, 0);
+        var sync = new StateSync();
+        sync.ReadFrom(packet);
+        Assert.That(packet.Available, Is.EqualTo(0));
+        Assert.That(sync.SyncNumber, Is.EqualTo(7));
+        Assert.That(sync.Unknown1, Is.EqualTo(value));
+        Assert.That(StateSyncRules.IsRelayable(sync.Unknown1), Is.EqualTo(expected));
+    }
+}
