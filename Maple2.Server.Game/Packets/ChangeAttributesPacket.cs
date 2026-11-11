@@ -11,7 +11,9 @@ public static class ChangeAttributesPacket {
     private enum Command : byte {
         Preview = 1,
         Select = 2,
-        Error = 4,
+        // Client: UIItemRemakeOptionDialog::vfunc_79 reads the error as kind 5; kind 4 is a long item uid and an
+        // ingredient list.
+        Error = 5,
     }
 
     public static ByteWriter PreviewItem(Item item) {
@@ -35,8 +37,8 @@ public static class ChangeAttributesPacket {
     public static ByteWriter Error(ChangeAttributesError error, bool flag = false) {
         var pWriter = Packet.Of(SendOp.ChangeAttributes);
         pWriter.Write<Command>(Command.Error);
-        pWriter.WriteBool(flag); // No idea
-        pWriter.Write<ChangeAttributesError>(error);
+        pWriter.WriteBool(flag); // false: the dialog leaves its waiting state
+        pWriter.WriteInt((int) error);
 
         return pWriter;
     }

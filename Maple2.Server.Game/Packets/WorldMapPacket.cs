@@ -22,6 +22,8 @@ public static class WorldMapPacket {
             pWriter.WriteWorldBosses(otherBossGroups);
         }
 
+        // Client: WorldMapManager::LoadIconPacket reads a byte here and reads the population block only when it is 1.
+        pWriter.WriteBool(true);
         pWriter.WriteByte(3); // Const
         pWriter.WriteInt(populations.Count);
         foreach (MapPopulation population in populations) {
