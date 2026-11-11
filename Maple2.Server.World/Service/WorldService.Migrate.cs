@@ -103,10 +103,8 @@ public partial class WorldService {
             case FieldRequest.FieldOneofCase.CreateDungeon:
                 return Task.FromResult(CreateDungeon(request));
             case FieldRequest.FieldOneofCase.DestroyDungeon:
-                return Task.FromResult(DestroyDungeon(request));
             case FieldRequest.FieldOneofCase.CheckDungeon:
-                // Dungeon rooms live on the first channel, the one CreateDungeon is sent to.
-                return Task.FromResult(DestroyDungeon(request));
+                return Task.FromResult(ForwardToFirstChannel(request));
             default:
                 return Task.FromResult(new FieldResponse { Error = (int) MigrationError.ok });
         }
@@ -122,7 +120,9 @@ public partial class WorldService {
         return client.Field(request);
     }
 
-    private FieldResponse DestroyDungeon(FieldRequest request) {
+    // Dungeon rooms live on the first channel, the one CreateDungeon is sent to; a request to close a room or
+    // to ask whether it still runs goes there unchanged.
+    private FieldResponse ForwardToFirstChannel(FieldRequest request) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
             return new FieldResponse {
                 Error = (int) MigrationError.s_move_err_no_server,
