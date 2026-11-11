@@ -300,16 +300,12 @@ public partial class TriggerContext : ITriggerContext {
         return Enum.TryParse(checkState, true, out Maple2.Model.Enum.DungeonState wanted) && Enum.IsDefined(wanted) && wanted == state;
     }
 
+    // The first player who entered the room: the sum of that player's user mission scores, compared
+    // with score. The fame challenge rooms are for one player. Outside a dungeon room the sum is 0.
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType) {
-        ErrorLog("[GetDungeonFirstUserMissionScore]");
-        return operatorType switch {
-            OperatorType.Greater => score > 0,
-            OperatorType.GreaterEqual => score >= 0,
-            OperatorType.Equal => score == 0,
-            OperatorType.LessEqual => score <= 0,
-            OperatorType.Less => score < 0,
-            _ => false,
-        };
+        int sum = Field is DungeonFieldManager dungeonField ? dungeonField.DungeonRoomRecord.FirstUserMissionScore() : 0;
+        DebugLog("[DungeonFirstUserMissionScore] score:{Score}, operator:{Operator}, sum:{Sum}", score, operatorType, sum);
+        return CompareRate(sum, score, operatorType);
     }
 
     // The field's score board score compared with score, once a script in this field has called

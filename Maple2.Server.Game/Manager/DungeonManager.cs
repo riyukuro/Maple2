@@ -272,6 +272,7 @@ public class DungeonManager {
         UserRecord = field.DungeonRoomRecord.UserResults.GetOrAdd(session.CharacterId,
             _ => new DungeonUserRecord(field.DungeonId, session.CharacterId));
 
+        field.DungeonRoomRecord.SetFirstUser(session.CharacterId);
         FillMissions(UserRecord, Metadata.PartyMissions, Metadata.UserMissions, session.TableMetadata.DungeonMissionTable.Missions);
     }
 

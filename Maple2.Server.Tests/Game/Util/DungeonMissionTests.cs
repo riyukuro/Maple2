@@ -7,6 +7,8 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Trigger;
+using Maple2.Server.Game.Trigger.Helpers;
 
 namespace Maple2.Server.Tests.Game.Util;
 
@@ -134,5 +136,32 @@ public class DungeonMissionTests {
         // A room with a result counts nothing more.
         room.State = DungeonState.Clear;
         Assert.That(DungeonFieldManager.CountMissions(room, 20, mission => mission.AddLastHit(5)), Is.Empty);
+    }
+    [Test]
+    public void FirstUserMissionScore_SumsTheFirstEntrantsUserMissions() {
+        var table = new Dictionary<int, DungeonMissionMetadata> {
+            [1] = Mission(1, DungeonMissionType.Trigger, 300),
+            [2] = Mission(2, DungeonMissionType.LastHitNpc, value1: 5),
+            [3] = Mission(3, DungeonMissionType.Trigger),
+        };
+        var room = new DungeonRoomRecord(null!);
+        Assert.That(room.FirstUserMissionScore(), Is.EqualTo(0));
+        foreach (long characterId in new long[] { 10, 20 }) {
+            var record = new DungeonUserRecord(100, characterId);
+            DungeonManager.FillMissions(record, [1], [2, 3], table);
+            room.UserResults[characterId] = record;
+            room.SetFirstUser(characterId);
+        }
+        Assert.That(room.FirstCharacterId, Is.EqualTo(10));
+
+        room.UserResults[10].Missions[1].Complete(); // a party mission is not in the sum
+        room.UserResults[10].Missions[2].AddLastHit(5);
+        room.UserResults[20].Missions[3].Complete();
+        Assert.That(room.FirstUserMissionScore(), Is.EqualTo(500));
+        room.UserResults[10].Missions[3].Complete();
+        Assert.That(room.FirstUserMissionScore(), Is.EqualTo(1000));
+        // The fame room scripts branch at 1500.
+        Assert.That(TriggerContext.CompareRate(room.FirstUserMissionScore(), 1500, OperatorType.GreaterEqual), Is.False);
+        Assert.That(TriggerContext.CompareRate(room.FirstUserMissionScore(), 1500, OperatorType.Less), Is.True);
     }
 }
