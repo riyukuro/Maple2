@@ -396,6 +396,42 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Guild 102. The fund and the theme are saved before the answer; a failed save undoes them.
+    public GuildError ChangeHouseTheme(long requestorId, int theme) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        int guildFund;
+        int rank;
+        lock (guildLock) {
+            GuildTable.House? house = null;
+            if (TableMetadata.GuildTable.Houses.TryGetValue(Guild.HouseRank, out IReadOnlyDictionary<int, GuildTable.House>? themes)) {
+                themes.TryGetValue(theme, out house);
+            }
+            GuildError error = GuildRules.CheckChangeHouseTheme(requestorId == Guild.LeaderCharacterId, house,
+                Guild.HouseTheme, theme, Guild.Funds);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            int oldFunds = Guild.Funds;
+            int oldTheme = Guild.HouseTheme;
+            Guild.Funds -= house!.ReThemeCost;
+            Guild.HouseTheme = theme;
+            if (!TrySave()) {
+                Guild.Funds = oldFunds;
+                Guild.HouseTheme = oldTheme;
+                return GuildError.s_guild_err_unknown;
+            }
+            guildFund = Guild.Funds;
+            rank = Guild.HouseRank;
+        }
+
+        BroadcastHouse(requestor.Name, guildFund, rank, theme);
+        return GuildError.none;
+    }
+
     private bool TrySave() {
         try {
             using GameStorage.Request db = GameStorage.Context();

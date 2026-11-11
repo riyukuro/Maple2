@@ -1010,8 +1010,30 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
+    // CGuildManager::FUN_1413babf0: the new theme of the house at its level. The World server checks, pays
+    // and saves; every member gets the new fund (51) and the house (57).
     private void HandleUpgradeHouseTheme(GameSession session, IByteReader packet) {
         int theme = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                ChangeHouseTheme = new GuildRequest.Types.ChangeHouseTheme {
+                    GuildId = session.Guild.Id,
+                    Theme = theme,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+            }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to change guild house theme");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleEnterHouse(GameSession session) {

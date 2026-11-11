@@ -162,6 +162,25 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // Guild 102 (CGuildManager::FUN_1413babf0), in the client's order: the house row of the guild's own level
+    // and the new theme must exist, the master asks, the theme is another one than today's (the client's
+    // "same theme" text has no code in the error packet), and the fund pays the row's change cost.
+    public static GuildError CheckChangeHouseTheme(bool isMaster, GuildTable.House? house, int currentTheme, int theme, int funds) {
+        if (house == null) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (!isMaster) {
+            return GuildError.s_guild_err_no_master;
+        }
+        if (currentTheme == theme) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (house.ReThemeCost < 0 || house.ReThemeCost > funds) {
+            return GuildError.s_guild_err_not_enough_guild_fund;
+        }
+        return GuildError.none;
+    }
+
     // Guild 114 (CGuildManager::FUN_1413bb000), in the client's order: the row of the next level must
     // exist ("highest level", which has no code in the error packet), the master asks, the guild level and
     // the house level reach the row's (the client shows the guild level text for both), and the fund pays.

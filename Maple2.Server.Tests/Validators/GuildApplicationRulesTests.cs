@@ -83,6 +83,18 @@ public class GuildApplicationRulesTests {
     }
 
     [Test]
+    public void ChangeHouseTheme_Rules() {
+        GuildTable.House house = HouseRow(6, 500, 100);
+
+        Assert.That(GuildRules.CheckChangeHouseTheme(true, house, 1, 2, 100), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckChangeHouseTheme(true, null, 1, 2, 100), Is.EqualTo(GuildError.s_guild_err_unknown), "no such theme at this level");
+        Assert.That(GuildRules.CheckChangeHouseTheme(false, house, 1, 2, 100), Is.EqualTo(GuildError.s_guild_err_no_master));
+        Assert.That(GuildRules.CheckChangeHouseTheme(true, house, 2, 2, 100), Is.EqualTo(GuildError.s_guild_err_unknown), "same theme");
+        Assert.That(GuildRules.CheckChangeHouseTheme(true, house, 1, 2, 99), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckChangeHouseTheme(true, HouseRow(6, 0, -1), 1, 2, 99), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+    }
+
+    [Test]
     public void UpgradeNpc_Rules() {
         var next = new GuildTable.Npc(GuildNpcType.Equip, Level: 2, RequireGuildLevel: 3, RequireHouseLevel: 2, UpgradeCost: 500);
 

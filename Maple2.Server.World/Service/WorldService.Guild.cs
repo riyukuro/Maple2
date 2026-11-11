@@ -61,6 +61,8 @@ public partial class WorldService {
                 return Task.FromResult(UpgradeGuildNpc(request.RequestorId, request.UpgradeNpc));
             case GuildRequest.GuildOneofCase.UpgradeHouse:
                 return Task.FromResult(UpgradeGuildHouse(request.RequestorId, request.UpgradeHouse));
+            case GuildRequest.GuildOneofCase.ChangeHouseTheme:
+                return Task.FromResult(ChangeGuildHouseTheme(request.RequestorId, request.ChangeHouseTheme));
             case GuildRequest.GuildOneofCase.Donate:
                 return Task.FromResult(DonateGuild(request.RequestorId, request.Donate));
             default:
@@ -463,6 +465,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = upgrade.GuildId };
+    }
+
+    private GuildResponse ChangeGuildHouseTheme(long requestorId, GuildRequest.Types.ChangeHouseTheme change) {
+        if (!guildLookup.TryGet(change.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.ChangeHouseTheme(requestorId, change.Theme);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = change.GuildId };
     }
 
     // Guild 113: a member gives meso to the guild fund.
