@@ -12,4 +12,26 @@ public static class QuestPeriod {
         int index = Array.FindIndex(Days, day => string.Equals(day, usePeriod, StringComparison.OrdinalIgnoreCase));
         return index + 1;
     }
+
+    // The usePeriod that is not a day name read as minutes, as the client's atoi (FUN_140718170): leading blanks, a
+    // sign, then the digits up to the first other character; 0 when there are none.
+    public static int DurationMinutes(string? usePeriod) {
+        if (string.IsNullOrEmpty(usePeriod) || ResetWeekday(usePeriod) != 0) {
+            return 0;
+        }
+        int i = 0;
+        while (i < usePeriod.Length && usePeriod[i] is ' ' or '\t' or '\n' or '\v' or '\f' or '\r') {
+            i++;
+        }
+        bool negative = false;
+        if (i < usePeriod.Length && usePeriod[i] is '+' or '-') {
+            negative = usePeriod[i] == '-';
+            i++;
+        }
+        long value = 0;
+        for (; i < usePeriod.Length && usePeriod[i] is >= '0' and <= '9'; i++) {
+            value = Math.Min(value * 10 + (usePeriod[i] - '0'), int.MaxValue);
+        }
+        return (int) (negative ? -value : value);
+    }
 }

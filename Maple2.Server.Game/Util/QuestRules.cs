@@ -19,6 +19,20 @@ public static class QuestRules {
         };
     }
 
+    // Quest 7 (Expired): the client sends it for a quest in progress whose end time has come, and a quest has an end
+    // time only with a reset weekday, a duration or an event tag (FUN_14074b090, CQuestManager::FUN_1416d3010,
+    // questmanager_2.cpp:2157). Anything else, a completed quest above all, stays: its row is what keeps a repeat
+    // quest from being started and rewarded again in the same period.
+    public static bool CanExpire(QuestMetadataBasic basic, QuestState state) {
+        return state == QuestState.Started
+               && (basic.ResetWeekday != 0 || basic.DurationMinutes != 0 || !string.IsNullOrEmpty(basic.EventTag));
+    }
+
+    // Quest 2 (Abandon): a forfeitable quest known to the played client that is not completed, for the same reason.
+    public static bool CanForfeit(QuestMetadataBasic basic, QuestState state) {
+        return basic.Forfeitable && state != QuestState.Completed && PlayedClientQuests.Known(basic);
+    }
+
     // NextWeekdayStart: the start of the next day with this weekday (1 sun .. 7 sat) after the day of the time; the
     // same weekday gives a week later.
     public static DateTime NextWeekdayStart(int weekday, DateTime time) {

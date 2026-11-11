@@ -833,8 +833,10 @@ public sealed partial class GameSession : Core.Network.Session {
         Shop.DailyReset();
         // Dungeon daily clears
         Dungeon.ResetDailyClears();
-        // Alliance missions
-        Quest.ResetAllianceMissions();
+        // Alliance missions: the reset drops held quests, so it runs on the session's own queue, where the packets
+        // that read the quests are handled, with the time of the reset.
+        DateTime resetTime = DateTime.Now;
+        Scheduler.Schedule(() => Quest.ResetAllianceMissions(resetTime));
         // Pet fusion count
         Player.Value.Character.PetFusionCount = 0;
         Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();

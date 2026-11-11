@@ -67,6 +67,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     NotInPlayedClient: notInPlayedClient,
                     Repeat: data.basic.repeatable,
                     ResetWeekday: QuestPeriod.ResetWeekday(data.basic.usePeriod),
+                    DurationMinutes: QuestPeriod.DurationMinutes(data.basic.usePeriod),
                     Alliance: (Maple2.Model.Enum.AllianceType) (int) data.basic.alliance,
                     Rank: (int) data.basic.rank
                 ),

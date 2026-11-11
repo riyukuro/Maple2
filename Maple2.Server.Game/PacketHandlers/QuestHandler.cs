@@ -215,7 +215,8 @@ public class QuestHandler : FieldPacketHandler {
     private static void HandleForfeit(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !quest.Metadata.Basic.Forfeitable || !PlayedClientQuests.Known(quest.Metadata.Basic)) {
+        // A completed quest stays (QuestRules.CanForfeit): without its row it could be started and rewarded again.
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !QuestRules.CanForfeit(quest.Metadata.Basic, quest.State)) {
             return;
         }
 
