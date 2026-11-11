@@ -138,23 +138,27 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 66 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 61 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
 | RequestCube | 9 | RequestItemEnchant | 5 | FunctionCube | 2 |
 | EventReward | 9 | Wedding | 3 | BuddyBadge | 2 |
-| Quest | 8 | HomeAction | 3 | RequestItemInventory | 2 |
+| Quest | 7 | HomeAction | 3 | | |
 | Guild | 6 | Party | 2 | | |
 | RoomDungeon | 5 | | | | |
 
-These systems have one unhandled sub-type each: Achieve, Buddy, Club, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Trade, Ugc.
+These systems have one unhandled sub-type each: Achieve, Club, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Ugc.
 
 Narrowed, with the reason:
 - FurnishingStorage 4 (take a stored furnishing item into the bag): the server keeps every furnishing item in the furnishing storage and has no bag tab for them, so the request is dropped and the item stays stored. Placing the item from the storage works.
 - Revival 3 (revive a dead summon): only logged. It is not counted in the table above.
+- Quest 15 (sky fortress mission), 17 (epic quest restart), 19 (re-enter a quest's hidden field), 28 (find a player for a quest) and 33 to 35 (alliance quest ticket, accept all, complete all): the server does not load the data or run the system behind them (no sky fortress missions, no restart event, no re-entry flag in the quest data, no alliance quest accept).
+- RequestItemEnchant 9 (refund), 13 and 14 (enchant simulation) and the GM debug buttons 15 to 19: read and logged only. The debug ones need a GM account.
+- Party 39 and 43 (join a dungeon party from a chat link): the link is built from a recruiting notice that the server never sends. Party 32 to 34 (dungeon match queue) have no matchmaker behind them.
+- Achieve 5 (GM debug buttons of the trophy window): read and logged only, GM account needed.
 
-Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.
+Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. So are Quest 18 (the quest portal opens again when the quest talk ends) and Buddy 20 (the "refuse friend requests" option: a request is declined on receipt while the option is on; the server learns the option when the options are saved). RequestItemInventory 8 and 9 (sort, expand) and Trade 14 (busy answer) were already handled and are no longer counted. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.
 
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
