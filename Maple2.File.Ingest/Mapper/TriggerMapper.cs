@@ -82,7 +82,7 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
 
                 // Convert relative asset path to pack path
                 if (path.StartsWith("./")) path = path[2..];
-                string triggerPath = path.Replace("Data/Xml/Trigger/", "trigger/");
+                string triggerPath = path.Replace("Data/Xml/Trigger/", "trigger/", StringComparison.OrdinalIgnoreCase);
                 if (!triggerPath.StartsWith("trigger/")) {
                     // Fallback: if it didn't map above but looks like a direct file name, prefix it
                     if (!triggerPath.Contains('/')) {
@@ -103,12 +103,9 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
         foreach (string importPath in importPaths) {
             try {
                 // Find the imported file in the reader
-                PackFileEntry? importFile = reader.Files.FirstOrDefault(f => f.Name.Equals(importPath, StringComparison.Ordinal));
-                if (importFile == null) {
-                    importFile = reader.Files.FirstOrDefault(f => f.Name.EndsWith('/' + Path.GetFileName(importPath), StringComparison.OrdinalIgnoreCase)
-                                                                 || f.Name.Equals(importPath, StringComparison.OrdinalIgnoreCase));
-                }
-                if (importFile == null) continue;
+                string? importName = MatchImport(reader.Files.Select(f => f.Name), importPath, Console.WriteLine);
+                if (importName == null) continue;
+                PackFileEntry importFile = reader.Files.First(f => f.Name == importName);
 
                 XmlDocument importDoc = reader.GetXmlDocument(importFile);
 
@@ -128,6 +125,29 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
         }
 
         return importedStates;
+    }
+
+    // The pack file an import names: the full path, case-insensitively, first; else a file of the same name in
+    // any folder. When that fallback has more than one candidate, the first is taken and the choice is logged.
+    public static string? MatchImport(IEnumerable<string> names, string importPath, Action<string>? log = null) {
+        string path = importPath.Replace('\\', '/').TrimStart('/');
+        string fileName = '/' + Path.GetFileName(path);
+        string? byName = null;
+        int byNameCount = 0;
+        foreach (string name in names) {
+            if (name.Equals(path, StringComparison.OrdinalIgnoreCase)) {
+                return name;
+            }
+            if (name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)) {
+                byName ??= name;
+                byNameCount++;
+            }
+        }
+
+        if (byNameCount > 1) {
+            log?.Invoke($"Warning: import {importPath} has no exact path match; {byNameCount} files share its name, using {byName}");
+        }
+        return byName;
     }
 
     private void MergeImportedStates(XmlDocument mainXml, Dictionary<string, XmlNode> importedStates) {
