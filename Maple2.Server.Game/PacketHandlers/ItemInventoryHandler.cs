@@ -74,6 +74,8 @@ public class ItemInventoryHandler : FieldPacketHandler {
         // The client asks this in a confirm box it shows only when the tab holds expired items
         // (UIInventoryDialog::OnClickSort counts IsExpired items, OnSortConfirm sends the answer), so it asks to
         // remove the expired items. The client has no choice for merging, so a sort always merges stacks.
+        // The counting helper at 0x14199d840 is named CountStackableItems in the decompiled client, but its body
+        // counts CItem::IsExpired; with no expired item the client skips the box and sends false.
         bool removeExpired = packet.ReadBool();
         if (!InventoryTab.TryFromClient(tab, out InventoryType type)) {
             return;
