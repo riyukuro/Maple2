@@ -66,7 +66,7 @@ public static class GuildPacket {
         UpdateRank = 67,
         UpdateFocus = 68,
         SendMail = 71,
-        // 72, 73, 74
+        PvpHistory = 74,
         AddTag = 77,
         RemoveTag = 78,
         Error = 79,
@@ -770,6 +770,16 @@ public static class GuildPacket {
 
     // CGuildManager::OnPacketStorageHistory (0x70): a count, then per row the giver, the receiver, the item and
     // the time. The server keeps no guild storage log, so only the empty list can be written.
+    // CGuildManager::OnPacketPvpHistory (guildmanager.cpp:2805): a count, then per row a byte and, when it
+    // is 1, the history row. The server runs no guild PvP, so only the empty list can be written.
+    public static ByteWriter PvpHistory() {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.PvpHistory);
+        pWriter.WriteInt(0);
+
+        return pWriter;
+    }
+
     public static ByteWriter StorageHistory() {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.StorageHistory);

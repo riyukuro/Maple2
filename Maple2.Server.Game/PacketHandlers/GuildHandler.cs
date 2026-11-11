@@ -764,10 +764,15 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Send(GuildPacket.SendMail());
     }
 
-    // Client CGuildManager::RequestPvpHistoryAndSeason: the last history id the client holds, then a mode 75 request.
+    // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1144): sent when the guild PvP tab opens,
+    // with the last history id the client holds. The server runs no guild PvP: the answer has no rows.
     private void HandlePvpHistory(GameSession session, IByteReader packet) {
-        long lastHistoryId = packet.ReadLong();
-        Logger.Debug("Guild PvP history after {HistoryId} from {CharacterId} not implemented", lastHistoryId, session.CharacterId);
+        packet.ReadLong(); // the id of the newest row the client holds; the rows after it are asked for
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        session.Send(GuildPacket.PvpHistory());
     }
 
     // CGuildManager::SendGuildMode82: the guild to ask, sent only by a player without a guild. The reply makes
