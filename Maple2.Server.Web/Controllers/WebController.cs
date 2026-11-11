@@ -46,14 +46,15 @@ public class WebController : ControllerBase {
             return Results.BadRequest("Request was empty");
         }
         IByteReader packet = new ByteReader(memoryStream.ToArray());
-        var type = packet.Read<GameRankingType>();
-        int unknown = packet.ReadInt(); // start page maybe?
-        long accountId = packet.ReadLong();
-        long characterId = packet.ReadLong();
-        long characterIdSearch = packet.ReadLong(); // parameter
-        int rankingId = packet.ReadInt(); // boss ranking id like 23200007
-        int seasonId = packet.ReadInt(); // defined in season xmls
-        string userName = packet.ReadUnicodeStringWithLength(); // search string
+        var request = GameRankingRequest.Read(packet);
+        (GameRankingType type, int unknown, long accountId, long characterId, long characterIdSearch, int rankingId, int seasonId, string userName) = request;
+
+        // No key: an empty answer, as for a board with nothing to serve. A 400 makes the client send the request
+        // twice more, 500 ms apart.
+        if (request.KeyNotBuilt) {
+            Log.Logger.Information("Ranking request without a board key (type 0): the played client's season table has no season at the server time for this board");
+            return Results.File(ZlibCompress(new ByteWriter()), "application/octet-stream");
+        }
 
         if (!Enum.IsDefined(typeof(GameRankingType), type)) {
             Log.Logger.Debug("Unimplemented ranking type: {Type}", type);
