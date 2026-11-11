@@ -118,7 +118,9 @@ public class UgcHandler : FieldPacketHandler {
             session.StagedUgcItem = null;
         }
         if (session.StagedBanner != null) {
-            UgcRules.ClearStagedBanner(session.StagedBanner.Slots.ToArray(), fee.UgcUid, session.CharacterId);
+            lock (session.StagedBanner.Slots) {
+                UgcRules.ClearStagedBanner(session.StagedBanner.Slots, fee.UgcUid, session.CharacterId);
+            }
             session.StagedBanner = null;
         }
 
@@ -266,7 +268,7 @@ public class UgcHandler : FieldPacketHandler {
         byte hours = packet.ReadByte();
         for (int i = 0; i < hours; i++) {
             var reservation = packet.Read<UgcBannerReservation>();
-            BannerSlot? bannerSlot = banner.Slots.FirstOrDefault(slot => slot.Id == reservation.Uid);
+            BannerSlot? bannerSlot = banner.SlotsSnapshot().FirstOrDefault(slot => slot.Id == reservation.Uid);
             UgcItemLook? shown = bannerSlot?.Template;
             bool taken = bannerSlot == null || !UgcRules.BannerSlotOpenTo(bannerSlot.OwnerId, shown?.CharacterId ?? 0,
                 !string.IsNullOrEmpty(shown?.Url), session.CharacterId);
@@ -305,13 +307,12 @@ public class UgcHandler : FieldPacketHandler {
             Name = $"AD Banner {bannerId}",
         };
 
-        foreach (BannerSlot slot in slots) {
-            slot.Template = ugc;
-            slot.OwnerId = session.CharacterId;
-
-            BannerSlot oldSlot = banner.Slots.First(x => x.Id == slot.Id);
-            banner.Slots.Remove(oldSlot);
-            banner.Slots.Add(slot);
+        // The slots are the banner's own objects (found above), so the list itself does not change.
+        lock (banner.Slots) {
+            foreach (BannerSlot slot in slots) {
+                slot.Template = ugc;
+                slot.OwnerId = session.CharacterId;
+            }
         }
         session.StagedBanner = banner;
 
@@ -538,13 +539,14 @@ public class UgcHandler : FieldPacketHandler {
             // The banner the upload was staged on, also when the character has changed field since.
             UgcBanner? banner = session.StagedBanner;
             session.StagedBanner = null;
-            if (banner is null || !banner.Slots.Any(slot => slot.Template?.Id == ugcUid && slot.Template.CharacterId == session.CharacterId)) {
+            List<BannerSlot> staged = banner?.SlotsSnapshot().Where(slot => slot.Template?.Id == ugcUid && slot.Template.CharacterId == session.CharacterId).ToList() ?? [];
+            if (banner is null || staged.Count == 0) {
                 Logger.Warning("Failed to find banner for UGC {UgcUid}", ugcUid);
                 return;
             }
 
             using (GameStorage.Request db = session.GameStorage.Context()) {
-                foreach (BannerSlot slot in banner.Slots.Where(slot => slot.Template?.Id == ugcUid)) {
+                foreach (BannerSlot slot in staged) {
                     slot.Template!.Url = resource.Path;
                     db.UpdateBannerSlot(slot);
                 }
@@ -636,41 +638,44 @@ public class UgcHandler : FieldPacketHandler {
         // Reserving is free, so it is bounded: the slots this character holds on the field without
         // a finished design, and the ones of this request, stay within UgcRules.BannerReserveMax.
         int room = UgcRules.BannerReserveRoom(session.Field.Banners.Values.Sum(other =>
-            other.Slots.Count(slot => UgcRules.BannerSlotHeld(slot.OwnerId, !string.IsNullOrEmpty(slot.Template?.Url), slot.Expired, session.CharacterId))));
+            other.SlotsSnapshot().Count(slot => UgcRules.BannerSlotHeld(slot.OwnerId, !string.IsNullOrEmpty(slot.Template?.Url), slot.Expired, session.CharacterId))));
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
         using GameStorage.Request db = session.GameStorage.Context();
-        for (int i = 0; i < hours; i++) {
-            var reservation = packet.Read<UgcBannerReservation>();
+        // One lock over the test and the add: two sessions asking for the same hour get it once.
+        lock (banner.Slots) {
+            for (int i = 0; i < hours; i++) {
+                var reservation = packet.Read<UgcBannerReservation>();
 
-            // The slot's start time is built from the date and the hour: values that are no time, or an
-            // hour that is over, are skipped.
-            if (!UgcRules.BannerTimeOpen(reservation.Date, reservation.Hour, now)) {
-                continue;
-            }
-            if (room <= 0) {
-                continue;
-            }
+                // The slot's start time is built from the date and the hour: values that are no time, or an
+                // hour that is over, are skipped.
+                if (!UgcRules.BannerTimeOpen(reservation.Date, reservation.Hour, now)) {
+                    continue;
+                }
+                if (room <= 0) {
+                    continue;
+                }
 
-            BannerSlot? held = banner.Slots.FirstOrDefault(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour);
-            if (held != null && UgcRules.BannerSlotClaimable(held.OwnerId, held.Template != null)) {
-                // The owner was lost (restart, field dispose, other channel): the first to ask for the hour again holds it.
-                held.OwnerId = session.CharacterId;
+                BannerSlot? held = banner.Slots.FirstOrDefault(slot => slot.Date == reservation.Date && slot.Hour == reservation.Hour);
+                if (held != null && UgcRules.BannerSlotClaimable(held.OwnerId, held.Template != null)) {
+                    // The owner was lost (restart, field dispose, other channel): the first to ask for the hour again holds it.
+                    held.OwnerId = session.CharacterId;
+                    room--;
+                    newSlots.Add(held);
+                    continue;
+                }
+                if (held != null) {
+                    Logger.Warning("Failed to reserve banner slot {BannerId} {Date} {Hour}", bannerId, reservation.Date, reservation.Hour);
+                    continue;
+                }
+
+                BannerSlot slot = new(banner.Id, reservation.Date, reservation.Hour);
+                slot = db.AddBannerSlot(slot);
+                slot.OwnerId = session.CharacterId;
                 room--;
-                newSlots.Add(held);
-                continue;
+                newSlots.Add(slot);
+                banner.Slots.Add(slot);
             }
-            if (held != null) {
-                Logger.Warning("Failed to reserve banner slot {BannerId} {Date} {Hour}", bannerId, reservation.Date, reservation.Hour);
-                continue;
-            }
-
-            BannerSlot slot = new(banner.Id, reservation.Date, reservation.Hour);
-            slot = db.AddBannerSlot(slot);
-            slot.OwnerId = session.CharacterId;
-            room--;
-            newSlots.Add(slot);
-            banner.Slots.Add(slot);
         }
 
         session.Send(UgcPacket.ReserveBannerSlots(bannerId, newSlots));

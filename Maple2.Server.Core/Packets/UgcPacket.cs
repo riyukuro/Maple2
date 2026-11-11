@@ -149,7 +149,7 @@ public static class UgcPacket {
         pWriter.WriteInt(banners.Count);
         foreach (UgcBanner ugcBanner in banners) {
             pWriter.WriteLong(ugcBanner.Id);
-            BannerSlot? activeSlot = ugcBanner.Slots.FirstOrDefault(x => x.Active);
+            BannerSlot? activeSlot = ugcBanner.SlotsSnapshot().FirstOrDefault(x => x.Active);
             pWriter.WriteBool(activeSlot?.Template is not null);
             if (activeSlot?.Template is null) {
                 continue;
@@ -160,7 +160,7 @@ public static class UgcPacket {
 
         pWriter.WriteInt(banners.Count);
         foreach (UgcBanner ugcBanner in banners) {
-            pWriter.WriteUgcBanner(ugcBanner.Id, ugcBanner.Slots);
+            pWriter.WriteUgcBanner(ugcBanner.Id, ugcBanner.SlotsSnapshot());
         }
 
         return pWriter;
@@ -170,7 +170,7 @@ public static class UgcPacket {
         var pWriter = Packet.Of(SendOp.Ugc);
         pWriter.Write<Command>(Command.EnableBanner);
         pWriter.WriteLong(ugcBanner.Id);
-        BannerSlot? activeSlot = ugcBanner.Slots.FirstOrDefault(x => x.Active);
+        BannerSlot? activeSlot = ugcBanner.SlotsSnapshot().FirstOrDefault(x => x.Active);
         pWriter.WriteBool(activeSlot?.Template is not null);
         if (activeSlot?.Template is null) {
             return pWriter;
@@ -184,7 +184,7 @@ public static class UgcPacket {
     public static ByteWriter UpdateBanner(UgcBanner ugcBanner) {
         var pWriter = Packet.Of(SendOp.Ugc);
         pWriter.Write<Command>(Command.UpdateBanner);
-        pWriter.WriteUgcBanner(ugcBanner.Id, ugcBanner.Slots);
+        pWriter.WriteUgcBanner(ugcBanner.Id, ugcBanner.SlotsSnapshot());
 
         return pWriter;
     }

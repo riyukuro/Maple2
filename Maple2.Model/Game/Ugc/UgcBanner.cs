@@ -13,6 +13,14 @@ public class UgcBanner {
         MapId = mapId;
         Slots = slots;
     }
+
+    // Slots is read and changed by the field's thread and by the sessions' packet threads, also of
+    // a session that has left the field: every use holds lock (Slots), or works on this copy.
+    public List<BannerSlot> SlotsSnapshot() {
+        lock (Slots) {
+            return [.. Slots];
+        }
+    }
 }
 
 public class BannerSlot : IByteSerializable {

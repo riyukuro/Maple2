@@ -14,15 +14,17 @@ public class FieldUgcBanner : UgcBanner, IUpdatable {
     public void Update(long tickCount) {
         DateTimeOffset dateTimeOffset = DateTimeOffset.UtcNow;
 
-        DeleteOldBannerSlots(dateTimeOffset);
+        lock (Slots) {
+            DeleteOldBannerSlots(dateTimeOffset);
 
-        BannerSlot? slot = Slots.FirstOrDefault(x => x.ActivateTime.Day == dateTimeOffset.Day && x.ActivateTime.Hour == dateTimeOffset.Hour);
+            BannerSlot? slot = Slots.FirstOrDefault(x => x.ActivateTime.Day == dateTimeOffset.Day && x.ActivateTime.Hour == dateTimeOffset.Hour);
 
-        if (slot is null || slot.Expired || slot.Active) {
-            return;
+            if (slot is null || slot.Expired || slot.Active) {
+                return;
+            }
+
+            slot.Active = true;
         }
-
-        slot.Active = true;
         field.Broadcast(UgcPacket.ActivateBanner(this));
     }
 

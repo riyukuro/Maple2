@@ -146,6 +146,19 @@ public class UgcRulesTests {
         Assert.That(finished.Template, Is.Not.Null);
     }
 
+    // The copy is taken under the list's lock and does not follow later changes of the list; the
+    // slots in it are the banner's own objects.
+    [Test]
+    public void BannerSlotsSnapshot() {
+        var slot = new BannerSlot(1, 20991231, 1) { OwnerId = 7 };
+        var banner = new UgcBanner(1, 2000001, [slot]);
+        List<BannerSlot> copy = banner.SlotsSnapshot();
+        banner.Slots.Add(new BannerSlot(1, 20991231, 2));
+        Assert.That(copy, Has.Count.EqualTo(1));
+        Assert.That(copy[0], Is.SameAs(slot));
+        Assert.That(banner.SlotsSnapshot(), Has.Count.EqualTo(2));
+    }
+
     [TestCase(0, 24)]
     [TestCase(20, 4)]
     [TestCase(24, 0)]
