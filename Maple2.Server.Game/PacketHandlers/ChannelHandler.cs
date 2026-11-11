@@ -38,6 +38,7 @@ public class ChannelHandler : PacketHandler<GameSession> {
                 MachineId = session.MachineId.ToString(),
                 Server = Server.World.Service.Server.Game,
                 Channel = channel,
+                PetUid = session.SummonedPetUid,
             };
 
             MigrateOutResponse response = World.MigrateOut(request);

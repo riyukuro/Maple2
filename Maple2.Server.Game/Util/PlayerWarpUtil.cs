@@ -100,6 +100,7 @@ public static class PlayerWarpUtil {
                 PositionY = position.Y,
                 PositionZ = position.Z,
                 Type = MigrationType.Normal,
+                PetUid = session.SummonedPetUid,
             };
 
             if (ownerId != 0) {

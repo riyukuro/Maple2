@@ -184,6 +184,9 @@ public class PetHandler : FieldPacketHandler {
             if (pet == null) {
                 return;
             }
+            if (!PetRules.CanSummon(session.Field.Metadata.Limit.Pet, pet.Metadata.Limit.Level, session.Player.Value.Character.Level)) {
+                return;
+            }
 
             FieldPet? fieldPet = session.Field.SpawnPet(pet, session.Player.Position, session.Player.Rotation, player: session.Player);
             if (fieldPet == null) {

@@ -162,6 +162,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
     public bool EnterServer(long accountId, Guid machineId, MigrateInResponse migrateResponse) {
         long characterId = migrateResponse.CharacterId;
+        resummonPetUid = migrateResponse.PetUid;
         int channel = migrateResponse.Channel;
         int mapId = migrateResponse.MapId;
         int portalId = migrateResponse.PortalId;
@@ -466,6 +467,8 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     private long resummonPetUid;
+    // The pet to bring back after a move to another channel or game server (MigrateOutRequest.pet_uid).
+    public long SummonedPetUid => Pet?.Pet.Uid ?? resummonPetUid;
 
     private void LeaveField() {
         InteractStarted.Clear();
@@ -476,7 +479,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Trade?.Dispose();
         Storage?.Dispose();
         // A summoned pet leaves the field with its owner and is summoned again in the next one (EnterField).
-        resummonPetUid = Pet?.Pet.Uid ?? 0;
+        if (Pet != null) {
+            resummonPetUid = Pet.Pet.Uid;
+        }
         Pet?.Dispose();
         Instrument = null;
         GuideObject = null;
@@ -563,7 +568,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Field.OnAddPlayer(Player);
         Scheduler.Start();
         State = SessionState.Connected;
-        if (resummonPetUid != 0) {
+        // A field that allows no pet keeps the uid for the next field that does.
+        if (resummonPetUid != 0 && Field.Metadata.Limit.Pet) {
             // Before the stats packets below: the summon rebuilds the owner's stats with the pet's.
             long petUid = resummonPetUid;
             resummonPetUid = 0;
@@ -841,6 +847,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 OwnerId = AccountId,
                 InstancedContent = true,
                 Type = (World.Service.MigrationType) plotMode,
+                PetUid = SummonedPetUid,
                 RoomId = plotMode is not PlotMode.Normal ? -1 : 0,
             };
 
@@ -879,6 +886,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 MapId = mapId,
                 OwnerId = ownerId,
                 InstancedContent = isInstanced,
+                PetUid = SummonedPetUid,
             };
 
             MigrateOutResponse response = World.MigrateOut(request);

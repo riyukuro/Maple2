@@ -65,6 +65,7 @@ public class GlobalPortal : FieldPacketHandler {
                 RoomId = portal.RoomId,
                 MapId = portal.MapId,
                 PortalId = portal.PortalId,
+                PetUid = session.SummonedPetUid,
             };
 
             MigrateOutResponse response = World.MigrateOut(request);

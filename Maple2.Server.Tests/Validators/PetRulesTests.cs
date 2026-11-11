@@ -59,6 +59,13 @@ public class PetRulesTests {
         Assert.That(PetRules.RenameCost(-1, 100), Is.EqualTo(100));
     }
 
+    [Test]
+    public void CanSummon_FieldAllowsPetsAndLevelReached() {
+        Assert.That(PetRules.CanSummon(fieldUsePet: true, requiredLevel: 50, level: 50), Is.True);
+        Assert.That(PetRules.CanSummon(fieldUsePet: false, requiredLevel: 50, level: 50), Is.False);
+        Assert.That(PetRules.CanSummon(fieldUsePet: true, requiredLevel: 50, level: 49), Is.False);
+    }
+
     // Made-up values: a constant 100 at factor 0.05 gives 5 per pet level above the first; the product is cut,
     // not rounded.
     [TestCase(100, 0.05f, 1, 0)]

@@ -89,6 +89,8 @@ message MigrateOutRequest {
   optional float position_y = 12;
   optional float position_z = 13;
   optional MigrationType type = 14;
+  // The summoned pet's item uid, 0 for none; the target game server summons it again.
+  int64 pet_uid = 15;
 }
 
 enum MigrationType {
@@ -126,6 +128,7 @@ message MigrateInResponse {
   float position_y = 8;
   float position_z = 9;
   MigrationType type = 10;
+  int64 pet_uid = 11;
 }
 
 message ChannelsRequest {}

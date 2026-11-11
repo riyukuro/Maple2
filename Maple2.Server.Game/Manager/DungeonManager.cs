@@ -687,6 +687,7 @@ public class DungeonManager {
                 MapId = Metadata.LobbyFieldId,
                 RoomId = LobbyRoomId,
                 Type = MigrationType.Dungeon,
+                PetUid = session.SummonedPetUid,
             };
 
             MigrateOutResponse response = session.World.MigrateOut(request);

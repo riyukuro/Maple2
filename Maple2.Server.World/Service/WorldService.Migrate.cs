@@ -8,7 +8,7 @@ using Microsoft.Extensions.Caching.Memory;
 namespace Maple2.Server.World.Service;
 
 public partial class WorldService {
-    private readonly record struct TokenEntry(Server Server, long AccountId, long CharacterId, Guid MachineId, int Channel, int MapId, int PortalId, int RoomId, long OwnerId, MigrationType Type);
+    private readonly record struct TokenEntry(Server Server, long AccountId, long CharacterId, Guid MachineId, int Channel, int MapId, int PortalId, int RoomId, long OwnerId, MigrationType Type, long PetUid = 0);
 
     // Duration for which a token remains valid.
     private static readonly TimeSpan AuthExpiry = WorldServer.MigrationLifetime;
@@ -57,7 +57,7 @@ public partial class WorldService {
                     worldServer.Migrations.Begin(request.CharacterId, leaving.Channel, channel, DateTime.UtcNow);
                 }
 
-                var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type);
+                var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type, request.PetUid);
                 tokenCache.Set(token, gameEntry, AuthExpiry);
                 return Task.FromResult(new MigrateOutResponse {
                     IpAddress = endpoint.Address.ToString(),
@@ -91,6 +91,7 @@ public partial class WorldService {
             OwnerId = data.OwnerId,
             RoomId = data.RoomId,
             Type = data.Type,
+            PetUid = data.PetUid,
         });
     }
 
