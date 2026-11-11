@@ -53,6 +53,43 @@ public class HomeOpenRulesTests {
         Assert.That(Read(Body(1, HomeOpenRules.PrivatePasscode), out _), Is.False);
     }
 
+    // One check for the visit-home request (MoveField mode 2: three ints, the account id, the typed
+    // passcode), the outdoor plot door and the friend-home portal cube, which type nothing.
+    [TestCase(true, true, "private", "", HomeOpenRules.Enter.Allow)]
+    [TestCase(true, false, "123456", "", HomeOpenRules.Enter.Allow)]
+    [TestCase(false, true, "", "", HomeOpenRules.Enter.Blocked)]
+    [TestCase(false, true, "123456", "123456", HomeOpenRules.Enter.Blocked)]
+    [TestCase(false, false, "private", "", HomeOpenRules.Enter.Private)]
+    [TestCase(false, false, "private", "private", HomeOpenRules.Enter.Private)]
+    [TestCase(false, false, "", "", HomeOpenRules.Enter.Allow)]
+    [TestCase(false, false, null, "999999", HomeOpenRules.Enter.Allow)]
+    [TestCase(false, false, "123456", "", HomeOpenRules.Enter.AskPassword)]
+    [TestCase(false, false, "123456", null, HomeOpenRules.Enter.AskPassword)]
+    [TestCase(false, false, "123456", "654321", HomeOpenRules.Enter.WrongPassword)]
+    [TestCase(false, false, "123456", "123456", HomeOpenRules.Enter.Allow)]
+    public void EnterCheck(bool isOwner, bool isBlocked, string? stored, string? typed, HomeOpenRules.Enter expected) {
+        Assert.That(HomeOpenRules.CheckEnter(isOwner, isBlocked, stored, typed), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void VisitHomePacketPasscodeGoesThroughTheCheck() {
+        var writer = new ByteWriter();
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteLong(77);
+        writer.WriteUnicodeString("654321");
+        var packet = new ByteReader(writer.ToArray(), 0);
+        packet.ReadInt();
+        packet.ReadInt();
+        packet.ReadInt();
+        Assert.That(packet.ReadLong(), Is.EqualTo(77));
+        string typed = packet.ReadUnicodeString();
+        Assert.That(packet.Available, Is.EqualTo(0));
+        Assert.That(HomeOpenRules.CheckEnter(false, false, "123456", typed), Is.EqualTo(HomeOpenRules.Enter.WrongPassword));
+        Assert.That(HomeOpenRules.CheckEnter(false, false, "private", typed), Is.EqualTo(HomeOpenRules.Enter.Private));
+    }
+
     [Test]
     public void OtherKindsAreRefused() {
         Assert.That(Read(Body(3, ""), out _), Is.False);

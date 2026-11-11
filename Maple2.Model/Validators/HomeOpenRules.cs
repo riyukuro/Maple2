@@ -17,6 +17,35 @@ public static class HomeOpenRules {
         return passcode == PrivatePasscode;
     }
 
+    public enum Enter {
+        Allow,
+        Blocked,
+        Private,
+        AskPassword,
+        WrongPassword,
+    }
+
+    // Whether a player may enter a home. The owner always may. Others: not when blocked, not into a
+    // private home, and into a home with a password only with that password typed.
+    public static Enter CheckEnter(bool isOwner, bool isBlocked, string? stored, string? typed) {
+        if (isOwner) {
+            return Enter.Allow;
+        }
+        if (isBlocked) {
+            return Enter.Blocked;
+        }
+        if (IsPrivate(stored)) {
+            return Enter.Private;
+        }
+        if (string.IsNullOrEmpty(stored)) {
+            return Enter.Allow;
+        }
+        if (string.IsNullOrEmpty(typed)) {
+            return Enter.AskPassword;
+        }
+        return string.Equals(stored, typed, StringComparison.Ordinal) ? Enter.Allow : Enter.WrongPassword;
+    }
+
     public static bool IsPasscode(string text) {
         return text.Length == PasscodeLength && text.All(c => c is >= '0' and <= '9');
     }

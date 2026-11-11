@@ -573,8 +573,8 @@ public partial class FieldManager : IField {
                             return false;
                         }
 
-                        if (home.AccountId != session.AccountId && IsHomeBlocked(session, home.AccountId)) {
-                            session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.EntranceBlocked));
+                        // The same check as a visit-home request: block list, private home, password.
+                        if (!HomeEntry.TryEnter(session, home, password ?? string.Empty)) {
                             return false;
                         }
 
@@ -601,6 +601,16 @@ public partial class FieldManager : IField {
                 session.Field?.RemovePortal(fieldPortal.ObjectId);
                 break;
             case PortalType.FieldToHome:
+                // The door of an outdoor plot: the same check as a visit-home request.
+                Home? plotHome = GetHome(session, fieldPortal);
+                if (plotHome is null) {
+                    session.Send(EnterUgcMapPacket.CannotVisitThatCharacterHome());
+                    return false;
+                }
+                if (!HomeEntry.TryEnter(session, plotHome, password ?? string.Empty)) {
+                    return false;
+                }
+
                 session.Migrate(Constant.DefaultHomeMapId, fieldPortal.HomeId);
                 break;
         }
@@ -715,11 +725,6 @@ public partial class FieldManager : IField {
         using GameStorage.Request db = session.GameStorage.Context();
         Home? home = db.GetHome(fieldPortal.HomeId);
         return home;
-    }
-
-    private static bool IsHomeBlocked(GameSession session, long ownerAccountId) {
-        using GameStorage.Request db = session.GameStorage.Context();
-        return db.IsHomeBlocked(ownerAccountId, session.AccountId);
     }
 
     #region DebugUtils

@@ -103,6 +103,17 @@ public class HousingManager {
         }
 
         session.Send(CubePacket.SetPasscode());
+
+        // A home set to private keeps no visitors: those in the owner's room leave the way a kicked visitor does.
+        if (HomeOpenRules.IsPrivate(passcode) && session.Field is HomeFieldManager home && home.OwnerId == session.AccountId) {
+            foreach (FieldPlayer visitor in home.Players.Values) {
+                if (visitor.Session.AccountId == session.AccountId) {
+                    continue;
+                }
+                visitor.Session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.Kicked));
+                visitor.Session.ReturnField();
+            }
+        }
     }
 
     public bool SaveHome() {

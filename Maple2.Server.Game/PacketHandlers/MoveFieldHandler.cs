@@ -9,6 +9,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using PlotMode = Maple2.Model.Enum.PlotMode;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -88,27 +89,8 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
             return;
         }
 
-        if (accountId != session.AccountId && db.IsHomeBlocked(accountId, session.AccountId)) {
-            session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.EntranceBlocked));
+        if (!HomeEntry.TryEnter(session, home, passcode)) {
             return;
-        }
-
-        if (HomeOpenRules.IsPrivate(home.Passcode)) {
-            // A private home takes no visitors; its owner needs no password.
-            if (accountId != session.AccountId) {
-                session.Send(EnterUgcMapPacket.CannotVisitThatCharacterHome());
-                return;
-            }
-        } else if (!string.IsNullOrEmpty(home.Passcode)) {
-            if (string.IsNullOrEmpty(passcode)) {
-                session.Send(EnterUgcMapPacket.RequestPassword(accountId));
-                return;
-            }
-
-            if (!string.Equals(home.Passcode, passcode, StringComparison.Ordinal)) {
-                session.Send(EnterUgcMapPacket.WrongPassword(accountId));
-                return;
-            }
         }
 
         session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId);
