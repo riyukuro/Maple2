@@ -63,7 +63,9 @@ public static class BuddyEmotePacket {
         return pWriter;
     }
 
-    public static ByteWriter Start(int emoteId, long senderId, long receiverId, in Vector3 senderPosition, in Vector3 senderRotation) {
+    // Client: networkservice.cpp:1150 (mode 5). The last int goes to CEffectService::SetTick, the seed the emote's
+    // random effects are drawn from, so both players must get the same value.
+    public static ByteWriter Start(int emoteId, long senderId, long receiverId, in Vector3 senderPosition, in Vector3 senderRotation, int effectSeed) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
         pWriter.Write<Command>(Command.Start);
         pWriter.WriteInt(emoteId);
@@ -71,7 +73,7 @@ public static class BuddyEmotePacket {
         pWriter.WriteLong(receiverId);
         pWriter.Write<Vector3>(senderPosition);
         pWriter.Write<Vector3>(senderRotation);
-        pWriter.WriteInt();
+        pWriter.WriteInt(effectSeed);
 
         return pWriter;
     }

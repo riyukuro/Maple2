@@ -96,7 +96,7 @@ public class BuddyEmoteHandler : FieldPacketHandler {
         }
 
         sender.Session.Send(BuddyEmotePacket.Accept(emoteId, session.CharacterId));
-        ByteWriter start = BuddyEmotePacket.Start(emoteId, senderId, session.CharacterId, senderPosition, new Vector3(0, 0, rotationZ));
+        ByteWriter start = BuddyEmotePacket.Start(emoteId, senderId, session.CharacterId, senderPosition, new Vector3(0, 0, rotationZ), Environment.TickCount);
         session.Send(start);
         sender.Session.Send(start);
     }
