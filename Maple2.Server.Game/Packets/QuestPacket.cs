@@ -85,7 +85,7 @@ public static class QuestPacket {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.Complete);
         pWriter.WriteInt(quest.Id);
-        pWriter.WriteInt(1); // quest.State??
+        pWriter.WriteInt(quest.CompletionCount); // the same field the quest list record carries after the state
         pWriter.WriteLong(quest.EndTime);
 
         return pWriter;
