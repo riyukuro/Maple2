@@ -1,6 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
+using System.Xml;
+using M2dXmlGenerator;
 using Maple2.Database.Extensions;
 using Maple2.File.Ingest.Utils;
 using Maple2.File.IO;
@@ -39,8 +41,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private readonly TableParser parser;
     private readonly ItemOptionParser optionParser;
     private readonly string language;
+    private readonly M2dReader xmlReader;
 
     public TableMapper(M2dReader xmlReader, string language) {
+        this.xmlReader = xmlReader;
         parser = PackTables.NewParser(xmlReader, language);
         optionParser = new ItemOptionParser(xmlReader);
         this.language = language;
@@ -52,6 +56,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_BREAK_INGREDIENT, Table = ParseItemBreakIngredient() };
         yield return new TableMetadata { Name = TableNames.ITEM_GEMSTONE_UPGRADE, Table = ParseItemGemstoneUpgrade() };
         yield return new TableMetadata { Name = TableNames.ITEM_EXTRACTION, Table = ParseItemExtraction() };
+        yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.JOB, Table = ParseJobTable() };
         yield return new TableMetadata { Name = TableNames.MAGIC_PATH, Table = ParseMagicPath() };
         yield return new TableMetadata { Name = TableNames.INSTRUMENT_CATEGORY_INFO, Table = ParseInstrument() };
@@ -209,6 +214,52 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         return new ItemExtractionTable(results);
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML. The client keeps the rows whose
+    // locale is empty or its own (the table has no feature attribute).
+    private ItemEnchantTransformTable ParseItemEnchantTransform() {
+        var results = new List<ItemEnchantTransformTable.Entry>();
+        XmlDocument document = xmlReader.GetXmlDocument(xmlReader.GetEntry("table/itemenchanttransform.xml"));
+        XmlNodeList? nodes = document.SelectNodes("/ms2/transform");
+        if (nodes == null) {
+            return new ItemEnchantTransformTable(results);
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"))) {
+                continue;
+            }
+
+            var outputs = new List<ItemEnchantTransformTable.Output>();
+            for (int i = 1; i <= 2; i++) {
+                string id = node.GetAttribute($"output{i}Id");
+                if (string.IsNullOrEmpty(id)) {
+                    continue;
+                }
+                outputs.Add(new ItemEnchantTransformTable.Output(
+                    ItemId: int.Parse(id, CultureInfo.InvariantCulture),
+                    Rarity: int.Parse(node.GetAttribute($"output{i}Rank"), CultureInfo.InvariantCulture),
+                    Amount: int.Parse(node.GetAttribute($"output{i}Count"), CultureInfo.InvariantCulture)));
+            }
+
+            results.Add(new ItemEnchantTransformTable.Entry(
+                Rarity: int.Parse(node.GetAttribute("inputRank"), CultureInfo.InvariantCulture),
+                LimitLevel: int.Parse(node.GetAttribute("inputLimitLevel"), CultureInfo.InvariantCulture),
+                EnchantLevel: int.Parse(node.GetAttribute("inputEnchantLevel"), CultureInfo.InvariantCulture),
+                Slots: ParseIntList(node.GetAttribute("inputSlot")),
+                ItemIds: ParseIntList(node.GetAttribute("inputItemId")),
+                NeedMeso: long.Parse(node.GetAttribute("needMeso"), CultureInfo.InvariantCulture),
+                Outputs: outputs.ToArray()));
+        }
+
+        return new ItemEnchantTransformTable(results);
+
+        static int[] ParseIntList(string value) {
+            return value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(item => int.Parse(item, CultureInfo.InvariantCulture))
+                .ToArray();
+        }
     }
 
     private JobTable ParseJobTable() {

@@ -7,6 +7,7 @@ public static class TableNames {
     public const string ITEM_BREAK_INGREDIENT = "itembreakingredient.xml";
     public const string ITEM_GEMSTONE_UPGRADE = "itemgemstoneupgrade.xml";
     public const string ITEM_EXTRACTION = "itemextraction.xml";
+    public const string ITEM_ENCHANT_TRANSFORM = "itemenchanttransform.xml";
     public const string JOB = "job.xml";
     public const string MAGIC_PATH = "magicpath.xml";
     public const string INSTRUMENT_CATEGORY_INFO = "instrumentcategoryinfo.xml";

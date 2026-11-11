@@ -9,6 +9,7 @@ public class TableMetadataStorage {
     private readonly Lazy<DefaultItemsTable> defaultItemsTable;
     private readonly Lazy<ItemBreakTable> itemBreakTable;
     private readonly Lazy<ItemExtractionTable> itemExtractionTable;
+    private readonly Lazy<ItemEnchantTransformTable> itemEnchantTransformTable;
     private readonly Lazy<GemstoneUpgradeTable> gemstoneUpgradeTable;
     private readonly Lazy<JobTable> jobTable;
     private readonly Lazy<MagicPathTable> magicPathTable;
@@ -76,6 +77,7 @@ public class TableMetadataStorage {
     public DefaultItemsTable DefaultItemsTable => defaultItemsTable.Value;
     public ItemBreakTable ItemBreakTable => itemBreakTable.Value;
     public ItemExtractionTable ItemExtractionTable => itemExtractionTable.Value;
+    public ItemEnchantTransformTable ItemEnchantTransformTable => itemEnchantTransformTable.Value;
     public GemstoneUpgradeTable GemstoneUpgradeTable => gemstoneUpgradeTable.Value;
     public JobTable JobTable => jobTable.Value;
     public MagicPathTable MagicPathTable => magicPathTable.Value;
@@ -144,6 +146,7 @@ public class TableMetadataStorage {
         defaultItemsTable = Retrieve<DefaultItemsTable>(context, TableNames.DEFAULT_ITEMS);
         itemBreakTable = Retrieve<ItemBreakTable>(context, TableNames.ITEM_BREAK_INGREDIENT);
         itemExtractionTable = Retrieve<ItemExtractionTable>(context, TableNames.ITEM_EXTRACTION);
+        itemEnchantTransformTable = Retrieve<ItemEnchantTransformTable>(context, TableNames.ITEM_ENCHANT_TRANSFORM);
         gemstoneUpgradeTable = Retrieve<GemstoneUpgradeTable>(context, TableNames.ITEM_GEMSTONE_UPGRADE);
         jobTable = Retrieve<JobTable>(context, TableNames.JOB);
         magicPathTable = Retrieve<MagicPathTable>(context, TableNames.MAGIC_PATH);
