@@ -14,6 +14,11 @@ public static class StorageRules {
         return summonedPetUid == 0 || itemUid != summonedPetUid;
     }
 
+    // The client refuses to store the score that is being played (s_item_err_binditem_by_playing_score).
+    public static bool IsPlayedScore(long itemUid, long playedScoreUid) {
+        return playedScoreUid != 0 && itemUid == playedScoreUid;
+    }
+
     // The client looks for an inventory slot before it asks; without one the item has no place to go.
     public static bool HasRoom(int openSlots, int notStackable) {
         return openSlots > 0 || notStackable == 0;

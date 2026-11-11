@@ -35,6 +35,13 @@ public class StorageRulesTests {
         Assert.That(StorageRules.CanDeposit(itemUid, petUid), Is.EqualTo(expected));
     }
 
+    [TestCase(7, 0, false)] // nothing is played
+    [TestCase(7, 8, false)]
+    [TestCase(7, 7, true)] // the score that is played stays in the inventory
+    public void PlayedScoreIsNotStored(long itemUid, long scoreUid, bool expected) {
+        Assert.That(StorageRules.IsPlayedScore(itemUid, scoreUid), Is.EqualTo(expected));
+    }
+
     [TestCase(1, 5, true)]
     [TestCase(0, 0, true)] // all of it goes onto stacks
     [TestCase(0, 2, false)] // a full inventory: the item stays in the storage

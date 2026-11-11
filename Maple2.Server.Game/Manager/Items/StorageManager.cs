@@ -89,6 +89,10 @@ public sealed class StorageManager : IDisposable {
             if (!StorageRules.CanDeposit(uid, session.Pet?.Pet.Uid ?? 0)) {
                 return;
             }
+            // Nor the score that is being played.
+            if (StorageRules.IsPlayedScore(uid, session.Instrument?.Score?.Uid ?? 0)) {
+                return;
+            }
 
             if (items.OpenSlots == 0) {
                 int remaining = items.GetStackResult(deposit, amount);
