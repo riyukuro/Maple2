@@ -15,6 +15,9 @@ public static class Lua {
     private const string LocaleTh = "TH";
     private const string LocaleTw = "TW";
 
+    // The script branch the formulas follow: the LOCALE setting. Tests set it to check each branch.
+    internal static string Locale { get; set; } = Target.LOCALE;
+
     private const int SlotWeapon = 0;
     private const int SlotArmor = 1;
     private const int SlotAcc = 2;
@@ -84,12 +87,12 @@ public static class Lua {
         if (gearScore > 0) {
             float local1;
             if (limitBreakLevel < 60) {
-                if (Target.LOCALE == LocaleKr) {
+                if (Locale == LocaleKr) {
                     local2 = 10 * gearScore;
                     result2 = Math.Max(grade - 1, 0) * 5;
                     local3 = local2 + result2;
                 } else {
-                    if (Target.LOCALE == LocaleCn) {
+                    if (Locale == LocaleCn) {
                         if (grade > 3 && gearScore >= 50) {
                             local2 = GetItemLevelRankCoefficient(itemType);
                             if (local2 > 0) {
@@ -198,8 +201,8 @@ public static class Lua {
                 local4 = local3;
             } else if (limitBreakLevel < 70) {
                 if (grade > 3 && gearScore >= 50) {
-                    if (Target.LOCALE != LocaleKr) {
-                        if (Target.LOCALE == LocaleCn) {
+                    if (Locale != LocaleKr) {
+                        if (Locale == LocaleCn) {
                             // Empty block
                         }
                         local2 = GetItemLevelRankCoefficient(itemType);
@@ -275,7 +278,7 @@ public static class Lua {
 
                     result2 = GetItemLevelRankCoefficient(itemType);
                     if (result2 > 0) {
-                        if (Target.LOCALE == LocaleKr) {
+                        if (Locale == LocaleKr) {
                             result2 = GetLevelScoreFactorKr(gearScore);
                             result2 = 2 + result2;
                             result2 *= 1030;
@@ -283,7 +286,7 @@ public static class Lua {
                             result = GetItemLevelCoefficient(itemType);
                             local3 = result2 * result;
                         } else {
-                            if (Target.LOCALE == LocaleCn) {
+                            if (Locale == LocaleCn) {
                                 result2 = GetLevelScoreFactorCn(gearScore);
                                 result2 = 2 + result2;
                                 result2 *= 1030;
@@ -300,7 +303,7 @@ public static class Lua {
                             }
                         }
                     } else if (itemType is 12 or 18 or 19 or 20) {
-                        if (Target.LOCALE == LocaleKr) {
+                        if (Locale == LocaleKr) {
                             result2 = GetLevelScoreFactorKr(gearScore);
                             result2 = 2 + result2;
                             result2 *= 1030;
@@ -308,7 +311,7 @@ public static class Lua {
                             result = GetItemLevelCoefficient(itemType);
                             local3 = result2 * result;
                         } else {
-                            if (Target.LOCALE == LocaleCn) {
+                            if (Locale == LocaleCn) {
                                 result2 = GetLevelScoreFactorCn(gearScore);
                                 result2 = 2 + result2;
                                 result2 *= 1030;
@@ -343,7 +346,7 @@ public static class Lua {
             }
         }
         if (limitBreakLevel < 60) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 if (itemType is 22 or > 29) {
                     local3 = local4 * 2;
                 } else {
@@ -353,14 +356,14 @@ public static class Lua {
                 local3 = local4;
             }
         } else if (limitBreakLevel < 70) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 if (grade == 4) {
                     local3 = local4 * 1.2;
                 } else {
                     local3 = local4;
                 }
             } else {
-                if (Target.LOCALE == LocaleCn) {
+                if (Locale == LocaleCn) {
                     if (grade == 4 && gearScore > 65) {
                         local3 = local4 * 1.2;
                     } else {
@@ -373,7 +376,7 @@ public static class Lua {
         }
 
         if (limitBreakLevel < 60) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 if (enchantLevel < 10) {
                     double temp = 8 * Math.Pow(enchantLevel, 2) + 4 * enchantLevel;
                     temp *= 3.5;
@@ -390,7 +393,7 @@ public static class Lua {
                     result2 = local2;
                 }
             } else {
-                if (Target.LOCALE == LocaleCn) {
+                if (Locale == LocaleCn) {
                     if (grade >= 5) {
                         result = GetAdditionalItemLevelCoefficientR5(enchantLevel);
                     } else {
@@ -409,8 +412,8 @@ public static class Lua {
             }
         } else if (limitBreakLevel < 70) {
             if (grade >= 4) {
-                if (Target.LOCALE != LocaleKr) {
-                    if (Target.LOCALE == LocaleCn) {
+                if (Locale != LocaleKr) {
+                    if (Locale == LocaleCn) {
                         // Empty block
                     }
                     result = GetAdditionalItemLevelCoefficientR5(enchantLevel);
@@ -426,7 +429,7 @@ public static class Lua {
             result2 = local2;
         } else if (limitBreakLevel < 80) {
             // calcItemLevel: KR and CN take the per-grade coefficients, other regions the grade >= 4 split.
-            if (Target.LOCALE == LocaleKr || Target.LOCALE == LocaleCn) {
+            if (Locale == LocaleKr || Locale == LocaleCn) {
                 if (grade == 4) {
                     if (gearScore < 70) {
                         result = GetAdditionalItemLevelCoefficientR5(enchantLevel);
@@ -453,11 +456,13 @@ public static class Lua {
         } else if (grade >= 4) {
             result = GetAdditionalItemLevelCoefficientNa(enchantLevel);
             local2 = local3 * result;
+            result2 = local2;
         } else {
             result = GetAdditionalItemLevelCoefficient(enchantLevel);
             local2 = local3 * result;
+            result2 = local2;
         }
-        result2 = local2;
+        // Each branch above sets result2; the KR one doubles it for item types 22 and above 29.
         result = (float) local3;
         return ((int, int)) (result, result2);
     }
@@ -467,7 +472,7 @@ public static class Lua {
         int amount;
 
         if (skinType == 0) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 levelLimit = Math.Min(56, levelLimit);
             } else {
                 levelLimit = Math.Min(50, levelLimit);
@@ -481,7 +486,7 @@ public static class Lua {
             return (1, ItemRemakeCrystalChipTag, amount);
         }
         if (skinType > 0) {
-            if (Target.LOCALE == LocaleJp) {
+            if (Locale == LocaleJp) {
                 tag = "CrystalPiece";
                 amount = 100;
             } else {
@@ -502,7 +507,7 @@ public static class Lua {
 
         int amount;
 
-        if (Target.LOCALE == LocaleCn) {
+        if (Locale == LocaleCn) {
             if (level <= 7) {
                 int temp = 100 * level;
                 temp *= level;
@@ -596,7 +601,7 @@ public static class Lua {
 
     #region BlackMarket
     public static float CalcBlackMarketCostRate(int p1 = 0) {
-        if (Target.LOCALE == LocaleNa) {
+        if (Locale == LocaleNa) {
             return 0.1f;
         } else {
             return 0.05f;
@@ -810,9 +815,9 @@ public static class Lua {
     }
 
     public static int CalcRevivalMerat(int level, int dailyCount) {
-        if (Target.LOCALE == LocaleCn) {
+        if (Locale == LocaleCn) {
             return 90 + 30 * dailyCount;
-        } else if (Target.LOCALE == LocaleJp) {
+        } else if (Locale == LocaleJp) {
             if (dailyCount < 1) {
                 return 20;
             } else if (dailyCount < 2) {
@@ -832,7 +837,7 @@ public static class Lua {
     }
 
     public static int CalcRevivalMeso(int level, int dailyRemain, int dailyCount) {
-        if (Target.LOCALE == LocaleCn) {
+        if (Locale == LocaleCn) {
             if (dailyCount == 1) {
                 return 10000;
             } else {
@@ -877,7 +882,7 @@ public static class Lua {
         }
 
         int itemLevelCalcLimit;
-        if (Target.LOCALE == LocaleKr) {
+        if (Locale == LocaleKr) {
             itemLevelCalcLimit = Math.Min(56, itemLevel);
         } else {
             itemLevelCalcLimit = Math.Min(50, itemLevel);
@@ -910,7 +915,7 @@ public static class Lua {
         amount = local2 * (int) slotScore;
 
         if (grade >= 5) {
-            if (Target.LOCALE == LocaleKr && itemLevel < 60) {
+            if (Locale == LocaleKr && itemLevel < 60) {
                 amount3 *= 3;
             } else {
                 amount3 *= 15;
@@ -992,8 +997,8 @@ public static class Lua {
         float wapEpic = 0;
 
         if (levelLimit < 60) {
-            if (Target.LOCALE != LocaleKr) {
-                if (Target.LOCALE == LocaleCn) {
+            if (Locale != LocaleKr) {
+                if (Locale == LocaleCn) {
                     wapGrade = GetWeaponGradeAddWap(grade);
                     wapEpic = GetWeaponGradeAddWap(4);
                 } else {
@@ -1005,10 +1010,10 @@ public static class Lua {
                 wapEpic = GetWeaponGradeAddWap(4);
             }
         } else if (levelLimit < 70) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 wapGrade = GetWeaponGradeAddWap60Kr(grade);
                 wapEpic = GetWeaponGradeAddWap60Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 wapGrade = GetWeaponGradeAddWap60Cn(grade);
                 wapEpic = GetWeaponGradeAddWap60Cn(4);
             } else {
@@ -1016,10 +1021,10 @@ public static class Lua {
                 wapEpic = GetWeaponGradeAddWap60Na(4);
             }
         } else if (levelLimit < 80) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 wapGrade = GetWeaponGradeAddWap70Kr(grade);
                 wapEpic = GetWeaponGradeAddWap70Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 wapGrade = GetWeaponGradeAddWap70Cn(grade);
                 wapEpic = GetWeaponGradeAddWap70Cn(4);
             } else {
@@ -1027,10 +1032,10 @@ public static class Lua {
                 wapEpic = GetWeaponGradeAddWap70Na(4);
             }
         } else if (levelLimit < 90) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 wapGrade = GetWeaponGradeAddWap80Kr(grade);
                 wapEpic = GetWeaponGradeAddWap80Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 wapGrade = GetWeaponGradeAddWap80Cn(grade);
                 wapEpic = GetWeaponGradeAddWap80Cn(4);
             } else {
@@ -1038,10 +1043,10 @@ public static class Lua {
                 wapEpic = GetWeaponGradeAddWap80Na(4);
             }
         } else {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 wapGrade = GetWeaponGradeAddWap90Kr(grade);
                 wapEpic = GetWeaponGradeAddWap90Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 wapGrade = GetWeaponGradeAddWap90Cn(grade);
                 wapEpic = GetWeaponGradeAddWap90Cn(4);
             } else {
@@ -1102,7 +1107,7 @@ public static class Lua {
             for (int i = 2; i <= optionLevelFactor; i++) {
                 float local3 = 0;
 
-                if (Target.LOCALE == LocaleKr) {
+                if (Locale == LocaleKr) {
                     if (levelLimit < 60) {
                         local3 = Math.Max(i / 30f * 20f - 0.8f, 0);
                     } else if (i > 49) {
@@ -1123,7 +1128,7 @@ public static class Lua {
 
 
         float addWap;
-        if (Target.LOCALE == LocaleKr) {
+        if (Locale == LocaleKr) {
             if (levelLimit < 60) {
                 addWap = 0;
             } else {
@@ -1234,8 +1239,8 @@ public static class Lua {
         float nddEpic = 0;
 
         if (levelLimit < 60) {
-            if (Target.LOCALE != LocaleKr) {
-                if (Target.LOCALE == LocaleCn) {
+            if (Locale != LocaleKr) {
+                if (Locale == LocaleCn) {
                     nddGrade = GetWeaponGradeAddNdd(grade);
                     nddEpic = GetWeaponGradeAddNdd(4);
                 } else {
@@ -1244,10 +1249,10 @@ public static class Lua {
                 }
             }
         } else if (levelLimit < 70) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 nddGrade = GetWeaponGradeAddNdd60Kr(grade);
                 nddEpic = GetWeaponGradeAddNdd60Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 nddGrade = GetWeaponGradeAddNdd60(grade);
                 nddEpic = GetWeaponGradeAddNdd60(4);
             } else {
@@ -1255,10 +1260,10 @@ public static class Lua {
                 nddEpic = GetWeaponGradeAddNdd60Na(4);
             }
         } else if (levelLimit < 80) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 nddGrade = GetWeaponGradeAddNdd70Kr(grade);
                 nddEpic = GetWeaponGradeAddNdd70Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 nddGrade = GetWeaponGradeAddNdd70(grade);
                 nddEpic = GetWeaponGradeAddNdd70(4);
             } else {
@@ -1266,10 +1271,10 @@ public static class Lua {
                 nddEpic = GetWeaponGradeAddNdd70Na(4);
             }
         } else if (levelLimit < 90) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 nddGrade = GetWeaponGradeAddNdd80Kr(grade);
                 nddEpic = GetWeaponGradeAddNdd80Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 nddGrade = GetWeaponGradeAddNdd80(grade);
                 nddEpic = GetWeaponGradeAddNdd80(4);
             } else {
@@ -1277,10 +1282,10 @@ public static class Lua {
                 nddEpic = GetWeaponGradeAddNdd80Na(4);
             }
         } else {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 nddGrade = GetWeaponGradeAddNdd90Kr(grade);
                 nddEpic = GetWeaponGradeAddNdd90Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 nddGrade = GetWeaponGradeAddNdd90(grade);
                 nddEpic = GetWeaponGradeAddNdd90(4);
             } else {
@@ -1361,7 +1366,7 @@ public static class Lua {
             float l2011Local = 9;
 
             for (int i = 2; i <= optionLevelFactor; i += 1) {
-                if (Target.LOCALE == LocaleKr) {
+                if (Locale == LocaleKr) {
                     if (levelLimit < 60) {
                         armorLevelBaseCurrentLevelPlus = MathF.Max(1 + (i / 10f) * 4, 0);
                     } else if (i > 49) {
@@ -1380,7 +1385,7 @@ public static class Lua {
         }
 
         // l_20_11
-        if (Target.LOCALE == LocaleKr) {
+        if (Locale == LocaleKr) {
             if (levelLimit < 60) {
                 l2011 = 0;
             } else {
@@ -1585,8 +1590,8 @@ public static class Lua {
         float epicGradeWap;
 
         if (levelLimit < 60) {
-            if (Target.LOCALE != LocaleKr) {
-                if (Target.LOCALE == LocaleCn) {
+            if (Locale != LocaleKr) {
+                if (Locale == LocaleCn) {
                     gradeWap = GetWeaponGradeAddWap(grade);
                     epicGradeWap = GetWeaponGradeAddWap(4);
                 } else {
@@ -1598,10 +1603,10 @@ public static class Lua {
                 epicGradeWap = GetWeaponGradeAddWap50Na(4);
             }
         } else if (levelLimit < 70) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 gradeWap = GetWeaponGradeAddWap60Kr(grade);
                 epicGradeWap = GetWeaponGradeAddWap60Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 gradeWap = GetWeaponGradeAddWap60Cn(grade);
                 epicGradeWap = GetWeaponGradeAddWap60Cn(4);
             } else {
@@ -1609,10 +1614,10 @@ public static class Lua {
                 epicGradeWap = GetWeaponGradeAddWap60Na(4);
             }
         } else if (levelLimit < 80) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 gradeWap = GetWeaponGradeAddWap70Kr(grade);
                 epicGradeWap = GetWeaponGradeAddWap70Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 gradeWap = GetWeaponGradeAddWap70Cn(grade);
                 epicGradeWap = GetWeaponGradeAddWap70Cn(4);
             } else {
@@ -1620,10 +1625,10 @@ public static class Lua {
                 epicGradeWap = GetWeaponGradeAddWap70Na(4);
             }
         } else if (levelLimit < 90) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 gradeWap = GetWeaponGradeAddWap80Kr(grade);
                 epicGradeWap = GetWeaponGradeAddWap80Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 gradeWap = GetWeaponGradeAddWap80Cn(grade);
                 epicGradeWap = GetWeaponGradeAddWap80Cn(4);
             } else {
@@ -1631,10 +1636,10 @@ public static class Lua {
                 epicGradeWap = GetWeaponGradeAddWap80Na(4);
             }
         } else {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 gradeWap = GetWeaponGradeAddWap90Kr(grade);
                 epicGradeWap = GetWeaponGradeAddWap90Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 gradeWap = GetWeaponGradeAddWap90Cn(grade);
                 epicGradeWap = GetWeaponGradeAddWap90Cn(4);
             } else {
@@ -1840,9 +1845,9 @@ public static class Lua {
                 float local2;
                 float local3;
                 if (levelLimit < 60) {
-                    if (Target.LOCALE == LocaleKr) {
+                    if (Locale == LocaleKr) {
                         result = MathF.Round((optionLevelFactor - 50) / 2f * 13f, 0);
-                    } else if (Target.LOCALE == LocaleCn) {
+                    } else if (Locale == LocaleCn) {
                         if (grade >= 5 && optionLevelFactor >= 53) {
                             local1 = 600;
                             local2 = 0.6f;
@@ -1948,7 +1953,7 @@ public static class Lua {
 
         if (levelLimit < 60) {
             // constant_value_addndd: KR and CN use the base table, other regions the 50 NA table.
-            if (Target.LOCALE == LocaleKr || Target.LOCALE == LocaleCn) {
+            if (Locale == LocaleKr || Locale == LocaleCn) {
                 addNddGrade = GetWeaponGradeAddNdd(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd(4);
             } else {
@@ -1956,10 +1961,10 @@ public static class Lua {
                 addNddEpicGrade = GetWeaponGradeAddNdd50Na(4);
             }
         } else if (levelLimit < 70) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 addNddGrade = GetWeaponGradeAddNdd60Kr(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd60Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 addNddGrade = GetWeaponGradeAddNdd60(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd60(4);
             } else {
@@ -1967,10 +1972,10 @@ public static class Lua {
                 addNddEpicGrade = GetWeaponGradeAddNdd60Na(4);
             }
         } else if (levelLimit < 80) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 addNddGrade = GetWeaponGradeAddNdd70Kr(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd70Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 addNddGrade = GetWeaponGradeAddNdd70(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd70(4);
             } else {
@@ -1978,10 +1983,10 @@ public static class Lua {
                 addNddEpicGrade = GetWeaponGradeAddNdd70Na(4);
             }
         } else if (levelLimit < 90) {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 addNddGrade = GetWeaponGradeAddNdd80Kr(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd80Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 addNddGrade = GetWeaponGradeAddNdd80(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd80(4);
             } else {
@@ -1989,10 +1994,10 @@ public static class Lua {
                 addNddEpicGrade = GetWeaponGradeAddNdd80Na(4);
             }
         } else {
-            if (Target.LOCALE == LocaleKr) {
+            if (Locale == LocaleKr) {
                 addNddGrade = GetWeaponGradeAddNdd90Kr(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd90Kr(4);
-            } else if (Target.LOCALE == LocaleCn) {
+            } else if (Locale == LocaleCn) {
                 addNddGrade = GetWeaponGradeAddNdd90(grade);
                 addNddEpicGrade = GetWeaponGradeAddNdd90(4);
             } else {
@@ -2054,7 +2059,7 @@ public static class Lua {
             for (int i = 2; i <= optionLevelFactor; i++) {
                 float local4;
 
-                if (Target.LOCALE == LocaleKr) {
+                if (Locale == LocaleKr) {
                     if (levelLimit < 60) {
                         local4 = MathF.Max(1 + (i / 10f) * 4, 0);
                     } else if (i > 49) {
@@ -2075,7 +2080,7 @@ public static class Lua {
 
         float addNdd = 0;
 
-        if (Target.LOCALE == LocaleKr) {
+        if (Locale == LocaleKr) {
             if (levelLimit < 60) {
                 addNdd = 0;
             } else {
@@ -2177,7 +2182,7 @@ public static class Lua {
             for (int i = 2; i <= optionLevelFactor; i++) {
                 float increment;
 
-                if (Target.LOCALE == LocaleKr) {
+                if (Locale == LocaleKr) {
                     if (levelLimit < 60) {
                         increment = MathF.Max(i / 30f * 20 - 0.8f, 0);
                     } else if (i > 49) {
@@ -2199,7 +2204,7 @@ public static class Lua {
         float roundedBase = MathF.Round(levelBase * GetWeaponSlotCoefficient(itemType) / GetWeaponAttackSpeedCoefficient(itemType), 1);
 
         float addWap;
-        if (Target.LOCALE == LocaleKr) {
+        if (Locale == LocaleKr) {
             if (levelLimit < 60) {
                 addWap = 0;
             } else {
@@ -2234,7 +2239,7 @@ public static class Lua {
             for (int i = 2; i <= optionLevelFactor; i++) {
                 float increment;
 
-                if (Target.LOCALE == LocaleKr) {
+                if (Locale == LocaleKr) {
                     if (levelLimit < 60) {
                         increment = MathF.Max(i / 30f * 20 - 0.8f, 0);
                     } else if (i > 49) {
@@ -2256,7 +2261,7 @@ public static class Lua {
         float roundedBase = MathF.Round(levelBase * GetWeaponSlotCoefficient(itemType) / GetWeaponAttackSpeedCoefficient(itemType), 1);
 
         float addWap;
-        if (Target.LOCALE == LocaleKr) {
+        if (Locale == LocaleKr) {
             if (levelLimit < 60) {
                 addWap = 0;
             } else {

@@ -3,24 +3,38 @@ using Maple2.Server.Core.Constants;
 
 namespace Maple2.Server.Tests.Lua;
 
+// Every test runs once per locale branch: the script (Maple2.Lua) and the port are both set to the
+// fixture's locale and both must give the expected value, whatever LOCALE the test run has.
 [NonParallelizable]
+[TestFixture("NA")]
+[TestFixture("KR")]
 public class LuaTests {
-    private readonly Maple2.Lua.Lua maple2Lua = new Maple2.Lua.Lua(Target.LOCALE);
+    private readonly string locale;
+    private readonly Maple2.Lua.Lua maple2Lua;
+    private string portLocale = string.Empty;
 
-    // The expected values below are the NA script's. Under another LOCALE the script takes its own branch
-    // (KR: Codex 1370, Rook Star 70, fire prism star WapMax 36222), and the port is checked against it in the same test.
-    private static void NaValues() {
-        Assume.That(Target.LOCALE, Is.EqualTo("NA"), "expected values are the NA script's");
+    public LuaTests(string locale) {
+        this.locale = locale;
+        maple2Lua = new Maple2.Lua.Lua(locale);
+    }
+
+    [OneTimeSetUp]
+    public void OneTimeSetUp() {
+        portLocale = Server.Game.LuaFunctions.Lua.Locale;
+        Server.Game.LuaFunctions.Lua.Locale = locale;
     }
 
     [OneTimeTearDown]
     public void OneTimeTearDown() {
+        Server.Game.LuaFunctions.Lua.Locale = portLocale;
         maple2Lua.Dispose();
     }
 
+    // The expected value of the fixture's branch.
+    private T V<T>(T na, T kr) => locale == "NA" ? na : kr;
+
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringThrowingStar() {
-        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -45,21 +59,20 @@ public class LuaTests {
 
         // Assert
         Assert.Multiple(() => {
-            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(4177));
-            Assert.That(baseGearScore, Is.EqualTo(4177));
+            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(V(4177, 685)));
+            Assert.That(baseGearScore, Is.EqualTo(V(4177, 685)));
 
-            Assert.That(maple2LuaEnchantScore, Is.EqualTo(0));
-            Assert.That(enchantScore, Is.EqualTo(0));
+            Assert.That(maple2LuaEnchantScore, Is.EqualTo(V(0, 0)));
+            Assert.That(enchantScore, Is.EqualTo(V(0, 0)));
 
             // total
-            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(4177));
-            Assert.That(totalGearScore, Is.EqualTo(4177));
+            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(V(4177, 685)));
+            Assert.That(totalGearScore, Is.EqualTo(V(4177, 685)));
         });
     }
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringThrowingStar_Enchanted() {
-        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -84,21 +97,20 @@ public class LuaTests {
 
         // Assert
         Assert.Multiple(() => {
-            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(4178));
-            Assert.That(baseGearScore, Is.EqualTo(4178));
+            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(V(4178, 685)));
+            Assert.That(baseGearScore, Is.EqualTo(V(4178, 685)));
 
-            Assert.That(maple2LuaEnchantScore, Is.EqualTo(2088));
-            Assert.That(enchantScore, Is.EqualTo(2088));
+            Assert.That(maple2LuaEnchantScore, Is.EqualTo(V(2088, 140)));
+            Assert.That(enchantScore, Is.EqualTo(V(2088, 140)));
 
             // total
-            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(6266));
-            Assert.That(totalGearScore, Is.EqualTo(6266));
+            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(V(6266, 825)));
+            Assert.That(totalGearScore, Is.EqualTo(V(6266, 825)));
         });
     }
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringKnife() {
-        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -123,21 +135,20 @@ public class LuaTests {
 
         // Assert
         Assert.Multiple(() => {
-            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(4178));
-            Assert.That(baseGearScore, Is.EqualTo(4178));
+            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(V(4178, 685)));
+            Assert.That(baseGearScore, Is.EqualTo(V(4178, 685)));
 
-            Assert.That(maple2LuaEnchantScore, Is.EqualTo(2088));
-            Assert.That(enchantScore, Is.EqualTo(2088));
+            Assert.That(maple2LuaEnchantScore, Is.EqualTo(V(2088, 140)));
+            Assert.That(enchantScore, Is.EqualTo(V(2088, 140)));
 
             // total
-            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(6266));
-            Assert.That(totalGearScore, Is.EqualTo(6266));
+            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(V(6266, 825)));
+            Assert.That(totalGearScore, Is.EqualTo(V(6266, 825)));
         });
     }
 
     [Test]
     public void TestCalcItemLevel_RookStar() {
-        NaValues();
         // Arrange
         const int gearScore = 7;
         const int rarity = 1;
@@ -162,21 +173,20 @@ public class LuaTests {
 
         // Assert
         Assert.Multiple(() => {
-            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(35));
-            Assert.That(baseGearScore, Is.EqualTo(35));
+            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(V(35, 70)));
+            Assert.That(baseGearScore, Is.EqualTo(V(35, 70)));
 
-            Assert.That(maple2LuaEnchantScore, Is.EqualTo(0));
-            Assert.That(enchantScore, Is.EqualTo(0));
+            Assert.That(maple2LuaEnchantScore, Is.EqualTo(V(0, 0)));
+            Assert.That(enchantScore, Is.EqualTo(V(0, 0)));
 
             // total
-            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(35));
-            Assert.That(totalGearScore, Is.EqualTo(35));
+            Assert.That(maple2LuaTotalGearScore, Is.EqualTo(V(35, 70)));
+            Assert.That(totalGearScore, Is.EqualTo(V(35, 70)));
         });
     }
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringCodex() {
-        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -188,14 +198,13 @@ public class LuaTests {
 
         // Assert
         Assert.Multiple(() => {
-            Assert.That(maple2LuaResult, Is.EqualTo(8355));
-            Assert.That(luaResult, Is.EqualTo(8355));
+            Assert.That(maple2LuaResult, Is.EqualTo(V(8355, 1370)));
+            Assert.That(luaResult, Is.EqualTo(V(8355, 1370)));
         });
     }
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringScepter() {
-        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -207,15 +216,15 @@ public class LuaTests {
 
         // Assert
         Assert.Multiple(() => {
-            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(8355));
-            Assert.That(baseGearScore, Is.EqualTo(8355));
+            Assert.That(maple2LuaBaseGearScore, Is.EqualTo(V(8355, 1370)));
+            Assert.That(baseGearScore, Is.EqualTo(V(8355, 1370)));
 
-            Assert.That(maple2LuaEnchantScore, Is.EqualTo(4177));
-            Assert.That(enchantScore, Is.EqualTo(4177));
+            Assert.That(maple2LuaEnchantScore, Is.EqualTo(V(4177, 280)));
+            Assert.That(enchantScore, Is.EqualTo(V(4177, 280)));
 
             // total
-            Assert.That(maple2LuaBaseGearScore + maple2LuaEnchantScore, Is.EqualTo(12532));
-            Assert.That(baseGearScore + enchantScore, Is.EqualTo(12532));
+            Assert.That(maple2LuaBaseGearScore + maple2LuaEnchantScore, Is.EqualTo(V(12532, 1650)));
+            Assert.That(baseGearScore + enchantScore, Is.EqualTo(V(12532, 1650)));
         });
     }
 
@@ -325,9 +334,9 @@ public class LuaTests {
         });
     }
 
-    [TestCase(0, 1, 34, 0, 80, 6, 70, 67659f)] // fire prism star
-    public void TestConstantValueWapMax(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, float expected) {
-        NaValues();
+    [TestCase(0, 1, 34, 0, 80, 6, 70, 67659f, 36222f)] // fire prism star
+    public void TestConstantValueWapMax(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, float expectedNa, float expectedKr) {
+        float expected = V(expectedNa, expectedKr);
         // Act
         (float, float) maple2LuaResult = maple2Lua.ConstantValueWapMax(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
         (float, float) luaResult = Server.Game.LuaFunctions.Lua.ConstantValueWapMax(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
@@ -339,9 +348,9 @@ public class LuaTests {
         });
     }
 
-    [TestCase(0, 1, 34, 0, 80, 6, 70, 50008f)] // fire prism star
-    public void TestConstantValueWapMin(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, float expected) {
-        NaValues();
+    [TestCase(0, 1, 34, 0, 80, 6, 70, 50008f, 26773f)] // fire prism star
+    public void TestConstantValueWapMin(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, float expectedNa, float expectedKr) {
+        float expected = V(expectedNa, expectedKr);
         // Act
         (float, float) maple2LuaResult = maple2Lua.ConstantValueWapMin(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
         (float, float) luaResult = Server.Game.LuaFunctions.Lua.ConstantValueWapMin(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
