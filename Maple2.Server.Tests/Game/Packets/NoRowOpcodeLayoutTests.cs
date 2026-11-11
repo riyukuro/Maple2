@@ -322,7 +322,8 @@ public class NoRowOpcodeLayoutTests {
     // The result a caller on another channel gets through the World server is the same packet as on one channel.
     [Test]
     public void RecallUserResultByRelay() {
-        Assert.That(RecallUserPacket.Result("A", true, RecallUserPacket.FAIL_BUSY).ToArray(), Is.EqualTo(RecallUserPacket.Recalled("A").ToArray()));
+        Assert.That(RecallUserPacket.Result("A", true, RecallUserPacket.FAIL_BUSY).ToArray(),
+            Is.EqualTo(RecallUserPacket.Requested("A", RecallUserPacket.REQUEST_RECALL).ToArray()));
         Assert.That(RecallUserPacket.Result("A", false, RecallUserPacket.FAIL_CANNOT_MOVE).ToArray(),
             Is.EqualTo(RecallUserPacket.Fail("A", RecallUserPacket.FAIL_CANNOT_MOVE).ToArray()));
 

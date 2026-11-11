@@ -21,8 +21,9 @@ public static class RecallUserPacket {
     public const byte FAIL_BUSY = 4;
     public const byte FAIL_NOT_FOUND = 6; // s_recall_user_notify_not_found
 
-    // Kind 5 results: 0 and 2 show s_recall_user_notify_recall (the player is recalled without a question),
-    // 1 and 3 show s_recall_user_notify_confirm_recall (the player is being asked).
+    // Kind 5 results, both texts for the caller with the invited player's name: 0 and 2 show
+    // s_recall_user_notify_recall (the caller recalled the player), 1 and 3 show
+    // s_recall_user_notify_confirm_recall (the caller's request was sent).
     public const byte REQUEST_RECALL = 0;
     public const byte REQUEST_CONFIRM = 1;
 
@@ -38,7 +39,7 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // Kind 5: name, byte result. A text for the invited player with the caller's name (REQUEST_RECALL or
+    // Kind 5: name, byte result. A text for the caller with the invited player's name (REQUEST_RECALL or
     // REQUEST_CONFIRM).
     public static ByteWriter Requested(string name, byte result) {
         var pWriter = Packet.Of(SendOp.RecallUser);
@@ -49,7 +50,8 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // Kind 6: name; shows s_recall_user_notify_recalled (the recall was done).
+    // Kind 6: name; shows s_recall_user_notify_recalled, the text for the invited player with the caller's
+    // name (the player is being recalled by the caller).
     public static ByteWriter Recalled(string name) {
         var pWriter = Packet.Of(SendOp.RecallUser);
         pWriter.WriteByte((byte) Command.Notice);
@@ -58,9 +60,10 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // The packet that tells the caller how an invite ended: kind 6 when the player was moved, else kind 7.
+    // The packet that tells the caller how an invite ended: kind 5 with REQUEST_RECALL when the player was
+    // moved, else kind 7.
     public static ByteWriter Result(string name, bool recalled, byte fail) {
-        return recalled ? Recalled(name) : Fail(name, fail);
+        return recalled ? Requested(name, REQUEST_RECALL) : Fail(name, fail);
     }
 
     // Kind 7: name, byte result (a FAIL_ value).

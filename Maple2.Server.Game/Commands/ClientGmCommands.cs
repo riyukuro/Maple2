@@ -215,7 +215,9 @@ public class RecallUserCommand : GameCommand {
             session.Send(RecallUserPacket.Fail(name, (byte) result));
             return;
         }
-        // The caller hears how the invite ended (kind 6 or 7); the text of kind 5 goes to the invited player.
+        // The caller reads that the request was sent (kind 5, result 1) and later how it ended (kind 5 with
+        // result 0, or kind 7). The invited player gets the confirm box and, when moved, kind 6.
+        session.Send(RecallUserPacket.Requested(name, RecallUserPacket.REQUEST_CONFIRM));
         ctx.ExitCode = 0;
     }
 }
