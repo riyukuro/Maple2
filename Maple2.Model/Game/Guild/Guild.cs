@@ -79,6 +79,7 @@ public class Guild : IByteSerializable {
         writer.Write<GuildFocus>(Focus);
         writer.WriteInt(Experience);
         writer.WriteInt(Funds);
+        writer.WriteInt(); // KMS 2525 CGuildInfo::Read (0x1404cdda0): event fund, read after the fund
         writer.WriteBool(false);
         writer.WriteInt();
 
@@ -117,14 +118,7 @@ public class Guild : IByteSerializable {
         foreach (RewardItem item in Bank) {
             writer.Write<RewardItem>(item);
         }
-
-        writer.WriteInt();
-        writer.WriteUnicodeString();
-        writer.WriteLong();
-        writer.WriteLong();
-        for (int i = 0; i < 7; i++) {
-            writer.WriteInt();
-        }
+        // The client's guild reader ends with the storage list; nothing follows it.
     }
 }
 
