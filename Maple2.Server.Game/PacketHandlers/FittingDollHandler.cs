@@ -102,18 +102,19 @@ public class FittingDollHandler : FieldPacketHandler {
                 short inventorySlot = item.Slot;
                 item.Group = ItemGroup.FittingDoll;
                 item.Slot = (short) slot;
-                bool moved;
+                ItemMove moved;
                 using (GameStorage.Request db = session.GameStorage.Context()) {
-                    moved = db.MoveItem(item, session.CharacterId, ItemGroup.Default, doll.Uid);
+                    moved = db.PutOnFittingDoll(item, doll.Uid, doll.Plot.Id);
                 }
-                if (!moved) {
-                    // Nothing was written: the item goes back where it was and the doll is unchanged.
+                if (moved != ItemMove.Moved) {
+                    // Nothing was written: the item goes back where it was and the doll is unchanged. TargetGone is a
+                    // doll whose cube was removed (and saved) in another field instance of this home.
                     item.Group = ItemGroup.Default;
                     item.Slot = inventorySlot;
                     if (!session.Item.Inventory.Add(item)) {
                         Serilog.Log.Logger.Error("Failed to put item {ItemUid} back after a failed fitting doll save", item.Uid);
                     }
-                    return FittingDollRules.Error.InvalidItem;
+                    return moved == ItemMove.TargetGone ? FittingDollRules.Error.InvalidDoll : FittingDollRules.Error.InvalidItem;
                 }
 
                 foreach (Item worn in displaced) {

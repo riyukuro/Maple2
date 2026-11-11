@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Caching;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -20,6 +21,8 @@ public class MoveItemStorageTests {
     private const long Character = 1001;
     private const long OtherCharacter = 1002;
     private const long Doll = 5001;
+    private const int CubeItemId = 50000101;
+    private const long PlotId = 7001;
     private GameStorage storage = null!;
     private DbContextOptions options = null!;
 
@@ -29,7 +32,7 @@ public class MoveItemStorageTests {
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
-        storage = new GameStorage(options, Storage(Metadata(ItemId, false)), null!, null!, null!, null!, null!,
+        storage = new GameStorage(options, Storage(Metadata(ItemId, false), Metadata(CubeItemId, false)), null!, null!, null!, null!, null!,
             NullLogger<GameStorage>.Instance, null!);
     }
 
@@ -101,37 +104,72 @@ public class MoveItemStorageTests {
         });
     }
 
-    // A put on whose inventory item no longer has the character's row writes nothing; the handler then keeps the
-    // item where it was and leaves the doll unchanged.
-    [Test]
-    public void PutOn_RowNotTheCharacters_WritesNothing() {
-        long uid = CreateOnDoll();
-        Item copy = LoadFromDoll();
-        copy.Slot = (short) EquipSlot.CP;
-        using GameStorage.Request db = storage.Context();
+    private static PlotInfo Plot() {
+        var plot = (PlotInfo) RuntimeHelpers.GetUninitializedObject(typeof(PlotInfo));
+        plot.Id = PlotId;
+        return plot;
+    }
 
-        Assert.That(db.MoveItem(copy, Character, ItemGroup.Default, Doll), Is.False);
-        Maple2.Database.Model.Item row = Row(uid);
-        Assert.Multiple(() => {
-            Assert.That(row.OwnerId, Is.EqualTo(Doll));
-            Assert.That(row.Group, Is.EqualTo(ItemGroup.FittingDoll));
-            Assert.That(row.Slot, Is.EqualTo((short) EquipSlot.CL));
-        });
+    private ItemMove PutOn(long cubeUid, long plotId, out long uid, ItemGroup savedGroup = ItemGroup.Default) {
+        Item item = Create();
+        uid = item.Uid;
+        if (savedGroup != ItemGroup.Default) {
+            item.Group = savedGroup;
+            using GameStorage.Request save = storage.Context();
+            Assert.That(save.SaveItems(Character, item), Is.True);
+        }
+        item.Group = ItemGroup.FittingDoll;
+        item.Slot = (short) EquipSlot.CL;
+        using GameStorage.Request db = storage.Context();
+        return db.PutOnFittingDoll(item, cubeUid, plotId);
+    }
+
+    private PlotCube PlaceCube() {
+        var cube = new PlotCube(Metadata(CubeItemId, false)) { Position = new Vector3B(1, 2, 3), Type = PlotCube.CubeType.Construction };
+        using GameStorage.Request db = storage.Context();
+        return db.CreateCube(Plot(), cube)!;
     }
 
     [Test]
-    public void PutOn_MovesTheCharactersRowToTheDoll() {
-        Item item = Create();
-        long uid = item.Uid;
-        item.Group = ItemGroup.FittingDoll;
-        item.Slot = (short) EquipSlot.CL;
-        using (GameStorage.Request db = storage.Context()) {
-            Assert.That(db.MoveItem(item, Character, ItemGroup.Default, Doll), Is.True);
-        }
+    public void PutOn_MovesTheRowToTheDoll() {
+        PlotCube cube = PlaceCube();
+        Assert.That(PutOn(cube.Id, PlotId, out long uid), Is.EqualTo(ItemMove.Moved));
         Maple2.Database.Model.Item row = Row(uid);
         Assert.Multiple(() => {
-            Assert.That(row.OwnerId, Is.EqualTo(Doll));
+            Assert.That(row.OwnerId, Is.EqualTo(cube.Id));
             Assert.That(row.Group, Is.EqualTo(ItemGroup.FittingDoll));
+        });
+    }
+
+    // The inventory is saved lazily: an item just taken off still has its row in the gear group until the next
+    // character save. The put on does not test the row, so it is not refused.
+    [Test]
+    public void PutOn_ItemNotSavedToTheInventoryYet_IsMoved() {
+        PlotCube cube = PlaceCube();
+        Assert.That(PutOn(cube.Id, PlotId, out long uid, savedGroup: ItemGroup.Gear), Is.EqualTo(ItemMove.Moved));
+        Maple2.Database.Model.Item row = Row(uid);
+        Assert.Multiple(() => {
+            Assert.That(row.OwnerId, Is.EqualTo(cube.Id));
+            Assert.That(row.Group, Is.EqualTo(ItemGroup.FittingDoll));
+        });
+    }
+
+    // A put on from a field that still shows a doll whose cube was removed elsewhere, or that names another plot, is
+    // refused and the row stays the character's.
+    [Test]
+    public void PutOn_RefusedOnceTheCubeIsRemoved() {
+        PlotCube cube = PlaceCube();
+        Assert.That(PutOn(cube.Id, PlotId + 1, out long otherPlot), Is.EqualTo(ItemMove.TargetGone));
+        Assert.That(Row(otherPlot).OwnerId, Is.EqualTo(Character));
+
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.DeleteCube(cube), Is.True);
+        }
+        Assert.That(PutOn(cube.Id, PlotId, out long late), Is.EqualTo(ItemMove.TargetGone));
+        Maple2.Database.Model.Item row = Row(late);
+        Assert.Multiple(() => {
+            Assert.That(row.OwnerId, Is.EqualTo(Character));
+            Assert.That(row.Group, Is.EqualTo(ItemGroup.Default));
         });
     }
 }

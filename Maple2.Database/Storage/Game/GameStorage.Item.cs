@@ -201,6 +201,27 @@ public partial class GameStorage {
             }
         }
 
+        // Puts a character's inventory item on the fitting doll of cube cubeUid, in the same transaction checking that the
+        // cube is still placed on plot plotId. The row is not tested: the inventory is saved lazily, so the row of an
+        // item just unequipped or taken from mail may not be the character's yet; the session's inventory holds it.
+        public ItemMove PutOnFittingDoll(Item item, long cubeUid, long plotId) {
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                if (!Context.UgcMapCube.Any(cube => cube.Id == cubeUid && cube.UgcMapId == plotId)) {
+                    return ItemMove.TargetGone;
+                }
+                if (!SaveItems(cubeUid, item)) {
+                    return ItemMove.Failed; // the transaction is rolled back when it is disposed
+                }
+
+                transaction.Commit();
+                return ItemMove.Moved;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to put item {ItemUid} on fitting doll {CubeUid}", item.Uid, cubeUid);
+                return ItemMove.Failed;
+            }
+        }
+
         public bool UpdateItem(Item item) {
             Model.Item model = item;
             Context.Item.Update(model);
