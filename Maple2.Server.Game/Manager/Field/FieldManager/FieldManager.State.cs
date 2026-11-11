@@ -1138,6 +1138,10 @@ public partial class FieldManager {
                 added.Session.Send(HomeActionPacket.AddBall(ball));
             } else if (fieldPlayer.Session.GuideObject != null) {
                 added.Session.Send(GuideObjectPacket.Create(fieldPlayer.Session.GuideObject));
+                // A player already fishing: the newcomer was not in the field when the state was broadcast.
+                if (StateFishingPacket.IsFishing(fieldPlayer.Session.GuideObject.Value.Type) && fieldPlayer != added) {
+                    added.Session.Send(StateFishingPacket.State(fieldPlayer.ObjectId, StateFishingPacket.STATE_FISHING));
+                }
             }
             switch (fieldPlayer.Session.HeldCube) {
                 case PlotCube plotCube:

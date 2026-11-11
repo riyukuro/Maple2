@@ -238,4 +238,13 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 4));
     }
+
+    // A player entering a field is sent state 45 for each player whose guide object is the fishing one.
+    [Test]
+    public void FishingStateOnEntryIsForTheFishingGuideOnly() {
+        Assert.That(StateFishingPacket.IsFishing(GuideObjectType.Fishing), Is.True);
+        Assert.That(StateFishingPacket.IsFishing(GuideObjectType.Construction), Is.False);
+        Assert.That(StateFishingPacket.State(7, StateFishingPacket.STATE_FISHING).ToArray().AsSpan(2).ToArray(),
+            Is.EqualTo(new byte[] { 7, 0, 0, 0, 45, 0, 0, 0, 0, 0, 0, 0 }));
+    }
 }
