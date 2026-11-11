@@ -87,6 +87,17 @@ public class WeddingInviteRulesTests {
     // Two partners send at once: the second save merges into the list the first one stored, and is refused
     // when that list already holds one of its guests or has no room left.
     [Test]
+    public void NewTicket_OncePerHallAndTime() {
+        var sent = new HashSet<(long, long)>();
+        Assert.Multiple(() => {
+            Assert.That(WeddingInviteRules.NewTicket(sent, 7, 1000), Is.True);
+            Assert.That(WeddingInviteRules.NewTicket(sent, 7, 1000), Is.False);
+            Assert.That(WeddingInviteRules.NewTicket(sent, 7, 4600), Is.True); // the reservation was changed
+            Assert.That(WeddingInviteRules.NewTicket(sent, 8, 1000), Is.True);
+        });
+    }
+
+    [Test]
     public void Merge_KeepsTheStoredGuests() {
         var stored = new Dictionary<long, long> { [11] = 1, [22] = 2 };
         Dictionary<long, long>? list = WeddingInviteRules.Merge(stored, new Dictionary<long, long> { [33] = 3 }, 3, out WeddingError error);

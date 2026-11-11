@@ -139,11 +139,40 @@ public sealed class MarriageManager {
         CheckDivorceExpiration();
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
         session.Send(WeddingPacket.UpdateHall(WeddingHall));
-        // The ticket is the client's way into the hall (Wedding 0x1a). The couple gets its own while the
-        // ceremony time is inside the client's window.
+        // The client shows a ticket again when it gets it again, so a field entry sends them all anew.
+        lock (ticketsSent) {
+            ticketsSent.Clear();
+        }
+        SendTickets();
+        if (!ticketCheckScheduled) {
+            ticketCheckScheduled = true;
+            session.Scheduler.ScheduleRepeated(SendTickets, TimeSpan.FromSeconds(TicketCheckSeconds), skipFirst: true);
+        }
+    }
+
+    // The client offers the way in only at the moment a ticket arrives (WeddingManager::OnInvitationTicket
+    // marks the list, RefreshTickets then drops a ticket whose time is more than 1800 s away), so a ticket
+    // sent before the window opens shows nothing. The session's own event queue looks once a minute for a
+    // window that opened since, and sends each ticket once.
+    private const int TicketCheckSeconds = 60;
+    private readonly HashSet<(long MarriageId, long CeremonyTime)> ticketsSent = [];
+    private bool ticketCheckScheduled;
+
+    private void SendTicket(long marriageId, WeddingHall hall) {
+        lock (ticketsSent) {
+            if (!WeddingInviteRules.NewTicket(ticketsSent, marriageId, hall.CeremonyTime)) {
+                return;
+            }
+        }
+        session.Send(WeddingPacket.Ticket(marriageId, hall));
+    }
+
+    // The ticket is the client's way into the hall (Wedding 0x1a). The couple gets its own while the
+    // ceremony time is inside the client's window.
+    private void SendTickets() {
         if (WeddingHall.Id != 0 && Marriage.Id != 0
             && WeddingCeremony.InEnterWindow(WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
-            session.Send(WeddingPacket.Ticket(Marriage.Id, WeddingHall));
+            SendTicket(Marriage.Id, WeddingHall);
         }
         SendGuestTickets();
     }
@@ -157,7 +186,7 @@ public sealed class MarriageManager {
         }
         foreach (WeddingHall hall in halls) {
             if (WeddingInviteRules.GuestTicket(hall.GuestList, session.CharacterId, hall.MarriageId, Marriage.Id, hall.CeremonyTime, now, WeddingCeremony.EnterWindowSeconds)) {
-                session.Send(WeddingPacket.Ticket(hall.MarriageId, hall));
+                SendTicket(hall.MarriageId, hall);
             }
         }
     }

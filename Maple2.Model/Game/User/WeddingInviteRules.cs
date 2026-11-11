@@ -99,6 +99,12 @@ public static class WeddingInviteRules {
         return list;
     }
 
+    // A ticket goes out once for a hall and its time: sent holds what went out. A reservation that changed
+    // its time is a new ticket.
+    public static bool NewTicket(ISet<(long MarriageId, long CeremonyTime)> sent, long marriageId, long ceremonyTime) {
+        return sent.Add((marriageId, ceremonyTime));
+    }
+
     // A guest gets the ticket of a hall that is not the guest's own marriage's while its ceremony time is in
     // the window in which the client offers the way in (WeddingManager::CollectTickets, 1800 s either side).
     public static bool GuestTicket(IReadOnlyDictionary<long, long> invited, long characterId, long hallMarriageId, long ownMarriageId,
