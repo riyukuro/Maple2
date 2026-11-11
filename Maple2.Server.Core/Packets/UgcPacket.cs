@@ -45,13 +45,17 @@ public static class UgcPacket {
         return pWriter;
     }
 
-    public static ByteWriter SetEndpoint(Uri uri, Locale locale = Locale.NA) {
+    // CUgcManager::OnUgc mode 0x11: the SOAP url, the download host and region (FUN_1410268a0, where only
+    // "cn" changes anything: the download cache layout), then the SOAP mode (CSoapClient::FUN_14176fcf0).
+    // The mode is not a locale: 2 keeps the url's path (the url less "ws.asmx?wsdl"), any other value
+    // clears it, so it stays 2 under every LOCALE.
+    public static ByteWriter SetEndpoint(Uri uri) {
         var pWriter = Packet.Of(SendOp.Ugc);
         pWriter.Write<Command>(Command.SetEndpoint);
         pWriter.WriteUnicodeString($"{uri.Scheme}://{uri.Authority}/ws.asmx?wsdl");
         pWriter.WriteUnicodeString($"{uri.Scheme}://{uri.Authority}");
-        pWriter.WriteUnicodeString(locale.ToString().ToLower());
-        pWriter.Write<Locale>(locale);
+        pWriter.WriteUnicodeString(Target.LOCALE.ToLower());
+        pWriter.WriteByte(2);
 
         return pWriter;
     }
