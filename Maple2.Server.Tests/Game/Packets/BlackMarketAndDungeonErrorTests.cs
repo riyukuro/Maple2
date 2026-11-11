@@ -36,4 +36,18 @@ public class BlackMarketAndDungeonErrorTests {
             Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 4));
         });
     }
+
+    // RoomDungeon 8 (extra reward count): OnError case 5 shows s_room_dungeon_reward_CantUseExtraReward.
+    [Test]
+    public void DungeonExtraRewardRefusalIsFive() {
+        ByteWriter writer = DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, 1234);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.Multiple(() => {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.RoomDungeon));
+            Assert.That(reader.ReadByte(), Is.EqualTo(18));
+            Assert.That(reader.ReadInt(), Is.EqualTo(5));
+            Assert.That(reader.ReadInt(), Is.EqualTo(1234));
+            Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 4));
+        });
+    }
 }

@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -58,7 +59,8 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
                 HandleChangeExpert(session, packet);
                 break;
             case Command.AddExtraRewardCount:
-                // Not handled: the dungeon whose extra reward count is bought with the coupon item.
+                HandleAddExtraRewardCount(session, packet);
+                break;
             case Command.FindHelper:
             case Command.FindMember:
                 // Not handled: the dungeon the party asks helpers or members for.
@@ -74,6 +76,16 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
                 Logger.Debug("RoomDungeon {Command} from {CharacterId}", command, session.CharacterId);
                 break;
         }
+    }
+
+    // UIDungeonRoomInfo::OnUseExtraRewardItem (uidungeonroomdialog.cpp:1502): the dungeon whose extra reward count is
+    // bought with its coupon item, after a confirm box. The client asks only for a room with an
+    // extraRewardTicketTableID; the coupon's item, rates and maximum are rows of Table/DungeonRewardCoupon.xml, which
+    // the data parser does not read. Nothing can be charged, so the answer is the client's own text for a room whose
+    // reward count cannot be raised (DungeonRecordManagerCli::OnError case 5, dungeonrecordcli.cpp:323).
+    private static void HandleAddExtraRewardCount(GameSession session, IByteReader packet) {
+        int dungeonId = packet.ReadInt();
+        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, dungeonId));
     }
 
     private void HandleReset(GameSession session) {
