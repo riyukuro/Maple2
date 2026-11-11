@@ -466,7 +466,7 @@ public record ConstantsTable(
     string RecallGuildPortalNif = "",
     string RecallPartyPortalNif = "",
     string RecallWeddingPortalNif = "",
-    int PartyRecallMerat = 0,
+    int PartyRecallMerat = 30, // the client's own default (constants.xml has 30 for KR and NA, 150 for CN)
     int RecallPortalKeepTime = 0,
     int RecallPartyPortalKeepTime = 0,
     float CashCallMedicLeaveDelay = 0f,
