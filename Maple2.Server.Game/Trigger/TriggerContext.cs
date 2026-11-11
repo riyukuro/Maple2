@@ -87,14 +87,27 @@ public partial class TriggerContext : ITriggerContext {
         return false;
     }
 
+    // The damage the first npc of the spawn point took so far, over its max hp (1.0 = its whole hp), as the
+    // shipped scripts describe it (map 02000410). With no such npc in the field the test fails.
     public bool NpcDamage(int spawnPointId, float damage, OperatorType operatorType) {
-        ErrorLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
+        DebugLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
+        FieldNpc? npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnPointId);
+        if (npc == null) {
+            return false;
+        }
+
+        long total = npc.Stats.Values[BasicAttribute.Health].Total;
+        double rate = total > 0 ? (double) npc.DamageTaken / total : 0;
+        return CompareRate(rate, damage, operatorType);
+    }
+
+    public static bool CompareRate(double rate, float value, OperatorType operatorType) {
         return operatorType switch {
-            OperatorType.Greater => damage > 1.0f,
-            OperatorType.GreaterEqual => damage >= 1.0f,
-            OperatorType.Equal => Math.Abs(damage - 1.0f) < 0.0001f,
-            OperatorType.LessEqual => damage <= 1.0f,
-            OperatorType.Less => damage < 1.0f,
+            OperatorType.Greater => rate > value,
+            OperatorType.GreaterEqual => rate >= value,
+            OperatorType.Equal => Math.Abs(rate - value) < 0.0001,
+            OperatorType.LessEqual => rate <= value,
+            OperatorType.Less => rate < value,
             _ => false,
         };
     }

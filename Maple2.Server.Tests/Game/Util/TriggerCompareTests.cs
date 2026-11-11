@@ -25,4 +25,14 @@ public class TriggerCompareTests {
         Assert.That(TriggerContext.CompareUserValue(6, 6, OperatorType.LessEqual), Is.True);
         Assert.That(TriggerContext.CompareUserValue(7, 6, OperatorType.LessEqual), Is.False);
     }
+
+    // npc_damage: damage taken over max hp; 02000410 clears at >= 1.0 and fails below it.
+    [Test]
+    public void NpcDamage_ComparesTheTakenDamageRate() {
+        Assert.That(TriggerContext.CompareRate(1.0, 1.0f, OperatorType.GreaterEqual), Is.True);
+        Assert.That(TriggerContext.CompareRate(0.99, 1.0f, OperatorType.GreaterEqual), Is.False);
+        Assert.That(TriggerContext.CompareRate(0.99, 1.0f, OperatorType.Less), Is.True);
+        Assert.That(TriggerContext.CompareRate(1.2, 1.0f, OperatorType.Less), Is.False);
+        Assert.That(TriggerContext.CompareRate(0.5, 0.5f, OperatorType.Equal), Is.True);
+    }
 }
