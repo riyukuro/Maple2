@@ -1,6 +1,7 @@
 using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.Util;
@@ -23,6 +24,13 @@ public static class InsigniaRules {
             InsigniaConditionType.GM => facts.Gm, // the client: GM grade 50 or more
             _ => false,
         };
+    }
+
+    // Insignia (c2s 0x006B): i16 id. The entry is null when the table does not hold the id.
+    public static short ReadId(IByteReader packet, IReadOnlyDictionary<int, InsigniaTable.Entry> entries, out InsigniaTable.Entry? entry) {
+        short id = packet.ReadShort();
+        entries.TryGetValue(id, out entry);
+        return id;
     }
 
     public static bool Handled(InsigniaConditionType type) {

@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Util;
 using static Maple2.Server.Game.Util.InsigniaRules;
 
@@ -7,6 +10,22 @@ namespace Maple2.Server.Tests.Game.Util;
 // The shown flag of a name-tag symbol, by the conditions of the client's CheckCondition.
 public class InsigniaRulesTests {
     private static readonly Facts Plain = new(false, 0, 0, false, 1, false, false);
+
+    [Test]
+    public void IdBytes() {
+        var entries = new Dictionary<int, InsigniaTable.Entry> {
+            [7] = new InsigniaTable.Entry(InsigniaConditionType.level, 0, 0, 0),
+        };
+        var writer = new ByteWriter();
+        writer.WriteShort(7);
+        writer.WriteShort(8);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(ReadId(reader, entries, out InsigniaTable.Entry? known), Is.EqualTo(7));
+        Assert.That(known, Is.Not.Null);
+        Assert.That(ReadId(reader, entries, out InsigniaTable.Entry? unknown), Is.EqualTo(8));
+        Assert.That(unknown, Is.Null);
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
 
     [Test]
     public void PlainPlayer_ShowsNothing() {

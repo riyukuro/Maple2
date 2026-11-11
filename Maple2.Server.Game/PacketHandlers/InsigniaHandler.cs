@@ -23,14 +23,15 @@ public class InsigniaHandler : FieldPacketHandler {
             return;
         }
 
+        // An id the table does not hold changes nothing: the worn insignia keeps its buff.
+        short insigniaId = InsigniaRules.ReadId(packet, TableMetadata.InsigniaTable.Entries, out InsigniaTable.Entry? newInsigniaMetadata);
+        if (newInsigniaMetadata == null) {
+            return;
+        }
+
         // Check and remove any existing insignia buffs
         if (TableMetadata.InsigniaTable.Entries.TryGetValue(session.Player.Value.Character.Insignia, out InsigniaTable.Entry? oldInsigniaMetadata) && oldInsigniaMetadata.BuffId > 0) {
             session.Player.Buffs.Remove(oldInsigniaMetadata.BuffId, session.Player.ObjectId);
-        }
-
-        short insigniaId = packet.ReadShort();
-        if (!TableMetadata.InsigniaTable.Entries.TryGetValue(insigniaId, out InsigniaTable.Entry? newInsigniaMetadata)) {
-            return;
         }
 
         session.Player.Value.Character.Insignia = insigniaId;
