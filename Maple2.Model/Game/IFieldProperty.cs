@@ -107,7 +107,9 @@ public class FieldPropertyAmbientLight : IFieldProperty {
     public FieldProperty Type => FieldProperty.AmbientLight;
 
     public Byte3 Color { get; init; }
-    // Client FieldPropertyAmbientLightCli: true restores the light the field had before; false applies Color.
+    // Client FieldPropertyAmbientLightCli: false sets Color on the field's ambient light at once. true does not
+    // set Color; the client passes the same light property and a saved vector to another entity helper and marks
+    // itself for a later step that is not traced yet. The name assumes a restore that is not proven.
     public bool Restore { get; init; }
     // Read into FieldPropertyAmbientLight +0x30; its use on the client is not settled.
     public float Value { get; init; }
@@ -125,7 +127,9 @@ public class FieldPropertyDirectionalLight : IFieldProperty {
 
     public Byte3 DiffuseColor { get; init; }
     public Byte3 SpecularColor { get; init; }
-    // Client FieldPropertyDirectionalLightCli: true restores the light the field had before; false applies the colours.
+    // Client FieldPropertyDirectionalLightCli: false sets the colours on the field's directional light at once. true
+    // does not set them; as for the ambient light, the client hands the light property and a saved vector to another
+    // entity helper and marks itself for a later step that is not traced yet. The name assumes a restore that is not proven.
     public bool Restore { get; init; }
     // Read after the flag; its use on the client is not settled.
     public float Value { get; init; }
