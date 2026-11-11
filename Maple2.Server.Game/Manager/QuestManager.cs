@@ -608,6 +608,18 @@ public sealed class QuestManager {
         Load();
     }
 
+    // Quest sub-type 18: the portal of a started quest, asked for again from the quest's NPC.
+    public void ResummonPortal(int questId) {
+        if (session.Field is null) return;
+        TryGetQuest(questId, out Quest? quest);
+        bool ownsPortal = session.Field.GetPortals().Any(portal => portal is FieldQuestPortal questPortal && questPortal.Owner == session.Player);
+        if (!QuestRules.CanResummonPortal(quest?.State ?? QuestState.None, quest?.Metadata.SummonPortal != null,
+                session.NpcScript?.Npc != null, ownsPortal)) {
+            return;
+        }
+        SummonPortal(quest!);
+    }
+
     private void SummonPortal(Quest quest) {
         if (session.Field is null) return;
         if (session.NpcScript?.Npc == null) {

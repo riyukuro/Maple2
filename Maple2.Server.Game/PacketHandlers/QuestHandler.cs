@@ -117,8 +117,12 @@ public class QuestHandler : FieldPacketHandler {
                 Logger.Debug("Quest {Command} from {CharacterId}: action {Action}, {Count} quests", command, session.CharacterId, action, count);
                 break;
             }
-            case Command.SkyFortressMission:
             case Command.CinematicProgress:
+                // CQuestProgressCinematicComponent (cinematiccomponent.cpp:611): the talk of a quest in progress
+                // ended and the quest has a summonPortal; the player wants its portal again.
+                session.Quest.ResummonPortal(packet.ReadInt());
+                break;
+            case Command.SkyFortressMission:
             case Command.AllianceQuest:
                 // Not handled: one quest id.
                 Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}", command, session.CharacterId, packet.ReadInt());

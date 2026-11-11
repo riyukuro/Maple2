@@ -15,6 +15,13 @@ public static class QuestRules {
         return autoStart && !locked;
     }
 
+    // Quest sub-type 18 (the client sends it when the talk of a quest in progress ends and the quest has a
+    // summonPortal): the portal is made again only for a started quest that has one, while the player is in
+    // a talk with an NPC, and while no quest portal of theirs is still up in the field.
+    public static bool CanResummonPortal(QuestState state, bool hasSummonPortal, bool inNpcTalk, bool ownsLivePortal) {
+        return state == QuestState.Started && hasSummonPortal && inNpcTalk && !ownsLivePortal;
+    }
+
     public static bool ClientStartsItself(QuestMetadata metadata, int mapId) {
         QuestMetadataBasic basic = metadata.Basic;
         return ClientStartsItself(basic.Type, basic.AutoStart, basic.Disabled, basic.ProgressMaps, mapId);
