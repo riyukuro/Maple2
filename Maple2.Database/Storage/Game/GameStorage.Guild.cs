@@ -113,11 +113,18 @@ public partial class GameStorage {
                 Rank = 0,
             };
             Context.GuildMember.Add(guildLeader);
+            RemoveGuildApplicationsOf(leaderId);
             if (!SaveChanges()) {
                 return null;
             }
 
             return Commit() ? LoadGuild(guild.Id, string.Empty) : null;
+        }
+
+        // A character who becomes a member has no open join request left. The rows are removed by the save that
+        // inserts the member, so both happen or neither.
+        private void RemoveGuildApplicationsOf(long characterId) {
+            Context.GuildApplication.RemoveRange(Context.GuildApplication.Where(app => app.ApplicantId == characterId));
         }
 
         public GuildMember? CreateGuildMember(long guildId, PlayerInfo info) {
@@ -127,6 +134,7 @@ public partial class GameStorage {
                 Rank = 5,
             };
             Context.GuildMember.Add(member);
+            RemoveGuildApplicationsOf(info.CharacterId);
             if (!SaveChanges()) {
                 return null;
             }

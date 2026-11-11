@@ -10,6 +10,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Maple2.Tools.Extensions;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
@@ -702,9 +703,46 @@ public class GuildHandler : PacketHandler<GameSession> {
         } catch (RpcException) { /* ignored */ }
     }
 
+    // CGuildManager::SendGuildMail: a title of 1 to 100 characters and a text of 1 to 2000, sent by a member
+    // with the mail right (128). Every other member gets the mail; the reply (71, no body) prints "mail sent".
     private void HandleSendMail(GameSession session, IByteReader packet) {
         string title = packet.ReadUnicodeString();
         string content = packet.ReadUnicodeString();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+        if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.SendMail)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
+            return;
+        }
+        if (!MailRules.CanSend(title, content)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+            return;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        foreach (long receiverId in GuildRules.MailReceivers(session.Guild.Guild.Members.Keys, session.CharacterId)) {
+            Mail? mail = db.CreateMail(new Mail {
+                SenderId = session.CharacterId,
+                ReceiverId = receiverId,
+                Type = MailType.Player,
+                SenderName = session.PlayerName,
+                Title = title,
+                Content = content,
+            });
+            if (mail == null) {
+                continue;
+            }
+
+            try {
+                World.MailNotification(new MailNotificationRequest {
+                    CharacterId = receiverId,
+                    MailId = mail.Id,
+                });
+            } catch (RpcException) { /* the member sees the mail at the next login */ }
+        }
+
+        session.Send(GuildPacket.SendMail());
     }
 
     // Client CGuildManager::RequestPvpHistoryAndSeason: the last history id the client holds, then a mode 75 request.
@@ -737,7 +775,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             }
 
-            session.Send(GuildPacket.SendApplication(response.ApplicationId, response.GuildName));
+            session.Send(GuildPacket.SendApplication(response.GuildId, response.GuildName));
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to send guild application");
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
@@ -764,7 +802,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             }
 
-            session.Send(GuildPacket.CancelApplication(response.ApplicationId, response.GuildName));
+            session.Send(GuildPacket.CancelApplication(response.GuildId, response.GuildName));
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to cancel guild application");
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
@@ -946,8 +984,47 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     }
 
+    // CGuildManager::FUN_1413b8540: the count of donations. One donation costs the guildDonateMeso constant
+    // and adds as much to the guild fund. The reply (113) carries the member's count of today and the time.
     private void HandleDonate(GameSession session, IByteReader packet) {
         int count = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+        GuildMember? self = session.Guild.GetMember(session.CharacterId);
+        if (self == null || count <= 0 || count > session.Guild.Properties.DonateMax) {
+            return;
+        }
+
+        long cost = (long) Constants.guildDonateMeso * count;
+        if (cost <= 0 || session.Currency.Meso < cost) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_money));
+            return;
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                Donate = new GuildRequest.Types.Donate {
+                    GuildId = session.Guild.Id,
+                    Count = count,
+                    Fund = cost,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Currency.Meso -= cost;
+            self.DailyDonationCount = response.DonationCount;
+            self.DonationTime = response.DonationTime;
+            session.Send(GuildPacket.Donated(self));
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to donate to guild");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUpgradeNpc(GameSession session, IByteReader packet) {

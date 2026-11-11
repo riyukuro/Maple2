@@ -27,6 +27,31 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c5360 (0x52) and FUN_1413c5440 (0x53) read the guild id, then the guild name.
+    [TestCase(82)]
+    [TestCase(83)]
+    public void ApplicationReplies_CarryTheGuildIdAndName(byte mode) {
+        const long guildId = 0x1122334455667788;
+        ByteWriter writer = mode == 82 ? GuildPacket.SendApplication(guildId, "Guild") : GuildPacket.CancelApplication(guildId, "Guild");
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(mode));
+        Assert.That(reader.ReadLong(), Is.EqualTo(guildId));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Guild"));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    [Test]
+    public void SendMail_IsMode71WithNoBody() {
+        ByteWriter writer = GuildPacket.SendMail();
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(71));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     [Test]
     public void ListAppliedGuilds_WritesWhatTheClientReads() {
         var guild = new Guild(20, "Guild", 31, 32, "Leader") {

@@ -262,6 +262,12 @@ message GuildRequest {
   message Apply {
     int64 guild_id = 1;
   }
+  // Guild 113: count donations, worth fund in all for the guild fund.
+  message Donate {
+    int64 guild_id = 1;
+    int32 count = 2;
+    int64 fund = 3;
+  }
   message CancelApplication {
     // the guild id or the request id, see GuildRules.FindOwnApplication
     int64 id = 1;
@@ -291,6 +297,7 @@ message GuildRequest {
     Apply apply = 17;
     CancelApplication cancel_application = 18;
     RespondApplication respond_application = 19;
+    Donate donate = 20;
   }
 }
 
@@ -305,6 +312,9 @@ message GuildResponse {
   int64 application_id = 5;
   string guild_name = 6;
   string applicant_name = 7;
+  // donation: the member's count of today and the time of the last one
+  int32 donation_count = 8;
+  int64 donation_time = 9;
 }
 
 message GroupChatInfoRequest {

@@ -98,7 +98,7 @@ public class GuildApplicationStorageTests {
             own = db.GetGuildApplicationsOf(applicant);
         }
         Assert.That(GuildRules.FindOwnApplication(own, guildB), Is.EqualTo(second));
-        Assert.That(GuildRules.FindOwnApplication(own, foreign.Id), Is.Not.EqualTo(foreign), "another player's request is never found");
+        Assert.That(GuildRules.FindOwnApplication(own, foreign.Id), Is.Null, "another player's request is never found");
 
         using (GameStorage.Request db = storage.Context()) {
             Assert.That(db.DeleteGuildApplication(second.Id), Is.True);
@@ -112,7 +112,6 @@ public class GuildApplicationStorageTests {
 
     [Test]
     public void Join_ClearsAllRequestsOfTheNewMember() {
-        NeedsBatchDelete();
         Apply(guildA, applicant);
         Apply(guildB, applicant);
         Apply(guildB, other);
@@ -120,8 +119,8 @@ public class GuildApplicationStorageTests {
         using (GameStorage.Request db = storage.Context()) {
             Assert.That(db.GetGuildId(applicant), Is.EqualTo(0));
             var info = new PlayerInfo(new CharacterInfo(AccountId, applicant, "Applicant" + suffix, "", "", Maple2.Model.Enum.Gender.Male, Maple2.Model.Enum.Job.Newbie, 1), "", new AchievementInfo(), []);
+            // The member row and the removal of the requests are one save.
             Assert.That(db.CreateGuildMember(guildA, info), Is.Not.Null);
-            Assert.That(db.DeleteGuildApplications(applicant), Is.True);
         }
 
         using GameStorage.Request check = storage.Context();
@@ -129,6 +128,21 @@ public class GuildApplicationStorageTests {
         Assert.That(check.GetGuildMemberCount(guildA), Is.EqualTo(2));
         Assert.That(check.GetGuildApplicationsOf(applicant), Is.Empty);
         Assert.That(check.GetGuildApplications(guildB), Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void Create_ClearsTheRequestsOfTheNewMaster() {
+        Apply(guildA, applicant);
+        Apply(guildB, applicant);
+        Apply(guildB, other);
+
+        long created = CreateGuild("GuildC", applicant);
+
+        using GameStorage.Request check = storage.Context();
+        Assert.That(check.GetGuildId(applicant), Is.EqualTo(created));
+        Assert.That(check.GetGuildApplicationsOf(applicant), Is.Empty);
+        Assert.That(check.GetGuildApplications(guildA), Is.Empty);
+        Assert.That(check.GetGuildApplications(guildB).Select(row => row.ApplicantId), Is.EqualTo(new[] { other }));
     }
 
     [Test]

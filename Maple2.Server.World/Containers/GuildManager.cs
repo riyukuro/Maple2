@@ -19,6 +19,8 @@ public class GuildManager : IDisposable {
 
     public readonly Guild Guild;
     private readonly ConcurrentDictionary<long, (string, DateTime)> pendingInvites;
+    // One join at a time, by invite or by request: the capacity check and the insert are one step.
+    private readonly object joinLock = new();
 
     public GuildManager(Guild guild) {
         Guild = guild;
@@ -104,6 +106,12 @@ public class GuildManager : IDisposable {
     }
 
     public GuildError Join(string requestorName, PlayerInfo info) {
+        lock (joinLock) {
+            return JoinLocked(requestorName, info);
+        }
+    }
+
+    private GuildError JoinLocked(string requestorName, PlayerInfo info) {
         if (Guild.Members.Count >= Guild.Capacity) {
             return GuildError.s_guild_err_full_member;
         }
@@ -265,6 +273,38 @@ public class GuildManager : IDisposable {
                 CharacterId = requestor.CharacterId,
                 Contribution = contribution,
                 CheckInTime = requestor.CheckinTime,
+            },
+        });
+
+        return GuildError.none;
+    }
+
+    // Guild 113. The channel has checked the member's meso and takes it after this call succeeds.
+    public GuildError Donate(long requestorId, int count, long fund, out GuildMember? member) {
+        if (!Guild.Members.TryGetValue(requestorId, out member)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        GuildTable.Property property = GuildProperty();
+        lock (member) {
+            long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+            int today = GuildRules.DonationsToday(member.DailyDonationCount, member.DonationTime, dayStart);
+            lock (joinLock) {
+                if (!GuildRules.CanDonate(count, member.JoinTime, dayStart, today, property.DonateMax, Guild.Funds, fund,
+                        Math.Min(property.FundMax, int.MaxValue))) {
+                    return GuildError.s_guild_err_unknown;
+                }
+                Guild.Funds += (int) fund;
+            }
+            member.DailyDonationCount = today + count;
+            member.DonationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = member.CharacterId,
+                GuildExp = Guild.Experience,
+                GuildFund = Guild.Funds,
             },
         });
 

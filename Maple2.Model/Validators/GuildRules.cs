@@ -1,3 +1,4 @@
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 
 namespace Maple2.Model.Validators;
@@ -54,6 +55,44 @@ public static class GuildRules {
         return openApplications < MaxOpenApplications;
     }
 
+    // Guild 82 on the World server: the guild must be listed in the search, the player has no guild, no request
+    // to this guild yet and fewer than 10 requests open.
+    public static GuildError CheckApply(bool guildListed, long currentGuildId, IEnumerable<GuildApplicationRow> own, long guildId) {
+        if (!guildListed) {
+            return GuildError.s_guild_err_null_guild;
+        }
+        if (currentGuildId != 0) {
+            return GuildError.s_guild_err_has_guild;
+        }
+        int open = 0;
+        foreach (GuildApplicationRow row in own) {
+            if (row.GuildId == guildId) {
+                return GuildError.s_guild_search_last_request;
+            }
+            open++;
+        }
+        return CanApply(open) ? GuildError.none : GuildError.s_guild_search_max_join_request;
+    }
+
+    // Guild 84 on the World server: the sender is a member of the guild named in the call and holds the invite
+    // right; the request is a row of that guild for that applicant; an applicant who has a guild cannot be accepted.
+    public static GuildError CheckRespond(bool isMember, bool hasInviteRight, long guildId, long applicantId,
+                                          GuildApplicationRow? row, bool accepted, long applicantGuildId) {
+        if (!isMember) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (!hasInviteRight) {
+            return GuildError.s_guild_err_no_authority;
+        }
+        if (row == null || row.GuildId != guildId || row.ApplicantId != applicantId) {
+            return GuildError.s_guild_search_null_join_guild_request;
+        }
+        if (accepted && applicantGuildId != 0) {
+            return GuildError.s_guild_err_has_guild;
+        }
+        return GuildError.none;
+    }
+
     // Guild 83 (SendGuildMode83) carries one id. The client code names it the guild id; the join page hands the
     // script both the guild id and the request id of a row, and which of the two the script passes back is not
     // in the client code. So the id is matched against the player's own requests only: first as the guild,
@@ -69,6 +108,26 @@ public static class GuildRules {
             }
         }
         return byRequest;
+    }
+
+    // Guild 71 (CGuildManager::SendGuildMail): one mail to every member but the sender.
+    public static IList<long> MailReceivers(IEnumerable<long> memberIds, long senderId) {
+        return memberIds.Where(id => id != senderId).Distinct().OrderBy(id => id).ToList();
+    }
+
+    // Guild 113 (CGuildManager::FUN_1413b8540): the count of donations made at once. The client refuses a
+    // count under 1, a member who joined today, more donations in a day than the guild level allows, and a
+    // donation that takes the guild fund over its maximum. The count of an earlier day does not carry over.
+    public static int DonationsToday(int dailyCount, long donationTime, long dayStart) {
+        return donationTime >= dayStart ? dailyCount : 0;
+    }
+
+    public static bool CanDonate(int count, long joinTime, long dayStart, int donationsToday, int donateMax,
+                                 long funds, long addFunds, long fundMax) {
+        if (count <= 0 || addFunds < 0 || joinTime >= dayStart) {
+            return false;
+        }
+        return (long) donationsToday + count <= donateMax && funds + addFunds <= fundMax;
     }
 
     // The master keeps rank 0 until the master changes.

@@ -656,19 +656,21 @@ public static class GuildPacket {
 
     // s_guild_search_request_join_guild
     // - You have applied to the guild {0}.
-    public static ByteWriter SendApplication(long applicationId, string guildName) {
+    // Client CGuildManager::FUN_1413c5360 (case 0x52): the guild id (0 shows nothing), then the guild name.
+    public static ByteWriter SendApplication(long guildId, string guildName) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.SendApplication);
-        pWriter.WriteLong(applicationId);
+        pWriter.WriteLong(guildId);
         pWriter.WriteUnicodeString(guildName);
 
         return pWriter;
     }
 
-    public static ByteWriter CancelApplication(long applicationId, string guildName) {
+    // Client CGuildManager::FUN_1413c5440 (case 0x53): the guild id (0 shows nothing), then the guild name.
+    public static ByteWriter CancelApplication(long guildId, string guildName) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.CancelApplication);
-        pWriter.WriteLong(applicationId);
+        pWriter.WriteLong(guildId);
         pWriter.WriteUnicodeString(guildName);
 
         return pWriter;
