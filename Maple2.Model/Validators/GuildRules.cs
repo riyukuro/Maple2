@@ -337,6 +337,32 @@ public static class GuildRules {
         return result;
     }
 
+    // Guild 91: the meso a personal skill takes from the member. Nothing is taken when the use is refused.
+    public static GuildError PersonalSkillCharge(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect, out long charge) {
+        GuildError error = CheckUsePersonalSkill(skillId, row, guildLevel, meso, hasEffect);
+        charge = error == GuildError.none ? row!.Cost : 0;
+        return error;
+    }
+
+    // The guild skills (ids up to 10000) that are running at `now`, one entry per skill, with the seconds
+    // they have left. A skill past its end, never used, or without a row or an effect gives no entry.
+    public static List<(int Id, short Level, long RemainingSeconds)> RunningSkillEffects(IEnumerable<GuildBuff> skills,
+            IReadOnlyDictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>> table, long now) {
+        var result = new List<(int, short, long)>();
+        foreach (GuildBuff skill in skills) {
+            if (skill.Id > 10000 || !table.TryGetValue(skill.Id, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)
+                                 || !levels.TryGetValue((short) skill.Level, out GuildTable.Buff? row) || row.Id <= 0) {
+                continue;
+            }
+
+            long remaining = SkillRemainingSeconds(row, skill.ExpiryTime, now);
+            if (remaining > 0) {
+                result.Add((row.Id, row.Level, remaining));
+            }
+        }
+        return result;
+    }
+
     // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds (the
     // client's table reader GuildSkill::FUN_1404d4cb0 stores duration * 60 and cooltime * 60, and the
     // getters add them to the time of use). A skill that was never used has the time 0.

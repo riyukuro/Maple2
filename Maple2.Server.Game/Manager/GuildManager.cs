@@ -352,13 +352,13 @@ public class GuildManager : IDisposable {
 
         UpdateProperties();
         bool hasEffect = row != null && session.Player.Buffs.HasBuff(row.Id, row.Level);
-        GuildError error = GuildRules.CheckUsePersonalSkill(buffId, row, Properties.Level, session.Currency.Meso, hasEffect);
+        GuildError error = GuildRules.PersonalSkillCharge(buffId, row, Properties.Level, session.Currency.Meso, hasEffect, out long charge);
         if (error != GuildError.none) {
             return error;
         }
 
-        session.Currency.Meso -= row!.Cost;
-        session.Player.Buffs.AddBuff(session.Player, session.Player, row.Id, row.Level, field.FieldTick,
+        session.Currency.Meso -= charge;
+        session.Player.Buffs.AddBuff(session.Player, session.Player, row!.Id, row.Level, field.FieldTick,
             durationMs: (int) Math.Min(row.Duration * 60000L, int.MaxValue));
         session.Send(GuildPacket.UsePersonalBuff(buffId));
         return GuildError.none;
@@ -375,22 +375,14 @@ public class GuildManager : IDisposable {
 
         bool isPvpMap = field.Metadata.Property.Type == MapType.Pvp;
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        foreach (GuildBuff buff in Guild.Buffs) {
-            if (buff.Id > 10000 || !session.TableMetadata.GuildTable.Buffs.TryGetValue(buff.Id, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)
-                                || !levels.TryGetValue((short) buff.Level, out GuildTable.Buff? row) || row.Id <= 0) {
-                continue;
-            }
-
-            if (!field.SkillMetadata.TryGetEffect(row.Id, row.Level, out AdditionalEffectMetadata? effect)
+        foreach ((int id, short level, long remaining) in GuildRules.RunningSkillEffects(Guild.Buffs, session.TableMetadata.GuildTable.Buffs, now)) {
+            if (!field.SkillMetadata.TryGetEffect(id, level, out AdditionalEffectMetadata? effect)
                 || !GuildRules.GivesEffectOnEntry(isPvpMap, effect.Property.KeepOnEnterPvpZone, effect.Property.RemoveOnPvpZone)) {
                 continue;
             }
 
-            long remaining = GuildRules.SkillRemainingSeconds(row, buff.ExpiryTime, now);
-            if (remaining > 0) {
-                session.Player.Buffs.AddBuff(session.Player, session.Player, row.Id, row.Level, field.FieldTick,
-                    durationMs: (int) Math.Min(remaining * 1000L, int.MaxValue));
-            }
+            session.Player.Buffs.AddBuff(session.Player, session.Player, id, level, field.FieldTick,
+                durationMs: (int) Math.Min(remaining * 1000L, int.MaxValue));
         }
     }
 

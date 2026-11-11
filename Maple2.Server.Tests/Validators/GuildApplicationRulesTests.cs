@@ -306,4 +306,53 @@ public class GuildApplicationRulesTests {
         // Skill 3 has no effect and skill 4 no row: neither is listed.
         Assert.That(GuildRules.SkillEffects(skills, table), Is.EqualTo(new List<(int, short)> { (900, 2), (950, 1) }));
     }
+
+    // Guild 91: the member pays the row's cost once, and nothing when the use is refused.
+    [Test]
+    public void PersonalSkillCharge_TakesTheCostOnlyOnSuccess() {
+        var row = new GuildTable.Buff(Id: 950, Level: 1, RequireLevel: 3, Cost: 500, UpgradeCost: 0, Duration: 60);
+
+        Assert.That(GuildRules.PersonalSkillCharge(10001, row, 3, 800, false, out long charge), Is.EqualTo(GuildError.none));
+        Assert.That(charge, Is.EqualTo(500));
+        Assert.That(800 - charge, Is.EqualTo(300), "the meso left");
+
+        // The member has the effect: error 44, no meso.
+        Assert.That(GuildRules.PersonalSkillCharge(10001, row, 3, 800, true, out charge), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
+        Assert.That((int) GuildError.s_guild_err_cannot_use_skill, Is.EqualTo(44));
+        Assert.That(charge, Is.EqualTo(0));
+
+        Assert.That(GuildRules.PersonalSkillCharge(10001, row, 3, 499, false, out charge), Is.EqualTo(GuildError.s_guild_err_no_money));
+        Assert.That(charge, Is.EqualTo(0));
+        Assert.That(GuildRules.PersonalSkillCharge(10001, null, 3, 800, false, out charge), Is.EqualTo(GuildError.s_guild_err_unknown));
+        Assert.That(charge, Is.EqualTo(0));
+    }
+
+    // LoadSkillBuffs gives what this lists: one effect per running guild skill, for the time left.
+    [Test]
+    public void RunningSkillEffects_OnePerSkill_NothingAfterTheEnd() {
+        var table = new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>> {
+            [1] = new Dictionary<short, GuildTable.Buff> {
+                [2] = new GuildTable.Buff(Id: 900, Level: 2, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 60),
+            },
+            [2] = new Dictionary<short, GuildTable.Buff> {
+                [1] = new GuildTable.Buff(Id: 901, Level: 1, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 10),
+            },
+            [10001] = new Dictionary<short, GuildTable.Buff> {
+                [1] = new GuildTable.Buff(Id: 950, Level: 1, RequireLevel: 1, Cost: 1, UpgradeCost: 0, Duration: 60),
+            },
+        };
+        // Skill 1 used at 1000 (60 minutes), skill 2 at 1000 (10 minutes), skill 3 has no row, the personal
+        // skill 10001 is not a guild effect, skill 1 at level 9 has no row.
+        GuildBuff[] skills = [new GuildBuff(1, 2, 1000), new GuildBuff(2, 1, 1000), new GuildBuff(3, 1, 1000),
+            new GuildBuff(10001, 1, 1000), new GuildBuff(1, 9, 1000)];
+
+        Assert.That(GuildRules.RunningSkillEffects(skills, table, 1100),
+            Is.EqualTo(new List<(int, short, long)> { (900, 2, 3500), (901, 1, 500) }), "one entry per running skill");
+        Assert.That(GuildRules.RunningSkillEffects(skills, table, 1599),
+            Is.EqualTo(new List<(int, short, long)> { (900, 2, 3001), (901, 1, 1) }));
+        Assert.That(GuildRules.RunningSkillEffects(skills, table, 1600),
+            Is.EqualTo(new List<(int, short, long)> { (900, 2, 3000) }), "skill 2 ended");
+        Assert.That(GuildRules.RunningSkillEffects(skills, table, 4600), Is.Empty, "nothing after the end");
+        Assert.That(GuildRules.RunningSkillEffects([new GuildBuff(1, 2, 0)], table, 100), Is.Empty, "never used");
+    }
 }
