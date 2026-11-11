@@ -355,7 +355,7 @@ public class ItemEnchantManager {
         }
         foreach (BasicAttribute attribute in entry.Attributes) {
             // The client reads an enchant option as rate * 1000 (BaseOption::GetRate).
-            itemEnchant.BasicOptions[attribute] = new BasicOption((int) MathF.Floor(entry.Rate * 1000f));
+            itemEnchant.BasicOptions[attribute] = new BasicOption(entry.Rate);
         }
         itemEnchant.Enchants = enchantLevel;
         return itemEnchant;

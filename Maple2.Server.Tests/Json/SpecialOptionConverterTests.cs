@@ -81,8 +81,54 @@ public class SpecialOptionConverterTests {
     }
 
     [Test]
+    public void ReadsFractionUnderValue() {
+        Assert.That(JsonSerializer.Deserialize<SpecialOption>("{\"Value\":57.6}", Options).Value, Is.EqualTo(58));
+        Assert.That(JsonSerializer.Deserialize<SpecialOption>("{\"Value\":58.0}", Options).Value, Is.EqualTo(58));
+        Assert.That(JsonSerializer.Deserialize<SpecialOption>("{\"Value\":-3.4}", Options).Value, Is.EqualTo(-3));
+        Assert.That(JsonSerializer.Deserialize<SpecialOption>("{\"Value\":58}", Options).Value, Is.EqualTo(58));
+    }
+
+    [Test]
+    public void LimitBreakRateStoredAsZeroIsRebuilt() {
+        var property = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+        var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
+        var metadata = new ItemMetadata(15000001, "15000001", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, null, [], null, null, null, null);
+        var item = new Item(metadata, 4) {
+            LimitBreak = new ItemLimitBreak(2, new Dictionary<BasicAttribute, BasicOption> {
+                [BasicAttribute.Health] = new BasicOption(195),
+                [BasicAttribute.MinWeaponAtk] = new BasicOption(0),
+            }, new Dictionary<SpecialAttribute, SpecialOption>()),
+        };
+        UnlimitedEnchantOptionTable.Option Row(int health, float rate) => new(
+            new Dictionary<BasicAttribute, int> { [BasicAttribute.Health] = health },
+            new Dictionary<BasicAttribute, float> { [BasicAttribute.MinWeaponAtk] = rate, [BasicAttribute.MaxWeaponAtk] = rate },
+            new Dictionary<SpecialAttribute, int>(), new Dictionary<SpecialAttribute, float>());
+        var table = new UnlimitedEnchantOptionTable(new Dictionary<int, Dictionary<int, UnlimitedEnchantOptionTable.Option>> {
+            [item.Type.Type] = new() { [1] = Row(190, 0.03f), [2] = Row(5, 0.02f), [3] = Row(5, 0.02f) },
+        });
+
+        GameStorage.RepairLimitBreak(table, item);
+        Assert.That(item.LimitBreak.BasicOptions[BasicAttribute.MinWeaponAtk].Value, Is.EqualTo(50));
+        Assert.That(item.LimitBreak.BasicOptions[BasicAttribute.MaxWeaponAtk].Value, Is.EqualTo(50));
+        Assert.That(item.LimitBreak.BasicOptions[BasicAttribute.Health].Value, Is.EqualTo(195));
+
+        // An option that already holds a value is left as it is.
+        item.LimitBreak.BasicOptions[BasicAttribute.MinWeaponAtk] = new BasicOption(7);
+        GameStorage.RepairLimitBreak(table, item);
+        Assert.That(item.LimitBreak.BasicOptions[BasicAttribute.MinWeaponAtk].Value, Is.EqualTo(7));
+    }
+
+    [Test]
     public void BasicRateIsThousandths() {
         Assert.That(new BasicOption(0.25f).Value, Is.EqualTo(250));
+        // In float these products fall just below the whole number.
+        Assert.That(new BasicOption(0.251f).Value, Is.EqualTo(251));
+        Assert.That(new BasicOption(0.253f).Value, Is.EqualTo(253));
+        Assert.That(new BasicOption(0.502f).Value, Is.EqualTo(502));
+        Assert.That(new SpecialOption(0.251f).Value, Is.EqualTo(251));
+        Assert.That(new SpecialOption(0.253f).Value, Is.EqualTo(253));
+        Assert.That(new SpecialOption(0.502f).Value, Is.EqualTo(502));
+        Assert.That(new SpecialOption(-0.02f).Value, Is.EqualTo(-20));
         Assert.That(BasicOption.IsRatio(BasicAttribute.Defense), Is.True);
         Assert.That(BasicOption.IsRatio(BasicAttribute.Health), Is.False);
     }

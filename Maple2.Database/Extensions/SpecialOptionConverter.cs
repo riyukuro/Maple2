@@ -15,7 +15,8 @@ public class SpecialOptionConverter : JsonConverter<SpecialOption> {
             return default;
         }
         if (root.TryGetProperty("Value", out JsonElement value)) {
-            return new SpecialOption(value.GetInt32());
+            // A hand-edited or older row may hold a fraction here: it is rounded, not refused.
+            return value.TryGetInt32(out int number) ? new SpecialOption(number) : new SpecialOption((int) Math.Round(value.GetDouble()));
         }
         if (root.TryGetProperty("Rate", out JsonElement rate)) {
             return FromLegacy(rate.GetSingle());

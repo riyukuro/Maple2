@@ -6,10 +6,11 @@ namespace Maple2.Model.Game;
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 4)]
 // The client keeps a basic option as one int (BaseOption). In an item's option groups it is always a
 // flat value (CItemStatus::GetStatValue). In the enchant and limit break options it is a rate for the
-// ratio stats and a flat value for the others; a rate is stored as rate * 1000, rounded down
-// (BaseOption::SetRate, read back by GetRate as value / 1000).
+// ratio stats and a flat value for the others; a rate is stored in thousandths and read back by
+// GetRate as value / 1000. A table rate is rounded to the nearest thousandth: in float 0.251 * 1000
+// is just below 251, so rounding down would lose one.
 public readonly record struct BasicOption(int Value) {
-    public BasicOption(float rate) : this((int) MathF.Floor(rate * 1000f)) { }
+    public BasicOption(float rate) : this((int) MathF.Round(rate * 1000f)) { }
 
     // CItemStatus::IsRatioStat: defense, minimum and maximum weapon attack.
     public static bool IsRatio(BasicAttribute attribute) {
@@ -27,10 +28,10 @@ public readonly record struct BasicOption(int Value) {
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 4)]
 // The client keeps a special option as one int, like a basic option (BaseOption, read as an int by
-// CItemOption::Deserialize, itemoptiondata_1.cpp:252-257). A rate is stored as rate * 1000, rounded
-// down (BaseOption::SetRate); a value is stored as it is.
+// CItemOption::Deserialize, itemoptiondata_1.cpp:252-257). A rate is stored in thousandths, rounded to
+// the nearest; a value is stored as it is.
 public readonly record struct SpecialOption(int Value) {
-    public SpecialOption(float rate) : this((int) MathF.Floor(rate * 1000f)) { }
+    public SpecialOption(float rate) : this((int) MathF.Round(rate * 1000f)) { }
 
     public static SpecialOption operator +(SpecialOption self, SpecialOption other) {
         return new SpecialOption(self.Value + other.Value);
