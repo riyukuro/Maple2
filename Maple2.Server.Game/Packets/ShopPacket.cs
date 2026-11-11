@@ -104,7 +104,7 @@ public static class ShopPacket {
     public static ByteWriter Error(ShopError error, byte arg1 = 0, int arg2 = 0) {
         var pWriter = Packet.Of(SendOp.Shop);
         pWriter.Write<Command>(Command.Error);
-        pWriter.Write<ShopError>(error);
+        pWriter.WriteInt((int) error);
         pWriter.WriteByte(arg1);
         pWriter.WriteInt(arg2);
 
