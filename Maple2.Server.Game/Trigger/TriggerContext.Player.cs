@@ -24,8 +24,13 @@ public partial class TriggerContext {
         ErrorLog("[GiveExp] boxId:{BoxId}, expRate:{ExpRate}", boxId, expRate);
     }
 
+    // Every player in the field gets the reward content (rewardcontent.xml): its exp, meso and item tables, the
+    // same reward the mini games give. The field war maps give it to the whole field after each phase.
     public void GiveRewardContent(int rewardId) {
-        ErrorLog("[GiveRewardContent] rewardId:{RewardId}", rewardId);
+        DebugLog("[GiveRewardContent] rewardId:{RewardId}", rewardId);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            player.Session.GetRewardContent(rewardId);
+        }
     }
 
     public void KickMusicAudience(int targetBoxId, int targetPortalId) {
