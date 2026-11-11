@@ -4,6 +4,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
@@ -105,7 +106,12 @@ public class PetHandler : FieldPacketHandler {
         }
 
         string name = packet.ReadUnicodeString();
-        // The client's rename box shows its own error for a filtered name and never sends it.
+        // The client's rename box shows its own error for a name its filter refuses and never sends it.
+        // The server's list can hold a word the client's does not: that name gets the filter's message box.
+        if (PetRules.IsBannedName(name, BanWordStorage.ContainsBannedWord)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+            return;
+        }
         if (!PetRules.IsAllowedName(name, BanWordStorage.ContainsBannedWord)) {
             return;
         }

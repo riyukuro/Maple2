@@ -13,6 +13,12 @@ public static class PetRules {
         return IsName(name) && !string.IsNullOrWhiteSpace(name) && !isBanned(name);
     }
 
+    // A name the client's box can send but the server's ban-word list refuses. The client's own filter
+    // passed it, so the player has seen no error yet and the server has to show one.
+    public static bool IsBannedName(string name, Func<string, bool> isBanned) {
+        return IsName(name) && !string.IsNullOrWhiteSpace(name) && isBanned(name);
+    }
+
     // The client asks for no merets while the pet has a rename left, and for the pet rename price after that.
     public static int RenameCost(short renameRemaining, int price) {
         return renameRemaining > 0 ? 0 : price;

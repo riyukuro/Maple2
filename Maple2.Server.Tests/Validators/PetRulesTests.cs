@@ -28,6 +28,21 @@ public class PetRulesTests {
     }
 
     [Test]
+    public void OnlyASendableBannedNameGetsTheFilterMessage() {
+        System.Func<string, bool> banned = name => name.Contains("bad") || name.Trim().Length == 0;
+        // "bad": 03 00 62 00 61 00 64 00.
+        var packet = new ByteReader(new byte[] { 0x03, 0x00, 0x62, 0x00, 0x61, 0x00, 0x64, 0x00 }, 0);
+        Assert.That(PetRules.IsBannedName(packet.ReadUnicodeString(), banned), Is.True);
+        Assert.That(PetRules.IsBannedName("Bo", banned), Is.False);
+        // Names the client's box never sends stay unanswered.
+        Assert.That(PetRules.IsBannedName("", banned), Is.False);
+        Assert.That(PetRules.IsBannedName("   ", banned), Is.False);
+        Assert.That(PetRules.IsBannedName(new string('a', 29) + "bad", banned), Is.False);
+        // The message is the client's s_ban_check_err_any, string 2234 of the KMS table.
+        Assert.That(Maple2.Model.Enum.StringCodeMap.ToClient(Maple2.Model.Enum.StringCode.s_ban_check_err_any), Is.EqualTo(2234));
+    }
+
+    [Test]
     public void BannedAndBlankNamesAreRefused() {
         System.Func<string, bool> banned = name => name.Contains("bad");
         Assert.That(PetRules.IsAllowedName("Bo", banned), Is.True);
