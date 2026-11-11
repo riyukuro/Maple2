@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -45,13 +46,14 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         packet.ReadLong();
         packet.ReadByte();
 
-        bool useLock = packet.ReadBool();
-        bool isSpecialAttribute = false;
-        short attribute = -1;
-        if (useLock) {
-            isSpecialAttribute = packet.ReadBool();
-            attribute = packet.ReadShort();
+        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(packet);
+        if (!ItemRemakeRules.LocksAllowed(locks.Count)) {
+            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
+            return;
         }
+        bool useLock = locks.Count == 1;
+        bool isSpecialAttribute = useLock && locks[0].Special;
+        short attribute = useLock ? locks[0].Attribute : (short) -1;
 
         lock (session.Item) {
             Item? scroll = session.Item.Inventory.Get(scrollUid, InventoryType.Misc);
