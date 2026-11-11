@@ -466,7 +466,24 @@ public class AiState {
         SetNodeTask(task, node.Limit);
     }
 
-    private void ProcessNode(SummonNode node) { }
+    private void ProcessNode(SummonNode node) {
+        int? npcId = AiSummon.NpcId(actor.Value.Metadata.Basic.SummonNpcIds, node.NpcId);
+        if (npcId == null) {
+            Logger.Warning("Summon npcId {Index} of npc {NpcId} is not in its summonNpcIDs", node.NpcId, actor.Value.Id);
+            return;
+        }
+        if (!actor.Field.NpcMetadata.TryGet(npcId.Value, out NpcMetadata? npc)) {
+            Logger.Warning("Summon of npc {NpcId}: no npc {SummonId}", actor.Value.Id, npcId.Value);
+            return;
+        }
+
+        TimeSpan delay = AiSummon.Delay(node.DelayTick);
+        if (delay == TimeSpan.Zero) {
+            actor.Summon(npc, node);
+        } else {
+            actor.Field.Scheduler.Schedule(() => actor.Summon(npc, node), delay);
+        }
+    }
 
     private void ProcessNode(TriggerSetUserValueNode node) {
         actor.Field.UserValues[node.Key] = node.Value;

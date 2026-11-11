@@ -1,7 +1,9 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using M2dXmlGenerator;
 using Maple2.File.IO;
+using Maple2.File.IO.Crypto.Common;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Npc;
 using Maple2.Model.Enum;
@@ -11,14 +13,47 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class NpcMapper : TypeMapper<NpcMetadata> {
     private readonly NpcParser parser;
+    private readonly M2dReader xmlReader;
 
     public static Dictionary<int, NpcMetadata> NpcMetadataById { get; } = new();
 
     public NpcMapper(M2dReader xmlReader, string language) {
         parser = new NpcParser(xmlReader, language);
+        this.xmlReader = xmlReader;
+    }
+
+    // The file parser does not read aiInfo's summonNpcIDs, so it is read from the npc xml here. In the data the
+    // list is the same in every environment of a file (3 of 531 files differ only in the AI path).
+    private Dictionary<int, int[]> SummonNpcIds() {
+        var result = new Dictionary<int, int[]>();
+        foreach (PackFileEntry file in xmlReader.Files) {
+            if (!file.Name.StartsWith("npc/", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!int.TryParse(Path.GetFileNameWithoutExtension(file.Name), out int id) || result.ContainsKey(id)) {
+                continue;
+            }
+            int[]? ids = ParseSummonNpcIds(xmlReader.GetString(file));
+            if (ids != null) {
+                result[id] = ids;
+            }
+        }
+        return result;
+    }
+
+    public static int[]? ParseSummonNpcIds(string xml) {
+        Match match = Regex.Match(xml, "<aiInfo\\b[^>]*\\bsummonNpcIDs=\"([^\"]*)\"");
+        if (!match.Success) {
+            return null;
+        }
+        int[] ids = match.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(value => int.TryParse(value, out int npcId) ? npcId : 0)
+            .ToArray();
+        return ids.Length == 0 ? null : ids;
     }
 
     protected override IEnumerable<NpcMetadata> Map() {
+        Dictionary<int, int[]> summonNpcIds = SummonNpcIds();
         foreach ((int id, string name, NpcData data, List<EffectDummy> _) in parser.Parse()) {
             Debug.Assert(data.collision.shape == "box" || string.IsNullOrWhiteSpace(data.collision.shape));
 
@@ -86,7 +121,8 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                     SubTags: data.basic.subTags,
                     Difficulty: data.basic.difficulty,
                     CustomExp: data.exp.customExp,
-                    PropertyTags: data.basic.propertyTags),
+                    PropertyTags: data.basic.propertyTags,
+                    SummonNpcIds: summonNpcIds.GetValueOrDefault(id)),
                 Property: new NpcMetadataProperty(
                     Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
                     Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),

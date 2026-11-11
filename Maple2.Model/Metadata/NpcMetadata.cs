@@ -68,7 +68,10 @@ public record NpcMetadataBasic(
     string[] SubTags,
     long CustomExp,
     // Names from the npc xml's propertyTags list. Null in rows ingested before the field existed.
-    string[]? PropertyTags = null) {
+    string[]? PropertyTags = null,
+    // The aiInfo summonNpcIDs list: the npc ids an AI summon node's npcId (1-based) picks from. Null in rows
+    // ingested before the field existed.
+    int[]? SummonNpcIds = null) {
     public bool HasPropertyTag(string tag) => PropertyTags != null && PropertyTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
 }
 

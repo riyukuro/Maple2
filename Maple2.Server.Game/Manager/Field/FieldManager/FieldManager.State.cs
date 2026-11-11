@@ -1063,6 +1063,7 @@ public partial class FieldManager {
                 return;
             }
             NpcEffects.TryRemove(objectId, out _);
+            npc.RemoveSummons();
             Broadcast(FieldPacket.RemoveNpc(objectId));
             Broadcast(ProxyObjectPacket.RemoveNpc(objectId));
             npc.Dispose();

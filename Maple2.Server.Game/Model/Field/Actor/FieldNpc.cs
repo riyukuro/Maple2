@@ -12,8 +12,10 @@ using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.State;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Maple2.Tools.Collision;
+using Maple2.Tools.DotRecast;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
@@ -67,6 +69,59 @@ public class FieldNpc : Actor<Npc> {
     public required Vector3 Origin { get; init; }
 
     public FieldMobSpawn? Owner { get; init; }
+
+    // Npcs this npc summoned with an AI summon node, by the node's group.
+    private readonly List<(int Group, FieldNpc Npc, bool LeavesWithSummoner)> summons = [];
+
+    public int SummonCount(int group) {
+        lock (summons) {
+            summons.RemoveAll(summon => summon.Npc.IsDead || !Field.Mobs.ContainsKey(summon.Npc.ObjectId) && !Field.Npcs.ContainsKey(summon.Npc.ObjectId));
+            return summons.Count(summon => summon.Group == group);
+        }
+    }
+
+    public void Summon(NpcMetadata npc, AiMetadata.SummonNode node) {
+        if (IsDead) {
+            return;
+        }
+
+        int count = AiSummon.Count(node.NpcCount, node.NpcCountMax, SummonCount(node.Group));
+        for (int i = 0; i < count; i++) {
+            Vector3 position = AiSummon.Position(Position, node.SummonPos, node.SummonPosOffset, node.SummonRadius, Random.Shared);
+            if (Field.FindNearestPoly(position, out long nearestRef, out DotRecast.Core.Numerics.RcVec3f point) && nearestRef != 0) {
+                position = DotRecastHelper.FromNavMeshSpace(point);
+            }
+
+            FieldNpc? summon = Field.SpawnNpc(npc, position, AiSummon.Rotation(Rotation, node.SummonPos, node.SummonRot));
+            if (summon == null) {
+                continue;
+            }
+
+            lock (summons) {
+                summons.Add((node.Group, summon, AiSummon.LeavesWithSummoner(node.Master)));
+            }
+            Field.Broadcast(FieldPacket.AddNpc(summon));
+            Field.Broadcast(ProxyObjectPacket.AddNpc(summon));
+            summon.Update(Environment.TickCount64);
+
+            TimeSpan lifeTime = AiSummon.LifeTime(node.LifeTime);
+            if (lifeTime > TimeSpan.Zero) {
+                Field.RemoveNpc(summon.ObjectId, lifeTime);
+            }
+        }
+    }
+
+    // The summons that leave with this npc are removed when it dies or leaves the field.
+    public void RemoveSummons() {
+        List<FieldNpc> leaving;
+        lock (summons) {
+            leaving = summons.Where(summon => summon.LeavesWithSummoner).Select(summon => summon.Npc).ToList();
+            summons.RemoveAll(summon => summon.LeavesWithSummoner);
+        }
+        foreach (FieldNpc summon in leaving) {
+            Field.RemoveNpc(summon.ObjectId);
+        }
+    }
     public override IPrism Shape => new Prism(
         new Circle(new Vector2(Position.X, Position.Y), Value.Metadata.Property.Capsule.Radius),
         Position.Z,
@@ -379,6 +434,7 @@ public class FieldNpc : Actor<Npc> {
     protected override void OnDeath() {
         WorldBossDeathCallback?.Invoke(this);
         Owner?.Despawn(ObjectId);
+        RemoveSummons();
         SendControl = false;
 
         SequenceCounter++;
