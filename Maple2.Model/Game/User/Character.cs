@@ -46,6 +46,15 @@ public class Character {
     public long GuildId;
     public int PartyId;
     public List<long> ClubIds = [];
+
+    // The club list goes into the user record once per club; the client stops on more entries than the club limit.
+    public bool AddClubId(long clubId) {
+        if (ClubIds.Contains(clubId)) {
+            return false;
+        }
+        ClubIds.Add(clubId);
+        return true;
+    }
     public required Mastery Mastery;
     public AchievementInfo AchievementInfo;
     public MarriageInfo MarriageInfo = new();

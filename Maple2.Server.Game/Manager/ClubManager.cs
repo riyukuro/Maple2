@@ -55,7 +55,8 @@ public class ClubManager : IDisposable {
             BeginListen(member);
         }
 
-        session.Player.Value.Character.ClubIds.Add(Id);
+        // The login load has already listed this character's clubs; a club joined or established later is new here.
+        session.Player.Value.Character.AddClubId(Id);
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,
             CharacterId = session.CharacterId,
