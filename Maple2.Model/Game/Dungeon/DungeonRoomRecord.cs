@@ -28,6 +28,19 @@ public class DungeonRoomRecord {
     private int bossClearKept;
     public bool TryKeepBossClear() => Interlocked.Exchange(ref bossClearKept, 1) == 0;
 
+    // The damage the room's players dealt to its bosses (npcs of class 3 and up) before the room had its result, per
+    // character: the damage of the world boss board (0xb).
+    public readonly ConcurrentDictionary<long, long> BossDamage = new();
+
+    public void AddBossDamage(long characterId, long amount) {
+        if (amount <= 0 || State != DungeonState.None) {
+            return;
+        }
+        BossDamage.AddOrUpdate(characterId, amount, (_, total) => total + amount);
+    }
+
+    public long TotalBossDamage => BossDamage.Values.Sum();
+
     // dungeon_disable_ranking: the room's run is left off the Colosseum board (the Colosseum script runs it for a
     // continued game).
     private int rankingDisabled;

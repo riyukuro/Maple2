@@ -21,6 +21,7 @@ public class BossClearRecordTests {
     [TestCase(DungeonGroupType.lapenta)]
     [TestCase(DungeonGroupType.turka)]
     [TestCase(DungeonGroupType.fameChallenge)]
+    [TestCase(DungeonGroupType.worldBossDungeon)]
     public void KeepsBossClear_TheBossBoardGroups_WithABossRanking(DungeonGroupType group) {
         Assert.That(DungeonFieldManager.KeepsBossClear(Room(group, 70001)), Is.True);
         Assert.That(DungeonFieldManager.KeepsBossClear(Room(group, 0)), Is.False);
@@ -30,6 +31,24 @@ public class BossClearRecordTests {
     [TestCase(DungeonGroupType.normal)]
     public void KeepsBossClear_NotOtherGroups(DungeonGroupType group) {
         Assert.That(DungeonFieldManager.KeepsBossClear(Room(group, 70001)), Is.False);
+    }
+
+    // The world boss board's damage: the boss damage each character dealt before the room had its result.
+    [Test]
+    public void BossDamage_SummedPerCharacter_UntilTheResult() {
+        var record = new DungeonRoomRecord(Room(DungeonGroupType.worldBossDungeon, 70001));
+        record.AddBossDamage(11, 1500);
+        record.AddBossDamage(12, 700);
+        record.AddBossDamage(11, 300);
+        record.AddBossDamage(12, 0);
+        record.AddBossDamage(12, -50);
+        Assert.That(record.BossDamage[11], Is.EqualTo(1800));
+        Assert.That(record.BossDamage[12], Is.EqualTo(700));
+        Assert.That(record.TotalBossDamage, Is.EqualTo(2500));
+
+        record.State = DungeonState.Clear;
+        record.AddBossDamage(11, 9000);
+        Assert.That(record.TotalBossDamage, Is.EqualTo(2500));
     }
 
     [Test]

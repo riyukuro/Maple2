@@ -13,6 +13,8 @@ internal class BossClear {
     public long LeaderId { get; set; }
     public int Seconds { get; set; }
     public DateTime ClearTime { get; set; }
+    // The damage the party dealt to the room's bosses (kept for the world boss board, 0 for the other rooms).
+    public long Damage { get; set; }
     // Added with the clear, so the clear and its members are saved together.
     public List<BossClearMember>? Members { get; set; }
 

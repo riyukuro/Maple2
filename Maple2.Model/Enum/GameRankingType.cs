@@ -23,6 +23,13 @@ public enum GameRankingType {
     BossClearCount = 72,
     BossFirstClears = 81,
     BossShortestClears = 91,
+    // The world boss board (the ranking dialog's board 0xb; the ranking id is the room's BossRanking): the clears per
+    // character and its own rank, the first clears, the clears by the damage dealt and its own rank there.
+    WorldBossClearCountPersonal = 111,
+    WorldBossClearCount = 112,
+    WorldBossFirstClears = 121,
+    WorldBossDamagePersonal = 131,
+    WorldBossDamage = 132,
     ArcadePersonal = 101,
     ArcadePersonalPreviousSeason = 102,
     Arcade = 103,

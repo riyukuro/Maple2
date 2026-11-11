@@ -455,6 +455,9 @@ public class FieldNpc : Actor<Npc> {
             DropHitLoot(hitPlayer);
             if (Field is DungeonFieldManager dungeonField) {
                 dungeonField.CountMissions(hitPlayer, mission => mission.AddDamage(Value.Metadata.Id, amount));
+                if (Value.IsBoss) {
+                    dungeonField.DungeonRoomRecord.AddBossDamage(hitPlayer.Value.Character.Id, amount);
+                }
             }
         }
     }

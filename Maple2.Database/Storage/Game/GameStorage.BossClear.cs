@@ -9,8 +9,8 @@ namespace Maple2.Database.Storage;
 public partial class GameStorage {
     public partial class Request {
         // Keeps one clear of a room with a boss board, with the members that still have a character. Returns the
-        // row id, 0 when no member is left (nothing is kept then).
-        public long AddBossClear(int rankingId, int dungeonId, long leaderId, int seconds, long clearTime, IEnumerable<long> characterIds) {
+        // row id, 0 when no member is left (nothing is kept then). The damage is the party's damage to the bosses.
+        public long AddBossClear(int rankingId, int dungeonId, long leaderId, int seconds, long clearTime, IEnumerable<long> characterIds, long damage = 0) {
             long[] ids = characterIds.Distinct().ToArray();
             long[] members = Context.Character.AsNoTracking()
                 .Where(character => ids.Contains(character.Id))
@@ -27,6 +27,7 @@ public partial class GameStorage {
                 LeaderId = leaderId,
                 Seconds = seconds,
                 ClearTime = clearTime.FromEpochSeconds(),
+                Damage = Math.Max(0, damage),
                 Members = members.Select(characterId => new Model.BossClearMember { CharacterId = characterId }).ToList(),
             };
             Context.BossClear.Add(clear);
@@ -72,6 +73,32 @@ public partial class GameStorage {
                 .ThenBy(clear => clear.Id));
         }
 
+        // The world boss board's 0x84: the clears with the most damage first, then the earlier one, then the row id.
+        // (Its 0x79 is the first clears board.)
+        public IList<BossClearRankInfo> GetWorldBossDamageClears(int rankingId) {
+            return BossClearBoard(BossClears(rankingId)
+                .OrderByDescending(clear => clear.Damage)
+                .ThenBy(clear => clear.ClearTime)
+                .ThenBy(clear => clear.Id));
+        }
+
+        // 0x83: the place of the character's best clear on 0x84 (1 + the clears before it), 0 without a clear.
+        public int GetWorldBossDamageRank(int rankingId, long characterId) {
+            IQueryable<Model.BossClear> clears = BossClears(rankingId);
+            Model.BossClear? best = clears
+                .Where(clear => Context.BossClearMember.Any(member => member.ClearId == clear.Id && member.CharacterId == characterId))
+                .OrderByDescending(clear => clear.Damage)
+                .ThenBy(clear => clear.ClearTime)
+                .ThenBy(clear => clear.Id)
+                .FirstOrDefault();
+            if (best == null) {
+                return 0;
+            }
+            return 1 + clears.Count(clear => clear.Damage > best.Damage
+                || (clear.Damage == best.Damage && (clear.ClearTime < best.ClearTime
+                    || (clear.ClearTime == best.ClearTime && clear.Id < best.Id))));
+        }
+
         private IList<BossClearRankInfo> BossClearBoard(IQueryable<Model.BossClear> ordered) {
             List<Model.BossClear> clears = ordered.Take(200).ToList();
             long[] clearIds = clears.Select(clear => clear.Id).ToArray();
@@ -92,7 +119,8 @@ public partial class GameStorage {
                     LeaderId: clear.LeaderId,
                     Seconds: clear.Seconds,
                     ClearTime: clear.ClearTime.ToEpochSeconds(),
-                    Members: members.GetValueOrDefault(clear.Id) ?? []))
+                    Members: members.GetValueOrDefault(clear.Id) ?? [],
+                    Damage: clear.Damage))
                 .ToList();
         }
 

@@ -162,12 +162,13 @@ public class DungeonFieldManager : FieldManager {
     /// Whether a clear of the room goes on a boss board: the room has a BossRanking and its group is one whose
     /// board asks for the clears (the ranking dialog's boss boards 7, 8, 9, 0xf and 0x11 list the rooms of
     /// these groups that have a BossRanking, and ask for 0x47/0x48/0x51/0x5b with it; its fame challenge board
-    /// 0xc lists the fameChallenge rooms that have one, and asks for 0x8d/0x8e/0x97/0xa1/0xa2 with it).
+    /// 0xc lists the fameChallenge rooms that have one, and asks for 0x8d/0x8e/0x97/0xa1/0xa2 with it; its world
+    /// boss board 0xb lists the worldBossDungeon rooms that have one, and asks for 0x6f/0x70/0x79/0x83/0x84 with it).
     /// </summary>
     public static bool KeepsBossClear(DungeonRoomMetadata metadata) =>
         metadata.BossRanking != 0 && metadata.GroupType is DungeonGroupType.raid or DungeonGroupType.chaosRaid
             or DungeonGroupType.reverseRaid or DungeonGroupType.lapenta or DungeonGroupType.turka
-            or DungeonGroupType.fameChallenge;
+            or DungeonGroupType.fameChallenge or DungeonGroupType.worldBossDungeon;
 
     /// <summary>A player of the room at its clear: the character, its party id (0 without one) and that party's leader.</summary>
     public readonly record struct BossClearPlayer(long CharacterId, int PartyId, long PartyLeaderId);
@@ -219,7 +220,7 @@ public class DungeonFieldManager : FieldManager {
 
         using GameStorage.Request db = GameStorage.Context();
         long clearId = db.AddBossClear(DungeonMetadata.BossRanking, DungeonId, clear.LeaderId, (int) Math.Max(0, seconds),
-            DateTime.Now.ToEpochSeconds(), clear.Members);
+            DateTime.Now.ToEpochSeconds(), clear.Members, DungeonRoomRecord.TotalBossDamage);
         resultLogger.Debug("Dungeon {DungeonId} boss clear {ClearId} kept for {Count} members", DungeonId, clearId, clear.Members.Length);
     }
 

@@ -33,6 +33,34 @@ public static class BossRanking {
         return InGameRankPacket.PersonalRank(GameRankingType.BossClearCountPersonal, db.GetBossClearCount(rankingId, characterId)?.Rank ?? 0);
     }
 
+    // The world boss board (0xb) has one tab per world boss room with a BossRanking, from the same kept clears (a
+    // world boss room's clear also keeps the party's damage to its bosses): the clears per character (0x70, the own
+    // rank 0x6f), the first clears (0x79, the party damage as their point) and the clears with the most damage
+    // (0x84, the own rank 0x83: the place of the character's best clear).
+    public static ByteWriter WorldBossBoard(GameStorage.Request db, GameRankingType type, int rankingId, string userName) {
+        switch (type) {
+            case GameRankingType.WorldBossFirstClears:
+                return InGameRankPacket.WorldBossClears(type, db.GetBossFirstClears(rankingId));
+            case GameRankingType.WorldBossDamage:
+                return InGameRankPacket.WorldBossDamage(type, db.GetWorldBossDamageClears(rankingId));
+        }
+        if (string.IsNullOrEmpty(userName)) {
+            return InGameRankPacket.BossClearCount(GameRankingType.WorldBossClearCount, rankingId, db.GetBossClearCounts(rankingId));
+        }
+
+        BossClearCountRankInfo? info = db.GetBossClearCount(rankingId, userName);
+        return InGameRankPacket.BossClearCount(GameRankingType.WorldBossClearCount, rankingId,
+            info != null ? new List<BossClearCountRankInfo> { info } : []);
+    }
+
+    // 0x6f: the character's rank on the clear count board; 0x83: its rank on the damage board. 0 without a clear.
+    public static ByteWriter WorldBossPersonal(GameStorage.Request db, GameRankingType type, int rankingId, long characterId) {
+        int rank = type == GameRankingType.WorldBossDamagePersonal
+            ? db.GetWorldBossDamageRank(rankingId, characterId)
+            : db.GetBossClearCount(rankingId, characterId)?.Rank ?? 0;
+        return InGameRankPacket.PersonalRank(type, rank);
+    }
+
     // The fame challenge board (0xc) has one tab per fame challenge room with a BossRanking, with the same three
     // modes from the same kept clears: the clears per character (0x8e, the own rank 0x8d), the first clear of each
     // character (0x97) and the fastest clear of each character (0xa2, the own rank 0xa1). Its rooms are for one

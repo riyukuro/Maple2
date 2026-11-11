@@ -71,6 +71,8 @@ public class WebController : ControllerBase {
             GameRankingType.DarkDescentPersonal or GameRankingType.DarkDescentPersonalPreviousSeason => PersonalDarkStream(type, rankingId, characterId),
             GameRankingType.BossClearCount or GameRankingType.BossFirstClears or GameRankingType.BossShortestClears => Boss(type, rankingId, userName),
             GameRankingType.BossClearCountPersonal => PersonalBoss(rankingId, characterId),
+            GameRankingType.WorldBossClearCount or GameRankingType.WorldBossFirstClears or GameRankingType.WorldBossDamage => WorldBoss(type, rankingId, userName),
+            GameRankingType.WorldBossClearCountPersonal or GameRankingType.WorldBossDamagePersonal => PersonalWorldBoss(type, rankingId, characterId),
             GameRankingType.FameChallengeClearCount or GameRankingType.FameChallengeFirstClears or GameRankingType.FameChallengeShortestClears => FameChallenge(type, rankingId, userName),
             GameRankingType.FameChallengeClearCountPersonal or GameRankingType.FameChallengeShortestClearPersonal => PersonalFameChallenge(type, rankingId, characterId),
             GameRankingType.Colosseum or GameRankingType.ColosseumPreviousSeason => Colosseum(type, seasonId, rankingId, userName),
@@ -500,6 +502,36 @@ public class WebController : ControllerBase {
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
             ByteWriter writer = BossRanking.Board(db, type, rankingId, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter WorldBoss(GameRankingType type, int rankingId, string userName) {
+        string cacheKey = $"WorldBoss_{type}_{rankingId}_{(type == GameRankingType.WorldBossClearCount ? SearchKey(userName) : "all")}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = BossRanking.WorldBossBoard(db, type, rankingId, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalWorldBoss(GameRankingType type, int rankingId, long characterId) {
+        string cacheKey = $"PersonalWorldBoss_{type}_{rankingId}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = BossRanking.WorldBossPersonal(db, type, rankingId, characterId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }

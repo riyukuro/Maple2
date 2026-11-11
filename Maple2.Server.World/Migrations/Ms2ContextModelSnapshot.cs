@@ -262,6 +262,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<DateTime>("ClearTime")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<long>("Damage")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("DungeonId")
                         .HasColumnType("int");
 

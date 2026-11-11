@@ -176,6 +176,68 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
+    // The world boss first clears (0x79), as the client's GameRanking::BossDamageDate reads them: the header, then a
+    // count of rows, each a rank, a long the client does not use (the row id), the leader's character id, an int it
+    // does not use (the board's ranking id), the row's point as a long (the party's damage to the bosses), the clear
+    // date, then the members as in BossClears (the client shows the leader's name, else the first member's).
+    public static ByteWriter WorldBossClears(GameRankingType type, IList<BossClearRankInfo> rankInfos) {
+        var pWriter = new ByteWriter();
+        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(0);
+        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (BossClearRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.ClearId); // read, not used by the client
+            pWriter.WriteLong(info.LeaderId);
+            pWriter.WriteInt(info.RankingId); // read, not used by the client
+            pWriter.WriteLong(info.Damage);
+            WriteBossClearDateAndMembers(pWriter, info);
+        }
+
+        return pWriter;
+    }
+
+    // The world boss damage board (0x84), as the client's GameRanking::BossDamageAmount reads them: the header, then
+    // a count of rows, each a rank, a long it does not use (the row id), the leader's character id, a long and an int
+    // it does not use (0 and the board's ranking id), three longs of which it shows the third (the party's damage)
+    // and a fourth long, an int it shows as the row's rank point when not 0 (0: no such point is kept), the clear
+    // date, then the members as in BossClears (the client shows the leader's name and image, else the first member's).
+    public static ByteWriter WorldBossDamage(GameRankingType type, IList<BossClearRankInfo> rankInfos) {
+        var pWriter = new ByteWriter();
+        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(0);
+        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (BossClearRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.ClearId); // read, not used by the client
+            pWriter.WriteLong(info.LeaderId);
+            pWriter.WriteLong(0); // read, not used by the client
+            pWriter.WriteInt(info.RankingId); // read, not used by the client
+            pWriter.WriteLong(0); // read, not used by the client
+            pWriter.WriteLong(0); // read, not used by the client
+            pWriter.WriteLong(info.Damage);
+            pWriter.WriteLong(0); // read, not used by the client
+            pWriter.WriteInt(0);
+            WriteBossClearDateAndMembers(pWriter, info);
+        }
+
+        return pWriter;
+    }
+
+    private static void WriteBossClearDateAndMembers(ByteWriter pWriter, BossClearRankInfo info) {
+        pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.ClearTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        pWriter.WriteInt(info.Members.Count);
+        foreach (BossClearMemberInfo member in info.Members) {
+            pWriter.WriteLong(member.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(member.Name);
+            pWriter.WriteUnicodeStringWithLength(member.Profile);
+            pWriter.WriteInt(member.Level);
+            pWriter.WriteInt((int) member.JobCode);
+        }
+    }
+
     public static ByteWriter Arcade(GameRankingType type) {
         var pWriter = new ByteWriter();
         pWriter.Write<GameRankingType>(type);
