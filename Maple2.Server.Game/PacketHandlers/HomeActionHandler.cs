@@ -135,26 +135,42 @@ public class HomeActionHandler : FieldPacketHandler {
     private void HandleUpdateBallCoord(GameSession session, IByteReader packet) {
         BallUpdateCommand mode = packet.Read<BallUpdateCommand>();
         int objectId = packet.ReadInt();
-        Vector3 coord = packet.Read<Vector3>();
-        Vector3 velocity = packet.Read<Vector3>();
-
-        FieldGuideObject? guideObject = session.GuideObject;
-        if (guideObject?.Value is not BallGuideObject || guideObject.ObjectId != objectId) {
-            Logger.Warning("Ball not found");
-            return;
-        }
-
-        guideObject.Position = coord;
 
         switch (mode) {
-            case BallUpdateCommand.Move:
-                Vector3 velocity2 = packet.Read<Vector3>();
+            case BallUpdateCommand.Move: {
+                // Sent by the ball's owner only: position, linear velocity, angular velocity.
+                Vector3 coord = packet.Read<Vector3>();
+                Vector3 velocity = packet.Read<Vector3>();
+                Vector3 angularVelocity = packet.Read<Vector3>();
 
-                session.Field?.Broadcast(HomeActionPacket.UpdateBall(guideObject, velocity, velocity2), session);
+                FieldGuideObject? guideObject = session.GuideObject;
+                if (guideObject?.Value is not BallGuideObject || guideObject.ObjectId != objectId) {
+                    Logger.Warning("Ball not found");
+                    return;
+                }
+
+                guideObject.Position = coord;
+                session.Field?.Broadcast(HomeActionPacket.UpdateBall(guideObject, velocity, angularVelocity), session);
                 break;
-            case BallUpdateCommand.Hit:
-                session.Field?.Broadcast(HomeActionPacket.HitBall(guideObject, velocity));
+            }
+            case BallUpdateCommand.Hit: {
+                // Sent by any player who touches a ball: force, then the direction from the ball to that player.
+                // Only the ball's owner applies it, so the ball is looked up among all players.
+                Vector3 force = packet.Read<Vector3>();
+                Vector3 direction = packet.Read<Vector3>();
+                if (session.Field is null) {
+                    return;
+                }
+
+                foreach (FieldPlayer fieldPlayer in session.Field.Players.Values) {
+                    FieldGuideObject? ball = fieldPlayer.Session.GuideObject;
+                    if (ball?.Value is BallGuideObject && ball.ObjectId == objectId) {
+                        fieldPlayer.Session.Send(HomeActionPacket.HitBall(ball, force, direction));
+                        return;
+                    }
+                }
                 break;
+            }
         }
     }
 

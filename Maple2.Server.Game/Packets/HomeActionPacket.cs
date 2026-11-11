@@ -228,14 +228,14 @@ public static class HomeActionPacket {
         return pWriter;
     }
 
-    public static ByteWriter HitBall(FieldGuideObject guideObject, Vector3 velocity) {
+    public static ByteWriter HitBall(FieldGuideObject guideObject, Vector3 force, Vector3 direction) {
         var pWriter = Packet.Of(SendOp.HomeAction);
         pWriter.Write<HomeActionCommand>(HomeActionCommand.Ball);
         pWriter.Write<BallCommand>(BallCommand.Hit);
         pWriter.WriteInt(guideObject.ObjectId);
         pWriter.WriteLong(guideObject.CharacterId);
-        pWriter.Write<Vector3>(guideObject.Position);
-        pWriter.Write<Vector3>(velocity);
+        pWriter.Write<Vector3>(force);
+        pWriter.Write<Vector3>(direction);
 
         return pWriter;
     }
