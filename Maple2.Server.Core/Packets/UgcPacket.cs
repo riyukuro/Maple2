@@ -146,7 +146,7 @@ public static class UgcPacket {
         foreach (UgcBanner ugcBanner in banners) {
             pWriter.WriteLong(ugcBanner.Id);
             BannerSlot? activeSlot = ugcBanner.Slots.FirstOrDefault(x => x.Active);
-            pWriter.WriteBool(activeSlot is not null);
+            pWriter.WriteBool(activeSlot?.Template is not null);
             if (activeSlot?.Template is null) {
                 continue;
             }
@@ -167,7 +167,7 @@ public static class UgcPacket {
         pWriter.Write<Command>(Command.EnableBanner);
         pWriter.WriteLong(ugcBanner.Id);
         BannerSlot? activeSlot = ugcBanner.Slots.FirstOrDefault(x => x.Active);
-        pWriter.WriteBool(activeSlot is not null);
+        pWriter.WriteBool(activeSlot?.Template is not null);
         if (activeSlot?.Template is null) {
             return pWriter;
         }
