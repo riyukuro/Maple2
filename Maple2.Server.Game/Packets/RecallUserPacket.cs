@@ -57,6 +57,11 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
+    // The packet that tells the caller how an invite ended: kind 6 when the player was moved, else kind 7.
+    public static ByteWriter Result(string name, bool recalled, byte fail) {
+        return recalled ? Recalled(name) : Fail(name, fail);
+    }
+
     // Kind 7: name, byte result (a FAIL_ value).
     public static ByteWriter Fail(string name, byte result) {
         var pWriter = Packet.Of(SendOp.RecallUser);

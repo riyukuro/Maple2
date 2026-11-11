@@ -175,12 +175,12 @@ public class ManufacturingMasteryCommand : GameCommand {
     }
 }
 
-// "recalluser <name>": invites a player on this channel to the GM's place (s2c RecallUser 4). The client has no
+// "recalluser <name>": invites a player on any channel to the GM's place (s2c RecallUser 4). The client has no
 // request of its own for this packet; it only answers the confirm box (c2s RecallUser 4).
 public class RecallUserCommand : GameCommand {
     private readonly GameSession session;
 
-    public RecallUserCommand(GameSession session) : base(AdminPermissions.GameMaster, "recalluser", "Invite a player on this channel to your place.") {
+    public RecallUserCommand(GameSession session) : base(AdminPermissions.GameMaster, "recalluser", "Invite a player to your place.") {
         this.session = session;
 
         var name = new Argument<string>("name", "Name of the player.");
@@ -196,24 +196,26 @@ public class RecallUserCommand : GameCommand {
 
         using GameStorage.Request db = session.GameStorage.Context();
         long characterId = db.GetCharacterId(name);
-        if (characterId == 0 || characterId == session.CharacterId || !session.FindSession(characterId, out GameSession? target)) {
+        if (characterId == 0 || characterId == session.CharacterId) {
             session.Send(RecallUserPacket.Fail(name, RecallUserPacket.FAIL_NOT_FOUND));
             return;
         }
 
-        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        PendingUserRecall? pending = target.UserRecall;
-        if (pending != null && now <= pending.EndTime) {
-            // The client would answer a second invite with "busy" (c2s 7, byte 4) and show no box.
-            session.Send(RecallUserPacket.Fail(target.PlayerName, RecallUserPacket.FAIL_BUSY));
-            return;
+        int mapId = session.Player.Value.Character.MapId;
+        int result;
+        if (session.FindSession(characterId, out GameSession? target)) {
+            name = target.PlayerName;
+            result = UserRecallUtil.Invite(target, session.CharacterId, session.PlayerName, mapId);
+        } else {
+            // Not on this channel: the World server passes the invite to the channel the player is on.
+            result = UserRecallUtil.InviteByWorld(session, characterId, mapId);
         }
 
-        var recall = new PendingUserRecall(PendingUserRecall.NextInviteId(), session.CharacterId, session.PlayerName,
-            session.Player.Value.Character.MapId, now + PendingUserRecall.VALID_SECONDS);
-        target.UserRecall = recall;
-        target.Send(RecallUserPacket.Invite(recall.CallerName, recall.InviteId));
-        session.Send(RecallUserPacket.Requested(target.PlayerName, RecallUserPacket.REQUEST_CONFIRM));
+        if (result != 0) {
+            session.Send(RecallUserPacket.Fail(name, (byte) result));
+            return;
+        }
+        session.Send(RecallUserPacket.Requested(name, RecallUserPacket.REQUEST_CONFIRM));
         ctx.ExitCode = 0;
     }
 }

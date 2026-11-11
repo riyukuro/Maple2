@@ -44,21 +44,23 @@ public class RecallUserHandler : FieldPacketHandler {
             return;
         }
         session.UserRecall = null;
+        string name = session.PlayerName;
 
-        session.FindSession(recall!.CallerId, out GameSession? caller);
         if (!accept) {
-            caller?.Send(RecallUserPacket.Fail(session.PlayerName, RecallUserPacket.FAIL_REJECT));
+            UserRecallUtil.TellCaller(session, name, recall!.CallerId, false, RecallUserPacket.FAIL_REJECT);
             return;
         }
 
         // The caller must still be on the map the invite was sent from.
-        if (!session.PlayerInfo.GetOrFetch(recall.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
+        if (!session.PlayerInfo.GetOrFetch(recall!.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
             || !PlayerWarpUtil.GoToPlayer(session, callerInfo)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
-            caller?.Send(RecallUserPacket.Fail(session.PlayerName, RecallUserPacket.FAIL_CANNOT_MOVE));
+            UserRecallUtil.TellCaller(session, name, recall.CallerId, false, RecallUserPacket.FAIL_CANNOT_MOVE);
             return;
         }
-        caller?.Send(RecallUserPacket.Recalled(session.PlayerName));
+        // Sent after the move was started: on a channel change this session is already closing, and the relay
+        // does not need it.
+        UserRecallUtil.TellCaller(session, name, recall.CallerId, true, 0);
     }
 
     // CNetworkService::SendRecallUserText (networkservice.cpp:529): the caller's name and byte 4, sent when an

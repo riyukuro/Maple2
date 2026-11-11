@@ -1,3 +1,4 @@
+using Google.Protobuf;
 using System;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -307,5 +308,31 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(PendingUserRecall.Matches(pending, 5, 101), Is.False);
         Assert.That(PendingUserRecall.Matches(null, 5, 0), Is.False);
         Assert.That(PendingUserRecall.NextInviteId(), Is.Not.EqualTo(0));
+    }
+
+    // A second invite is refused while one is pending (the client would show no box for it).
+    [Test]
+    public void RecallUserInviteWaitsForThePendingOne() {
+        var pending = new PendingUserRecall(5, 1, "A", 2000001, 100);
+        Assert.That(PendingUserRecall.CanInvite(null, 0), Is.True);
+        Assert.That(PendingUserRecall.CanInvite(pending, 100), Is.False);
+        Assert.That(PendingUserRecall.CanInvite(pending, 101), Is.True);
+    }
+
+    // The result a caller on another channel gets through the World server is the same packet as on one channel.
+    [Test]
+    public void RecallUserResultByRelay() {
+        Assert.That(RecallUserPacket.Result("A", true, RecallUserPacket.FAIL_BUSY).ToArray(), Is.EqualTo(RecallUserPacket.Recalled("A").ToArray()));
+        Assert.That(RecallUserPacket.Result("A", false, RecallUserPacket.FAIL_CANNOT_MOVE).ToArray(),
+            Is.EqualTo(RecallUserPacket.Fail("A", RecallUserPacket.FAIL_CANNOT_MOVE).ToArray()));
+
+        // The relay messages keep their fields through the wire format.
+        var invite = new PlayerWarpRequest {
+            RequesterId = 11,
+            RecallInvite = new PlayerWarpRequest.Types.RecallInvite { TargetId = 22, CallerName = "A", MapId = 2000001 },
+        };
+        PlayerWarpRequest parsed = PlayerWarpRequest.Parser.ParseFrom(invite.ToByteArray());
+        Assert.That(parsed.RequestCase, Is.EqualTo(PlayerWarpRequest.RequestOneofCase.RecallInvite));
+        Assert.That((parsed.RequesterId, parsed.RecallInvite.TargetId, parsed.RecallInvite.CallerName, parsed.RecallInvite.MapId), Is.EqualTo((11L, 22L, "A", 2000001)));
     }
 }

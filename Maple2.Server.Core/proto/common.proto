@@ -304,9 +304,27 @@ message PlayerWarpRequest {
     int32 channel = 2;
   }
 
+  // A recall invite for a player on another channel. requester_id is the caller. The response's error is 0
+  // when the invite was shown, or the failure value for the caller (not found, already being recalled).
+  message RecallInvite {
+    int64 target_id = 1;
+    string caller_name = 2;
+    int32 map_id = 3;
+  }
+
+  // What became of a recall invite, for a caller on another channel. requester_id is the invited player.
+  message RecallResult {
+    int64 caller_id = 1;
+    string target_name = 2;
+    bool recalled = 3;
+    int32 fail = 4;
+  }
+
   int64 requester_id = 3;
   oneof request {
     GoToPlayer go_to_player = 4;
+    RecallInvite recall_invite = 5;
+    RecallResult recall_result = 6;
   }
 }
 
