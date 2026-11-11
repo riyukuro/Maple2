@@ -7,12 +7,14 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
-// The enchant transfer dialog (inventory menu): the client sends the uid of one gear item whose id, equip slot,
-// enchant level, rarity and required level match a row of itemenchanttransform.xml. The item and the row's meso
-// are taken and the row's output items given; the client then gets the empty result packet.
+// The enchant transform window (inventory menu, UIItemEnchantTransformDialog::OnSubmitTransform): the client sends
+// the uid of one gear-tab item whose id, equip slot, enchant level and rarity match a row of itemenchanttransform.xml
+// (EnchantTransform.Find). The item and the row's meso are taken and the row's output items given; the client then
+// gets the empty result packet. A refused request changes nothing and gets no answer.
 public class TransferEnchantHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.TransferEnchant;
 
@@ -31,12 +33,13 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 return;
             }
 
-            // CUIItemEnchantTransformDialog::CanTransform: a locked item, or one waiting out its unlock time, is refused.
-            if (item.IsLocked || item.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+            // CItemEnchantTransformTable::CanTransform: a row for the item, not locked or waiting out its unlock time.
+            if (EnchantTransform.Locked(item.IsLocked, item.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
                 return;
             }
 
-            ItemEnchantTransformTable.Entry? entry = FindEntry(item);
+            ItemEnchantTransformTable.Entry? entry = EnchantTransform.Find(TableMetadata.ItemEnchantTransformTable,
+                item.Id, (int) item.Type.Type, item.Enchant?.Enchants ?? 0, item.Rarity);
             if (entry == null) {
                 return;
             }
@@ -80,19 +83,5 @@ public class TransferEnchantHandler : FieldPacketHandler {
 
             session.Send(TransferEnchantPacket.Result());
         }
-    }
-
-    private ItemEnchantTransformTable.Entry? FindEntry(Item item) {
-        int enchantLevel = item.Enchant?.Enchants ?? 0;
-        foreach (ItemEnchantTransformTable.Entry entry in TableMetadata.ItemEnchantTransformTable.Entries) {
-            if (entry.Rarity == item.Rarity
-                    && entry.LimitLevel == item.Metadata.Limit.Level
-                    && entry.EnchantLevel == enchantLevel
-                    && Array.IndexOf(entry.Slots, (int) item.Type.Type) >= 0
-                    && Array.IndexOf(entry.ItemIds, item.Id) >= 0) {
-                return entry;
-            }
-        }
-        return null;
     }
 }
