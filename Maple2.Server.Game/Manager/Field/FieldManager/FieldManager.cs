@@ -306,8 +306,10 @@ public partial class FieldManager : IField {
                     int length = packet.reader is FieldPacketReader copy ? copy.PacketLength - copy.Position : packet.reader.Available;
                     packet.handler.Handle(packet.session, new BoundedPacketReader(packet.reader, length));
                 } catch (PacketOverreadException ex) {
-                    logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left",
-                        $"0x{(ushort) packet.handler.OpCode:X4}", packet.handler.GetType().Name, ex.Wanted, ex.Left);
+                    if (packet.session.DropLog.ShouldLog(DateTime.UtcNow, out int drops)) {
+                        logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left ({Session}, account {AccountId}, {Drops} dropped since the last line)",
+                            $"0x{(ushort) packet.handler.OpCode:X4}", packet.handler.GetType().Name, ex.Wanted, ex.Left, packet.session, packet.session.AccountId, drops);
+                    }
                 } catch (Exception ex) {
                     if (ex is IndexOutOfRangeException) {
                         logger.Error("Error processing packet {OpCode} for account ID {AccountId}. Packet: {Packet}", packet.handler.OpCode, packet.session.AccountId, packet.ToString());

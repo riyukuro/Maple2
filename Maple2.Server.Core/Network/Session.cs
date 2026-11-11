@@ -61,6 +61,7 @@ public abstract class Session : IDisposable {
 
     protected abstract PatchType Type { get; }
     protected readonly ILogger Logger = Log.Logger.ForContext<Session>();
+    public readonly DropLogLimiter DropLog = new();
 
     protected Session(TcpClient tcpClient) {
         thread = new Thread(StartInternal);

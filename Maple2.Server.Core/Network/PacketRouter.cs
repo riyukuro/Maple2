@@ -36,8 +36,10 @@ public class PacketRouter<T> where T : Session {
             handler.Handle(session, new BoundedPacketReader(reader, reader.Available));
         } catch (PacketOverreadException ex) {
             // The handler reads more than the client wrote: drop the packet, keep the session.
-            logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left",
-                $"0x{(ushort) op:X4}", handler.GetType().Name, ex.Wanted, ex.Left);
+            if (session.DropLog.ShouldLog(DateTime.UtcNow, out int drops)) {
+                logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left ({Session}, account {AccountId}, {Drops} dropped since the last line)",
+                    $"0x{(ushort) op:X4}", handler.GetType().Name, ex.Wanted, ex.Left, session, session.AccountId, drops);
+            }
         }
     }
 
