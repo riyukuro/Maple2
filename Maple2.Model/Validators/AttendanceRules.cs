@@ -71,4 +71,32 @@ public static class AttendanceRules {
         }
         return meret >= pay.Price ? PayStep.Meret : PayStep.NoMeret;
     }
+    // The requirement kind the client reads after the play seconds (GameEventAttendGift::vfunc_4,
+    // commonfiles/gameeventcontext.cpp:434), then the int value: 1 the user value Value1 is set, 2 an item
+    // (Value1 is the item id the window names in s_attend_gift_item_require), 3 the user value Value1 is not
+    // set, 0 none (GameEventAttendGiftCli::FUN_140ce3510, gameeventcli.cpp:437; uiattendgiftdialog.cpp:557).
+    public static byte RequireKind(AttendGift.Require? require) => require?.Type switch {
+        AttendGiftRequirement.UserValue => 1,
+        AttendGiftRequirement.ItemId => 2,
+        AttendGiftRequirement.NotUserValue => 3,
+        _ => 0,
+    };
+
+    public static int RequireValue(AttendGift.Require? require) => RequireKind(require) == 0 ? 0 : require!.Value1;
+
+    // The client's bool reading of a user value text (ParseBoolW, commonfiles/packetlogger.cpp:183).
+    public static bool UserValueTrue(string? text) => !string.IsNullOrEmpty(text) && text.IndexOfAny(['1', 'o', 'O', 't', 'T']) >= 0;
+
+    // Whether the player may attend the event. userValue is the text of the player's unexpired user value
+    // of the given type with id 0, null when there is none. The client lists a kind 1 event only while the
+    // value reads true and a kind 3 event only while there is no value (FUN_140ce3510). A kind 2 event needs
+    // an item to start it, which the server does not do (chosen here), so it is never attended.
+    public static bool RequirementMet(AttendGift.Require? require, Func<int, string?> userValue) {
+        return RequireKind(require) switch {
+            1 => UserValueTrue(userValue(require!.Value1)),
+            2 => false,
+            3 => userValue(require!.Value1) == null,
+            _ => true,
+        };
+    }
 }

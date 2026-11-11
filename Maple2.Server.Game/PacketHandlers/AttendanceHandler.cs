@@ -59,7 +59,7 @@ public class AttendanceHandler : FieldPacketHandler {
         }
 
         foreach (GameEvent gameEvent in gameEvents) {
-            if (gameEvent?.Metadata.Data is not AttendGift attendGift) {
+            if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift)) {
                 continue;
             }
 
@@ -78,6 +78,11 @@ public class AttendanceHandler : FieldPacketHandler {
             AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent),
                 () => session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds()));
         }
+    }
+
+    // The event's requirement, tested on the player's user values with id 0 as the client tests them.
+    private static bool RequirementMet(GameSession session, AttendGift attendGift) {
+        return AttendanceRules.RequirementMet(attendGift.Requirement, type => session.GameEvent.Peek((GameEventUserValueType) type, 0));
     }
 
     private void HandleBeginTimer(GameSession session) {
@@ -152,7 +157,7 @@ public class AttendanceHandler : FieldPacketHandler {
         // uid of the pay-attend coupon item when the box's coupon checkbox is ticked, else 0
         (int eventId, long couponUid) = AttendanceRules.ReadEarlyParticipation(packet);
         GameEvent? gameEvent = session.FindEvent(eventId);
-        if (gameEvent?.Metadata.Data is not AttendGift attendGift) {
+        if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift)) {
             return;
         }
 

@@ -98,8 +98,8 @@ public class GameEvent : IByteSerializable {
                 writer.WriteByte();
                 writer.WriteBool(true); // disable claim button
                 writer.WriteInt(attendGift.RequiredPlaySeconds);
-                writer.WriteByte();
-                writer.WriteInt();
+                writer.WriteByte(AttendanceRules.RequireKind(attendGift.Requirement));
+                writer.WriteInt(AttendanceRules.RequireValue(attendGift.Requirement));
 
                 // Pay type, then (when set) the paid-day limit, the price and the coupon item id
                 // (client gameeventcontext.cpp:435-441).

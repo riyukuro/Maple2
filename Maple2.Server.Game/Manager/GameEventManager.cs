@@ -145,6 +145,16 @@ public sealed class GameEventManager {
         session.Send(GameEventUserValuePacket.Load(eventValues.Values.SelectMany(dict => dict.Values).ToList()));
     }
 
+    // The text of an unexpired value, null when there is none; unlike Get it adds no value.
+    public string? Peek(GameEventUserValueType type, int eventId) {
+        if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)
+            || !valueDict.TryGetValue(type, out GameEventUserValue? value)
+            || value.ExpirationTime <= DateTime.Now.ToEpochSeconds()) {
+            return null;
+        }
+        return value.Value;
+    }
+
     public GameEventUserValue Get(GameEventUserValueType type, int eventId, long expirationTime) {
         if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
             eventValues.Add(eventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {

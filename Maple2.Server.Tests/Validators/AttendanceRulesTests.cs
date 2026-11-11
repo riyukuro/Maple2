@@ -122,4 +122,60 @@ public class AttendanceRulesTests {
         reader.ReadInt(); // four flag bytes
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+    // The requirement kind and value after the play seconds (gameeventcontext.cpp:434-435), in the client's
+    // numbering, which differs from the server enum's order.
+    [TestCase(null, 0, 0, (byte) 0, 0)]
+    [TestCase(AttendGiftRequirement.None, 5, 0, (byte) 0, 0)]
+    [TestCase(AttendGiftRequirement.UserValue, 3000, 0, (byte) 1, 3000)]
+    [TestCase(AttendGiftRequirement.ItemId, 20300001, 7, (byte) 2, 20300001)]
+    [TestCase(AttendGiftRequirement.NotUserValue, 3001, 0, (byte) 3, 3001)]
+    public void RequirementBytes(AttendGiftRequirement? type, int value1, int value2, byte kind, int value) {
+        AttendGift.Require? require = type == null ? null : new AttendGift.Require(type.Value, value1, value2);
+        var data = new AttendGift(new[] { new RewardItem(20000002, 1, 5) }, "n", "t", "c", "l", 60, require, null);
+        var gameEvent = new GameEvent(new GameEventMetadata(77, GameEventType.AttendGift, DateTime.UnixEpoch, DateTime.UnixEpoch.AddDays(1),
+            TimeSpan.Zero, TimeSpan.Zero, Array.Empty<DayOfWeek>(), data, "", "", "", ""));
+        var writer = new ByteWriter();
+        gameEvent.WriteTo(writer);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        reader.ReadUnicodeString();
+        reader.ReadInt();
+        reader.ReadLong();
+        reader.ReadLong();
+        reader.ReadUnicodeString();
+        reader.ReadString();
+        reader.ReadByte();
+        reader.ReadByte();
+        Assert.That(reader.ReadInt(), Is.EqualTo(60));
+        Assert.That(reader.ReadByte(), Is.EqualTo(kind));
+        Assert.That(reader.ReadInt(), Is.EqualTo(value));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0)); // no pay type
+    }
+
+    // ParseBoolW: true when the text holds any of 1, o, O, t, T.
+    [TestCase(null, false)]
+    [TestCase("", false)]
+    [TestCase("True", true)]
+    [TestCase("1", true)]
+    [TestCase("on", true)]
+    [TestCase("False", false)]
+    [TestCase("0", false)]
+    public void UserValueTrue(string? text, bool result) {
+        Assert.That(AttendanceRules.UserValueTrue(text), Is.EqualTo(result));
+    }
+
+    // Kind 1 needs a value that reads true, kind 3 no value, kind 2 is never attended, no requirement always is.
+    [Test]
+    public void RequirementMet() {
+        var values = new Dictionary<int, string> { { 3000, "True" }, { 3002, "False" } };
+        string? Lookup(int type) => values.TryGetValue(type, out string? text) ? text : null;
+
+        Assert.That(AttendanceRules.RequirementMet(null, Lookup), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.None, 0, 0), Lookup), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3000, 0), Lookup), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3002, 0), Lookup), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3001, 0), Lookup), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3001, 0), Lookup), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3002, 0), Lookup), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.ItemId, 20300001, 7), Lookup), Is.False);
+    }
 }
