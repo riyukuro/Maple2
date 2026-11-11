@@ -84,6 +84,9 @@ public class LoginSession : Core.Network.Session {
             if (!string.IsNullOrEmpty(response.Error)) {
                 Logger.Warning("Failed to release lock for account {AccountId}: {ErrorMessage}", accountId, response.Error);
             }
+        } catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable) {
+            // The world keeps its locks in memory: a world that is down (stopped before this server) holds none.
+            Logger.Warning("World unavailable; lock for account {AccountId} not released", accountId);
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to release lock for account {AccountId}", accountId);
         }
