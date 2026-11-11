@@ -14,6 +14,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Newtonsoft.Json.Linq;
 using System.Globalization;
 using System.Numerics;
@@ -1077,7 +1078,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
                 XmlNode? stringNode = value2Xml.FirstChild.SelectSingleNode("string");
                 XmlNode? configNode = value2Xml.FirstChild.SelectSingleNode("Config");
-                if (stringNode == null || configNode == null) {
+                XmlNode? payNode = value2Xml.FirstChild.SelectSingleNode("payAttend");
+                // A pay-attend event has no Config node: no play time is asked.
+                if (stringNode == null || configNode == null && payNode == null) {
                     return null;
                 }
 
@@ -1086,9 +1089,15 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 string mailContent = stringNode.Attributes?["mailContents"]?.Value ?? string.Empty;
                 string link = stringNode.Attributes?["detailUrl"]?.Value ?? string.Empty;
 
-                if (!int.TryParse(configNode.Attributes?["requirePlaySeconds"]?.Value, out int requiredPlaySeconds)) {
+                if (!int.TryParse(configNode?.Attributes?["requirePlaySeconds"]?.Value, out int requiredPlaySeconds)) {
                     requiredPlaySeconds = 0;
                 }
+
+                AttendGift.PayAttend? payAttend = payNode == null ? null : AttendanceRules.ParsePay(
+                    payNode.Attributes?["type"]?.Value,
+                    payNode.Attributes?["price"]?.Value,
+                    payNode.Attributes?["maxCount"]?.Value,
+                    payNode.Attributes?["couponID"]?.Value);
 
                 AttendGift.Require? giftRequirement = null;
                 if (!string.IsNullOrEmpty(value3)) {
@@ -1123,7 +1132,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     MailContent: mailContent,
                     Link: link,
                     RequiredPlaySeconds: requiredPlaySeconds,
-                    Requirement: giftRequirement);
+                    Requirement: giftRequirement,
+                    Pay: payAttend);
             case GameEventType.ReturnUser:
                 var requiredTime = DateTimeOffset.MinValue;
                 int daysInactive = 0;

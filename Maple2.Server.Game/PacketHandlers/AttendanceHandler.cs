@@ -139,39 +139,42 @@ public class AttendanceHandler : FieldPacketHandler {
 
     private void HandleEarlyParticipation(GameSession session, IByteReader packet) {
         // uid of the pay-attend coupon item when the box's coupon checkbox is ticked, else 0
-        (int eventId, long _) = AttendanceRules.ReadEarlyParticipation(packet);
+        (int eventId, long couponUid) = AttendanceRules.ReadEarlyParticipation(packet);
         GameEvent? gameEvent = session.FindEvent(eventId);
         if (gameEvent?.Metadata.Data is not AttendGift attendGift) {
             return;
         }
 
-        // TODO: Need to interpret how this would be in the xmls. Current xml does not have this information.
-        /*int skipsTotal = session.GameEventUserValue.Get(GameEventUserValueType.AttendanceEarlyParticipationRemaining, attendGift.Id, attendGift.EndTime).Int();
-        if (skipsTotal >= attendGift.SkipDaysAllowed) {
-            return;
-        }
-
-        switch (attendGift.SkipDayCurrencyType) {
-            case AttendGiftCurrencyType.Meso:
-                if (session.Currency.CanAddMeso(-attendGift.SkipDayCost) != -attendGift.SkipDayCost) {
-                    session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMoney));
+        int attended = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime).Int();
+        int paid = session.GameEvent.Get(GameEventUserValueType.AttendanceEarlyParticipationRemaining, gameEvent.Id, gameEvent.EndTime).Int();
+        Item? coupon = couponUid != 0 ? session.Item.Inventory.Get(couponUid) : null;
+        switch (AttendanceRules.PayCheck(attendGift.Pay, attended, attendGift.Items.Length, paid, couponUid != 0, coupon?.Id ?? 0, session.Currency.Meso, session.Currency.Meret)) {
+            case AttendanceRules.PayStep.NoCoupon:
+                session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_hasNotCoupon));
+                return;
+            case AttendanceRules.PayStep.NoMeso:
+                session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMoney));
+                return;
+            case AttendanceRules.PayStep.NoMeret:
+                session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMerat));
+                return;
+            case AttendanceRules.PayStep.Coupon:
+                if (!session.Item.Inventory.Consume(couponUid, 1)) {
+                    session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_hasNotCoupon));
                     return;
                 }
-                session.Currency.Meso -= attendGift.SkipDayCost;
                 break;
-            case AttendGiftCurrencyType.Meret:
-                if (session.Currency.CanAddMeret(-attendGift.SkipDayCost) != -attendGift.SkipDayCost) {
-                    session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMerat));
-                    return;
-                }
-                session.Currency.Meret -= attendGift.SkipDayCost;
+            case AttendanceRules.PayStep.Meso:
+                session.Currency.Meso -= attendGift.Pay!.Price;
                 break;
-            case AttendGiftCurrencyType.None:
+            case AttendanceRules.PayStep.Meret:
+                session.Currency.Meret -= attendGift.Pay!.Price;
+                break;
             default:
                 return;
         }
 
-        session.GameEventUserValue.Set(attendGift.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, skipsTotal + 1);
-        GetRewards(session, attendGift);*/
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, paid + 1);
+        GetRewards(session, attendGift, gameEvent);
     }
 }

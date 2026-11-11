@@ -65,7 +65,16 @@ public record AttendGift(
     string MailContent,
     string Link,
     int RequiredPlaySeconds,
-    AttendGift.Require? Requirement) : GameEventData {
+    AttendGift.Require? Requirement,
+    AttendGift.PayAttend? Pay = null) : GameEventData {
+
+    // value2's payAttend node: a missed day bought for Price mesos or merets, MaxCount times at most,
+    // or for one item of CouponItemId.
+    public record PayAttend(
+        AttendGiftCurrencyType Type,
+        long Price,
+        int MaxCount,
+        int CouponItemId);
 
     public record Require(
         AttendGiftRequirement Type,

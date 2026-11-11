@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Tools;
 
@@ -100,12 +101,14 @@ public class GameEvent : IByteSerializable {
                 writer.WriteByte();
                 writer.WriteInt();
 
-                var currencyType = AttendGiftCurrencyType.None;
-                writer.Write<AttendGiftCurrencyType>(currencyType);
+                // Pay type, then (when set) the paid-day limit, the price and the coupon item id
+                // (client gameeventcontext.cpp:435-441).
+                AttendGiftCurrencyType currencyType = AttendanceRules.PayType(attendGift.Pay);
+                writer.WriteByte((byte) currencyType);
                 if (currencyType != AttendGiftCurrencyType.None) {
-                    writer.WriteInt(); // Skip Days Allowed
-                    writer.WriteLong(); // Skip Day Cost
-                    writer.WriteInt();
+                    writer.WriteInt(attendGift.Pay!.MaxCount);
+                    writer.WriteLong(attendGift.Pay.Price);
+                    writer.WriteInt(attendGift.Pay.CouponItemId);
                 }
 
                 writer.WriteInt(attendGift.Items.Length);
