@@ -5,6 +5,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -42,6 +43,10 @@ public class AttendanceHandler : FieldPacketHandler {
                 return;
             case Command.EarlyParticipation:
                 HandleEarlyParticipation(session, packet);
+                return;
+            case Command.Unknown8:
+                // The selected event's id (uiattendgiftdialog.cpp:385, uicashattenddialog.cpp:591); no reply is known.
+                AttendanceRules.ReadSelectedEvent(packet);
                 return;
         }
     }
@@ -90,13 +95,13 @@ public class AttendanceHandler : FieldPacketHandler {
 
     private void GetRewards(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
         int rewardsClaimed = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime).Int();
-        rewardsClaimed++;
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceRewardsClaimed, rewardsClaimed);
-
-        RewardItem reward = attendGift.Items.ElementAtOrDefault(rewardsClaimed);
-        if (default(RewardItem).Equals(reward)) {
+        int index = AttendanceRules.RewardIndex(rewardsClaimed, attendGift.Items.Length);
+        if (index < 0) {
             return;
         }
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceRewardsClaimed, rewardsClaimed + 1);
+
+        RewardItem reward = attendGift.Items[index];
 
         Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
         if (item == null) {
@@ -133,8 +138,8 @@ public class AttendanceHandler : FieldPacketHandler {
     }
 
     private void HandleEarlyParticipation(GameSession session, IByteReader packet) {
-        int eventId = packet.ReadInt();
-        packet.ReadLong(); // uid of the pay-attend coupon item when the box's coupon checkbox is ticked, else 0
+        // uid of the pay-attend coupon item when the box's coupon checkbox is ticked, else 0
+        (int eventId, long _) = AttendanceRules.ReadEarlyParticipation(packet);
         GameEvent? gameEvent = session.FindEvent(eventId);
         if (gameEvent?.Metadata.Data is not AttendGift attendGift) {
             return;
