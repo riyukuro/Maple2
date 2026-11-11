@@ -5,6 +5,7 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -68,5 +69,70 @@ public class DungeonMissionTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
         Assert.That(reader.ReadBool(), Is.False);
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+    [Test]
+    public void Score_FollowsTheClientRule() {
+        // DungeonMissionData::GetScore: maxScore in applyCount steps, a penalty mission counts down.
+        DungeonMissionMetadata steps = Mission(1, DungeonMissionType.LastHitNpc, 960, 6);
+        Assert.That(DungeonMission.ScoreOf(steps, 0), Is.EqualTo(0));
+        Assert.That(DungeonMission.ScoreOf(steps, 2), Is.EqualTo(320));
+        Assert.That(DungeonMission.ScoreOf(steps, 9), Is.EqualTo(960));
+        DungeonMissionMetadata penalty = Mission(2, DungeonMissionType.DeathCount, 300, 3, true);
+        Assert.That(DungeonMission.ScoreOf(penalty, 0), Is.EqualTo(300));
+        Assert.That(DungeonMission.ScoreOf(penalty, 1), Is.EqualTo(200));
+        Assert.That(DungeonMission.ScoreOf(penalty, 5), Is.EqualTo(0));
+        Assert.That(new DungeonMission(penalty).Score, Is.EqualTo(300));
+        // No applyCount in the row: one step, as the client's default.
+        Assert.That(DungeonMission.ScoreOf(Mission(3, DungeonMissionType.Trigger), 1), Is.EqualTo(500));
+    }
+
+    [Test]
+    public void DamageToNpc_ScoresWhenTheDamageIsDealt() {
+        var mission = new DungeonMission(Mission(1, DungeonMissionType.DamageToNpc, value1: 1000), true);
+        Assert.That(mission.AddDamage(23200083, 600), Is.False);
+        Assert.That(mission.Score, Is.EqualTo(0));
+        Assert.That(mission.AddDamage(23200083, 400), Is.True);
+        Assert.That(mission.Score, Is.EqualTo(500));
+        Assert.That(mission.AddDamage(23200083, 400), Is.False);
+
+        // Steps: value1 / applyCount damage each. value2 names the npc.
+        var stepped = new DungeonMission(new DungeonMissionMetadata(2, DungeonMissionType.DamageToNpc, [1000], 7, 500, 5, false));
+        Assert.That(stepped.AddDamage(8, 900), Is.False);
+        Assert.That(stepped.AddDamage(7, 450), Is.True);
+        Assert.That(stepped.Counter, Is.EqualTo(2));
+        Assert.That(stepped.Score, Is.EqualTo(200));
+    }
+
+    [Test]
+    public void LastHitNpc_CountsKillsOfTheListedNpcs() {
+        var mission = new DungeonMission(Mission(1, DungeonMissionType.LastHitNpc, 960, 6, false, 11, 12));
+        Assert.That(mission.AddLastHit(13), Is.False);
+        Assert.That(mission.AddLastHit(11), Is.True);
+        Assert.That(mission.AddLastHit(12), Is.True);
+        Assert.That(mission.Score, Is.EqualTo(320));
+        Assert.That(new DungeonMission(Mission(2, DungeonMissionType.DamageToNpc, value1: 10)).AddLastHit(11), Is.False);
+    }
+
+    [Test]
+    public void CountMissions_UserMissionsForThePlayerPartyMissionsForTheRoom() {
+        var table = new Dictionary<int, DungeonMissionMetadata> {
+            [1] = Mission(1, DungeonMissionType.LastHitNpc, value1: 5),
+            [2] = Mission(2, DungeonMissionType.LastHitNpc, value1: 5),
+        };
+        var room = new DungeonRoomRecord(null!);
+        foreach (long characterId in new long[] { 10, 20 }) {
+            var record = new DungeonUserRecord(100, characterId);
+            DungeonManager.FillMissions(record, [1], [2], table);
+            room.UserResults[characterId] = record;
+        }
+
+        Dictionary<long, List<DungeonMission>> changed = DungeonFieldManager.CountMissions(room, 10, mission => mission.AddLastHit(5));
+        Assert.That(changed[10].Select(mission => mission.Id), Is.EqualTo(new[] { 1, 2 }));
+        Assert.That(changed[20].Select(mission => mission.Id), Is.EqualTo(new[] { 1 }));
+        Assert.That(room.UserResults[20].Missions[2].Score, Is.EqualTo(0));
+
+        // A room with a result counts nothing more.
+        room.State = DungeonState.Clear;
+        Assert.That(DungeonFieldManager.CountMissions(room, 20, mission => mission.AddLastHit(5)), Is.Empty);
     }
 }

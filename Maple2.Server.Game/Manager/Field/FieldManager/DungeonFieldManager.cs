@@ -93,4 +93,39 @@ public class DungeonFieldManager : FieldManager {
             }
         }
     }
+    /// <summary>
+    /// Counts a mission event of one player: in that player's user missions, and in the party missions of
+    /// every player of the room. Returns the changed missions per character. Nothing counts once the room
+    /// has a result.
+    /// </summary>
+    public static Dictionary<long, List<DungeonMission>> CountMissions(DungeonRoomRecord room, long characterId, Func<DungeonMission, bool> step) {
+        var changed = new Dictionary<long, List<DungeonMission>>();
+        if (room.State != DungeonState.None) {
+            return changed;
+        }
+        foreach ((long recordId, DungeonUserRecord record) in room.UserResults) {
+            foreach (DungeonMission mission in record.Missions.Values) {
+                if (mission.IsUserMission && recordId != characterId) {
+                    continue;
+                }
+                if (step(mission)) {
+                    if (!changed.TryGetValue(recordId, out List<DungeonMission>? list)) {
+                        changed[recordId] = list = [];
+                    }
+                    list.Add(mission);
+                }
+            }
+        }
+        return changed;
+    }
+
+    public void CountMissions(FieldPlayer player, Func<DungeonMission, bool> step) {
+        foreach ((long characterId, List<DungeonMission> missions) in CountMissions(DungeonRoomRecord, player.Value.Character.Id, step)) {
+            foreach (FieldPlayer roomPlayer in Players.Values) {
+                if (roomPlayer.Value.Character.Id == characterId) {
+                    roomPlayer.Session.Send(DungeonMissionPacket.Update(missions.ToArray()));
+                }
+            }
+        }
+    }
 }

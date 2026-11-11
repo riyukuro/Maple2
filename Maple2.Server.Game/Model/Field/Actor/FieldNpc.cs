@@ -370,6 +370,9 @@ public class FieldNpc : Actor<Npc> {
         lastAttackerObjectId = caster.ObjectId;
         if (caster is FieldPlayer hitPlayer) {
             DropHitLoot(hitPlayer);
+            if (Field is DungeonFieldManager dungeonField) {
+                dungeonField.CountMissions(hitPlayer, mission => mission.AddDamage(Value.Metadata.Id, amount));
+            }
         }
     }
 
@@ -387,6 +390,9 @@ public class FieldNpc : Actor<Npc> {
         }
 
         HandleDamageDealers();
+        if (Field is DungeonFieldManager dungeonField && GetLastAttacker() is FieldPlayer lastHitter) {
+            dungeonField.CountMissions(lastHitter, mission => mission.AddLastHit(Value.Metadata.Id));
+        }
 
         Remove(delay: TimeSpan.FromSeconds(Value.Metadata.Dead.Time));
     }
