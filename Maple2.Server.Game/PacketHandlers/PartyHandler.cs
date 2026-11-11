@@ -347,25 +347,10 @@ public class PartyHandler : FieldPacketHandler {
         } catch (RpcException) {
             return;
         }
+        // World tells every member, a joiner or mover too, once it has loaded the party (LoadParty, DungeonMatch,
+        // SetDungeon).
         if (response.Error != (int) PartyError.none) {
             session.Send(PartyPacket.Error((PartyError) response.Error));
-            return;
-        }
-        if (response.InfoCase != PartyResponse.InfoOneofCase.Party || session.Party.Party != null) {
-            // A party's search: World tells every member (DungeonMatch, SetDungeon).
-            return;
-        }
-
-        // The searcher joined a searching party or got a party of their own; World's broadcasts went out before
-        // this session had the party.
-        if (!session.Party.SetParty(response.Party)) {
-            return;
-        }
-        session.Send(PartyPacket.Load(session.Party.Party!, true));
-        if (response.DungeonMatched) {
-            session.Send(PartyPacket.PartySearchDungeon());
-        } else {
-            session.Party.SetDungeonMatch(kind, true);
         }
     }
 

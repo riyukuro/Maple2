@@ -504,8 +504,7 @@ message PartyResponse {
   }
 
   int32 error = 3;
-  // DungeonMatch: the party the requestor joined or started was matched to a room by this request.
-  bool dungeon_matched = 4;
+  reserved 4;
 }
 
 message ClubRequest {

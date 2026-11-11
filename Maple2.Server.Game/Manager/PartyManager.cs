@@ -223,7 +223,8 @@ public class PartyManager : IDisposable {
         return true;
     }
 
-    public bool Disband() {
+    // notify: tell the client even for a party of one (World's dungeon match party of one whose search ended).
+    public bool Disband(bool notify = false) {
         if (Party == null) {
             return false;
         }
@@ -232,11 +233,27 @@ public class PartyManager : IDisposable {
             EndListen(member);
         }
 
-        if (Party.Members.Count > 1) {
+        if (Party.Members.Count > 1 || notify) {
             session.Send(PartyPacket.Disband());
         }
         RemoveParty();
         return true;
+    }
+
+    // World moved this player into a party (a dungeon match join or merge, or the party of one made for a solo
+    // searcher): the old party goes without a packet (the client's Load replaces it) and the new one is loaded.
+    public void LoadMoved(int partyId) {
+        if (Party != null) {
+            foreach (PartyMember member in Party.Members.Values) {
+                EndListen(member);
+            }
+            RemoveParty();
+        }
+
+        PartyInfoResponse response = world.PartyInfo(new PartyInfoRequest { PartyId = partyId });
+        if (response.Party != null && SetParty(response.Party)) {
+            session.Send(PartyPacket.Load(Party!, true));
+        }
     }
 
     public void CheckDisband() {

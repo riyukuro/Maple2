@@ -38,6 +38,8 @@ public partial class ChannelService {
                 return Task.FromResult(SetDungeon(request.ReceiverIds, request.SetDungeon));
             case PartyRequest.PartyOneofCase.DungeonMatch:
                 return Task.FromResult(DungeonMatch(request.PartyId, request.ReceiverIds, request.DungeonMatch));
+            case PartyRequest.PartyOneofCase.LoadParty:
+                return Task.FromResult(LoadParty(request.PartyId, request.ReceiverIds));
             case PartyRequest.PartyOneofCase.Recall:
                 return Task.FromResult(Recall(request.PartyId, request.ReceiverIds, request.Recall));
             default:
@@ -130,13 +132,25 @@ public partial class ChannelService {
         return new PartyResponse();
     }
 
-    private PartyResponse Disband(IEnumerable<long> receiverIds, object disband) {
+    private PartyResponse Disband(IEnumerable<long> receiverIds, PartyRequest.Types.Disband disband) {
         foreach (long characterId in receiverIds) {
             if (!server.GetSession(characterId, out GameSession? session)) {
                 continue;
             }
 
-            session.Party.Disband();
+            session.Party.Disband(disband.Notify);
+        }
+
+        return new PartyResponse();
+    }
+
+    private PartyResponse LoadParty(int partyId, IEnumerable<long> receiverIds) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Party.LoadMoved(partyId);
         }
 
         return new PartyResponse();

@@ -17,6 +17,11 @@ public static class DungeonMatchRules {
     // size of a room already made, so a search would be full at 2.
     public static int MaxUsers(DungeonMatchRoom room) => room.MaxUsers;
 
+    // A party whose search ended (stopped, cancelled, or its room could not be made) with one member left is the
+    // party of one made for a solo searcher, or what is left of a party: it goes, so the player searches solo
+    // again next time (rv40 MAJOR 1).
+    public static bool DisbandsWhenSearchEnds(int members) => members <= 1;
+
     // This many more searchers fit in a group of this size: the joined group is at most the room's maximum.
     public static bool HasSpace(DungeonMatchRoom room, int users, int joining = 1) => users + joining <= MaxUsers(room);
 

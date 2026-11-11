@@ -235,7 +235,11 @@ message PartyRequest {
   }
   message Disband {
     int64 character_id = 1;
+    // Tell the client even for a party of one (a dungeon match party of one whose search ended).
+    bool notify = 2;
   }
+  // The receivers moved into this party (a dungeon match merge or join): load it from World in place of theirs.
+  message LoadParty { }
   message StartReadyCheck {
     int64 character_id = 1;
   }
@@ -297,6 +301,7 @@ message PartyRequest {
     SetDungeon set_dungeon = 15;
     Recall recall = 16;
     DungeonMatch dungeon_match = 17;
+    LoadParty load_party = 18;
   }
 }
 

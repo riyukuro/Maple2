@@ -82,13 +82,33 @@ public class PartyLookup : IDisposable {
         return manager.Join(leaderInfo);
     }
 
-    public PartyError Disband(int partyId) => DungeonMatchStep(() => {
+    // notify: the members are told even when the party has one member (a search party of one).
+    public PartyError Disband(int partyId, bool notify = false) => DungeonMatchStep(() => {
         if (!parties.TryRemove(partyId, out PartyManager? manager)) {
             return PartyError.s_party_err_not_found;
         }
-        DungeonMatch.Remove(partyId);
-        manager.Dispose();
+        DungeonMatchResult removed = DungeonMatch.Remove(partyId);
+        if (removed.Outcome == DungeonMatchOutcome.Stopped) {
+            // The search goes with the party: the members are told it stopped first (0x1e), as for a cancel.
+            BroadcastDungeonMatch(manager, removed.Kind, false);
+        }
+        manager.Dispose(notify);
 
+        return PartyError.none;
+    });
+
+    // A dungeon match merge or join: the members of from move into to, whose group the queue already counts them
+    // in. from goes without a Disband (its members load to in place of it); to's members are told of each mover.
+    public PartyError MoveMembers(PartyManager from, PartyManager to) => DungeonMatchStep(() => {
+        PartyMember[] movers = from.Party.Members.Values.ToArray();
+        if (to.Party.Members.Count + movers.Length > to.Party.Capacity) {
+            return PartyError.s_party_err_full_limit_player;
+        }
+        if (!parties.TryRemove(from.Party.Id, out _)) {
+            return PartyError.s_party_err_not_found;
+        }
+        DungeonMatch.Remove(from.Party.Id);
+        to.AddMoved(movers);
         return PartyError.none;
     });
 
@@ -117,12 +137,21 @@ public class PartyLookup : IDisposable {
                     int lobbyRoomId = CreateMatchedRoom(manager, result.RoomId, size);
                     if (lobbyRoomId != 0) {
                         manager.SetDungeon(manager.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true);
+                    } else {
+                        EndSearchParty(manager);
                     }
                 });
                 break;
             case DungeonMatchOutcome.Stopped:
                 BroadcastDungeonMatch(manager, result.Kind, false);
+                EndSearchParty(manager);
                 break;
+        }
+    });
+
+    private void EndSearchParty(PartyManager manager) => DungeonMatchStep(() => {
+        if (DungeonMatchRules.DisbandsWhenSearchEnds(manager.Party.Members.Count) && TryGet(manager.Party.Id, out _)) {
+            Disband(manager.Party.Id, notify: true);
         }
     });
 

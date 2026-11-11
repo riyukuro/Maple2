@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
@@ -374,5 +374,12 @@ public class DungeonMatchQueueTests {
         // The pick count, and 0 for no limit.
         Assert.That(DungeonMatchRules.MatchRooms(rooms, 60, 500, 2).Select(room => room.Id), Is.EqualTo(new[] { 3, 4 }));
         Assert.That(DungeonMatchRules.MatchRooms(rooms, 60, 500, 0).Count, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void APartyOfOneGoesWhenItsSearchEnds() {
+        Assert.That(DungeonMatchRules.DisbandsWhenSearchEnds(1), Is.True);
+        Assert.That(DungeonMatchRules.DisbandsWhenSearchEnds(0), Is.True);
+        Assert.That(DungeonMatchRules.DisbandsWhenSearchEnds(2), Is.False);
     }
 }

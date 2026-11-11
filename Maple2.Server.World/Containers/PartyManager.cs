@@ -31,10 +31,48 @@ public class PartyManager : IDisposable {
         pendingInvites = new ConcurrentDictionary<long, (string, DateTime)>();
     }
 
-    public void Dispose() {
+    public void Dispose() => Dispose(false);
+
+    public void Dispose(bool notify) {
         Broadcast(new PartyRequest {
-            Disband = new PartyRequest.Types.Disband(),
+            Disband = new PartyRequest.Types.Disband { Notify = notify },
         });
+    }
+
+    // Members moved in from another party (PartyLookup.MoveMembers): the members already here are told of each, the
+    // movers load this party in place of theirs. The dungeon match group already counts them.
+    public void AddMoved(IReadOnlyCollection<PartyMember> movers) {
+        PartyMember[] receivers = Party.Members.Values.ToArray();
+        var moved = new List<PartyMember>();
+        foreach (PartyMember mover in movers) {
+            var member = new PartyMember {
+                PartyId = Party.Id,
+                Info = mover.Info,
+                JoinTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            };
+            Send(new PartyRequest {
+                PartyId = Party.Id,
+                AddMember = new PartyRequest.Types.AddMember {
+                    CharacterId = member.CharacterId,
+                    JoinTime = member.JoinTime,
+                },
+            }, receivers);
+            if (Party.Members.TryAdd(member.CharacterId, member)) {
+                moved.Add(member);
+                if (Party.Search != null) {
+                    Party.Search.MemberCount++;
+                }
+            }
+        }
+        SendLoad(moved);
+    }
+
+    // The receivers load this party from World (a solo searcher's own party, or a move).
+    public void SendLoad(IEnumerable<PartyMember> receivers) {
+        Send(new PartyRequest {
+            PartyId = Party.Id,
+            LoadParty = new PartyRequest.Types.LoadParty(),
+        }, receivers);
     }
 
     public void Broadcast(PartyRequest request) {
