@@ -9,6 +9,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
@@ -301,6 +302,16 @@ public class DungeonManager {
                 return;
             }
             size = Party.Members.Count;
+        }
+
+        // The client's enter buttons: solo only without a minimum user count, party only up to the maximum.
+        switch (DungeonRoomRules.CanCreate(withParty, size, metadata.Limit.MinUserCount, metadata.Limit.MaxUserCount, GmCheck.IsGm(session.Player.AdminPermissions))) {
+            case DungeonRoomRules.CreateVerdict.UnderMinUserCount:
+                session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_UnderMinUserCount, metadata.Limit.MinUserCount));
+                return;
+            case DungeonRoomRules.CreateVerdict.OverMaxUserCount:
+                session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_OverMaxUserCount, metadata.Limit.MaxUserCount));
+                return;
         }
 
         try {

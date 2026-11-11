@@ -83,8 +83,8 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     private void HandleCreate(GameSession session, IByteReader packet) {
         int dungeonId = packet.ReadInt();
         bool withParty = packet.ReadBool();
-        int unknown = packet.ReadInt();
-        byte unknown2 = packet.ReadByte();
+        packet.ReadInt(); // portal id
+        packet.ReadBool(); // use the extra reward ticket
 
         session.Dungeon.CreateDungeonRoom(dungeonId, withParty);
     }
