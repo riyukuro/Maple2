@@ -61,8 +61,7 @@ public class TradeHandler : FieldPacketHandler {
                 HandleComplete(session);
                 return;
             case Command.Unknown14:
-                // Not handled: one long.
-                Logger.Debug("Trade {Command} from {CharacterId}: {Uid}", command, session.CharacterId, packet.ReadLong());
+                HandleBusy(session, packet);
                 return;
         }
     }
@@ -109,6 +108,16 @@ public class TradeHandler : FieldPacketHandler {
 
         session.Trade = target.Session.Trade;
         session.Trade.Acknowledge(session);
+    }
+
+    // Sent instead of Acknowledge when the client cannot show the request (another message box is open).
+    private static void HandleBusy(GameSession session, IByteReader packet) {
+        long characterId = packet.ReadLong();
+        if (session.Field == null || !session.Field.TryGetPlayerById(characterId, out FieldPlayer? requester)) {
+            return;
+        }
+
+        requester.Session.Trade?.Busy(session);
     }
 
     private static void HandleAccept(GameSession session, IByteReader packet) {

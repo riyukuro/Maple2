@@ -92,6 +92,20 @@ public class TradeManager : IDisposable {
         receiver.Session.Send(TradePacket.StartTrade(sender.Session.CharacterId));
     }
 
+    // Called by |receiver| when it cannot show the trade request.
+    // Ends the request at once with the notice |sender| would get when the request times out.
+    public void Busy(GameSession caller) {
+        lock (mutex) {
+            if (state != TradeState.Requested || !IsReceiver(caller)) {
+                return;
+            }
+
+            state = TradeState.Completed;
+            sender.Session.Send(TradePacket.Error(s_trade_error_timeout, name: receiver.Session.PlayerName));
+            sender.Session.Trade = null;
+        }
+    }
+
     public void Decline(GameSession caller) {
         if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
             return;
