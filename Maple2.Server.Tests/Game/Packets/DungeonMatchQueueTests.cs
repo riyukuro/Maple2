@@ -17,11 +17,9 @@ public class DungeonMatchQueueTests {
     private static readonly DungeonMatchRoom Change = new(300, 0, 4, true);
 
     [Test]
-    public void MaxUsersAsGetMaxUserCount() {
-        Assert.That(DungeonMatchRules.MaxUsers(Four, 1), Is.EqualTo(4));
-        Assert.That(DungeonMatchRules.MaxUsers(Change, 1), Is.EqualTo(2));
-        Assert.That(DungeonMatchRules.MaxUsers(Change, 3), Is.EqualTo(3));
-        Assert.That(DungeonMatchRules.MaxUsers(Change, 9), Is.EqualTo(4));
+    public void MaxUsersIsTheRowMaximum() {
+        Assert.That(DungeonMatchRules.MaxUsers(Four), Is.EqualTo(4));
+        Assert.That(DungeonMatchRules.MaxUsers(Change), Is.EqualTo(4));
     }
 
     [Test]
@@ -46,10 +44,14 @@ public class DungeonMatchQueueTests {
     }
 
     [Test]
-    public void ChangeMaxUserRoomFullAtTwo() {
+    public void ChangeMaxUserRoomFillsToItsMaxUserCount() {
         var queue = new DungeonMatchQueue();
         queue.Start(1, 1, [Change], 1);
-        Assert.That(queue.Join(1, [Change])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.Join(1, [Change])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(queue.Join(1, [Change])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(queue.Join(1, [Change])!.Value, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 300)));
+        // A party of the row maximum is matched at once.
+        Assert.That(queue.Start(2, 1, [Change], 4).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
 
     [Test]

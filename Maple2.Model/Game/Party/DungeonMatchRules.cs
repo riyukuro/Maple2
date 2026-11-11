@@ -12,28 +12,21 @@ public readonly record struct DungeonMatchRoom(int Id, int MinUsers, int MaxUser
 // The user's rules for Party 32/33 (11-11): a match fills up to the room's maximum user count; the leader can
 // stop early with the members found so far, at least the room's minimum.
 public static class DungeonMatchRules {
-    // DungeonRoom::GetMaxUserCount (dungeonroom.cpp): the maxUserCount of the row, or for an isChangeMaxUser
-    // room the user count clamped into [2, maxUserCount].
-    public static int MaxUsers(DungeonMatchRoom room, int users) {
-        if (!room.ChangeMaxUsers) {
-            return room.MaxUsers;
-        }
-        if (users < 2) {
-            return 2;
-        }
-        return users > room.MaxUsers ? room.MaxUsers : users;
-    }
+    // The most a match fills the room with (rule 1): the row's maxUserCount, also for an isChangeMaxUser room.
+    // DungeonRoom::GetMaxUserCount is not used here: for such a room it is the party size held at 2 or more, the
+    // size of a room already made, so a search would be full at 2.
+    public static int MaxUsers(DungeonMatchRoom room) => room.MaxUsers;
 
     // One more searcher fits in a group of this size.
-    public static bool HasSpace(DungeonMatchRoom room, int users) => users + 1 <= MaxUsers(room, users + 1);
+    public static bool HasSpace(DungeonMatchRoom room, int users) => users + 1 <= MaxUsers(room);
 
     // The group has reached the room's maximum.
-    public static bool IsFull(DungeonMatchRoom room, int users) => users > 0 && users >= MaxUsers(room, users);
+    public static bool IsFull(DungeonMatchRoom room, int users) => users > 0 && users >= MaxUsers(room);
 
     // The leader may stop the search and go with this many (rule 2): at least the minimum (1 when the row has
     // none), at most the maximum.
     public static bool CanStart(DungeonMatchRoom room, int users) =>
-        users >= Math.Max(1, room.MinUsers) && users <= MaxUsers(room, users);
+        users >= Math.Max(1, room.MinUsers) && users <= MaxUsers(room);
 
     // The match kind of a room's group type (clubcommon.cpp FUN_1402178b0, the kind Party 34 and the room dialog's
     // IsMatchSearching use): normal and raid 1, worldBossDungeon 2, event 3, lapenta 4; 0 for a room no search runs for.

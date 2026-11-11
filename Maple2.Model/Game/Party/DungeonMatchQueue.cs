@@ -52,7 +52,7 @@ public sealed class DungeonMatchQueue {
                 return new DungeonMatchResult(DungeonMatchOutcome.AlreadySearching, partyId, groups[partyId].Kind);
             }
             List<DungeonMatchRoom> usable = rooms
-                .Where(room => users <= DungeonMatchRules.MaxUsers(room, users))
+                .Where(room => users <= DungeonMatchRules.MaxUsers(room))
                 .DistinctBy(room => room.Id)
                 .ToList();
             if (usable.Count == 0 || users <= 0) {
@@ -145,7 +145,7 @@ public sealed class DungeonMatchQueue {
                 return new DungeonMatchResult(DungeonMatchOutcome.NotSearching, partyId);
             }
             group.Users = users;
-            group.Rooms = group.Rooms.Where(room => users <= DungeonMatchRules.MaxUsers(room, users)).ToList();
+            group.Rooms = group.Rooms.Where(room => users <= DungeonMatchRules.MaxUsers(room)).ToList();
             if (users <= 0 || group.Rooms.Count == 0) {
                 groups.Remove(partyId);
                 return new DungeonMatchResult(DungeonMatchOutcome.Stopped, partyId, group.Kind);
