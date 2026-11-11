@@ -3,6 +3,7 @@ using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -25,7 +26,7 @@ public class PartyHandler : FieldPacketHandler {
         SetLeader = 17,
         SearchPartyJoin = 23,
         SummonParty = 29,
-        Unknown = 32,
+        DungeonMatch = 32,
         PartySearch = 33,
         CancelPartySearch = 34,
         VoteKick = 45,
@@ -67,8 +68,8 @@ public class PartyHandler : FieldPacketHandler {
             case Command.SummonParty:
                 HandleSummonParty(session);
                 return;
-            case Command.Unknown:
-                HandleUnknown(session, packet);
+            case Command.DungeonMatch:
+                HandleDungeonMatch(session, packet);
                 return;
             case Command.PartySearch:
                 HandlePartySearch(session, packet);
@@ -90,7 +91,8 @@ public class PartyHandler : FieldPacketHandler {
                 // UIMessenger::FUN_141a17bc0 (uimessenger.cpp:2502, join as a dungeon helper) and
                 // UIMessenger::OnDungeonMemberConfirm (uimessenger.cpp:2520, join as a member): party id and
                 // dungeon room id from the confirm box of a recruiting link in the chat. The link comes from the
-                // recruiting notice, which the server never sends, so no party is recruiting: answered with
+                // recruiting notice DungeonHelp 0x0109 (UIMessengerBrowser::FUN_141a23060), which the server
+                // never sends: the client does not settle who gets it. No party is recruiting: answered with
                 // the client's "party not found" text.
                 Logger.Debug("Party {Command} from {CharacterId}: party {PartyId}, room {RoomId}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
                 session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
@@ -273,19 +275,32 @@ public class PartyHandler : FieldPacketHandler {
         session.Currency.Meret -= price;
     }
 
-    private void HandleUnknown(GameSession session, IByteReader packet) {
-        // TODO: Implement
-        byte unk1 = packet.ReadByte();
+    // Party 32: the dungeon match search (PartyDungeonMatch.ReadSearch). There is no matchmaker: the client
+    // and the data do not say when a group forms, from how many players, for which of the picked rooms or how
+    // long the confirm box waits. Nothing is answered; the client enters its searching state only on the
+    // register reply (0x1e), so its find button stays as it was.
+    private void HandleDungeonMatch(GameSession session, IByteReader packet) {
+        PartyDungeonMatchRequest? request = PartyDungeonMatch.ReadSearch(packet);
+        if (request == null) {
+            return;
+        }
+        Logger.Debug("Party dungeon match from {CharacterId}: kind {Kind}, {Count} rooms, rewarded {Rewarded}",
+            session.CharacterId, request.Value.Kind, request.Value.RoomIds.Count, request.Value.Rewarded);
     }
 
+    // Party 33: the party search for one dungeon room (PartyDungeonMatch.ReadPartySearch). It registers under
+    // the same match kind as Party 32 and waits for the same matchmaker; not answered, as Party 32.
     private void HandlePartySearch(GameSession session, IByteReader packet) {
-        // TODO: Implement
-        int dungeonId = packet.ReadInt();
+        int? roomId = PartyDungeonMatch.ReadPartySearch(packet);
+        if (roomId == null) {
+            return;
+        }
+        Logger.Debug("Party search for room {RoomId} from {CharacterId}", roomId.Value, session.CharacterId);
     }
 
+    // Party 34: cancel the search; the byte is the match kind. Nothing is searching, so nothing to cancel.
     private void HandleCancelPartySearch(GameSession session, IByteReader packet) {
-        // TODO: Implement
-        byte unk1 = packet.ReadByte();
+        byte kind = packet.ReadByte();
     }
 
     private void HandleVoteKick(GameSession session, IByteReader packet) {
