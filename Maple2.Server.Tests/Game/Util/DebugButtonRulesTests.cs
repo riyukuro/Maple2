@@ -42,4 +42,23 @@ public class DebugButtonRulesTests {
         Assert.That(DebugButtonRules.FailCharges(false, 100, 1), Is.EqualTo(0));
         Assert.That(DebugButtonRules.FailCharges(true, 100, 0), Is.EqualTo(0));
     }
+
+    [TestCase(0, true)]
+    [TestCase(14, true)]
+    [TestCase(15, false)]
+    [TestCase(-1, false)]
+    public void ForceEnchantStopsAtTheLastStep(int enchants, bool expected) {
+        Assert.That(DebugButtonRules.ForceEnchantAllowed(enchants), Is.EqualTo(expected));
+    }
+
+    // requested 0 = top up to the need, a number = that many
+    [TestCase(0, 20, 5, 15)]
+    [TestCase(0, 20, 20, 0)]
+    [TestCase(0, 20, 50, 0)]
+    [TestCase(10, 20, 50, 10)]
+    [TestCase(10, 0, 0, 0)]
+    [TestCase(-1, 20, 0, 0)]
+    public void FillAmountOfAnIngredient(int requested, int need, int held, int expected) {
+        Assert.That(DebugButtonRules.FillAmount(requested, need, held), Is.EqualTo(expected));
+    }
 }

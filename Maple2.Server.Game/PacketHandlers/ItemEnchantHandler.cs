@@ -59,7 +59,15 @@ public class ItemEnchantHandler : FieldPacketHandler {
                 HandleSimulateEnchant(session, packet);
                 return;
             case Command.DebugForceEnchant:
+                // UIItemEnchantDialog "onForceEnchant": no body.
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
+
+                session.ItemEnchant.DebugForceEnchant();
+                return;
             case Command.Debug19:
+                // The client has a sender for 19 (no body) that nothing calls.
                 if (!GmCheck.Allow(session, OpCode, (int) command)) {
                     return;
                 }
@@ -159,7 +167,7 @@ public class ItemEnchantHandler : FieldPacketHandler {
     private void HandleDebugFillIngredient(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         int amount = packet.ReadInt();
-        Logger.Debug("Enchant debug fill ingredient {ItemUid} {Amount} from {CharacterId} not implemented", itemUid, amount, session.CharacterId);
+        session.ItemEnchant.DebugFillIngredients(itemUid, amount);
     }
 
     // GM buttons m_debugBtnFillFailStack (17) and m_debugBtnUseAllFailStack (18).

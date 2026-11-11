@@ -25,6 +25,25 @@ public static class DebugButtonRules {
         return counter >= 0 && goal > 0;
     }
 
+    // RequestItemEnchant 15 ("onForceEnchant"): the staged enchant succeeds; an item at the last step has none left.
+    public static bool ForceEnchantAllowed(int enchants) {
+        return enchants is >= 0 and < 15;
+    }
+
+    // RequestItemEnchant 16: m_debugBtnFillIngredient sends 0, m_debugBtnFillIngredientUnit sends 10.
+    // The server's reading of the names: 0 tops the bag up to what the staged enchant needs, a number gives
+    // that many of each ingredient.
+    public static int FillAmount(int requested, int need, int held) {
+        if (requested < 0 || need <= 0) {
+            return 0;
+        }
+        return requested > 0 ? requested : Math.Max(0, need - Math.Max(0, held));
+    }
+
+    // Enchant materials (onyx, chaos onyx, crystal fragment) sit in this item id range.
+    public const int MaterialIdFirst = 40100001;
+    public const int MaterialIdLast = 40100040;
+
     // RequestItemEnchant 17 (m_debugBtnFillFailStack) and 18 (m_debugBtnUseAllFailStack): the item's stored
     // fail charges become enough for a full charge rate, or none.
     public static int FailCharges(bool fill, int maxRate, int chargeRate) {

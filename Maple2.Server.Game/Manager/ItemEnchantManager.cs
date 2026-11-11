@@ -228,7 +228,46 @@ public class ItemEnchantManager {
         return true;
     }
 
-    public bool Enchant(long itemUid) {
+    // GM debug button (RequestItemEnchant 15, no body): the staged enchant succeeds at once, nothing is consumed.
+    public bool DebugForceEnchant() {
+        if (upgradeItem == null || !Util.DebugButtonRules.ForceEnchantAllowed(upgradeItem.Enchant?.Enchants ?? 0)) {
+            return false;
+        }
+
+        return Enchant(upgradeItem.Uid, force: true);
+    }
+
+    // GM debug buttons (RequestItemEnchant 16): the ingredients of the staged enchant are put in the bag.
+    public bool DebugFillIngredients(long itemUid, int requested) {
+        if (upgradeItem == null || upgradeItem.Uid != itemUid) {
+            return false;
+        }
+
+        foreach (IngredientInfo ingredient in catalysts) {
+            int held = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ingredient.Tag).Sum(item => item.Amount);
+            int amount = Util.DebugButtonRules.FillAmount(requested, ingredient.Amount, held);
+            if (amount <= 0) {
+                continue;
+            }
+
+            // The enchant cost names a tag, not an item: take the first material item that carries the tag.
+            Item? give = null;
+            for (int id = Util.DebugButtonRules.MaterialIdFirst; id <= Util.DebugButtonRules.MaterialIdLast && give == null; id++) {
+                if (session.ItemMetadata.TryGet(id, out ItemMetadata? metadata) && metadata.Property.Tag == ingredient.Tag) {
+                    give = session.Field?.ItemDrop.CreateItem(id, amount: amount);
+                }
+            }
+            if (give == null) {
+                logger.Debug("Enchant debug fill: no material item with tag {Tag}", ingredient.Tag);
+                continue;
+            }
+
+            session.Item.Inventory.Add(give, true);
+        }
+        return true;
+    }
+
+    public bool Enchant(long itemUid, bool force = false) {
         Item? item = session.Item.GetGear(itemUid);
         if (item == null || upgradeItem == null || upgradeItem.Uid != item.Uid) {
             return false;
@@ -236,12 +275,12 @@ public class ItemEnchantManager {
 
         upgradeItem.Enchant ??= new ItemEnchant();
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
-        if (fodderWeight < RequireFodder[enchants]) {
+        if (!force && fodderWeight < RequireFodder[enchants]) {
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.not_enough_fodder);
             return false;
         }
 
-        if (!ConsumeMaterial()) {
+        if (!force && !ConsumeMaterial()) {
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_lack_ingredient);
             return false;
         }
@@ -263,7 +302,7 @@ public class ItemEnchantManager {
             case EnchantType.Ophelia:
                 float roll = Random.Shared.NextSingle() * MaxRate;
                 int totalRate = rates.Total;
-                enchantResult = roll < totalRate ? EnchantResult.Success : EnchantResult.Fail;
+                enchantResult = force || roll < totalRate ? EnchantResult.Success : EnchantResult.Fail;
                 logger.Debug("Enchant result: {Roll} / {Total} = {Result}", roll, totalRate, enchantResult.ToString());
 
                 if (enchantResult == EnchantResult.Success) {
@@ -280,7 +319,7 @@ public class ItemEnchantManager {
 
                 return true;
             case EnchantType.Peachy:
-                upgradeItem.Enchant.EnchantExp += GainExp[enchants];
+                upgradeItem.Enchant.EnchantExp += force ? MaxExp : GainExp[enchants];
                 if (upgradeItem.Enchant.EnchantExp >= MaxExp) {
                     upgradeItem.Enchant.EnchantExp = 0;
                     ApplyEnchantStats();

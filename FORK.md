@@ -138,12 +138,12 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 50 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 47 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
 | EventReward | 12 | Guild | 6 | Wedding | 2 |
-| RequestItemEnchant | 6 | RequestCube | 6 | HomeAction | 2 |
+| RequestItemEnchant | 3 | RequestCube | 6 | HomeAction | 2 |
 | Quest | 7 | RoomDungeon | 4 | Party | 2 |
 
 These systems have one unhandled sub-type each: FurnishingStorage, InteractObject, Ugc.
@@ -156,7 +156,7 @@ Narrowed, with the reason:
 - Ugc 12 (the path of an uploaded wedding profile picture): the upload itself (kind 10) is not accepted and a marriage stores one profile text where the client keeps one per partner, so the request never arrives in normal play and is only logged.
 - Revival 3 (revive a dead summon): only logged. It is not counted in the table above.
 - Quest 15 (sky fortress mission), 17 (epic quest restart), 19 (re-enter a quest's hidden field), 28 (find a player for a quest) and 33 to 35 (alliance quest ticket, accept all, complete all): the server does not load the data or run the system behind them (no sky fortress missions, no restart event, no re-entry flag in the quest data, no alliance quest accept).
-- RequestItemEnchant 9 (refund), 13 and 14 (enchant simulation) and the GM debug buttons 15, 16 and 19: read and logged only. The debug ones need a GM account. The debug buttons 17 and 18 are handled for a GM account: the item's stored fail charges are filled to a full charge rate or emptied.
+- RequestItemEnchant 9 (refund), 13 and 14 (enchant simulation): read and logged only. The GM debug buttons 15 to 18 are handled for a GM account. 15 (force enchant): the enchant of the item in the window succeeds at once and nothing is consumed. 16 (fill ingredients): the materials of that enchant are put in the bag; the first button tops the bag up to what the enchant needs, the second gives 10 of each (the server's reading of the two button names). 17 and 18: the item's stored fail charges are filled to a full charge rate or emptied. 19 has a sender in the client that nothing calls, so it is not counted; it is logged for a GM account.
 - Party 39 and 43 (join a dungeon party from a chat link): the link is built from a recruiting notice that the server never sends. Party 32 to 34 (dungeon match queue) have no matchmaker behind them.
 - Wedding 9 (the answer to the divorce message box) and 37 (the item of a wedding skill): the server has no divorce flow and does not load the wedding skill table. Both are read and logged. Wedding 34 (the couple message) is handled: the message is saved and shown to both partners.
 - RoomDungeon 8 (buy an extra reward count with a coupon item): the dungeon data the server loads has no coupon item or cost. 15 and 16 (ask for helpers or members): they need the recruiting notice, which the server never sends. 21 (reset the united reward, after a confirm box): what the reset changes is not settled from the client. All are read and logged. 17 (expert mode) and 24 (favourite mark), counted here before, are handled. The four lobby buttons of the dungeon search window (4, 12, 13, 14) belong to the match queue and are not counted.
