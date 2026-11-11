@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
+using Serilog;
 
 namespace Maple2.Server.World.Containers;
 
@@ -21,9 +22,10 @@ public class PartyLookup : IDisposable {
     // The Party 32/33 searches. Every matchmaker step (a search, a cancel, a party join, leave, kick or disband)
     // runs as a DungeonMatchStep under DungeonMatchLock, so a join and the room made for the group it fills do not
     // interleave. The channel calls a step makes (broadcasts, the room) are collected and made after the lock is
-    // released, so a slow channel does not hold up every other step.
+    // released, so a slow channel does not hold up every other step; they are made one at a time in step order.
     public DungeonMatchQueue DungeonMatch { get; } = new();
     private readonly LockedSteps steps = new();
+    private readonly ILogger logger = Log.ForContext<PartyLookup>();
     private int nextPartyId = 1;
 
     public PartyLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup, PartySearchLookup partySearchLookup, ServerTableMetadataStorage serverTableMetadata) {
@@ -33,6 +35,7 @@ public class PartyLookup : IDisposable {
         this.serverTableMetadata = serverTableMetadata;
 
         parties = new ConcurrentDictionary<int, PartyManager>();
+        steps.OnEffectError = ex => logger.Error(ex, "Dungeon match channel call failed");
     }
 
     public void Dispose() {

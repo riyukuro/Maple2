@@ -1,37 +1,38 @@
 namespace Maple2.Model.Game.Party;
 
 // Steps under one lock whose side effects run after it is released. A step runs its body under the lock; the
-// actions it defers run once the outermost step on that thread has released the lock, in the order deferred. A step
-// inside a step only takes the lock again. Outside a step a deferred action runs at once.
+// actions it defers go into one queue in step order (a step's actions are queued while it holds the lock, so a
+// later step's never come before an earlier one's). Once the outermost step on a thread has released the lock it
+// runs the queue, unless another thread is running it already: one thread at a time runs the effects, in order
+// (rv42 MINOR 3), so a step can return before its effects ran. The effects run also when the body throws
+// (rv42 MINOR 4); an effect that throws is passed to OnEffectError and the next one runs. A step inside a step
+// only takes the lock again. Outside a step a deferred action runs at once.
 public sealed class LockedSteps {
     private readonly object mutex = new();
-    [ThreadStatic] private static List<Action>? deferred;
+    private readonly object queueLock = new();
+    private readonly Queue<Action> pending = new();
+    private bool draining;
+    [ThreadStatic] private static LockedSteps? current;
+
+    // Told of an effect that threw (World logs it).
+    public Action<Exception>? OnEffectError { get; set; }
 
     public T Run<T>(Func<T> body) {
-        List<Action>? effects = null;
-        T result;
-        lock (mutex) {
-            bool outer = deferred == null;
-            if (outer) {
-                deferred = [];
-            }
-            try {
-                result = body();
-            } finally {
-                if (outer) {
-                    effects = deferred;
-                    deferred = null;
+        try {
+            lock (mutex) {
+                LockedSteps? previous = current;
+                current = this;
+                try {
+                    return body();
+                } finally {
+                    current = previous;
                 }
             }
-        }
-        if (effects != null) {
-            foreach (Action effect in effects) {
-                try {
-                    effect();
-                } catch (Exception) { }
+        } finally {
+            if (!Monitor.IsEntered(mutex)) {
+                Drain();
             }
         }
-        return result;
     }
 
     public void Run(Action body) => Run(() => {
@@ -40,10 +41,38 @@ public sealed class LockedSteps {
     });
 
     public static void Defer(Action effect) {
-        if (deferred != null) {
-            deferred.Add(effect);
-        } else {
+        LockedSteps? steps = current;
+        if (steps == null) {
             effect();
+            return;
+        }
+        lock (steps.queueLock) {
+            steps.pending.Enqueue(effect);
+        }
+    }
+
+    private void Drain() {
+        lock (queueLock) {
+            if (draining) {
+                return;
+            }
+            draining = true;
+        }
+        while (true) {
+            Action effect;
+            lock (queueLock) {
+                if (!pending.TryDequeue(out effect!)) {
+                    draining = false;
+                    return;
+                }
+            }
+            try {
+                effect();
+            } catch (Exception ex) {
+                try {
+                    OnEffectError?.Invoke(ex);
+                } catch (Exception) { }
+            }
         }
     }
 
