@@ -109,7 +109,7 @@ public class LoginSession : Core.Network.Session {
         var entries = new List<(Character, IDictionary<ItemGroup, List<Item>>)>();
         foreach (Character character in characters) {
             IDictionary<ItemGroup, List<Item>> equips =
-                db.GetItemGroups(character.Id, ItemGroup.Gear, ItemGroup.Outfit, ItemGroup.Badge);
+                db.GetItemGroups(character.Id, ItemGroup.Gear, ItemGroup.Outfit, ItemGroup.Outfit2, ItemGroup.Badge);
             entries.Add((character, equips));
         }
 

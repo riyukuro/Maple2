@@ -5,6 +5,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -49,10 +50,18 @@ public class WardrobeHandler : FieldPacketHandler {
             return;
         }
 
+        // The type is the client's equip layer: 0 gear, 1 outfit, 2 the second outfit tab.
+        if (type is < EquipKind.Gear or > EquipKind.Outfit2) {
+            return;
+        }
+
         wardrobe.Type = type;
         wardrobe.Equips.Clear();
-        bool isOutfit = type != 0;
-        foreach ((EquipSlot slot, Item equip) in isOutfit ? session.Item.Equips.Outfit : session.Item.Equips.Gear) {
+        foreach ((EquipSlot slot, Item equip) in type switch {
+            EquipKind.Outfit2 => session.Item.Equips.Outfit2,
+            EquipKind.Outfit => session.Item.Equips.Outfit,
+            _ => session.Item.Equips.Gear,
+        }) {
             switch (slot) {
                 // Weapons
                 case EquipSlot.LH:
@@ -81,14 +90,17 @@ public class WardrobeHandler : FieldPacketHandler {
 
     private void HandleEquip(GameSession session, IByteReader packet) {
         int index = packet.ReadInt();
-        bool isOutfit = packet.ReadInt() != 0;
+        int layer = packet.ReadInt();
+        if (layer is < EquipKind.Gear or > EquipKind.Outfit2) {
+            return;
+        }
 
         if (!session.Config.TryGetWardrobe(index, out Wardrobe? wardrobe)) {
             return;
         }
 
         foreach (Wardrobe.Equip equip in wardrobe.Equips.Values) {
-            session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, isOutfit);
+            session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, (byte) layer);
         }
     }
 

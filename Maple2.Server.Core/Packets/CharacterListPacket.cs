@@ -131,7 +131,19 @@ public static class CharacterListPacket {
             pWriter.WriteBadge(badge);
         }
 
-        pWriter.WriteByte(); // Outfit2
+        // The second outfit tab (CCharacterInfo::Read): bool, then the tab's period and its items.
+        equips.TryGetValue(ItemGroup.Outfit2, out List<Item>? outfits2);
+        outfits2 ??= [];
+        bool hasSkinTab = character.SkinTabStart != 0 || character.SkinTabEnd != 0 || outfits2.Count > 0;
+        pWriter.WriteBool(hasSkinTab);
+        if (hasSkinTab) {
+            pWriter.WriteLong(character.SkinTabStart);
+            pWriter.WriteLong(character.SkinTabEnd);
+            pWriter.WriteByte((byte) outfits2.Count);
+            foreach (Item outfit in outfits2) {
+                pWriter.WriteEquip(outfit);
+            }
+        }
     }
 
     private static void WriteCharacter(this IByteWriter writer, Account account, Character character) {
