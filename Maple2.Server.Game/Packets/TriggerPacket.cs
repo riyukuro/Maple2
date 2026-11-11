@@ -394,6 +394,7 @@ public static class TriggerPacket {
         pWriter.WriteByte(1);                          // wins
         pWriter.WriteInt(100);                         // points
 
+        pWriter.WriteInt(); // read after the second player's block
 
         return pWriter;
     }
