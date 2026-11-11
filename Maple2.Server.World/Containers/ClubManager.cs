@@ -236,6 +236,22 @@ public class ClubManager : IDisposable {
         return ClubError.none;
     }
 
+    // The game server tested the buff against table/clubbuff.xml and the caller the leader.
+    public void SetBuff(int buffId, int buffLevel) {
+        Club.BuffId = buffId;
+        Club.BuffLevel = buffLevel;
+        using (GameStorage.Request db = GameStorage.Context()) {
+            db.SaveClub(Club);
+        }
+        Broadcast(new ClubRequest {
+            UpdateBuff = new ClubRequest.Types.UpdateBuff {
+                BuffId = buffId,
+                BuffLevel = buffLevel,
+            },
+            ClubId = Club.Id,
+        });
+    }
+
     public ClubError Rename(string newName) {
         if (string.Equals(Club.Name, newName, StringComparison.CurrentCultureIgnoreCase)) {
             return ClubError.s_club_err_same_club_name;

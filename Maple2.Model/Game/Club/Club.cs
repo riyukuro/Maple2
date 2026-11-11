@@ -15,6 +15,7 @@ public class Club : IByteSerializable {
     public long CreationTime;
     public ClubState State = ClubState.Staged;
     public int BuffId;
+    public int BuffLevel; // not stored: the table/clubbuff.xml row of BuffId gives it
     public long NameChangeCooldown;
 
     public ConcurrentDictionary<long, ClubMember> Members;
@@ -42,8 +43,8 @@ public class Club : IByteSerializable {
         writer.WriteUnicodeString(Leader.Info.Name);
         writer.WriteLong(CreationTime);
         writer.Write<ClubState>(State);
-        writer.WriteInt();
-        writer.WriteInt();
+        writer.WriteInt(BuffId);
+        writer.WriteInt(BuffLevel);
         writer.WriteLong(NameChangeCooldown);
     }
 }

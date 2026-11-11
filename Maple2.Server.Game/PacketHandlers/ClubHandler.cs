@@ -235,10 +235,34 @@ public class ClubHandler : FieldPacketHandler {
         }
     }
 
+    // The leader picks the club buff in the club window (client CClubCli, clubcli.cpp:496-520). The buff
+    // is stored and shown to the members; nothing applies its effect yet.
     private void HandleBuff(GameSession session, IByteReader packet) {
-        long clubId = packet.ReadLong();
-        int buffId = packet.ReadInt();
-        int buffLevel = packet.ReadInt();
+        (long clubId, int buffId, int buffLevel) = ClubRules.ReadBuff(packet);
+
+        if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
+            return;
+        }
+        if (manager.Club.LeaderId != session.CharacterId) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_no_master));
+            return;
+        }
+        if (!ClubRules.BuffAllowed(ClubManager.BuffRows(session), buffId, buffLevel, manager.Club.BuffId, manager.Club.BuffLevel)) {
+            return;
+        }
+
+        ClubResponse response = World.Club(new ClubRequest {
+            RequestorId = session.CharacterId,
+            Buff = new ClubRequest.Types.Buff {
+                ClubId = clubId,
+                BuffId = buffId,
+                BuffLevel = buffLevel,
+            },
+        });
+
+        if (response.Error != 0) {
+            session.Send(ClubPacket.Error((ClubError) response.Error));
+        }
     }
 
     // The leader hands the club to the member picked in the member list (client CClubCli::SendClubMode12).

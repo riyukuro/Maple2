@@ -37,6 +37,8 @@ public partial class ChannelService {
                 return Task.FromResult(UpdateLeader(request.ClubId, request.ReceiverIds, request.UpdateLeader));
             case ClubRequest.ClubOneofCase.Rename:
                 return Task.FromResult(Rename(request.ClubId, request.ReceiverIds, request.Rename));
+            case ClubRequest.ClubOneofCase.UpdateBuff:
+                return Task.FromResult(UpdateBuff(request.ClubId, request.ReceiverIds, request.UpdateBuff));
             default:
                 return Task.FromResult(new ClubResponse { Error = (int) ClubError.none });
         }
@@ -229,6 +231,22 @@ public partial class ChannelService {
             }
 
             manager.Rename(rename.Name, rename.ChangedTime);
+        }
+
+        return new ClubResponse();
+    }
+
+    private ClubResponse UpdateBuff(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.UpdateBuff update) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+            }
+
+            if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
+                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+            }
+
+            manager.UpdateBuff(update.BuffId, update.BuffLevel);
         }
 
         return new ClubResponse();

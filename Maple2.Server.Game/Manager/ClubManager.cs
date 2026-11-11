@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Club;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -66,6 +67,10 @@ public class ClubManager : IDisposable {
         session.Send(ClubPacket.Update(Club));
     }
 
+    public static IEnumerable<(int EffectId, int EffectLevel)> BuffRows(GameSession session) {
+        return session.TableMetadata.ClubBuffTable.Entries.Values.Select(entry => (entry.AdditionalEffectId, entry.AdditionalEffectLevel));
+    }
+
     private static Club? SetClub(GameSession session, ClubInfo info) {
         List<ClubMember> clubMembers = info.Members.Select(member => {
             if (!session.PlayerInfo.GetOrFetch(member.CharacterId, out PlayerInfo? playerInfo)) {
@@ -87,9 +92,12 @@ public class ClubManager : IDisposable {
             return null;
         }
 
+        (int buffId, int buffLevel) = ClubRules.StoredBuff(BuffRows(session), info.BuffId);
         var club = new Club(info.Id, info.Name, leader) {
             CreationTime = info.CreationTime,
             State = (ClubState) info.State,
+            BuffId = buffId,
+            BuffLevel = buffLevel,
         };
 
         foreach (ClubMember member in clubMembers) {
@@ -116,6 +124,12 @@ public class ClubManager : IDisposable {
         Club.Name = newName;
         Club.NameChangeCooldown = changedTime;
         session.Send(ClubPacket.Rename(Id, newName, changedTime));
+    }
+
+    public void UpdateBuff(int buffId, int buffLevel) {
+        Club.BuffId = buffId;
+        Club.BuffLevel = buffLevel;
+        session.Send(ClubPacket.ChangeBuff(Id, buffId, buffLevel));
     }
 
     public void Disband() {

@@ -15,6 +15,33 @@ public static class ClubRules {
         return (clubId, clubName, inviter, invitee, accept);
     }
 
+    // Mode 13: i64 club id, i32 additional effect id, i32 effect level (clubcli.cpp:514-519).
+    public static (long ClubId, int BuffId, int BuffLevel) ReadBuff(IByteReader packet) {
+        long clubId = packet.ReadLong();
+        int buffId = packet.ReadInt();
+        int buffLevel = packet.ReadInt();
+        return (clubId, buffId, buffLevel);
+    }
+
+    // The club window sends the effect and level of a table/clubbuff.xml row, and the client sends nothing
+    // when the club has that buff already (clubcli.cpp:506-513).
+    public static bool BuffAllowed(IEnumerable<(int EffectId, int EffectLevel)> rows, int buffId, int buffLevel, int currentId, int currentLevel) {
+        if (buffId == currentId && buffLevel == currentLevel) {
+            return false;
+        }
+        return rows.Any(row => row.EffectId == buffId && row.EffectLevel == buffLevel);
+    }
+
+    // The level of a stored buff: the table row with that effect, or no buff when the table has none.
+    public static (int BuffId, int BuffLevel) StoredBuff(IEnumerable<(int EffectId, int EffectLevel)> rows, int buffId) {
+        foreach ((int effectId, int effectLevel) in rows) {
+            if (effectId == buffId && buffId != 0) {
+                return (effectId, effectLevel);
+            }
+        }
+        return (0, 0);
+    }
+
     // Only joining needs a free club slot. The client sends a decline with no test of its own
     // (clubcli.cpp:1383-1392), and the decline has to reach the world server to end the invite.
     public static bool ReplyBlockedByLimit(bool accept, int clubCount, int maxClubs) {

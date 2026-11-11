@@ -62,6 +62,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_EXTRACTION, Table = ParseItemExtraction() };
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
+        yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
         yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
         yield return new TableMetadata { Name = TableNames.JOB, Table = ParseJobTable() };
         yield return new TableMetadata { Name = TableNames.MAGIC_PATH, Table = ParseMagicPath() };
@@ -261,6 +262,30 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return results;
 
         int ParseIntOr(string value) => string.IsNullOrEmpty(value) ? 0 : int.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML. The client reads every row and
+    // tests no feature or locale (clubcommon.cpp:1419-1432).
+    private ClubBuffTable ParseClubBuff() {
+        return new ClubBuffTable(ReadClubBuffs(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/clubbuff.xml"))));
+    }
+
+    public static Dictionary<int, ClubBuffTable.Entry> ReadClubBuffs(XmlDocument document) {
+        var results = new Dictionary<int, ClubBuffTable.Entry>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/clubBuff");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            // The effect id is stored with a space after it.
+            int id = int.Parse(node.GetAttribute("id").Trim(), CultureInfo.InvariantCulture);
+            results[id] = new ClubBuffTable.Entry(
+                Id: id,
+                AdditionalEffectId: int.Parse(node.GetAttribute("additionalEffectId").Trim(), CultureInfo.InvariantCulture),
+                AdditionalEffectLevel: int.Parse(node.GetAttribute("additionalEffectLevel").Trim(), CultureInfo.InvariantCulture));
+        }
+        return results;
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client keeps the rows whose

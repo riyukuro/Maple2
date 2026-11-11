@@ -212,6 +212,18 @@ public static class ClubPacket {
         return pWriter;
     }
 
+    // Mode 22: i64 club id, then i32 additional effect id and i32 level (clubcli.cpp:338-345, 1282-1290).
+    // The club's row and the open club window show the buff.
+    public static ByteWriter ChangeBuff(long clubId, int buffId, int buffLevel) {
+        var pWriter = Packet.Of(SendOp.Club);
+        pWriter.Write<Command>(Command.ChangeBuff);
+        pWriter.WriteLong(clubId);
+        pWriter.WriteInt(buffId);
+        pWriter.WriteInt(buffLevel);
+
+        return pWriter;
+    }
+
     public static ByteWriter UpdateMemberMap(long clubId, string memberName, int mapId) {
         var pWriter = Packet.Of(SendOp.Club);
         pWriter.Write<Command>(Command.UpdateMemberMap);
