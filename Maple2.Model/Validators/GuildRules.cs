@@ -247,6 +247,25 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must
+    // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
+    // member's meso pays its cost, and the member does not have the effect already.
+    public static GuildError CheckUsePersonalSkill(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect) {
+        if (row == null || skillId <= 10000) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (row.RequireLevel > guildLevel) {
+            return GuildError.s_guild_err_not_enough_guild_level;
+        }
+        if (row.Cost < 0 || row.Cost > meso) {
+            return GuildError.s_guild_err_no_money;
+        }
+        if (hasEffect) {
+            return GuildError.s_guild_err_cannot_use_skill;
+        }
+        return GuildError.none;
+    }
+
     // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds. A
     // skill that was never used has the time 0.
     public static long SkillRemainingSeconds(GuildTable.Buff row, long useTime, long now) {

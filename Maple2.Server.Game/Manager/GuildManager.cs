@@ -295,6 +295,36 @@ public class GuildManager : IDisposable {
         return false;
     }
 
+    // Guild 91: a member buys a personal guild skill with meso and gets its effect for the row's duration.
+    // The skill's level is the guild's. Nothing of the guild changes, so World is not asked.
+    public GuildError UsePersonalBuff(int buffId) {
+        FieldManager? field = session.Field;
+        if (Guild == null || field == null) {
+            return GuildError.s_guild_err_null_guild;
+        }
+
+        GuildTable.Buff? row = null;
+        foreach (GuildBuff buff in Guild.Buffs) {
+            if (buff.Id == buffId && session.TableMetadata.GuildTable.Buffs.TryGetValue(buffId, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)) {
+                levels.TryGetValue((short) buff.Level, out row);
+                break;
+            }
+        }
+
+        UpdateProperties();
+        bool hasEffect = row != null && session.Player.Buffs.HasBuff(row.Id, row.Level);
+        GuildError error = GuildRules.CheckUsePersonalSkill(buffId, row, Properties.Level, session.Currency.Meso, hasEffect);
+        if (error != GuildError.none) {
+            return error;
+        }
+
+        session.Currency.Meso -= row!.Cost;
+        session.Player.Buffs.AddBuff(session.Player, session.Player, row.Id, row.Level, field.FieldTick,
+            durationMs: (int) Math.Min(row.Duration * 60000L, int.MaxValue));
+        session.Send(GuildPacket.UsePersonalBuff(buffId));
+        return GuildError.none;
+    }
+
     // The effects of the guild skills that are running, for the time they have left; called when the member
     // enters a field, so that a member who logs in, joins or changes field after the use has them too.
     public void LoadSkillBuffs() {

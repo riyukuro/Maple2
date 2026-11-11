@@ -151,6 +151,19 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.CheckUseSkill(true, 1, cooling, 3, 500, 0, 1700000000), Is.EqualTo(GuildError.none), "never used");
     }
 
+    [Test]
+    public void UsePersonalSkill_Rules() {
+        var row = new GuildTable.Buff(Id: 1, Level: 1, RequireLevel: 3, Cost: 500, UpgradeCost: 0, Duration: 60);
+
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 3, 500, false), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, null, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_unknown));
+        Assert.That(GuildRules.CheckUsePersonalSkill(10000, row, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_unknown), "a guild skill");
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 2, 500, false), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 3, 499, false), Is.EqualTo(GuildError.s_guild_err_no_money));
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, row with { Cost = -1 }, 3, 500, false), Is.EqualTo(GuildError.s_guild_err_no_money));
+        Assert.That(GuildRules.CheckUsePersonalSkill(10001, row, 3, 500, true), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
+    }
+
     // What a member who logs in while the skill runs gets: the client's remaining time.
     [TestCase(0, 1000, 0, Description = "never used")]
     [TestCase(1000, 1000, 3600)]

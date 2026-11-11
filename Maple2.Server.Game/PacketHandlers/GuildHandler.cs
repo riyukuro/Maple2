@@ -976,8 +976,18 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
+    // CGuildManager::FUN_1413b96e0: the id of the personal guild skill the member buys with meso. The answer
+    // (91) makes the client mark the effect as bought.
     private void HandleUsePersonalBuff(GameSession session, IByteReader packet) {
         int buffId = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        GuildError error = session.Guild.UsePersonalBuff(buffId);
+        if (error != GuildError.none) {
+            session.Send(GuildPacket.Error(error));
+        }
     }
 
     // CGuildManager::FUN_1413b9ac0: the id of the guild skill the master raises by one level. The World

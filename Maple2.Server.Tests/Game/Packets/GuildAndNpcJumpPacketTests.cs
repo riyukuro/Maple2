@@ -112,6 +112,18 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413bf540 (0x5b): the skill id.
+    [Test]
+    public void UsePersonalBuff_IsMode91WithSkillId() {
+        ByteWriter writer = GuildPacket.UsePersonalBuff(10002);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(91));
+        Assert.That(reader.ReadInt(), Is.EqualTo(10002));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     [Test]
     public void SendMail_IsMode71WithNoBody() {
         ByteWriter writer = GuildPacket.SendMail();
