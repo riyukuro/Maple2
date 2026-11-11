@@ -85,6 +85,8 @@ public class BuddyManager : IDisposable {
             session.Send(BuddyPacket.Load(buddies.Values, blocked.Values));
         }
         session.Send(BuddyPacket.EndList(buddies.Count));
+        // The option lives in the client's own settings; ask for it once per session.
+        session.Send(BuddyPacket.AskAutoReject());
     }
 
     public void SendInvite(string name, string message) {

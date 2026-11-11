@@ -27,6 +27,13 @@ public class BuddyAutoRejectTests {
     }
 
     [Test]
+    public void AskBytes() {
+        ByteWriter writer = BuddyPacket.AskAutoReject();
+        // opcode 0x0061, sub-type 20, no body
+        Assert.That(writer.Buffer.AsSpan(0, writer.Length).ToArray(), Is.EqualTo(new byte[] { 0x61, 0x00, 20 }));
+    }
+
+    [Test]
     public void DeclineBytes() {
         var info = new PlayerInfo(new CharacterInfo(1, 2, "a", "", "", Gender.Male, Job.Newbie, 1), "", new AchievementInfo(), []);
         var buddy = new Buddy(new BuddyEntry { Id = 0x1122334455667788, OwnerId = 3, BuddyId = 2, LastModified = 0, Type = BuddyType.InRequest }, info);

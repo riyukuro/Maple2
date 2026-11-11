@@ -27,7 +27,7 @@ public static class BuddyPacket {
         Cancel = 17,
         Forbidden = 18,
         EndList = 19,
-        Unknown = 20,
+        AskAutoReject = 20,
     }
 
     public static ByteWriter Load(ICollection<Buddy> buddies, ICollection<Buddy> blocked) {
@@ -204,9 +204,10 @@ public static class BuddyPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown() {
+    // No body. The client answers with Buddy sub-type 20 and its "refuse friend requests" option.
+    public static ByteWriter AskAutoReject() {
         var pWriter = Packet.Of(SendOp.Buddy);
-        pWriter.Write<Command>(Command.Unknown);
+        pWriter.WriteByte((byte) Command.AskAutoReject);
 
         return pWriter;
     }
