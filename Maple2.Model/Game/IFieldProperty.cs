@@ -107,10 +107,16 @@ public class FieldPropertyAmbientLight : IFieldProperty {
     public FieldProperty Type => FieldProperty.AmbientLight;
 
     public Byte3 Color { get; init; }
+    // Client FieldPropertyAmbientLightCli: true restores the light the field had before; false applies Color.
+    public bool Restore { get; init; }
+    // Read into FieldPropertyAmbientLight +0x30; its use on the client is not settled.
+    public float Value { get; init; }
 
     public void WriteTo(IByteWriter writer) {
         writer.Write<FieldProperty>(Type);
         writer.Write<Byte3>(Color);
+        writer.WriteBool(Restore);
+        writer.WriteFloat(Value);
     }
 }
 
@@ -119,11 +125,17 @@ public class FieldPropertyDirectionalLight : IFieldProperty {
 
     public Byte3 DiffuseColor { get; init; }
     public Byte3 SpecularColor { get; init; }
+    // Client FieldPropertyDirectionalLightCli: true restores the light the field had before; false applies the colours.
+    public bool Restore { get; init; }
+    // Read after the flag; its use on the client is not settled.
+    public float Value { get; init; }
 
     public void WriteTo(IByteWriter writer) {
         writer.Write<FieldProperty>(Type);
         writer.Write<Byte3>(DiffuseColor);
         writer.Write<Byte3>(SpecularColor);
+        writer.WriteBool(Restore);
+        writer.WriteFloat(Value);
     }
 }
 
