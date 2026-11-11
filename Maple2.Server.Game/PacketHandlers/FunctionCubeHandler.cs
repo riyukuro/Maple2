@@ -207,7 +207,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
         RewardItem feedItem = nurturing.NurturingMetadata.Feed;
         Item? hasItem = session.Item.Inventory.Find(feedItem.ItemId, feedItem.Rarity).FirstOrDefault();
         if (hasItem is null) {
-            session.Send(NoticePacket.Message("You don't have the required item to feed this pet.  TODO: Find correct string id")); // TODO: Find correct string id
+            session.Send(FunctionCubePacket.NurturingError(session.CharacterId, fieldCube.InteractCube, 1));
             return;
         }
 
@@ -226,19 +226,20 @@ public class FunctionCubeHandler : FieldPacketHandler {
         db.UpdateNurturing(session.AccountId, fieldCube.InteractCube);
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldCube.InteractCube));
-        session.Send(FunctionCubePacket.Feed(rewardItem.Uid, fieldCube.CubeId, fieldCube.InteractCube));
+        // The fork keeps no per-day record of the cubes a player fed, so the list names this cube only.
+        session.Send(FunctionCubePacket.Feed(session.CharacterId, fieldCube.InteractCube, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), [fieldCube.CubeId], []));
     }
 
     private void HandlePlayNurturing(GameSession session, Plot plot, FieldFunctionInteract cube, Nurturing nurturing, GameStorage.Request db) {
         if (session.Field is null) return;
 
         if (nurturing.PlayedBy.Contains(session.AccountId)) {
-            session.Send(NoticePacket.Message("You already played with this pet today. TODO: Find correct string id")); // TODO: Find correct string id
+            session.Send(FunctionCubePacket.NurturingError(session.CharacterId, cube.InteractCube, 4));
             return;
         }
 
         if (db.CountNurturingForAccount(cube.InteractCube.Metadata.Id, session.AccountId) >= Constants.NurturingEatMaxCount) {
-            session.Send(NoticePacket.Message("You have already played with the maximum number of pets today. TODO: Find correct string id")); // TODO: Find correct string id
+            session.Send(FunctionCubePacket.NurturingError(session.CharacterId, cube.InteractCube, 3));
             return;
         }
 
@@ -259,6 +260,9 @@ public class FunctionCubeHandler : FieldPacketHandler {
         db.UpdateNurturing(plot.OwnerId, cube.InteractCube);
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(cube.InteractCube));
+        // The played list names this cube only (no per-day record is kept): the client then refuses a second
+        // play with it on its own until the day changes.
+        session.Send(FunctionCubePacket.Feed(session.CharacterId, cube.InteractCube, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), [], [cube.CubeId]));
 
         Mail? mail = CreateOwnerMail(session, plot.OwnerId, nurturing.NurturingMetadata);
 

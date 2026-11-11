@@ -16,6 +16,7 @@ public static class FunctionCubePacket {
         SuccessLifeSkill = 9,
         FailLifeSkill = 10,
         Feed = 11,
+        NurturingError = 13,
     }
 
     public static ByteWriter SendCubes(ICollection<FieldFunctionInteract> cubes) {
@@ -74,14 +75,35 @@ public static class FunctionCubePacket {
         return pWriter;
     }
 
-    public static ByteWriter Feed(long itemUid, long cubeId, InteractCube cube) {
+    // Client 2525 CFunctionCubeManager packet reader (functioncubeobject.cpp:2554) and MyPC::ReadDailyRecords
+    // (mypc.cpp:4060): long character id (the packet is dropped unless it is the reader's own), text cube id,
+    // then the daily record: long mark time, int count x long (cubes fed today), int count x long (cube uids
+    // played with today). 11 also shows the fed / played notice with the list sizes as the day's counts.
+    public static ByteWriter Feed(long characterId, InteractCube cube, long markTime, IReadOnlyCollection<long> fedToday, IReadOnlyCollection<long> playedToday) {
         var pWriter = Packet.Of(SendOp.FunctionCube);
         pWriter.Write<Command>(Command.Feed);
-        pWriter.WriteLong(itemUid);
+        pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(cube.Id);
-        pWriter.Write<InteractCubeState>(cube.State);
-        pWriter.WriteLong(cubeId);
-        pWriter.WriteInt(); // idk
+        pWriter.WriteLong(markTime);
+        pWriter.WriteInt(fedToday.Count);
+        foreach (long uid in fedToday) {
+            pWriter.WriteLong(uid);
+        }
+        pWriter.WriteInt(playedToday.Count);
+        foreach (long uid in playedToday) {
+            pWriter.WriteLong(uid);
+        }
+        return pWriter;
+    }
+
+    // Client 2525 functioncubeobject.cpp:2580: long character id, text cube id, int error. The nurturing cube
+    // shows: 1 no feed item, 2 fed the day's maximum, 3 played the day's maximum, 4 already played with this one.
+    public static ByteWriter NurturingError(long characterId, InteractCube cube, int error) {
+        var pWriter = Packet.Of(SendOp.FunctionCube);
+        pWriter.Write<Command>(Command.NurturingError);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteUnicodeString(cube.Id);
+        pWriter.WriteInt(error);
         return pWriter;
     }
 }
