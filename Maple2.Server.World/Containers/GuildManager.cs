@@ -290,6 +290,9 @@ public class GuildManager : IDisposable {
         if (rank == null || !rank.Permission.HasFlag(GuildPermission.EditNotice)) {
             return GuildError.s_guild_err_no_authority;
         }
+        if (message.Length > GuildRules.MaxNoticeLength) {
+            return GuildError.s_guild_err_unknown;
+        }
 
         Guild.Notice = message;
         Broadcast(new GuildRequest {

@@ -575,8 +575,12 @@ public class GuildHandler : PacketHandler<GameSession> {
     }
 
     private void HandleUpdateNotice(GameSession session, IByteReader packet) {
-        packet.ReadBool();
+        // CGuildManager::FUN_1413b7c70: the kind of text, then the text.
+        byte kind = packet.ReadByte();
         string notice = packet.ReadUnicodeString();
+        if (!GuildRules.IsNotice(kind, notice)) {
+            return;
+        }
 
         if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.EditNotice)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
