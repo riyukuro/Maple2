@@ -26,7 +26,8 @@ public class PartyLookup : IDisposable {
     public DungeonMatchQueue DungeonMatch { get; } = new();
     private readonly LockedSteps steps = new();
     private readonly ILogger logger = Log.ForContext<PartyLookup>();
-    private int nextPartyId = 1;
+    // The last id given; Create takes the next one (Interlocked: a party is made both inside and outside a step).
+    private int nextPartyId;
 
     public PartyLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup, PartySearchLookup partySearchLookup, ServerTableMetadataStorage serverTableMetadata) {
         this.channelClients = channelClients;
@@ -63,10 +64,11 @@ public class PartyLookup : IDisposable {
         return false;
     }
 
-    public PartyError Create(long leaderId, out int partyId) {
-        partyId = nextPartyId++;
+    // leaderInfo: the leader's info fetched beforehand (a dungeon match step, which must not wait for storage).
+    public PartyError Create(long leaderId, out int partyId, PlayerInfo? leaderInfo = null) {
+        partyId = Interlocked.Increment(ref nextPartyId);
 
-        PlayerInfo? leaderInfo = playerLookup.GetPlayerInfo(leaderId);
+        leaderInfo ??= playerLookup.GetPlayerInfo(leaderId);
         if (leaderInfo == null) {
             return PartyError.s_party_err_not_found;
         }

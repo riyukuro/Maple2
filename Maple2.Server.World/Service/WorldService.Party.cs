@@ -264,6 +264,11 @@ public partial class WorldService {
             return new PartyResponse();
         }
 
+        // Fetched before the step: a player not cached is read from storage, which the matchmaker lock must not wait for.
+        if (!playerLookup.TryGet(requestorId, out PlayerInfo? requestor)) {
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+        }
+
         return partyLookup.DungeonMatchStep(() => {
             partyLookup.RefreshDungeonMatch();
             PlayerInfo? info = null;
@@ -280,9 +285,7 @@ public partial class WorldService {
                 }
                 ids = manager.OnlineMembers();
             } else {
-                if (!playerLookup.TryGet(requestorId, out info)) {
-                    return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
-                }
+                info = requestor;
                 ids = [requestorId];
             }
 
@@ -313,7 +316,7 @@ public partial class WorldService {
 
             bool made = false;
             if (manager == null) {
-                PartyError createError = partyLookup.Create(requestorId, out int partyId);
+                PartyError createError = partyLookup.Create(requestorId, out int partyId, requestor);
                 if (createError != PartyError.none) {
                     return new PartyResponse { Error = (int) createError };
                 }
