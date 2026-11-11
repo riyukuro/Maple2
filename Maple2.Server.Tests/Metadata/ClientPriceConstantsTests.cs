@@ -51,6 +51,17 @@ public class ClientPriceConstantsTests {
         Assert.That(result.Any(entry => entry.Key == "MaxChatLength"), Is.False); // not a price
     }
 
+    // The home bank and doctor cooltimes: the client counts its own row down, so its row wins like a price.
+    [Test]
+    public void Differences_ClientValueWinsForHomeCooltimes() {
+        List<ClientPriceConstants.Override> result = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("HomeBankCallCooltime", "60"), ("HomeBankCallDuration", "5")]),
+            ClientPriceConstants.Select([("HomeBankCallCooltime", "60000"), ("HomeDoctorCallCooltime", "60000"), ("HomeBankCallDuration", "5000")]));
+
+        Assert.That(result.Select(entry => entry.Key), Is.EquivalentTo(new[] { "HomeBankCallCooltime", "HomeDoctorCallCooltime" }));
+        Assert.That(result.All(entry => entry.ClientValue == "60000"), Is.True);
+    }
+
     [Test]
     public void Select_LaterRowReplacesEarlier() {
         Dictionary<string, string> rows = ClientPriceConstants.Select([("MeratAirTaxiPrice", "90"), (" meratairtaxiprice ", "15")]);
