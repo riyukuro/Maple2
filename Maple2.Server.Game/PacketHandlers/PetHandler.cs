@@ -35,7 +35,7 @@ public class PetHandler : FieldPacketHandler {
         UpdatePotionConfig = 5,
         UpdateLootConfig = 6,
         Fusion = 12, // OnPetEnchant, s_msg_transfer_bind_pet_compose
-        ToggleAuto = 15, // the client flips its pet auto flag and sends the new value
+        AttackState = 15, // UIGameMenuDialog::OnPetAttack: the client flips its pet attack flag and sends the new value
         Unknown16 = 16,
         Evolve = 17,
         EvolvePoints = 18,
@@ -66,8 +66,8 @@ public class PetHandler : FieldPacketHandler {
             case Command.Fusion:
                 HandleFusion(session, packet);
                 return;
-            case Command.ToggleAuto:
-                HandleToggleAuto(session, packet);
+            case Command.AttackState:
+                HandleAttackState(session, packet);
                 return;
             case Command.Unknown16:
                 HandleUnknown16(session, packet);
@@ -258,8 +258,11 @@ public class PetHandler : FieldPacketHandler {
         return saleEvent != null && int.TryParse(saleEvent.Metadata.Value1, out int rate) ? rate : 0;
     }
 
-    private void HandleToggleAuto(GameSession session, IByteReader packet) {
-        packet.ReadBool(); // auto on
+    // Mode 15: the game menu's pet attack button, shown for a pet whose row has type 1 (feature 0x97). The
+    // client flips its own flag, shows it on the button and reads nothing back; an owned pet does not fight
+    // on this server, so the flag has nothing to switch (FORK.md).
+    private void HandleAttackState(GameSession session, IByteReader packet) {
+        packet.ReadBool(); // attack on
     }
 
     private void HandleUnknown16(GameSession session, IByteReader packet) {
