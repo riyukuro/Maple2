@@ -2,6 +2,7 @@
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -19,6 +20,7 @@ public class TaxiHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestTaxi;
 
     private enum Command : byte {
+        DiscoverAtStation = 0,
         Taxi = 1,
         RotorsAir = 2,
         MesoAir = 3,
@@ -52,7 +54,8 @@ public class TaxiHandler : FieldPacketHandler {
             case Command.MeretAir:
                 HandleMeretAirTaxi(session, packet);
                 return;
-            case Command.Discover:
+            case Command.DiscoverAtStation: // the station's action key (actionkeyobject.cpp:800-802)
+            case Command.Discover: // the station finder (autofindtaxistation.cpp:299-301)
                 HandleDiscoverTaxi(session);
                 return;
         }
@@ -150,9 +153,10 @@ public class TaxiHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(s_move_err_default));
     }
 
-    private static void HandleDiscoverTaxi(GameSession session) {
+    private void HandleDiscoverTaxi(GameSession session) {
         int mapId = session.Player.Value.Character.MapId;
-        if (session.Player.Value.Unlock.Taxis.Contains(mapId)) {
+        bool hasStation = MapMetadata.TryGet(mapId, out MapMetadata? map) && EntityMetadata.Get(map.XBlock)?.Taxi != null;
+        if (!TaxiRules.CanDiscover(session.Player.Value.Unlock.Taxis.Contains(mapId), hasStation)) {
             return;
         }
 
