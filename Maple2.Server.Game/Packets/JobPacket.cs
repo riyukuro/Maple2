@@ -50,11 +50,19 @@ public static class JobPacket {
         return pWriter;
     }
 
-    public static ByteWriter Error(IActor<Player> player, JobError error) {
+    // Code 18 (s_err_job_inventory_full) is followed by the count of inventory slots to empty; no other code has a value.
+    public static ByteWriter Error(IActor<Player> player, JobError error, int slots = 0) {
+        return Error(player.ObjectId, error, slots);
+    }
+
+    public static ByteWriter Error(int objectId, JobError error, int slots = 0) {
         var pWriter = Packet.Of(SendOp.Job);
-        pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Error);
-        pWriter.Write<JobError>(error);
+        pWriter.WriteInt(objectId);
+        pWriter.WriteByte((byte) Command.Error);
+        pWriter.WriteByte((byte) error);
+        if (error == JobError.s_err_job_inventory_full) {
+            pWriter.WriteInt(slots);
+        }
 
         return pWriter;
     }
