@@ -9,6 +9,7 @@ public class FurnishingStorageHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.FurnishingStorage;
 
     private enum Command : byte {
+        Retrieve = 4,
         Delete = 6,
     }
 
@@ -17,6 +18,10 @@ public class FurnishingStorageHandler : FieldPacketHandler {
         switch (command) {
             case Command.Delete:
                 HandleDelete(session, packet);
+                return;
+            case Command.Retrieve:
+                // Not handled: move an item from the furnishing storage to an inventory slot.
+                Logger.Debug("FurnishingStorage {Command} from {CharacterId}: item {ItemUid}, slot {Slot}, amount {Amount}", command, session.CharacterId, packet.ReadLong(), packet.ReadShort(), packet.ReadInt());
                 return;
         }
     }
