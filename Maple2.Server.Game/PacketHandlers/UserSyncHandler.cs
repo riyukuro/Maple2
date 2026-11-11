@@ -38,8 +38,9 @@ public class UserSyncHandler : FieldPacketHandler {
             };
 
             stateSync.ReadFrom(packet);
-            // The other clients' reader fails the whole packet on this byte outside 0..0x13: such a record is not sent on.
-            if (!StateSyncRules.IsRelayable(stateSync.Unknown1)) {
+            // The other clients' reader fails the whole packet on a sub state of 179 or more, or on the byte
+            // after the speed outside 0..0x13: such a record is not sent on.
+            if (!StateSyncRules.IsRelayable((byte) stateSync.SubState, stateSync.Unknown1)) {
                 return;
             }
             stateSyncs[i] = stateSync;

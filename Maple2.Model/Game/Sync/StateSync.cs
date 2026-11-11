@@ -67,7 +67,7 @@ public class StateSync : IByteSerializable, IByteDeserializable {
         writer.WriteShort(Rotation);
         writer.WriteByte(Animation);
 
-        if (Animation == 128) {
+        if ((Animation & 0x80) != 0) {
             writer.WriteFloat(UnknownFloat1);
             writer.WriteFloat(UnknownFloat2);
         }
@@ -108,7 +108,8 @@ public class StateSync : IByteSerializable, IByteDeserializable {
         Position = reader.Read<Vector3S>();
         Rotation = reader.ReadShort(); // CoordS / 10 (Rotation?)
         Animation = reader.ReadByte();
-        if (Animation == 128) {
+        // The client tests the top bit, not the whole byte, before the two floats.
+        if ((Animation & 0x80) != 0) {
             UnknownFloat1 = reader.ReadFloat();
             UnknownFloat2 = reader.ReadFloat();
         }
