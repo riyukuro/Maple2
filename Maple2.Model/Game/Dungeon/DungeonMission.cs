@@ -76,6 +76,48 @@ public class DungeonMission : IByteSerializable {
         return AddCount();
     }
 
+    /// <summary>DeathCount: a step for each death (the client shows the deaths left of applyCount).</summary>
+    public bool AddDeath() {
+        if (Metadata.Type != DungeonMissionType.DeathCount) {
+            return false;
+        }
+        return AddCount();
+    }
+
+    /// <summary>
+    /// DamageBySkill: a step for each hit by one of the skills in value1. value2 is the skill levels the client
+    /// reads; with one given, only a hit at that level counts.
+    /// </summary>
+    public bool AddSkillHit(int skillId, short level) {
+        if (Metadata.Type != DungeonMissionType.DamageBySkill || !Metadata.Value1.Contains(skillId)) {
+            return false;
+        }
+        if (Metadata.Value2 != 0 && Metadata.Value2 != level) {
+            return false;
+        }
+        return AddCount();
+    }
+
+    /// <summary>GainBuff: a step for each gain of one of the buffs in value1.</summary>
+    public bool AddBuff(int buffId) {
+        if (Metadata.Type != DungeonMissionType.GainBuff || !Metadata.Value1.Contains(buffId)) {
+            return false;
+        }
+        return AddCount();
+    }
+
+    /// <summary>
+    /// PlayTime: the full score when the room is cleared within value2 seconds (the "within N min" of every
+    /// mission name). value1 is not needed for it.
+    /// </summary>
+    public bool ScorePlayTime(long seconds) {
+        if (Metadata.Type != DungeonMissionType.PlayTime || seconds < 0 || seconds > Metadata.Value2 || Counter >= ApplyCount) {
+            return false;
+        }
+        Complete();
+        return true;
+    }
+
     public void Complete() {
         Counter = ApplyCount;
         Score = Metadata.MaxScore;

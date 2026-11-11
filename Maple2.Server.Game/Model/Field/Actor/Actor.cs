@@ -181,6 +181,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                     break;
             }
         }
+
+        // A player hit (not evaded) by a skill: the DamageBySkill missions of a dungeon room.
+        if (this is FieldPlayer player && Field is DungeonFieldManager dungeonField && targetRecord.Damage.Any(hit => hit.Type != DamageType.Miss)) {
+            dungeonField.CountMissions(player, mission => mission.AddSkillHit(damage.SkillId, damage.Level));
+        }
     }
 
     /// <summary>

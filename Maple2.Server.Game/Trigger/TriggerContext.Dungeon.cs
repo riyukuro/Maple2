@@ -12,13 +12,12 @@ public partial class TriggerContext {
             return;
         }
 
-        if (uiType == "None") {
-            // Do not send dungeon clear UI
-            return;
-        }
-
-        dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Clear);
+        // uiType None: no clear banner, but the room is cleared (the Colosseum ends a run this way when a round
+        // after the first is lost, and the rounds cleared so far count).
+        dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Clear, showResult: ClearShowsResult(uiType));
     }
+
+    public static bool ClearShowsResult(string uiType) => uiType != "None";
 
     public void DungeonClearRound(int round) {
         DebugLog("[DungeonClearRound] round:{Round}", round);

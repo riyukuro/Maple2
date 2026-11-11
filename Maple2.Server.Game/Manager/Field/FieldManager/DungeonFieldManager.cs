@@ -50,7 +50,19 @@ public class DungeonFieldManager : FieldManager {
         SetRoomTimer(type, DungeonMetadata.DurationTick, DungeonMetadata.IsExpireTimeOut);
     }
 
-    public void ChangeState(DungeonState state) {
+    /// <summary>
+    /// The room gets its result. showResult false (dungeon_clear uiType None) leaves out the result banner; the
+    /// clear still counts, so a Colosseum run that ends after some rounds keeps them.
+    /// </summary>
+    public void ChangeState(DungeonState state, bool showResult = true) {
+        if (state == DungeonState.Clear && DungeonRoomRecord.State == DungeonState.None) {
+            long seconds = (FieldTick - DungeonRoomRecord.StartTick) / 1000;
+            foreach ((long characterId, List<DungeonMission> missions) in ScorePlayTime(DungeonRoomRecord, seconds)) {
+                if (TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                    player.Session.Send(DungeonMissionPacket.Update(missions.ToArray()));
+                }
+            }
+        }
         DungeonRoomRecord.State = state;
         DungeonRoomRecord.EndTick = FieldTick;
 
@@ -77,7 +89,9 @@ public class DungeonFieldManager : FieldManager {
             }
         }
 
-        Broadcast(DungeonRoomPacket.DungeonResult(DungeonRoomRecord.State, compiledResults));
+        if (showResult) {
+            Broadcast(DungeonRoomPacket.DungeonResult(DungeonRoomRecord.State, compiledResults));
+        }
 
         if (DungeonRoomRecord.State == DungeonState.Clear) {
             long clearTimestamp = DateTime.Now.ToEpochSeconds();
@@ -111,6 +125,22 @@ public class DungeonFieldManager : FieldManager {
                 if (step(mission)) {
                     if (!changed.TryGetValue(recordId, out List<DungeonMission>? list)) {
                         changed[recordId] = list = [];
+                    }
+                    list.Add(mission);
+                }
+            }
+        }
+        return changed;
+    }
+
+    /// <summary>PlayTime missions of every player of the room, scored at the clear. Returns the changed missions.</summary>
+    public static Dictionary<long, List<DungeonMission>> ScorePlayTime(DungeonRoomRecord room, long seconds) {
+        var changed = new Dictionary<long, List<DungeonMission>>();
+        foreach ((long characterId, DungeonUserRecord record) in room.UserResults) {
+            foreach (DungeonMission mission in record.Missions.Values) {
+                if (mission.ScorePlayTime(seconds)) {
+                    if (!changed.TryGetValue(characterId, out List<DungeonMission>? list)) {
+                        changed[characterId] = list = [];
                     }
                     list.Add(mission);
                 }

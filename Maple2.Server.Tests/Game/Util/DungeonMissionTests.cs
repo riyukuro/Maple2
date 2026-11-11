@@ -164,4 +164,85 @@ public class DungeonMissionTests {
         Assert.That(TriggerContext.CompareRate(room.FirstUserMissionScore(), 1500, OperatorType.GreaterEqual), Is.False);
         Assert.That(TriggerContext.CompareRate(room.FirstUserMissionScore(), 1500, OperatorType.Less), Is.True);
     }
+    [Test]
+    public void DeathCount_EachDeathTakesAStep() {
+        var mission = new DungeonMission(Mission(1, DungeonMissionType.DeathCount, 240, 4, penalty: true));
+        Assert.That(mission.Score, Is.EqualTo(240));
+        Assert.That(mission.AddDeath(), Is.True);
+        Assert.That(mission.Score, Is.EqualTo(180));
+        for (int i = 0; i < 3; i++) {
+            mission.AddDeath();
+        }
+        Assert.That(mission.Score, Is.EqualTo(0));
+        Assert.That(mission.AddDeath(), Is.False);
+        Assert.That(new DungeonMission(Mission(2, DungeonMissionType.GainBuff, value1: 7)).AddDeath(), Is.False);
+    }
+
+    [Test]
+    public void DamageBySkill_HitsByTheListedSkillsAtTheListedLevel() {
+        var mission = new DungeonMission(Mission(1, DungeonMissionType.DamageBySkill, 300, 3, penalty: true, 91000001, 91000002));
+        Assert.That(mission.AddSkillHit(91000003, 1), Is.False);
+        Assert.That(mission.AddSkillHit(91000002, 1), Is.True);
+        Assert.That(mission.Score, Is.EqualTo(200));
+        Assert.That(mission.Counter, Is.EqualTo(1));
+
+        // value2: only that skill level counts.
+        var leveled = new DungeonMission(new DungeonMissionMetadata(2, DungeonMissionType.DamageBySkill, [91000001], 5, 200, 0, true));
+        Assert.That(leveled.AddSkillHit(91000001, 1), Is.False);
+        Assert.That(leveled.AddSkillHit(91000001, 5), Is.True);
+        Assert.That(leveled.Score, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void GainBuff_GainsOfTheListedBuffs() {
+        var gain = new DungeonMission(Mission(1, DungeonMissionType.GainBuff, 150, 3, value1: 92000001));
+        Assert.That(gain.AddBuff(92000002), Is.False);
+        Assert.That(gain.AddBuff(92000001), Is.True);
+        Assert.That(gain.Score, Is.EqualTo(50));
+
+        var penalty = new DungeonMission(Mission(2, DungeonMissionType.GainBuff, 400, 5, penalty: true, 92000003, 92000004));
+        Assert.That(penalty.AddBuff(92000004), Is.True);
+        Assert.That(penalty.Score, Is.EqualTo(320));
+        Assert.That(new DungeonMission(Mission(3, DungeonMissionType.DeathCount)).AddBuff(92000001), Is.False);
+    }
+
+    [Test]
+    public void PlayTime_FullScoreWhenClearedWithinValue2Seconds() {
+        DungeonMissionMetadata metadata = new(1, DungeonMissionType.PlayTime, [600], 300, 200, 0, false);
+        var mission = new DungeonMission(metadata);
+        Assert.That(mission.Score, Is.EqualTo(0));
+        Assert.That(new DungeonMission(metadata).ScorePlayTime(301), Is.False);
+        Assert.That(mission.ScorePlayTime(300), Is.True);
+        Assert.That(mission.Score, Is.EqualTo(200));
+        Assert.That(mission.ScorePlayTime(10), Is.False);
+
+        var table = new Dictionary<int, DungeonMissionMetadata> {
+            [1] = metadata,
+            [2] = Mission(2, DungeonMissionType.DeathCount),
+        };
+        var room = new DungeonRoomRecord(null!);
+        var record = new DungeonUserRecord(100, 10);
+        DungeonManager.FillMissions(record, [1], [2], table);
+        room.UserResults[10] = record;
+        Dictionary<long, List<DungeonMission>> changed = DungeonFieldManager.ScorePlayTime(room, 120);
+        Assert.That(changed[10].Select(mission => mission.Id), Is.EqualTo(new[] { 1 }));
+    }
+
+    [Test]
+    public void EventMissions_WriteTheirCounter() {
+        var mission = new DungeonMission(Mission(1, DungeonMissionType.DamageBySkill, 300, 3, penalty: true, 91000001));
+        mission.AddSkillHit(91000001, 1);
+        var writer = new ByteWriter();
+        mission.WriteTo(writer);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadShort(), Is.EqualTo(200));
+        Assert.That(reader.ReadShort(), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void DungeonClear_UiTypeNoneStillClearsWithoutTheBanner() {
+        Assert.That(TriggerContext.ClearShowsResult("None"), Is.False);
+        Assert.That(TriggerContext.ClearShowsResult(""), Is.True);
+    }
 }

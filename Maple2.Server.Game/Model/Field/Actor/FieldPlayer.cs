@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -413,6 +414,9 @@ public class FieldPlayer : Actor<Player> {
         Field.Broadcast(DeadUserPacket.Dead(ObjectId, darkTomb));
 
         Buffs.OnDeath();
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.CountMissions(this, mission => mission.AddDeath());
+        }
 
         int autoReviveMs = AutoReviveDelayMs(Session.Field.Metadata.Property);
         if (autoReviveMs > 0) {

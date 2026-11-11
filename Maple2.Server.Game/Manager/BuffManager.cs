@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
@@ -160,6 +161,11 @@ public class BuffManager : IUpdatable {
         if (!TryAdd(buff)) {
             logger.Error("Could not add buff {Id} to {Object}", buff.Id, Actor.ObjectId);
             return;
+        }
+
+        // A player gaining a buff: the GainBuff missions of a dungeon room.
+        if (Actor is FieldPlayer missionPlayer && Actor.Field is DungeonFieldManager dungeonField) {
+            dungeonField.CountMissions(missionPlayer, mission => mission.AddBuff(id));
         }
 
         // Set Reflect if applicable
