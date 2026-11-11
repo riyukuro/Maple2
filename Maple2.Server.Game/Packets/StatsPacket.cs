@@ -69,14 +69,16 @@ public static class StatsPacket {
     }
 
     #region Helpers
+    // Client: PC::vfunc_90 (pc.cpp:1644), count 0x23: per value kind long stat 4, int stats 0xd, 0xe, 0x20, 0x16
+    // (health, attack speed, move speed, mount speed, jump height).
     public static void WritePlayerStats(this IByteWriter pWriter, Stats stats) {
         pWriter.WriteByte(Stats.BASIC_TOTAL);
         for (int i = 0; i < Stat.TOTAL; i++) {
             pWriter.WriteLong(stats[BasicAttribute.Health][i]);
             pWriter.WriteInt((int) stats[BasicAttribute.AttackSpeed][i]);
             pWriter.WriteInt((int) stats[BasicAttribute.MovementSpeed][i]);
-            pWriter.WriteInt((int) stats[BasicAttribute.JumpHeight][i]);
             pWriter.WriteInt((int) stats[BasicAttribute.MountSpeed][i]);
+            pWriter.WriteInt((int) stats[BasicAttribute.JumpHeight][i]);
         }
     }
 
