@@ -12,7 +12,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
     private readonly MapParser parser;
 
     public MapMapper(M2dReader xmlReader, string language) {
-        spawnParser = new TableParser(xmlReader, language);
+        spawnParser = PackTables.NewParser(xmlReader, language);
         parser = new MapParser(xmlReader, language);
     }
 

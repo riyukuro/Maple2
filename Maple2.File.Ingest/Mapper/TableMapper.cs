@@ -41,7 +41,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private readonly string language;
 
     public TableMapper(M2dReader xmlReader, string language) {
-        parser = new TableParser(xmlReader, language);
+        parser = PackTables.NewParser(xmlReader, language);
         optionParser = new ItemOptionParser(xmlReader);
         this.language = language;
     }

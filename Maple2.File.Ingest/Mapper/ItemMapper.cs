@@ -19,7 +19,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
 
     public ItemMapper(M2dReader xmlReader, string language, bool newXml) {
         parser = new ItemParser(xmlReader, language);
-        tableParser = new TableParser(xmlReader, language);
+        tableParser = PackTables.NewParser(xmlReader, language);
         this.newXml = newXml;
     }
 

@@ -182,6 +182,8 @@ Console.WriteLine("Starting data ingestion...");
 
 // Filter Xml results based on feature settings.
 Filter.Load(xmlReader, locale, env);
+PackTables.Load(xmlReader, locale);
+Console.WriteLine($"Rows filtered for {locale}; table/<region> files read from {PackTables.Locale}.");
 
 // new TriggerGenerator(xmlReader).Generate();
 
