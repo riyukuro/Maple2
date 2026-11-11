@@ -193,7 +193,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool NpcExtraData(int spawnId, string extraDataKey, int extraDataValue, OperatorType operatorType) {
-        WarnLog("[GetNpcExtraData] spawnId:{SpawnId}, extraDataKey:{Key}, extraDataValue:{Value}, operatorType:{Operator}", spawnId, extraDataKey, extraDataValue, operatorType);
+        DebugLog("[GetNpcExtraData] spawnId:{SpawnId}, extraDataKey:{Key}, extraDataValue:{Value}, operatorType:{Operator}", spawnId, extraDataKey, extraDataValue, operatorType);
         var npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         if (npc is null) {
             return false;
@@ -245,7 +245,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool UserValue(string key, int value, OperatorType operatorType, bool negate) {
-        WarnLog("[GetUserValue] key:{Key}", key);
+        DebugLog("[GetUserValue] key:{Key}", key);
         bool result = CompareUserValue(Field.UserValues.GetValueOrDefault(key, 0), value, operatorType);
         return negate ? !result : result;
     }
