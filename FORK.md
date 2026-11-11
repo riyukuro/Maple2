@@ -132,6 +132,8 @@ The item and NPC windows need the same permission as the chat command that does 
 
 The client's debug mode (the GM buttons of the enchant, remake, exchange scroll and other dialogs) is toggled by key action 600001, the ` key in the client's default key file; the client turns it on only at GM level 50 or more. The key table the server sends holds that bind for a GM account only (added on ` or Scroll Lock when the saved table lacks it, taken out for a plain account). Every packet those buttons send is behind the GM check or has no handler.
 
+A field with `enterAdminLevel` above 0 in its map file is closed to plain accounts for taxi travel (walk, car, rotors, meso call and the air taxi item): the server answers with the client's own message box, `s_field_limit_admin`. A GM account passes. The value is read at ingest, so it needs a re-ingest; no field in the KMS 2525 data sets it.
+
 The client reads no reply of its own for these three; it shows the normal item, NPC and buff packets.
 
 ## Known not to work

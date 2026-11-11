@@ -11,4 +11,9 @@ public static class FieldEntryRules {
             yield return defaultMapId;
         }
     }
+
+    // A field with enterAdminLevel above 0 can be picked as a taxi destination by a GM account only.
+    public static bool AdminFieldAllowed(int enterAdminLevel, bool gm) {
+        return enterAdminLevel <= 0 || gm;
+    }
 }

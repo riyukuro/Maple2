@@ -174,6 +174,13 @@ public class TaxiHandler : FieldPacketHandler {
             return false;
         }
 
+        // The client refuses a field with enterAdminLevel above 0 unless its debug mode is on
+        // (fielddatacli.cpp FUN_140a55d20), and debug mode needs a GM account: s_field_limit_admin.
+        if (!FieldEntryRules.AdminFieldAllowed(map.Limit.EnterAdminLevel, GmCheck.IsGm(session.Player.AdminPermissions))) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_field_limit_admin));
+            return false;
+        }
+
         if (!map.CashCall.TaxiDestination) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_cash_taxi_cannot_destination));
             return false;

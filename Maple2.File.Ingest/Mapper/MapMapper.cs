@@ -78,7 +78,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     FallDamage: data.ui.fallDamage,
                     Dash: data.ui.useEPSkill,
                     Ride: data.ui.useRidee,
-                    Pet: data.ui.usePet),
+                    Pet: data.ui.usePet,
+                    EnterAdminLevel: data.property.enterAdminLevel),
                 Drop: new MapMetadataDrop(
                     Level: data.drop.maplevel,
                     DropRank: data.drop.droprank,

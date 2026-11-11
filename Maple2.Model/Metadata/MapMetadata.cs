@@ -82,7 +82,8 @@ public record MapMetadataLimit(
     bool FallDamage,
     bool Dash,
     bool Ride,
-    bool Pet);
+    bool Pet,
+    int EnterAdminLevel = 0); // enterAdminLevel: above 0, the client lets only a debug-mode (GM) client pick the field
 
 public record MapMetadataSpawn(
     int Id,
