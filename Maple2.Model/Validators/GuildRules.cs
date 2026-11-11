@@ -1,3 +1,5 @@
+using Maple2.Model.Game;
+
 namespace Maple2.Model.Validators;
 
 public static class GuildRules {
@@ -42,6 +44,31 @@ public static class GuildRules {
 
     public static bool IsSearchName(string name) {
         return name.Length >= MinSearchNameLength && name.Length <= 50;
+    }
+
+    // Guild 82 (CGuildManager::SendGuildMode82): a player without a guild asks to join one. The client refuses
+    // to send with 10 requests open and shows error 37 itself; the server holds the same limit.
+    public const int MaxOpenApplications = 10;
+
+    public static bool CanApply(int openApplications) {
+        return openApplications < MaxOpenApplications;
+    }
+
+    // Guild 83 (SendGuildMode83) carries one id. The client code names it the guild id; the join page hands the
+    // script both the guild id and the request id of a row, and which of the two the script passes back is not
+    // in the client code. So the id is matched against the player's own requests only: first as the guild,
+    // then as the request.
+    public static GuildApplicationRow? FindOwnApplication(IEnumerable<GuildApplicationRow> own, long id) {
+        GuildApplicationRow? byRequest = null;
+        foreach (GuildApplicationRow row in own) {
+            if (row.GuildId == id) {
+                return row;
+            }
+            if (row.Id == id) {
+                byRequest = row;
+            }
+        }
+        return byRequest;
     }
 
     // The master keeps rank 0 until the master changes.

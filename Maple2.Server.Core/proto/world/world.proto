@@ -259,6 +259,18 @@ message GuildRequest {
     string owner_name = 5;
     int64 resource_id = 6;
   }
+  message Apply {
+    int64 guild_id = 1;
+  }
+  message CancelApplication {
+    // the guild id or the request id, see GuildRules.FindOwnApplication
+    int64 id = 1;
+  }
+  message RespondApplication {
+    int64 guild_id = 1;
+    int64 applicant_id = 2;
+    bool accepted = 3;
+  }
 
   int64 requestor_id = 4;
   oneof guild {
@@ -276,6 +288,9 @@ message GuildRequest {
     UpdatePoster update_poster = 14;
     UpdateRank update_rank = 15;
     UpdateFocus update_focus = 16;
+    Apply apply = 17;
+    CancelApplication cancel_application = 18;
+    RespondApplication respond_application = 19;
   }
 }
 
@@ -286,6 +301,10 @@ message GuildResponse {
   }
 
   int32 error = 4;
+  // join requests: the request, the guild's name, the applicant's name
+  int64 application_id = 5;
+  string guild_name = 6;
+  string applicant_name = 7;
 }
 
 message GroupChatInfoRequest {

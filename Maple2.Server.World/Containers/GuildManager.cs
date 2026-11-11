@@ -30,13 +30,29 @@ public class GuildManager : IDisposable {
         db.SaveGuild(Guild);
     }
 
-    public void Broadcast(GuildRequest request) {
+    public bool HasPermission(long characterId, GuildPermission permission) {
+        if (!Guild.Members.TryGetValue(characterId, out GuildMember? member)) {
+            return false;
+        }
+        GuildRank? rank = Guild.Ranks.ElementAtOrDefault(member.Rank);
+        return rank != null && rank.Permission.HasFlag(permission);
+    }
+
+    // The join request list is held by the members who may answer a request (the invite right), so the
+    // request notices go to them only.
+    public void BroadcastToApplicationHandlers(GuildRequest request, long exceptCharacterId = 0) {
+        Broadcast(request, member => member.CharacterId != exceptCharacterId
+                                     && HasPermission(member.CharacterId, GuildPermission.InviteMembers));
+    }
+
+    public void Broadcast(GuildRequest request, Func<GuildMember, bool>? filter = null) {
         if (request.GuildId > 0 && request.GuildId != Guild.Id) {
             throw new InvalidOperationException($"Broadcasting {request.GuildCase} for incorrect guild: {request.GuildId} => {Guild.Id}");
         }
 
         request.GuildId = Guild.Id;
-        foreach (IGrouping<short, GuildMember> group in Guild.Members.Values.GroupBy(member => member.Info.Channel)) {
+        IEnumerable<GuildMember> receivers = filter == null ? Guild.Members.Values : Guild.Members.Values.Where(filter);
+        foreach (IGrouping<short, GuildMember> group in receivers.GroupBy(member => member.Info.Channel)) {
             if (!ChannelClients.TryGetClient(group.Key, out ChannelClient? client)) {
                 continue;
             }

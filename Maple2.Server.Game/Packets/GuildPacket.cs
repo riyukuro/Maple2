@@ -674,11 +674,13 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter RespondApplication(long applicationId, string guildName, bool accepted) {
+    // CGuildManager::OnPacketJoinRequestAnswer, to the member who answered: the applicant's character id
+    // (0 shows nothing), the applicant's name for the chat line, accepted or not.
+    public static ByteWriter RespondApplication(long characterId, string applicantName, bool accepted) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.RespondApplication);
-        pWriter.WriteLong(applicationId);
-        pWriter.WriteUnicodeString(guildName);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteUnicodeString(applicantName);
         pWriter.WriteBool(accepted);
 
         return pWriter;
@@ -696,11 +698,11 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter ListAppliedGuilds(ICollection<GuildApplication> applications) {
+    public static ByteWriter ListAppliedGuilds(ICollection<(GuildApplication Application, int MemberCount)> applications) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.ListAppliedGuilds);
         pWriter.WriteInt(applications.Count);
-        foreach (GuildApplication application in applications) {
+        foreach ((GuildApplication application, int memberCount) in applications) {
             // Client: CGuildJoinRequestForChar::ReadStream (guilddef_1.cpp:404). The int after the name is the
             // guild's experience (the join page turns it into the guild level); the text is the leader's name.
             pWriter.WriteBool(true);
@@ -710,7 +712,7 @@ public static class GuildPacket {
             pWriter.WriteInt(application.Guild.Experience);
             pWriter.WriteUnicodeString(application.Guild.Emblem);
             pWriter.Write<AchievementInfo>(application.Guild.AchievementInfo);
-            pWriter.WriteInt(application.Guild.Members.Count);
+            pWriter.WriteInt(memberCount);
             pWriter.WriteInt(application.Guild.Capacity);
             pWriter.WriteUnicodeString(application.Guild.LeaderName);
             pWriter.WriteLong(application.Applicant.AccountId);

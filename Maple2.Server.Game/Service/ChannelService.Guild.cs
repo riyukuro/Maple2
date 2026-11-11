@@ -35,6 +35,14 @@ public partial class ChannelService {
                 return Task.FromResult(UpdateGuildRank(request.ReceiverIds, request.UpdateRank));
             case GuildRequest.GuildOneofCase.UpdateFocus:
                 return Task.FromResult(UpdateGuildFocus(request.ReceiverIds, request.UpdateFocus));
+            case GuildRequest.GuildOneofCase.ApplicationAdded:
+                return Task.FromResult(GuildApplicationAdded(request.ReceiverIds, request.ApplicationAdded));
+            case GuildRequest.GuildOneofCase.ApplicationRemoved:
+                return Task.FromResult(GuildApplicationRemoved(request.ReceiverIds, request.ApplicationRemoved));
+            case GuildRequest.GuildOneofCase.ApplicationAnswered:
+                return Task.FromResult(GuildApplicationAnswered(request.ReceiverIds, request.ApplicationAnswered));
+            case GuildRequest.GuildOneofCase.ApplicationResult:
+                return Task.FromResult(GuildApplicationResult(request.GuildId, request.ReceiverIds, request.ApplicationResult));
             default:
                 return Task.FromResult(new GuildResponse { Error = (int) GuildError.s_guild_err_none });
         }
@@ -191,6 +199,79 @@ public partial class ChannelService {
             }
 
             session.Guild.UpdateFocus(update.RequestorName, update.Listed, (GuildFocus) update.Focus);
+        }
+
+        return new GuildResponse();
+    }
+
+    // Guild 45 (CGuildManager::OnPacketJoinRequestReceived): a new row in the join request list of the members
+    // who may answer it.
+    private GuildResponse GuildApplicationAdded(IEnumerable<long> receiverIds, GuildRequest.Types.ApplicationAdded added) {
+        if (!playerInfos.GetOrFetch(added.ApplicantId, out PlayerInfo? info)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_user };
+        }
+
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Guild.Guild == null) {
+                continue;
+            }
+
+            session.Send(GuildPacket.ReceiveApplication(new GuildApplication {
+                Id = added.ApplicationId,
+                Guild = session.Guild.Guild,
+                Applicant = info,
+                CreationTime = added.CreationTime,
+            }));
+        }
+
+        return new GuildResponse();
+    }
+
+    // Guild 46: the row leaves the list.
+    private GuildResponse GuildApplicationRemoved(IEnumerable<long> receiverIds, GuildRequest.Types.ApplicationRemoved removed) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Send(GuildPacket.WithdrawApplication(removed.ApplicationId));
+        }
+
+        return new GuildResponse();
+    }
+
+    // Guild 47: the row leaves the list and the chat names who answered whom.
+    private GuildResponse GuildApplicationAnswered(IEnumerable<long> receiverIds, GuildRequest.Types.ApplicationAnswered answered) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Send(GuildPacket.NotifyApplication(answered.RequestorName, answered.ApplicantName, answered.ApplicationId, answered.Accepted));
+        }
+
+        return new GuildResponse();
+    }
+
+    // Guild 48 (CGuildManager::OnPacketMyJoinRequestRemoved), to the applicant. The client reads it only while
+    // it has no guild, so it goes out before the guild is loaded.
+    private GuildResponse GuildApplicationResult(long guildId, IEnumerable<long> receiverIds, GuildRequest.Types.ApplicationResult result) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Guild.Guild != null) {
+                continue;
+            }
+
+            session.Send(GuildPacket.NotifyApplicant(result.GuildName, result.ApplicationId, result.Joined));
+            if (!result.Joined) {
+                continue;
+            }
+
+            try {
+                Maple2.Server.World.Service.GuildInfoResponse response = session.World.GuildInfo(new Maple2.Server.World.Service.GuildInfoRequest { GuildId = guildId });
+                if (response.Guild != null && session.Guild.SetGuild(response.Guild)) {
+                    session.Guild.Load();
+                }
+            } catch (RpcException) { /* the guild is loaded at the next login */ }
         }
 
         return new GuildResponse();

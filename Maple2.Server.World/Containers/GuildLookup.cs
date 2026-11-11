@@ -33,6 +33,11 @@ public class GuildLookup : IDisposable {
         }
     }
 
+    // The join requests are rows of the game database; they have no copy in the guild held here.
+    public GameStorage.Request Storage() {
+        return gameStorage.Context();
+    }
+
     public bool TryGet(long guildId, [NotNullWhen(true)] out GuildManager? guild) {
         if (guilds.TryGetValue(guildId, out guild)) {
             return true;

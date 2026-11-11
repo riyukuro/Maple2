@@ -3,6 +3,9 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.World.Containers;
+using Maple2.Database.Storage;
+using Maple2.Model.Validators;
+using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
 using ChannelGuildRequest = Maple2.Server.Channel.Service.GuildRequest;
 
 namespace Maple2.Server.World.Service;
@@ -46,6 +49,12 @@ public partial class WorldService {
                 return Task.FromResult(UpdateGuildRank(request.RequestorId, request.UpdateRank));
             case GuildRequest.GuildOneofCase.UpdateFocus:
                 return Task.FromResult(UpdateGuildFocus(request.RequestorId, request.UpdateFocus));
+            case GuildRequest.GuildOneofCase.Apply:
+                return Task.FromResult(ApplyGuild(request.RequestorId, request.Apply));
+            case GuildRequest.GuildOneofCase.CancelApplication:
+                return Task.FromResult(CancelGuildApplication(request.RequestorId, request.CancelApplication));
+            case GuildRequest.GuildOneofCase.RespondApplication:
+                return Task.FromResult(RespondGuildApplication(request.RequestorId, request.RespondApplication));
             default:
                 return Task.FromResult(new GuildResponse { Error = (int) GuildError.s_guild_err_none });
         }
@@ -257,6 +266,152 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = poster.GuildId };
+    }
+
+    // Guild 82: a player without a guild asks to join a listed guild.
+    private GuildResponse ApplyGuild(long requestorId, GuildRequest.Types.Apply apply) {
+        if (!guildLookup.TryGet(apply.GuildId, out GuildManager? manager) || !manager.Guild.Listed) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!playerLookup.TryGet(requestorId, out PlayerInfo? _)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_user };
+        }
+
+        using GameStorage.Request db = guildLookup.Storage();
+        if (db.GetGuildId(requestorId) != 0) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_has_guild };
+        }
+        IList<GuildApplicationRow> own = db.GetGuildApplicationsOf(requestorId);
+        if (own.Any(row => row.GuildId == apply.GuildId)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_search_last_request };
+        }
+        if (!GuildRules.CanApply(own.Count)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_search_max_join_request };
+        }
+
+        GuildApplicationRow? created = db.CreateGuildApplication(apply.GuildId, requestorId);
+        if (created == null) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        }
+
+        manager.BroadcastToApplicationHandlers(new ChannelGuildRequest {
+            ApplicationAdded = new ChannelGuildRequest.Types.ApplicationAdded {
+                ApplicationId = created.Id,
+                ApplicantId = created.ApplicantId,
+                CreationTime = created.CreationTime,
+            },
+        });
+
+        return new GuildResponse {
+            GuildId = manager.Guild.Id,
+            ApplicationId = created.Id,
+            GuildName = manager.Guild.Name,
+        };
+    }
+
+    // Guild 83: the applicant takes a request back.
+    private GuildResponse CancelGuildApplication(long requestorId, GuildRequest.Types.CancelApplication cancel) {
+        using GameStorage.Request db = guildLookup.Storage();
+        GuildApplicationRow? row = GuildRules.FindOwnApplication(db.GetGuildApplicationsOf(requestorId), cancel.Id);
+        if (row == null) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_search_null_join_guild_request };
+        }
+        if (!db.DeleteGuildApplication(row.Id)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        }
+
+        string guildName = string.Empty;
+        if (guildLookup.TryGet(row.GuildId, out GuildManager? manager)) {
+            guildName = manager.Guild.Name;
+            manager.BroadcastToApplicationHandlers(new ChannelGuildRequest {
+                ApplicationRemoved = new ChannelGuildRequest.Types.ApplicationRemoved {
+                    ApplicationId = row.Id,
+                },
+            });
+        }
+
+        return new GuildResponse {
+            GuildId = row.GuildId,
+            ApplicationId = row.Id,
+            GuildName = guildName,
+        };
+    }
+
+    // Guild 84: a member with the invite right accepts or rejects the request of a character.
+    private GuildResponse RespondGuildApplication(long requestorId, GuildRequest.Types.RespondApplication respond) {
+        if (!guildLookup.TryGet(respond.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_member };
+        }
+        if (!manager.HasPermission(requestorId, GuildPermission.InviteMembers)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_no_authority };
+        }
+
+        using GameStorage.Request db = guildLookup.Storage();
+        GuildApplicationRow? row = db.GetGuildApplication(respond.GuildId, respond.ApplicantId);
+        if (row == null) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_search_null_join_guild_request };
+        }
+        if (!playerLookup.TryGet(respond.ApplicantId, out PlayerInfo? applicant)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_user };
+        }
+
+        if (respond.Accepted) {
+            if (db.GetGuildId(respond.ApplicantId) != 0) {
+                return new GuildResponse { Error = (int) GuildError.s_guild_err_has_guild };
+            }
+            GuildError error = manager.Join(requestor.Name, applicant);
+            if (error != GuildError.none) {
+                return new GuildResponse { Error = (int) error };
+            }
+
+            // The new member's other requests are over as well.
+            IList<GuildApplicationRow> others = db.GetGuildApplicationsOf(respond.ApplicantId);
+            db.DeleteGuildApplications(respond.ApplicantId);
+            foreach (GuildApplicationRow other in others) {
+                if (other.GuildId == respond.GuildId || !guildLookup.TryGet(other.GuildId, out GuildManager? otherManager)) {
+                    continue;
+                }
+                otherManager.BroadcastToApplicationHandlers(new ChannelGuildRequest {
+                    ApplicationRemoved = new ChannelGuildRequest.Types.ApplicationRemoved {
+                        ApplicationId = other.Id,
+                    },
+                });
+            }
+        } else if (!db.DeleteGuildApplication(row.Id)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        }
+
+        manager.BroadcastToApplicationHandlers(new ChannelGuildRequest {
+            ApplicationAnswered = new ChannelGuildRequest.Types.ApplicationAnswered {
+                ApplicationId = row.Id,
+                RequestorName = requestor.Name,
+                ApplicantName = applicant.Name,
+                Accepted = respond.Accepted,
+            },
+        }, exceptCharacterId: applicant.CharacterId);
+
+        if (applicant.Online && channelClients.TryGetClient(applicant.Channel, out ChannelClient? client)) {
+            try {
+                client.Guild(new ChannelGuildRequest {
+                    GuildId = manager.Guild.Id,
+                    ReceiverIds = { applicant.CharacterId },
+                    ApplicationResult = new ChannelGuildRequest.Types.ApplicationResult {
+                        ApplicationId = row.Id,
+                        GuildName = manager.Guild.Name,
+                        Joined = respond.Accepted,
+                    },
+                });
+            } catch (RpcException) { /* the applicant sees the result at the next login */ }
+        }
+
+        return new GuildResponse {
+            GuildId = manager.Guild.Id,
+            ApplicationId = row.Id,
+            ApplicantName = applicant.Name,
+        };
     }
 
     private static GuildInfo ToGuildInfo(Guild guild) {

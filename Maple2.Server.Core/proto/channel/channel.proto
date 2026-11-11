@@ -123,6 +123,29 @@ message GuildRequest {
     string owner_name = 4;
     int64 resource_id = 5;
   }
+  // A join request arrived (to the members who may answer it).
+  message ApplicationAdded {
+    int64 application_id = 1;
+    int64 applicant_id = 2;
+    int64 creation_time = 3;
+  }
+  // A join request was withdrawn (to the members who may answer it).
+  message ApplicationRemoved {
+    int64 application_id = 1;
+  }
+  // A join request was answered (to the members who may answer it).
+  message ApplicationAnswered {
+    int64 application_id = 1;
+    string requestor_name = 2;
+    string applicant_name = 3;
+    bool accepted = 4;
+  }
+  // The answer, to the applicant.
+  message ApplicationResult {
+    int64 application_id = 1;
+    string guild_name = 2;
+    bool joined = 3;
+  }
 
   int64 guild_id = 1;
   repeated int64 receiver_ids = 2;
@@ -139,6 +162,10 @@ message GuildRequest {
     UpdatePoster update_poster = 12;
     UpdateRank update_rank = 13;
     UpdateFocus update_focus = 14;
+    ApplicationAdded application_added = 15;
+    ApplicationRemoved application_removed = 16;
+    ApplicationAnswered application_answered = 17;
+    ApplicationResult application_result = 18;
   }
 }
 

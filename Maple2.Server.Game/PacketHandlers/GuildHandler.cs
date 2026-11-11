@@ -43,8 +43,8 @@ public class GuildHandler : PacketHandler<GameSession> {
         SendApplication = 82,
         CancelApplication = 83,
         RespondApplication = 84,
-        Unknown85 = 85,
-        ListApplications = 86,
+        ListApplications = 85,
+        ListAppliedGuilds = 86,
         SearchGuilds = 87,
         SearchGuildName = 88,
         UseBuff = 90,
@@ -147,6 +147,9 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             case Command.ListApplications:
                 HandleListApplications(session);
+                return;
+            case Command.ListAppliedGuilds:
+                HandleListAppliedGuilds(session);
                 return;
             case Command.SearchGuilds:
                 HandleSearchGuilds(session, packet);
@@ -710,21 +713,146 @@ public class GuildHandler : PacketHandler<GameSession> {
         Logger.Debug("Guild PvP history after {HistoryId} from {CharacterId} not implemented", lastHistoryId, session.CharacterId);
     }
 
+    // CGuildManager::SendGuildMode82: the guild to ask, sent only by a player without a guild. The reply makes
+    // the client print the "applied" line and ask for its own request list (86).
     private void HandleSendApplication(GameSession session, IByteReader packet) {
         long guildId = packet.ReadLong();
+        if (session.Guild.Guild != null) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_has_guild));
+            return;
+        }
+        if (guildId <= 0) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_guild));
+            return;
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                Apply = new GuildRequest.Types.Apply { GuildId = guildId },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Send(GuildPacket.SendApplication(response.ApplicationId, response.GuildName));
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to send guild application");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
+    // CGuildManager::SendGuildMode83: one id of the request to take back (see GuildRules.FindOwnApplication),
+    // sent only by a player without a guild. The reply prints the "cancelled" line and the client asks for 86.
     private void HandleCancelApplication(GameSession session, IByteReader packet) {
-        long applicationId = packet.ReadLong();
+        long id = packet.ReadLong();
+        if (session.Guild.Guild != null || id <= 0) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_search_null_join_guild_request));
+            return;
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                CancelApplication = new GuildRequest.Types.CancelApplication { Id = id },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Send(GuildPacket.CancelApplication(response.ApplicationId, response.GuildName));
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to cancel guild application");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
+    // CGuildManager::SendGuildMode84: the applicant's character id (the "charSn" of the accept page row) and
+    // accept or reject. The sender needs the invite right, as for the list (85).
     private void HandleRespondApplication(GameSession session, IByteReader packet) {
-        long applicationId = packet.ReadLong();
+        long characterId = packet.ReadLong();
         bool accepted = packet.ReadBool();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+        if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.InviteMembers)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
+            return;
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                RespondApplication = new GuildRequest.Types.RespondApplication {
+                    GuildId = session.Guild.Id,
+                    ApplicantId = characterId,
+                    Accepted = accepted,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Send(GuildPacket.RespondApplication(characterId, response.ApplicantName, accepted));
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to respond to guild application");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
+    // CGuildManager::SendGuildMode85: no body. A member with the invite right asks for the requests sent to
+    // the guild; the client pages them by 7.
     private void HandleListApplications(GameSession session) {
+        Guild? guild = session.Guild.Guild;
+        if (guild == null || !session.Guild.HasPermission(session.CharacterId, GuildPermission.InviteMembers)) {
+            return;
+        }
 
+        using GameStorage.Request db = session.GameStorage.Context();
+        var applications = new List<GuildApplication>();
+        foreach (GuildApplicationRow row in db.GetGuildApplications(guild.Id)) {
+            if (!session.PlayerInfo.GetOrFetch(row.ApplicantId, out PlayerInfo? info)) {
+                continue;
+            }
+            applications.Add(new GuildApplication {
+                Id = row.Id,
+                Guild = guild,
+                Applicant = info,
+                CreationTime = row.CreationTime,
+            });
+        }
+
+        session.Send(GuildPacket.ListApplications(applications));
+    }
+
+    // CGuildManager::SendGuildMode86: no body. A player without a guild asks for the requests they sent.
+    private void HandleListAppliedGuilds(GameSession session) {
+        if (session.Guild.Guild != null || !session.PlayerInfo.GetOrFetch(session.CharacterId, out PlayerInfo? self)) {
+            return;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        var applications = new List<(GuildApplication, int)>();
+        foreach (GuildApplicationRow row in db.GetGuildApplicationsOf(session.CharacterId)) {
+            Guild? guild = db.GetGuild(row.GuildId);
+            if (guild == null) {
+                continue;
+            }
+            applications.Add((new GuildApplication {
+                Id = row.Id,
+                Guild = guild,
+                Applicant = self,
+                CreationTime = row.CreationTime,
+            }, db.GetGuildMemberCount(row.GuildId)));
+        }
+
+        session.Send(GuildPacket.ListAppliedGuilds(applications));
     }
 
     // CGuildManager::SendGuildMode87 (CGuildJoinRequestSchCond): the focus bits, all 31 when none is ticked,

@@ -172,6 +172,59 @@ public partial class GameStorage {
             return SaveChanges() && count > 0;
         }
 
+        // The guild a character is a member of, 0 for none.
+        public long GetGuildId(long characterId) {
+            return Context.GuildMember.Where(member => member.CharacterId == characterId)
+                .Select(member => member.GuildId)
+                .FirstOrDefault();
+        }
+
+        public int GetGuildMemberCount(long guildId) {
+            return Context.GuildMember.Count(member => member.GuildId == guildId);
+        }
+
+        public GuildApplicationRow? CreateGuildApplication(long guildId, long applicantId) {
+            var application = new Model.GuildApplication {
+                GuildId = guildId,
+                ApplicantId = applicantId,
+            };
+            Context.GuildApplication.Add(application);
+            if (!SaveChanges()) {
+                return null;
+            }
+
+            return ToRow(application);
+        }
+
+        // The open join requests sent to a guild, oldest first.
+        public IList<GuildApplicationRow> GetGuildApplications(long guildId) {
+            return Context.GuildApplication.Where(app => app.GuildId == guildId)
+                .OrderBy(app => app.Id)
+                .AsEnumerable()
+                .Select(ToRow)
+                .ToList();
+        }
+
+        // The open join requests of a character, oldest first.
+        public IList<GuildApplicationRow> GetGuildApplicationsOf(long characterId) {
+            return Context.GuildApplication.Where(app => app.ApplicantId == characterId)
+                .OrderBy(app => app.Id)
+                .AsEnumerable()
+                .Select(ToRow)
+                .ToList();
+        }
+
+        public GuildApplicationRow? GetGuildApplication(long guildId, long characterId) {
+            Model.GuildApplication? application = Context.GuildApplication
+                .FirstOrDefault(app => app.GuildId == guildId && app.ApplicantId == characterId);
+            return application == null ? null : ToRow(application);
+        }
+
+        private static GuildApplicationRow ToRow(Model.GuildApplication application) {
+            return new GuildApplicationRow(application.Id, application.GuildId, application.ApplicantId,
+                application.CreationTime.ToEpochSeconds());
+        }
+
         public bool DeleteGuildApplication(long applicationId) {
             int count = Context.GuildApplication.Where(app => app.Id == applicationId).Delete();
             return SaveChanges() && count > 0;

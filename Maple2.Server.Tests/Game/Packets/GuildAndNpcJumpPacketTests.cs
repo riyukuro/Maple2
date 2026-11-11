@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
@@ -35,7 +36,7 @@ public class GuildAndNpcJumpPacketTests {
             AchievementInfo = new AchievementInfo { Combat = 1, Adventure = 2, Lifestyle = 3 },
         };
         var application = new GuildApplication { Id = 10, Guild = guild, Applicant = Info("Applicant"), CreationTime = 99 };
-        ByteWriter writer = GuildPacket.ListAppliedGuilds([application]);
+        ByteWriter writer = GuildPacket.ListAppliedGuilds([(application, 7)]);
         var reader = new ByteReader(writer.Buffer, 0);
 
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
@@ -50,12 +51,71 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(1));
         Assert.That(reader.ReadInt(), Is.EqualTo(2));
         Assert.That(reader.ReadInt(), Is.EqualTo(3));
-        Assert.That(reader.ReadInt(), Is.EqualTo(0)); // members
+        Assert.That(reader.ReadInt(), Is.EqualTo(7)); // members
         Assert.That(reader.ReadInt(), Is.EqualTo(60)); // capacity
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Leader"));
         Assert.That(reader.ReadLong(), Is.EqualTo(1)); // applicant account
         Assert.That(reader.ReadLong(), Is.EqualTo(2)); // applicant character
         Assert.That(reader.ReadLong(), Is.EqualTo(99));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // CGuildJoinRequestForGuild::ReadStream after CGuildManager::OnPacketJoinRequestsForGuild's count and
+    // per-entry byte. The fourth id is the one the accept page sends back in Guild 84: the character id.
+    [Test]
+    public void ListApplications_WritesWhatTheClientReads() {
+        var guild = new Guild(20, "Guild", 31, 32, "Leader");
+        var applicant = new PlayerInfo(new CharacterInfo(1, 2, "Applicant", "", "pic", Gender.Male, Job.Wizard, 35), "",
+            new AchievementInfo { Combat = 1, Adventure = 2, Lifestyle = 3 }, []);
+        var application = new GuildApplication { Id = 10, Guild = guild, Applicant = applicant, CreationTime = 99 };
+        ByteWriter writer = GuildPacket.ListApplications([application]);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(85));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadLong(), Is.EqualTo(10)); // request
+        Assert.That(reader.ReadLong(), Is.EqualTo(20)); // guild
+        Assert.That(reader.ReadLong(), Is.EqualTo(1)); // account
+        Assert.That(reader.ReadLong(), Is.EqualTo(2)); // character
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Applicant"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("pic"));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) Job.Wizard));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) Job.Wizard.Code()));
+        Assert.That(reader.ReadInt(), Is.EqualTo(35));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadLong(), Is.EqualTo(99));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // CGuildManager::OnPacketJoinRequestAnswer: character id, the applicant's name, accepted.
+    [Test]
+    public void RespondApplication_NamesTheApplicant() {
+        ByteWriter writer = GuildPacket.RespondApplication(2, "Applicant", true);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(84));
+        Assert.That(reader.ReadLong(), Is.EqualTo(2));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Applicant"));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // CGuildManager::OnPacketMyJoinRequestRemoved: guild name, request id, joined.
+    [Test]
+    public void NotifyApplicant_WritesWhatTheClientReads() {
+        ByteWriter writer = GuildPacket.NotifyApplicant("Guild", 10, true);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(48));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Guild"));
+        Assert.That(reader.ReadLong(), Is.EqualTo(10));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
