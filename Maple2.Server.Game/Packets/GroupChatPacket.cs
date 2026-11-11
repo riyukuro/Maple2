@@ -124,8 +124,10 @@ public static class GroupChatPacket {
     public static ByteWriter Error(GroupChatError error, string memberName, string targetName) {
         var pWriter = Packet.Of(SendOp.GroupChat);
         pWriter.Write<Command>(Command.Error);
-        pWriter.WriteByte(2); // Unknown
-        pWriter.Write<GroupChatError>(error);
+        // CGroupChatManager::OnPacketResult: u8 (not used), i32 code, two names. It shows a box for codes
+        // 3, 8, 10 and 13 only, formatted with the second name.
+        pWriter.WriteByte(2);
+        pWriter.WriteInt((int) error);
         pWriter.WriteUnicodeString(memberName);
         pWriter.WriteUnicodeString(targetName);
 
