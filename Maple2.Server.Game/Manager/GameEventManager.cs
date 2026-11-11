@@ -13,7 +13,6 @@ using Serilog;
 namespace Maple2.Server.Game.Manager;
 
 public sealed class GameEventManager {
-    private const int BATCH_SIZE = 10;
     private readonly GameSession session;
     private readonly Dictionary<int, Dictionary<GameEventUserValueType, GameEventUserValue>> eventValues;
     private long nextUpdateTick;
@@ -138,9 +137,9 @@ public sealed class GameEventManager {
     }
 
     public void Load() {
-        foreach (ImmutableList<GameEventUserValue> batch in eventValues.Values.SelectMany(dict => dict.Values).Batch(BATCH_SIZE)) {
-            session.Send(GameEventUserValuePacket.Load(batch));
-        }
+        // One packet: the client clears its list on every Load (GameEventUserValue::Read,
+        // commonfiles/gameeventuservalue.cpp:139), so batches would leave only the last one.
+        session.Send(GameEventUserValuePacket.Load(eventValues.Values.SelectMany(dict => dict.Values).ToList()));
     }
 
     public GameEventUserValue Get(GameEventUserValueType type, int eventId, long expirationTime) {
