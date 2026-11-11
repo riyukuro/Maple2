@@ -447,26 +447,32 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
         for (byte i = 0; i < count; i++) {
-            bool isValid = packet.ReadBool();
-            if (!isValid) {
+            (bool UseVoucher, long Uid, int ItemId)? head = BeautyRules.ReadDyeHead(packet);
+            if (head == null) {
                 continue;
             }
-
-            packet.ReadByte();
-            bool useVoucher = packet.ReadBool();
-            packet.ReadByte();
-            packet.ReadInt();
-            packet.ReadLong();
-            long itemUid = packet.ReadLong();
-            int itemId = packet.ReadInt();
+            (bool useVoucher, long itemUid, int itemId) = head.Value;
 
             Item? item = session.Item.Equips.Get(itemUid);
             if (item == null || !BeautyRules.DyeItemMatches(item.Id, itemId)) {
-                return;
+                // Only this entry is refused. The client counts one answer per entry and takes an error
+                // as the answer of one (uiitemcoloringdialog.cpp:939-955, 1044). Its colors are read by the
+                // slot of the item it names, so the next entry starts at its own first byte.
+                session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_color));
+                bool cap;
+                if (item != null) {
+                    cap = item.EquipSlot() == EquipSlot.CP;
+                } else if (ItemMetadata.TryGet(itemId, out ItemMetadata? named)) {
+                    cap = named.SlotNames.Contains(EquipSlot.CP);
+                } else {
+                    return; // the length of the entry is not known
+                }
+                BeautyRules.ReadDyeColors(packet, cap);
+                continue;
             }
 
             // The colors are read before the fee is taken: a short packet charges nothing.
-            ItemAppearance appearance = item.EquipSlot() == EquipSlot.CP ? packet.ReadClass<CapAppearance>() : packet.ReadClass<ItemAppearance>();
+            ItemAppearance appearance = BeautyRules.ReadDyeColors(packet, item.EquipSlot() == EquipSlot.CP);
             if (!Pay(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata)) {
                 return;
             }

@@ -1,4 +1,6 @@
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Model.Validators;
 
@@ -34,6 +36,28 @@ public static class BeautyRules {
         long uid = packet.ReadLong();
         byte slot = packet.ReadByte();
         return (uid, slot);
+    }
+
+    // Mode 22 (dye), one entry: u8 set; when set u8, u8 free try, u8, i32, i64, i64 item uid, i32 item id,
+    // then the item's colors. Null for an entry that is not set.
+    public static (bool UseVoucher, long Uid, int ItemId)? ReadDyeHead(IByteReader packet) {
+        if (!packet.ReadBool()) {
+            return null;
+        }
+        packet.ReadByte();
+        bool useVoucher = packet.ReadBool();
+        packet.ReadByte();
+        packet.ReadInt();
+        packet.ReadLong();
+        long uid = packet.ReadLong();
+        int itemId = packet.ReadInt();
+        return (useVoucher, uid, itemId);
+    }
+
+    // The colors of one dye entry: a hat carries its placement after the colors. They are read for a
+    // refused entry too, so the entries after it are still read from their first byte.
+    public static ItemAppearance ReadDyeColors(IByteReader packet, bool cap) {
+        return cap ? packet.ReadClass<CapAppearance>() : packet.ReadClass<ItemAppearance>();
     }
 
     // Mode 22 (dye): each entry names the item by uid and by id; the two must be the same item.

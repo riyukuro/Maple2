@@ -40,6 +40,35 @@ public class BeautyRulesTests {
         Assert.That(BeautyRules.DyeItemMatches(11300001, 11300002), Is.False);
     }
 
+    // Mode 22: a refused entry is read to its end, hat or not, and the next entry is read whole.
+    [TestCase(true, 72)]
+    [TestCase(false, 20)]
+    public void DyeEntries(bool cap, int colorBytes) {
+        var writer = new ByteWriter();
+        for (int i = 0; i < 2; i++) {
+            writer.WriteBool(true);
+            writer.WriteByte(1);
+            writer.WriteBool(i == 1);
+            writer.WriteByte();
+            writer.WriteInt();
+            writer.WriteLong();
+            writer.WriteLong(7000 + i);
+            writer.WriteInt(11300001 + i);
+            writer.WriteBytes(new byte[i == 0 ? colorBytes : 20]);
+        }
+        writer.WriteBool(false);
+
+        var reader = new ByteReader(writer.ToArray(), 0);
+        (bool UseVoucher, long Uid, int ItemId)? first = BeautyRules.ReadDyeHead(reader);
+        Assert.That(first, Is.EqualTo((false, 7000L, 11300001)));
+        BeautyRules.ReadDyeColors(reader, cap);
+        (bool UseVoucher, long Uid, int ItemId)? second = BeautyRules.ReadDyeHead(reader);
+        Assert.That(second, Is.EqualTo((true, 7001L, 11300002)));
+        BeautyRules.ReadDyeColors(reader, false);
+        Assert.That(BeautyRules.ReadDyeHead(reader), Is.Null);
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
     [Test]
     public void Fee() {
         Assert.That(BeautyRules.Affords(100, 100), Is.True);
