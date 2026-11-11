@@ -42,6 +42,10 @@ public readonly record struct SpecialOption(int Value) {
     }
 }
 
+// The option a merge rolled: a basic attribute, or a special one when Basic is null. Value is the int the
+// item keeps (a rate in thousandths, like every item option).
+public readonly record struct MergeRoll(BasicAttribute? Basic, SpecialAttribute Special, int Value);
+
 public readonly struct LockOption {
     private readonly BasicAttribute? basic;
     private readonly SpecialAttribute? special;

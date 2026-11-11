@@ -47,10 +47,10 @@ public class ItemMergeHandler : FieldPacketHandler {
     }
 
     // Client UIItemMergeOptionDialog::RequestInfo, sent when the dialog has loaded (no payload).
-    // The dialog takes no item until the answer arrives. Empower applies its result at once here,
-    // so there is never an option left to choose: the answer is always "nothing pending".
+    // The dialog takes no item until the answer arrives: nothing pending, or the merge result that
+    // still waits for the player's choice.
     private static void HandleInfo(GameSession session) {
-        session.Send(ItemMergePacket.NoPendingChoice());
+        session.ItemMerge.Info();
     }
 
     private void HandleStage(GameSession session, IByteReader packet) {
@@ -74,17 +74,18 @@ public class ItemMergeHandler : FieldPacketHandler {
 
     }
 
-    // Client UIItemMergeOptionDialog::RequestChoice: the option the player keeps.
-    // Empower applies its result at once here, so there is no pending choice to settle.
+    // Client UIItemMergeOptionDialog::RequestChoice: a bool, true to keep the new option.
     private void HandleChoice(GameSession session, IByteReader packet) {
-        byte choice = packet.ReadByte();
-        Logger.Debug("ItemMerge choice {Choice} from {CharacterId} not implemented", choice, session.CharacterId);
+        bool keepNew = packet.ReadBool();
+
+        session.ItemMerge.Choose(keepNew);
     }
 
     // Client UIItemMergeRevertDialog: undo the merge options of an item with a revert item.
+    // The revert item comes first, then the item to clear (uiitemmergerevertdialog.cpp:156).
     private void HandleRevert(GameSession session, IByteReader packet) {
-        long itemUid = packet.ReadLong();
         long revertItemUid = packet.ReadLong();
+        long itemUid = packet.ReadLong();
         Logger.Debug("ItemMerge revert of {ItemUid} with {RevertItemUid} not implemented", itemUid, revertItemUid);
     }
 

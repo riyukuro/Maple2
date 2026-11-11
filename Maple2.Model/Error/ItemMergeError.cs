@@ -20,4 +20,6 @@ public enum ItemMergeError : short {
     s_item_merge_option_error_invalid_revert_rank = 6,
     [Description("No attributes to remove.")]
     s_item_merge_option_error_invalid_revert_option = 7,
+    s_item_merge_option_error_invalid_revert_slot = 8,
+    s_item_merge_option_error_unknown = 9,
 }

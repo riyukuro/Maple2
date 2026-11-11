@@ -21,6 +21,14 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
 
     private readonly Option[] options;
 
+    // The int the client reads after the five groups (CItemOption::Deserialize, itemoptiondata_1.cpp:260;
+    // GetMergeId): the item id of the crystal that gave the Empowerment group. The client finds the
+    // crystal's option table with it to mark a value in the top range (itemmergeoptiontable.cpp:622).
+    public int MergeId { get; private set; }
+
+    // CItemOption::HasGroup4Options: the item carries a merge option.
+    public bool HasMergeOption => options[(int) Type.Empowerment].Count != 0;
+
     public ItemStats() {
         options = new Option[TYPE_COUNT];
         for (int i = 0; i < TYPE_COUNT; i++) {
@@ -28,7 +36,8 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
         }
     }
 
-    public ItemStats(Dictionary<BasicAttribute, BasicOption>[] basicOption, Dictionary<SpecialAttribute, SpecialOption>[] specialOption) {
+    public ItemStats(Dictionary<BasicAttribute, BasicOption>[] basicOption, Dictionary<SpecialAttribute, SpecialOption>[] specialOption, int mergeId = 0) {
+        MergeId = mergeId;
         // Ensure all entries are set.
         options = new Option[TYPE_COUNT];
         for (int i = 0; i < TYPE_COUNT; i++) {
@@ -45,7 +54,20 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
                 new Dictionary<BasicAttribute, BasicOption>(options[i].Basic),
                 new Dictionary<SpecialAttribute, SpecialOption>(options[i].Special));
         }
+        stats.MergeId = MergeId;
         return stats;
+    }
+
+    // A merge leaves one option in the Empowerment group: the new one replaces the old one.
+    public void SetMergeOption(MergeRoll roll, int crystalId) {
+        var option = new Option();
+        if (roll.Basic != null) {
+            option.Basic[roll.Basic.Value] = new BasicOption(roll.Value);
+        } else {
+            option.Special[roll.Special] = new SpecialOption(roll.Value);
+        }
+        options[(int) Type.Empowerment] = option;
+        MergeId = crystalId;
     }
 
     public Option this[Type type] {
@@ -68,7 +90,7 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
             }
         }
 
-        writer.WriteInt(); // CItemOption::Deserialize reads an int after the five groups (itemoptiondata_1.cpp:260)
+        writer.WriteInt(MergeId);
     }
 
     public void ReadFrom(IByteReader reader) {
@@ -86,7 +108,7 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
             }
         }
 
-        reader.ReadInt();
+        MergeId = reader.ReadInt();
     }
 
     public class Option {

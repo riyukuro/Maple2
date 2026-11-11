@@ -15,6 +15,7 @@ public static class ItemMergePacket {
         Info = 0,
         Stage = 1,
         Select = 2,
+        Choice = 4,
         Empower = 5,
         Error = 5, // Same as Empower
         Remove = 6,
@@ -26,6 +27,39 @@ public static class ItemMergePacket {
         var pWriter = Packet.Of(SendOp.ItemMerge);
         pWriter.Write<Command>(Command.Info);
         pWriter.WriteByte(0);
+
+        return pWriter;
+    }
+
+    // Same reader: any byte but 0 and 2 is a merge result that waits for the player's choice. The dialog
+    // takes the item and shows the old option against the new one.
+    public static ByteWriter PendingChoice(int itemId, long itemUid, MergeRoll roll) {
+        var pWriter = Packet.Of(SendOp.ItemMerge);
+        pWriter.Write<Command>(Command.Info);
+        pWriter.WriteByte(1);
+        pWriter.WriteInt(itemId);
+        pWriter.WriteLong(itemUid);
+        pWriter.WriteMergeRoll(roll);
+
+        return pWriter;
+    }
+
+    // Same reader, byte 2: the item of the waiting result is gone. The client names the item in a notice.
+    public static ByteWriter PendingItemMissing(int itemId) {
+        var pWriter = Packet.Of(SendOp.ItemMerge);
+        pWriter.Write<Command>(Command.Info);
+        pWriter.WriteByte(2);
+        pWriter.WriteInt(itemId);
+
+        return pWriter;
+    }
+
+    // Client CSceneStateGame::OnItemFusion mode 4 (scenestategame.cpp:5938): the option rolled for an item
+    // that already has a merge option. The dialog shows both and asks which one to keep.
+    public static ByteWriter Choice(MergeRoll roll) {
+        var pWriter = Packet.Of(SendOp.ItemMerge);
+        pWriter.Write<Command>(Command.Choice);
+        pWriter.WriteMergeRoll(roll);
 
         return pWriter;
     }
@@ -100,7 +134,16 @@ public static class ItemMergePacket {
     }
 
     private static void WriteMergeStat(this IByteWriter pWriter, ItemMergeTable.Option option) {
-        pWriter.WriteInt(option.Values[0].Min);
-        pWriter.WriteInt(option.Values[^1].Max);
+        ItemMergeTable.Range<int> bounds = option.Bounds();
+        pWriter.WriteInt(bounds.Min);
+        pWriter.WriteInt(bounds.Max);
+    }
+
+    // UIItemMergeOptionDialog::FUN_1419d1490 (uiitemmergeoptiondialog.cpp:864): basic attribute or -1,
+    // special attribute (read when the first is -1), value.
+    private static void WriteMergeRoll(this IByteWriter pWriter, MergeRoll roll) {
+        pWriter.WriteInt(roll.Basic != null ? (int) roll.Basic.Value : -1);
+        pWriter.WriteInt(roll.Basic != null ? 0 : (int) roll.Special);
+        pWriter.WriteInt(roll.Value);
     }
 }

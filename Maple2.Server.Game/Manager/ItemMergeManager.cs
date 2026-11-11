@@ -5,7 +5,6 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
-using Maple2.Tools;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -25,6 +24,11 @@ public sealed class ItemMergeManager {
     private Item? upgradeItem;
     private Item? catalystItem;
 
+    // A result rolled for an item that already had a merge option, until the player picks one of the two.
+    // It lives with the session: after a relog the item keeps its old option.
+    private sealed record PendingMerge(long ItemUid, int ItemId, int CrystalId, MergeRoll Roll);
+    private PendingMerge? pending;
+
     public ItemMergeManager(GameSession session) {
         this.session = session;
     }
@@ -32,6 +36,26 @@ public sealed class ItemMergeManager {
     private void Clear() {
         upgradeItem = null;
         catalystItem = null;
+    }
+
+    private Item? Find(long itemUid) {
+        return session.Item.Inventory.Get(itemUid) ?? session.Item.Equips.Get(itemUid);
+    }
+
+    // The answer to the dialog's request on load.
+    public void Info() {
+        if (pending == null) {
+            session.Send(ItemMergePacket.NoPendingChoice());
+            return;
+        }
+
+        if (Find(pending.ItemUid) == null) {
+            session.Send(ItemMergePacket.PendingItemMissing(pending.ItemId));
+            pending = null;
+            return;
+        }
+
+        session.Send(ItemMergePacket.PendingChoice(pending.ItemId, pending.ItemUid, pending.Roll));
     }
 
     public void Stage(long itemUid) {
@@ -101,18 +125,26 @@ public sealed class ItemMergeManager {
     }
 
     public void Empower(long itemUid, long catalystUid) {
-        if (upgradeItem?.Uid != itemUid) {
-            logger.Error("Item Merge upgrade item UID mismatch: {UpgradeItemUid} != {ItemUid}", upgradeItem?.Uid, itemUid);
+        // The error codes are the ones the client's own check gives (UIItemMergeOptionDialog::CheckMerge).
+        if (pending != null) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown));
+            return;
+        }
+
+        if (upgradeItem?.Uid != itemUid || Find(itemUid) == null) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
             return;
         }
 
         if (catalystItem?.Uid != catalystUid) {
-            logger.Error("Item Merge catalyst item UID mismatch: {CatalystItemUid} != {CatalystUid}", catalystItem?.Uid, catalystUid);
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
             return;
         }
 
         if (!session.ServerTableMetadata.ItemMergeTable.Entries.TryGetValue(catalystItem.Id, out Dictionary<int, ItemMergeTable.Entry>? options) ||
-            (!options.TryGetValue(upgradeItem.Type.Type, out ItemMergeTable.Entry? mergeSlot))) {
+            !options.TryGetValue(upgradeItem.Type.Type, out ItemMergeTable.Entry? mergeSlot) ||
+            mergeSlot.BasicOptions.Count + mergeSlot.SpecialOptions.Count == 0) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
             return;
         }
 
@@ -132,6 +164,7 @@ public sealed class ItemMergeManager {
             return;
         }
 
+        int crystalId = catalystItem.Id;
         if (!session.Item.Inventory.Consume(catalystItem.Uid, 1)) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
             return;
@@ -139,46 +172,86 @@ public sealed class ItemMergeManager {
 
         session.Currency.Meso += -(mergeSlot.MesoCost * multiplier);
 
-        int selectedIndex = Random.Shared.Next(mergeSlot.BasicOptions.Count + mergeSlot.SpecialOptions.Count);
-
-        if (selectedIndex < mergeSlot.BasicOptions.Count) {
-            (BasicAttribute attribute, ItemMergeTable.Option mergeOption) = mergeSlot.BasicOptions.ElementAt(selectedIndex);
-
-            (int value, float rate) = Roll(mergeOption);
-            // upgradeItem.Stats![ItemStats.Type.Empowerment1] = new ItemStats.Option {
-            //     Basic = {
-            //         [attribute] = new BasicOption(value, rate),
-            //     },
-            // };
-        } else {
-            (SpecialAttribute attribute, ItemMergeTable.Option mergeOption) = mergeSlot.SpecialOptions.ElementAt(selectedIndex - mergeSlot.BasicOptions.Count);
-
-            (int value, float rate) = Roll(mergeOption);
-            // upgradeItem.Stats![ItemStats.Type.Empowerment1] = new ItemStats.Option {
-            //     Special = {
-            //         [attribute] = new SpecialOption(rate, value),
-            //     },
-            // };
-        }
-
-        session.Send(ItemMergePacket.Empower(upgradeItem));
-        session.NpcScript?.EmpowerEvent();
+        MergeRoll roll = Roll(mergeSlot, Random.Shared);
         session.ConditionUpdate(ConditionType.item_merge_success);
 
-        return;
-
-        (int, float) Roll(ItemMergeTable.Option mergeOption) {
-            WeightedSet<(ItemMergeTable.Range<int>, ItemMergeTable.Range<int>)> weightedSet = new();
-
-            for (int i = 0; i < mergeOption.Values.Length; i++) {
-                weightedSet.Add((mergeOption.Values[i], mergeOption.Rates[i]), mergeOption.Weights[i]);
-            }
-
-            (ItemMergeTable.Range<int> valueRange, ItemMergeTable.Range<int> rateRange) = weightedSet.Get();
-            int value = Random.Shared.Next(valueRange.Min, valueRange.Max);
-            float rate = Random.Shared.Next(rateRange.Min, rateRange.Max);
-            rate /= 1000;
-            return (value, rate);
+        // An item that already has a merge option keeps it until the player has seen the new one and
+        // picked (the client dialog waits in its choice phase after mode 4).
+        if (upgradeItem.Stats is { HasMergeOption: true }) {
+            pending = new PendingMerge(upgradeItem.Uid, upgradeItem.Id, crystalId, roll);
+            session.Send(ItemMergePacket.Choice(roll));
+            return;
         }
+
+        Apply(upgradeItem, roll, crystalId);
+    }
+
+    // The player's pick between the old option and the pending one. Either way the client waits for the
+    // result (mode 5) with the item as it is now.
+    public void Choose(bool keepNew) {
+        if (pending == null) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown));
+            return;
+        }
+
+        PendingMerge result = pending;
+        pending = null;
+        Item? item = Find(result.ItemUid);
+        if (item == null) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
+            return;
+        }
+
+        if (keepNew) {
+            Apply(item, result.Roll, result.CrystalId);
+            return;
+        }
+
+        session.Send(ItemMergePacket.Empower(item));
+        session.NpcScript?.EmpowerEvent();
+    }
+
+    private void Apply(Item item, MergeRoll roll, int crystalId) {
+        item.Stats ??= new ItemStats();
+        item.Stats.SetMergeOption(roll, crystalId);
+
+        session.Send(ItemMergePacket.Empower(item));
+        session.NpcScript?.EmpowerEvent();
+        if (session.Item.Equips.Get(item.Uid) != null) {
+            session.Stats.Refresh();
+        }
+    }
+
+    // One option of the slot, each as likely as the others, then one of its steps by weight and a value
+    // inside the step, both ends included.
+    public static MergeRoll Roll(ItemMergeTable.Entry mergeSlot, Random random) {
+        int index = random.Next(mergeSlot.BasicOptions.Count + mergeSlot.SpecialOptions.Count);
+        if (index < mergeSlot.BasicOptions.Count) {
+            (BasicAttribute attribute, ItemMergeTable.Option option) = mergeSlot.BasicOptions.ElementAt(index);
+            return new MergeRoll(attribute, SpecialAttribute.None, RollValue(option, random));
+        } else {
+            (SpecialAttribute attribute, ItemMergeTable.Option option) = mergeSlot.SpecialOptions.ElementAt(index - mergeSlot.BasicOptions.Count);
+            return new MergeRoll(null, attribute, RollValue(option, random));
+        }
+    }
+
+    private static int RollValue(ItemMergeTable.Option option, Random random) {
+        int total = 0;
+        for (int i = 0; i < option.Values.Length; i++) {
+            total += Math.Max(option.Weights[i], 0);
+        }
+        if (total <= 0) {
+            return option.Bounds().Min;
+        }
+
+        int pick = random.Next(total);
+        for (int i = 0; i < option.Values.Length; i++) {
+            pick -= Math.Max(option.Weights[i], 0);
+            if (pick < 0) {
+                ItemMergeTable.Range<int> step = option.Step(i);
+                return random.Next(step.Min, Math.Max(step.Max, step.Min) + 1);
+            }
+        }
+        return option.Bounds().Max;
     }
 }

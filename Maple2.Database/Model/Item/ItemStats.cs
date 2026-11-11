@@ -5,7 +5,7 @@ using Maple2.Model.Game;
 namespace Maple2.Database.Model;
 
 internal record ItemStats(Dictionary<BasicAttribute, BasicOption>[] BasicOption,
-        Dictionary<SpecialAttribute, SpecialOption>[] SpecialOption) {
+        Dictionary<SpecialAttribute, SpecialOption>[] SpecialOption, int MergeId = 0) {
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator ItemStats?(Maple2.Model.Game.ItemStats? other) {
         if (other == null) {
@@ -20,12 +20,12 @@ internal record ItemStats(Dictionary<BasicAttribute, BasicOption>[] BasicOption,
             specialOption[(int) type] = other[type].Special;
         }
 
-        return new ItemStats(basicOption, specialOption);
+        return new ItemStats(basicOption, specialOption, other.MergeId);
     }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Maple2.Model.Game.ItemStats?(ItemStats? other) {
-        return other == null ? null : new Maple2.Model.Game.ItemStats(other.BasicOption, other.SpecialOption);
+        return other == null ? null : new Maple2.Model.Game.ItemStats(other.BasicOption, other.SpecialOption, other.MergeId);
     }
 }
 
