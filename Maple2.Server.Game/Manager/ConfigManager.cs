@@ -391,6 +391,12 @@ public class ConfigManager {
     }
 
     #region KeyBind
+    public int KeyBindCount => keyBinds.Count;
+
+    public bool HasKeyBind(int keyCode) {
+        return keyBinds.ContainsKey(keyCode);
+    }
+
     public void SetKeyBind(in KeyBind keyBind) {
         keyBinds[keyBind.KeyCode] = keyBind;
     }

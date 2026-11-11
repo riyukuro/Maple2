@@ -50,7 +50,7 @@ public class KeyTableHandler : FieldPacketHandler {
         int count = packet.ReadInt();
         for (int i = 0; i < count; i++) {
             var keyBind = packet.Read<KeyBind>();
-            if (!KeyBindRules.IsClientKeyCode(keyBind.KeyCode)) {
+            if (!KeyBindRules.CanStore(keyBind.KeyCode, Target.LOCALE, session.Config.KeyBindCount, session.Config.HasKeyBind(keyBind.KeyCode))) {
                 continue;
             }
             session.Config.SetKeyBind(keyBind);

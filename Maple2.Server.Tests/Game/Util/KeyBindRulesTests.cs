@@ -60,6 +60,20 @@ public class KeyBindRulesTests {
         Assert.That(KeyBindRules.IsClientKeyCode(code), Is.False);
     }
 
+    [Test]
+    public void CanStore_KrFiltersOtherRegionsBoundTheTable() {
+        // KR: the client's key codes only, whatever the table holds.
+        Assert.That(KeyBindRules.CanStore(0xCF, "KR", 0, false), Is.True);
+        Assert.That(KeyBindRules.CanStore(0xD0, "KR", 0, false), Is.False);
+        Assert.That(KeyBindRules.CanStore(0xD0, "KR", 0, true), Is.False);
+
+        // Other regions: any code while the table has room; a full table only takes a key it already holds.
+        Assert.That(KeyBindRules.CanStore(0xD0, "NA", 0, false), Is.True);
+        Assert.That(KeyBindRules.CanStore(0xD0, "NA", KeyBindRules.MaxUncheckedBinds - 1, false), Is.True);
+        Assert.That(KeyBindRules.CanStore(0xD0, "NA", KeyBindRules.MaxUncheckedBinds, false), Is.False);
+        Assert.That(KeyBindRules.CanStore(0xD0, "NA", KeyBindRules.MaxUncheckedBinds, true), Is.True);
+    }
+
     // The debug mode bind a GM account's table carries sits on key 41 or key 70; both are client key codes,
     // so a GM client that sends its table back keeps the bind.
     [Test]

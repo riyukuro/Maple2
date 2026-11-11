@@ -41,6 +41,7 @@ public static class KeyBindRules {
     // second | first << 8 | mode << 16, both keys counted from 0x91. The first key is one of 0x96 to 0x99;
     // mode 0xF0 takes a second key of 0x92 to 0xA1 outside 0x96 to 0x99, mode 0xF1 one of 0xA3 to 0xB2.
     // That is 319 codes, so a player's key table cannot grow past it.
+    // This is the KR client's table; see CanStore for the other regions.
     public static bool IsClientKeyCode(int keyCode) {
         if (keyCode is >= 1 and < 0xD0) {
             return true;
@@ -58,5 +59,19 @@ public static class KeyBindRules {
             0xF1 => second is >= 0x12 and <= 0x21,
             _ => false,
         };
+    }
+
+    // The most binds a table holds when the region's key list is not known.
+    public const int MaxUncheckedBinds = 512;
+
+    // Whether a bind the client sends is stored. KR: only the KR client's key codes. The key lists of the
+    // other regions' clients were not checked, so there any code is taken, and the table size is bounded
+    // instead: a bind on a key the table already holds replaces it, a new key needs room.
+    public static bool CanStore(int keyCode, string locale, int tableCount, bool alreadyBound) {
+        if (locale == Maple2.Tools.Locale.Default) {
+            return IsClientKeyCode(keyCode);
+        }
+
+        return alreadyBound || tableCount < MaxUncheckedBinds;
     }
 }
