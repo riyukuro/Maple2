@@ -39,6 +39,14 @@ public static class FieldEntryRules {
         return failedRoomId != 0 && failedRoomId == partyRoomId;
     }
 
+    // Whether entering a field saves its enterReturnId as the return field: an open field (instance type none) or
+    // a saveField instance does, a dungeon lobby or room never does. A room may sit on an open map (Zakum's room
+    // 23040003 is field 02000426): its field carries the map's own enterReturnId, and saving that made leaving the
+    // room (or Exit on its result box) land in that map as an open field instead of the field the player came from.
+    public static bool SavesReturnMap(InstanceType type, bool saveField, bool dungeonField, int enterReturnId) {
+        return !dungeonField && enterReturnId != 0 && (type == InstanceType.none || saveField);
+    }
+
     // A dungeon arrival whose room is gone when the character gets there is entered as a plain arrival in the
     // return field: the client is already on its loading screen and an error there locks it out.
     public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {

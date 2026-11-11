@@ -68,6 +68,19 @@ public class FieldEntryRulesTests {
             Is.EqualTo(new byte[] { (byte) SendOp.GameToGame, 0x00, 0x1D }));
     }
 
+    // An open field and a saveField instance save their enterReturnId; a dungeon room on an open map (instance type
+    // none, as Zakum's room field 02000426) and a dungeon lobby do not, so leaving the room goes back to the field
+    // the player came from. A field without an enterReturnId saves nothing.
+    [Test]
+    public void SavesReturnMap_NotInDungeonFields() {
+        Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.none, false, false, 2000426), Is.True);
+        Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.solo, true, false, 2000062), Is.True);
+        Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.solo, false, false, 2000062), Is.False);
+        Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.none, false, true, 2000426), Is.False);
+        Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.DungeonLobby, true, true, 2000062), Is.False);
+        Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.none, false, false, 0), Is.False);
+    }
+
     // A dungeon arrival whose room is gone enters the return field; every other arrival is left alone.
     [Test]
     public void DungeonArrival_RoomGone_EntersReturnField() {

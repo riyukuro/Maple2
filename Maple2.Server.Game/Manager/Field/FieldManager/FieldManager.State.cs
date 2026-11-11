@@ -113,10 +113,8 @@ public partial class FieldManager {
             }
         }
 
-        if (FieldInstance.Type == InstanceType.none || FieldInstance.SaveField) {
-            if (Metadata.Property.EnterReturnId != 0) {
-                player.Character.ReturnMaps.Push(Metadata.Property.EnterReturnId);
-            }
+        if (FieldEntryRules.SavesReturnMap(FieldInstance.Type, FieldInstance.SaveField, this is DungeonFieldManager, Metadata.Property.EnterReturnId)) {
+            player.Character.ReturnMaps.Push(Metadata.Property.EnterReturnId);
         }
 
         return fieldPlayer;
