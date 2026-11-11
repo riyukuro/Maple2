@@ -132,6 +132,27 @@ public class PartyLookup : IDisposable {
     // A party that may take or be taken in a dungeon match merge: it exists and has no dungeon room set (rv42 MINOR 8).
     public bool MayMerge(int partyId) => TryGet(partyId, out PartyManager? manager) && !manager.Party.DungeonSet && !DungeonMatch.IsMatching(partyId);
 
+    // The new group takes in the waiting smaller groups (rv42 MAJOR 2), and their parties move into it as a merge
+    // does. A pulled party that cannot move searches on its own again, and the group keeps the others (MINOR 5).
+    public DungeonMatchResult PullDungeonMatch(PartyManager manager) => DungeonMatchStep(() => {
+        DungeonMatchPull pull = DungeonMatch.Pull(manager.Party.Id, MayMerge);
+        var moved = new List<DungeonMatchGroup>();
+        var failed = new List<DungeonMatchGroup>();
+        foreach (DungeonMatchGroup pulled in pull.Pulled) {
+            bool ok = TryGet(pulled.PartyId, out PartyManager? from) && MoveMembers(from, manager) == PartyError.none;
+            (ok ? moved : failed).Add(pulled);
+        }
+        if (failed.Count == 0) {
+            return pull.Result;
+        }
+        foreach (DungeonMatchGroup group in failed) {
+            if (TryGet(group.PartyId, out _)) {
+                DungeonMatch.Restore(group);
+            }
+        }
+        return DungeonMatch.Restore(pull.Before!, moved);
+    });
+
     // Runs body under the matchmaker lock; the channel calls it defers (Defer) are made after the lock is released.
     public T DungeonMatchStep<T>(Func<T> body) => steps.Run(body);
     public void DungeonMatchStep(Action body) => steps.Run(body);
@@ -220,7 +241,8 @@ public class PartyLookup : IDisposable {
         });
     }
 
-    private int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
+    // Virtual: the tests' seam for the channel call.
+    protected virtual int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
             return 0;
         }
@@ -240,7 +262,7 @@ public class PartyLookup : IDisposable {
     }
 
     // The room made for a party that went before it was set: it is destroyed on the channel that made it.
-    private void DestroyMatchedRoom(int lobbyRoomId) {
+    protected virtual void DestroyMatchedRoom(int lobbyRoomId) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
             return;
         }

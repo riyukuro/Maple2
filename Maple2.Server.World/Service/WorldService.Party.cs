@@ -343,7 +343,7 @@ public partial class WorldService {
                 manager.SendLoad(manager.Party.Members.Values);
             }
             if (own.Outcome == DungeonMatchOutcome.Searching) {
-                own = PullDungeonMatch(manager);
+                own = partyLookup.PullDungeonMatch(manager);
             }
             if (own.Outcome == DungeonMatchOutcome.Matched) {
                 partyLookup.CompleteDungeonMatch(manager, own);
@@ -352,27 +352,6 @@ public partial class WorldService {
             }
             return new PartyResponse { PartyId = manager.Party.Id };
         });
-    }
-
-    // The new group takes in the waiting smaller groups (rv42 MAJOR 2), and their parties move into it as a merge
-    // does. A pulled party that cannot move searches on its own again, and the group keeps the others (MINOR 5).
-    private DungeonMatchResult PullDungeonMatch(PartyManager manager) {
-        DungeonMatchPull pull = partyLookup.DungeonMatch.Pull(manager.Party.Id, partyLookup.MayMerge);
-        var moved = new List<DungeonMatchGroup>();
-        var failed = new List<DungeonMatchGroup>();
-        foreach (DungeonMatchGroup pulled in pull.Pulled) {
-            bool ok = partyLookup.TryGet(pulled.PartyId, out PartyManager? from) && partyLookup.MoveMembers(from, manager) == PartyError.none;
-            (ok ? moved : failed).Add(pulled);
-        }
-        if (failed.Count == 0) {
-            return pull.Result;
-        }
-        foreach (DungeonMatchGroup group in failed) {
-            if (partyLookup.TryGet(group.PartyId, out _)) {
-                partyLookup.DungeonMatch.Restore(group);
-            }
-        }
-        return partyLookup.DungeonMatch.Restore(pull.Before!, moved);
     }
 
     // A player with no party takes the slot the queue gave them in target's group.
