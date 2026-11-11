@@ -201,7 +201,12 @@ public class RequestCubeHandler : FieldPacketHandler {
 
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 break;
-            case Command.OwnPlotSign: // the owner used the sign of their own plot: plot number, 0
+            // CUgcSignCinematicComponent::vfunc_2 (cinematiccomponent.cpp:1034): the action key in the talk scene of
+            // a plot's sign. The account that owns the plot sends 5 (plot number, 0); any other account sends the
+            // purchase, 2, from the same place. The only answer the client reads under sub-type 5
+            // (scenestategame.cpp:9945) takes the owner off the plot, which is what a sale (6) already sends.
+            // Whether 5 is a second way to sell is not settled, and a guess could remove a home: read and logged.
+            case Command.OwnPlotSign:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: plot {Plot}, {Value}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
                 break;
             case Command.HomeSummon: // home summon dialog: two strings
