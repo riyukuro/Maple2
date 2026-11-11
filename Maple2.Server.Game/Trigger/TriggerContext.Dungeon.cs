@@ -95,8 +95,34 @@ public partial class TriggerContext {
         string targetEffect,
         int additionalEffectId
     ) {
-        ErrorLog("[RandomAdditionalEffect] target:{Target}, boxId:{BoxId}, spawnId:{SpawnId}, targetCount:{Count}, targetEffect:{Effect}, additionalEffectId:{Id}",
-            target, boxId, spawnId, targetCount, targetEffect, additionalEffectId);
+        DebugLog("[RandomAdditionalEffect] target:{Target}, boxId:{BoxId}, spawnId:{SpawnId}, targetCount:{Count}, tick:{Tick}, waitTick:{WaitTick}, targetEffect:{Effect}, additionalEffectId:{Id}",
+            target, boxId, spawnId, targetCount, tick, waitTick, targetEffect, additionalEffectId);
+
+        // The client shows the effect over one candidate at a time (command 23), then over the chosen
+        // ones together (command 24), and removes it on command 25.
+        IActor[] candidates = spawnId != 0
+            ? Field.Mobs.Values.Where(mob => mob.SpawnPointId == spawnId).ToArray<IActor>()
+            : PlayersInBox(boxId).ToArray<IActor>();
+        if (candidates.Length == 0 || targetCount <= 0) {
+            return;
+        }
+
+        Field.Broadcast(TriggerPacket.Effect1(candidates.Select(actor => actor.ObjectId).ToArray(), targetEffect));
+        Events.Schedule(() => {
+            IActor[] chosen = candidates.Where(actor => !actor.IsDead && Field.TryGetActor(actor.ObjectId, out _))
+                .OrderBy(_ => Random.Shared.Next())
+                .Take(targetCount)
+                .ToArray();
+            Field.Broadcast(TriggerPacket.Effect2(chosen.Select(actor => actor.ObjectId).ToArray(), targetEffect));
+            Events.Schedule(() => {
+                foreach (IActor actor in chosen) {
+                    if (additionalEffectId != 0 && !actor.IsDead && Field.TryGetActor(actor.ObjectId, out _)) {
+                        actor.Buffs.AddBuff(Field.FieldActor, actor, additionalEffectId, 1, Field.FieldTick);
+                    }
+                }
+                Field.Broadcast(TriggerPacket.EffectStop());
+            }, TimeSpan.FromMilliseconds(Math.Max(waitTick, 0)));
+        }, TimeSpan.FromMilliseconds(Math.Max(tick, 0)));
     }
 
     public void SetDungeonVariable(int varId, int value) {

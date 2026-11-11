@@ -28,7 +28,7 @@ public static class TriggerPacket {
         ResetScript = 22,
         Effect1 = 23,
         Effect2 = 24,
-        Unknown24 = 25,
+        EffectStop = 25,
     }
 
     public static ByteWriter Load(IReadOnlyCollection<ITriggerObject> triggers) {
@@ -183,9 +183,9 @@ public static class TriggerPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown24() {
+    public static ByteWriter EffectStop() {
         var pWriter = Packet.Of(SendOp.Trigger);
-        pWriter.Write<Command>(Command.Unknown24);
+        pWriter.WriteByte((byte) Command.EffectStop);
 
         return pWriter;
     }
