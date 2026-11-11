@@ -849,6 +849,18 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new MasteryDifferentialFactorTable(results);
     }
 
+    // One row of table/guildbuff.xml. duration and cooltime are minutes, as the client reads them.
+    public static GuildTable.Buff MapGuildBuff(GuildBuff buff) {
+        return new GuildTable.Buff(
+            Id: buff.additionalEffectId,
+            Level: buff.additionalEffectLevel,
+            RequireLevel: buff.requireLevel,
+            Cost: buff.cost,
+            UpgradeCost: buff.upgradeCost,
+            Duration: buff.duration,
+            Cooldown: buff.cooltime);
+    }
+
     private GuildTable ParseGuildTable() {
         // Dictionary<short, int> expTable = parser.ParseGuildExp()
         //     .ToDictionary(entry => (short) entry.Id, entry => entry.Item.value);
@@ -857,14 +869,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         foreach ((int id, IEnumerable<GuildBuff> buffs) in parser.ParseGuildBuff()) {
             var buffLevels = new Dictionary<short, GuildTable.Buff>();
             foreach (GuildBuff buff in buffs) {
-                buffLevels[buff.level] = new GuildTable.Buff(
-                    Id: buff.additionalEffectId,
-                    Level: buff.additionalEffectLevel,
-                    RequireLevel: buff.requireLevel,
-                    Cost: buff.cost,
-                    UpgradeCost: buff.upgradeCost,
-                    Duration: buff.duration,
-                    Cooldown: buff.cooltime);
+                buffLevels[buff.level] = MapGuildBuff(buff);
             }
             guildBuffs.Add(id, buffLevels);
         }
