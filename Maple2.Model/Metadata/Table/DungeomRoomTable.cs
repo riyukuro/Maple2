@@ -27,7 +27,10 @@ public record DungeonRoomMetadata(
     int[] UserMissions,
     bool MoveToBackupField,
     DungeonTimerType TimerType,
-    bool IsExpireTimeOut
+    bool IsExpireTimeOut,
+    // The boss board id (BossRanking): the ranking dialog adds one boss board tab per room with one, and asks for
+    // its boards with this id. 0 = no board.
+    int BossRanking = 0
 );
 
 public record DungeonRoomRewardMetadata(

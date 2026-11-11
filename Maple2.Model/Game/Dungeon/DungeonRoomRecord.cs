@@ -24,6 +24,10 @@ public class DungeonRoomRecord {
 
     public void SetFirstUser(long characterId) => Interlocked.CompareExchange(ref firstCharacterId, characterId, 0);
 
+    // The room's clear is kept for its boss board once (a second clear of the instance keeps nothing).
+    private int bossClearKept;
+    public bool TryKeepBossClear() => Interlocked.Exchange(ref bossClearKept, 1) == 0;
+
     /// <summary>The sum of the first user's user mission scores (the client sums the scores the same way).</summary>
     public int FirstUserMissionScore() {
         if (!UserResults.TryGetValue(FirstCharacterId, out DungeonUserRecord? record)) {

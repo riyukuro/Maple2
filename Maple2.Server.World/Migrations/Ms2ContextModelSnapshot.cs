@@ -253,6 +253,51 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("black-market-listing", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.BossClear", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ClearTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("DungeonId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("LeaderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("RankingId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Seconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RankingId", "ClearTime");
+
+                    b.HasIndex("RankingId", "Seconds");
+
+                    b.ToTable("boss-clear", (string)null);
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.BossClearMember", b =>
+                {
+                    b.Property<long>("ClearId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("ClearId", "CharacterId");
+
+                    b.HasIndex("CharacterId");
+
+                    b.ToTable("boss-clear-member", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Buddy", b =>
                 {
                     b.Property<long>("Id")
@@ -1783,6 +1828,21 @@ namespace Maple2.Server.World.Migrations
                         .IsUnique();
 
                     b.ToTable("wedding-hall", (string)null);
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.BossClearMember", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Maple2.Database.Model.BossClear", null)
+                        .WithMany()
+                        .HasForeignKey("ClearId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.Buddy", b =>

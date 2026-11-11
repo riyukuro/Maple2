@@ -3,6 +3,7 @@ using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -68,6 +69,7 @@ public class DungeonFieldManager : FieldManager {
                     player.Session.Send(DungeonMissionPacket.Update(missions.ToArray()));
                 }
             }
+            KeepBossClear(seconds);
         }
         DungeonRoomRecord.State = state;
         DungeonRoomRecord.EndTick = FieldTick;
@@ -144,6 +146,63 @@ public class DungeonFieldManager : FieldManager {
     /// clear count or condition). The Colosseum is left out: its script goes back to its start after each end,
     /// and a new run in the same room ends with its own clear or fail.
     /// </summary>
+    /// <summary>
+    /// Whether a clear of the room goes on a boss board: the room has a BossRanking and its group is one whose
+    /// board asks for the clears (the ranking dialog's boss boards 7, 8, 9, 0xf and 0x11 list the rooms of
+    /// these groups that have a BossRanking, and ask for 0x47/0x48/0x51/0x5b with it).
+    /// </summary>
+    public static bool KeepsBossClear(DungeonRoomMetadata metadata) =>
+        metadata.BossRanking != 0 && metadata.GroupType is DungeonGroupType.raid or DungeonGroupType.chaosRaid
+            or DungeonGroupType.reverseRaid or DungeonGroupType.lapenta or DungeonGroupType.turka;
+
+    /// <summary>A player of the room at its clear: the character, its party id (0 without one) and that party's leader.</summary>
+    public readonly record struct BossClearPlayer(long CharacterId, int PartyId, long PartyLeaderId);
+
+    /// <summary>
+    /// The party of a boss clear: with a room entered by a party, the players of that party in the field and its
+    /// leader; else the room's first user alone, when that user is in the field without a party. Null when nobody
+    /// is left to keep.
+    /// </summary>
+    public static (long LeaderId, long[] Members)? BossClearParty(int roomPartyId, long firstCharacterId, IEnumerable<BossClearPlayer> players) {
+        BossClearPlayer[] present = players.ToArray();
+        if (roomPartyId != 0) {
+            BossClearPlayer[] party = present.Where(player => player.PartyId == roomPartyId).ToArray();
+            if (party.Length == 0) {
+                return null;
+            }
+            return (party[0].PartyLeaderId, party.Select(player => player.CharacterId).ToArray());
+        }
+        foreach (BossClearPlayer player in present) {
+            if (player.CharacterId == firstCharacterId && player.PartyId == 0) {
+                return (player.CharacterId, [player.CharacterId]);
+            }
+        }
+        return null;
+    }
+
+    // The first clear of a room with a boss board keeps one row of the party in the field.
+    private void KeepBossClear(long seconds) {
+        if (!KeepsBossClear(DungeonMetadata)) {
+            return;
+        }
+        var players = new List<BossClearPlayer>();
+        foreach (long characterId in DungeonRoomRecord.UserResults.Keys) {
+            if (TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                Party? party = player.Session.Party.Party;
+                players.Add(new BossClearPlayer(characterId, party?.Id ?? 0, party?.LeaderCharacterId ?? 0));
+            }
+        }
+        if (BossClearParty(PartyId, DungeonRoomRecord.FirstCharacterId, players) is not { } clear
+            || !DungeonRoomRecord.TryKeepBossClear()) {
+            return;
+        }
+
+        using GameStorage.Request db = GameStorage.Context();
+        long clearId = db.AddBossClear(DungeonMetadata.BossRanking, DungeonId, clear.LeaderId, (int) Math.Max(0, seconds),
+            DateTime.Now.ToEpochSeconds(), clear.Members);
+        resultLogger.Debug("Dungeon {DungeonId} boss clear {ClearId} kept for {Count} members", DungeonId, clearId, clear.Members.Length);
+    }
+
     public static bool TakesResult(DungeonState current, DungeonGroupType groupType) =>
         current == DungeonState.None || groupType == DungeonGroupType.colosseum;
 

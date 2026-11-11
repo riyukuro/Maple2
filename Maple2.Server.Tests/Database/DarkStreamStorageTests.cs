@@ -235,6 +235,7 @@ public class DarkStreamStorageTests {
         Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonal, (int) JobCode.Knight, alpha), GameRankingType.DarkDescentPersonal), Is.EqualTo(2));
         Assert.That(ReadPersonalRank(Personal(GameRankingType.DarkDescentPersonalPreviousSeason, 0, alpha), GameRankingType.DarkDescentPersonalPreviousSeason), Is.EqualTo(0));
     }
+
     [Test]
     public void Board_GameMasterTab_KeepsOnlyTheGameMasterJob() {
         long master = CreateCharacter("master", Job.GameMaster);

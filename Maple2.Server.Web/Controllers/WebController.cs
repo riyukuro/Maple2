@@ -67,6 +67,8 @@ public class WebController : ControllerBase {
             GameRankingType.PersonalGuildTrophy => PersonalGuildTrophy(characterId),
             GameRankingType.DarkDescent or GameRankingType.DarkDescentPreviousSeason => DarkStream(type, rankingId, userName),
             GameRankingType.DarkDescentPersonal or GameRankingType.DarkDescentPersonalPreviousSeason => PersonalDarkStream(type, rankingId, characterId),
+            GameRankingType.BossClearCount or GameRankingType.BossFirstClears or GameRankingType.BossShortestClears => Boss(type, rankingId, userName),
+            GameRankingType.BossClearCountPersonal => PersonalBoss(rankingId, characterId),
             _ => new ByteWriter(),
         };
 
@@ -407,6 +409,36 @@ public class WebController : ControllerBase {
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
             ByteWriter writer = DarkStreamRanking.Personal(db, type, jobCode, characterId);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter Boss(GameRankingType type, int rankingId, string userName) {
+        string cacheKey = $"Boss_{type}_{rankingId}_{userName ?? "all"}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = BossRanking.Board(db, type, rankingId, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalBoss(int rankingId, long characterId) {
+        string cacheKey = $"PersonalBoss_{rankingId}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = BossRanking.Personal(db, rankingId, characterId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }

@@ -17,10 +17,12 @@ public enum GameRankingType {
     UgcPersonalPreviousSeason = 62,
     Ugc = 63,
     UgcPreviousSeason = 64,
-    RaidPersonalClear = 71,
-    RaidClear = 72,
-    RaidEarlyVictory = 81,
-    RaidShortestTime = 91,
+    // The boss boards (the ranking dialog's boards 7, 8, 9, 0xf and 0x11; the request's ranking id is the room's
+    // BossRanking): the clears per character and its own rank, the first clears, the fastest clears.
+    BossClearCountPersonal = 71,
+    BossClearCount = 72,
+    BossFirstClears = 81,
+    BossShortestClears = 91,
     ArcadePersonal = 101,
     ArcadePersonalPreviousSeason = 102,
     Arcade = 103,

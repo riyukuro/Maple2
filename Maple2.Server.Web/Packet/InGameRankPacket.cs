@@ -117,66 +117,56 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    public static ByteWriter RaidClear(GameRankingType type) {
+    // The boss clear count board (0x48), as the client's GameRanking::BossKillCount reads it: the header, then a
+    // count of rows, each a rank, the character id, the name, the profile image and three ints, of which the client
+    // shows the second (the clears). The first goes out as the board's ranking id and the third as 0; the client
+    // does not use them.
+    public static ByteWriter BossClearCount(int rankingId, IList<BossClearCountRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(type);
+        pWriter.WriteInt((int) GameRankingType.BossClearCount);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // boss ranking ID
-        pWriter.WriteInt(); // total clears
-        pWriter.WriteInt((int) JobCode.None); // job code
-        pWriter.WriteInt(); // level
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (BossClearCountRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(rankingId); // read, not used by the client
+            pWriter.WriteInt(info.Clears);
+            pWriter.WriteInt(0); // read, not used by the client
+        }
 
         return pWriter;
     }
 
-    public static ByteWriter RaidEarlyVictory() {
+    // The first clears (0x51) and fastest clears (0x5b) of a boss board, as the client's GameRanking::BossKillRecord
+    // reads them: the header, then a count of rows, each a rank, a long and an int the client does not use (the clear's
+    // row id and the board's ranking id), the leader's character id, the clear time in seconds (shown as minutes and
+    // seconds), the clear date, then the members: a count, and each member's character id, name, profile image,
+    // level and job code (the client keeps the first 10 and shows the leader's name, else the first member's).
+    public static ByteWriter BossClears(GameRankingType type, IList<BossClearRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(GameRankingType.RaidEarlyVictory);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // dungeon record id?
-        pWriter.WriteLong(); // party leader character id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeString(string.Empty); // clear time 00:01:39
-        pWriter.WriteInt(); // boss ranking ID
-        pWriter.WriteInt(); // clear in seconds ?
-        pWriter.WriteUnicodeStringWithLength(); // clear timestamp
-        pWriter.WriteInt(1); // party member count
-
-        pWriter.WriteLong(); // account id ?
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // picture
-        pWriter.WriteInt(); // level
-        pWriter.Write<Job>(Job.Newbie); // job (not jobcode)
-
-        return pWriter;
-
-    }
-
-    public static ByteWriter RaidShortestTime() {
-        var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(GameRankingType.RaidShortestTime);
-        pWriter.WriteInt(0);
-        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // boss ranking ID
-        pWriter.WriteInt(); // clear in seconds
-        pWriter.WriteUnicodeStringWithLength(); // clear timestamp
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (BossClearRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.ClearId); // read, not used by the client
+            pWriter.WriteLong(info.LeaderId);
+            pWriter.WriteInt(info.RankingId); // read, not used by the client
+            pWriter.WriteInt(info.Seconds);
+            pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.ClearTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+            pWriter.WriteInt(info.Members.Count);
+            foreach (BossClearMemberInfo member in info.Members) {
+                pWriter.WriteLong(member.CharacterId);
+                pWriter.WriteUnicodeStringWithLength(member.Name);
+                pWriter.WriteUnicodeStringWithLength(member.Profile);
+                pWriter.WriteInt(member.Level);
+                pWriter.WriteInt((int) member.JobCode);
+            }
+        }
 
         return pWriter;
     }

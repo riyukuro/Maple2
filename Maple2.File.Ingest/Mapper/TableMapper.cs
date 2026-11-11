@@ -1926,7 +1926,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 UserMissions: dungeon.userMissions,
                 MoveToBackupField: dungeon.isMoveOutToBackupField,
                 TimerType: (Maple2.Model.Enum.DungeonTimerType) dungeon.timerType,
-                IsExpireTimeOut: dungeon.isExpireTimeOut
+                IsExpireTimeOut: dungeon.isExpireTimeOut,
+                BossRanking: dungeon.BossRanking
                 ));
         }
 
