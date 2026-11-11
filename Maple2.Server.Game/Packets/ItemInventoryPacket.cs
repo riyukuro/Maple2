@@ -93,7 +93,7 @@ public static class ItemInventoryPacket {
     public static ByteWriter LoadTab(InventoryType type, ICollection<Item> items) {
         var pWriter = Packet.Of(SendOp.ItemInventory);
         pWriter.Write<Command>(Command.LoadTab);
-        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(type.ToClient());
         pWriter.WriteShort((short) items.Count);
         foreach (Item item in items) {
             pWriter.WriteInt(item.Id);
@@ -117,7 +117,7 @@ public static class ItemInventoryPacket {
     public static ByteWriter Reset(InventoryType type) {
         var pWriter = Packet.Of(SendOp.ItemInventory);
         pWriter.Write<Command>(Command.Reset);
-        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(type.ToClient());
 
         return pWriter;
     }
@@ -125,7 +125,7 @@ public static class ItemInventoryPacket {
     public static ByteWriter ExpandCount(InventoryType type, int expansion) {
         var pWriter = Packet.Of(SendOp.ItemInventory);
         pWriter.Write<Command>(Command.ExpandCount);
-        pWriter.Write<InventoryType>(type);
+        pWriter.WriteByte(type.ToClient());
         pWriter.WriteInt(expansion);
 
         return pWriter;

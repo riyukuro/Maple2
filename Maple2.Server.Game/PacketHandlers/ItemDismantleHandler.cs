@@ -162,8 +162,11 @@ public class ItemDismantleHandler : FieldPacketHandler {
             return;
         }
 
-        var type = packet.Read<InventoryType>();
+        byte tab = packet.ReadByte();
         byte rarity = packet.ReadByte();
+        if (!InventoryTab.TryFromClient(tab, out InventoryType type)) {
+            return;
+        }
 
         IList<Item> items = session.Item.Inventory.Filter(item => item.Rarity <= rarity, type);
         for (short slot = 0, i = 0; slot < session.DismantleStaging.Length && i < items.Count; slot++) {
