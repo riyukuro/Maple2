@@ -11,6 +11,7 @@ public static class EventRewardPacket {
         ClaimTimeRunFinalReward = 3,
         ClaimTimeRunStepReward = 4,
         FlipGalleryCard = 7,
+        ClaimGalleryQuestReward = 8,
         ClaimGalleryReward = 9,
         OpenBingo = 20,
         UpdateBingo = 21,
@@ -50,6 +51,14 @@ public static class EventRewardPacket {
     public static ByteWriter FlipGalleryCard(byte index) {
         var pWriter = Packet.Of(SendOp.EventReward);
         pWriter.Write<Command>(Command.FlipGalleryCard);
+        pWriter.WriteByte(index);
+
+        return pWriter;
+    }
+
+    public static ByteWriter ClaimGalleryQuestReward(byte index) {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.Write<Command>(Command.ClaimGalleryQuestReward);
         pWriter.WriteByte(index);
 
         return pWriter;

@@ -46,6 +46,9 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.FlipGalleryCard:
                 HandleFlipGalleryCard(session, packet);
                 return;
+            case Command.ClaimGalleryQuestReward:
+                HandleClaimGalleryQuestReward(session, packet);
+                return;
             case Command.ClaimGalleryReward:
                 HandleClaimGalleryReward(session);
                 return;
@@ -63,7 +66,6 @@ public class EventRewardHandler : FieldPacketHandler {
                 Logger.Debug("EventReward {Command} from {CharacterId}: count {Count}, special {Special}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
                 return;
             case Command.VipGmClick: // always 1
-            case Command.ClaimGalleryQuestReward: // card index
             case Command.ClaimSnowmanDailyReward: // snowman index
             case Command.ClaimSnowmanAccumReward: // snowman index
             case Command.LongTermAttend: // 1 = catch up a missed day with merat, 0 = with an attend point
@@ -158,6 +160,22 @@ public class EventRewardHandler : FieldPacketHandler {
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.GalleryCardFlipCount, value + 1);
 
         session.Send(EventRewardPacket.FlipGalleryCard(index));
+    }
+
+    private void HandleClaimGalleryQuestReward(GameSession session, IByteReader packet) {
+        byte index = packet.ReadByte();
+
+        GameEvent? gameEvent = session.FindEvent(GameEventType.Gallery).FirstOrDefault();
+        if (gameEvent?.Metadata.Data is not Gallery gallery || index >= gallery.QuestIds.Length) {
+            return;
+        }
+
+        // The client does not show what the card's reward is; here it is the reward of the card's quest.
+        if (!session.Quest.TryGetQuest(gallery.QuestIds[index], out Quest? quest) || !session.Quest.Complete(quest)) {
+            return;
+        }
+
+        session.Send(EventRewardPacket.ClaimGalleryQuestReward(index));
     }
 
     private void HandleClaimGalleryReward(GameSession session) {
