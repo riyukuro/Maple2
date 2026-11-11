@@ -268,7 +268,8 @@ public enum SendOp : ushort {
     SkillBookTree = 0x010C,
     BuddyEmote = 0x010D,
     BuddyBadge = 0x010E,
-    SyncWorld = 0x0110,
+    SyncWorld = 0x010F, // long server time, read at character select
+    WorldTimeSync = 0x0110, // int interval
     BirthdayCard = 0x0111,
     SuperWorldChat = 0x0112,
     Microgame = 0x0114,
@@ -281,7 +282,8 @@ public enum SendOp : ushort {
     Lapenshard = 0x011B,
     Prestige = 0x011C,
     Ugd = 0x011D,
-    WorldChampion = 0x011F,
+    WorldChampion = 0x011E,
+    FieldWar = 0x011F,
     SyncValue = 0x0120,
     MinimapPing = 0x0121,
     MsgBox = 0x0122,
