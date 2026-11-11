@@ -209,9 +209,23 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
-    public bool DungeonPlayTime(int playSeconds) {
-        ErrorLog("[GetDungeonPlayTime]");
-        return playSeconds == 0;
+    // The seconds since the dungeon instance started (its room record's start tick, shared by the lobby and the
+    // room fields), compared with playSeconds (GreaterEqual when the script gives no operator). Outside a dungeon,
+    // or before the dungeon started, the test fails.
+    public bool DungeonPlayTime(int playSeconds, OperatorType operatorType) {
+        DebugLog("[GetDungeonPlayTime] playSeconds:{Seconds}, operator:{Operator}", playSeconds, operatorType);
+        if (Field is not DungeonFieldManager dungeonField) {
+            return false;
+        }
+        return ComparePlayTime(dungeonField.DungeonRoomRecord.StartTick, Field.FieldTick, playSeconds, operatorType);
+    }
+
+    public static bool ComparePlayTime(long startTick, long nowTick, int playSeconds, OperatorType operatorType) {
+        if (startTick <= 0) {
+            return false;
+        }
+        int elapsed = (int) Math.Max(0, (nowTick - startTick) / 1000);
+        return CompareUserValue(elapsed, playSeconds, operatorType);
     }
 
     // Scripts seem to just check if this is "Fail"
@@ -232,16 +246,11 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
+    // The field's score board score (set by score_board_set_score, reset by score_board_create and
+    // score_board_remove) compared with score.
     public bool ScoreBoardScore(int score, OperatorType operatorType) {
-        ErrorLog("[GetScoreBoardScore]");
-        return operatorType switch {
-            OperatorType.Greater => score > 0,
-            OperatorType.GreaterEqual => score >= 0,
-            OperatorType.Equal => score == 0,
-            OperatorType.LessEqual => score <= 0,
-            OperatorType.Less => score < 0,
-            _ => false,
-        };
+        DebugLog("[GetScoreBoardScore] score:{Score}, operator:{Operator}", score, operatorType);
+        return CompareUserValue(Field.ScoreBoardScore, score, operatorType);
     }
 
     public bool UserValue(string key, int value, OperatorType operatorType, bool negate) {

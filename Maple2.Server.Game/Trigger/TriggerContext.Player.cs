@@ -231,9 +231,23 @@ public partial class TriggerContext {
         return negate;
     }
 
+    // True when the box holds at least one player and all of them carry the same user tag.
     public bool CheckSameUserTag(int boxId, bool negate) {
-        ErrorLog("[CheckSameUserTag] boxId:{BoxId}", boxId);
-        return false;
+        DebugLog("[CheckSameUserTag] boxId:{BoxId}, negate:{Negate}", boxId, negate);
+        bool result = SameUserTag(PlayersInBox(boxId).Select(player => player.TagId));
+        return negate ? !result : result;
+    }
+
+    public static bool SameUserTag(IEnumerable<int> tagIds) {
+        int? first = null;
+        foreach (int tagId in tagIds) {
+            if (first == null) {
+                first = tagId;
+            } else if (first != tagId) {
+                return false;
+            }
+        }
+        return first != null;
     }
 
     public bool QuestUserDetected(int[] boxIds, int[] questIds, int[] questStates, int jobCode, bool negate) {

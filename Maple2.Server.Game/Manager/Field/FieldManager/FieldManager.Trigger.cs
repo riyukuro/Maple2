@@ -16,6 +16,9 @@ public partial class FieldManager {
     public readonly Dictionary<string, int> UserValues = new();
     public readonly Dictionary<string, Widget> Widgets = new();
     public readonly Dictionary<int, List<TriggerState>> States = new();
+    // The score the score_board_score condition tests; only score_board_set_score writes it, since no kill or
+    // pickup score reaches it yet.
+    public int ScoreBoardScore;
 
     // The ceremony of a wedding hall room, set when the first character enters it by Wedding 0x1a; null in every
     // other field.

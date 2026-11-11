@@ -191,9 +191,12 @@ public partial class TriggerContext {
         return Field is DungeonFieldManager;
     }
 
+    // The server runs no Maple Survival match, so no field is playing one.
     public bool IsPlayingMapleSurvival(bool negate) {
-        ErrorLog("[IsPlayingMapleSurvival]");
-        return false;
+        DebugLog("[IsPlayingMapleSurvival] negate:{Negate}", negate);
+        return MapleSurvivalResult(negate);
     }
+
+    public static bool MapleSurvivalResult(bool negate) => negate;
     #endregion
 }
