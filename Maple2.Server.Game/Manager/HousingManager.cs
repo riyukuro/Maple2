@@ -624,10 +624,6 @@ public class HousingManager {
             return false;
         }
 
-        if (isReplace && plot.Cubes.ContainsKey(position)) {
-            TryRemoveCube(plot, position, out _, helper);
-        }
-
         if (plot.MapId is Constant.DefaultHomeMapId && IsCoordOutsideArea(position)) {
             notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
             return false;
@@ -637,6 +633,27 @@ public class HousingManager {
         if (outdoor && position.Z - groundHeight > plot.Metadata.Limit.Height) {
             notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
             return false;
+        }
+
+        // A helper's cube is paid from the budget. Asked before the old cube of a replace is taken off: a
+        // refusal after that would leave the cell empty here while the clients still show the old cube.
+        if (helper != null && !plot.IsPlanner) {
+            if (shopEntry is not { Buyable: true }) {
+                notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
+                return false;
+            }
+            UgcMapError budgetError;
+            lock (Home) {
+                budgetError = HomeBuildRules.CanCharge(Home, shopEntry.FurnishingTokenType == FurnishingCurrencyType.Meret, shopEntry.Price);
+            }
+            if (budgetError != UgcMapError.s_ugcmap_ok) {
+                notify.Send(CubePacket.Error(budgetError));
+                return false;
+            }
+        }
+
+        if (isReplace && plot.Cubes.ContainsKey(position)) {
+            TryRemoveCube(plot, position, out _, helper);
         }
 
         session.FunctionCubeMetadata.TryGet(itemMetadata.Install.ObjectCubeId, out FunctionCubeMetadata? functionCubeMetadata);

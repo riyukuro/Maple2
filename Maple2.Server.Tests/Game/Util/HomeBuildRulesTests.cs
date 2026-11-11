@@ -92,6 +92,18 @@ public class HomeBuildRulesTests {
     }
 
     [Test]
+    public void CanCharge_AnswersAsChargeAndTakesNothing() {
+        var home = new Home { BuildMeso = 40, BuildMerat = 5 };
+        Assert.That(HomeBuildRules.CanCharge(home, false, 40), Is.EqualTo(Ok));
+        Assert.That(HomeBuildRules.CanCharge(home, true, 5), Is.EqualTo(Ok));
+        Assert.That(HomeBuildRules.CanCharge(home, false, 41), Is.EqualTo(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
+        Assert.That(HomeBuildRules.CanCharge(home, true, 6), Is.EqualTo(UgcMapError.s_err_ugcmap_not_enough_merat_balance));
+        Assert.That(HomeBuildRules.CanCharge(new Home(), false, 0), Is.EqualTo(Ok));
+        Assert.That(home.BuildMeso, Is.EqualTo(40));
+        Assert.That(home.BuildMerat, Is.EqualTo(5));
+    }
+
+    [Test]
     public void Refund_GivesTheChargeBack() {
         var home = new Home { BuildMeso = 100, BuildMerat = 30 };
         HomeBuildRules.Charge(home, false, 60);

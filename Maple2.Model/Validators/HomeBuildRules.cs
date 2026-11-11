@@ -47,21 +47,27 @@ public static class HomeBuildRules {
 
     // A cube a helper places is bought from the budget, in the currency of its shop entry.
     public static UgcMapError Charge(Home home, bool merat, long price) {
+        UgcMapError error = CanCharge(home, merat, price);
+        if (error != UgcMapError.s_ugcmap_ok || price <= 0) {
+            return error;
+        }
+        if (merat) {
+            home.BuildMerat -= price;
+        } else {
+            home.BuildMeso -= price;
+        }
+        return UgcMapError.s_ugcmap_ok;
+    }
+
+    // Whether Charge would take the price; changes nothing. Asked before anything on the plot is touched.
+    public static UgcMapError CanCharge(Home home, bool merat, long price) {
         if (price <= 0) {
             return UgcMapError.s_ugcmap_ok;
         }
         if (merat) {
-            if (home.BuildMerat < price) {
-                return UgcMapError.s_err_ugcmap_not_enough_merat_balance;
-            }
-            home.BuildMerat -= price;
-            return UgcMapError.s_ugcmap_ok;
+            return home.BuildMerat < price ? UgcMapError.s_err_ugcmap_not_enough_merat_balance : UgcMapError.s_ugcmap_ok;
         }
-        if (home.BuildMeso < price) {
-            return UgcMapError.s_err_ugcmap_not_enough_meso_balance;
-        }
-        home.BuildMeso -= price;
-        return UgcMapError.s_ugcmap_ok;
+        return home.BuildMeso < price ? UgcMapError.s_err_ugcmap_not_enough_meso_balance : UgcMapError.s_ugcmap_ok;
     }
 
     // Gives a charge back when the cube could not be placed after it.
