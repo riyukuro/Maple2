@@ -67,6 +67,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // MoveEventField: the last answer of the World server about the fields with a running event.
     public HashSet<int> EventFields = [];
     public DateTime EventFieldsAskedAt;
+    // Environment.TickCount64 of the last minimap ping passed on; 0 when there was none.
+    public long MinimapPingTick;
     public required NpcMetadataStorage NpcMetadata { get; init; }
     public required AchievementMetadataStorage AchievementMetadata { get; init; }
     public required QuestMetadataStorage QuestMetadata { get; init; }
