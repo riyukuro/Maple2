@@ -26,19 +26,31 @@ public class RestrictedBuyData : IByteSerializable {
         };
     }
 
+    // Same layout as the client's own buy-period writer (0x1406dc850) and reader (0x1406dcb40):
+    // the dates follow only their flag, and the time ranges and days follow a second flag.
     public void WriteTo(IByteWriter writer) {
-        writer.WriteBool(StartTime > 0 && EndTime > 0);
-        writer.WriteLong(StartTime);
-        writer.WriteLong(EndTime);
-        writer.WriteShort((short) TimeRanges.Count);
+        bool hasDates = StartTime > 0 || EndTime > 0;
+        writer.WriteBool(hasDates);
+        if (hasDates) {
+            writer.WriteLong(StartTime);
+            writer.WriteLong(EndTime);
+        }
 
+        bool hasSchedule = TimeRanges.Count > 0 || Days.Count > 0;
+        writer.WriteBool(hasSchedule);
+        if (!hasSchedule) {
+            return;
+        }
+
+        writer.WriteByte((byte) TimeRanges.Count);
         foreach (BuyTimeOfDay time in TimeRanges) {
-            writer.Write<BuyTimeOfDay>(time);
+            writer.WriteInt(time.StartTimeOfDay);
+            writer.WriteInt(time.EndTimeOfDay);
         }
 
         writer.WriteByte((byte) Days.Count);
         foreach (ShopBuyDay day in Days) {
-            writer.Write<ShopBuyDay>(day);
+            writer.WriteByte((byte) day);
         }
     }
 }
