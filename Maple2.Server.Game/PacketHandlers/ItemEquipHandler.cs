@@ -25,6 +25,7 @@ public class ItemEquipHandler : FieldPacketHandler {
                 HandleUnequip(session, packet);
                 return;
             case Command.Equip2:
+                HandleEquip2(session, packet);
                 return;
         }
     }
@@ -51,9 +52,12 @@ public class ItemEquipHandler : FieldPacketHandler {
         }
     }
 
-    // The client sends this when a worn item is dragged onto another equip slot (EquipSlot::vfunc_18).
+    // The client sends this when a worn item is dragged onto another equip slot (EquipSlot::vfunc_18):
+    // the two hand items change places. A request the client's own test would refuse is ignored.
     private void HandleEquip2(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         var equipSlot = packet.Read<EquipSlot>();
+
+        session.Item.Equips.SwapHands(itemUid, equipSlot);
     }
 }

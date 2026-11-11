@@ -377,6 +377,41 @@ public class EquipManager {
         return true;
     }
 
+    /// <summary>
+    /// Swaps a worn hand item with the item in the other hand (ItemEquip mode 2).
+    /// </summary>
+    public bool SwapHands(long itemUid, EquipSlot target) {
+        lock (session.Item) {
+            foreach (byte kind in new[] { EquipKind.Gear, EquipKind.Outfit, EquipKind.Outfit2 }) {
+                ConcurrentDictionary<EquipSlot, Item> equips = Tab(kind);
+                foreach ((EquipSlot from, Item item) in equips) {
+                    if (item.Uid != itemUid) {
+                        continue;
+                    }
+
+                    equips.TryGetValue(target, out Item? other);
+                    if (other == null || !EquipKind.CanSwapHands(from, target, item.Type, other.Type)) {
+                        return false;
+                    }
+
+                    session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, item));
+                    session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, other));
+                    item.Slot = (short) target;
+                    other.Slot = (short) from;
+                    equips[target] = item;
+                    equips[from] = other;
+                    byte type = kind == EquipKind.Outfit2 ? EquipKind.Outfit2 : EquipKind.Gear;
+                    session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, item, type));
+                    session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, other, type));
+                    session.Stats.Refresh();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     public static StringCode ValidateEquipItem(GameSession session, Item item) {
         if (item.Metadata.Limit.Level > session.Player.Value.Character.Level) {
             return StringCode.s_item_err_puton_low_level;
