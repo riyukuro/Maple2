@@ -12,8 +12,11 @@ public enum FishingError : short {
     s_fishing_error_invalid_item = 2,
     [Description("Your fishing mastery is too low to fish here.")]
     s_fishing_error_lack_mastery = 3,
+    // The client's switch for Fishing mode 2 (fishingmanager.cpp:642): 4 is the no-fish text, 5 the text for a
+    // block that cannot be fished.
     [Description("You cannot fish here.")]
-    s_fishing_error_notexist_fish = 5,
+    s_fishing_error_notexist_fish = 4,
+    s_fishing_error_invalid_cube = 5,
     [Description("Your fishing mastery is too low to use this fishing pole.")]
     s_fishing_error_fishingrod_mastery = 6,
     [Description("You cannot fish because your Gear tab or Misc tab is full.")]

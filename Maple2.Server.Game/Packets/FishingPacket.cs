@@ -43,7 +43,7 @@ public static class FishingPacket {
     public static ByteWriter Error(FishingError error) {
         var pWriter = Packet.Of(SendOp.Fishing);
         pWriter.Write<Command>(Command.Error);
-        pWriter.Write<FishingError>(error);
+        pWriter.WriteShort((short) error);
 
         return pWriter;
     }
