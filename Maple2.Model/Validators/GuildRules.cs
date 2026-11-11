@@ -300,9 +300,10 @@ public static class GuildRules {
 
     // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must
     // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
-    // member's meso pays its cost, and the member does not have the effect already.
+    // member's meso pays its cost, and the member does not have the effect already. A row without an effect
+    // would take the meso and give nothing, so it is refused.
     public static GuildError CheckUsePersonalSkill(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect) {
-        if (row == null || skillId <= 10000 || row.Duration <= 0) {
+        if (row == null || skillId <= 10000 || row.Duration <= 0 || row.Id <= 0) {
             return GuildError.s_guild_err_unknown;
         }
         if (row.RequireLevel > guildLevel) {

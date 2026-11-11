@@ -319,6 +319,11 @@ public class GuildManager : IDisposable {
             }
         }
 
+        // An effect the server has no data for cannot be given: the row counts as missing, before any meso.
+        if (row != null && (row.Id <= 0 || !field.SkillMetadata.TryGetEffect(row.Id, row.Level, out _))) {
+            row = null;
+        }
+
         UpdateProperties();
         bool hasEffect = row != null && session.Player.Buffs.HasBuff(row.Id, row.Level);
         GuildError error = GuildRules.CheckUsePersonalSkill(buffId, row, Properties.Level, session.Currency.Meso, hasEffect);
