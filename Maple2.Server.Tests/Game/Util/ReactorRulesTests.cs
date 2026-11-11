@@ -81,16 +81,39 @@ public class ReactorRulesTests {
     }
 
     [Test]
-    public void Totals_AddsConditionsOnTheSameItem() {
-        var totals = ReactorRules.Totals([
+    public void Plan_AddsConditionsOnTheSameItem() {
+        ReactorTable.ConditionItem[] conditions = [
             new ReactorTable.ConditionItem(1, 1, 1, 3),
             new ReactorTable.ConditionItem(1, 1, 2, 0),
-            new ReactorTable.ConditionItem(2, 0, 1, 0),
             new ReactorTable.ConditionItem(0, 0, 5, 5),
-        ]);
+        ];
 
-        Assert.That(totals.Count, Is.EqualTo(2));
-        Assert.That(totals[(1, 1)], Is.EqualTo((5, 3)));
-        Assert.That(totals[(2, -1)], Is.EqualTo((1, 1)));
+        // Needs 3 + 2 held, takes 1 + 2.
+        Assert.That(ReactorRules.Plan(conditions, [(10, 1, 1, 4)]), Is.Null);
+        Assert.That(ReactorRules.Plan(conditions, [(10, 1, 1, 5)]), Is.EquivalentTo(new[] { (10L, 3) }));
+    }
+
+    [Test]
+    public void Plan_RarityAndAnyRarityDoNotShareAStack() {
+        ReactorTable.ConditionItem[] conditions = [
+            new ReactorTable.ConditionItem(1, 0, 2, 0),
+            new ReactorTable.ConditionItem(1, 4, 2, 0),
+        ];
+
+        // One stack of rarity 4 with 3: both conditions would see it; together they need 4.
+        Assert.That(ReactorRules.Plan(conditions, [(10, 1, 4, 3)]), Is.Null);
+        Assert.That(ReactorRules.Plan(conditions, [(10, 1, 4, 4)]), Is.EquivalentTo(new[] { (10L, 4) }));
+        // The rarity condition picks first, so the any-rarity one is left the other stack.
+        Assert.That(ReactorRules.Plan(conditions, [(10, 1, 4, 2), (11, 1, 1, 2)]), Is.EquivalentTo(new[] { (10L, 2), (11L, 2) }));
+        Assert.That(ReactorRules.Plan(conditions, [(11, 1, 1, 9)]), Is.Null);
+    }
+
+    [Test]
+    public void Plan_TakesAcrossStacksAndOnlyTheConsumePart() {
+        ReactorTable.ConditionItem[] conditions = [new ReactorTable.ConditionItem(1, 0, 3, 5)];
+
+        var plan = ReactorRules.Plan(conditions, [(10, 1, 1, 2), (11, 1, 1, 9), (12, 2, 1, 9)]);
+
+        Assert.That(plan, Is.EquivalentTo(new[] { (10L, 2), (11L, 1) }));
     }
 }

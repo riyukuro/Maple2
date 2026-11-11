@@ -54,6 +54,7 @@ public partial class FieldManager {
 
     private readonly ConcurrentDictionary<int, HongBao> hongBaos = new();
     private readonly ConcurrentDictionary<int, FieldReactor> fieldReactors = new();
+    private readonly object reactorAddLock = new(); // the cell and limit tests and the add are one step
 
     public IEnumerable<FieldSkill> DebugFieldSkills => fieldSkills.Values;
     public IEnumerable<FieldSkill> DebugCubeSkills => cubeSkills.Values;
@@ -809,20 +810,22 @@ public partial class FieldManager {
         string name = ReactorRules.Name(ReactorRules.CellKey(cell));
         Vector3 center = ReactorRules.CellCenter(cell);
         reactor = null;
-        if (metadata.States.Length == 0 || fieldReactors.Values.Any(other => other.Name == name)) {
-            return false;
-        }
-        if (fieldReactors.Count >= ReactorRules.MaxPerField || fieldReactors.Values.Count(other => other.OwnerId == ownerId) >= ownerLimit) {
-            return false;
-        }
-        if (!CanPlaceReactor(center)) {
-            return false;
-        }
+        lock (reactorAddLock) {
+            if (metadata.States.Length == 0 || fieldReactors.Values.Any(other => other.Name == name)) {
+                return false;
+            }
+            if (fieldReactors.Count >= ReactorRules.MaxPerField || fieldReactors.Values.Count(other => other.OwnerId == ownerId) >= ownerLimit) {
+                return false;
+            }
+            if (!CanPlaceReactor(center)) {
+                return false;
+            }
 
-        reactor = new FieldReactor(this, NextLocalId(), name, metadata, center, default, ownerId);
-        if (!fieldReactors.TryAdd(reactor.ObjectId, reactor)) {
-            reactor = null;
-            return false;
+            reactor = new FieldReactor(this, NextLocalId(), name, metadata, center, default, ownerId);
+            if (!fieldReactors.TryAdd(reactor.ObjectId, reactor)) {
+                reactor = null;
+                return false;
+            }
         }
 
         Broadcast(ReactorPacket.Add(reactor.ObjectId, reactor.Name, metadata.Id, reactor.Position, reactor.Rotation,

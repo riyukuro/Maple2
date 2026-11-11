@@ -88,20 +88,39 @@ public static class ReactorRules {
                && MathF.Abs(point.Z - position.Z) <= dimension.Z / 2;
     }
 
-    // What each (item id, rarity) of a state's conditions needs in total: the amount to hold and the amount taken.
-    // Two conditions on the same item add up.
-    public static Dictionary<(int ItemId, int Rarity), (int Held, int Consume)> Totals(IEnumerable<ReactorTable.ConditionItem> conditions) {
-        var totals = new Dictionary<(int, int), (int Held, int Consume)>();
-        foreach (ReactorTable.ConditionItem condition in conditions) {
-            if (condition.ItemId == 0) {
-                continue;
-            }
+    // Which stacks pay a state's conditions. Null when the player does not hold enough.
+    // Every condition sets aside the amount it needs to be held (Needed) from stacks no other condition
+    // has set aside, so two conditions on the same item add up, also when one names a rarity and the
+    // other does not. Conditions with a rarity pick first; the Consume part of each is what is taken.
+    public static List<(long Uid, int Amount)>? Plan(IEnumerable<ReactorTable.ConditionItem> conditions, IReadOnlyList<(long Uid, int ItemId, int Rarity, int Amount)> stacks) {
+        int[] free = stacks.Select(stack => stack.Amount).ToArray();
+        var take = new Dictionary<long, int>();
+        foreach (ReactorTable.ConditionItem condition in conditions.Where(condition => condition.ItemId != 0).OrderByDescending(condition => condition.Rarity > 0)) {
+            int need = Needed(condition);
+            int consume = condition.Consume;
+            for (int i = 0; i < stacks.Count && need > 0; i++) {
+                if (stacks[i].ItemId != condition.ItemId || (condition.Rarity > 0 && stacks[i].Rarity != condition.Rarity)) {
+                    continue;
+                }
 
-            (int, int) key = (condition.ItemId, condition.Rarity > 0 ? condition.Rarity : -1);
-            totals.TryGetValue(key, out (int Held, int Consume) total);
-            totals[key] = (total.Held + Needed(condition), total.Consume + condition.Consume);
+                int reserved = Math.Min(free[i], need);
+                if (reserved <= 0) {
+                    continue;
+                }
+                free[i] -= reserved;
+                need -= reserved;
+
+                int taken = Math.Min(reserved, consume);
+                if (taken > 0) {
+                    consume -= taken;
+                    take[stacks[i].Uid] = take.GetValueOrDefault(stacks[i].Uid) + taken;
+                }
+            }
+            if (need > 0) {
+                return null;
+            }
         }
-        return totals;
+        return take.Select(entry => (entry.Key, entry.Value)).ToList();
     }
 
     // The amount of a condition item the player must hold.

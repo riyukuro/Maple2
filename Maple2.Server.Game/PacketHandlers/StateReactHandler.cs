@@ -46,28 +46,27 @@ public class StateReactHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            // Every condition item must be held before any is taken. Conditions on the same item add up.
-            var consume = new List<(Item Item, int Amount)>();
-            foreach (((int itemId, int rarity), (int held, int taken)) in ReactorRules.Totals(state.ConditionItems)) {
-                Item[] items = session.Item.Inventory.Find(itemId, rarity).ToArray();
-                if (items.Sum(item => item.Amount) < held) {
-                    return;
-                }
-
-                int left = taken;
-                foreach (Item item in items) {
-                    if (left <= 0) {
-                        break;
-                    }
-                    int take = Math.Min(left, item.Amount);
-                    consume.Add((item, take));
-                    left -= take;
-                }
+            // Every condition item must be held before any is taken (ReactorRules.Plan).
+            (long Uid, int ItemId, int Rarity, int Amount)[] stacks = state.ConditionItems
+                .Where(condition => condition.ItemId != 0)
+                .Select(condition => condition.ItemId)
+                .Distinct()
+                .SelectMany(itemId => session.Item.Inventory.Find(itemId))
+                .Select(item => (item.Uid, item.Id, item.Rarity, item.Amount))
+                .ToArray();
+            List<(long Uid, int Amount)>? plan = ReactorRules.Plan(state.ConditionItems, stacks);
+            if (plan == null) {
+                return;
             }
 
-            foreach ((Item item, int amount) in consume) {
-                if (!session.Item.Inventory.Consume(item.Uid, amount)) {
-                    Logger.Error("Reactor {ReactorId}: failed to take {Amount} of item {ItemUid} from {CharacterId}", reactor.Metadata.Id, amount, item.Uid, session.CharacterId);
+            // The plan was made from these stacks under this lock; test all of it again before the first take,
+            // so a take cannot fail half way.
+            if (plan.Any(entry => (session.Item.Inventory.Get(entry.Uid)?.Amount ?? 0) < entry.Amount)) {
+                return;
+            }
+            foreach ((long uid, int amount) in plan) {
+                if (!session.Item.Inventory.Consume(uid, amount)) {
+                    Logger.Error("Reactor {ReactorId}: failed to take {Amount} of item {ItemUid} from {CharacterId}", reactor.Metadata.Id, amount, uid, session.CharacterId);
                     return;
                 }
             }
