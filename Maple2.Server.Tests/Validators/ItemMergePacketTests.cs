@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Maple2.Database.Context;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -8,6 +9,9 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -217,6 +221,60 @@ public class ItemMergePacketTests {
         string old = System.Text.Json.JsonSerializer.Serialize(Table(null).Entries[37000002][0]).Replace(",\"PartLimit\":null", "");
         Assert.That(old, Does.Not.Contain("PartLimit"));
         Assert.That(System.Text.Json.JsonSerializer.Deserialize<ItemMergeTable.Entry>(old)!.PartLimit, Is.Null);
+    }
+
+    // The server reads the table back as a ServerTable through the metadata context's JSON conversion
+    // (ServerTableMetadata.Table). TableIds and PartLimit must come back from that path.
+    [Test]
+    public void TableIdsAndPartLimitSurviveTheStoredTable() {
+        ServerTable table = new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
+            [37000053] = new() {
+                [13] = new ItemMergeTable.Entry(13, 100, [], new Dictionary<BasicAttribute, ItemMergeTable.Option>(),
+                    new Dictionary<SpecialAttribute, ItemMergeTable.Option>()) { PartLimit = [13, 14] },
+            },
+        }) { TableIds = new Dictionary<int, int> { [37000055] = 37000053 } };
+
+        DbContextOptions options = new DbContextOptionsBuilder()
+            .UseMySql("Server=localhost;Database=none", new MySqlServerVersion(new Version(8, 0, 0))).Options;
+        using var context = new MetadataContext(options);
+        ValueConverter converter = context.Model.FindEntityType(typeof(ServerTableMetadata))!
+            .FindProperty(nameof(ServerTableMetadata.Table))!.GetValueConverter()!;
+
+        object stored = converter.ConvertToProvider(table)!;
+        Assert.That(stored, Is.InstanceOf<string>());
+        var read = converter.ConvertFromProvider(stored) as ItemMergeTable;
+        Assert.That(read, Is.Not.Null);
+        Assert.That(read!.TableIds, Is.Not.Null);
+        Assert.That(read.TableIds![37000055], Is.EqualTo(37000053));
+        Assert.That(read.Entries[37000053][13].PartLimit, Is.EqualTo(new[] { 13, 14 }));
+        ItemMetadata material = Leveled(37000055, 19, 1, 60);
+        Assert.That(ItemMergeManager.MergeSlot(read, Leveled(11300001, 1, 13, 50), material), Is.Not.Null);
+
+        // A table stored without table ids reads back with none.
+        ServerTable plain = new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>>());
+        Assert.That(((ItemMergeTable) converter.ConvertFromProvider(converter.ConvertToProvider(plain)!)!).TableIds, Is.Null);
+    }
+
+    // The hand copies of table 37000055 are made with or without the played pack; an id with rows of its own
+    // keeps them, and nothing is copied when 37000055 has no rows.
+    [Test]
+    public void HandCopiesKeepOwnRows() {
+        static Dictionary<int, ItemMergeTable.Entry> Rows(long meso) => new() {
+            [13] = new ItemMergeTable.Entry(13, meso, [], new Dictionary<BasicAttribute, ItemMergeTable.Option>(),
+                new Dictionary<SpecialAttribute, ItemMergeTable.Option>()),
+        };
+        var results = new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
+            [37000055] = Rows(100),
+            [37000057] = Rows(200),
+        };
+        Maple2.File.Ingest.Mapper.ServerTableMapper.AddHandCopies(results);
+        Assert.That(results.Keys, Is.EquivalentTo(new[] { 37000055, 37000056, 37000057, 37000058, 37000059, 37000060, 37000061, 37000062, 37000063 }));
+        Assert.That(results[37000056][13].MesoCost, Is.EqualTo(100));
+        Assert.That(results[37000057][13].MesoCost, Is.EqualTo(200));
+
+        var none = new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> { [37000053] = Rows(100) };
+        Maple2.File.Ingest.Mapper.ServerTableMapper.AddHandCopies(none);
+        Assert.That(none.Count, Is.EqualTo(1));
     }
 
     private static Item Merged(int id, int rarity, int type = 1, int subType = 13, EquipSlot[]? slots = null) {

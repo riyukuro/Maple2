@@ -1482,6 +1482,18 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return new OxQuizTable(results);
     }
 
+    // The old hand copies: materials 37000056..63 taken to use table 37000055. A material with a table id from
+    // the played client is asked by that id first (ItemMergeManager.MergeSlot), so a copy only serves a material
+    // that got none. An id with rows of its own keeps them.
+    public static void AddHandCopies(Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> results) {
+        if (!results.TryGetValue(37000055, out Dictionary<int, ItemMergeTable.Entry>? rows)) {
+            return;
+        }
+        for (int i = 37000056; i < 37000064; i++) {
+            results.TryAdd(i, rows);
+        }
+    }
+
     private ItemMergeTable ParseItemMergeOptionTable() {
         var results = new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>>();
         Dictionary<(int Id, int Part), int[]> partLimits = ClientPartLimits();
@@ -1599,14 +1611,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             results.Add(id, slots);
         }
         Dictionary<int, int>? tableIds = PlayedTableIds();
-        if (tableIds == null) {
-            // Without the played client's item data: the old hand copies, materials taken to use table 37000055.
-            for (int i = 37000056; i < 37000064; i++) {
-                if (results.TryGetValue(37000055, out Dictionary<int, ItemMergeTable.Entry>? dictionary)) {
-                    results.Add(i, dictionary);
-                }
-            }
-        }
+        AddHandCopies(results);
         return new ItemMergeTable(results) { TableIds = tableIds };
 
         // The table id of a merge material is its property param1 (CItemData::GetMergeOptionId), which the item
