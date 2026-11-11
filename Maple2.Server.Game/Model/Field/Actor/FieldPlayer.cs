@@ -68,6 +68,9 @@ public class FieldPlayer : Actor<Player> {
     // (MyPC::vfunc_137, mypc.cpp:1351), so the server revives the player when the time is over.
     private int autoReviveDelay;
     private long autoReviveTick;
+    // The client makes a revived player invincible for UserRevivalInvincibleTick (CSceneStateGame::OnRevival,
+    // scenestategame.cpp:7408). Monster damage is ours, so the server keeps the same window.
+    private long revivalInvincibleUntil;
 
     private long battleTick;
     private bool inBattle;
@@ -407,6 +410,16 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
+    // A dead player takes no hits, nor does one inside the window after a revival.
+    public static bool TakesDamage(bool isDead, long tick, long revivalInvincibleUntil) => !isDead && tick >= revivalInvincibleUntil;
+
+    public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
+        if (!TakesDamage(IsDead, Field.FieldTick, revivalInvincibleUntil)) {
+            return;
+        }
+        base.ApplyDamage(caster, damage, attack);
+    }
+
     protected override void OnDeath() {
         if (Session.Field is null) return;
         Field.Broadcast(SetCraftModePacket.Stop(ObjectId));
@@ -484,6 +497,7 @@ public class FieldPlayer : Actor<Player> {
             Session.Send(RevivalPacket.RevivalCount(Session.Config.InstantReviveCount));
         }
         Field.Broadcast(RevivalPacket.Revive(ObjectId));
+        revivalInvincibleUntil = Field.FieldTick + Session.ServerTableMetadata.ConstantsTable.UserRevivalInvincibleTick;
 
         // Move to spawn point if not instant revival
         if (!instant) {
