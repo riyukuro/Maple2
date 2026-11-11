@@ -20,20 +20,27 @@ public class RequestCubeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestCube;
 
     private enum Command : byte {
+        BuildState = 0,
         HoldCube = 1,
         BuyPlot = 2,
+        OwnPlotSign = 5,
         ForfeitPlot = 6,
         ExtendPlot = 9,
         PlaceCube = 10,
+        PlaceAttachedCube = 11,
         RemoveCube = 12,
+        RemoveCube13 = 13,
         RotateCube = 14,
         ReplaceCube = 15,
+        ReplaceAttachedCube = 16,
         LiftupObject = 17,
         LiftupDrop = 18,
+        GodModeIndex = 19,
         SetHomeName = 21,
         SetPasscode = 24,
         VoteHome = 25,
         SetHomeMessage = 29,
+        HomeSummon = 30,
         ClearCubes = 31,
         RequestLayout = 35,
         IncreaseArea = 37,
@@ -51,11 +58,15 @@ public class RequestCubeHandler : FieldPacketHandler {
         SetBackground = 51,
         SetLighting = 52,
         SetCamera = 54,
+        SetBuildBudget = 56,
+        AddBuildPermission = 57,
+        RemoveBuildPermission = 58,
         CreateBlueprint = 63,
         SaveBlueprint = 64,
         LoadBlueprint = 65,
         CalculateEstimate = 66,
         PreviewBlueprint = 68,
+        ApplyBlueprint = 70,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -74,7 +85,8 @@ public class RequestCubeHandler : FieldPacketHandler {
                 HandleExtendPlot(session);
                 break;
             case Command.PlaceCube:
-                HandlePlaceCube(session, packet);
+            case Command.PlaceAttachedCube:
+                HandlePlaceCube(session, packet, command == Command.PlaceAttachedCube);
                 break;
             case Command.RemoveCube:
                 HandleRemoveCube(session, packet);
@@ -83,7 +95,8 @@ public class RequestCubeHandler : FieldPacketHandler {
                 HandleRotateCube(session, packet);
                 break;
             case Command.ReplaceCube:
-                HandleReplaceCube(session, packet);
+            case Command.ReplaceAttachedCube:
+                HandleReplaceCube(session, packet, command == Command.ReplaceAttachedCube);
                 break;
             case Command.LiftupObject:
                 HandleLiftupObject(session, packet);
@@ -167,6 +180,28 @@ public class RequestCubeHandler : FieldPacketHandler {
             case Command.PreviewBlueprint:
                 HandlePreviewBlueprint(session, packet);
                 break;
+            // Sub-types the KMS 2525 client sends that have no logic here yet: read and log only.
+            case Command.BuildState: // sent with 0 before HoldCube in build mode, with 1 from the cube palette
+            case Command.RemoveCube13: // cube position
+            case Command.GodModeIndex: // debug index
+                Logger.Debug("RequestCube {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
+                break;
+            case Command.OwnPlotSign: // the owner used the sign of their own plot: plot number, 0
+                Logger.Debug("RequestCube {Command} from {CharacterId}: plot {Plot}, {Value}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
+                break;
+            case Command.HomeSummon: // home summon dialog: two strings
+                Logger.Debug("RequestCube {Command} from {CharacterId}: {First}, {Second}", command, session.CharacterId, packet.ReadUnicodeString(), packet.ReadUnicodeString());
+                break;
+            case Command.SetBuildBudget: // meso, merat
+                Logger.Debug("RequestCube {Command} from {CharacterId}: meso {Meso}, merat {Merat}", command, session.CharacterId, packet.ReadLong(), packet.ReadLong());
+                break;
+            case Command.AddBuildPermission: // character name
+            case Command.RemoveBuildPermission:
+                Logger.Debug("RequestCube {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
+                break;
+            case Command.ApplyBlueprint: // blueprint uid, sent after the cost estimate
+                Logger.Debug("RequestCube {Command} from {CharacterId}: blueprint {Uid}", command, session.CharacterId, packet.ReadLong());
+                break;
         }
     }
 
@@ -207,10 +242,13 @@ public class RequestCubeHandler : FieldPacketHandler {
         session.Housing.ExtendPlot();
     }
 
-    private void HandlePlaceCube(GameSession session, IByteReader packet) {
+    private void HandlePlaceCube(GameSession session, IByteReader packet, bool attached = false) {
         var position = packet.Read<Vector3B>();
         var cubeItem = packet.ReadClass<HeldCube>();
         float rotation = packet.ReadFloat();
+        if (attached) {
+            packet.ReadByte(); // the side the cube is attached to; the rotation above is the angle of that side
+        }
 
         session.Field?.PlaceCube(session, cubeItem, position, rotation);
     }
@@ -289,12 +327,15 @@ public class RequestCubeHandler : FieldPacketHandler {
         session.ConditionUpdate(ConditionType.rotate_cube, codeLong: cube.ItemId);
     }
 
-    private void HandleReplaceCube(GameSession session, IByteReader packet) {
+    private void HandleReplaceCube(GameSession session, IByteReader packet, bool attached = false) {
         if (session.Field == null) return;
 
         var position = packet.Read<Vector3B>();
         var cubeItem = packet.ReadClass<HeldCube>();
         float rotation = packet.ReadFloat();
+        if (attached) {
+            packet.ReadByte(); // the side the cube is attached to; the rotation above is the angle of that side
+        }
 
         Plot? plot = session.Housing.GetFieldPlot();
         if (plot == null) {
