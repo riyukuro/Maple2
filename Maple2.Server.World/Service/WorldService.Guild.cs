@@ -63,6 +63,8 @@ public partial class WorldService {
                 return Task.FromResult(UpgradeGuildHouse(request.RequestorId, request.UpgradeHouse));
             case GuildRequest.GuildOneofCase.ChangeHouseTheme:
                 return Task.FromResult(ChangeGuildHouseTheme(request.RequestorId, request.ChangeHouseTheme));
+            case GuildRequest.GuildOneofCase.TakeMailTurn:
+                return Task.FromResult(TakeGuildMailTurn(request.RequestorId, request.TakeMailTurn));
             case GuildRequest.GuildOneofCase.Donate:
                 return Task.FromResult(DonateGuild(request.RequestorId, request.Donate));
             default:
@@ -478,6 +480,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = change.GuildId };
+    }
+
+    private GuildResponse TakeGuildMailTurn(long requestorId, GuildRequest.Types.TakeMailTurn take) {
+        if (!guildLookup.TryGet(take.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.TakeMailTurn(requestorId);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = take.GuildId };
     }
 
     // Guild 113: a member gives meso to the guild fund.

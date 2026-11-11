@@ -23,6 +23,9 @@ public class GuildManager : IDisposable {
     // and the insert are one step), and every change of the fund or the experience.
     private readonly object guildLock = new();
 
+    // Time of the last guild mail of each sender, for the server's limit. Old entries go on each insert.
+    private readonly Dictionary<long, long> lastMail = new();
+
     public GuildManager(Guild guild) {
         Guild = guild;
         pendingInvites = new ConcurrentDictionary<long, (string, DateTime)>();
@@ -357,6 +360,30 @@ public class GuildManager : IDisposable {
     }
 
     // Guild 113. The channel has checked the member's meso and takes it after this call succeeds.
+    // Guild 71. The server's own limit (GuildRules.MailCooldownSeconds), kept here so that it holds on every
+    // channel; the mail right is checked here too. The turn is taken before the channel writes the mails.
+    public GuildError TakeMailTurn(long requestorId) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? _)) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (!HasPermission(requestorId, GuildPermission.SendMail)) {
+            return GuildError.s_guild_err_no_authority;
+        }
+
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        lock (lastMail) {
+            lastMail.TryGetValue(requestorId, out long last);
+            if (!GuildRules.CanSendMail(now, last)) {
+                return GuildError.s_guild_err_unknown;
+            }
+            foreach (long id in lastMail.Where(entry => GuildRules.CanSendMail(now, entry.Value)).Select(entry => entry.Key).ToList()) {
+                lastMail.Remove(id);
+            }
+            lastMail[requestorId] = now;
+        }
+        return GuildError.none;
+    }
+
     // Guild 101. The fund and the house are saved before the answer; a failed save undoes them.
     public GuildError UpgradeHouse(long requestorId, int theme) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
