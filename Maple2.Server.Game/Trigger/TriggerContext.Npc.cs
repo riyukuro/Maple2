@@ -73,9 +73,14 @@ public partial class TriggerContext {
     public static Vector3? SpawnRotation(IReadOnlyDictionary<int, EventSpawnPointNPC> eventSpawns, IEnumerable<SpawnPointNPC> npcSpawns, int spawnId) =>
         FindSpawnPoint(eventSpawns, npcSpawns, spawnId)?.Rotation;
 
+    // The shipped scripts' own comments give the rule: once the field's monster count passes
+    // limitCount, spawning stops; limitCount 0 turns the limit off.
     public void LimitSpawnNpcCount(int limitCount, string desc) {
-        ErrorLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);
+        DebugLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);
+        Field.TriggerMobLimit = Math.Max(0, limitCount);
     }
+
+    public static bool CanSpawnUnderLimit(int limit, int mobCount) => limit <= 0 || mobCount < limit;
 
     public void MoveNpc(int spawnId, string patrolName) {
         DebugLog("[MoveNpc] spawnId:{SpawnId} patrolName:{PatrolName}", spawnId, patrolName);
@@ -330,6 +335,10 @@ public partial class TriggerContext {
         foreach (int npcId in npcIdsToSpawn) {
             if (!Field.NpcMetadata.TryGet(npcId, out NpcMetadata? npc)) {
                 logger.Error("[SpawnNpc] Invalid npcId:{NpcId}", npcId);
+                continue;
+            }
+            if (npc.Basic.Friendly == 0 && !CanSpawnUnderLimit(Field.TriggerMobLimit, Field.Mobs.Count)) {
+                DebugLog("[SpawnNpc] monster limit {Limit} reached, npcId:{NpcId} not spawned", Field.TriggerMobLimit, npcId);
                 continue;
             }
 

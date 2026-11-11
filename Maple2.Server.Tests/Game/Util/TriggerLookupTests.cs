@@ -50,4 +50,14 @@ public class TriggerLookupTests {
         Assert.That(TriggerContext.SpawnRotation(events, plain, 102), Is.EqualTo(new Vector3(0, 0, -90)));
         Assert.That(TriggerContext.SpawnRotation(events, plain, 103), Is.Null);
     }
+
+    [Test]
+    public void LimitSpawnNpcCount_StopsMonsterSpawnsAtTheLimit() {
+        // limit_spawn_npc_count limit_count=200: spawning stops once 200 monsters are up.
+        Assert.That(TriggerContext.CanSpawnUnderLimit(200, 199), Is.True);
+        Assert.That(TriggerContext.CanSpawnUnderLimit(200, 200), Is.False);
+        Assert.That(TriggerContext.CanSpawnUnderLimit(200, 250), Is.False);
+        // limit_count=0 turns the limit off.
+        Assert.That(TriggerContext.CanSpawnUnderLimit(0, 5000), Is.True);
+    }
 }
