@@ -216,7 +216,7 @@ public static class FieldPacket {
     // This was used for rapid fire placement & repositioning of field items for debug visualization purposes without requiring allocating a whole new FieldItem
     // It was used for debugging npc movement to display important parameters that weren't being replicated properly.
     // Currently there is no easy to use system in place for that, though I do want to make one later
-    public static ByteWriter DropDebugItem(FieldItem fieldItem, int objectId, Vector3 position, int unkInt, short unkShort, bool unkBool) {
+    public static ByteWriter DropDebugItem(FieldItem fieldItem, int objectId, Vector3 position, short unkShort, bool unkBool) {
         Item item = fieldItem;
 
         var pWriter = Packet.Of(SendOp.FieldAddItem);
@@ -224,15 +224,12 @@ public static class FieldPacket {
         pWriter.WriteInt(item.Id);
         pWriter.WriteInt(item.Amount);
 
-        pWriter.WriteBool(fieldItem.ReceiverId >= 0);
-        if (fieldItem.ReceiverId >= 0) {
-            pWriter.WriteLong(fieldItem.ReceiverId);
-        }
+        // Same layout as DropItem (client 0x141711e70): plain int64 receiver, owner object id, then the drop type byte.
+        pWriter.WriteLong(fieldItem.ReceiverId);
 
         pWriter.Write<Vector3>(position);
         pWriter.WriteInt(fieldItem.Owner?.ObjectId ?? 0);
-        pWriter.WriteInt(unkInt);
-        pWriter.Write<DropType>(fieldItem.Type);
+        pWriter.WriteByte((byte) fieldItem.Type);
         pWriter.WriteInt(item.Rarity);
         pWriter.WriteShort(unkShort);
         pWriter.WriteBool(fieldItem.FixedPosition);

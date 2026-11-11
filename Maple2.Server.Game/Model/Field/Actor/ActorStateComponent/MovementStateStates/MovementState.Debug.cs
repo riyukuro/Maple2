@@ -57,7 +57,7 @@ public partial class MovementState {
         marker.Spawned = true;
         //marker.ObjectId = actor.Field.RemoveMeNextLocalId();
         //
-        //actor.Field.Broadcast(FieldPacket.DropDebugItem(marker.Item, marker.ObjectId, position, 1000000, 0, false));
+        //actor.Field.Broadcast(FieldPacket.DropDebugItem(marker.Item, marker.ObjectId, position, 0, false));
     }
 
     private void RemoveDebugMarker(DebugMarker marker, long tickCount) {
