@@ -19,7 +19,7 @@ public static class TriggerPacket {
         Ui = 9,
         EditScript = 12,
         Dialog = 15,
-        Unknown15 = 16,
+        LoadEffects = 16,
         AddEffect = 17,
         RemoveEffect = 18,
         SidePopup = 19,
@@ -84,12 +84,21 @@ public static class TriggerPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown15(ICollection<int> ids) {
+    // Client 2525 WorldService::FUN_141bd42f0 (worldservice_1.cpp:7302) with the map reader at
+    // worldservice_2.cpp:225: int count, count x (int key, then the same block AddEffect (17) carries:
+    // int object id, text nif path, bool outline, float scale, float z rotation). The client keys its
+    // table by the int and shows every effect on the object its block names.
+    public static ByteWriter LoadEffects(IReadOnlyCollection<(int ObjectId, string NifPath, bool IsOutline, float Scale, float RotateZ)> effects) {
         var pWriter = Packet.Of(SendOp.Trigger);
-        pWriter.Write<Command>(Command.Unknown15);
-        pWriter.WriteInt(ids.Count);
-        foreach (int id in ids) {
-            pWriter.WriteInt(id);
+        pWriter.Write<Command>(Command.LoadEffects);
+        pWriter.WriteInt(effects.Count);
+        foreach ((int objectId, string nifPath, bool isOutline, float scale, float rotateZ) in effects) {
+            pWriter.WriteInt(objectId);
+            pWriter.WriteInt(objectId);
+            pWriter.WriteString(nifPath);
+            pWriter.WriteBool(isOutline);
+            pWriter.WriteFloat(scale);
+            pWriter.WriteFloat(rotateZ);
         }
 
         return pWriter;
