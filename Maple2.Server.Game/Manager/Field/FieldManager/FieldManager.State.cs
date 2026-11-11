@@ -592,6 +592,35 @@ public partial class FieldManager {
         Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
     }
 
+    /// <summary>An AI createInteractObject node: the object is added where the npc stands and removed after lifeTime.</summary>
+    public FieldInteract? AddAiInteractObject(AiMetadata.CreateInteractObjectNode node, Vector3 position, Vector3 rotation) {
+        if (!TableMetadata.InteractObjectTable.Entries.TryGetValue(node.InteractID, out InteractObjectMetadata? interactObjectMetadata)) {
+            logger.Warning("CreateInteractObject: no interact object {Id}", node.InteractID);
+            return null;
+        }
+
+        int objectId = NextLocalId();
+        InteractMeshObject interactObject = AiInteract.Create(objectId, node, position, rotation);
+        var fieldInteract = new FieldInteract(this, objectId, interactObject.EntityId, interactObjectMetadata, interactObject) {
+            Transform = new Transform {
+                Position = position,
+                RotationAnglesDegrees = rotation,
+            },
+        };
+        fieldChests[interactObject.EntityId] = fieldInteract;
+        Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
+
+        TimeSpan lifeTime = AiInteract.LifeTime(node.LifeTime);
+        if (lifeTime > TimeSpan.Zero) {
+            Scheduler.Schedule(() => {
+                if (fieldChests.TryRemove(interactObject.EntityId, out _)) {
+                    Broadcast(InteractObjectPacket.Remove(interactObject.EntityId));
+                }
+            }, lifeTime);
+        }
+        return fieldInteract;
+    }
+
     public void AddSkill(Ms2TriggerSkill triggerSkill, int interval, in Vector3 position, in Vector3 rotation = default, int triggerId = 0) {
         if (!SkillMetadata.TryGet(triggerSkill.SkillId, triggerSkill.Level, out SkillMetadata? skillMetadata)) {
             logger.Warning("Invalid skill: {Id}", triggerSkill.SkillId);

@@ -679,7 +679,9 @@ public class AiState {
 
     private void ProcessNode(CreateRandomRoomNode node) { }
 
-    private void ProcessNode(CreateInteractObjectNode node) { }
+    private void ProcessNode(CreateInteractObjectNode node) {
+        actor.Field.AddAiInteractObject(node, actor.Position, actor.Rotation);
+    }
 
     private void ProcessNode(RemoveMeNode node) {
         actor.Field.RemoveNpc(actor.ObjectId);
