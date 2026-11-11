@@ -547,7 +547,7 @@ public class WorldServer {
         return;
 
         Item? CreateItem(int itemId, int rarity = -1, int amount = 1) {
-            if (!itemMetadata.TryGet(itemId, out ItemMetadata? metadata)) {
+            if (!itemMetadata.TryGet(itemId, out ItemMetadata? metadata) || !PlayedClientItems.CanCreate(metadata)) {
                 return null;
             }
 

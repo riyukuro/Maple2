@@ -214,7 +214,7 @@ var modelReaders = new List<PrefixedM2dReader> {
 
 UpdateDatabase(metadataContext, new TriggerMapper(xmlReader));
 
-UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false));
+UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false, playedReader));
 UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language));
 
 UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader));

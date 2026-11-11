@@ -111,6 +111,11 @@ public static class PlayedClientItems {
         return keep;
     }
 
+    // Whether the server may create an item of this data: not when the played client lacks it (the client crashes
+    // on the item packet, ItemMetadataProperty.NotInPlayedClient). Item factories return no item then, as for an
+    // id without item data.
+    public static bool CanCreate(ItemMetadata metadata) => !metadata.Property.NotInPlayedClient;
+
     // Reward content items (table/rewardcontentitemtable.xml) without unknown items. A level range left with no
     // items stays and gives none (GameSession adds each item of the range); its exp and meso come from other tables.
     public static RewardItem[] Keep(RewardItem[] items, IReadOnlySet<int> known, ref Count count) {

@@ -55,6 +55,12 @@ public record ItemMetadataProperty(
     // The item xml's fusion element, attribute fusionable (client itemdatastruct.cpp:1559, default 0).
     // Null in a row that was ingested before this field existed: such a row is not judged.
     public bool? Fusionable { get; init; }
+    // Set at ingest when MS2_PLAYED_CLIENT_XML names the pack of the played client and that pack has no item data
+    // for this id (PlayedClientItems). The client reads an item packet into an item object even when it finds no
+    // item data for the id and then dereferences the missing data (CItem::ReadFromStream, commonfiles/item.cpp:2655,
+    // after CItem::FUN_140523c40 failed, item.cpp:2760), so the server creates no such item (PlayedClientItems.CanCreate).
+    // False when the option is not set; the JSON store omits false values, so the default must be false.
+    public bool NotInPlayedClient { get; init; }
 }
 
 public record ItemMetadataCustomize(

@@ -297,7 +297,7 @@ public class ItemDropManager {
     }
 
     public Item? CreateItem(int itemId, int rarity = -1, int amount = 1, bool rollMax = false) {
-        if (!field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata)) {
+        if (!field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata) || !PlayedClientItems.CanCreate(itemMetadata)) {
             return null;
         }
 

@@ -15,16 +15,31 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
     private readonly ItemParser parser;
     private readonly TableParser tableParser;
     private readonly bool newXml;
+    private readonly M2dReader? playedReader;
 
     public static Dictionary<int, ItemMetadata> ItemMetadataById { get; } = new();
 
-    public ItemMapper(M2dReader xmlReader, string language, bool newXml) {
+    public ItemMapper(M2dReader xmlReader, string language, bool newXml, M2dReader? playedReader = null) {
         parser = new ItemParser(xmlReader, language);
         tableParser = PackTables.NewParser(xmlReader, language);
         this.newXml = newXml;
+        this.playedReader = playedReader;
     }
 
     protected override IEnumerable<ItemMetadata> Map() {
+        // The items the played client has item data for (PlayedClientItems); null without a played client or when
+        // its pack has no item data, and then no item is marked.
+        HashSet<int>? known = null;
+        if (playedReader != null) {
+            known = PlayedClientItems.Ids(
+                playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            if (known.Count == 0) {
+                known = null;
+            }
+        }
+        int notInPlayed = 0, inPlayed = 0;
+
         Dictionary<int, int> itemExtractionTryCount = tableParser.ParseItemExtraction()
             .ToDictionary(entry => entry.Id, entry => entry.Extraction.TryCount);
 
@@ -203,6 +218,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     LimitBreakMaxLevel: data.property.unlimitedEnchantMaxGrade
                 ) {
                     Fusionable = data.fusion.fusionable != 0,
+                    NotInPlayedClient = known != null && !known.Contains(id),
                 },
                 Customize: new ItemMetadataCustomize(
                     ColorPalette: data.customize.colorPalette,
@@ -236,8 +252,15 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             );
 
             ItemMetadataById[id] = itemMetadata;
+            if (known != null) {
+                if (itemMetadata.Property.NotInPlayedClient) notInPlayed++;
+                else inPlayed++;
+            }
 
             yield return itemMetadata;
+        }
+        if (known != null) {
+            Console.WriteLine($"items: {notInPlayed} not in the played client's item data (the server creates none of them), {inPlayed} in it");
         }
     }
 }

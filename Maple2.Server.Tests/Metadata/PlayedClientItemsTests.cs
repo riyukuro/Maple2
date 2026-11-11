@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
@@ -141,6 +142,20 @@ public class PlayedClientItemsTests {
             Assert.That(PlayedClientItems.KnownShopItem(90, 0, known, ref count), Is.False);
             Assert.That(PlayedClientItems.KnownShopItem(10, 91, known, ref count), Is.False);
             Assert.That(count, Is.EqualTo(new PlayedClientItems.Count(Dropped: 2, Kept: 2)));
+        });
+    }
+
+    // An item the played client lacks is created by no server path; without the mark (no played client given, or
+    // data ingested before the mark) every item can be.
+    [Test]
+    public void CanCreate_NotAnItemThePlayedClientLacks() {
+        var property = new ItemMetadataProperty(false, 0, 100, 1, 13, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+        var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
+        var metadata = new ItemMetadata(10, "10", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, null, [], null, null, null, null);
+
+        Assert.Multiple(() => {
+            Assert.That(PlayedClientItems.CanCreate(metadata), Is.True);
+            Assert.That(PlayedClientItems.CanCreate(metadata with { Property = property with { NotInPlayedClient = true } }), Is.False);
         });
     }
 
