@@ -324,16 +324,16 @@ public partial class TriggerContext {
             .Select(boxId => Objects.Boxes.GetValueOrDefault(boxId))
             .Where(box => box != null)!;
 
-        bool result;
-        if (jobCode != 0) {
-            result = Field.Players.Values
-                .Any(player => player.Value.Character.Job.Code() == jobCode && boxes.Any(box => box.Contains(player.Position)));
-        } else {
-            result = Field.Players.Values.Any(player => boxes.Any(box => box.Contains(player.Position)));
-        }
+        bool result = Detected(Field.Players.Values, player => player.IsDead,
+            player => (jobCode == 0 || player.Value.Character.Job.Code() == jobCode) && boxes.Any(box => box.Contains(player.Position)));
 
         return negate ? !result : result;
     }
+
+    // A dead player is not detected: the scripts end a round with !user_detected on the arena box when the player
+    // has died (marked "pc death" and "nobody survived" in the shipped scripts), while the body lies in the box.
+    public static bool Detected<T>(IEnumerable<T> players, Func<T, bool> isDead, Func<T, bool> matches) =>
+        players.Any(player => !isDead(player) && matches(player));
 
     // Waits as many seconds, since the state was entered, as the user value key holds (the shipped desc: the
     // time event gives the hold time; when it ends the script goes back). An unset key reads 0, as user_value does.
