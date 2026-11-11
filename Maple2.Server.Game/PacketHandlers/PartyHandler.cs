@@ -31,6 +31,8 @@ public class PartyHandler : FieldPacketHandler {
         VoteKick = 45,
         ReadyCheck = 46,
         VoteReply = 48,
+        Unknown39 = 39,
+        DungeonMemberConfirm = 43,
     }
 
     #region Autofac Autowired
@@ -82,6 +84,11 @@ public class PartyHandler : FieldPacketHandler {
                 return;
             case Command.VoteReply:
                 HandleVoteReply(session, packet);
+                return;
+            case Command.Unknown39:
+            case Command.DungeonMemberConfirm:
+                // Not handled: party id and dungeon room id from a confirm box of the messenger.
+                Logger.Debug("Party {Command} from {CharacterId}: party {PartyId}, room {RoomId}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
                 return;
         }
 
