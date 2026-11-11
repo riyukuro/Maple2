@@ -166,6 +166,24 @@ Narrowed, with the reason:
 
 Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. So are Quest 18 (the quest portal opens again when the quest talk ends) and Buddy 20 (the "refuse friend requests" option: a request is declined on receipt while the option is on; the server asks the client for the option at login and also learns it when the options are saved), Club 12 (the leader hands the club to a member) and HomeAction 1 to 3 (the home owner kills, sends out or revives a visitor from the player menu; only sub-type 3 was counted above). RequestRide 6 (the "ride alone" game option: the field is told and nobody can board the mount while it is on) and FunctionCube 5 and 7 (use a cube; closing a cube's dialog hands the cube back to other players) are handled too, EventReward 8 as well, and the client sends no Prestige sub-type other than the two that were already handled. The two HomeAction entries left are the PvP control dialog (14) and the OX quiz (10). The revive block of a buff (`disableRevivalHere`) is a new metadata property: it is empty until the metadata is ingested again. RequestItemInventory 8 and 9 (sort, expand) and Trade 14 (busy answer) were already handled and are no longer counted. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.
 
+Packets the client reads that the server never sends, although a player can ask for them. The request is dropped (no handler) unless a line says otherwise:
+- MoveEventField 0x0085 (the world map's event field button): no handler for RequestMoveEventField and no event field schedule.
+- InteractNpc 0x0059 (the interact key on an NPC that has an interact state): no handler; the NPC's state flag is never changed.
+- FittingDoll 0x007B (the fitting doll in a home): the server has no fitting doll storage.
+- FieldMaid 0x009D, UserMaid 0x009E and MaidCraftItem 0x00A9 (the home maid and its crafting): the server has no maid system.
+- RecallUser 0x008C (call another player to your place): only the recall scroll item is handled; the request to recall a player is not.
+- Gamble 0x009C, CardReverseGame 0x00DA, PlayArcade 0x00D8, TreeWatering 0x0118 and BirthdayCard 0x0111 (event windows): the server's event table has no data for these events.
+- SmartRecommendBilling 0x00A0 and NoticeDialog 0x00CF (shop recommendation and notice windows): the server has no content for them.
+- PcBangBonus 0x00A5 and SetPcBang 0x00B5 (PC cafe benefits): accounts carry no PC cafe state.
+- Pvp 0x00B6 and TeamPvp 0x009A (arena matches): the server has no arena matchmaking; a field's PK mode works without these packets.
+- SpectateMushtopia 0x011A, Survival 0x0119 and SurvivalEvent 0x0116 (Mushking Royale): no match server. The server writes Survival and SurvivalEvent for its medal data, and this client has no reader for either.
+- WaitingTicketUpdate 0x00B4 (the login queue): the server has no login queue, so the client never waits.
+- DungeonMatch 0x00EF and DungeonHelp 0x0109 (dungeon match queue and helper call): no matchmaker and no recruiting notice, as for Party 32 to 34 and RoomDungeon 15 and 16 above.
+- MeretUse 0x0117 (the event meret balance after a purchase): the server keeps no event meret balance; purchases update the normal meret packet.
+- StateFishingData 0x00FA (another player's fishing state): fishing itself works; the server does not send the state of a fishing player to the others in the field.
+- ChangeAttributes 0x00C8 kinds 4, 6 and 8 and ItemExchange 0x0102 kinds 0 and 3: the server answers these windows only with the kinds it handles (ChangeAttributes 1, 2 and the error 5; ItemExchange 2).
+- DebugMode 0x0087 (the answer to the GM debug window's switches): not handled; it would need a GM account.
+
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
 ## Two local changes a server operator must know

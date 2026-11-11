@@ -73,7 +73,10 @@ public class WeddingHall : IByteSerializable, IByteDeserializable {
         writer.WriteLong();
         writer.WriteLong();
 
-        writer.WriteInt(GuestList.Count);
+        // Client: the ticket ends with an int reservation coupon id (weddingproxy.cpp:399), the item tag of the
+        // coupon the hall was reserved with, not a guest count. The client stores it and never reads it back. The
+        // server does not keep which coupon paid for a reservation, so 0 is sent.
+        writer.WriteInt(0);
         /*foreach ((long characterId, long accountId) in GuestList) {
             writer.WriteLong(accountId);
             writer.WriteLong(characterId);
