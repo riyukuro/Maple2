@@ -138,7 +138,7 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 67 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 66 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
@@ -148,7 +148,13 @@ The client sends 67 sub-types that the server does not handle yet. They are list
 | Guild | 6 | Party | 2 | | |
 | RoomDungeon | 5 | | | | |
 
-These systems have one unhandled sub-type each: Achieve, Buddy, ChatSticker, Club, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Trade, Ugc.
+These systems have one unhandled sub-type each: Achieve, Buddy, Club, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Trade, Ugc.
+
+Narrowed, with the reason:
+- FurnishingStorage 4 (take a stored furnishing item into the bag): the server keeps every furnishing item in the furnishing storage and has no bag tab for them, so the request is dropped and the item stays stored. Placing the item from the storage works.
+- Revival 3 (revive a dead summon): only logged. It is not counted in the table above.
+
+Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.
 
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
