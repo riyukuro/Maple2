@@ -111,7 +111,7 @@ public class PartySearchHandler : FieldPacketHandler {
         }
 
         if (session.Party.Party.Search == null) {
-            session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_not_find_recruit));
+            session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_not_find_recruit, 1));
             return;
         }
 

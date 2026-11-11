@@ -10,7 +10,7 @@ public enum PartySearchError : int {
     [Description("Party Finder system error.\nPlease try again later.\nIf the error continues to occur, please contact customer support.")]
     s_partysearch_err_server_db = 2,
     [Description("You are already registered in the party finder.")]
-    s_partysearch_err_server_already_register = 13, // or 14 or 15 or 105
+    s_partysearch_err_server_already_register = 14, // client OnMatchPartyError: 12, 14 or 15 (105 with request type 0); 13 gives the generic code message
     [Description("Processing the previous request. Please wait.")]
     s_partysearch_err_server_lastaction = 99,
     [Description("Only the party leader can do this.")]
