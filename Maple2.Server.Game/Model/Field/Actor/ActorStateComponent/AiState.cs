@@ -726,7 +726,9 @@ public class AiState {
         actor.RemoveSummons();
     }
 
-    private void ProcessNode(CreateRandomRoomNode node) { }
+    private void ProcessNode(CreateRandomRoomNode node) {
+        actor.Field.SpawnRandomRoomPortal(node.RandomRoomId, node.PortalDuration, actor.Position, actor.Rotation);
+    }
 
     private void ProcessNode(CreateInteractObjectNode node) {
         actor.Field.AddAiInteractObject(node, actor.Position, actor.Rotation);

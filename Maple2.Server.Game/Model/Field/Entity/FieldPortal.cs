@@ -14,6 +14,10 @@ public class FieldPortal : FieldEntity<Portal> {
     public string OwnerName = "";
     public string Password = "";
     public int RoomId;
+    // A createRandomRoom portal: its room is made at the first entry, so the room's time starts then.
+    public RandomRoomFieldMetadata? RandomRoom;
+    public FieldManager? RandomRoomField;
+    public int RandomRoomEntered;
 
     public FieldPortal(FieldManager field, int objectId, Portal value) : base(field, objectId, value) {
         Visible = value.Visible;

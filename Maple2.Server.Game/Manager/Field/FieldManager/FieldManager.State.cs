@@ -840,6 +840,40 @@ public partial class FieldManager {
         Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, spawn), delay);
     }
 
+    /// <summary>
+    /// An AI createRandomRoom node (the ShadowGate npcs, at their death): an Event portal at the npc for
+    /// durationSeconds, to a room of the randomroom row. The room itself is made at the first entry
+    /// (UseRandomRoomPortal).
+    /// </summary>
+    public FieldPortal? SpawnRandomRoomPortal(int randomRoomId, int durationSeconds, Vector3 position, Vector3 rotation) {
+        RoomRandomTable table = ServerTableMetadata.RoomRandomTable;
+        if (!table.RandomRooms.TryGetValue(randomRoomId, out RandomRoomMetadata? randomRoom)) {
+            logger.Warning("createRandomRoom: no randomroom {Id} in room_random.xml", randomRoomId);
+            return null;
+        }
+        if (!RandomRoomRules.Opens(randomRoom.Prob, Random.Shared.Next(RandomRoomRules.ProbScale))) {
+            return null;
+        }
+
+        int totalWeight = RandomRoomRules.TotalWeight(randomRoom.Refs);
+        int? roomId = totalWeight > 0 ? RandomRoomRules.PickRoom(randomRoom.Refs, Random.Shared.Next(totalWeight)) : null;
+        if (roomId is null || !table.Rooms.TryGetValue(roomId.Value, out RandomRoomFieldMetadata? room) || room.FieldIds.Length == 0) {
+            logger.Warning("createRandomRoom: randomroom {Id} gives no room with a field ({RoomId})", randomRoomId, roomId);
+            return null;
+        }
+
+        // Every shipped room has one field; with more, one is picked.
+        int mapId = room.FieldIds[Random.Shared.Next(room.FieldIds.Length)];
+        var portal = new Portal(NextLocalId(), mapId, -1, PortalType.Event, PortalActionType.Interact, position, rotation,
+            new Vector3(200, 200, 250), 0, 0, true, false, true);
+        FieldPortal fieldPortal = SpawnPortal(portal);
+        fieldPortal.Model = room.AssetName;
+        fieldPortal.EndTick = (FieldTick + (long) TimeSpan.FromSeconds(Math.Max(durationSeconds, 1)).TotalMilliseconds).Truncate32();
+        fieldPortal.RandomRoom = room;
+        Broadcast(PortalPacket.Add(fieldPortal));
+        return fieldPortal;
+    }
+
     public void SetRoomTimer(RoomTimerType type, int duration) {
         SetRoomTimer(type, duration, expiresRoom: true);
     }

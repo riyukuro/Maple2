@@ -546,11 +546,9 @@ public partial class FieldManager : IField {
             return false;
         }
 
-        /* TODO: Remove portal once capacity is reached for Event portals
-        if (fieldPortal.Value.Type == PortalType.Event) {
-            RemovePortal(fieldPortal.ObjectId);
+        if (fieldPortal.RandomRoom is { } randomRoom) {
+            return UseRandomRoomPortal(session, fieldPortal, randomRoom);
         }
-        */
 
         // MoveByPortal (same map)
         Portal srcPortal = fieldPortal;
@@ -650,8 +648,9 @@ public partial class FieldManager : IField {
             return true;
         }
 
-        // The "map" condition counts a portal that was taken, not one whose entry was refused.
-        bool entered = session.PrepareField(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId);
+        // The "map" condition counts a portal that was taken, not one whose entry was refused. A portal to a
+        // room (a bonus map) leads into that room, not into the map's shared field.
+        bool entered = session.PrepareField(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId, roomId: fieldPortal.RoomId);
         if (entered) {
             session.ConditionUpdate(ConditionType.map, codeLong: srcPortal.TargetMapId);
         }
@@ -660,6 +659,55 @@ public partial class FieldManager : IField {
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
         return true;
+    }
+
+    // The room is made at the first entry, with its roomdurationTick on the clock; it takes maxUserCount players,
+    // and with autoClosing the portal goes when it is full. An ended room closes its portal.
+    private bool UseRandomRoomPortal(GameSession session, FieldPortal fieldPortal, RandomRoomFieldMetadata room) {
+        FieldManager? roomField;
+        bool close;
+        lock (fieldPortal) {
+            if (RandomRoomRules.Full(fieldPortal.RandomRoomEntered, room.MaxUserCount)) {
+                session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_member_limit));
+                return false;
+            }
+            if (fieldPortal.RandomRoomField is { Disposed: true }) {
+                RemovePortal(fieldPortal.ObjectId);
+                session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_dungeon_not_exist));
+                return false;
+            }
+            if (fieldPortal.RandomRoomField == null) {
+                FieldManager? created = FieldFactory.Create(fieldPortal.Value.TargetMapId);
+                if (created == null) {
+                    session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                    return false;
+                }
+                created.Init();
+                created.SetRoomTimer(RoomTimerType.Clock, room.DurationTick);
+                fieldPortal.RandomRoomField = created;
+            }
+
+            roomField = fieldPortal.RandomRoomField;
+            fieldPortal.RandomRoomEntered++;
+            close = room.AutoClosing && RandomRoomRules.Full(fieldPortal.RandomRoomEntered, room.MaxUserCount);
+        }
+
+        if (close) {
+            RemovePortal(fieldPortal.ObjectId);
+        }
+
+        bool entered = session.PrepareField(roomField.MapId, roomId: roomField.RoomId);
+        if (entered) {
+            session.ConditionUpdate(ConditionType.map, codeLong: roomField.MapId);
+        } else {
+            lock (fieldPortal) {
+                fieldPortal.RandomRoomEntered--;
+            }
+        }
+        session.Send(entered
+            ? FieldEnterPacket.Request(session.Player)
+            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        return entered;
     }
 
     public bool LiftupCube(in Vector3B coordinates, [NotNullWhen(true)] out LiftupWeapon? liftupWeapon) {

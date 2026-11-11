@@ -30,6 +30,7 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<EnchantOptionTable> enchantOptionTable;
     private readonly Lazy<UnlimitedEnchantOptionTable> unlimitedEnchantOptionTable;
     private readonly Lazy<ConstantsTable> constantsTable;
+    private readonly Lazy<RoomRandomTable> roomRandomTable;
 
     public InstanceFieldTable InstanceFieldTable => instanceFieldTable.Value;
     public ScriptConditionTable ScriptConditionTable => scriptConditionTable.Value;
@@ -55,6 +56,7 @@ public class ServerTableMetadataStorage {
     public EnchantOptionTable EnchantOptionTable => enchantOptionTable.Value;
     public UnlimitedEnchantOptionTable UnlimitedEnchantOptionTable => unlimitedEnchantOptionTable.Value;
     public ConstantsTable ConstantsTable => constantsTable.Value;
+    public RoomRandomTable RoomRandomTable => roomRandomTable.Value;
 
     public ServerTableMetadataStorage(MetadataContext context) {
         instanceFieldTable = Retrieve<InstanceFieldTable>(context, ServerTableNames.INSTANCE_FIELD);
@@ -81,6 +83,7 @@ public class ServerTableMetadataStorage {
         enchantOptionTable = Retrieve<EnchantOptionTable>(context, ServerTableNames.ENCHANT_OPTION);
         unlimitedEnchantOptionTable = Retrieve<UnlimitedEnchantOptionTable>(context, ServerTableNames.UNLIMITED_ENCHANT_OPTION);
         constantsTable = Retrieve<ConstantsTable>(context, ServerTableNames.CONSTANTS);
+        roomRandomTable = Retrieve<RoomRandomTable>(context, ServerTableNames.ROOM_RANDOM);
     }
 
     public IEnumerable<GameEvent> GetGameEvents() {

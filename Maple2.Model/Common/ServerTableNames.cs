@@ -25,4 +25,5 @@ public static class ServerTableNames {
     public const string ENCHANT_OPTION = "enchantOption.xml";
     public const string UNLIMITED_ENCHANT_OPTION = "unlimitedEnchantOption.xml";
     public const string CONSTANTS = "constants.xml";
+    public const string ROOM_RANDOM = "room_random.xml";
 }

@@ -149,6 +149,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.CONSTANTS,
             Table = ParseConstants(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.ROOM_RANDOM,
+            Table = ParseRoomRandom(),
+        };
 
     }
 
@@ -2281,6 +2285,38 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 rates.Add(attribute, rate);
             }
         }
+    }
+
+    // A pack without the table gives an empty one: no createRandomRoom portal opens.
+    private RoomRandomTable ParseRoomRandom() {
+        if (xmlReader.GetEntry("table/Server/room_random.xml") == null) {
+            return MapRoomRandom([], []);
+        }
+        return MapRoomRandom(parser.ParseRoomRandom().Select(entry => entry.RandmRoom).ToList(),
+            parser.ParseRoom().Select(entry => entry.Room).ToList());
+    }
+
+    public static RoomRandomTable MapRoomRandom(IEnumerable<RandomRoom> randomRooms, IEnumerable<RoomRandom> rooms) {
+        var randomRoomTable = new Dictionary<int, RandomRoomMetadata>();
+        foreach (RandomRoom randomRoom in randomRooms) {
+            randomRoomTable[randomRoom.id] = new RandomRoomMetadata(
+                Id: randomRoom.id,
+                Prob: randomRoom.prob,
+                Refs: (randomRoom.@ref ?? []).Select(entry => new RandomRoomMetadata.Ref(entry.roomid, entry.weight)).ToArray());
+        }
+
+        var roomTable = new Dictionary<int, RandomRoomFieldMetadata>();
+        foreach (RoomRandom room in rooms) {
+            roomTable[room.id] = new RandomRoomFieldMetadata(
+                Id: room.id,
+                FieldIds: room.fieldIDs ?? [],
+                DurationTick: room.roomdurationTick,
+                AssetName: room.nifAssetName ?? string.Empty,
+                MaxUserCount: room.maxUserCount,
+                AutoClosing: room.autoClosing != 0);
+        }
+
+        return new RoomRandomTable(randomRoomTable, roomTable);
     }
 
     private ConstantsTable ParseConstants() {
