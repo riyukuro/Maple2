@@ -2174,7 +2174,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
         var rowLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach ((string key, string value) in serverRows) {
-            rowLookup.TryAdd(key, value);
+            rowLookup[key] = value; // a key that is there twice: the last row, as for the single fields above
         }
         constants = constants with { WarpOpenContinents = ConstantsTable.ReadList(rowLookup, "WarpOpenContinent") };
 

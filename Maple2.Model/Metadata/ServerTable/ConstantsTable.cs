@@ -971,8 +971,9 @@ public record ConstantsTable(
     }
 
     public IEnumerable<int> OpenContinents() {
+        // 0 is no continent, in the list (an unreadable row) as in the four fields.
         if (WarpOpenContinents != null) {
-            return WarpOpenContinents;
+            return WarpOpenContinents.Where(code => code != 0);
         }
 
         int[] first = [WarpOpenContinent0, WarpOpenContinent1, WarpOpenContinent2, WarpOpenContinent3];

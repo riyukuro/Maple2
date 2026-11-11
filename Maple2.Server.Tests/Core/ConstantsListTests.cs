@@ -24,5 +24,10 @@ public class ConstantsListTests {
 
         ConstantsTable full = old with { WarpOpenContinents = [102, 103, 202, 105, 110] };
         Assert.That(full.OpenContinents(), Is.EqualTo(new[] { 102, 103, 202, 105, 110 }));
+
+        // 0 (an unreadable row) is no continent, in the list as in the four fields.
+        ConstantsTable gap = old with { WarpOpenContinents = [102, 0, 202] };
+        Assert.That(gap.OpenContinents(), Is.EqualTo(new[] { 102, 202 }));
+        Assert.That(new ConstantsTable(WarpOpenContinent0: 102, WarpOpenContinent2: 202).OpenContinents(), Is.EqualTo(new[] { 102, 202 }));
     }
 }
