@@ -23,6 +23,8 @@ public class AiState {
 
     private AiMetadata? lastEvaluated;
     private DecisionTreeType currentTree;
+    // The field tick the battle time counts from (combatTime; setData aiBattleTime moves it).
+    private long battleStartTick;
 
     private Dictionary<string, long> coolTimes = new();
     private List<Node> reservedNodes = new List<Node>();
@@ -127,6 +129,9 @@ public class AiState {
         }
 
         if (isInBattle && battle is not null) {
+            if (currentTree != DecisionTreeType.Battle) {
+                battleStartTick = actor.Field.FieldTick;
+            }
             currentTree = DecisionTreeType.Battle;
         }
 
@@ -386,6 +391,9 @@ public class AiState {
 
     private void ProcessNode(SetDataNode node) {
         actor.AiExtraData[node.Key] = node.Value;
+        if (node.Key == AiCombatTime.BattleTimeKey) {
+            battleStartTick = actor.Field.FieldTick - node.Value;
+        }
     }
 
     private void ProcessNode(TargetNode node) {
@@ -639,7 +647,7 @@ public class AiState {
     }
 
     private bool ProcessCondition(CombatTimeCondition node) {
-        return false;
+        return AiCombatTime.Passes(actor.Field.FieldTick - battleStartTick, node.BattleTimeBegin, node.BattleTimeLoop, node.BattleTimeEnd);
     }
 
     private bool ProcessCondition(DistanceLessCondition node) {
