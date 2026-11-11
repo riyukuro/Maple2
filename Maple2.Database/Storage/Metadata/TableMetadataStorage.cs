@@ -21,6 +21,7 @@ public class TableMetadataStorage {
     private readonly Lazy<InstrumentTable> instrumentTable;
     private readonly Lazy<InteractObjectTable> interactObjectTable;
     private readonly Lazy<LapenshardUpgradeTable> lapenshardUpgradeTable;
+    private readonly Lazy<SetItemTable> setItemTable;
     private readonly Lazy<ItemSocketTable> itemSocketTable;
     private readonly Lazy<GuildTable> guildTable;
     private readonly Lazy<PremiumClubTable> premiumClubTable;
@@ -90,6 +91,7 @@ public class TableMetadataStorage {
     public InstrumentTable InstrumentTable => instrumentTable.Value;
     public InteractObjectTable InteractObjectTable => interactObjectTable.Value;
     public LapenshardUpgradeTable LapenshardUpgradeTable => lapenshardUpgradeTable.Value;
+    public SetItemTable SetItemTable => setItemTable.Value;
     public ItemSocketTable ItemSocketTable => itemSocketTable.Value;
     public GuildTable GuildTable => guildTable.Value;
     public PremiumClubTable PremiumClubTable => premiumClubTable.Value;
@@ -160,6 +162,7 @@ public class TableMetadataStorage {
         instrumentTable = Retrieve<InstrumentTable>(context, TableNames.INSTRUMENT_CATEGORY_INFO);
         interactObjectTable = Retrieve<InteractObjectTable>(context, TableNames.INTERACT_OBJECT);
         lapenshardUpgradeTable = Retrieve<LapenshardUpgradeTable>(context, TableNames.ITEM_LAPENSHARD_UPGRADE);
+        setItemTable = Retrieve<SetItemTable>(context, TableNames.SET_ITEM);
         itemSocketTable = Retrieve<ItemSocketTable>(context, TableNames.ITEM_SOCKET);
         guildTable = Retrieve<GuildTable>(context, TableNames.GUILD);
         premiumClubTable = Retrieve<PremiumClubTable>(context, TableNames.VIP);

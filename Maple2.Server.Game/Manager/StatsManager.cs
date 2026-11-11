@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
@@ -13,6 +14,8 @@ namespace Maple2.Server.Game.Manager;
 public class StatsManager {
     public IActor Actor { get; private set; }
     private readonly IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>> levelStats;
+    // The effect ids last given by set bonuses (RefreshSetEffects).
+    private readonly HashSet<int> setEffectIds = [];
 
     public Stats Values { get; init; }
 
@@ -128,6 +131,9 @@ public class StatsManager {
             return;
         }
 
+        // Before the totals are rebuilt: giving or taking an effect that carries stats refreshes on its own.
+        List<SetBonusMetadata> setBonuses = RefreshSetEffects(player);
+
         Character character = player.Value.Character;
         if (levelStats.TryGetValue(character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
             Values.Reset(metadata, character.Job.Code());
@@ -137,6 +143,7 @@ public class StatsManager {
         }
 
         AddEquips(player);
+        AddSetBonuses(setBonuses);
         AddBuffs(player);
         Values.Total();
         StatConversion(player);
@@ -215,6 +222,51 @@ public class StatsManager {
         Log.Logger.Debug("Final Gearscore for {name} ({id}): {gearscore}", player.Value.Character.Name, player.Value.Character.Id, Values.GearScore);
         player.Session.Dungeon.UpdateDungeonEnterLimit();
         player.Session.ConditionUpdate(ConditionType.item_gear_score, counter: Values.GearScore);
+    }
+
+    // The set-bonus parts that hold for the worn gear and the worn outfit (SetItemRules), and their effects:
+    // the missing ones are given, and the ones given earlier that no longer hold are taken. These effects
+    // have no duration, so the logout save drops them; this runs at login and on every equip change.
+    private List<SetBonusMetadata> RefreshSetEffects(FieldPlayer player) {
+        List<SetBonusMetadata> bonuses = SetItemRules.Bonuses([
+            player.Session.Item.Equips.Gear.Values.Select(item => item.Metadata.Property.SetOptionIds).ToArray(),
+            player.Session.Item.Equips.Outfit.Values.Select(item => item.Metadata.Property.SetOptionIds).ToArray(),
+        ], player.Session.TableMetadata.SetItemTable.Entries);
+
+        List<(int Id, short Level)> effects = SetItemRules.Effects(bonuses);
+        (int Id, int CasterId)[] stale = setEffectIds.Where(id => effects.All(effect => effect.Id != id))
+            .Select(id => (id, player.ObjectId)).ToArray();
+        setEffectIds.Clear();
+        foreach ((int id, short _) in effects) {
+            setEffectIds.Add(id);
+        }
+        if (stale.Length > 0) {
+            player.Buffs.Remove(stale);
+        }
+        foreach ((int id, short level) in effects) {
+            if (!player.Buffs.HasBuff(id, level) && player.Field.SkillMetadata.TryGetEffect(id, level, out _)) {
+                player.Buffs.AddBuff(player, player, id, level, player.Field.FieldTick);
+            }
+        }
+        return bonuses;
+    }
+
+    // Set-bonus stats, taken the way a buff's are (AddBuffs).
+    private void AddSetBonuses(List<SetBonusMetadata> bonuses) {
+        foreach (SetBonusMetadata bonus in bonuses) {
+            foreach ((BasicAttribute attribute, long value) in bonus.Values) {
+                Values[attribute].AddTotal(value);
+            }
+            foreach ((BasicAttribute attribute, float rate) in bonus.Rates) {
+                Values[attribute].AddRate(rate);
+            }
+            foreach ((SpecialAttribute attribute, float value) in bonus.SpecialValues) {
+                Values[attribute].AddTotal((long) value);
+            }
+            foreach ((SpecialAttribute attribute, float rate) in bonus.SpecialRates) {
+                Values[attribute].AddTotal(new SpecialOption(rate));
+            }
+        }
     }
 
     private void AddBuffs(FieldPlayer player) {
