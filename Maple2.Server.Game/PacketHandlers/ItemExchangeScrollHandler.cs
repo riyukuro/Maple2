@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -46,60 +47,66 @@ public class ItemExchangeScroll : FieldPacketHandler {
         }
     }
 
+    // Client UIItemExchangeScrollDialog::SendItemExchangeScrollMode1 (uiitemexchangescrolldialog.cpp:575-598):
+    // long scroll uid, long target uid, int count. The client refuses count 0 with code 7.
     private void HandleExchange(GameSession session, IByteReader packet) {
-        long scrollItemUid = packet.ReadLong();
-        long unk = packet.ReadLong(); // item uid for upgrading exchange type?
-        int quantity = packet.ReadInt();
-
-        Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
-
-        if (scrollItem == null) {
-            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
-            return;
-        }
-
-        if (!int.TryParse(scrollItem.Metadata.Function?.Parameters, out int scrollId) || !TableMetadata.ItemExchangeScrollTable.Entries.TryGetValue(scrollId, out ItemExchangeScrollMetadata? scrollMetadata)) {
-            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
-            return;
-        }
-
-        if (session.Currency.CanAddMeso(-scrollMetadata.RequiredMeso * quantity) != -scrollMetadata.RequiredMeso * quantity) {
-            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_money_invalid));
+        (long scrollItemUid, long _, int quantity) = ItemExchangeScrollRules.ReadExchange(packet);
+        if (!ItemExchangeScrollRules.CountAllowed(quantity)) {
+            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_check));
             return;
         }
 
         lock (session.Item) {
-            // Check if player has enough scrolls
+            Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
+            if (scrollItem == null) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
+                return;
+            }
+
+            if (!int.TryParse(scrollItem.Metadata.Function?.Parameters, out int scrollId) || !TableMetadata.ItemExchangeScrollTable.Entries.TryGetValue(scrollId, out ItemExchangeScrollMetadata? scrollMetadata)) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
+                return;
+            }
+
+            // The fee of all exchanges, tested and taken as one amount.
+            long fee = ItemExchangeScrollRules.Fee(scrollMetadata.RequiredMeso, quantity);
+            if (fee < 0 || session.Currency.Meso < fee) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_money_invalid));
+                return;
+            }
+
+            // The scrolls of all exchanges, taken once over the stacks.
             List<Item> scrolls = session.Item.Inventory.Find(scrollMetadata.RecipeScroll.ItemId, scrollMetadata.RecipeScroll.Rarity).ToList();
-            if (scrolls.Sum(x => x.Amount) < scrollMetadata.RecipeScroll.Amount * quantity) {
+            int[]? take = ItemExchangeScrollRules.TakeFromStacks(scrolls.Select(scroll => scroll.Amount).ToList(), (long) scrollMetadata.RecipeScroll.Amount * quantity);
+            long rewardAmount = (long) scrollMetadata.RewardItem.Amount * quantity;
+            if (take == null || rewardAmount is <= 0 or > int.MaxValue) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
                 return;
             }
 
-            // Check and consume required items
+            // The reward is made before anything is taken.
+            Item? rewardItem = session.Field?.ItemDrop.CreateItem(scrollMetadata.RewardItem.ItemId, scrollMetadata.RewardItem.Rarity, (int) rewardAmount);
+            if (rewardItem == null) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
+                return;
+            }
+
             if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
                 return;
             }
 
-            // Consume scrolls
-            int remainingScrolls = scrollMetadata.RecipeScroll.Amount * quantity;
-            foreach (Item scroll in scrolls) {
-                int consume = Math.Min(remainingScrolls, scroll.Amount);
-                if (!session.Item.Inventory.Consume(scroll.Uid, consume)) {
-                    Logger.Fatal("Failed to consume item {ItemUid}", scroll.Uid);
-                    throw new InvalidOperationException($"Fatal: Consuming item: {scroll.Uid}");
+            for (int i = 0; i < scrolls.Count; i++) {
+                if (take[i] > 0 && !session.Item.Inventory.Consume(scrolls[i].Uid, take[i])) {
+                    Logger.Fatal("Failed to consume item {ItemUid}", scrolls[i].Uid);
+                    throw new InvalidOperationException($"Fatal: Consuming item: {scrolls[i].Uid}");
                 }
             }
-        }
-        Item? rewardItem = session.Field?.ItemDrop.CreateItem(scrollMetadata.RewardItem.ItemId, scrollMetadata.RewardItem.Rarity, scrollMetadata.RewardItem.Amount * quantity);
-        if (rewardItem == null) {
-            return;
-        }
 
-        session.Currency.Meso -= scrollMetadata.RequiredMeso;
-        if (!session.Item.Inventory.Add(rewardItem, true)) {
-            session.Item.MailItem(rewardItem);
+            session.Currency.Meso -= fee;
+            if (!session.Item.Inventory.Add(rewardItem, true)) {
+                session.Item.MailItem(rewardItem);
+            }
         }
         session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_ok));
     }
