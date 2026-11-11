@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -32,7 +33,7 @@ public class ItemRepackHandler : FieldPacketHandler {
 
         lock (session.Item) {
             Item? scroll = session.Item.Inventory.Get(scrollUid);
-            if (scroll == null) {
+            if (scroll == null || scroll.Metadata.Function?.Type != ItemFunction.ItemRePackingScroll) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_scroll));
                 return;
             }
@@ -43,7 +44,16 @@ public class ItemRepackHandler : FieldPacketHandler {
                 return;
             }
 
-            if (targetItem.Metadata.Property.RepackConsumeCount > scroll.Amount) {
+            // The client refuses a locked item and one whose unlock is still running.
+            if (targetItem.IsLocked || targetItem.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
+                return;
+            }
+
+            // The client counts every stack of the scroll's item id.
+            int need = Math.Max(1, targetItem.Metadata.Property.RepackConsumeCount);
+            List<Item> scrolls = session.Item.Inventory.Find(scroll.Id).ToList();
+            if (!ScrollRules.HasRepackScrolls(scrolls.Sum(stack => stack.Amount), need)) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_server_fail_consume_scroll));
                 return;
             }
@@ -53,13 +63,13 @@ public class ItemRepackHandler : FieldPacketHandler {
                 return;
             }
 
-            if (targetItem.Transfer.RepackageCount > targetItem.Metadata.Property.RepackCount) {
+            if (!ScrollRules.HasRepackLeft(targetItem.Metadata.Property.RepackCount, targetItem.Transfer.RepackageCount)) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
                 return;
             }
 
             if (!int.TryParse(scroll.Metadata.Function?.Parameters, out int scrollId) ||
-                !targetItem.Metadata.Property.RepackScrollIds.Contains(scrollId) ||
+                !ScrollRules.RepackScrollAllowed(targetItem.Metadata.Property.RepackScrollIds, scrollId) ||
                 !session.TableMetadata.ItemRepackingScrollTable.Entries.TryGetValue(scrollId, out ItemRepackingScrollMetadata? scrollMetadata)) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
                 return;
@@ -70,17 +80,29 @@ public class ItemRepackHandler : FieldPacketHandler {
                 return;
             }
 
-            if (scrollMetadata.MinLevel > targetItem.Metadata.Limit.Level && scrollMetadata.MaxLevel < targetItem.Metadata.Limit.Level) {
+            if (!ScrollRules.RepackLevelAllowed(targetItem.Metadata.Limit.Level, scrollMetadata.MinLevel, scrollMetadata.MaxLevel)) {
                 session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_impossible_level));
                 return;
             }
 
-            if (scrollMetadata.IsPet && targetItem.Metadata.Property.PetId == 0) {
-                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_invalid_target));
+            if (!ScrollRules.RepackSlotAllowed(scrollMetadata.IsPet, targetItem.Metadata.Property.PetId != 0, scrollMetadata.ItemTypes, (int) targetItem.Type.Type)) {
+                session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_impossible_slot));
                 return;
             }
 
-            //TODO: Check item slot type
+            // The scrolls are charged before the item changes; the stack the client named goes first.
+            int remaining = need;
+            foreach (Item stack in scrolls.OrderByDescending(stack => stack.Uid == scroll.Uid)) {
+                int take = Math.Min(remaining, stack.Amount);
+                if (!session.Item.Inventory.Consume(stack.Uid, take)) {
+                    session.Send(ItemRepackPacket.Error(ItemRepackError.s_item_repacking_scroll_error_server_fail_consume_scroll));
+                    return;
+                }
+                remaining -= take;
+                if (remaining <= 0) {
+                    break;
+                }
+            }
 
             targetItem.Transfer.RemainTrades++;
             targetItem.Transfer.RepackageCount++;
