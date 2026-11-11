@@ -43,18 +43,30 @@ public class PartyManager : IDisposable {
         }
 
         request.PartyId = Party.Id;
-        foreach (IGrouping<short, PartyMember> group in Party.Members.Values.GroupBy(member => member.Info.Channel)) {
-            if (!ChannelClients.TryGetClient(group.Key, out ChannelClient? client)) {
-                continue;
+        Send(request, Party.Members.Values);
+    }
+
+    // The receivers are taken now; the calls are made when the current matchmaker step releases its lock
+    // (PartyLookup.Defer), so a member added or removed by the step after this call is not, or still is, told.
+    private void Send(PartyRequest request, IEnumerable<PartyMember> receivers) {
+        (short Channel, long[] Ids)[] targets = receivers
+            .GroupBy(member => member.Info.Channel)
+            .Select(group => (group.Key, group.Select(member => member.Info.CharacterId).ToArray()))
+            .ToArray();
+        PartyLookup.Defer(() => {
+            foreach ((short channel, long[] ids) in targets) {
+                if (!ChannelClients.TryGetClient(channel, out ChannelClient? client)) {
+                    continue;
+                }
+
+                request.ReceiverIds.Clear();
+                request.ReceiverIds.AddRange(ids);
+
+                try {
+                    client.Party(request);
+                } catch { }
             }
-
-            request.ReceiverIds.Clear();
-            request.ReceiverIds.AddRange(group.Select(member => member.Info.CharacterId));
-
-            try {
-                client.Party(request);
-            } catch { }
-        }
+        });
     }
 
     /// <summary>
@@ -142,7 +154,7 @@ public class PartyManager : IDisposable {
         }
     }
 
-    public PartyError Join(PlayerInfo info) {
+    public PartyError Join(PlayerInfo info) => PartyLookup.DungeonMatchStep(() => {
         if (Party.Members.Count >= Party.Capacity) {
             return PartyError.s_party_err_full_limit_player;
         }
@@ -167,9 +179,9 @@ public class PartyManager : IDisposable {
         }
         PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
-    }
+    });
 
-    public PartyError Kick(long requestorId, long characterId) {
+    public PartyError Kick(long requestorId, long characterId) => PartyLookup.DungeonMatchStep(() => {
         if (!Party.Members.TryGetValue(requestorId, out PartyMember? _)) {
             return PartyError.s_party_err_not_found;
         }
@@ -197,9 +209,9 @@ public class PartyManager : IDisposable {
         }
         PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
-    }
+    });
 
-    public PartyError Leave(long characterId) {
+    public PartyError Leave(long characterId) => PartyLookup.DungeonMatchStep(() => {
         if (!Party.Members.TryGetValue(characterId, out PartyMember? member)) {
             return PartyError.s_party_err_not_found;
         }
@@ -222,7 +234,7 @@ public class PartyManager : IDisposable {
         }
         PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
-    }
+    });
 
     public PartyError UpdateLeader(long requestorId, long characterId) {
         if (!Party.Members.TryGetValue(requestorId, out PartyMember? requestor)) {
@@ -254,7 +266,7 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     }
 
-    public void Disband(long requestorId) {
+    public void Disband(long requestorId) => PartyLookup.DungeonMatchStep(() => {
         int onlineCount = Party.Members.Values.Count(member => member.Info.Online);
         if (onlineCount == 0) {
             PartyLookup.Disband(Party.Id);
@@ -263,7 +275,7 @@ public class PartyManager : IDisposable {
         if (requestorId == Party.LeaderCharacterId) {
             FindNewLeader(requestorId);
         }
-    }
+    });
 
     public string ConsumeInvite(long characterId) {
         foreach ((long id, (string name, DateTime expiryTime)) in pendingInvites) {

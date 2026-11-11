@@ -18,10 +18,12 @@ public class PartyLookup : IDisposable {
     #endregion
 
     private readonly ConcurrentDictionary<int, PartyManager> parties;
-    // The Party 32/33 searches. Every matchmaker step (a search, a cancel, a member count change of a searching
-    // party) runs under DungeonMatchLock, so a join and the room made for the group it fills do not interleave.
+    // The Party 32/33 searches. Every matchmaker step (a search, a cancel, a party join, leave, kick or disband)
+    // runs as a DungeonMatchStep under DungeonMatchLock, so a join and the room made for the group it fills do not
+    // interleave. The channel calls a step makes (broadcasts, the room) are collected and made after the lock is
+    // released, so a slow channel does not hold up every other step.
     public DungeonMatchQueue DungeonMatch { get; } = new();
-    public readonly object DungeonMatchLock = new();
+    private readonly LockedSteps steps = new();
     private int nextPartyId = 1;
 
     public PartyLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup, PartySearchLookup partySearchLookup, ServerTableMetadataStorage serverTableMetadata) {
@@ -80,55 +82,49 @@ public class PartyLookup : IDisposable {
         return manager.Join(leaderInfo);
     }
 
-    public PartyError Disband(int partyId) {
-        if (!TryGet(partyId, out PartyManager? manager)) {
+    public PartyError Disband(int partyId) => DungeonMatchStep(() => {
+        if (!parties.TryRemove(partyId, out PartyManager? manager)) {
             return PartyError.s_party_err_not_found;
         }
-
-        if (!parties.TryRemove(partyId, out manager)) {
-            // Failed to remove party after validating.
-            return PartyError.s_party_err_not_found;
-        }
-        lock (DungeonMatchLock) {
-            DungeonMatch.Remove(partyId);
-        }
+        DungeonMatch.Remove(partyId);
         manager.Dispose();
 
         return PartyError.none;
-    }
+    });
+
+    // Runs body under the matchmaker lock; the channel calls it defers (Defer) are made after the lock is released.
+    public T DungeonMatchStep<T>(Func<T> body) => steps.Run(body);
+    public void DungeonMatchStep(Action body) => steps.Run(body);
+    public static void Defer(Action effect) => LockedSteps.Defer(effect);
 
     // A member joined or left a party: a searching party's group takes the new count.
-    public void DungeonMatchResize(PartyManager manager) {
-        lock (DungeonMatchLock) {
-            DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.OnlineMembers());
-            if (result.Outcome != DungeonMatchOutcome.NotSearching) {
-                CompleteDungeonMatch(manager, result);
-            }
+    public void DungeonMatchResize(PartyManager manager) => DungeonMatchStep(() => {
+        DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.OnlineMembers());
+        if (result.Outcome != DungeonMatchOutcome.NotSearching) {
+            CompleteDungeonMatch(manager, result);
         }
-    }
+    });
 
     // What a queue step leaves to the party: a matched group gets its room (made on the first channel, as the
     // leader's CreateDungeon would) and the enter box; a stopped one is told the search ended. Searching: nothing.
-    // False when the room could not be made (the search has ended all the same).
-    public bool CompleteDungeonMatch(PartyManager manager, DungeonMatchResult result) {
-        lock (DungeonMatchLock) {
-            switch (result.Outcome) {
-                case DungeonMatchOutcome.Matched:
-                    BroadcastDungeonMatch(manager, result.Kind, false);
-                    int lobbyRoomId = CreateMatchedRoom(manager, result.RoomId);
-                    if (lobbyRoomId == 0) {
-                        return false;
+    // The room is made after the step's lock is released.
+    public void CompleteDungeonMatch(PartyManager manager, DungeonMatchResult result) => DungeonMatchStep(() => {
+        switch (result.Outcome) {
+            case DungeonMatchOutcome.Matched:
+                BroadcastDungeonMatch(manager, result.Kind, false);
+                int size = manager.OnlineMembers().Length;
+                Defer(() => {
+                    int lobbyRoomId = CreateMatchedRoom(manager, result.RoomId, size);
+                    if (lobbyRoomId != 0) {
+                        manager.SetDungeon(manager.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true);
                     }
-                    manager.SetDungeon(manager.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true);
-                    return true;
-                case DungeonMatchOutcome.Stopped:
-                    BroadcastDungeonMatch(manager, result.Kind, false);
-                    return true;
-                default:
-                    return true;
-            }
+                });
+                break;
+            case DungeonMatchOutcome.Stopped:
+                BroadcastDungeonMatch(manager, result.Kind, false);
+                break;
         }
-    }
+    });
 
     public static void BroadcastDungeonMatch(PartyManager manager, byte kind, bool registered) {
         manager.Broadcast(new Channel.Service.PartyRequest {
@@ -139,7 +135,7 @@ public class PartyLookup : IDisposable {
         });
     }
 
-    private int CreateMatchedRoom(PartyManager manager, int dungeonId) {
+    private int CreateMatchedRoom(PartyManager manager, int dungeonId, int size) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
             return 0;
         }
@@ -148,7 +144,7 @@ public class PartyLookup : IDisposable {
                 RequesterId = manager.Party.LeaderCharacterId,
                 CreateDungeon = new FieldRequest.Types.CreateDungeon {
                     DungeonId = dungeonId,
-                    Size = manager.Party.Members.Count,
+                    Size = size,
                     PartyId = manager.Party.Id,
                 },
             });

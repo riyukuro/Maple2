@@ -262,7 +262,7 @@ public partial class WorldService {
             return new PartyResponse();
         }
 
-        lock (partyLookup.DungeonMatchLock) {
+        return partyLookup.DungeonMatchStep(() => {
             if (partyLookup.TryGetByCharacter(requestorId, out PartyManager? manager)) {
                 if (manager.Party.LeaderCharacterId != requestorId) {
                     return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_isNotChief };
@@ -304,13 +304,12 @@ public partial class WorldService {
                         return new PartyResponse { Error = (int) error };
                     }
 
-                    bool matched = false;
                     if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
-                        matched = partyLookup.CompleteDungeonMatch(manager, joined.Value);
+                        partyLookup.CompleteDungeonMatch(manager, joined.Value);
                     } else {
                         PartyLookup.BroadcastDungeonMatch(manager, kind, true);
                     }
-                    return new PartyResponse { Party = ToPartyInfo(manager.Party), DungeonMatched = matched };
+                    return new PartyResponse { Party = ToPartyInfo(manager.Party), DungeonMatched = joined.Value.Outcome == DungeonMatchOutcome.Matched };
                 }
             }
 
@@ -326,15 +325,18 @@ public partial class WorldService {
                 partyLookup.Disband(partyId);
                 return new PartyResponse();
             }
-            bool ownMatched = own.Outcome == DungeonMatchOutcome.Matched && partyLookup.CompleteDungeonMatch(manager, own);
+            bool ownMatched = own.Outcome == DungeonMatchOutcome.Matched;
+            if (ownMatched) {
+                partyLookup.CompleteDungeonMatch(manager, own);
+            }
             return new PartyResponse { Party = ToPartyInfo(manager.Party), DungeonMatched = ownMatched };
-        }
+        });
     }
 
     // Party 34 by the leader: the party goes with the members found so far when that is enough for a room (rule 2),
     // else the search stops. Any member can send 34; only the leader's counts (the client's isNotChief error).
     private PartyResponse CancelDungeonMatch(long requestorId, PartyRequest.Types.CancelDungeonMatch cancel) {
-        lock (partyLookup.DungeonMatchLock) {
+        return partyLookup.DungeonMatchStep(() => {
             if (!partyLookup.TryGet(cancel.PartyId, out PartyManager? manager)) {
                 return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
             }
@@ -349,7 +351,7 @@ public partial class WorldService {
                 partyLookup.CompleteDungeonMatch(manager, result);
             }
             return new PartyResponse { PartyId = manager.Party.Id };
-        }
+        });
     }
 
     private static PartyInfo ToPartyInfo(Party party) {
