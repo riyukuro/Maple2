@@ -87,9 +87,9 @@ public class RoomTimer : IUpdatable {
         ExpiresRoom = expiresRoom;
     }
 
-    public void Modify(int tick) {
+    public void Modify(int tick, bool showEffect = true) {
         int delta = Clock.Modify(tick);
-        field.Broadcast(RoomTimerPacket.Modify(this, delta));
+        field.Broadcast(RoomTimerPacket.Modify(this, delta, showEffect));
     }
 
     /// <summary>dungeon_reset_time: the timer runs again for the given time from now.</summary>

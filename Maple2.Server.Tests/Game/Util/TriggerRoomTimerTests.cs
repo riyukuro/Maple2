@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
@@ -87,5 +89,33 @@ public class TriggerRoomTimerTests {
         Assert.That(RoomTimerPacket.Stop().Length, Is.EqualTo(3));
         Assert.That(RoomTimerPacket.Stop().Buffer[2], Is.EqualTo(4));
         Assert.That(RoomTimerPacket.Cancel().Buffer[2], Is.EqualTo(5));
+    }
+
+    // The AI ModifyRoomTime node: timeTick moves the time; isShowEffect picks notice 1 (the seconds), else 0 (silent).
+    [TestCase(80000, true, 1)]
+    [TestCase(-30000, true, 1)]
+    [TestCase(300000, false, 0)]
+    public void ModifyRoomTime_PacketAsTheClientReadsIt(int timeTick, bool showEffect, int notice) {
+        var clock = new RoomTimerClock(600000);
+        clock.Start(1000);
+        int delta = clock.Modify(timeTick);
+        var reader = new ByteReader(RoomTimerPacket.Modify(clock.StartTick, clock.Duration, delta, showEffect).Buffer, 2);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadByte(), Is.EqualTo(1));
+            Assert.That(reader.ReadInt(), Is.EqualTo(1000));
+            Assert.That(reader.ReadInt(), Is.EqualTo(600000 + timeTick));
+            Assert.That(reader.ReadInt(), Is.EqualTo(notice));
+            Assert.That(reader.ReadInt(), Is.EqualTo(timeTick));
+        });
+    }
+
+    // Taking more time than is left ends at 0, which the client reads as closing the timer.
+    [Test]
+    public void ModifyRoomTime_StopsAtZero() {
+        var clock = new RoomTimerClock(60000);
+        Assert.Multiple(() => {
+            Assert.That(clock.Modify(-90000), Is.EqualTo(-60000));
+            Assert.That(clock.Duration, Is.EqualTo(0));
+        });
     }
 }

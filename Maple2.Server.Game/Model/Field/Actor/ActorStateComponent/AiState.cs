@@ -630,7 +630,11 @@ public class AiState {
         actor.Field.Broadcast(NpcNoticePacket.Announce(node.Message, node.DurationTick));
     }
 
-    private void ProcessNode(ModifyRoomTimeNode node) { }
+    // timeTick (13 nodes: 80000, 300000, -30000, -90000) adds to or takes from the room's timer; isShowEffect (11)
+    // shows the client's notice of the added or removed seconds. A field without a room timer has nothing to change.
+    private void ProcessNode(ModifyRoomTimeNode node) {
+        actor.Field.RoomTimer?.Modify(node.TimeTick, node.IsShowEffect);
+    }
 
     private void ProcessNode(HideVibrateAllNode node) { }
 

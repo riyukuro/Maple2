@@ -28,12 +28,17 @@ public static class RoomTimerPacket {
         return pWriter;
     }
 
-    public static ByteWriter Modify(RoomTimer timer, int delta) {
+    public static ByteWriter Modify(RoomTimer timer, int delta, bool showEffect = true) =>
+        Modify(timer.StartTick, timer.Duration, delta, showEffect);
+
+    // RoomTimerManager::Update: notice 1 shows the added or removed seconds and runs the timer's effect, 2 a fixed
+    // notice, any other value (0 here) only moves the time.
+    public static ByteWriter Modify(int startTick, int duration, int delta, bool showEffect) {
         var pWriter = Packet.Of(SendOp.RoomTimer);
         pWriter.WriteByte((byte) Command.Modify);
-        pWriter.WriteInt(timer.StartTick);
-        pWriter.WriteInt(timer.Duration); // the client closes the timer when this is 0 or less
-        pWriter.WriteInt(1); // 1: notice with the added or removed seconds, 2: fixed notice
+        pWriter.WriteInt(startTick);
+        pWriter.WriteInt(duration); // the client closes the timer when this is 0 or less
+        pWriter.WriteInt(showEffect ? 1 : 0);
         pWriter.WriteInt(delta);
 
         return pWriter;
