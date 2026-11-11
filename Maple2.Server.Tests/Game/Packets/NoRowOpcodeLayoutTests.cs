@@ -1,3 +1,4 @@
+using System;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -6,6 +7,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -25,6 +27,9 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(1)); // population block follows
         Assert.That(reader.ReadByte(), Is.EqualTo(3));
         Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2000023)); // map id
+        Assert.That(reader.ReadInt(), Is.EqualTo(7)); // population
+        Assert.That(reader.ReadShort(), Is.EqualTo(2)); // channel
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + 4 + 1 + 1 + 1 + 4 + 10));
     }
 
@@ -59,6 +64,16 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(55));
         Assert.That(reader.ReadLong(), Is.EqualTo(77));
         Assert.That(reader.ReadShort(), Is.EqualTo(2));
+
+        // Tail: the result item's colour block (three colours of 4 bytes, int index, int palette), then its
+        // transfer block, and nothing after it.
+        Assert.That(reader.ReadBytes(20), Is.EqualTo(new byte[20]));
+        var transfer = new ByteWriter();
+        transfer.WriteClass<ItemTransfer>(result.Transfer ?? ItemTransfer.Default);
+        byte[] transferBytes = transfer.Buffer.AsSpan(0, transfer.Length).ToArray();
+        Assert.That(transferBytes, Is.Not.Empty);
+        Assert.That(reader.ReadBytes(transferBytes.Length), Is.EqualTo(transferBytes));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 8 + 2 + 20 + transferBytes.Length));
     }
 
     // Client: CSceneStateGame::OnAutoRevive (scenestategame.cpp:4332): one int, the countdown in milliseconds.
