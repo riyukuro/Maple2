@@ -563,6 +563,13 @@ public class HousingManager {
 
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
                              [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null) {
+        lock (plot.EditLock) {
+            return PlaceCube(cube, plot, itemMetadata, position, rotation, out result, isReplace, helper);
+        }
+    }
+
+    private bool PlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
+                           [NotNullWhen(true)] out PlotCube? result, bool isReplace, GameSession? helper) {
         result = null;
         // A build helper edits through the owner's manager; what the edit refuses goes to the helper.
         GameSession notify = helper ?? session;
@@ -653,7 +660,7 @@ public class HousingManager {
         }
 
         if (isReplace && plot.Cubes.ContainsKey(position)) {
-            TryRemoveCube(plot, position, out _, helper);
+            RemoveCube(plot, position, out _, helper);
         }
 
         session.FunctionCubeMetadata.TryGet(itemMetadata.Install.ObjectCubeId, out FunctionCubeMetadata? functionCubeMetadata);
@@ -742,6 +749,12 @@ public class HousingManager {
     }
 
     public bool TryRemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube, GameSession? helper = null) {
+        lock (plot.EditLock) {
+            return RemoveCube(plot, position, out cube, helper);
+        }
+    }
+
+    private bool RemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube, GameSession? helper) {
         GameSession notify = helper ?? session;
         if (!plot.Cubes.Remove(position, out cube)) {
             notify.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_remove));

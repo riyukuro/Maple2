@@ -337,12 +337,16 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (plot == null) {
             return;
         }
-        if (!plot.Cubes.TryGetValue(position, out PlotCube? cube)) {
+        PlotCube? cube;
+        lock (plot.EditLock) {
+            if (plot.Cubes.TryGetValue(position, out cube)) {
+                cube.Rotate(clockwise);
+            }
+        }
+        if (cube == null) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_rotate));
             return;
         }
-
-        cube.Rotate(clockwise);
 
         session.Field.Broadcast(CubePacket.RotateCube(session.Player.ObjectId, cube));
         if (plot.MapId is not Constant.DefaultHomeMapId) {

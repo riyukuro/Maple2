@@ -49,6 +49,9 @@ public class PlotInfo {
 
 public class Plot(UgcMapGroup metadata) : PlotInfo(metadata) {
     public readonly Dictionary<Vector3B, PlotCube> Cubes = new();
+    // Held while a cube is placed, removed, rotated or replaced: the owner and its build helpers edit the
+    // same plot from their own sessions.
+    public readonly object EditLock = new();
 
     public void SetPlannerMode(PlotMode mode) {
         PlotMode = mode;
