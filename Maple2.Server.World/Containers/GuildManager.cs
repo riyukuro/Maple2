@@ -347,10 +347,30 @@ public class GuildManager : IDisposable {
                         Math.Min(property.FundMax, int.MaxValue))) {
                     return GuildError.s_guild_err_unknown;
                 }
+
+                // The donation is saved before it is answered: the channel has taken the meso by now, so
+                // the fund may not be lost with the World process. A failed save puts the three values back.
+                int oldFunds = Guild.Funds;
+                int oldCount = member.DailyDonationCount;
+                long oldTime = member.DonationTime;
                 Guild.Funds += (int) fund;
+                member.DailyDonationCount = today + count;
+                member.DonationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+                bool saved;
+                try {
+                    using GameStorage.Request db = GameStorage.Context();
+                    saved = db.SaveGuild(Guild);
+                } catch (Exception) {
+                    saved = false;
+                }
+                if (!saved) {
+                    Guild.Funds = oldFunds;
+                    member.DailyDonationCount = oldCount;
+                    member.DonationTime = oldTime;
+                    return GuildError.s_guild_err_unknown;
+                }
             }
-            member.DailyDonationCount = today + count;
-            member.DonationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
         Broadcast(new GuildRequest {

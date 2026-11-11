@@ -1027,7 +1027,11 @@ public class GuildHandler : PacketHandler<GameSession> {
             return; // Not in a guild.
         }
         GuildMember? self = session.Guild.GetMember(session.CharacterId);
-        if (self == null || count <= 0 || count > session.Guild.Properties.DonateMax) {
+        if (self == null || count <= 0) {
+            return;
+        }
+        if (count > session.Guild.Properties.DonateMax) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
             return;
         }
 
@@ -1037,6 +1041,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             return;
         }
 
+        // Order: the meso is taken first, World adds and saves the fund, and only a refusal that World
+        // itself answered gives the meso back. An RPC error leaves it taken, because World may have added
+        // the fund before the call failed: the guild can not get fund without meso.
+        session.Currency.Meso -= cost;
         try {
             GuildResponse response = World.Guild(new GuildRequest {
                 RequestorId = session.CharacterId,
@@ -1048,16 +1056,16 @@ public class GuildHandler : PacketHandler<GameSession> {
             });
             var error = (GuildError) response.Error;
             if (error != GuildError.none) {
+                session.Currency.Meso += cost;
                 session.Send(GuildPacket.Error(error));
                 return;
             }
 
-            session.Currency.Meso -= cost;
             self.DailyDonationCount = response.DonationCount;
             self.DonationTime = response.DonationTime;
             session.Send(GuildPacket.Donated(self));
         } catch (RpcException ex) {
-            Logger.Error(ex, "Failed to donate to guild");
+            Logger.Error(ex, "Failed to donate to guild; {Cost} meso of character {CharacterId} stay taken", cost, session.CharacterId);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
         }
     }
