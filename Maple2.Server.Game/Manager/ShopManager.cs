@@ -8,6 +8,7 @@ using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -465,6 +466,12 @@ public sealed class ShopManager {
             return;
         }
 
+        int unitPrice = shopItem.Metadata.Cost.SaleAmount > 0 ? shopItem.Metadata.Cost.SaleAmount : shopItem.Metadata.Cost.Amount;
+        if (!ShopRules.TryTotalPrice(unitPrice, quantity, out int price)) {
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+            return;
+        }
+
         if (shopItem.StockCount != 0 && quantity > shopItem.StockCount - shopItem.StockPurchased) {
             session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem));
             return;
@@ -489,7 +496,6 @@ public sealed class ShopManager {
             return;
         }
 
-        int price = shopItem.Metadata.Cost.SaleAmount > 0 ? shopItem.Metadata.Cost.SaleAmount * quantity : shopItem.Metadata.Cost.Amount * quantity;
         if (!Pay(shopItem.Metadata.Cost, price)) {
             return;
         }
