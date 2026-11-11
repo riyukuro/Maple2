@@ -1,4 +1,6 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -7,7 +9,6 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
-using static Maple2.Model.Error.CharacterCreateError;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -25,28 +26,15 @@ public class CheckCharacterNameHandler : FieldPacketHandler {
         string characterName = packet.ReadUnicodeString();
         long itemUid = packet.ReadLong();
 
-        if (string.IsNullOrWhiteSpace(characterName)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_name));
-            return;
-        }
-
         // Counted the way the client counts for its region (Hangul and CJK count twice).
         int width = NameValidator.CharacterNameWidth(characterName, Target.LOCALE);
-        if (width < 0) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_all));
-            return;
-        }
-        if (width < Constant.CharacterNameLengthMin) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_name));
-            return;
-        }
-        if (width > Constant.CharacterNameLengthMax) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_system));
-            return;
-        }
-
-        if (BanWordStorage.ContainsBannedWord(characterName)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_any));
+        bool blank = CharacterCreateRules.IsBlankName(characterName);
+        bool banned = !blank && BanWordStorage.ContainsBannedWord(characterName);
+        NameChangeRules.Refusal refusal = NameChangeRules.Check(blank, width, Constant.CharacterNameLengthMin, Constant.CharacterNameLengthMax, banned, taken: false);
+        if (refusal != NameChangeRules.Refusal.None) {
+            // The game scene reads no CharacterCreate packet; a message box is what it shows.
+            (StringCode code, string[] args) = NameChangeRules.Text(refusal, characterName);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(code, args)));
             return;
         }
 
