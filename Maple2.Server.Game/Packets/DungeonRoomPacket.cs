@@ -15,7 +15,7 @@ public static class DungeonRoomPacket {
         Modify = 7,
         DungeonResult = 10, // OnClosingPhoto (dungeonrecordcli.cpp:299); 11 only opens a dialog (:306)
         Error = 18,
-        RankRewards = 20,
+        RankRewards = 19, // the whole map; 20 adds one reward
     }
 
     public static ByteWriter Load(IDictionary<int, DungeonRecord> records) {
@@ -79,8 +79,6 @@ public static class DungeonRoomPacket {
             pWriter.WriteInt(id);
             pWriter.WriteClass<DungeonRankReward>(reward);
         }
-        pWriter.WriteInt();
-        pWriter.WriteLong();
 
         return pWriter;
     }
