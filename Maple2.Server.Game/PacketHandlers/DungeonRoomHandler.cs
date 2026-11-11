@@ -65,8 +65,7 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
                 HandleFindHelper(session, packet);
                 break;
             case Command.FindMember:
-                // Not handled: the dungeon the party asks helpers or members for.
-                Logger.Debug("RoomDungeon {Command} from {CharacterId}: dungeon {Id}", command, session.CharacterId, packet.ReadInt());
+                HandleFindMember(session, packet);
                 break;
             case Command.ChaosRaidLobby:
             case Command.ReverseRaidLobby:
@@ -95,6 +94,13 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     // (Party 39 and 43), which the server never sends, so the answer is the client's text for the helper search being
     // off (DungeonRecordManagerCli::OnError case 0x1b, dungeonrecordcli.cpp:323).
     private static void HandleFindHelper(GameSession session, IByteReader packet) {
+        int dungeonId = packet.ReadInt();
+        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
+    }
+
+    // UIDungeonRoomInfo::RequestFindMember (uidungeonroomdialog.cpp:1566): the same request for party members, with
+    // the same gate (CanAskHelp) and the same missing recruiting notice. The client has one text for both searches.
+    private static void HandleFindMember(GameSession session, IByteReader packet) {
         int dungeonId = packet.ReadInt();
         session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
     }
