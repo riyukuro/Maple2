@@ -145,6 +145,83 @@ public sealed class MarriageManager {
             && WeddingCeremony.InEnterWindow(WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             session.Send(WeddingPacket.Ticket(Marriage.Id, WeddingHall));
         }
+        SendGuestTickets();
+    }
+
+    // An invited guest gets the hall's ticket the same way, under the marriage id that Wedding 0x1a sends back.
+    private void SendGuestTickets() {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        List<WeddingHall> halls;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            halls = db.GetGuestWeddingHalls(session.CharacterId, now - WeddingCeremony.EnterWindowSeconds, now + WeddingCeremony.EnterWindowSeconds);
+        }
+        foreach (WeddingHall hall in halls) {
+            if (WeddingInviteRules.GuestTicket(hall.GuestList, session.CharacterId, hall.MarriageId, Marriage.Id, hall.CeremonyTime, now, WeddingCeremony.EnterWindowSeconds)) {
+                session.Send(WeddingPacket.Ticket(hall.MarriageId, hall));
+            }
+        }
+    }
+
+    // Wedding 0x1c: the guests are stored on the hall, the meso for them is taken, each gets the invitation
+    // mail (mail type 112, whose wedding text the client's mail list reads, WeddingManager::ReadTicketMail) and
+    // the sender gets Wedding 0x1d and the new invited list. Either of the couple may send.
+    public WeddingError SendInvitations(IReadOnlyCollection<long> guests) {
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (WeddingHall.Id != 0) {
+            // The partner may have sent invitations since this session loaded the hall.
+            WeddingHall? stored = db.GetWeddingHall(Marriage);
+            if (stored != null) {
+                WeddingHall.GuestList = stored.GuestList;
+            }
+        }
+
+        Dictionary<long, long> accounts = guests.Count == 0 ? new Dictionary<long, long>() : db.GetCharacterAccounts(guests.ToList());
+        (bool send, WeddingError error, long cost) = WeddingInviteRules.Check(WeddingHall.Id, WeddingHall.CeremonyTime, now, WeddingHall.GuestList,
+            guests, accounts.Count, constants.WeddingInvitationMaxCount, session.Currency.Meso, constants.WeddingInvitationMeso);
+        if (!send) {
+            return error;
+        }
+
+        Dictionary<long, long>? list = db.AddWeddingGuests(WeddingHall.Id, accounts);
+        if (list == null) {
+            return WeddingError.s_wedding_result_not_find_weddinghall;
+        }
+        WeddingHall.GuestList = list;
+        session.Currency.Meso -= cost;
+
+        string senderName = session.Player.Value.Character.Name;
+        foreach (long guestId in guests) {
+            var mail = new Mail {
+                ReceiverId = guestId,
+                SenderId = session.CharacterId,
+                SenderName = senderName,
+                Type = MailType.WeddingInvite,
+            };
+            mail.SetWeddingInvite(WeddingHall);
+            mail = db.CreateMail(mail);
+            if (mail == null) {
+                logger.Error("Failed to create the wedding invitation mail for {CharacterId}", guestId);
+                continue;
+            }
+
+            try {
+                session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = guestId,
+                    MailId = mail.Id,
+                });
+            } catch { /* ignored */ }
+        }
+
+        session.Send(WeddingPacket.InvitationOk());
+        session.Send(WeddingPacket.UpdateHall(WeddingHall));
+        long partnerId = Partner.CharacterId;
+        if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession) && partnerSession.Marriage.WeddingHall.Id == WeddingHall.Id) {
+            partnerSession.Marriage.WeddingHall.GuestList = new Dictionary<long, long>(list);
+            partnerSession.Send(WeddingPacket.UpdateHall(partnerSession.Marriage.WeddingHall));
+        }
+        return WeddingError.none;
     }
 
     // The vow was completed in the hall (trigger WeddingVowComplete) and the marriage is stored as married.

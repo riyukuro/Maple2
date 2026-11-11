@@ -330,11 +330,46 @@ public class WeddingHandler : FieldPacketHandler {
         session.Field?.Wedding?.Answer(session.CharacterId, type, accept);
     }
 
+    // Client: the stranger page of the guest dialog sends the typed name (uiweddingguestdialog.cpp:688). The
+    // answer carries character id 0 when there is no such character.
     private static void HandleInvitationFindUser(GameSession session, IByteReader packet) {
         string inviteeName = packet.ReadUnicodeString();
+        if (session.Marriage.WeddingHall.Id == 0) {
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_not_find_weddinghall));
+            return;
+        }
+
+        (long AccountId, long CharacterId, string Name)? found;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            found = string.IsNullOrWhiteSpace(inviteeName) ? null : db.FindCharacterByName(inviteeName);
+        }
+        session.Send(found == null
+            ? WeddingPacket.InvitationFound(0, 0, inviteeName)
+            : WeddingPacket.InvitationFound(found.Value.AccountId, found.Value.CharacterId, found.Value.Name));
     }
 
+    // Client: UIWeddingInvitationDialog::SendInvitation (uiweddinginvitationdialog.cpp:223) sends a count and
+    // that many guests (WeddingGuest::Write, weddingproxy.cpp:456): a short for the page the guest was picked
+    // on (0 guild, 1 buddy, 2 found by name), the account id, the character id and the name. Only the character
+    // id is taken; the account is looked up.
     private static void HandleSendInvitation(GameSession session, IByteReader packet) {
         int inviteCount = packet.ReadInt();
+        if (inviteCount < 0 || inviteCount > session.ServerTableMetadata.ConstantsTable.WeddingInvitationMaxCount) {
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_wedding_invitation_count));
+            return;
+        }
+
+        var characterIds = new List<long>();
+        for (int i = 0; i < inviteCount; i++) {
+            packet.ReadShort();
+            packet.ReadLong();
+            characterIds.Add(packet.ReadLong());
+            packet.ReadUnicodeString();
+        }
+
+        WeddingError error = session.Marriage.SendInvitations(WeddingInviteRules.Guests(characterIds));
+        if (error != WeddingError.none) {
+            session.Send(WeddingPacket.Error(error));
+        }
     }
 }

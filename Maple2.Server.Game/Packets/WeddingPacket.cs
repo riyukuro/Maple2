@@ -41,11 +41,43 @@ public static class WeddingPacket {
         return pWriter;
     }
 
+    // Client: WeddingManager::OnTicketList (weddingmanager.cpp:236): the own hall's ticket, then an int count
+    // and that many pairs of two longs, the invitations already sent. CanInvite (:417) looks a new guest up in
+    // them by the two ids the guest dialog holds. The pair is written as account id, character id, the order
+    // a guest is sent in (WeddingGuest::Write, weddingproxy.cpp:456); which of the two the dialog's script passes
+    // first is not in the client code, so the client's own already-invited test is unproven. The server tests
+    // by character id.
     public static ByteWriter UpdateHall(WeddingHall hall) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.UpdateHall);
+        pWriter.WriteByte((byte) Command.UpdateHall);
         pWriter.WriteClass<WeddingHall>(hall);
-        pWriter.WriteInt();
+        pWriter.WriteInt(hall.GuestList.Count);
+        foreach ((long characterId, long accountId) in hall.GuestList) {
+            pWriter.WriteLong(accountId);
+            pWriter.WriteLong(characterId);
+        }
+
+        return pWriter;
+    }
+
+    // Client: UIWeddingGuestDialog::OnStrangerFound (uiweddingguestdialog.cpp:264) reads the account id, the
+    // character id and the name of the character that Wedding 0x1b asked for; character id 0 shows the
+    // not-found notice.
+    public static ByteWriter InvitationFound(long accountId, long characterId, string name) {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.SearchInvitee);
+        pWriter.WriteLong(accountId);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteUnicodeString(name);
+
+        return pWriter;
+    }
+
+    // Client: WeddingManager::OnInvitationOk (weddingmanager.cpp:296) reads nothing: the notice that the
+    // invitations were sent, and the invitation dialog closes.
+    public static ByteWriter InvitationOk() {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.SendInvite);
 
         return pWriter;
     }

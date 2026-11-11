@@ -112,6 +112,20 @@ public partial class GameStorage {
             return character;
         }
 
+        // The account id of each of the ids that is a character.
+        public Dictionary<long, long> GetCharacterAccounts(ICollection<long> characterIds) {
+            return Context.Character.Where(character => characterIds.Contains(character.Id))
+                .Select(character => new { character.Id, character.AccountId })
+                .ToDictionary(character => character.Id, character => character.AccountId);
+        }
+
+        public (long AccountId, long CharacterId, string Name)? FindCharacterByName(string name) {
+            var found = Context.Character.Where(character => character.Name.ToLower() == name.ToLower())
+                .Select(character => new { character.Id, character.AccountId, character.Name })
+                .FirstOrDefault();
+            return found == null ? null : (found.AccountId, found.Id, found.Name);
+        }
+
         public long GetCharacterId(string name) {
             return Context.Character.Where(character => character.Name.ToLower() == name.ToLower())
                 .Select(character => character.Id)

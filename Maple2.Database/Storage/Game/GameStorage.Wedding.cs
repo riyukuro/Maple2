@@ -253,6 +253,42 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // Adds guests (character id, account id) to a hall's stored list. The whole list after it, or null.
+        public Dictionary<long, long>? AddWeddingGuests(long hallId, IReadOnlyDictionary<long, long> guests) {
+            Model.WeddingHall? hall = Context.WeddingHall.Find(hallId);
+            if (hall == null) {
+                return null;
+            }
+
+            var list = new Dictionary<long, long>(hall.GuestList);
+            foreach ((long characterId, long accountId) in guests) {
+                list[characterId] = accountId;
+            }
+            hall.GuestList = list;
+            return Context.TrySaveChanges() ? list : null;
+        }
+
+        // The halls with a ceremony time from..to (epoch seconds) that have the character on the guest list.
+        public List<WeddingHall> GetGuestWeddingHalls(long characterId, long from, long to) {
+            DateTime fromTime = from.FromEpochSeconds();
+            DateTime toTime = to.FromEpochSeconds();
+            List<Model.WeddingHall> entries = Context.WeddingHall
+                .Where(hall => hall.CeremonyTime >= fromTime && hall.CeremonyTime <= toTime)
+                .ToList();
+
+            var result = new List<WeddingHall>();
+            foreach (Model.WeddingHall entry in entries) {
+                if (!entry.GuestList.ContainsKey(characterId)) {
+                    continue;
+                }
+                Marriage? marriage = GetMarriage(weddingId: entry.MarriageId);
+                if (marriage != null) {
+                    result.Add(entry.Convert(marriage));
+                }
+            }
+            return result;
+        }
+
         public bool WeddingHallTimeIsAvailable(long ceremonyTime) {
             DateTime ceremonyDateTime = ceremonyTime.FromEpochSeconds();
             return Context.WeddingHall.FirstOrDefault(hall => hall.CeremonyTime == ceremonyDateTime) == null;
