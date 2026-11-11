@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Maple2.File.Ingest.Mapper;
+using Maple2.File.Parser.Enum;
+using Maple2.File.Parser.Xml.AI;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -111,6 +114,69 @@ public class AiSummonTests {
                 Is.EqualTo(new[] { 21404189, 21403189 }));
             Assert.That(NpcMapper.ParseSummonNpcIds("<npc><aiInfo path=\"AI_DefaultNew.xml\" /></npc>"), Is.Null);
             Assert.That(NpcMapper.ParseSummonNpcIds("<npc><aiInfo summonNpcIDs=\"\" /></npc>"), Is.Null);
+        });
+    }
+    // Slaves are the summons that leave with the summoner; a group filter counts only that group.
+    [TestCase(101, true, null, true)]
+    [TestCase(101, false, null, false)]
+    [TestCase(201, true, 201, true)]
+    [TestCase(101, true, 201, false)]
+    [TestCase(201, false, 201, false)]
+    public void CountedSlave(int summonGroup, bool leavesWithSummoner, int? group, bool expected) {
+        Assert.That(AiSummon.IsCountedSlave(summonGroup, leavesWithSummoner, group), Is.EqualTo(expected));
+    }
+
+    // The Yeti bosses test count 0..4 in order (first passing wins); only an exact count picks each branch.
+    [Test]
+    public void SlaveCountIsExact() {
+        int[] counts = [0, 1, 2, 3, 4];
+        Assert.Multiple(() => {
+            for (int slaves = 0; slaves <= 4; slaves++) {
+                int alive = slaves;
+                Assert.That(counts.First(count => AiSummon.SlaveCountPasses(count, alive)), Is.EqualTo(slaves));
+            }
+            Assert.That(counts.Any(count => AiSummon.SlaveCountPasses(count, 5)), Is.False);
+        });
+    }
+
+    // AI_Primadonna tests count 2, then count 1 (berserk), for group 201 with npcCountMax 2.
+    [Test]
+    public void PrimadonnaReachesItsBerserkBranch() {
+        int[] counts = [2, 1];
+        Assert.Multiple(() => {
+            Assert.That(counts.First(count => AiSummon.SlaveCountPasses(count, 2)), Is.EqualTo(2));
+            Assert.That(counts.First(count => AiSummon.SlaveCountPasses(count, 1)), Is.EqualTo(1));
+            Assert.That(counts.Any(count => AiSummon.SlaveCountPasses(count, 0)), Is.False);
+        });
+    }
+
+    // Seolnunyi: slaveCount="0" slaveCountOp="Greater" passes while any slave lives.
+    [TestCase(AiConditionOp.Greater, 0, 0, false)]
+    [TestCase(AiConditionOp.Greater, 0, 1, true)]
+    [TestCase(AiConditionOp.Equal, 2, 2, true)]
+    [TestCase(AiConditionOp.Less, 2, 1, true)]
+    [TestCase(AiConditionOp.Less, 2, 2, false)]
+    [TestCase(AiConditionOp.GreaterEqual, 2, 2, true)]
+    [TestCase(AiConditionOp.LessEqual, 2, 3, false)]
+    public void SlaveCountOp(AiConditionOp op, int value, int slaves, bool expected) {
+        Assert.That(AiSummon.SlaveCountOpPasses(op, value, slaves), Is.EqualTo(expected));
+    }
+
+    // The parser reads both condition forms into one class; the op form must not become a count="0" test.
+    [Test]
+    public void IngestKeepsBothSlaveCountForms() {
+        var countForm = new SlaveCountCondition { count = 2, useSummonGroup = true, summonGroup = 201 };
+        var opForm = new SlaveCountCondition { slaveCount = 0, slaveCountOp = ConditionOp.Greater };
+        AiMetadata.Condition count = AiMapper.MapSlaveCount("SlaveCount", [], countForm);
+        AiMetadata.Condition op = AiMapper.MapSlaveCount("slaveCount", [], opForm);
+        Assert.Multiple(() => {
+            Assert.That(count, Is.TypeOf<AiMetadata.SlaveCountCondition>());
+            var countCondition = (AiMetadata.SlaveCountCondition) count;
+            Assert.That((countCondition.Count, countCondition.UseSummonGroup, countCondition.SummonGroup), Is.EqualTo((2, true, 201)));
+            Assert.That(op, Is.TypeOf<AiMetadata.SlaveCountOpCondition>());
+            var opCondition = (AiMetadata.SlaveCountOpCondition) op;
+            Assert.That(opCondition.SlaveCount, Is.EqualTo(0));
+            Assert.That(opCondition.SlaveCountOp, Is.EqualTo(AiConditionOp.Greater));
         });
     }
 }

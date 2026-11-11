@@ -64,6 +64,28 @@ public class AiMapper : TypeMapper<AiMetadata> {
         }
     }
 
+    // The AI files write the slave count condition two ways, and the parser reads both into one class:
+    // name="SlaveCount" count="N" (optionally useSummonGroup="1" summonGroup="G"), 26 conditions, and
+    // name="slaveCount" slaveCount="N" slaveCountOp="Greater", 6 conditions (the Seolnunyi friends). The second form
+    // has no count, so it must not become a count="0" test.
+    public static AiMetadata.Condition MapSlaveCount(string name, AiMetadata.Entry[] entries, SlaveCountCondition slaveCount) {
+        if (slaveCount.slaveCount != 0 || (AiConditionOp) slaveCount.slaveCountOp != AiConditionOp.Equal) {
+            return new AiMetadata.SlaveCountOpCondition(
+                Name: name,
+                Entries: entries,
+                SlaveCount: slaveCount.slaveCount,
+                SlaveCountOp: (AiConditionOp) slaveCount.slaveCountOp
+            );
+        }
+        return new AiMetadata.SlaveCountCondition(
+            Name: name,
+            Entries: entries,
+            Count: slaveCount.count,
+            UseSummonGroup: slaveCount.useSummonGroup,
+            SummonGroup: slaveCount.summonGroup
+        );
+    }
+
     AiMetadata.Condition MapCondition(ConditionEntry node) {
         var childNodes = new List<AiMetadata.Entry>();
 
@@ -109,14 +131,8 @@ public class AiMapper : TypeMapper<AiMetadata> {
                     Op: (AiConditionOp) extraData.op,
                     IsKeepBattle: extraData.isKeepBattle
                 );
-            case SlaveCountCondition SlaveCount: // these are different enough to warrant having their own nodes. blame nexon
-                return new AiMetadata.SlaveCountCondition(
-                    Name: node.name,
-                    Entries: childNodes.ToArray(),
-                    Count: SlaveCount.count,
-                    UseSummonGroup: SlaveCount.useSummonGroup,
-                    SummonGroup: SlaveCount.summonGroup
-                );
+            case SlaveCountCondition slaveCount:
+                return MapSlaveCount(node.name, childNodes.ToArray(), slaveCount);
             case HpOverCondition hpOver:
                 return new AiMetadata.HpOverCondition(
                     Name: node.name,

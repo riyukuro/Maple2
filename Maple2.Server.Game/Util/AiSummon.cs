@@ -45,9 +45,10 @@ public static class AiSummon {
         return summonRot != Vector3.Zero || summonPos != Vector3.Zero ? summonRot : summoner;
     }
 
-    // lifeTime is in seconds: the values run from 14 (and 15.6) to 180000. In milliseconds the 30 and 60 of the
-    // Blackbean phases would remove the summon in the tick it appears; the large values (99900, 180000) last
-    // longer than any fight. 0 is no limit.
+    // lifeTime is in seconds: the values run from 14 to 180000. In milliseconds the 30 and 60 of the Blackbean
+    // phases would remove the summon in the tick it appears; the large values (99900, 180000) last longer than any
+    // fight. 0 is no limit. The one decimal value, AI_DevilHugeRed's lifeTime="15.6", does not break the file's
+    // parse: the file parser reads it as 15600 (its 14 other summons give 6000).
     public static TimeSpan LifeTime(int lifeTime) => lifeTime > 0 ? TimeSpan.FromSeconds(lifeTime) : TimeSpan.Zero;
 
     // delayTick is milliseconds, like every other tick in the AI files (cooltime 10000, sayNode durationTick).
@@ -56,4 +57,27 @@ public static class AiSummon {
     // master="None" (288 nodes) is a summon with no master: it stays when the summoner goes. Every other node
     // (no master attribute, or master="Slave") leaves with its summoner.
     public static bool LeavesWithSummoner(NodeSummonMaster master) => master != NodeSummonMaster.None;
+
+    // A slave is a summon that leaves with its summoner. The SlaveCount conditions and the RemoveSlaves node read the
+    // slaves only; a master="None" summon is no one's slave. The AI files' comments on RemoveSlaves say it removes
+    // every monster this npc summoned as its slaves, even in the middle of an action.
+    // useSummonGroup="1" counts the slaves of summonGroup only (AI_Primadonna: group 201, npcCountMax 2).
+    public static bool IsCountedSlave(int summonGroup, bool leavesWithSummoner, int? group) =>
+        leavesWithSummoner && (group == null || summonGroup == group);
+
+    // SlaveCount count="N" passes when exactly N slaves are alive. The Yeti bosses test 0, 1, 2, 3, 4 in that order in
+    // one conditions node (first passing wins), so ">= N" would always take 0; AI_Primadonna tests 2 then 1 with
+    // npcCountMax 2, so "<= N" would never reach its count="1" (berserk) branch. Only "== N" fits both.
+    public static bool SlaveCountPasses(int count, int slaves) => slaves == count;
+
+    // slaveCount="N" slaveCountOp="Op" compares the slaves alive with N (Seolnunyi: slaveCount="0"
+    // slaveCountOp="Greater" keeps battling while any slave lives).
+    public static bool SlaveCountOpPasses(AiConditionOp op, int value, int slaves) => op switch {
+        AiConditionOp.Equal => slaves == value,
+        AiConditionOp.Greater => slaves > value,
+        AiConditionOp.Less => slaves < value,
+        AiConditionOp.GreaterEqual => slaves >= value,
+        AiConditionOp.LessEqual => slaves <= value,
+        _ => false,
+    };
 }

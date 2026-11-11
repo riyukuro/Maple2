@@ -75,9 +75,21 @@ public class FieldNpc : Actor<Npc> {
 
     public int SummonCount(int group) {
         lock (summons) {
-            summons.RemoveAll(summon => summon.Npc.IsDead || !Field.Mobs.ContainsKey(summon.Npc.ObjectId) && !Field.Npcs.ContainsKey(summon.Npc.ObjectId));
+            PruneSummons();
             return summons.Count(summon => summon.Group == group);
         }
+    }
+
+    // The live slaves (summons that leave with this npc), of one group or of all (group null).
+    public int SlaveCount(int? group) {
+        lock (summons) {
+            PruneSummons();
+            return summons.Count(summon => AiSummon.IsCountedSlave(summon.Group, summon.LeavesWithSummoner, group));
+        }
+    }
+
+    private void PruneSummons() {
+        summons.RemoveAll(summon => summon.Npc.IsDead || !Field.Mobs.ContainsKey(summon.Npc.ObjectId) && !Field.Npcs.ContainsKey(summon.Npc.ObjectId));
     }
 
     public void Summon(NpcMetadata npc, AiMetadata.SummonNode node) {
@@ -111,7 +123,8 @@ public class FieldNpc : Actor<Npc> {
         }
     }
 
-    // The summons that leave with this npc are removed when it dies or leaves the field.
+    // The summons that leave with this npc (its slaves) are removed when it dies or leaves the field, and by the AI
+    // RemoveSlaves node.
     public void RemoveSummons() {
         List<FieldNpc> leaving;
         lock (summons) {

@@ -611,7 +611,9 @@ public class AiState {
         actor.Field.UserValues[node.Key] = node.Value;
     }
 
-    private void ProcessNode(RemoveSlavesNode node) { }
+    private void ProcessNode(RemoveSlavesNode node) {
+        actor.RemoveSummons();
+    }
 
     private void ProcessNode(CreateRandomRoomNode node) { }
 
@@ -684,11 +686,11 @@ public class AiState {
     }
 
     private bool ProcessCondition(SlaveCountCondition node) {
-        return false;
+        return AiSummon.SlaveCountPasses(node.Count, actor.SlaveCount(node.UseSummonGroup ? node.SummonGroup : null));
     }
 
     private bool ProcessCondition(SlaveCountOpCondition node) {
-        return false;
+        return AiSummon.SlaveCountOpPasses(node.SlaveCountOp, node.SlaveCount, actor.SlaveCount(null));
     }
 
     private bool ProcessCondition(HpOverCondition node) {
