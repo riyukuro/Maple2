@@ -41,4 +41,11 @@ public class ItemLockRulesTests {
     public void LockableTypes(int type, bool expected) {
         Assert.That(ItemLockRules.IsLockableType(type), Is.EqualTo(expected));
     }
+
+    [TestCase(false, false, true)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    public void LimitAllowsLock(bool vip, bool wedding, bool expected) {
+        Assert.That(ItemLockRules.LimitAllowsLock(vip, wedding), Is.EqualTo(expected));
+    }
 }

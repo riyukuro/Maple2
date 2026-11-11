@@ -9,6 +9,11 @@ public static class ItemLockRules {
         return type is 1 or 5 or 9 or 11 or 12 or 13 or 21;
     }
 
+    // CItem::CanBeItemLocked: VIP items and wedding-limit items never take a lock.
+    public static bool LimitAllowsLock(bool requireVip, bool requireWedding) {
+        return !requireVip && !requireWedding;
+    }
+
     public static bool CanStage(bool unlock, bool owned, bool locked, bool alreadyStaged) {
         if (!owned || alreadyStaged) {
             return false;

@@ -58,7 +58,8 @@ public class ItemLockHandler : FieldPacketHandler {
             return;
         }
         // Only lock mode asks the type; a locked item of any type can be unlocked.
-        if (!unlock && !ItemLockRules.IsLockableType(item!.Metadata.Property.Type)) {
+        if (!unlock && (!ItemLockRules.IsLockableType(item!.Metadata.Property.Type) ||
+                        !ItemLockRules.LimitAllowsLock(item.Metadata.Limit.RequireVip, item.Metadata.Limit.RequireWedding))) {
             return;
         }
 
