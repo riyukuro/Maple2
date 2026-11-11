@@ -12,6 +12,7 @@ public class AchievementHandler : FieldPacketHandler {
     private enum Command : byte {
         Reward = 3,
         ToggleFavorite = 4,
+        Debug = 5,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -22,6 +23,10 @@ public class AchievementHandler : FieldPacketHandler {
                 break;
             case Command.ToggleFavorite:
                 HandleToggleFavorite(session, packet);
+                break;
+            case Command.Debug:
+                // Not handled: the debug buttons of the achievement dialog: id and which button (0-3).
+                Logger.Debug("Achievement {Command} from {CharacterId}: {Id}, {Button}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
                 break;
         }
     }
