@@ -2,6 +2,7 @@
 using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
@@ -24,6 +25,10 @@ public class ChannelHandler : PacketHandler<GameSession> {
 
     public override void Handle(GameSession session, IByteReader packet) {
         short channel = packet.ReadShort();
+        // The client sends no request for its own channel and none while its player is dead.
+        if (session.Field == null || !ChannelRules.CanChange(GameServer.GetChannel(), channel, session.Player.IsDead)) {
+            return;
+        }
         session.MigrationSave();
         try {
             var request = new MigrateOutRequest {
