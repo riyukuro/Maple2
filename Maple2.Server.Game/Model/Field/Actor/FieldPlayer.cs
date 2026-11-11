@@ -435,8 +435,14 @@ public class FieldPlayer : Actor<Player> {
         Field.Broadcast(RevivalPacket.Revive(ObjectId));
 
         // Move to spawn point if not instant revival
-        if (!instant && Field.TryGetPlayerSpawn(-1, out FieldPlayerSpawnPoint? point)) {
-            MoveToPosition(point.Position, point.Rotation);
+        if (!instant) {
+            if (Field.TryGetPlayerSpawn(-1, out FieldPlayerSpawnPoint? point)) {
+                // Same placement as entering the field at a spawn point; MoveToPosition drops the move
+                // without a word when the point itself is not on the navigation mesh.
+                Session.Send(PortalPacket.MoveByPortal(this, point.Position + new Vector3(0, 0, 25), point.Rotation));
+            } else {
+                Logger.Debug("Revive of {CharacterId} in map {MapId}: no enabled player spawn point, not moved", Value.Character.Id, Field.MapId);
+            }
         }
 
         Buffs.UpdateEnabled();
