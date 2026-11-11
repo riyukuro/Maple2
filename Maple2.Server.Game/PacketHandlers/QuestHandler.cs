@@ -152,6 +152,12 @@ public class QuestHandler : FieldPacketHandler {
                 // completed (CanCompleteAllQuests, :632), and no alliance quest can be started here.
                 Logger.Debug("Quest {Command} from {CharacterId}", command, session.CharacterId);
                 break;
+            case Command.EpicRestart:
+                // UIGameMenuDialog::SendQuest (uigamemenudialog.cpp:2294): no body. Not handled: the client
+                // sends it only while an epic quest restart event runs (FUN_14193c000, :1947), and the server
+                // has no such game event.
+                Logger.Debug("Quest {Command} from {CharacterId}", command, session.CharacterId);
+                break;
             case Command.SkyFortressMission:
                 // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world
                 // map's mission attack box. Not handled: the client sends it only while a quest of that
