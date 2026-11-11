@@ -263,8 +263,16 @@ public class InventoryManager {
                 Discard(add, commit);
             }
 
-            if (commit && !justCreated) {
-                db.SaveItems(session.CharacterId, add);
+            if (commit) {
+                // The stacks the item merged into changed too. An item merged away completely was already
+                // discarded above and is not saved back to the character.
+                List<Item> changed = result.Select(entry => entry.Item1).Where(item => item.Uid != add.Uid).ToList();
+                if (!justCreated && add.Amount > 0) {
+                    changed.Add(add);
+                }
+                if (changed.Count > 0) {
+                    db.SaveItems(session.CharacterId, changed.ToArray());
+                }
             }
 
             foreach ((Item item, int added) in result) {

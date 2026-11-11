@@ -329,10 +329,11 @@ public class MeretMarketHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.Add(item, true)) {
+        if (!session.Item.Inventory.Add(item, true, commit: true)) {
             session.Item.MailItem(item);
         }
-
+        // Store the paid merets now, not only at the next session save.
+        session.SavePurchase();
 
         session.Send(MeretMarketPacket.Purchase(totalQuantity, itemIndex, price, premiumMarketId, ugcItemId));
         return;

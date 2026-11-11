@@ -923,6 +923,27 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
+    /// <summary>
+    /// Stores the currency right after a purchase, together with any rows of the same purchase,
+    /// under the account lock. Only the currency and the given rows are written, not the whole session.
+    /// </summary>
+    public void SavePurchase(Action<GameStorage.Request>? alsoSave = null) {
+        try {
+            AcquireLock(AccountId);
+            using GameStorage.Request db = GameStorage.Context();
+            db.BeginTransaction();
+            if (!db.SaveCurrency(Player)) {
+                Logger.Error("SavePurchase: currency not saved AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            }
+            alsoSave?.Invoke(db);
+            db.Commit();
+        } catch (Exception ex) {
+            Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+        } finally {
+            ReleaseLock(AccountId);
+        }
+    }
+
     // Don't call this directly, since it does not acquire the account lock.
     private void Save() {
         using GameStorage.Request db = GameStorage.Context();

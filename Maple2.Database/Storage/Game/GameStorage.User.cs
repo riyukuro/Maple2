@@ -303,25 +303,10 @@ public partial class GameStorage {
             Logger.LogInformation("> Begin Save... {ContextId}:{CharacterId}", Context.ContextId, player.Character.Id);
 
             Model.Account account = player.Account;
-            account.Currency = new AccountCurrency {
-                Meret = player.Currency.Meret,
-                GameMeret = player.Currency.GameMeret,
-                MesoToken = player.Currency.MesoToken,
-            };
+            account.Currency = ToAccountCurrency(player.Currency);
 
             Model.Character character = player.Character;
-            character.Currency = new CharacterCurrency {
-                Meso = player.Currency.Meso,
-                EventMeret = player.Currency.EventMeret,
-                ValorToken = player.Currency.ValorToken,
-                Treva = player.Currency.Treva,
-                Rue = player.Currency.Rue,
-                HaviFruit = player.Currency.HaviFruit,
-                ReverseCoin = player.Currency.ReverseCoin,
-                MentorToken = player.Currency.MentorToken,
-                MenteeToken = player.Currency.MenteeToken,
-                StarPoint = player.Currency.StarPoint,
-            };
+            character.Currency = ToCharacterCurrency(player.Currency);
 
             Model.Account? dbAccount = Context.Account.Find(account.Id);
             if (dbAccount == null) {
@@ -434,6 +419,57 @@ public partial class GameStorage {
 
             Logger.LogInformation("> Save complete {ContextId}:{CharacterId}", Context.ContextId, player.Character.Id);
             return true;
+        }
+
+        /// <summary>
+        /// Writes only the account and character currency of the player, for example right after a purchase,
+        /// so a paid price is stored without a full player save. Callers hold the account lock.
+        /// </summary>
+        public bool SaveCurrency(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            Model.Character? character = Context.Character.Find(player.Character.Id);
+            if (account == null || character == null) {
+                return false;
+            }
+
+            account.Currency = ToAccountCurrency(player.Currency);
+            character.Currency = ToCharacterCurrency(player.Currency);
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            // The row versions moved; keep the player's copies current so the next full save does not conflict.
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
+        private static AccountCurrency ToAccountCurrency(Currency currency) {
+            return new AccountCurrency {
+                Meret = currency.Meret,
+                GameMeret = currency.GameMeret,
+                MesoToken = currency.MesoToken,
+            };
+        }
+
+        private static CharacterCurrency ToCharacterCurrency(Currency currency) {
+            return new CharacterCurrency {
+                Meso = currency.Meso,
+                EventMeret = currency.EventMeret,
+                ValorToken = currency.ValorToken,
+                Treva = currency.Treva,
+                Rue = currency.Rue,
+                HaviFruit = currency.HaviFruit,
+                ReverseCoin = currency.ReverseCoin,
+                MentorToken = currency.MentorToken,
+                MenteeToken = currency.MenteeToken,
+                StarPoint = currency.StarPoint,
+            };
         }
 
         // Added helper methods for JSON diff suppression & formatting

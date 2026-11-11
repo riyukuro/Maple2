@@ -521,8 +521,30 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
 
-        session.Item.Inventory.Add(item, true);
+        session.Item.Inventory.Add(item, true, commit: true);
         session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price));
+
+        // Store the paid price and the bought stock now, not only at the next session save.
+        if (shopItem.StockCount > 0 && TryGetSavedStockRow(activeShop.Id, shopItem.Id, out long stockOwnerId, out CharacterShopItemData? stockRow)) {
+            session.SavePurchase(db => db.SaveCharacterShopItemData(stockOwnerId, [stockRow]));
+        } else {
+            session.SavePurchase();
+        }
+    }
+
+    // The stock row of a shop item and its owner, when the session save stores that shop's rows (see Save).
+    private bool TryGetSavedStockRow(int shopId, int shopItemId, out long ownerId, [NotNullWhen(true)] out CharacterShopItemData? row) {
+        bool accountWide = accountShopItemData.ContainsKey(shopId);
+        ownerId = accountWide ? session.AccountId : session.CharacterId;
+        row = null;
+        if (!TryGetShopItemData(shopId, out IDictionary<int, CharacterShopItemData>? data) || !data.TryGetValue(shopItemId, out row)) {
+            return false;
+        }
+        if (IsUnresetShop(shopId)) {
+            return true;
+        }
+        IDictionary<int, CharacterShopData> shops = accountWide ? accountShopData : characterShopData;
+        return shops.TryGetValue(shopId, out CharacterShopData? shopData) && shopData.Interval != ResetType.Default;
     }
 
     public void PurchaseBuyBack(int id) {
@@ -548,8 +570,9 @@ public sealed class ShopManager {
             logger.Error("Failed to remove buyback item {Id}", id);
             return;
         }
-        session.Item.Inventory.Add(buyBackItem.Item, true);
+        session.Item.Inventory.Add(buyBackItem.Item, true, commit: true);
         session.Send(ShopPacket.RemoveBuyBackItem(id));
+        session.SavePurchase();
     }
 
     public void Sell(long itemUid, int quantity) {
