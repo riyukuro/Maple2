@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -39,7 +40,7 @@ public class InsigniaCommand : GameCommand {
             session.Player.Buffs.AddBuff(session.Player, session.Player, insigniaMetadata.BuffId, insigniaMetadata.BuffLevel, session.Field.FieldTick);
         }
 
-        session.Field.Broadcast(InsigniaPacket.Update(session.Player.ObjectId, insigniaId, true));
+        session.Field.Broadcast(InsigniaPacket.Update(session.Player.ObjectId, insigniaId, InsigniaRules.Shown(session)));
         context.Console.WriteLine($"Insignia set to ID {insigniaId}.");
     }
 }

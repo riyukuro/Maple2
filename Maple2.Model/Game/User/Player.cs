@@ -28,6 +28,23 @@ public class Unlock {
     public readonly ISet<int> Maps = new SortedSet<int>();
     public readonly ISet<int> Taxis = new SortedSet<int>();
     public readonly ISet<int> Titles = new SortedSet<int>();
+    // Titles is changed by the owner's session and read by field threads that build another
+    // player's view of the owner (the name-tag symbol flag). Those two go through here.
+    public bool AddTitle(int titleId) {
+        lock (Titles) {
+            return Titles.Add(titleId);
+        }
+    }
+    public bool HasTitle(int titleId) {
+        lock (Titles) {
+            return Titles.Contains(titleId);
+        }
+    }
+    public int[] TitlesCopy() {
+        lock (Titles) {
+            return Titles.ToArray();
+        }
+    }
     public readonly IList<int> Emotes = new List<int>();
     public readonly IDictionary<int, long> StickerSets = new Dictionary<int, long>();
     public readonly IDictionary<int, bool> MasteryRewardsClaimed = new Dictionary<int, bool>();

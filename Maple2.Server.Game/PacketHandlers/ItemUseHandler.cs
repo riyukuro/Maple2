@@ -273,14 +273,14 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Player.Value.Unlock.Titles.Contains(titleId)) {
+        if (session.Player.Value.Unlock.HasTitle(titleId)) {
             session.Send(ChatPacket.Alert(StringCode.s_title_scroll_duplicate_err));
             return;
         }
 
         if (session.Item.Inventory.Consume(item.Uid, 1)) {
             session.Send(UserEnvPacket.AddTitle(titleId));
-            session.Player.Value.Unlock.Titles.Add(titleId);
+            session.Player.Value.Unlock.AddTitle(titleId);
         }
     }
 

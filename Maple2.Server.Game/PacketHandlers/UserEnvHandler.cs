@@ -29,7 +29,7 @@ public class UserEnvHandler : FieldPacketHandler {
     private void HandleChangeTitle(GameSession session, IByteReader packet) {
         int titleId = packet.ReadInt();
 
-        if (titleId != 0 && !session.Player.Value.Unlock.Titles.Contains(titleId)) {
+        if (titleId != 0 && !session.Player.Value.Unlock.HasTitle(titleId)) {
             return;
         }
 

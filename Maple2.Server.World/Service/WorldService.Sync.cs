@@ -85,7 +85,7 @@ public partial class WorldService {
             // Disconnect all players in the world.
             foreach (PlayerInfo playerInfo in playerLookup.GetOnlinePlayerInfos()) {
                 // don't dc players with admin or game master permissions
-                if (playerInfo.AccountAdminPermissions is AdminPermissions.Admin or AdminPermissions.GameMaster) {
+                if (AdminLevel.IsGm(playerInfo.AccountAdminPermissions)) {
                     continue;
                 }
                 if (!channelClients.TryGetClient(playerInfo.Channel, out channelClient)) {
@@ -108,7 +108,7 @@ public partial class WorldService {
             throw new RpcException(new Status(StatusCode.NotFound, $"Unable to find: {request.CharacterId}"));
         }
 
-        if (!request.Force && info.AccountAdminPermissions is AdminPermissions.Admin or AdminPermissions.GameMaster) {
+        if (!request.Force && AdminLevel.IsGm(info.AccountAdminPermissions)) {
             throw new RpcException(new Status(StatusCode.PermissionDenied, $"Cannot disconnect player with admin permissions: {info.CharacterId}"));
         }
 

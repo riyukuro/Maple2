@@ -64,8 +64,9 @@ public class GmCreateRulesTests {
 
     [Test]
     public void Npc_RequestIsClampedToOneToFifty() {
-        Assert.That(PlanNpc(0, 0), Is.EqualTo(1));
-        Assert.That(PlanNpc(-5, 0), Is.EqualTo(1));
+        Assert.That(PlanNpc(0, 0), Is.EqualTo(0));
+        Assert.That(PlanNpc(-5, 0), Is.EqualTo(0));
+        Assert.That(PlanNpc(1, 0), Is.EqualTo(1));
         Assert.That(PlanNpc(7, 0), Is.EqualTo(7));
         Assert.That(PlanNpc(int.MaxValue, 0), Is.EqualTo(MaxNpcPerRequest));
     }

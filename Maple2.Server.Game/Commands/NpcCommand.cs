@@ -37,6 +37,11 @@ public class NpcCommand : GameCommand {
                 return;
             }
 
+            if (amount <= 0) {
+                ctx.Console.Error.WriteLine($"Invalid amount: {amount}. It must be 1 or more.");
+                return;
+            }
+
             Vector3 basePosition = session.Player.Position;
             Vector3 rotation = session.Player.Rotation;
 

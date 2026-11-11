@@ -32,7 +32,7 @@ public static class InsigniaRules {
 
     public static bool Shown(GameSession session, InsigniaTable.Entry entry) {
         return Shown(entry.Type, new Facts(
-            HasTitle: session.Player.Value.Unlock.Titles.Contains(entry.Code),
+            HasTitle: session.Player.Value.Unlock.HasTitle(entry.Code),
             PrestigeLevel: session.Player.Value.Account.PrestigeLevel,
             TrophyTotal: session.Player.Value.Character.AchievementInfo.Total,
             HighEnchant: session.Item.Equips.Gear.Any(item => item.Value.Enchant?.Enchants >= 12 && item.Value.Rarity > 3),

@@ -200,11 +200,11 @@ public sealed class AchievementManager {
                 if (!manualClaim) {
                     return;
                 }
-                if (session.Player.Value.Unlock.Titles.Contains(grade.Reward.Code)) {
+                if (session.Player.Value.Unlock.HasTitle(grade.Reward.Code)) {
                     break;
                 }
                 session.Send(UserEnvPacket.AddTitle(grade.Reward.Code));
-                session.Player.Value.Unlock.Titles.Add(grade.Reward.Code);
+                session.Player.Value.Unlock.AddTitle(grade.Reward.Code);
                 break;
             case AchievementRewardType.dynamicaction:
                 if (session.Player.Value.Unlock.Emotes.Contains(grade.Reward.Code)) {

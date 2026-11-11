@@ -19,7 +19,7 @@ public class TitleCommand : GameCommand {
     private void Handle(InvocationContext context, int titleId) {
         if (session.Field == null) return;
 
-        if (!session.Player.Value.Unlock.Titles.Add(titleId)) {
+        if (!session.Player.Value.Unlock.AddTitle(titleId)) {
             context.Console.WriteLine($"You already have the title {titleId}.");
             return;
         }

@@ -47,12 +47,16 @@ public static class GmCreateRules {
         return new ItemPlan(ItemVerdict.Singles, Math.Min(amount, freeSlots));
     }
 
-    // How many NPCs a request may spawn when `alive` GM-spawned NPCs stand in the field. 0 = refuse.
+    // How many NPCs a request may spawn when `alive` GM-spawned NPCs stand in the field. 0 = refuse
+    // (a count of 0 or less, or a full field).
     public static int PlanNpc(int requested, int alive) {
+        if (requested <= 0) {
+            return 0;
+        }
         int room = MaxNpcPerField - Math.Max(0, alive);
         if (room <= 0) {
             return 0;
         }
-        return Math.Min(Math.Clamp(requested, 1, MaxNpcPerRequest), room);
+        return Math.Min(Math.Min(requested, MaxNpcPerRequest), room);
     }
 }

@@ -121,8 +121,9 @@ public static class PlayerInfoPacket {
         buffer.WriteInt(player.Home.ApartmentNumber);
 
         buffer.WriteInt(player.Character.Title);
-        buffer.WriteInt(player.Unlock.Titles.Count);
-        foreach (int title in player.Unlock.Titles) {
+        int[] titles = player.Unlock.TitlesCopy(); // read for another player's info window
+        buffer.WriteInt(titles.Length);
+        foreach (int title in titles) {
             buffer.WriteInt(title);
         }
 

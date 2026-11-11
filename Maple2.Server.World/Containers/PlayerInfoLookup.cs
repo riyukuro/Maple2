@@ -2,6 +2,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Grpc.Core;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Sync;
 using Serilog;
@@ -66,6 +67,22 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
     }
 
     public bool Update(PlayerUpdateRequest request) {
+        bool result = UpdateOne(request);
+        if (request.HasAdminPermissions) {
+            // The permissions belong to the account: its other cached characters take the same value.
+            foreach (long characterId in PlayerInfoSiblings.Of(cache.Values, request.CharacterId, (AdminPermissions) request.AdminPermissions)) {
+                UpdateOne(new PlayerUpdateRequest {
+                    AccountId = request.AccountId,
+                    CharacterId = characterId,
+                    AdminPermissions = request.AdminPermissions,
+                    Async = request.Async,
+                });
+            }
+        }
+        return result;
+    }
+
+    private bool UpdateOne(PlayerUpdateRequest request) {
         PlayerInfoUpdateEvent @event = cache.TryGetValue(request.CharacterId, out PlayerInfo? info)
             ? new PlayerInfoUpdateEvent(info, request)
             : new PlayerInfoUpdateEvent(request);
