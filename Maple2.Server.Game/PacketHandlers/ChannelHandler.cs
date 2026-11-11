@@ -43,7 +43,7 @@ public class ChannelHandler : PacketHandler<GameSession> {
             MigrateOutResponse response = World.MigrateOut(request);
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Channel change", response.IpAddress, response.Port);
-                session.Send(NoticePacket.MessageBox(new InterfaceText("Channel is unavailable, close the channel list and try again.")));
+                session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_msg_cant_movechannel)));
                 return;
             }
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, session.Field?.MapId ?? 0));
@@ -51,7 +51,7 @@ public class ChannelHandler : PacketHandler<GameSession> {
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to migrate to channel {Channel}", channel);
 
-            session.Send(NoticePacket.MessageBox(new InterfaceText("Channel is unavailable, close the channel list and try again.")));
+            session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_msg_cant_movechannel)));
 
             // Update the client with the latest channel list.
             ChannelsResponse response = World.Channels(new ChannelsRequest());
