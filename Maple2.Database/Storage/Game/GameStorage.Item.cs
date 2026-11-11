@@ -66,7 +66,7 @@ public partial class GameStorage {
                 return null;
             }
 
-            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? model.Convert(metadata) : null;
+            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? game.RepairEnchant(model.Convert(metadata)) : null;
         }
 
         public UgcItemLook? GetTemplate(long itemUid) {
@@ -223,7 +223,7 @@ public partial class GameStorage {
                 return null;
             }
 
-            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? model.Convert(metadata) : null;
+            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? game.RepairEnchant(model.Convert(metadata)) : null;
         }
     }
 }

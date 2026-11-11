@@ -5,7 +5,7 @@ using Maple2.Model.Game;
 namespace Maple2.Database.Extensions;
 
 // A special option is stored as {"Value": int}. Rows written before the option became an int hold
-// {"Rate": float} instead, where the float was either a rate (below 1) or a flat value (1 or more).
+// {"Rate": float} instead, where the float was either a rate (below 1 in size) or a flat value (1 or more).
 // Those are converted here to the int the client reads: a rate as rate * 1000, a value as it is.
 public class SpecialOptionConverter : JsonConverter<SpecialOption> {
     public override SpecialOption Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) {
@@ -33,6 +33,6 @@ public class SpecialOptionConverter : JsonConverter<SpecialOption> {
 
     public static SpecialOption FromLegacy(float legacy) {
         // The old rate was built as thousandths / 1000f, so rounding gives the thousandths back.
-        return new SpecialOption((int) MathF.Round(legacy < 1f ? legacy * 1000f : legacy));
+        return new SpecialOption((int) MathF.Round(MathF.Abs(legacy) < 1f ? legacy * 1000f : legacy));
     }
 }
