@@ -26,6 +26,9 @@ public class BuddyManager : IDisposable {
     private readonly IDictionary<long, Buddy> buddies;
     private readonly IDictionary<long, Buddy> blocked;
 
+    // The "refuse friend requests" game option as the client last reported it (Buddy sub-type 20).
+    public bool AutoReject { get; set; }
+
     private readonly CancellationTokenSource tokenSource;
     private readonly ILogger logger = Log.Logger.ForContext<BuddyManager>();
 
@@ -161,6 +164,9 @@ public class BuddyManager : IDisposable {
         // DB written by sender as single transaction.
         buddies[self.Id] = self;
         session.Send(BuddyPacket.Append(self));
+        if (Util.BuddyRules.DeclinesOnReceipt(AutoReject, self.Type)) {
+            SendDecline(self.Id);
+        }
     }
 
     public void SendAccept(long entryId) {

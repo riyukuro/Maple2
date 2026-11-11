@@ -17,7 +17,7 @@ public class BuddyHandler : FieldPacketHandler {
         Delete = 7,
         UpdateBlock = 10,
         Cancel = 17,
-        Unknown = 20,
+        AutoReject = 20,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -47,8 +47,11 @@ public class BuddyHandler : FieldPacketHandler {
             case Command.Cancel:
                 Cancel(session, packet);
                 break;
-            case Command.Unknown:
-                Logger.Information("BUDDY(20) = {Value}", packet.ReadInt());
+            case Command.AutoReject:
+                // The "refuse friend requests" game option, sent when the options are saved.
+                if (Util.BuddyRules.TryAutoReject(packet.ReadInt(), out bool autoReject)) {
+                    session.Buddy.AutoReject = autoReject;
+                }
                 break;
         }
     }
