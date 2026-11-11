@@ -93,16 +93,18 @@ public static class NpcControlPacket {
     }
 
     // Client: CNpc::ApplySyncBlock (sequence -2 / -3): byte absolute, then two points and two floats, or one
-    // point. Nothing follows the block before the state's own fields.
-    internal static void WriteJump(this IByteWriter buffer, bool isAbsolute, Vector3 start, Vector3 end, float angle, float scale) {
+    // point. Nothing follows the block before the state's own fields. Both points are world points: Unk_NpcBeam::Set
+    // keeps the end as it is and moves the npc from the start (the relative form: the entry's own position) to it.
+    // The first float is the arc's duration in seconds, the second its height scale.
+    internal static void WriteJump(this IByteWriter buffer, bool isAbsolute, Vector3 start, Vector3 end, float duration, float scale) {
         buffer.WriteBool(isAbsolute);
         if (isAbsolute) {
             buffer.Write<Vector3>(start);
             buffer.Write<Vector3>(end);
-            buffer.WriteFloat(angle);
+            buffer.WriteFloat(duration);
             buffer.WriteFloat(scale);
         } else {
-            buffer.Write<Vector3>(end); // end offset
+            buffer.Write<Vector3>(end); // the end as a world point, not an offset
         }
     }
 
