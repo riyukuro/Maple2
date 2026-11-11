@@ -16,6 +16,36 @@ public partial class GameStorage {
             return LoadGuild(0, guildName);
         }
 
+        // The guild search: listed guilds that share a focus bit with the request (focusMask 0 = any focus),
+        // and whose name holds the given text (empty = any name).
+        public IList<GuildSearchEntry> SearchGuilds(int focusMask, string name, int limit) {
+            IQueryable<Model.Guild> query = Context.Guild.Where(guild => guild.Listed);
+            if (focusMask != 0) {
+                query = query.Where(guild => ((int) guild.Focus & focusMask) != 0);
+            }
+            if (name.Length > 0) {
+                query = query.Where(guild => guild.Name.Contains(name));
+            }
+
+            return query.OrderBy(guild => guild.Id)
+                .Take(limit)
+                .Join(Context.Character, guild => guild.LeaderId, character => character.Id,
+                    (guild, character) => new {
+                        guild.Id,
+                        guild.Name,
+                        guild.Emblem,
+                        MemberCount = Context.GuildMember.Count(member => member.GuildId == guild.Id),
+                        guild.Experience,
+                        character.AccountId,
+                        CharacterId = character.Id,
+                        LeaderName = character.Name,
+                    })
+                .AsEnumerable()
+                .Select(row => new GuildSearchEntry(row.Id, row.Name, row.Emblem, row.MemberCount, row.Experience,
+                    row.AccountId, row.CharacterId, row.LeaderName))
+                .ToList();
+        }
+
         public bool GuildExists(long guildId = 0, string guildName = "") {
             return Context.Guild.Any(guild => guild.Id == guildId || guild.Name == guildName);
         }
@@ -200,6 +230,7 @@ public partial class GameStorage {
                         Notice = guild.Notice,
                         CreationTime = guild.CreationTime.ToEpochSeconds(),
                         Focus = guild.Focus,
+                        Listed = guild.Listed,
                         Experience = guild.Experience,
                         Funds = guild.Funds,
                         HouseRank = guild.HouseRank,

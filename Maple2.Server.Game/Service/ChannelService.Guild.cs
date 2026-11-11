@@ -33,6 +33,8 @@ public partial class ChannelService {
                 return Task.FromResult(UpdateGuildPoster(request.ReceiverIds, request.UpdatePoster));
             case GuildRequest.GuildOneofCase.UpdateRank:
                 return Task.FromResult(UpdateGuildRank(request.ReceiverIds, request.UpdateRank));
+            case GuildRequest.GuildOneofCase.UpdateFocus:
+                return Task.FromResult(UpdateGuildFocus(request.ReceiverIds, request.UpdateFocus));
             default:
                 return Task.FromResult(new GuildResponse { Error = (int) GuildError.s_guild_err_none });
         }
@@ -177,6 +179,18 @@ public partial class ChannelService {
             }
 
             session.Guild.UpdateRank(update.RequestorName, update.RankId, update.Name, (GuildPermission) update.Permission);
+        }
+
+        return new GuildResponse();
+    }
+
+    private GuildResponse UpdateGuildFocus(IEnumerable<long> receiverIds, GuildRequest.Types.UpdateFocus update) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Guild.UpdateFocus(update.RequestorName, update.Listed, (GuildFocus) update.Focus);
         }
 
         return new GuildResponse();

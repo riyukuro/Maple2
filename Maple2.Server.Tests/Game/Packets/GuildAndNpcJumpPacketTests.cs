@@ -59,6 +59,59 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CSearchGuildJoin::ReadStream after CGuildManager::OnPacketSearchResults' count and per-entry byte.
+    [Test]
+    public void ListGuilds_WritesWhatTheClientReads() {
+        var entry = new GuildSearchEntry(20, "Guild", "emblem", 7, 4500, 31, 32, "Leader");
+        ByteWriter writer = GuildPacket.ListGuilds([(entry, 60)]);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(87));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadLong(), Is.EqualTo(20));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Guild"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("emblem"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(7)); // members
+        Assert.That(reader.ReadInt(), Is.EqualTo(60)); // capacity
+        Assert.That(reader.ReadInt(), Is.EqualTo(4500)); // experience
+        Assert.That(reader.ReadLong(), Is.EqualTo(31));
+        Assert.That(reader.ReadLong(), Is.EqualTo(32));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Leader"));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    [Test]
+    public void ListGuilds_EmptyIsOnlyTheCount() {
+        ByteWriter writer = GuildPacket.ListGuilds([]);
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4));
+    }
+
+    // CGuildManager::FUN_1413bf2a0 (own reply) and FUN_1413c1c50 (to the members).
+    [Test]
+    public void FocusPackets_AreAByteAndAnInt() {
+        ByteWriter writer = GuildPacket.UpdateFocus(false, GuildFocus.Dungeons | GuildFocus.Weekends);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(68));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(8 | 1024));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+
+        writer = GuildPacket.NotifyUpdateFocus("Leader", true, GuildFocus.Social);
+        reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(30));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Leader"));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     [Test]
     public void NpcJump_RelativeIsAByteAndOnePoint() {
         var writer = new ByteWriter();

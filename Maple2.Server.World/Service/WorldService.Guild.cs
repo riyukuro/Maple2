@@ -44,6 +44,8 @@ public partial class WorldService {
                 return Task.FromResult(UpdateGuildPoster(request.RequestorId, request.UpdatePoster));
             case GuildRequest.GuildOneofCase.UpdateRank:
                 return Task.FromResult(UpdateGuildRank(request.RequestorId, request.UpdateRank));
+            case GuildRequest.GuildOneofCase.UpdateFocus:
+                return Task.FromResult(UpdateGuildFocus(request.RequestorId, request.UpdateFocus));
             default:
                 return Task.FromResult(new GuildResponse { Error = (int) GuildError.s_guild_err_none });
         }
@@ -218,6 +220,19 @@ public partial class WorldService {
         return new GuildResponse { GuildId = rank.GuildId };
     }
 
+    private GuildResponse UpdateGuildFocus(long requestorId, GuildRequest.Types.UpdateFocus focus) {
+        if (!guildLookup.TryGet(focus.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.UpdateFocus(requestorId, focus.Listed, focus.Focus);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = focus.GuildId };
+    }
+
     private GuildResponse UpdateGuildEmblem(long requestorId, GuildRequest.Types.UpdateEmblem emblem) {
         if (!guildLookup.TryGet(emblem.GuildId, out GuildManager? manager)) {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
@@ -252,6 +267,7 @@ public partial class WorldService {
             Notice = guild.Notice,
             CreationTime = guild.CreationTime,
             Focus = (int) guild.Focus,
+            Listed = guild.Listed,
             Experience = guild.Experience,
             Funds = guild.Funds,
             HouseRank = guild.HouseRank,

@@ -359,12 +359,12 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter NotifyUpdateFocus(string requestorName, bool toggle, GuildFocus focus) {
+    public static ByteWriter NotifyUpdateFocus(string requestorName, bool listed, GuildFocus focus) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.NotifyUpdateFocus);
         pWriter.WriteUnicodeString(requestorName);
-        pWriter.WriteBool(toggle);
-        pWriter.Write<GuildFocus>(focus);
+        pWriter.WriteBool(listed);
+        pWriter.WriteInt((int) focus);
 
         return pWriter;
     }
@@ -608,11 +608,12 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter UpdateFocus(bool toggle, GuildFocus focus) {
+    // CGuildManager::FUN_1413bf2a0: the listed byte, then the focus.
+    public static ByteWriter UpdateFocus(bool listed, GuildFocus focus) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.UpdateFocus);
-        pWriter.WriteBool(toggle);
-        pWriter.Write<GuildFocus>(focus);
+        pWriter.WriteBool(listed);
+        pWriter.WriteInt((int) focus);
 
         return pWriter;
     }
@@ -720,19 +721,24 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter ListGuilds(ICollection<Guild> guilds) {
+    // CGuildManager::OnPacketSearchResults, then CSearchGuildJoin::ReadStream per entry: id, name, emblem,
+    // the trophy triple, member count, capacity, experience (the list shows the level it gives), the leader's
+    // account and character ids and name. A count of 0 makes the client show its "no guild found" box.
+    public static ByteWriter ListGuilds(ICollection<(GuildSearchEntry Entry, int Capacity)> guilds) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.ListGuilds);
         pWriter.WriteInt(guilds.Count);
-        foreach (Guild guild in guilds) {
+        foreach ((GuildSearchEntry guild, int capacity) in guilds) {
             pWriter.WriteBool(true);
             pWriter.WriteLong(guild.Id);
             pWriter.WriteUnicodeString(guild.Name);
             pWriter.WriteUnicodeString(guild.Emblem);
-            pWriter.Write<AchievementInfo>(guild.AchievementInfo);
-            pWriter.WriteInt(guild.Members.Count);
-            pWriter.WriteInt(guild.Capacity);
-            pWriter.Write<GuildFocus>(guild.Focus);
+            pWriter.WriteInt(); // trophy: combat
+            pWriter.WriteInt(); // trophy: adventure
+            pWriter.WriteInt(); // trophy: lifestyle
+            pWriter.WriteInt(guild.MemberCount);
+            pWriter.WriteInt(capacity);
+            pWriter.WriteInt(guild.Experience);
             pWriter.WriteLong(guild.LeaderAccountId);
             pWriter.WriteLong(guild.LeaderCharacterId);
             pWriter.WriteUnicodeString(guild.LeaderName);

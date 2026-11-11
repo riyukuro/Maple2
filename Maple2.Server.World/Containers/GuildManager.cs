@@ -342,6 +342,38 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // CGuildManager::SendGuildMode68: sent by a member with the invite right (2). The search reads the
+    // database, so the change is written at once.
+    public GuildError UpdateFocus(long requestorId, bool listed, int focus) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+        GuildRank? rank = Guild.Ranks.ElementAtOrDefault(requestor.Rank);
+        if (rank == null || !rank.Permission.HasFlag(GuildPermission.InviteMembers)) {
+            return GuildError.s_guild_err_no_authority;
+        }
+        if ((focus & ~GuildRules.FocusMask) != 0) {
+            return GuildError.s_guild_err_unknown;
+        }
+
+        Guild.Listed = listed;
+        Guild.Focus = (GuildFocus) focus;
+
+        using (GameStorage.Request db = GameStorage.Context()) {
+            db.SaveGuild(Guild);
+        }
+
+        Broadcast(new GuildRequest {
+            UpdateFocus = new GuildRequest.Types.UpdateFocus {
+                RequestorName = requestor.Name,
+                Listed = Guild.Listed,
+                Focus = (int) Guild.Focus,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     public GuildError UpdateEmblem(long requestorId, string emblem) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;

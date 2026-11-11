@@ -22,6 +22,8 @@ public class Guild : IByteSerializable {
     public long CreationTime;
     public AchievementInfo AchievementInfo;
     public GuildFocus Focus;
+    // CGuildInfo +0x154: the guild is listed in the guild search. A new CGuildInfo starts with 1.
+    public bool Listed = true;
     public int Experience;
     public int Funds;
     public int HouseRank;
@@ -75,8 +77,8 @@ public class Guild : IByteSerializable {
         writer.WriteInt();
         writer.WriteInt();
         writer.WriteInt();
-        writer.WriteByte(1);
-        writer.Write<GuildFocus>(Focus);
+        writer.WriteBool(Listed);
+        writer.WriteInt((int) Focus);
         writer.WriteInt(Experience);
         writer.WriteInt(Funds);
         writer.WriteInt(); // KMS 2525 CGuildInfo::Read (0x1404cdda0): event fund, read after the fund

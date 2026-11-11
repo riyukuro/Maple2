@@ -21,6 +21,29 @@ public static class GuildRules {
         return kind == NoticeKind && text.Length <= MaxNoticeLength;
     }
 
+    // Guild 68 (CGuildManager::SendGuildMode68): a byte, listed in the guild search or not, then the focus bits.
+    // The guild window sets the 16 bits of GuildFocus.
+    public const int FocusMask = 0xFFFF;
+
+    public static bool IsFocus(byte listed, int focus) {
+        return listed <= 1 && (focus & ~FocusMask) == 0;
+    }
+
+    // Guild 87 (CGuildManager::SendGuildMode87): the focus bits to look for, or all 31 bits when the player
+    // ticked none. Guild 88 (SendGuildMode88): a name of 2 characters or more.
+    public const int SearchAnyFocus = 0x7FFFFFFF;
+    public const int MinSearchNameLength = 2;
+    // The client reads any count and pages by 9. The cap is the server's own.
+    public const int MaxSearchResults = 90;
+
+    public static bool IsSearchFocus(int focus) {
+        return focus == SearchAnyFocus || (focus != 0 && (focus & ~FocusMask) == 0);
+    }
+
+    public static bool IsSearchName(string name) {
+        return name.Length >= MinSearchNameLength && name.Length <= 50;
+    }
+
     // The master keeps rank 0 until the master changes.
     public static bool CanChangeRankOf(byte memberRank) {
         return memberRank != MasterRank;

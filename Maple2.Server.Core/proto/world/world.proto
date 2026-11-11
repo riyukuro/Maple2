@@ -178,6 +178,7 @@ message GuildInfo {
   int32 funds = 8;
   int32 house_rank = 9;
   int32 house_theme = 10;
+  bool listed = 17;
 
   repeated Member members = 11;
   repeated Rank ranks = 12;
@@ -241,6 +242,11 @@ message GuildRequest {
     string name = 3;
     int32 permission = 4;
   }
+  message UpdateFocus {
+    int64 guild_id = 1;
+    bool listed = 2;
+    int32 focus = 3;
+  }
   message UpdateEmblem {
     int64 guild_id = 1;
     string emblem = 2;
@@ -269,6 +275,7 @@ message GuildRequest {
     UpdateEmblem update_emblem = 13;
     UpdatePoster update_poster = 14;
     UpdateRank update_rank = 15;
+    UpdateFocus update_focus = 16;
   }
 }
 

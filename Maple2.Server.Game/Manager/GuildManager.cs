@@ -98,6 +98,7 @@ public class GuildManager : IDisposable {
             Notice = info.Notice,
             CreationTime = info.CreationTime,
             Focus = (GuildFocus) info.Focus,
+            Listed = info.Listed,
             Experience = info.Experience,
             Funds = info.Funds,
             HouseRank = info.HouseRank,
@@ -283,6 +284,18 @@ public class GuildManager : IDisposable {
         rank.Permission = permission;
         // CGuildManager::OnPacketGradeUpdated: who changed it, then the rank; it refreshes the members of that rank.
         session.Send(GuildPacket.NotifyUpdateRank(new InterfaceText(requestorName), rank));
+        return true;
+    }
+
+    public bool UpdateFocus(string requestorName, bool listed, GuildFocus focus) {
+        if (Guild == null) {
+            return false;
+        }
+
+        Guild.Listed = listed;
+        Guild.Focus = focus;
+        // CGuildManager::FUN_1413c1c50: who changed it, the listed byte, the focus. It only stores the two.
+        session.Send(GuildPacket.NotifyUpdateFocus(requestorName, listed, focus));
         return true;
     }
 

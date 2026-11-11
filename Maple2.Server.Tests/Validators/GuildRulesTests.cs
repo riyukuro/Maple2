@@ -93,4 +93,30 @@ public class GuildRulesTests {
         Assert.That(GuildRules.CanChangeRankOf(1), Is.True);
         Assert.That(GuildRules.CanChangeRankOf(5), Is.True);
     }
+
+    [TestCase((byte) 0, 0, true)]
+    [TestCase((byte) 1, 0xFFFF, true)]
+    [TestCase((byte) 2, 1, false)]
+    [TestCase((byte) 1, 0x10000, false)]
+    [TestCase((byte) 1, -1, false)]
+    public void FocusIsAListedFlagAndSixteenBits(byte listed, int focus, bool expected) {
+        Assert.That(GuildRules.IsFocus(listed, focus), Is.EqualTo(expected));
+    }
+
+    [TestCase(0x7FFFFFFF, true)]
+    [TestCase(1, true)]
+    [TestCase(0xFFFF, true)]
+    [TestCase(0, false)]
+    [TestCase(0x10000, false)]
+    [TestCase(-1, false)]
+    public void SearchFocusIsSomeFocusBitsOrAll(int focus, bool expected) {
+        Assert.That(GuildRules.IsSearchFocus(focus), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void SearchNameNeedsTwoCharacters() {
+        Assert.That(GuildRules.IsSearchName("a"), Is.False);
+        Assert.That(GuildRules.IsSearchName("ab"), Is.True);
+        Assert.That(GuildRules.IsSearchName(new string('a', 51)), Is.False);
+    }
 }

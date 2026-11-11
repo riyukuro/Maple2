@@ -13,6 +13,7 @@ internal class Guild {
     public string Emblem { get; set; } = string.Empty;
     public string Notice { get; set; } = string.Empty;
     public GuildFocus Focus { get; set; }
+    public bool Listed { get; set; } = true;
     public int Experience { get; set; }
     public int Funds { get; set; }
     public int HouseRank { get; set; }
@@ -35,6 +36,7 @@ internal class Guild {
             Emblem = other.Emblem,
             Notice = other.Notice,
             Focus = other.Focus,
+            Listed = other.Listed,
             Experience = other.Experience,
             Funds = other.Funds,
             HouseRank = other.HouseRank,
@@ -69,6 +71,8 @@ internal class Guild {
         builder.Property(guild => guild.Buffs).HasJsonConversion();
         builder.Property(guild => guild.Posters).HasJsonConversion();
         builder.Property(guild => guild.Npcs).HasJsonConversion();
+        // rows from before the column are listed; the value is always written on insert
+        builder.Property(guild => guild.Listed).HasDefaultValue(true).ValueGeneratedNever();
 
         builder.OneToOne<Guild, Character>()
             .HasForeignKey<Guild>(guild => guild.LeaderId);

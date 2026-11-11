@@ -664,9 +664,39 @@ public class GuildHandler : PacketHandler<GameSession> {
     private const int MaxRankPermission = 4095;
     private const int MaxRankNameLength = 15;
 
+    // CGuildManager::SendGuildMode68: a byte, listed in the guild search or not, then the focus bits. The client
+    // sends it from a member with the invite right (2) when one of the two changed.
     private void HandleUpdateFocus(GameSession session, IByteReader packet) {
-        packet.ReadByte();
-        var focus = packet.Read<GuildFocus>();
+        byte listed = packet.ReadByte();
+        int focus = packet.ReadInt();
+        if (session.Guild.Guild == null || !GuildRules.IsFocus(listed, focus)) {
+            return;
+        }
+
+        if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.InviteMembers)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
+            return;
+        }
+
+        try {
+            var request = new GuildRequest {
+                RequestorId = session.CharacterId,
+                UpdateFocus = new GuildRequest.Types.UpdateFocus {
+                    GuildId = session.Guild.Id,
+                    Listed = listed != 0,
+                    Focus = focus,
+                },
+            };
+
+            GuildResponse response = World.Guild(request);
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Send(GuildPacket.UpdateFocus(listed != 0, (GuildFocus) focus));
+        } catch (RpcException) { /* ignored */ }
     }
 
     private void HandleSendMail(GameSession session, IByteReader packet) {
@@ -697,13 +727,39 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     }
 
+    // CGuildManager::SendGuildMode87 (CGuildJoinRequestSchCond): the focus bits, all 31 when none is ticked,
+    // then an int the client always sets to 1. Sent only by a player without a guild.
     private void HandleSearchGuilds(GameSession session, IByteReader packet) {
-        var focus = packet.Read<GuildFocus>();
+        int focus = packet.ReadInt();
         packet.ReadInt(); // 1
+        if (session.Guild.Guild != null || !GuildRules.IsSearchFocus(focus)) {
+            return;
+        }
+
+        SendSearchResult(session, focus == GuildRules.SearchAnyFocus ? 0 : focus, string.Empty);
     }
 
+    // CGuildManager::SendGuildMode88: a name of 2 characters or more, from a player without a guild.
     private void HandleSearchGuildName(GameSession session, IByteReader packet) {
         string guildName = packet.ReadUnicodeString();
+        if (session.Guild.Guild != null || !GuildRules.IsSearchName(guildName)) {
+            return;
+        }
+
+        SendSearchResult(session, 0, guildName);
+    }
+
+    private void SendSearchResult(GameSession session, int focusMask, string name) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        IList<GuildSearchEntry> found = db.SearchGuilds(focusMask, name, GuildRules.MaxSearchResults);
+        session.Send(GuildPacket.ListGuilds(found.Select(entry => (entry, CapacityAt(entry.Experience))).ToList()));
+    }
+
+    // The capacity of the guild level the experience gives, as GuildManager.UpdateProperties picks it.
+    private int CapacityAt(int experience) {
+        return TableMetadata.GuildTable.Properties
+            .OrderBy(entry => entry.Value.Experience)
+            .MinBy(entry => entry.Value.Experience > experience).Value.Capacity;
     }
 
     private void HandleUseBuff(GameSession session, IByteReader packet) {

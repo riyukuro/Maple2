@@ -107,6 +107,11 @@ message GuildRequest {
     string name = 3;
     int32 permission = 4;
   }
+  message UpdateFocus {
+    string requestor_name = 1;
+    bool listed = 2;
+    int32 focus = 3;
+  }
   message UpdateEmblem {
     string requestor_name = 1;
     string emblem = 2;
@@ -133,6 +138,7 @@ message GuildRequest {
     UpdateEmblem update_emblem = 11;
     UpdatePoster update_poster = 12;
     UpdateRank update_rank = 13;
+    UpdateFocus update_focus = 14;
   }
 }
 

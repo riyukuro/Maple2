@@ -656,6 +656,10 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("LeaderId")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("Listed")
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -1350,7 +1354,6 @@ namespace Maple2.Server.World.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("Item")
-                        .IsRequired()
                         .HasColumnType("json");
 
                     b.Property<int>("StockPurchased")
