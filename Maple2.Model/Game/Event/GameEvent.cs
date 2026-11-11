@@ -16,6 +16,11 @@ public class GameEvent : IByteSerializable {
         Metadata = metadata;
     }
 
+    // The client builds each event by class name (GameEventManagerCli::Create looks up "GameEvent{name}Cli", then
+    // "GameEvent{name}") and drops the rest of the list when the name is unknown. These types have no client class.
+    public bool SentToClient => Metadata.Data is not (NewUser or ReturnUserCandidate or ActiveUser
+        or MapleSurvivalOpenPeriod or ShutdownMapleSurvival);
+
     public bool IsActive() {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         if (Metadata.StartTime > now) {

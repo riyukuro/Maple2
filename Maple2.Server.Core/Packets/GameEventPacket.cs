@@ -16,8 +16,9 @@ public static class GameEventPacket {
     public static ByteWriter Load(params GameEvent[] gameEvents) {
         var pWriter = Packet.Of(SendOp.GameEvent);
         pWriter.Write<Command>(Command.Load);
-        pWriter.WriteInt(gameEvents.Length);
-        foreach (GameEvent gameEvent in gameEvents) {
+        GameEvent[] sent = gameEvents.Where(gameEvent => gameEvent.SentToClient).ToArray();
+        pWriter.WriteInt(sent.Length);
+        foreach (GameEvent gameEvent in sent) {
             pWriter.WriteClass<GameEvent>(gameEvent);
         }
 
@@ -27,8 +28,9 @@ public static class GameEventPacket {
     public static ByteWriter Add(params GameEvent[] gameEvents) {
         var pWriter = Packet.Of(SendOp.GameEvent);
         pWriter.Write<Command>(Command.Add);
-        pWriter.WriteInt(gameEvents.Length);
-        foreach (GameEvent gameEvent in gameEvents) {
+        GameEvent[] sent = gameEvents.Where(gameEvent => gameEvent.SentToClient).ToArray();
+        pWriter.WriteInt(sent.Length);
+        foreach (GameEvent gameEvent in sent) {
             pWriter.WriteClass<GameEvent>(gameEvent);
         }
 
@@ -49,8 +51,9 @@ public static class GameEventPacket {
     public static ByteWriter Reload(params GameEvent[] gameEvents) {
         var pWriter = Packet.Of(SendOp.GameEvent);
         pWriter.Write<Command>(Command.Reload);
-        pWriter.WriteInt(gameEvents.Length);
-        foreach (GameEvent gameEvent in gameEvents) {
+        GameEvent[] sent = gameEvents.Where(gameEvent => gameEvent.SentToClient).ToArray();
+        pWriter.WriteInt(sent.Length);
+        foreach (GameEvent gameEvent in sent) {
             pWriter.WriteClass<GameEvent>(gameEvent);
         }
 
