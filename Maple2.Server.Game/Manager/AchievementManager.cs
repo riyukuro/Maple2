@@ -65,6 +65,9 @@ public sealed class AchievementManager {
             if (!grade.Condition.Check(session, targetString, targetLong, codeString, codeLong)) {
                 continue;
             }
+            if (achievement != null && !Advances(conditionType, achievement.Counter, count)) {
+                continue;
+            }
 
             if (achievement == null) {
                 achievement = new Achievement(metadata) {
@@ -83,6 +86,15 @@ public sealed class AchievementManager {
                 session.Send(AchievementPacket.Update(achievement));
             }
         }
+    }
+
+    /// <summary>
+    /// Whether a count moves a trophy that the player already has. The gear score counter keeps the highest score
+    /// (RankUp), and every stats refresh reports the score (StatsManager.Refresh, also on each buff with stats), so a
+    /// score at or below the counter changes nothing and sends no Update. Other conditions add the count.
+    /// </summary>
+    public static bool Advances(ConditionType conditionType, long counter, long count) {
+        return conditionType is not ConditionType.item_gear_score || count > counter;
     }
 
     /// <summary>

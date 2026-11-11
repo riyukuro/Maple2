@@ -58,4 +58,13 @@ public class AchievementDebugTests {
         achievement.CurrentGrade = 2;
         Assert.That(AchievementManager.RewardDue(achievement), Is.True);
     }
+
+    // A gear score at or below the kept score sends nothing (a stats refresh on each buff re-reported it).
+    [Test]
+    public void GearScoreAdvancesOnlyWhenHigher() {
+        Assert.That(AchievementManager.Advances(ConditionType.item_gear_score, 400, 400), Is.False);
+        Assert.That(AchievementManager.Advances(ConditionType.item_gear_score, 400, 350), Is.False);
+        Assert.That(AchievementManager.Advances(ConditionType.item_gear_score, 400, 401), Is.True);
+        Assert.That(AchievementManager.Advances(ConditionType.map, 400, 1), Is.True);
+    }
 }
