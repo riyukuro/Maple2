@@ -54,7 +54,10 @@ public class SkillPoint : IByteSerializable {
         public void WriteTo(IByteWriter writer) {
             writer.WriteInt(Ranks.Count);
             foreach ((short rank, int points) in Ranks) {
-                writer.WriteShort(rank);
+                // Ranks are stored 0 (base job) and 1 (awakening), as chapter book
+                // and trophy rewards give them. The client keys its points by job
+                // rank (job code % 10): 1 for the base job, 2 for awakening.
+                writer.WriteShort((short) (rank + 1));
                 writer.WriteInt(points);
             }
         }
