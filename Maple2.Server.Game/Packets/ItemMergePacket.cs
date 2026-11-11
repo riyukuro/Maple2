@@ -12,11 +12,22 @@ namespace Maple2.Server.Game.Packets;
 public static class ItemMergePacket {
     private enum Command : byte {
         // Client 2525 CSceneStateGame::OnItemFusion (scenestategame.cpp:5906).
+        Info = 0,
         Stage = 1,
         Select = 2,
         Empower = 5,
         Error = 5, // Same as Empower
         Remove = 6,
+    }
+
+    // Client reader: uiitemmergeoptiondialog.cpp:799. The byte after the mode is 0 when no merge
+    // result waits for the player's choice; the dialog then lets an item be picked.
+    public static ByteWriter NoPendingChoice() {
+        var pWriter = Packet.Of(SendOp.ItemMerge);
+        pWriter.Write<Command>(Command.Info);
+        pWriter.WriteByte(0);
+
+        return pWriter;
     }
 
     public static ByteWriter Stage(ICollection<long> crystals) {

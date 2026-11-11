@@ -1,6 +1,7 @@
 ﻿using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -9,6 +10,7 @@ public class ItemMergeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.ItemMerge;
 
     private enum Command : byte {
+        Info = 0,
         Stage = 1,
         SelectCrystal = 2,
         Empower = 3,
@@ -20,6 +22,9 @@ public class ItemMergeHandler : FieldPacketHandler {
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
+            case Command.Info:
+                HandleInfo(session);
+                break;
             case Command.Stage:
                 HandleStage(session, packet);
                 break;
@@ -39,6 +44,13 @@ public class ItemMergeHandler : FieldPacketHandler {
                 HandleSelectMaterial(session, packet);
                 break;
         }
+    }
+
+    // Client UIItemMergeOptionDialog::RequestInfo, sent when the dialog has loaded (no payload).
+    // The dialog takes no item until the answer arrives. Empower applies its result at once here,
+    // so there is never an option left to choose: the answer is always "nothing pending".
+    private static void HandleInfo(GameSession session) {
+        session.Send(ItemMergePacket.NoPendingChoice());
     }
 
     private void HandleStage(GameSession session, IByteReader packet) {
