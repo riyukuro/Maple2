@@ -1,8 +1,10 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
@@ -141,6 +143,19 @@ public sealed class PetManager : IDisposable {
     }
 
     public void Rename(string name) {
+        if (!PetRules.IsName(name) || name == ItemPet.Name) {
+            return;
+        }
+
+        int cost = PetRules.RenameCost(ItemPet.RenameRemaining, session.ServerTableMetadata.ConstantsTable.PetChangeNameMerat);
+        if (cost > 0) {
+            if (session.Currency.CanAddMeret(-cost) != -cost) {
+                session.Send(PetPacket.Error(PetError.s_err_lack_merat_ask));
+                return;
+            }
+            session.Currency.Meret -= cost;
+        }
+
         ItemPet.Name = name;
         ItemPet.RenameRemaining = 0;
 
