@@ -219,7 +219,11 @@ public class RequestCubeHandler : FieldPacketHandler {
             case Command.HomeSummon:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {First}, {Second}", command, session.CharacterId, packet.ReadUnicodeString(), packet.ReadUnicodeString());
                 break;
-            case Command.SetBuildBudget: // meso, merat
+            // UIHomeInfoDialog::FUN_1412c7ff0 (uihomeinfodialog.cpp:776) and the user command SetUgcMapBalance
+            // (usercommandcli.cpp:1145): meso, merat. The balance box sits on a panel the client shows only after
+            // ResponseCube 0x35 named the home's owner (scenestategame.cpp:10592), which the server never sends.
+            // No budget is stored and the answer's error byte has no text for this: read and logged.
+            case Command.SetBuildBudget:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: meso {Meso}, merat {Merat}", command, session.CharacterId, packet.ReadLong(), packet.ReadLong());
                 break;
             case Command.AddBuildPermission: // character name
