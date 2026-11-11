@@ -13,6 +13,7 @@ internal static class PropertyBuilderExtensions {
 
     static PropertyBuilderExtensions() {
         Options.Converters.Add(new Vector3Converter());
+        Options.Converters.Add(new SpecialOptionConverter());
     }
 
     public static PropertyBuilder<TProperty> HasJsonConversion<TProperty>(this PropertyBuilder<TProperty> builder) {
