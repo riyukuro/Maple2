@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Maple2.Server.Game.Util;
 using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -40,7 +41,11 @@ public class ChannelHandler : PacketHandler<GameSession> {
             };
 
             MigrateOutResponse response = World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Channel change", response.IpAddress, response.Port);
+                session.Send(NoticePacket.MessageBox(new InterfaceText("Channel is unavailable, close the channel list and try again.")));
+                return;
+            }
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, session.Field?.MapId ?? 0));
             session.State = SessionState.ChangeChannel;
         } catch (RpcException ex) {

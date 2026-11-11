@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using Maple2.Server.Core.Helpers;
 using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
@@ -99,7 +100,12 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             Logger.Information("Logging in to game as {Request}", request);
 
             MigrateOutResponse response = World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!EndpointHelper.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Login to game", response.IpAddress, response.Port);
+                session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Invalid game server address"));
+                session.Disconnect();
+                return;
+            }
             session.Send(MigrationPacket.LoginToGame(endpoint, response.Token, character.MapId));
             session.Disconnect();
         } catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable) {

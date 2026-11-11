@@ -5,6 +5,7 @@ using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Server.Core.Helpers;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -20,12 +21,7 @@ public static class PlayerWarpUtil {
 
     // The address a channel change goes to; false for a text that is no IP address or a port outside 1-65535.
     public static bool TryEndpoint(string? address, int port, [NotNullWhen(true)] out IPEndPoint? endpoint) {
-        endpoint = null;
-        if (port is < 1 or > IPEndPoint.MaxPort || !IPAddress.TryParse(address, out IPAddress? ip)) {
-            return false;
-        }
-        endpoint = new IPEndPoint(ip, port);
-        return true;
+        return EndpointHelper.TryEndpoint(address, port, out endpoint);
     }
 
     /// <summary>

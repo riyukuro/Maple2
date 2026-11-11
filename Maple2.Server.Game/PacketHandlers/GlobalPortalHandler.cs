@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Maple2.Server.Game.Util;
 using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -67,7 +68,11 @@ public class GlobalPortal : FieldPacketHandler {
             };
 
             MigrateOutResponse response = World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Global portal", response.IpAddress, response.Port);
+                session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, eventResponse.GlobalPortalInfo.MapId));
             session.State = SessionState.ChangeMap;
         } catch (RpcException ex) {

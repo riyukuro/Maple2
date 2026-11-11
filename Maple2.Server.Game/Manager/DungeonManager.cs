@@ -690,7 +690,11 @@ public class DungeonManager {
             };
 
             MigrateOutResponse response = session.World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Dungeon lobby", response.IpAddress, response.Port);
+                session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, Metadata.LobbyFieldId));
             session.State = SessionState.ChangeMap;
         } catch (RpcException ex) {

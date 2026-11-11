@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Maple2.Server.Game.Util;
 using Grpc.Core;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -44,7 +45,11 @@ public class QuitHandler : PacketHandler<GameSession> {
             };
 
             MigrateOutResponse response = World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Quit to login", response.IpAddress, response.Port);
+                session.Send(MigrationPacket.GameToLoginError(s_move_err_default));
+                return;
+            }
             session.Send(MigrationPacket.GameToLogin(endpoint, response.Token));
         } catch (RpcException ex) {
             Logger.Error(ex, "MigrateOut failed for account={AccountId} char={CharacterId}",

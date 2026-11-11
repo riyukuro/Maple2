@@ -796,7 +796,11 @@ public sealed partial class GameSession : Core.Network.Session {
             };
 
             MigrateOutResponse response = World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Home planner", response.IpAddress, response.Port);
+                Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
             Send(MigrationPacket.GameToGame(endpoint, response.Token, Constant.DefaultHomeMapId));
             State = SessionState.ChangeMap;
             MigrationSave();
@@ -823,7 +827,11 @@ public sealed partial class GameSession : Core.Network.Session {
             };
 
             MigrateOutResponse response = World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
+            if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Field migration", response.IpAddress, response.Port);
+                Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
             Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
 
             if (isInstanced) {
