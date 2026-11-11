@@ -35,7 +35,9 @@ public class InteractObjectHandler : FieldPacketHandler {
                     return;
                 }
 
-                // Not handled: the client's object create dialog. Read what it writes.
+                // Not handled: the client's object create dialog (uiobjectcreatedialog.cpp:156), a debug window
+                // that asks for an object of a kind with four strings, a count, a position and a rotation.
+                // GM accounts only (above), then read and logged.
                 int kind = packet.ReadInt();
                 packet.ReadUnicodeString();
                 packet.ReadUnicodeString();
