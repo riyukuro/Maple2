@@ -91,8 +91,14 @@ public sealed class MarriageManager {
             return;
         }
 
+        // Only this player's column is written, and both messages are then read back: the copy held here is
+        // stale when the partner changed theirs on another channel.
         using (GameStorage.Request db = session.GameStorage.Context()) {
-            db.SaveMarriage(Marriage);
+            db.SaveCoupleMessage(Marriage.Id, session.CharacterId, CoupleMessageRule.Clean(message));
+            Marriage? fresh = db.GetMarriage(session.CharacterId);
+            if (fresh != null) {
+                CoupleMessageRule.Merge(Marriage, fresh);
+            }
         }
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
 

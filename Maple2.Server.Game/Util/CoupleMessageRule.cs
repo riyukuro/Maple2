@@ -27,4 +27,18 @@ public static class CoupleMessageRule {
         }
         return false;
     }
+
+    // Takes both messages from a freshly loaded copy, matched by character id (the two copies may list the partners in either order).
+    public static void Merge(Marriage marriage, Marriage fresh) {
+        foreach (MarriagePartner partner in new[] { marriage.Partner1, marriage.Partner2 }) {
+            if (partner.CharacterId == 0) {
+                continue;
+            }
+            if (partner.CharacterId == fresh.Partner1.CharacterId) {
+                partner.Message = fresh.Partner1.Message;
+            } else if (partner.CharacterId == fresh.Partner2.CharacterId) {
+                partner.Message = fresh.Partner2.Message;
+            }
+        }
+    }
 }
