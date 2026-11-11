@@ -339,6 +339,23 @@ public class DungeonMatchQueueTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
     }
 
+    // rv40 MAJOR 3: the kind comes with the party World sends, so a Load during a search writes its bit.
+    [Test]
+    public void PartyInfoCarriesTheSearchKindIntoLoad() {
+        var party = new Maple2.Model.Game.Party.Party(5, 1, 2, "a");
+        Maple2.Server.Game.Manager.PartyManager.ApplyInfo(party, new Maple2.Server.World.Service.PartyInfo {
+            DungeonId = 7, DungeonSet = true, DungeonRoomId = 9, DungeonMatchKind = 4,
+        });
+        Assert.That((party.DungeonMatchKind, party.DungeonId, party.DungeonSet, party.DungeonLobbyRoomId), Is.EqualTo(((byte) 4, 7, true, 9)));
+        ByteWriter load = PartyPacket.Load(party);
+        // The tail is the dungeon id, the searching bits, a 0 byte and no party search listing.
+        Assert.That(load.Buffer[load.Length - 3], Is.EqualTo(16));
+
+        Maple2.Server.Game.Manager.PartyManager.ApplyInfo(party, new Maple2.Server.World.Service.PartyInfo());
+        load = PartyPacket.Load(party);
+        Assert.That(load.Buffer[load.Length - 3], Is.EqualTo(0));
+    }
+
     [Test]
     public void MatchRoomsAsGetMatchRooms() {
         DungeonRoomMetadata[] rooms = [

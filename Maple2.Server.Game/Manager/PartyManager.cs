@@ -122,10 +122,8 @@ public class PartyManager : IDisposable {
 
         var party = new Party(info.Id, leader) {
             CreationTime = info.CreationTime,
-            DungeonSet = info.DungeonSet,
-            DungeonId = info.DungeonId,
-            DungeonLobbyRoomId = info.DungeonRoomId,
         };
+        ApplyInfo(party, info);
         Party = party;
         foreach (PartyMember member in members) {
             party.Members.TryAdd(member.CharacterId, member);
@@ -155,6 +153,15 @@ public class PartyManager : IDisposable {
         }
 
         return true;
+    }
+
+    // The party state World sends with the party: the dungeon set and the dungeon match search, so a member who
+    // loads the party (relog, channel change, invite) during a search sees it in the Load bits.
+    public static void ApplyInfo(Party party, PartyInfo info) {
+        party.DungeonSet = info.DungeonSet;
+        party.DungeonId = info.DungeonId;
+        party.DungeonLobbyRoomId = info.DungeonRoomId;
+        party.DungeonMatchKind = (byte) info.DungeonMatchKind;
     }
 
     public void RemoveParty() {

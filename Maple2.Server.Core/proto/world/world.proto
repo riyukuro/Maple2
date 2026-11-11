@@ -395,6 +395,8 @@ message PartyInfo {
   optional bool require_approval = 12;
   repeated Member members = 13;
   optional PartySearchInfo party_search = 14;
+  // The kind of the party's dungeon match search (Party 32/33), 0 when not searching.
+  int32 dungeon_match_kind = 15;
 }
 
 message PartyInfoRequest {

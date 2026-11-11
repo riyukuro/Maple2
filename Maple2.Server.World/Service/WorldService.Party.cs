@@ -354,8 +354,9 @@ public partial class WorldService {
         });
     }
 
-    private static PartyInfo ToPartyInfo(Party party) {
+    private PartyInfo ToPartyInfo(Party party) {
         return new PartyInfo {
+            DungeonMatchKind = partyLookup.DungeonMatch.KindOf(party.Id),
             Id = party.Id,
             CreationTime = party.CreationTime,
             LeaderAccountId = party.LeaderAccountId,
