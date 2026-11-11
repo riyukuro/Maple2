@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -51,6 +52,11 @@ public class ItemLockHandler : FieldPacketHandler {
     private static void HandleStage(GameSession session, IByteReader packet) {
         bool unlock = packet.ReadBool(); // false - lock|true - unlock
         long itemUid = packet.ReadLong();
+
+        Item? item = session.Item.Inventory.Get(itemUid);
+        if (!ItemLockRules.CanStage(unlock, item != null, item?.IsLocked ?? false, session.ItemLockStaging.Contains(itemUid))) {
+            return;
+        }
 
         for (short i = 0; i < session.ItemLockStaging.Length; i++) {
             if (session.ItemLockStaging[i] != default) {
