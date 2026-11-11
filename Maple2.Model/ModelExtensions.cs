@@ -47,35 +47,36 @@ public static class ModelExtensions {
         };
     }
 
+    // The client's tab for an item (CItemData, itemdata.cpp FUN_14053e530), by the item's <property type>;
+    // every type it does not list goes to Misc. Where this server pack types items differently from the
+    // client's own item data, the client's type wins: pieces (functionTags "piece") are 27 there, 10/20 are
+    // 8 or 23 and 4/5 are 6 (FishingMusic), emotes 2/14 are 24 and 2/8 are 4 (Misc).
     public static InventoryType Inventory(this ItemMetadata metadata) {
-        if (metadata.Property.IsFragment) {
+        ItemMetadataProperty property = metadata.Property;
+        if (property.IsFragment) {
             return InventoryType.Fragment;
         }
-        return metadata.Property.Type switch {
-            0 => metadata.Property.SubType == 2 ? InventoryType.Consumable : InventoryType.Misc, // Unknown
-            1 => metadata.Property.IsSkin ? InventoryType.Outfit : InventoryType.Gear,
-            2 => metadata.Property.SubType == 2 ? InventoryType.Consumable : InventoryType.Misc,
+        if (property is { Type: 10, SubType: 20 } or { Type: 4, SubType: 5 }) {
+            return InventoryType.FishingMusic;
+        }
+        if (property is { Type: 2, SubType: 8 or 14 }) {
+            return InventoryType.Misc;
+        }
+        return property.Type switch {
+            1 => property.IsSkin ? InventoryType.Outfit : InventoryType.Gear,
+            2 => InventoryType.Consumable,
             3 => InventoryType.Quest,
-            4 => metadata.Property.SubType == 2 ? InventoryType.Consumable : InventoryType.Misc,
-            5 => InventoryType.Mount, // Air mount
-            6 => InventoryType.FishingMusic, // Furnishing shows up in FishingMusic
+            5 or 9 => InventoryType.Mount,
+            6 or 8 or 12 or 23 => InventoryType.FishingMusic,
             7 => InventoryType.Badge,
-            9 => InventoryType.Mount, // Ground mount
-            10 => metadata.Property.SubType != 20 ? InventoryType.Misc : InventoryType.FishingMusic,
             11 => InventoryType.Pets,
-            12 => InventoryType.FishingMusic, // Music Score
-            13 => InventoryType.Gemstone,
-            14 => InventoryType.Gemstone, // Gem dust
-            15 => InventoryType.Catalyst,
+            13 or 14 => InventoryType.Gemstone,
+            15 or 19 => InventoryType.Catalyst,
             16 => InventoryType.LifeSkill,
-            17 => (InventoryType) 8, // Tab 8
-            18 => InventoryType.Consumable,
-            19 => InventoryType.Catalyst,
             20 => InventoryType.Currency,
             21 => InventoryType.Lapenshard,
-            22 => InventoryType.Misc, // Blueprint
-            _ => throw new ArgumentException(
-                $"Unknown Tab for: {metadata.Property.Type},{metadata.Property.SubType}"),
+            27 => InventoryType.Fragment,
+            _ => InventoryType.Misc,
         };
     }
 
