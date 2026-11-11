@@ -46,6 +46,9 @@ public class WeddingHandler : FieldPacketHandler {
             case Command.ProposalReply:
                 HandleProposalReply(session, packet);
                 return;
+            case Command.CancelProposal:
+                HandleCancelProposal(session, packet);
+                return;
             case Command.ReserveHall:
                 HandleReserveHall(session, packet);
                 return;
@@ -130,6 +133,19 @@ public class WeddingHandler : FieldPacketHandler {
         if (error != WeddingError.none) {
             session.Send(WeddingPacket.Error(error));
             otherPlayer.Session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_decline_propose));
+        }
+    }
+
+    // The proposer closes the "proposed to" box before the answer (WeddingManager::OnProposeSentAnswer).
+    private static void HandleCancelProposal(GameSession session, IByteReader packet) {
+        if (session.Field is null) return;
+        long playerId = packet.ReadLong(); // character id of the player who got the proposal
+
+        session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_cancel_propose_to));
+        if (session.PlayerInfo.GetOrFetch(playerId, out PlayerInfo? playerInfo) &&
+            session.Field.TryGetPlayer(playerInfo.Name, out FieldPlayer? otherPlayer)) {
+            // Result 5 shows the withdrawn notice and steps the message box queue (WeddingManager::OnResult).
+            otherPlayer.Session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_cancel_propose_from));
         }
     }
 
