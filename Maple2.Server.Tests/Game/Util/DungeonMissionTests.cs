@@ -245,4 +245,36 @@ public class DungeonMissionTests {
         Assert.That(TriggerContext.ClearShowsResult("None"), Is.False);
         Assert.That(TriggerContext.ClearShowsResult(""), Is.True);
     }
+    // The results a room takes from a run of dungeon_clear / dungeon_fail; each taken Clear runs CompleteDungeon.
+    private static (DungeonState State, int Clears) Results(DungeonGroupType groupType, params DungeonState[] calls) {
+        DungeonState state = DungeonState.None;
+        int clears = 0;
+        foreach (DungeonState call in calls) {
+            if (!DungeonFieldManager.TakesResult(state, groupType)) {
+                continue;
+            }
+            state = call;
+            if (call == DungeonState.Clear) {
+                clears++;
+            }
+        }
+        return (state, clears);
+    }
+
+    [Test]
+    public void ChangeState_ARoomTakesOneResult() {
+        // Clear then Clear (a script with two clear states), dungeon_clear None then Clear, Clear then Fail.
+        Assert.That(Results(DungeonGroupType.normal, DungeonState.Clear, DungeonState.Clear), Is.EqualTo((DungeonState.Clear, 1)));
+        Assert.That(Results(DungeonGroupType.normal, DungeonState.Clear, DungeonState.Fail), Is.EqualTo((DungeonState.Clear, 1)));
+        Assert.That(Results(DungeonGroupType.normal, DungeonState.Fail, DungeonState.Clear), Is.EqualTo((DungeonState.Fail, 0)));
+        Assert.That(TriggerContext.ClearShowsResult("None"), Is.False);
+        Assert.That(Results(DungeonGroupType.normal, DungeonState.Clear), Is.EqualTo((DungeonState.Clear, 1)));
+    }
+
+    [Test]
+    public void ChangeState_ColosseumRunsAgainInTheRoom() {
+        // dungeon_clear None ends a run, the script starts over, and the next run ends with its own result.
+        Assert.That(Results(DungeonGroupType.colosseum, DungeonState.Clear, DungeonState.Clear), Is.EqualTo((DungeonState.Clear, 2)));
+        Assert.That(Results(DungeonGroupType.colosseum, DungeonState.Fail, DungeonState.Clear), Is.EqualTo((DungeonState.Clear, 1)));
+    }
 }

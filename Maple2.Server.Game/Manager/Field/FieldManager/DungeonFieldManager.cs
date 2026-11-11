@@ -6,10 +6,12 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Serilog;
 
 namespace Maple2.Server.Game.Manager.Field;
 
 public class DungeonFieldManager : FieldManager {
+    private readonly ILogger resultLogger = Log.Logger.ForContext<DungeonFieldManager>();
     public readonly DungeonRoomMetadata DungeonMetadata;
     public DungeonFieldManager? Lobby { get; init; }
     public readonly ConcurrentDictionary<int, DungeonFieldManager> RoomFields = [];
@@ -55,6 +57,10 @@ public class DungeonFieldManager : FieldManager {
     /// clear still counts, so a Colosseum run that ends after some rounds keeps them.
     /// </summary>
     public void ChangeState(DungeonState state, bool showResult = true) {
+        if (!TakesResult(DungeonRoomRecord.State, DungeonMetadata.GroupType)) {
+            resultLogger.Debug("Dungeon {DungeonId} already has its result {State}; {NewState} ignored", DungeonId, DungeonRoomRecord.State, state);
+            return;
+        }
         if (state == DungeonState.Clear && DungeonRoomRecord.State == DungeonState.None) {
             long seconds = (FieldTick - DungeonRoomRecord.StartTick) / 1000;
             foreach ((long characterId, List<DungeonMission> missions) in ScorePlayTime(DungeonRoomRecord, seconds)) {
@@ -132,6 +138,14 @@ public class DungeonFieldManager : FieldManager {
         }
         return changed;
     }
+
+    /// <summary>
+    /// A room takes one result: a later dungeon_clear or dungeon_fail changes nothing (no second result packet,
+    /// clear count or condition). The Colosseum is left out: its script goes back to its start after each end,
+    /// and a new run in the same room ends with its own clear or fail.
+    /// </summary>
+    public static bool TakesResult(DungeonState current, DungeonGroupType groupType) =>
+        current == DungeonState.None || groupType == DungeonGroupType.colosseum;
 
     /// <summary>PlayTime missions of every player of the room, scored at the clear. Returns the changed missions.</summary>
     public static Dictionary<long, List<DungeonMission>> ScorePlayTime(DungeonRoomRecord room, long seconds) {
