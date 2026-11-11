@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Numerics;
 using Grpc.Core;
 using Maple2.Model.Enum;
@@ -8,6 +9,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
+using Serilog;
 using MigrationType = Maple2.Server.World.Service.MigrationType;
 
 namespace Maple2.Server.Game.Util;
@@ -15,6 +17,16 @@ namespace Maple2.Server.Game.Util;
 public static class PlayerWarpUtil {
     // Vertical offset to prevent players from spawning inside the ground or other players
     private const float VERTICAL_SPAWN_OFFSET = 75f;
+
+    // The address a channel change goes to; false for a text that is no IP address or a port outside 1-65535.
+    public static bool TryEndpoint(string? address, int port, [NotNullWhen(true)] out IPEndPoint? endpoint) {
+        endpoint = null;
+        if (port is < 1 or > IPEndPoint.MaxPort || !IPAddress.TryParse(address, out IPAddress? ip)) {
+            return false;
+        }
+        endpoint = new IPEndPoint(ip, port);
+        return true;
+    }
 
     /// <summary>
     /// Moves the player to where the target player stands: same room, another room on this channel, or another channel.
@@ -68,10 +80,15 @@ public static class PlayerWarpUtil {
             };
 
             MigrateOutResponse response = session.World.MigrateOut(request);
-            var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
-            session.Send(MigrationPacket.GameToGame(endpoint, response.Token, playerInfo.MapId));
-            session.State = SessionState.ChangeMap;
-            moved = true;
+            if (TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
+                session.Send(MigrationPacket.GameToGame(endpoint, response.Token, playerInfo.MapId));
+                session.State = SessionState.ChangeMap;
+                moved = true;
+            } else {
+                // Refused like a failed call: the player is told and nothing is thrown at the caller.
+                Log.Error("GoToPlayer: channel {Channel} answered with the address '{Address}' port {Port}", playerInfo.Channel, response.IpAddress, response.Port);
+                session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+            }
         } catch (RpcException ex) {
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             session.Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
