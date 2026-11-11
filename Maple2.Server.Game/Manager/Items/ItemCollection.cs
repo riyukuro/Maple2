@@ -345,6 +345,8 @@ public class ItemCollection : IEnumerable<Item> {
                && item.Rarity == stack.Rarity
                && item.Amount < item.Metadata.Property.SlotMax
                && Equals(item.Transfer, stack.Transfer)
+               // A merge keeps one item's lock state, so a locked and an unlocked item never merge.
+               && item.IsLocked == stack.IsLocked && item.UnlockTime == stack.UnlockTime
                && item.ExpiryTime / 60 == stack.ExpiryTime / 60; // Expiry time is in seconds, convert to minutes
     }
 

@@ -537,7 +537,8 @@ public class InventoryManager {
             }
 
             if (removeExpired) {
-                List<Item> toRemove = items.Where(item => item.IsExpired()).ToList();
+                // A locked item is kept even when expired: the lock is the player's guard against losing it.
+                List<Item> toRemove = items.Where(item => item.IsExpired() && !item.IsLocked).ToList();
                 foreach (Item item in toRemove) {
                     if (items.Remove(item.Uid, out Item? removed)) {
                         Discard(removed);

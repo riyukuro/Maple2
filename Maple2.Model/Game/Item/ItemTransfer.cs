@@ -71,10 +71,11 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
     public override bool Equals(object? obj) {
         if (ReferenceEquals(this, obj)) return true;
         if (!(obj is ItemTransfer other)) return false;
-        return Flag == other.Flag && Equals(Binding, other.Binding);
+        return Flag == other.Flag && RemainTrades == other.RemainTrades && RepackageCount == other.RepackageCount
+               && Equals(Binding, other.Binding);
     }
 
     public override int GetHashCode() {
-        return HashCode.Combine((int) Flag, Binding);
+        return HashCode.Combine((int) Flag, RemainTrades, RepackageCount, Binding);
     }
 }
