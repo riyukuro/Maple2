@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -19,7 +20,13 @@ public class TombstoneHandler : FieldPacketHandler {
             return;
         }
 
-        player.Tombstone.HitsRemaining -= (byte) hits;
+        // The count used to be cut to a byte and subtracted in a byte: a count above what was left wrapped around
+        // and filled the tombstone again, and 255 broke it in one packet.
+        if (!TombstoneRules.IsHit(hits, objectId, session.Player.ObjectId)) {
+            return;
+        }
+
+        player.Tombstone.HitsRemaining = TombstoneRules.AfterHit(player.Tombstone.HitsRemaining);
         session.ConditionUpdate(ConditionType.hit_tombstone);
     }
 }
