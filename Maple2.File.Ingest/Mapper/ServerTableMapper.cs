@@ -1,5 +1,6 @@
 ﻿using M2dXmlGenerator;
 using Maple2.Database.Extensions;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Ingest.Utils;
 using Maple2.File.IO;
 using Maple2.File.Parser;
@@ -45,8 +46,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     // The server pack, for the attributes the parser does not read.
     private readonly M2dReader xmlReader;
 
-    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null) {
+    // The drop table file (ServerDropTable): today's, or the original with MS2_ORIGINAL_DROP_TABLE.
+    private readonly string dropFile;
+
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false) {
         this.xmlReader = xmlReader;
+        dropFile = ServerDropTable.FileName(originalDropTable);
         this.playedReader = playedReader;
         parser = new ServerTableParser(xmlReader);
         this.clientReader = clientReader;
@@ -694,7 +699,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private IndividualDropItemTable ParseIndividualItemDropTable() {
         var results = new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>();
 
-        foreach ((int id, IndividualItemDrop dropBox) in parser.ParseIndividualItemDrop()) {
+        foreach ((int id, IndividualItemDrop dropBox) in ServerDropTable.Read(xmlReader, dropFile)) {
             var entries = new Dictionary<int, IndividualDropItemTable.Entry>();
 
             foreach (IndividualItemDrop.Group group in dropBox.group) {
@@ -755,6 +760,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
             results.Add(id, entries);
         }
+        Console.WriteLine($"individualItemDrop: {dropFile} read, {results.Count} boxes, {results.Values.Sum(box => box.Values.Sum(group => group.Items.Count))} rows after the locale and feature filter");
 
         // A played client of another version has no item data for some of the server's items; their rows are
         // left out (PlayedClientItems), and a box left with no rows goes.
