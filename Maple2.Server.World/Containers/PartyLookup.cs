@@ -182,13 +182,48 @@ public class PartyLookup : IDisposable {
         }
     });
 
-    // A member joined or left a party: a searching party's group takes the new count.
-    public void DungeonMatchResize(PartyManager manager) => DungeonMatchStep(() => {
+    // A member joined or left a party: a searching party's group takes the new count. A group still searching after
+    // it is put against the others as a new search is (rv44 MINOR 5): it joins a group at least its size that now
+    // holds it, else it pulls the smaller groups that now fit.
+    public void DungeonMatchResize(PartyManager manager, bool regroup = true) => DungeonMatchStep(() => {
         DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.MemberIds());
+        if (regroup && result.Outcome == DungeonMatchOutcome.Searching) {
+            DungeonMatchResult? own = RegroupDungeonMatch(manager);
+            if (own == null) {
+                return;
+            }
+            result = own.Value;
+        }
         if (result.Outcome != DungeonMatchOutcome.NotSearching) {
             CompleteDungeonMatch(manager, result);
         }
     });
+
+    // Null: the party moved into another group's party, which has been completed.
+    private DungeonMatchResult? RegroupDungeonMatch(PartyManager manager) {
+        DungeonMatchGroup? own = DungeonMatch.Snapshot(manager.Party.Id);
+        if (own == null) {
+            return new DungeonMatchResult(DungeonMatchOutcome.NotSearching, manager.Party.Id);
+        }
+        DungeonMatchResult? joined = DungeonMatch.Join(own.Kind, own.Rooms, own.Members, out DungeonMatchGroup? before, MayMerge);
+        if (joined != null) {
+            if (!TryGet(joined.Value.PartyId, out PartyManager? target)) {
+                DungeonMatch.Remove(joined.Value.PartyId);
+                DungeonMatch.EndMatching(joined.Value.PartyId);
+            } else if (MoveMembers(manager, target) == PartyError.none) {
+                if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
+                    CompleteDungeonMatch(target, joined.Value);
+                } else {
+                    BroadcastDungeonMatch(target, own.Kind, true);
+                }
+                return null;
+            } else {
+                // The target's group is put back; this party searches on as it is.
+                CompleteDungeonMatch(target, DungeonMatch.Restore(before!));
+            }
+        }
+        return PullDungeonMatch(manager);
+    }
 
     // What a queue step leaves to the party: a matched group gets its room (made on the first channel, as the
     // leader's CreateDungeon would) and the enter box; a stopped one is told the search ended. Searching: nothing.

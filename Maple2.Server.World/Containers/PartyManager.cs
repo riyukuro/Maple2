@@ -219,7 +219,8 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryAdd(info.CharacterId, member) && Party.Search != null) {
             Party.Search.MemberCount++;
         }
-        PartyLookup.DungeonMatchResize(this);
+        // The matchmaker's own join is placed by its caller; the group is not regrouped under it.
+        PartyLookup.DungeonMatchResize(this, regroup: !matchmaker);
         return PartyError.none;
     });
 

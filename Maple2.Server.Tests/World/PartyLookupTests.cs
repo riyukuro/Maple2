@@ -156,6 +156,43 @@ public class PartyLookupTests {
         Assert.That(lookup.DungeonMatch.IsMatching(party.Party.Id), Is.False);
     }
 
+    // rv44 MINOR 5: a group a leave leaves searching joins a group at least its size that now holds it.
+    [Test]
+    public void AGroupShrunkByALeaveJoinsAnother() {
+        var room = new DungeonMatchRoom(100, 1, 4, false);
+        PartyManager waiting = Party(2);
+        Assert.That(Start(waiting, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        PartyManager shrinking = Party(3);
+        Assert.That(Start(shrinking, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(lookup.PullDungeonMatch(shrinking).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        int shrinkingId = shrinking.Party.Id;
+
+        long leaver = shrinking.MemberIds().First(id => id != shrinking.Party.LeaderCharacterId);
+        Assert.That(shrinking.Leave(leaver), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.TryGet(shrinkingId, out _), Is.False);
+        Assert.That(waiting.Party.Members.Count, Is.EqualTo(4));
+        Assert.That(lookup.Made, Is.EqualTo(new[] { waiting.Party.Id }));
+        Assert.That(waiting.Party.DungeonSet, Is.True);
+    }
+
+    // rv44 MINOR 5: a group a leave leaves searching pulls the smaller groups that now fit.
+    [Test]
+    public void AGroupShrunkByALeavePullsASmallerOne() {
+        var room = new DungeonMatchRoom(100, 1, 5, false);
+        PartyManager waiting = Party(2);
+        Assert.That(Start(waiting, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        PartyManager shrinking = Party(4);
+        Assert.That(Start(shrinking, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(lookup.PullDungeonMatch(shrinking).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        int waitingId = waiting.Party.Id;
+
+        long leaver = shrinking.MemberIds().First(id => id != shrinking.Party.LeaderCharacterId);
+        Assert.That(shrinking.Leave(leaver), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.TryGet(waitingId, out _), Is.False);
+        Assert.That(shrinking.Party.Members.Count, Is.EqualTo(5));
+        Assert.That(lookup.Made, Is.EqualTo(new[] { shrinking.Party.Id }));
+    }
+
     // rv44 MINOR 3: no join while the party is matched, nor past the set room's maxUserCount.
     [Test]
     public void AMatchedPartyTakesNoJoinUntilItsRoomIsSetWithSpace() {
