@@ -1,5 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -57,6 +59,9 @@ public class SkillBookHandler : FieldPacketHandler {
         }
 
         int tabCount = packet.ReadInt();
+        if (!SkillBookRules.TabCountAllowed(tabCount, Constant.MaxSkillTabCount)) {
+            return;
+        }
         for (int i = 0; i < tabCount; i++) {
             var skillTab = packet.ReadClass<SkillTab>();
             if (skillTab.Id != savedSkillTab) continue;
@@ -67,8 +72,10 @@ public class SkillBookHandler : FieldPacketHandler {
     }
 
     private void HandleRename(GameSession session, IByteReader packet) {
-        long skillTabId = packet.ReadLong();
-        string skillTabName = packet.ReadUnicodeString();
+        (long skillTabId, string skillTabName) = SkillBookRules.ReadRename(packet);
+        if (!SkillBookRules.NameAllowed(skillTabName)) {
+            return;
+        }
 
         SkillTab? skillTab = session.Config.Skill.GetSkillTab(skillTabId);
         if (skillTab == null) {
