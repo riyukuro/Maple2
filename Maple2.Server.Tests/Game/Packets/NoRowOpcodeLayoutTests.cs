@@ -76,6 +76,72 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 8 + 2 + 20 + transferBytes.Length));
     }
 
+    private static Item RemakeItem() {
+        var property = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+        var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
+        var metadata = new ItemMetadata(11300001, "11300001", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, null, [], null, null, null, null);
+        return new Item(metadata, 4) { Uid = 91 };
+    }
+
+    // Client: UIItemRemakeOptionDialog::FUN_14129f940 (unnamed/unit_14129cfa0_itemremakeoptiondialog.cpp:626):
+    // kind 4 is long item uid, then CIngredientContainer (commonfiles/commonstruct_wa.cpp:255): byte count,
+    // count x (int item id, int tag, int count).
+    [Test]
+    public void ChangeAttributesStageItemListsIngredients() {
+        ByteWriter writer = ChangeAttributesPacket.StageItem(91, [
+            new IngredientInfo(ItemTag.GreenCrystal, 3),
+            new IngredientInfo(ItemTag.ChaosOnix, 120),
+        ]);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ChangeAttributes));
+        Assert.That(reader.ReadByte(), Is.EqualTo(4));
+        Assert.That(reader.ReadLong(), Is.EqualTo(91));
+        Assert.That(reader.ReadByte(), Is.EqualTo(2));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.GreenCrystal));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) ItemTag.ChaosOnix));
+        Assert.That(reader.ReadInt(), Is.EqualTo(120));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + 1 + 2 * 12));
+    }
+
+    // Client: UIItemRemakeOptionDialog::FUN_1412a2c50 (:1069): kind 6 is byte result. 0: nothing more. 2: int
+    // item id. Otherwise: int item id, long item uid, then the preview block (long item uid and the item).
+    [Test]
+    public void ChangeAttributesPendingHasThreeForms() {
+        ByteWriter none = ChangeAttributesPacket.NoPending();
+        var reader = new ByteReader(none.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ChangeAttributes));
+        Assert.That(reader.ReadByte(), Is.EqualTo(6));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(none.Length, Is.EqualTo(2 + 1 + 1));
+
+        ByteWriter gone = ChangeAttributesPacket.PendingItemGone(11300001);
+        reader = new ByteReader(gone.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ChangeAttributes));
+        Assert.That(reader.ReadByte(), Is.EqualTo(6));
+        Assert.That(reader.ReadByte(), Is.EqualTo(2));
+        Assert.That(reader.ReadInt(), Is.EqualTo(11300001));
+        Assert.That(gone.Length, Is.EqualTo(2 + 1 + 1 + 4));
+
+        Item item = RemakeItem();
+        ByteWriter pending = ChangeAttributesPacket.PendingItem(item);
+        ByteWriter preview = ChangeAttributesPacket.PreviewItem(item);
+        reader = new ByteReader(pending.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ChangeAttributes));
+        Assert.That(reader.ReadByte(), Is.EqualTo(6));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(11300001));
+        Assert.That(reader.ReadLong(), Is.EqualTo(91));
+        // The rest is the body of the preview packet (kind 1) after its opcode and kind byte.
+        byte[] previewBody = preview.Buffer.AsSpan(3, preview.Length - 3).ToArray();
+        Assert.That(previewBody.Length, Is.GreaterThan(8));
+        Assert.That(reader.ReadBytes(previewBody.Length), Is.EqualTo(previewBody));
+        Assert.That(pending.Length, Is.EqualTo(2 + 1 + 1 + 4 + 8 + previewBody.Length));
+    }
+
     // Client: CSceneStateGame::OnStateFishingData (scenestategame.cpp:8510): int player object id, int state,
     // int sub state. Fishing is state 45, sub state 0 (fishingmanager.cpp:1306); leaving it is state 1 (:1336).
     [Test]

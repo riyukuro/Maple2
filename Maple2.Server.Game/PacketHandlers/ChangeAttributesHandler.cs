@@ -118,19 +118,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             }
 
             // Calculate required catalysts.
-            var ingredients = new List<IngredientInfo>();
-            (string tag1Str, int amount1, string tag2Str, int amount2, string tag3Str, int amount3) = item.Type.IsPet
-                ? Lua.CalcGetPetRemakeIngredient(item.TimeChangedOption, item.Rarity, 0)
-                : Lua.CalcGetItemRemakeIngredientNew(item.Type.Type, item.TimeChangedOption, item.Rarity, item.Metadata.Limit.Level);
-            if (Enum.TryParse<ItemTag>(tag1Str, out ItemTag tag1)) {
-                ingredients.Add(new IngredientInfo(tag1, amount1));
-            }
-            if (Enum.TryParse<ItemTag>(tag2Str, out ItemTag tag2)) {
-                ingredients.Add(new IngredientInfo(tag2, amount2));
-            }
-            if (Enum.TryParse<ItemTag>(tag3Str, out ItemTag tag3)) {
-                ingredients.Add(new IngredientInfo(tag3, amount3));
-            }
+            List<IngredientInfo> ingredients = GetIngredients(item);
 
             // Clone the item so we can preview changes without modifying existing item.
             Item changeItem = item.Clone();
@@ -175,6 +163,24 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             session.ChangeAttributesItem = changeItem;
             session.Send(ChangeAttributesPacket.PreviewItem(session.ChangeAttributesItem));
         }
+    }
+
+    private List<IngredientInfo> GetIngredients(Item item) {
+        var ingredients = new List<IngredientInfo>();
+        (string tag1Str, int amount1, string tag2Str, int amount2, string tag3Str, int amount3) = item.Type.IsPet
+            ? Lua.CalcGetPetRemakeIngredient(item.TimeChangedOption, item.Rarity, 0)
+            : Lua.CalcGetItemRemakeIngredientNew(item.Type.Type, item.TimeChangedOption, item.Rarity, item.Metadata.Limit.Level);
+        if (Enum.TryParse<ItemTag>(tag1Str, out ItemTag tag1)) {
+            ingredients.Add(new IngredientInfo(tag1, amount1));
+        }
+        if (Enum.TryParse<ItemTag>(tag2Str, out ItemTag tag2)) {
+            ingredients.Add(new IngredientInfo(tag2, amount2));
+        }
+        if (Enum.TryParse<ItemTag>(tag3Str, out ItemTag tag3)) {
+            ingredients.Add(new IngredientInfo(tag3, amount3));
+        }
+
+        return ingredients;
     }
 
     private static void HandleSelect(GameSession session, IByteReader packet) {
@@ -302,15 +308,48 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     }
 
     // Client UIItemRemakeOptionDialog::SendChangeAttributesMode4: an item put in the remake slot.
-    // The reply the client expects for this mode is not known.
+    // The reply (kind 4) carries the ingredients of the next change, which the dialog shows as the cost.
     private void HandleStageItem(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
-        Logger.Debug("ChangeAttributes stage {ItemUid} from {CharacterId} not implemented", itemUid, session.CharacterId);
+
+        lock (session.Item) {
+            Item? item = session.Item.GetGear(itemUid)
+                         ?? session.Item.Inventory.Get(itemUid, InventoryType.Pets);
+            if (item == null) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_not_in_inven));
+                return;
+            }
+            if (!IsValidItem(item)) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
+                return;
+            }
+
+            session.Send(ChangeAttributesPacket.StageItem(item.Uid, GetIngredients(item)));
+        }
     }
 
-    // Client UIItemRemakeOptionDialog::OnLoadComplete (kind 1) and the pet tab reset (kind 2).
-    private void HandleOpenDialog(GameSession session, IByteReader packet) {
+    // Client UIItemRemakeOptionDialog::OnLoadComplete (kind 1) and the pet tab reset (kind 2). The client waits
+    // for the reply (kind 6): either nothing is pending, or the change the player has not chosen yet.
+    private static void HandleOpenDialog(GameSession session, IByteReader packet) {
         byte kind = packet.ReadByte();
-        Logger.Debug("ChangeAttributes dialog {Kind} opened by {CharacterId}", kind, session.CharacterId);
+
+        lock (session.Item) {
+            Item? pending = session.ChangeAttributesItem;
+            // The item dialog (kind 1) and the pet tab (kind 2) each resume only their own kind of item.
+            if (pending == null || pending.Type.IsPet != (kind == 2)) {
+                session.Send(ChangeAttributesPacket.NoPending());
+                return;
+            }
+
+            Item? item = session.Item.GetGear(pending.Uid)
+                         ?? session.Item.Inventory.Get(pending.Uid, InventoryType.Pets);
+            if (item == null) {
+                session.ChangeAttributesItem = null;
+                session.Send(ChangeAttributesPacket.PendingItemGone(pending.Id));
+                return;
+            }
+
+            session.Send(ChangeAttributesPacket.PendingItem(pending));
+        }
     }
 }
