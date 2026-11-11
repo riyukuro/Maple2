@@ -117,11 +117,13 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter ConfirmForfeitPlot(PlotInfo plot) {
+    // Client: CSceneStateGame::OnResponseCube case 7 (scenestategame.cpp:9959): short reason (0x75 picks the other
+    // notice text), byte flag, int, int.
+    public static ByteWriter ConfirmForfeitPlot(PlotInfo plot, short reason = 0, bool flag = false) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ConfirmForfeitPlot);
-        pWriter.Write<UgcMapError>(UgcMapError.s_ugcmap_ok);
-        pWriter.WriteShort();
+        pWriter.WriteShort(reason);
+        pWriter.WriteBool(flag);
         pWriter.WriteInt(plot.MapId);
         pWriter.WriteInt(plot.Number);
 
