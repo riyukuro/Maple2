@@ -8,6 +8,12 @@ namespace Maple2.Server.Game.Util;
 // reading of reactorState.xml.
 public static class ReactorRules {
     public const float CellSize = 150f;
+    // CheckReactorPlacement: no interact object and no friendly NPC closer than this to the cell centre.
+    public const float PlacementDistance = 230f;
+    // Server limits the client does not have: how long a state without times lasts, and how many
+    // reactors one field holds.
+    public const long NoTimeLimitMs = 10 * 60 * 1000;
+    public const int MaxPerField = 100;
 
     public enum Step {
         Stay,
@@ -42,7 +48,11 @@ public static class ReactorRules {
     // nextTimeSec: the state moves on after that long. expireTimeSec: the state ends; a connect state with
     // at least one connected player moves on, any other state removes the reactor. Past the last state the
     // reactor is removed.
+    // A state with neither time would never end; it is removed after NoTimeLimitMs.
     public static Step Tick(ReactorTable.State state, bool isLast, bool anyConnected, long elapsedMs) {
+        if (state.NextTimeSec <= 0 && state.ExpireTimeSec <= 0) {
+            return elapsedMs >= NoTimeLimitMs ? Step.Remove : Step.Stay;
+        }
         if (state.NextTimeSec > 0 && elapsedMs >= state.NextTimeSec * 1000L) {
             return isLast ? Step.Remove : Step.Advance;
         }
@@ -59,6 +69,39 @@ public static class ReactorRules {
             ReactorStateType.Reward => connected,
             _ => false,
         };
+    }
+
+    // True when none of the points is closer to the cell centre than PlacementDistance.
+    public static bool IsClear(Vector3 center, IEnumerable<Vector3> points) {
+        foreach (Vector3 point in points) {
+            if (Vector3.Distance(point, center) < PlacementDistance) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // True when the point lies in the box of the given size centred on the position (a portal's box).
+    public static bool InBox(Vector3 point, Vector3 position, Vector3 dimension) {
+        return MathF.Abs(point.X - position.X) <= dimension.X / 2
+               && MathF.Abs(point.Y - position.Y) <= dimension.Y / 2
+               && MathF.Abs(point.Z - position.Z) <= dimension.Z / 2;
+    }
+
+    // What each (item id, rarity) of a state's conditions needs in total: the amount to hold and the amount taken.
+    // Two conditions on the same item add up.
+    public static Dictionary<(int ItemId, int Rarity), (int Held, int Consume)> Totals(IEnumerable<ReactorTable.ConditionItem> conditions) {
+        var totals = new Dictionary<(int, int), (int Held, int Consume)>();
+        foreach (ReactorTable.ConditionItem condition in conditions) {
+            if (condition.ItemId == 0) {
+                continue;
+            }
+
+            (int, int) key = (condition.ItemId, condition.Rarity > 0 ? condition.Rarity : -1);
+            totals.TryGetValue(key, out (int Held, int Consume) total);
+            totals[key] = (total.Held + Needed(condition), total.Consume + condition.Consume);
+        }
+        return totals;
     }
 
     // The amount of a condition item the player must hold.

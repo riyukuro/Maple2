@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
@@ -13,6 +14,7 @@ public class FieldReactor : IUpdatable {
     private long stateTick;
 
     public int ObjectId { get; }
+    public long OwnerId { get; }
     public string Name { get; }
     public ReactorTable.Entry Metadata { get; }
     public Vector3 Position { get; }
@@ -20,8 +22,9 @@ public class FieldReactor : IUpdatable {
     public int StateIndex { get; private set; }
     public long StateTime { get; private set; }
 
-    public FieldReactor(FieldManager field, int objectId, string name, ReactorTable.Entry metadata, Vector3 position, Vector3 rotation) {
+    public FieldReactor(FieldManager field, int objectId, string name, ReactorTable.Entry metadata, Vector3 position, Vector3 rotation, long ownerId = 0) {
         this.field = field;
+        OwnerId = ownerId;
         ObjectId = objectId;
         Name = name;
         Metadata = metadata;
@@ -62,6 +65,23 @@ public class FieldReactor : IUpdatable {
             empty = connected.Count == 0;
         }
         if (empty) {
+            Next();
+        } else {
+            field.Broadcast(ReactorPacket.UpdateState(ObjectId, StateIndex, StateTime, Connected));
+        }
+    }
+
+    // A connected player left the field. In a reward state that counts as done, so the reactor is not
+    // held open by someone who is gone.
+    public void Leave(long characterId) {
+        bool empty;
+        lock (connected) {
+            if (!connected.Remove(characterId)) {
+                return;
+            }
+            empty = connected.Count == 0;
+        }
+        if (empty && State.Type == ReactorStateType.Reward) {
             Next();
         } else {
             field.Broadcast(ReactorPacket.UpdateState(ObjectId, StateIndex, StateTime, Connected));

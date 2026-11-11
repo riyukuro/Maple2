@@ -803,15 +803,23 @@ public partial class FieldManager {
     }
 
     // False when the cell already holds a reactor (the client checks the same by name).
-    public bool TryAddReactor(ReactorTable.Entry metadata, Vector3 position, [NotNullWhen(true)] out FieldReactor? reactor) {
+    // ownerLimit: how many reactors of one character may stand in the field at once.
+    public bool TryAddReactor(ReactorTable.Entry metadata, Vector3 position, long ownerId, int ownerLimit, [NotNullWhen(true)] out FieldReactor? reactor) {
         (int X, int Y, int Z) cell = ReactorRules.Cell(position);
         string name = ReactorRules.Name(ReactorRules.CellKey(cell));
+        Vector3 center = ReactorRules.CellCenter(cell);
         reactor = null;
         if (metadata.States.Length == 0 || fieldReactors.Values.Any(other => other.Name == name)) {
             return false;
         }
+        if (fieldReactors.Count >= ReactorRules.MaxPerField || fieldReactors.Values.Count(other => other.OwnerId == ownerId) >= ownerLimit) {
+            return false;
+        }
+        if (!CanPlaceReactor(center)) {
+            return false;
+        }
 
-        reactor = new FieldReactor(this, NextLocalId(), name, metadata, ReactorRules.CellCenter(cell), default);
+        reactor = new FieldReactor(this, NextLocalId(), name, metadata, center, default, ownerId);
         if (!fieldReactors.TryAdd(reactor.ObjectId, reactor)) {
             reactor = null;
             return false;
@@ -820,6 +828,29 @@ public partial class FieldManager {
         Broadcast(ReactorPacket.Add(reactor.ObjectId, reactor.Name, metadata.Id, reactor.Position, reactor.Rotation,
             reactor.StateIndex, reactor.StateTime, reactor.Connected));
         return true;
+    }
+
+    // The placement tests of the client's CheckReactorPlacement that the server can repeat.
+    private bool CanPlaceReactor(Vector3 center) {
+        IEnumerable<Vector3> interacts = fieldInteracts.Values.Select(interact => interact.Position)
+            .Concat(fieldFunctionInteracts.Values.Select(interact => interact.Position))
+            .Concat(fieldAdBalloons.Values.Select(interact => interact.Position))
+            .Concat(fieldChests.Values.Select(interact => interact.Position));
+        if (!ReactorRules.IsClear(center, interacts)) {
+            return false;
+        }
+        // Friendly NPCs (kind 2) that are alive, by the centre of their own cell.
+        IEnumerable<Vector3> npcs = Npcs.Values
+            .Where(npc => !npc.IsDead && npc.Value.Metadata.Basic.Friendly == 2)
+            .Select(npc => ReactorRules.CellCenter(ReactorRules.Cell(npc.Position)));
+        if (!ReactorRules.IsClear(center, npcs)) {
+            return false;
+        }
+        if (fieldPortals.Values.Any(portal => ReactorRules.InBox(center, portal.Position, portal.Value.Dimension))) {
+            return false;
+        }
+        // The client samples the ground under the cell; the server asks for walkable ground there.
+        return ValidPosition(center);
     }
 
     public void RemoveReactor(int objectId) {
@@ -908,6 +939,9 @@ public partial class FieldManager {
     public virtual bool RemovePlayer(int objectId, [NotNullWhen(true)] out FieldPlayer? fieldPlayer) {
         if (Players.TryRemove(objectId, out fieldPlayer)) {
             CommitPlot(fieldPlayer.Session);
+            foreach (FieldReactor reactor in fieldReactors.Values) {
+                reactor.Leave(fieldPlayer.Session.CharacterId);
+            }
             Broadcast(FieldPacket.RemovePlayer(objectId));
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
 

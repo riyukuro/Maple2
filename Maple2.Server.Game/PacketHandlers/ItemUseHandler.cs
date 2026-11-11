@@ -605,10 +605,13 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!session.TableMetadata.ReactorTable.Entries.TryGetValue(reactorId, out ReactorTable.Entry? metadata)) {
             return;
         }
-        if (!ReactorEvent.Check(session, metadata, out _)) {
+        if (!ReactorEvent.Check(session, metadata, out Maple2.Model.Game.Event.GameEvent? gameEvent)) {
             return;
         }
-        if (!session.Field.TryAddReactor(metadata, session.Player.Position, out _)) {
+        // The client counts rewards, not placements, so the event's limit also caps how many reactors
+        // of one character stand at once.
+        int ownerLimit = gameEvent?.Metadata.Data is Maple2.Model.Metadata.Reactor reactorEvent ? Math.Max(reactorEvent.DailyCount, 1) : 1;
+        if (!session.Field.TryAddReactor(metadata, session.Player.Position, session.CharacterId, ownerLimit, out _)) {
             return;
         }
 

@@ -46,21 +46,16 @@ public class StateReactHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            // Every condition item must be held before any is taken.
+            // Every condition item must be held before any is taken. Conditions on the same item add up.
             var consume = new List<(Item Item, int Amount)>();
-            foreach (ReactorTable.ConditionItem condition in state.ConditionItems) {
-                if (condition.ItemId == 0) {
-                    continue;
-                }
-
-                int needed = ReactorRules.Needed(condition);
-                Item[] held = session.Item.Inventory.Find(condition.ItemId, condition.Rarity > 0 ? condition.Rarity : -1).ToArray();
-                if (held.Sum(item => item.Amount) < needed) {
+            foreach (((int itemId, int rarity), (int held, int taken)) in ReactorRules.Totals(state.ConditionItems)) {
+                Item[] items = session.Item.Inventory.Find(itemId, rarity).ToArray();
+                if (items.Sum(item => item.Amount) < held) {
                     return;
                 }
 
-                int left = condition.Consume;
-                foreach (Item item in held) {
+                int left = taken;
+                foreach (Item item in items) {
                     if (left <= 0) {
                         break;
                     }
@@ -71,7 +66,10 @@ public class StateReactHandler : FieldPacketHandler {
             }
 
             foreach ((Item item, int amount) in consume) {
-                session.Item.Inventory.Consume(item.Uid, amount);
+                if (!session.Item.Inventory.Consume(item.Uid, amount)) {
+                    Logger.Error("Reactor {ReactorId}: failed to take {Amount} of item {ItemUid} from {CharacterId}", reactor.Metadata.Id, amount, item.Uid, session.CharacterId);
+                    return;
+                }
             }
         }
 

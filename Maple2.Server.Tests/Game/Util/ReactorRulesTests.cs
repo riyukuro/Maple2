@@ -55,4 +55,42 @@ public class ReactorRulesTests {
         Assert.That(ReactorRules.Needed(new ReactorTable.ConditionItem(1, 1, 1, 3)), Is.EqualTo(3));
         Assert.That(ReactorRules.Needed(new ReactorTable.ConditionItem(1, 1, 2, 0)), Is.EqualTo(2));
     }
+
+    [Test]
+    public void Tick_AStateWithoutTimesIsRemovedAfterTheLimit() {
+        ReactorTable.State state = State(ReactorStateType.Reward, 0, 0);
+        Assert.That(ReactorRules.Tick(state, false, true, ReactorRules.NoTimeLimitMs - 1), Is.EqualTo(ReactorRules.Step.Stay));
+        Assert.That(ReactorRules.Tick(state, false, true, ReactorRules.NoTimeLimitMs), Is.EqualTo(ReactorRules.Step.Remove));
+    }
+
+    [Test]
+    public void IsClear_RefusesAPointInsideThePlacementDistance() {
+        var center = new Vector3(150, 150, 0);
+        Assert.That(ReactorRules.IsClear(center, [new Vector3(150, 379, 0)]), Is.False);
+        Assert.That(ReactorRules.IsClear(center, [new Vector3(150, 380, 0)]), Is.True);
+        Assert.That(ReactorRules.IsClear(center, []), Is.True);
+    }
+
+    [Test]
+    public void InBox_TestsEachAxisAgainstHalfTheSize() {
+        var position = new Vector3(0, 0, 0);
+        var dimension = new Vector3(200, 100, 300);
+        Assert.That(ReactorRules.InBox(new Vector3(100, 50, -150), position, dimension), Is.True);
+        Assert.That(ReactorRules.InBox(new Vector3(101, 0, 0), position, dimension), Is.False);
+        Assert.That(ReactorRules.InBox(new Vector3(0, 51, 0), position, dimension), Is.False);
+    }
+
+    [Test]
+    public void Totals_AddsConditionsOnTheSameItem() {
+        var totals = ReactorRules.Totals([
+            new ReactorTable.ConditionItem(1, 1, 1, 3),
+            new ReactorTable.ConditionItem(1, 1, 2, 0),
+            new ReactorTable.ConditionItem(2, 0, 1, 0),
+            new ReactorTable.ConditionItem(0, 0, 5, 5),
+        ]);
+
+        Assert.That(totals.Count, Is.EqualTo(2));
+        Assert.That(totals[(1, 1)], Is.EqualTo((5, 3)));
+        Assert.That(totals[(2, -1)], Is.EqualTo((1, 1)));
+    }
 }
