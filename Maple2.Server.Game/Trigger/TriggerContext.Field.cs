@@ -493,7 +493,11 @@ public partial class TriggerContext {
     }
 
     public void RoomExpire() {
-        ErrorLog("[RoomExpire]");
+        int count = RoomExpiry.ReturnAll(Field.Players.Values, player => {
+            RoomExpiry.DropOwnReturn(player.Value.Character.ReturnMaps, Field.MapId, Constant.DefaultReturnMapId);
+            player.Session.ReturnField();
+        });
+        DebugLog("[RoomExpire] returned:{Count}", count);
     }
 
     public void FieldWarEnd(bool isClear) {
