@@ -907,11 +907,6 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        if (plot.Cubes.Count != 0) {
-            session.Send(NoticePacket.Message(StringCode.s_err_ugcmap_package_clear_indoor_first, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
-            return;
-        }
-
         using GameStorage.Request db = session.GameStorage.Context();
         bool inOwnBag = session.Item.Inventory.Filter(item => item.Blueprint != null && item.Blueprint.BlueprintUid == blueprintId).Count > 0;
         bool listed = !inOwnBag && db.GetUgcMarketItems().Any(item => item.Blueprint.BlueprintUid == blueprintId);
@@ -923,6 +918,20 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (layout is null) {
             Logger.Error("Failed to load layout for {AccountId}", session.AccountId);
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            return;
+        }
+
+        if (BlueprintPreviewRule.ClearsFirst(plot.Cubes.Count)) {
+            // The model home still shows an earlier preview: take it down and ask the client to send the request
+            // again. The client holds that second request until its own cube changes are done.
+            foreach (PlotCube cube in plot.Cubes.Values.ToList()) {
+                if (session.Housing.TryRemoveCube(plot, cube.Position, out _)) {
+                    session.Field?.Broadcast(CubePacket.RemoveCube(session.Player.ObjectId, cube.Position));
+                }
+            }
+            if (!BlueprintPreviewRule.ClearsFirst(plot.Cubes.Count)) {
+                session.Send(CubePacket.PreviewBlueprintAgain(blueprintId));
+            }
             return;
         }
 

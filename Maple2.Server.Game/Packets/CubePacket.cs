@@ -65,6 +65,7 @@ public static class CubePacket {
         CreateBlueprint = 63,
         SaveBlueprint = 64,
         CalculateEstimate = 67,
+        PreviewBlueprintAgain = 69,
         FunctionCubeError = 71,
     }
 
@@ -86,6 +87,17 @@ public static class CubePacket {
         pWriter.WriteByte((byte) Command.BuildMode);
         pWriter.WriteInt(objectId);
         pWriter.WriteInt(mode);
+
+        return pWriter;
+    }
+
+    // Client: CSceneStateGame::OnResponseCube case 0x45 (scenestategame.cpp:10838): one long, the blueprint uid.
+    // The client answers with RequestCube 68 for that uid, at once or when its pending cube set is empty
+    // (CubeMapInformationService::SendRequestCubeMode68).
+    public static ByteWriter PreviewBlueprintAgain(long blueprintUid) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.WriteByte((byte) Command.PreviewBlueprintAgain);
+        pWriter.WriteLong(blueprintUid);
 
         return pWriter;
     }

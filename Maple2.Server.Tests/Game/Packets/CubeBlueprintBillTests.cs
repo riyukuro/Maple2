@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
@@ -56,6 +57,20 @@ public class CubeBlueprintBillTests {
     [TestCase(false, false, false)]
     public void PreviewOnlyOfAListedOrOwnedBlueprint(bool listed, bool owned, bool expected) {
         Assert.That(BlueprintPreviewRule.BlueprintAllows(listed, owned), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void PreviewAgainBytes() {
+        ByteWriter writer = CubePacket.PreviewBlueprintAgain(0x1122334455667788);
+        byte[] body = writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
+        // sub-type 0x45, blueprint uid
+        Assert.That(body, Is.EqualTo(new byte[] { 0x45, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11 }));
+    }
+
+    [Test]
+    public void AUsedModelHomeIsClearedBeforeTheNextPreview() {
+        Assert.That(BlueprintPreviewRule.ClearsFirst(0), Is.False);
+        Assert.That(BlueprintPreviewRule.ClearsFirst(3), Is.True);
     }
 
     // The model-home move carries plot mode 2 as the migration type; the entry sets the planner mode from it.
