@@ -60,6 +60,9 @@ public partial class WorldService {
                 return Task.FromResult(new MailNotificationResponse());
             }
         }
+        if (!MailNotifyRules.Notify(info)) {
+            return Task.FromResult(new MailNotificationResponse());
+        }
 
         int channel = info.Channel;
         if (!channelClients.TryGetClient(channel, out ChannelClient? channelClient)) {
