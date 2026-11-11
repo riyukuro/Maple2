@@ -285,9 +285,8 @@ public class PartyHandler : FieldPacketHandler {
         }
         (short level, int gearScore) = LowestMember(session);
         IReadOnlyDictionary<int, DungeonRoomMetadata> table = session.TableMetadata.DungeonRoomTable.Entries;
-        List<DungeonRoomMetadata> rooms = request.Value.RoomIds.Count == 0
-            ? DungeonMatchRules.MatchRooms(table.Values, level, gearScore, Constants.DungeonMatchRecommendPickCount)
-            : DungeonMatchRules.PickedRooms(table, request.Value.RoomIds, request.Value.Kind, level);
+        List<DungeonRoomMetadata> rooms = DungeonMatchRules.SearchRooms(table, request.Value.RoomIds, request.Value.Kind,
+            level, gearScore, Constants.DungeonMatchRecommendPickCount);
         RequestDungeonMatch(session, request.Value.Kind, rooms);
     }
 

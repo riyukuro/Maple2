@@ -66,6 +66,16 @@ public static class DungeonMatchRules {
         return result;
     }
 
+    // The rooms of a Party 32: the picked ones, or with none picked the recommended rooms (MatchRooms), which are
+    // all of match kind 1, so only for a kind 1 search; a search of another kind with no picked room has none
+    // (rv40 MINOR 9).
+    public static List<DungeonRoomMetadata> SearchRooms(IReadOnlyDictionary<int, DungeonRoomMetadata> table, IReadOnlyCollection<int> roomIds, byte kind, short level, int gearScore, int pickCount) {
+        if (roomIds.Count > 0) {
+            return PickedRooms(table, roomIds, kind, level);
+        }
+        return kind == 1 ? MatchRooms(table.Values, level, gearScore, pickCount) : [];
+    }
+
     // DungeonRoomTable::GetMatchRooms (dungeonroom.cpp), the rooms of an empty Party 32 room set: the rooms of group
     // types 1 and 2 ordered by gear score, player level limit and id (the row's sortOrder is not ingested), taken from
     // the highest at or under (gear score, level) downwards, skipping a room whose level limit is above the level,

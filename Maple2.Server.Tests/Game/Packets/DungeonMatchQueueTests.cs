@@ -408,4 +408,16 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.Join(1, [room], M(1))!.Value.PartyId, Is.EqualTo(1));
         Assert.That(queue.Join(1, [room], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
+
+    [Test]
+    public void SearchRoomsRecommendsOnlyForKindOne() {
+        var table = new Dictionary<int, DungeonRoomMetadata> {
+            [1] = Room(1, DungeonGroupType.normal, 0, 10),
+            [5] = Room(5, DungeonGroupType.lapenta, 0, 10),
+        };
+        Assert.That(DungeonMatchRules.SearchRooms(table, [], 1, 40, 150, 6).Select(room => room.Id), Is.EqualTo(new[] { 1 }));
+        // No picked room for a lapenta (4) search: no rooms, not the kind 1 recommendations.
+        Assert.That(DungeonMatchRules.SearchRooms(table, [], 4, 40, 150, 6), Is.Empty);
+        Assert.That(DungeonMatchRules.SearchRooms(table, [5], 4, 40, 150, 6).Select(room => room.Id), Is.EqualTo(new[] { 5 }));
+    }
 }
