@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Metadata;
+﻿using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Tools;
 
@@ -33,6 +34,18 @@ public class DungeonMission : IByteSerializable {
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(Id);
         writer.WriteShort(Score);
-        writer.WriteShort(Counter);
+        // The client picks the reader by the mission's type: every type reads the score, the play time
+        // type then reads two longs, the user count type nothing more, all others the counter.
+        switch (Metadata.Type) {
+            case DungeonMissionType.PlayTime:
+                writer.WriteLong();
+                writer.WriteLong();
+                break;
+            case DungeonMissionType.LimitUserCount:
+                break;
+            default:
+                writer.WriteShort(Counter);
+                break;
+        }
     }
 }
