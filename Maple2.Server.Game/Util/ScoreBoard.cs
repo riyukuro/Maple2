@@ -1,4 +1,5 @@
-﻿using Maple2.Server.Game.Packets;
+﻿using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Game.Util;
 
@@ -12,5 +13,18 @@ public static class ScoreBoard {
             "ScoreBoardTopCenter" => ShadowExpeditionPacket.TopCenterScore,
             _ => null,
         };
+    }
+
+    // An open board: its kind, title, current and most points.
+    public sealed record Board(byte Kind, string Title, int Points, int MaxPoints);
+
+    public static ByteWriter OpenPacket(Board board) {
+        return ShadowExpeditionPacket.Open(board.Kind, board.Title, board.Points, board.MaxPoints);
+    }
+
+    // What a player who enters the field gets: the open board at its current points (the client keeps one board
+    // per field, opened only by command 0), or nothing when none is open.
+    public static ByteWriter? EnterPacket(Board? board) {
+        return board == null ? null : OpenPacket(board);
     }
 }

@@ -6,6 +6,7 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -242,11 +243,13 @@ public partial class TriggerContext {
     // given by the scripts, the client or the tables, so the gauge stays at 0.
     public void ShadowExpeditionOpenBossGauge(int maxGaugePoint, string title) {
         DebugLog("[ShadowExpeditionOpenBossGauge] maxGaugePoint:{Max}, title:{Title}", maxGaugePoint, title);
-        Field.Broadcast(ShadowExpeditionPacket.OpenBossGauge(title, 0, maxGaugePoint));
+        Field.ScoreBoardOpen = new ScoreBoard.Board(ShadowExpeditionPacket.BossGauge, title, 0, maxGaugePoint);
+        Field.Broadcast(ScoreBoard.OpenPacket(Field.ScoreBoardOpen));
     }
 
     public void ShadowExpeditionCloseBossGauge() {
         DebugLog("[ShadowExpeditionCloseBossGauge]");
+        Field.ScoreBoardOpen = null;
         Field.Broadcast(ShadowExpeditionPacket.Close());
     }
     #endregion

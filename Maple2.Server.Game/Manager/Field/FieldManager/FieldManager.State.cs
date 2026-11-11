@@ -1285,6 +1285,9 @@ public partial class FieldManager {
         if (effects.Count > 0) {
             added.Session.Send(TriggerPacket.LoadEffects(effects));
         }
+        if (ScoreBoard.EnterPacket(ScoreBoardOpen) is { } scoreBoard) {
+            added.Session.Send(scoreBoard);
+        }
 
         if (background != null) {
             added.Session.Send(FieldPropertyPacket.Background(background));

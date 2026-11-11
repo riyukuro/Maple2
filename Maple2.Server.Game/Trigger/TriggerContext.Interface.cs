@@ -70,29 +70,30 @@ public partial class TriggerContext {
         Field.ScoreBoardScore = null;
         byte? kind = ScoreBoard.Kind(type, maxScore);
         if (kind == null) {
-            Field.ScoreBoardKind = null;
+            Field.ScoreBoardOpen = null;
             ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
             return;
         }
 
         DebugLog("[ScoreBoardCreate] type:{Type}, kind:{Kind}, maxScore:{MaxScore}", type, kind, maxScore);
-        Field.ScoreBoardKind = kind;
-        Field.Broadcast(ShadowExpeditionPacket.Open(kind.Value, title, 0, maxScore));
+        Field.ScoreBoardOpen = new ScoreBoard.Board(kind.Value, title, 0, maxScore);
+        Field.Broadcast(ScoreBoard.OpenPacket(Field.ScoreBoardOpen));
     }
 
     public void ScoreBoardRemove() {
         Field.ScoreBoardScore = null;
-        DebugLog("[ScoreBoardRemove] kind:{Kind}", Field.ScoreBoardKind);
-        if (Field.ScoreBoardKind != null) {
-            Field.ScoreBoardKind = null;
+        DebugLog("[ScoreBoardRemove] kind:{Kind}", Field.ScoreBoardOpen?.Kind);
+        if (Field.ScoreBoardOpen != null) {
+            Field.ScoreBoardOpen = null;
             Field.Broadcast(ShadowExpeditionPacket.Close());
         }
     }
 
     public void ScoreBoardSetScore(int score) {
         Field.ScoreBoardScore = score;
-        DebugLog("[ScoreBoardSetScore] score:{Score}, kind:{Kind}", score, Field.ScoreBoardKind);
-        if (Field.ScoreBoardKind != null) {
+        DebugLog("[ScoreBoardSetScore] score:{Score}, kind:{Kind}", score, Field.ScoreBoardOpen?.Kind);
+        if (Field.ScoreBoardOpen != null) {
+            Field.ScoreBoardOpen = Field.ScoreBoardOpen with { Points = score };
             Field.Broadcast(ShadowExpeditionPacket.SetPoints(score));
         }
     }

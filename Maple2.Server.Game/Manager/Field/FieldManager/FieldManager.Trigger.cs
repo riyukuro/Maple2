@@ -20,8 +20,9 @@ public partial class FieldManager {
     // The score the score_board_score condition tests. Only score_board_set_score writes it (no kill, pickup or
     // packet score reaches it); null until a script sets it, and score_board_create/remove clear it.
     public int? ScoreBoardScore;
-    // The 0xE1 board kind score_board_create opened (null when none is open); set_score and remove send to it.
-    public byte? ScoreBoardKind;
+    // The 0xE1 board open in the field (score_board_create or shadow_expedition_open_boss_gauge; null when none
+    // is open): set_score updates its points, a player who enters gets it, remove/close clears it.
+    public ScoreBoard.Board? ScoreBoardOpen;
     // Dungeon variables of a field that is not part of a dungeon instance (a dungeon's fields use their room
     // record's store instead).
     public readonly ConcurrentDictionary<int, int> DungeonVariables = new();
