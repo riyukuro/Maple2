@@ -151,6 +151,32 @@ public sealed class AchievementManager {
     }
 
     /// <summary>
+    /// A reward is due only for a grade that is finished. The reward grade can be ahead of the finished grades after
+    /// the GM debug "down" button took a grade back; that grade's reward was given and is not given again, and the
+    /// next grade's reward waits until that grade is finished.
+    /// </summary>
+    public static bool RewardDue(Achievement achievement) {
+        return achievement.CurrentGrade >= achievement.RewardGrade && achievement.Grades.ContainsKey(achievement.RewardGrade);
+    }
+
+    /// <summary>
+    /// The GM debug "down" button: the last finished grade is taken back and the counter set to the goal of the grade
+    /// before it. The reward grade is kept, so a reward that was given is not given again.
+    /// </summary>
+    /// <returns>false if no grade was finished (the counter is set to 0).</returns>
+    public static bool DebugGradeBack(Achievement achievement) {
+        if (achievement.Grades.Count == 0) {
+            achievement.Counter = 0;
+            return false;
+        }
+        int last = achievement.Grades.Keys.Max();
+        achievement.Grades.Remove(last);
+        achievement.CurrentGrade = last;
+        achievement.Counter = achievement.Metadata.Grades.TryGetValue(last - 1, out AchievementMetadataGrade? before) ? before.Condition.Value : 0;
+        return true;
+    }
+
+    /// <summary>
     /// Gives rewards (if applicable) from awarded trophy grades. If there is no reward, it'll increment up on the reward grade. Will not increment if there is a item, title, skill point, or attribute point to give.
     /// </summary>
     /// <param name="achievement">Achievement entry from user</param>
@@ -158,7 +184,7 @@ public sealed class AchievementManager {
     /// These are never given automatically upon newly awarded trophy grade.</param>
     private void GiveReward(Achievement achievement, bool manualClaim = false) {
         if (session.Field is null) return;
-        if (achievement.CurrentGrade < achievement.RewardGrade) {
+        if (!RewardDue(achievement)) {
             return;
         }
 
@@ -291,16 +317,10 @@ public sealed class AchievementManager {
         }
 
         if (button == 1) {
-            if (achievement.Grades.Count == 0) {
-                achievement.Counter = 0;
+            if (!DebugGradeBack(achievement)) {
                 session.Send(AchievementPacket.Update(achievement));
                 return;
             }
-            int last = achievement.Grades.Keys.Max();
-            achievement.Grades.Remove(last);
-            achievement.CurrentGrade = last;
-            achievement.RewardGrade = Math.Min(achievement.RewardGrade, last);
-            achievement.Counter = metadata.Grades.TryGetValue(last - 1, out AchievementMetadataGrade? before) ? before.Condition.Value : 0;
             AchievementInfo info = session.Player.Value.Character.AchievementInfo;
             switch (achievement.Category) {
                 case AchievementCategory.Combat:
