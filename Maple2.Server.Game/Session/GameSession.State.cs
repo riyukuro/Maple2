@@ -32,6 +32,8 @@ public partial class GameSession {
     // GM toggles (see FieldPlayer.InvisibleFromNpc / DeathPower); they last as long as the session.
     public bool GmInvisibleFromNpc;
     public bool GmDeathPower;
+    // Effects put on by the GM effect control window (0x5C); its reset button takes these off.
+    public readonly HashSet<int> GmEffects = [];
     public FieldInstrument? Instrument;
 
     public FieldGuideObject? GuideObject;

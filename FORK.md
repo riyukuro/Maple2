@@ -120,6 +120,16 @@ The two toggles last for the session (they stay on across field changes and go o
 ## GM-only packets
 Some packets and packet modes are sent by the client only from a GM command, a debug hotkey or a developer dialog (the client tests its GM level or its debug mode before it writes them). A handler for one of those starts with `GmCheck.Allow(session, OpCode, mode)` (`Maple2.Server.Game/Util/GmCheck.cs`): the account needs the GameMaster or Admin permission, as set with the `perm` command. Any other sender is dropped with one warning (account id, opcode, mode) and gets no reply. A new handler or mode of that kind must start the same way.
 
+The client's GM create windows are handled, each behind that check (a plain account changes nothing):
+
+| Packet | Window | What the server does |
+|---|---|---|
+| 0x15 RequestItemCreate | item create | Creates the item (id, amount, rank 1-6) into the inventory by the normal add path. A stackable item gives one stack at most; other items give one per free slot. A full bag answers with the inventory-full notice. An unknown id is refused. The period, level, enchant and option fields are read and not applied. |
+| 0x24 RequestNpcCreate | NPC create | Spawns the NPC at the position and rotation the window sends (1 to 50, within 3000 units of the sender). The NPC belongs to that field instance and goes with it. The pet button (pet flag set) is read and not handled. |
+| 0x5C RequestAdditionalEffect | effect control | Mode 0 puts the effect (id, level) on the sender; the packet names no target. Mode 1 (reset) takes off the effects this window put on in this session. |
+
+The client reads no reply of its own for these three; it shows the normal item, NPC and buff packets.
+
 ## Known not to work
 
 The client sends 67 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
