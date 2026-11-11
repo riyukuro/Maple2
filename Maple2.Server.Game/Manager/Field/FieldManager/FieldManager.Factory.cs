@@ -237,6 +237,16 @@ public partial class FieldManager {
             return dungeons.TryGetValue(roomId, out DungeonFieldManager? dungeon) && !dungeon.Disposed;
         }
 
+        /// <summary>
+        /// The lobby or room field of mapId in a running room the character entered (FieldEntryRules.RejoinedField).
+        /// Never creates a field.
+        /// </summary>
+        public DungeonFieldManager? FindDungeonField(long characterId, int mapId) {
+            return FieldEntryRules.RejoinedField(dungeons.Values.Where(lobby => !lobby.Disposed)
+                .Select(lobby => new FieldEntryRules.RunningRoom<DungeonFieldManager>(lobby.RoomId,
+                    lobby.DungeonRoomRecord.UserResults.ContainsKey(characterId), lobby.MapId, lobby, lobby.RoomFields)), mapId);
+        }
+
         public MigrationError DestroyDungeon(int roomId) {
             if (!dungeons.TryGetValue(roomId, out DungeonFieldManager? dungeon)) {
                 return MigrationError.s_move_err_dungeon_not_exist;

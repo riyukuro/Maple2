@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Server.Core.Constants;
@@ -79,6 +80,24 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.none, false, true, 2000426), Is.False);
         Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.DungeonLobby, true, true, 2000062), Is.False);
         Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.none, false, false, 0), Is.False);
+    }
+
+    // A login on a map of a running room the character entered goes back into that room's field (the lobby on the
+    // lobby map); a room the character never entered, or a map that is none of the room's, gives null. Of two rooms
+    // on the same map the newest is taken.
+    [Test]
+    public void RejoinedField_RunningRoomOfTheCharacter() {
+        var rooms = new[] {
+            new FieldEntryRules.RunningRoom<string>(10000003, true, 50000013, "old lobby", new Dictionary<int, string> { [2000426] = "old room" }),
+            new FieldEntryRules.RunningRoom<string>(10000009, true, 50000013, "lobby", new Dictionary<int, string> { [2000426] = "room", [2000427] = "room 2" }),
+            new FieldEntryRules.RunningRoom<string>(10000013, false, 50000001, "other lobby", new Dictionary<int, string> { [2000500] = "other room" }),
+        };
+        Assert.That(FieldEntryRules.RejoinedField(rooms, 2000426), Is.EqualTo("room"));
+        Assert.That(FieldEntryRules.RejoinedField(rooms, 2000427), Is.EqualTo("room 2"));
+        Assert.That(FieldEntryRules.RejoinedField(rooms, 50000013), Is.EqualTo("lobby"));
+        Assert.That(FieldEntryRules.RejoinedField(rooms, 2000500), Is.Null);
+        Assert.That(FieldEntryRules.RejoinedField(rooms, 50000001), Is.Null);
+        Assert.That(FieldEntryRules.RejoinedField(rooms, 2000062), Is.Null);
     }
 
     // A dungeon arrival whose room is gone enters the return field; every other arrival is left alone.

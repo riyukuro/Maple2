@@ -124,6 +124,10 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.HasDungeon(roomId);
     }
 
+    public DungeonFieldManager? FindDungeonField(long characterId, int mapId) {
+        return fieldFactory.FindDungeonField(characterId, mapId);
+    }
+
     public MigrationError DestroyDungeon(int roomId) {
         return fieldFactory.DestroyDungeon(roomId);
     }

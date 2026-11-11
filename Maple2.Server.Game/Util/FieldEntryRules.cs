@@ -47,6 +47,26 @@ public static class FieldEntryRules {
         return !dungeonField && enterReturnId != 0 && (type == InstanceType.none || saveField);
     }
 
+    // A running dungeon room on this channel: its lobby room id, whether the character has a record in it (it entered
+    // the room's lobby), the lobby's map and the room's fields by map.
+    public readonly record struct RunningRoom<T>(int RoomId, bool Member, int LobbyMapId, T Lobby, IReadOnlyDictionary<int, T> Fields);
+
+    // The field a character logging in on its saved map goes back into: the lobby or room field of that map in a
+    // running room the character entered, the newest room first. null when none: the map is entered as before.
+    // Without this a relog in a room (the client closed in Zakum's field 02000426) made a new open field of the map,
+    // with no room clock (RoomTimer), no RoomStageDungeon and no mission list.
+    public static T? RejoinedField<T>(IEnumerable<RunningRoom<T>> rooms, int mapId) where T : class {
+        foreach (RunningRoom<T> room in rooms.Where(room => room.Member).OrderByDescending(room => room.RoomId)) {
+            if (room.LobbyMapId == mapId) {
+                return room.Lobby;
+            }
+            if (room.Fields.TryGetValue(mapId, out T? field)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
     // A dungeon arrival whose room is gone when the character gets there is entered as a plain arrival in the
     // return field: the client is already on its loading screen and an error there locks it out.
     public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {

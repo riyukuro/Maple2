@@ -279,6 +279,15 @@ public sealed partial class GameSession : Core.Network.Session {
             roomId = 0;
             portalId = -1;
         }
+        // A login (a relog after the client closed in a dungeon) on a map of a room the character entered and that
+        // still runs: back into that room's field, with its clock and missions, as a dungeon arrival.
+        if (migrationType == MigrationType.Normal && roomId == 0 && ownerId == 0
+            && server.FindDungeonField(characterId, fieldId) is DungeonFieldManager rejoined) {
+            Logger.Information("Character:{CharacterId} enters Map:{MapId} of its running dungeon Room:{RoomId}", characterId, fieldId, rejoined.RoomId);
+            migrationType = MigrationType.Dungeon;
+            roomId = rejoined.RoomId;
+            portalId = -1;
+        }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
             // The saved field cannot be made (for one, its map has no navmesh file). A plain entry goes to the
             // return field, then to the default one, so the character is not locked out of the game.
@@ -312,7 +321,7 @@ public sealed partial class GameSession : Core.Network.Session {
                     Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
                     return false;
                 }
-                Dungeon.SetDungeon(dungeonField);
+                Dungeon.SetDungeon(dungeonField.Lobby ?? dungeonField);
                 break;
             case MigrationType.Normal:
             default:
