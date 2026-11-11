@@ -49,7 +49,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         OpenUgcShop = 102,
         Search = 104,
         BlueprintSearch = 105,
-        LoadCart = 107, // Just a guess?
+        SaleSettings = 107, // sent when the market dialog opens; answered with 107 (OnSettleSettings)
         RandomSaleRequest = 111,
         RandomSalePay = 112,
         RandomSaleCreate = 114,
@@ -105,6 +105,9 @@ public class MeretMarketHandler : FieldPacketHandler {
                 return;
             case Command.OpenUgcShop:
                 HandleOpenUgcShop(session);
+                return;
+            case Command.SaleSettings:
+                session.Send(MeretMarketPacket.SaleSettings(Constant.UGCShopProfitDelayDays));
                 return;
             case Command.FindItem:
                 HandleFindItem(session, packet);

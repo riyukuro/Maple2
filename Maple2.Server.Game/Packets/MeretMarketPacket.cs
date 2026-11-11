@@ -28,8 +28,25 @@ public static class MeretMarketPacket {
         FailPurchase = 31,
         FeaturedPremium = 101,
         FeaturedUgc = 102,
-        LoadCart = 107,
+        SaleSettings = 107,
         Unknown201 = 201,
+    }
+
+    // Client reader: CMeratMarketMan::OnSettleSettings (meratmarketman.cpp:2476), the answer to MeretMarket 107, which
+    // the market dialog sends each time it opens. The four ints: the grade of achievement 21100051 and of 21100052 and
+    // a product buy count, which the client only formats into the buy refusals 0xbd, 0xbe and 0xbf (the server sends
+    // none of them, so 0), then the days after a sale until its profit can be collected. The client counts a sale as
+    // collectable from its sold time plus these days (CMeratMarketMan::IsSettled, RecalcSalesSums) and assumes 7
+    // until this answer comes.
+    public static ByteWriter SaleSettings(int profitDelayDays) {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.Write<Command>(Command.SaleSettings);
+        pWriter.WriteInt(); // achievement 21100051 grade
+        pWriter.WriteInt(); // achievement 21100052 grade
+        pWriter.WriteInt(); // product buy count
+        pWriter.WriteInt(profitDelayDays);
+
+        return pWriter;
     }
 
     // Client reader: CMeratMarketMan::OnMySaleProducts (meratmarketman.cpp:2211). The first long is the seller's

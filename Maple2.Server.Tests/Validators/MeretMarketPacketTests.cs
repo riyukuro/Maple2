@@ -17,4 +17,19 @@ public class MeretMarketPacketTests {
         Assert.That(packet.ReadLong(), Is.EqualTo(450));
         Assert.That(packet.Available, Is.EqualTo(0));
     }
+
+    // MeretMarket 0x0039 mode 107 has no body; the answer the client reads (OnSettleSettings) is u8 mode 107 and four
+    // i32: two achievement grades, a product buy count, then the days until a sale's profit can be collected.
+    [Test]
+    public void SaleSettingsAnswer() {
+        byte[] bytes = MeretMarketPacket.SaleSettings(10).ToArray();
+        Assert.That(bytes.Length, Is.EqualTo(2 + 1 + 4 * 4));
+        var packet = new ByteReader(bytes, 2);
+        Assert.That(packet.ReadByte(), Is.EqualTo(107));
+        Assert.That(packet.ReadInt(), Is.EqualTo(0));
+        Assert.That(packet.ReadInt(), Is.EqualTo(0));
+        Assert.That(packet.ReadInt(), Is.EqualTo(0));
+        Assert.That(packet.ReadInt(), Is.EqualTo(10));
+        Assert.That(packet.Available, Is.EqualTo(0));
+    }
 }
