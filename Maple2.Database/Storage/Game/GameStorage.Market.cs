@@ -83,6 +83,7 @@ public partial class GameStorage {
             return Context.UgcMarketItem.Where(listing => listing.CharacterId == characterId && listing.ListingEndTime > DateTime.Now)
                 .AsEnumerable()
                 .Select(ToMarketEntry)
+                .Where(x => x is not null)
                 .ToList()!;
         }
 
@@ -207,10 +208,15 @@ public partial class GameStorage {
             return ToMarketEntry(item);
         }
 
+        // A row whose look or blueprint column is null (only a hand-made row; a listing made in game always
+        // has both) cannot be written to the client, so it is left out.
         private UgcMarketItem? ToMarketEntry(Model.UgcMarketItem? model) {
-            if (model == null) {
+            if (model?.Look == null || model.Blueprint == null) {
                 return null;
             }
+            model.Tags ??= [];
+            model.Description ??= string.Empty;
+            model.CharacterName ??= string.Empty;
 
             return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? model.Convert(metadata) : null;
         }
