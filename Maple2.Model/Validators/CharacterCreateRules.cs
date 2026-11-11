@@ -18,10 +18,10 @@ public static class CharacterCreateRules {
         return !IsBlankName(name) && !isBanned(name);
     }
 
-    // The equips of a create: no slot twice, and hair, face and clothes are there.
+    // The equips of a create: no slot twice. No slot is required: the client sends only the equips it
+    // shows, and which slots a job's create screen shows is not known to the server.
     public static bool IsCreateOutfit(IReadOnlyCollection<EquipSlot> slots) {
-        return slots.Distinct().Count() == slots.Count
-               && slots.Contains(EquipSlot.HR) && slots.Contains(EquipSlot.FA) && slots.Contains(EquipSlot.CL);
+        return slots.Distinct().Count() == slots.Count;
     }
 
     // An account holds at most its own slot count, and never more than the server's.

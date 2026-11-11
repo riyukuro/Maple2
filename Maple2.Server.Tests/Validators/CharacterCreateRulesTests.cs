@@ -30,10 +30,10 @@ public class CharacterCreateRulesTests {
     // CharacterManagement 0x0009 sub-type 1 equips: u8 count, then per equip i32 item id, u8 slot, its look.
     [TestCase(new byte[] { 1, 2, 8, 9, 11 }, true)]
     [TestCase(new byte[] { 1, 2, 8 }, true)]
-    [TestCase(new byte[] { }, false)]
-    [TestCase(new byte[] { 2, 8, 9, 11 }, false)] // no hair
-    [TestCase(new byte[] { 1, 2, 9, 11 }, false)] // no clothes
-    [TestCase(new byte[] { 1, 8, 9 }, false)] // no face
+    [TestCase(new byte[] { }, true)]
+    [TestCase(new byte[] { 2, 8, 9, 11 }, true)] // no hair: only shown equips are sent
+    [TestCase(new byte[] { 1, 2, 9, 11 }, true)] // no clothes
+    [TestCase(new byte[] { 2, 8, 8 }, false)] // clothes twice
     [TestCase(new byte[] { 1, 1, 2, 8 }, false)] // hair twice
     public void CreateOutfitSlots(byte[] wireSlots, bool expected) {
         var slots = new System.Collections.Generic.List<EquipSlot>();
