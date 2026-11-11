@@ -9,6 +9,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -55,10 +56,27 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 }
                 break;
             case Command.Close:
-                // Not handled: the cube's id string, sent when the dialog opened from the cube closes.
-                Logger.Debug("FunctionCube {Command} from {CharacterId}: {InteractId}", command, session.CharacterId, packet.ReadUnicodeString());
+                HandleClose(session, packet.ReadUnicodeString());
                 break;
         }
+    }
+
+    // The dialog opened from the cube closed: the cube the sender holds in use goes back to its default state.
+    private static void HandleClose(GameSession session, string interactId) {
+        FieldFunctionInteract? fieldInteract = session.Field?.TryGetFieldFunctionInteract(interactId);
+        if (fieldInteract is null) {
+            return;
+        }
+
+        InteractCube cube = fieldInteract.InteractCube;
+        if (!FunctionCubeCloseRule.Releases(fieldInteract.Value.ControlType, cube.State, cube.Metadata.DefaultState, cube.InteractingCharacterId, session.CharacterId)) {
+            return;
+        }
+
+        cube.State = cube.Metadata.DefaultState;
+        cube.InteractingCharacterId = 0;
+        session.Field?.Broadcast(FunctionCubePacket.UpdateFunctionCube(cube));
+        session.Field?.Broadcast(FunctionCubePacket.UseFurniture(session.CharacterId, cube));
     }
 
     private void HandleUseCube(GameSession session, string interactId) {
