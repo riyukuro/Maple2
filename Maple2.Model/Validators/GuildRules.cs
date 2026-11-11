@@ -124,6 +124,21 @@ public static class GuildRules {
         return lastSent <= 0 || now < lastSent || now - lastSent >= MailCooldownSeconds;
     }
 
+    // The limit over a table of the last mail time of each sender. A sender inside the 60 seconds is
+    // refused and the table stays as it is; else the entries that are no longer held back are removed (so
+    // the table holds at most the senders of the last 60 seconds) and the sender's time is written.
+    public static bool TakeMailTurn(IDictionary<long, long> lastMail, long senderId, long now) {
+        lastMail.TryGetValue(senderId, out long last);
+        if (!CanSendMail(now, last)) {
+            return false;
+        }
+        foreach (long id in lastMail.Where(entry => CanSendMail(now, entry.Value)).Select(entry => entry.Key).ToList()) {
+            lastMail.Remove(id);
+        }
+        lastMail[senderId] = now;
+        return true;
+    }
+
     // Guild 113 (CGuildManager::FUN_1413b8540): the count of donations made at once. The client refuses a
     // count under 1, a member who joined today, more donations in a day than the guild level allows, and a
     // donation that takes the guild fund over its maximum. The count of an earlier day does not carry over.
@@ -269,8 +284,9 @@ public static class GuildRules {
         return GuildError.none;
     }
 
-    // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds. A
-    // skill that was never used has the time 0.
+    // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds (the
+    // client's table reader GuildSkill::FUN_1404d4cb0 stores duration * 60 and cooltime * 60, and the
+    // getters add them to the time of use). A skill that was never used has the time 0.
     public static long SkillRemainingSeconds(GuildTable.Buff row, long useTime, long now) {
         if (useTime == 0) {
             return 0;

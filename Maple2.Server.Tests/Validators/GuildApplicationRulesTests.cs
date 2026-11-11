@@ -195,6 +195,37 @@ public class GuildApplicationRulesTests {
     }
 
     [Test]
+    public void Mail_TurnIsRefusedInsideTheLimit() {
+        var lastMail = new System.Collections.Generic.Dictionary<long, long>();
+
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1000), Is.True);
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1059), Is.False);
+        Assert.That(lastMail[7], Is.EqualTo(1000), "a refused turn does not move the time");
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 8, 1059), Is.True, "another sender has an own limit");
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1060), Is.True);
+        Assert.That(lastMail[7], Is.EqualTo(1060));
+    }
+
+    [Test]
+    public void Mail_OldTurnsAreRemovedOnEachInsert() {
+        var lastMail = new System.Collections.Generic.Dictionary<long, long>();
+        for (long id = 1; id <= 50; id++) {
+            Assert.That(GuildRules.TakeMailTurn(lastMail, id, 1000 + id), Is.True);
+        }
+        Assert.That(lastMail, Has.Count.EqualTo(50));
+
+        // At 1080 the senders 1 to 20 (1001 to 1020) are free again and go; 21 to 50 stay, 99 is added.
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 99, 1080), Is.True);
+        Assert.That(lastMail, Has.Count.EqualTo(31));
+        Assert.That(lastMail.ContainsKey(20), Is.False);
+        Assert.That(lastMail.ContainsKey(21), Is.True);
+
+        // Much later every other entry goes.
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 99, 1200), Is.True);
+        Assert.That(lastMail, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void Donate_CountOfAnEarlierDayDoesNotCarryOver() {
         Assert.That(GuildRules.DonationsToday(4, 999, 1000), Is.EqualTo(0));
         Assert.That(GuildRules.DonationsToday(4, 1000, 1000), Is.EqualTo(4));

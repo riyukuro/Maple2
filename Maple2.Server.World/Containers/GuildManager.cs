@@ -445,14 +445,9 @@ public class GuildManager : IDisposable {
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         lock (lastMail) {
-            lastMail.TryGetValue(requestorId, out long last);
-            if (!GuildRules.CanSendMail(now, last)) {
+            if (!GuildRules.TakeMailTurn(lastMail, requestorId, now)) {
                 return GuildError.s_guild_err_unknown;
             }
-            foreach (long id in lastMail.Where(entry => GuildRules.CanSendMail(now, entry.Value)).Select(entry => entry.Key).ToList()) {
-                lastMail.Remove(id);
-            }
-            lastMail[requestorId] = now;
         }
         return GuildError.none;
     }
