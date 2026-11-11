@@ -131,6 +131,9 @@ public class GameServer : Server<GameSession> {
         }
 
         foreach (GameSession session in sessions.Values) {
+            if (!session.SendsEvent(gameEvent)) {
+                continue;
+            }
             session.Send(GameEventPacket.Add(gameEvent));
         }
     }

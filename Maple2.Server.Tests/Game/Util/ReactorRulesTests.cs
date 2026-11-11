@@ -1,4 +1,6 @@
-﻿using System.Numerics;
+﻿using System.Collections.Generic;
+using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Util;
 
@@ -115,5 +117,19 @@ public class ReactorRulesTests {
         var plan = ReactorRules.Plan(conditions, [(10, 1, 1, 2), (11, 1, 1, 9), (12, 2, 1, 9)]);
 
         Assert.That(plan, Is.EquivalentTo(new[] { (10L, 2), (11L, 1) }));
+    }
+
+    [Test]
+    public void ReactorEvent_IsSentOnlyWhenARowNamesIt() {
+        var table = new ReactorTable(new Dictionary<int, ReactorTable.Entry> {
+            [10000002] = new(10000002, 155, 1500, 900070, [], []),
+            [10000009] = new(10000009, 155, 1500, 0, [], []),
+        });
+        Assert.That(ReactorRules.SendsEvent(GameEventType.reactor, 900070, table), Is.True);
+        // The other locales' rows of the same reactor name these; sent, the last one would replace 900070.
+        Assert.That(ReactorRules.SendsEvent(GameEventType.reactor, 900080, table), Is.False);
+        Assert.That(ReactorRules.SendsEvent(GameEventType.reactor, 900112, table), Is.False);
+        // Other event types do not depend on the table.
+        Assert.That(ReactorRules.SendsEvent(GameEventType.StringBoard, 900080, table), Is.True);
     }
 }

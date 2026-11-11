@@ -378,7 +378,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(GuideRecordPacket.Load(Config.GuideRecords));
         // DailyWonder*
         GameEvent.Load();
-        Send(GameEventPacket.Load(server.GetEvents().ToArray()));
+        Send(GameEventPacket.Load(server.GetEvents().Where(SendsEvent).ToArray()));
         Send(BannerListPacket.Load(server.GetSystemBanners()));
         Dungeon.Load();
         Send(InGameRankPacket.Load());
@@ -607,6 +607,9 @@ public sealed partial class GameSession : Core.Network.Session {
 
     public GameEvent? FindEvent(int id) => server.FindEvent(id);
     public IEnumerable<GameEvent> Events => server.GetEvents();
+
+    // See ReactorRules.SendsEvent: a Reactor event no reactor row names is kept from the client.
+    public bool SendsEvent(GameEvent gameEvent) => ReactorRules.SendsEvent(gameEvent.Metadata.Type, gameEvent.Id, TableMetadata.ReactorTable);
 
     public IEnumerable<PremiumMarketItem> GetPremiumMarketItems(params int[] tabIds) => server.GetPremiumMarketItems(tabIds);
 

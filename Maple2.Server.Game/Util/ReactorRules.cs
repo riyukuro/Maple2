@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
@@ -126,5 +127,13 @@ public static class ReactorRules {
     // The amount of a condition item the player must hold.
     public static int Needed(ReactorTable.ConditionItem item) {
         return Math.Max(item.Consume, item.CheckCount);
+    }
+
+    // Whether an event goes to the client. The client keeps one Reactor event (CGameRule::SetReactor: each
+    // event that starts replaces the one before) and a reactor may only be placed while that event is the one
+    // its reactor.xml row names. A Reactor event no row of this locale names would take the place of the
+    // one in use, so it is not sent. Every other event type is sent.
+    public static bool SendsEvent(GameEventType type, int eventId, ReactorTable table) {
+        return type != GameEventType.reactor || table.Entries.Values.Any(entry => entry.GameEventId == eventId);
     }
 }
