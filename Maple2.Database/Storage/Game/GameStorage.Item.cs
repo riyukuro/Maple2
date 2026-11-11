@@ -24,7 +24,10 @@ public partial class GameStorage {
         // The split-off part becomes a new row. The source row's lowered amount is written in the same
         // save, or after a crash before the next character save the database holds both the whole stack
         // and the split-off part. The caller lowers the in-memory amount after this returns.
+        // The context does not track queries by default, so the source row is loaded tracked; an untracked
+        // row's new amount would not be part of the save.
         public Item? SplitItem(long ownerId, Item item, int amount) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
             Model.Item? source = Context.Item.Find(item.Uid);
             if (source != null) {
                 source.Amount = item.Amount - amount;
