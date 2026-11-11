@@ -11,6 +11,18 @@ namespace Maple2.Server.Tests.Game.Util;
 public class InsigniaRulesTests {
     private static readonly Facts Plain = new(false, 0, 0, false, 1, false, false);
 
+    // A worn insignia with an effect gives it on field entry when it is shown and not there yet.
+    [Test]
+    public void EntryBuff_GivenOnceWhenShown() {
+        var withBuff = new InsigniaTable.Entry(InsigniaConditionType.title, 123, 4567, 2);
+        var noBuff = new InsigniaTable.Entry(InsigniaConditionType.level, 0, 0, 0);
+        Assert.That(EntryBuff(withBuff, shown: true, hasBuff: false), Is.EqualTo((4567, (short) 2)));
+        Assert.That(EntryBuff(withBuff, shown: true, hasBuff: true), Is.EqualTo((0, (short) 0)));
+        Assert.That(EntryBuff(withBuff, shown: false, hasBuff: false), Is.EqualTo((0, (short) 0)));
+        Assert.That(EntryBuff(noBuff, shown: true, hasBuff: false), Is.EqualTo((0, (short) 0)));
+        Assert.That(EntryBuff(null, shown: false, hasBuff: false), Is.EqualTo((0, (short) 0)));
+    }
+
     [Test]
     public void IdBytes() {
         var entries = new Dictionary<int, InsigniaTable.Entry> {

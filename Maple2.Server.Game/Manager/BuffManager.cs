@@ -68,6 +68,16 @@ public class BuffManager : IUpdatable {
         if (Actor is FieldPlayer player) {
             player.Session.Config.RefreshPremiumClubBuffs();
             player.Session.Guild.LoadSkillBuffs();
+
+            // The worn insignia's effect: picking the insignia gives it (InsigniaHandler), but a login
+            // can arrive without it (seen after a server restart), and the client does not ask again at login.
+            player.Session.TableMetadata.InsigniaTable.Entries.TryGetValue(player.Value.Character.Insignia, out InsigniaTable.Entry? insignia);
+            (int insigniaBuffId, short insigniaBuffLevel) = InsigniaRules.EntryBuff(insignia,
+                insignia != null && InsigniaRules.Shown(player.Session, insignia),
+                insignia != null && HasBuff(insignia.BuffId, insignia.BuffLevel));
+            if (insigniaBuffId > 0) {
+                AddBuff(Actor, Actor, insigniaBuffId, insigniaBuffLevel, Actor.Field.FieldTick);
+            }
         }
     }
 

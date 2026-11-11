@@ -49,6 +49,18 @@ public static class InsigniaRules {
             Gm: GmCheck.IsGm(session.Player.Value.Account.AdminPermissions)));
     }
 
+    // The effect a worn insignia gives when its wearer enters a field: the row's effect when the insignia is
+    // shown and the wearer does not have the effect yet, else (0, 0). The client's own check
+    // (MyPC::SendNametag, mypc.cpp:4320) sends an Insignia request only when its condition result differs
+    // from the shown flag of the field add, so at a login where both agree nothing asks for the effect and
+    // the server has to give it.
+    public static (int Id, short Level) EntryBuff(InsigniaTable.Entry? entry, bool shown, bool hasBuff) {
+        if (entry == null || entry.BuffId <= 0 || !shown || hasBuff) {
+            return (0, 0);
+        }
+        return (entry.BuffId, entry.BuffLevel);
+    }
+
     // The flag for the player's current insignia. An id the server table does not hold is not shown.
     public static bool Shown(GameSession session) {
         return session.TableMetadata.InsigniaTable.Entries.TryGetValue(session.Player.Value.Character.Insignia, out InsigniaTable.Entry? entry)
