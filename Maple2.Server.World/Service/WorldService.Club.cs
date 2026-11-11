@@ -158,7 +158,8 @@ public partial class WorldService {
 
         manager.Broadcast(new ChannelClubRequest {
             InviteReply = new ChannelClubRequest.Types.InviteReply {
-                RequestorName = requestorName,
+                // Mode 9 names the character that replied (clubcli.cpp:1143: "<name> has declined").
+                RequestorName = info.Name,
                 Accept = respond.Accept,
             },
             ClubId = manager.Club.Id,

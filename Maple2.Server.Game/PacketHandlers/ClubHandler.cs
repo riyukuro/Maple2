@@ -186,6 +186,16 @@ public class ClubHandler : FieldPacketHandler {
             },
         });
 
+        // Mode 8 is the only packet the client drops a listed invite on (clubcli.cpp:1125), on decline
+        // as on accept. Without it the invite stays listed and the next invite to the same club stops
+        // the client (clubcli.cpp:914). The World has used up the invite on an error too.
+        session.Send(ClubPacket.AcceptInvite(new ClubInvite {
+            ClubId = clubId,
+            Name = clubName,
+            LeaderName = inviterName,
+            Invitee = invitee,
+        }));
+
         if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
             return;
@@ -198,12 +208,6 @@ public class ClubHandler : FieldPacketHandler {
                 return;
             }
 
-            session.Send(ClubPacket.AcceptInvite(new ClubInvite {
-                ClubId = clubId,
-                Name = clubName,
-                LeaderName = inviterName,
-                Invitee = invitee,
-            }));
             if (session.Clubs.TryAdd(response.Club.Id, club)) {
                 session.Send(ClubPacket.Join(club.Club.Members[session.CharacterId], club.Club.Name));
                 club.Load();
