@@ -1,3 +1,5 @@
+using Maple2.Model.Game;
+
 namespace Maple2.Server.Game.Model;
 
 // The agree boxes the hall trigger asks the couple (trigger attribute agreeType). The number is the byte of
@@ -18,6 +20,8 @@ public sealed class WeddingCeremony {
     // The client offers the way in for a ticket whose time is at most this far from now, before or after
     // (WeddingManager::CollectTickets).
     public const int EnterWindowSeconds = 1800;
+    // A reserved hall is kept this long after its ceremony time, past the end of the window above.
+    public const int HallKeepSeconds = 3600;
     // Trigger and npc script attribute values.
     public const string EntryGroomBride = "GroomBride";
     public const string StateComplete = "weddingComplete";
@@ -137,6 +141,23 @@ public sealed class WeddingCeremony {
     // the client shows the ticket.
     public static bool InEnterWindow(long ceremonyTime, long now) {
         return Math.Abs(now - ceremonyTime) <= EnterWindowSeconds;
+    }
+
+    // A session's reserved hall is over: there is one and its ceremony time is HallKeepSeconds or more ago.
+    public static bool HallExpired(long hallId, long ceremonyTime, long now) {
+        return hallId != 0 && now >= ceremonyTime + HallKeepSeconds;
+    }
+
+    // What a session holds once its hall is over: the same marriage and no hall. The end of the hall does not
+    // end the engagement or the marriage; the stored marriage is not touched by it either.
+    public static (Marriage Marriage, WeddingHall Hall) AfterHallExpiry(Marriage marriage) {
+        return (marriage, WeddingHall.Default);
+    }
+
+    // A dungeon room is left by moving to another channel process, which carries no room owner, so the way
+    // into a hall is closed from there.
+    public static bool CanEnterFrom(bool dungeonField) {
+        return !dungeonField;
     }
 
     // The two wedding hall tests of an npc script condition (weddingHallState, weddingHallEntryType; value false

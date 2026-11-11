@@ -301,6 +301,13 @@ public class WeddingHandler : FieldPacketHandler {
             return;
         }
 
+        // From a dungeon room the field change is a migration that is already under way when PrepareField
+        // returns, and it would arrive in a room that is not the couple's.
+        if (!WeddingCeremony.CanEnterFrom(session.Field is DungeonFieldManager)) {
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_common));
+            return;
+        }
+
         if (!session.PrepareField(mapId, out FieldManager? field, ownerId: marriageId)) {
             session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
             return;

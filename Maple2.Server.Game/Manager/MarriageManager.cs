@@ -261,8 +261,10 @@ public sealed class MarriageManager {
         }
     }
 
+    // The reserved hall ends WeddingCeremony.HallKeepSeconds after the ceremony time. Only the hall goes: the
+    // couple stays what it is, engaged when the vow was not reached and married when it was.
     public void CheckMarriageHallExpiration() {
-        if (WeddingHall.Id == 0 || WeddingHall.CeremonyTime.FromEpochSeconds().AddHours(1) > DateTime.Now) {
+        if (!WeddingCeremony.HallExpired(WeddingHall.Id, WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             return;
         }
 
@@ -279,7 +281,7 @@ public sealed class MarriageManager {
             });
         } catch { /* ignored */ }
 
-        RemoveMarriage(false);
+        (Marriage, WeddingHall) = WeddingCeremony.AfterHallExpiry(Marriage);
     }
 
     public void RemoveMarriage(bool update = true) {

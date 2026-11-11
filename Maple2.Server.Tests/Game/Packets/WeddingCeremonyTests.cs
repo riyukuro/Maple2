@@ -250,6 +250,44 @@ public class WeddingCeremonyTests {
         Assert.That(reader.Position, Is.EqualTo(packet.Length));
     }
 
+    // The hall is over one hour after the ceremony time, and not before; no hall is never over.
+    [Test]
+    public void HallExpired_OneHourAfterTheCeremonyTime() {
+        const long time = 1_000_000;
+        Assert.That(WeddingCeremony.HallExpired(5, time, time + 3599), Is.False);
+        Assert.That(WeddingCeremony.HallExpired(5, time, time + 3600), Is.True);
+        Assert.That(WeddingCeremony.HallExpired(5, time, time - 100), Is.False);
+        Assert.That(WeddingCeremony.HallExpired(0, time, time + 9999), Is.False);
+    }
+
+    // The end of the hall takes the hall only: a couple married in it stays married in the session of the
+    // first partner to change field after it, and an engaged couple stays engaged.
+    [Test]
+    public void AfterHallExpiry_KeepsTheMarriageAndDropsTheHall() {
+        foreach (MaritalStatus status in new[] { MaritalStatus.Married, MaritalStatus.Engaged }) {
+            var marriage = new Marriage {
+                Id = 77,
+                Status = status,
+                MarriageTime = 1_000_600,
+                Partner1 = new MarriagePartner(),
+                Partner2 = new MarriagePartner(),
+            };
+            (Marriage kept, WeddingHall hall) = WeddingCeremony.AfterHallExpiry(marriage);
+            Assert.That(kept, Is.SameAs(marriage));
+            Assert.That(kept.Id, Is.EqualTo(77));
+            Assert.That(kept.Status, Is.EqualTo(status));
+            Assert.That(kept.MarriageTime, Is.EqualTo(1_000_600));
+            Assert.That(hall.Id, Is.EqualTo(0));
+        }
+    }
+
+    // No way into a hall from a dungeon room; from any other field it is open.
+    [Test]
+    public void CanEnterFrom_NotFromADungeonRoom() {
+        Assert.That(WeddingCeremony.CanEnterFrom(dungeonField: true), Is.False);
+        Assert.That(WeddingCeremony.CanEnterFrom(dungeonField: false), Is.True);
+    }
+
     // The stored trigger attributes are snake case; success is absent on the plain test.
     [Test]
     public void TriggerConditions_ReadTheStoredAttributes() {
