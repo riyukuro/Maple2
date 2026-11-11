@@ -50,11 +50,24 @@ public class WeddingInviteRulesTests {
 
     [Test]
     public void GuestTicket_InvitedInTheWindowAndNotTheOwnHall() {
-        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, Time, Time - 1800, 1800), Is.True);
-        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, Time, Time + 1800, 1800), Is.True);
-        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, Time, Time - 1801, 1800), Is.False);
-        Assert.That(WeddingInviteRules.GuestTicket(Invited, 44, 7, 0, Time, Time, 1800), Is.False, "not invited");
-        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 7, Time, Time, 1800), Is.False, "the couple has its own ticket");
+        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, MaritalStatus.Engaged, Time, Time - 1800, 1800), Is.True);
+        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, MaritalStatus.Engaged, Time, Time + 1800, 1800), Is.True);
+        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, MaritalStatus.Engaged, Time, Time - 1801, 1800), Is.False);
+        Assert.That(WeddingInviteRules.GuestTicket(Invited, 44, 7, 0, MaritalStatus.Engaged, Time, Time, 1800), Is.False, "not invited");
+        Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 7, MaritalStatus.Engaged, Time, Time, 1800), Is.False, "the couple has its own ticket");
+    }
+
+    [Test]
+    public void Ticket_OnlyForAHallNotYetHeld() {
+        // Engaged: the ceremony is still to come. Married (after the vow) and every divorce state: no ticket.
+        MaritalStatus[] over = [MaritalStatus.Single, MaritalStatus.Married, MaritalStatus.DivorceFiledByGroom,
+            MaritalStatus.DivorceFiledByBride, MaritalStatus.Divorced];
+        Assert.That(WeddingInviteRules.CoupleTicket(MaritalStatus.Engaged, Time, Time + 1800, 1800), Is.True);
+        Assert.That(WeddingInviteRules.CoupleTicket(MaritalStatus.Engaged, Time, Time + 1801, 1800), Is.False);
+        foreach (MaritalStatus status in over) {
+            Assert.That(WeddingInviteRules.CoupleTicket(status, Time, Time, 1800), Is.False, status.ToString());
+            Assert.That(WeddingInviteRules.GuestTicket(Invited, 33, 7, 0, status, Time, Time, 1800), Is.False, status.ToString());
+        }
     }
 
     private static WeddingHall MakeHall() => new() {

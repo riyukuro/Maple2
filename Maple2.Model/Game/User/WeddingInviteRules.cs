@@ -105,10 +105,19 @@ public static class WeddingInviteRules {
         return sent.Add((marriageId, ceremonyTime));
     }
 
+    // A ticket is only for a hall whose ceremony has not been held: the couple is still engaged. After the vow
+    // (married) and in any divorce state the hall is over, also while its time is still in the window.
+    public static bool HallNotHeld(MaritalStatus coupleStatus) => coupleStatus == MaritalStatus.Engaged;
+
+    // The couple gets its own hall's ticket while the hall is not held and its time is in the window.
+    public static bool CoupleTicket(MaritalStatus coupleStatus, long ceremonyTime, long now, int windowSeconds) {
+        return HallNotHeld(coupleStatus) && Math.Abs(now - ceremonyTime) <= windowSeconds;
+    }
+
     // A guest gets the ticket of a hall that is not the guest's own marriage's while its ceremony time is in
     // the window in which the client offers the way in (WeddingManager::CollectTickets, 1800 s either side).
     public static bool GuestTicket(IReadOnlyDictionary<long, long> invited, long characterId, long hallMarriageId, long ownMarriageId,
-            long ceremonyTime, long now, int windowSeconds) {
-        return hallMarriageId != ownMarriageId && invited.ContainsKey(characterId) && Math.Abs(now - ceremonyTime) <= windowSeconds;
+            MaritalStatus hallCoupleStatus, long ceremonyTime, long now, int windowSeconds) {
+        return HallNotHeld(hallCoupleStatus) && hallMarriageId != ownMarriageId && invited.ContainsKey(characterId) && Math.Abs(now - ceremonyTime) <= windowSeconds;
     }
 }

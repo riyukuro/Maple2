@@ -171,7 +171,7 @@ public sealed class MarriageManager {
     // ceremony time is inside the client's window.
     private void SendTickets() {
         if (WeddingHall.Id != 0 && Marriage.Id != 0
-            && WeddingCeremony.InEnterWindow(WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            && WeddingInviteRules.CoupleTicket(Marriage.Status, WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), WeddingCeremony.EnterWindowSeconds)) {
             SendTicket(Marriage.Id, WeddingHall);
         }
         SendGuestTickets();
@@ -180,12 +180,12 @@ public sealed class MarriageManager {
     // An invited guest gets the hall's ticket the same way, under the marriage id that Wedding 0x1a sends back.
     private void SendGuestTickets() {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        List<WeddingHall> halls;
+        List<(WeddingHall Hall, MaritalStatus CoupleStatus)> halls;
         using (GameStorage.Request db = session.GameStorage.Context()) {
             halls = db.GetGuestWeddingHalls(session.CharacterId, now - WeddingCeremony.EnterWindowSeconds, now + WeddingCeremony.EnterWindowSeconds);
         }
-        foreach (WeddingHall hall in halls) {
-            if (WeddingInviteRules.GuestTicket(hall.GuestList, session.CharacterId, hall.MarriageId, Marriage.Id, hall.CeremonyTime, now, WeddingCeremony.EnterWindowSeconds)) {
+        foreach ((WeddingHall hall, MaritalStatus coupleStatus) in halls) {
+            if (WeddingInviteRules.GuestTicket(hall.GuestList, session.CharacterId, hall.MarriageId, Marriage.Id, coupleStatus, hall.CeremonyTime, now, WeddingCeremony.EnterWindowSeconds)) {
                 SendTicket(hall.MarriageId, hall);
             }
         }

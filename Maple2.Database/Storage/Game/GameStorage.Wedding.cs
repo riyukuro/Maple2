@@ -362,21 +362,22 @@ public partial class GameStorage {
         }
 
         // The halls with a ceremony time from..to (epoch seconds) that have the character on the guest list.
-        public List<WeddingHall> GetGuestWeddingHalls(long characterId, long from, long to) {
+        // Each hall with its couple's state, which decides whether the ticket is still valid.
+        public List<(WeddingHall Hall, MaritalStatus CoupleStatus)> GetGuestWeddingHalls(long characterId, long from, long to) {
             DateTime fromTime = from.FromEpochSeconds();
             DateTime toTime = to.FromEpochSeconds();
             List<Model.WeddingHall> entries = Context.WeddingHall
                 .Where(hall => hall.CeremonyTime >= fromTime && hall.CeremonyTime <= toTime)
                 .ToList();
 
-            var result = new List<WeddingHall>();
+            var result = new List<(WeddingHall, MaritalStatus)>();
             foreach (Model.WeddingHall entry in entries) {
                 if (!entry.GuestList.ContainsKey(characterId)) {
                     continue;
                 }
                 Marriage? marriage = GetMarriage(weddingId: entry.MarriageId);
                 if (marriage != null) {
-                    result.Add(entry.Convert(marriage));
+                    result.Add((entry.Convert(marriage), marriage.Status));
                 }
             }
             return result;
