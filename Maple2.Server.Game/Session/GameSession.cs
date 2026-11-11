@@ -574,6 +574,14 @@ public sealed partial class GameSession : Core.Network.Session {
         return true;
     }
 
+    // The saved return field, or the default one when the saved field is unknown or closed to this account.
+    public int ReturnMapId() {
+        int mapId = Player.Value.Character.ReturnMaps.Peek();
+        bool known = MapMetadata.TryGet(mapId, out MapMetadata? metadata);
+        return FieldEntryRules.ReturnMap(mapId, known, metadata?.Limit.EnterAdminLevel ?? 0,
+            GmCheck.IsGm(Player.Value.Account.AdminPermissions), Constant.DefaultReturnMapId);
+    }
+
     public void ReturnField() {
         Player player = Player.Value;
         if (player.Home.IsHomeSetup && !Player.Field.Plots.IsEmpty && (Player.Session.Housing.GetFieldPlot()?.IsPlanner ?? false)) {
@@ -585,7 +593,7 @@ public sealed partial class GameSession : Core.Network.Session {
         int mapId = character.ReturnMaps.Peek();
         Vector3 position = character.ReturnPosition;
 
-        if (!MapMetadata.TryGet(mapId, out _)) {
+        if (ReturnMapId() != mapId) {
             mapId = Constant.DefaultReturnMapId;
             position = default;
         }

@@ -12,6 +12,16 @@ public static class FieldEntryRules {
         }
     }
 
+    // The field a character goes back to (leaving a dungeon, a home, a mini-game): its saved return field, or
+    // the default return field when the saved one is unknown or is a GM-only field for a plain account
+    // (an account that lost its GM rights while its return field was one of those).
+    public static int ReturnMap(int returnMapId, bool known, int enterAdminLevel, bool gm, int defaultMapId) {
+        if (!known || !AdminFieldAllowed(enterAdminLevel, gm)) {
+            return defaultMapId;
+        }
+        return returnMapId;
+    }
+
     // A field with enterAdminLevel above 0 can be entered, or picked as a taxi destination, by a GM account only.
     public static bool AdminFieldAllowed(int enterAdminLevel, bool gm) {
         return enterAdminLevel <= 0 || gm;

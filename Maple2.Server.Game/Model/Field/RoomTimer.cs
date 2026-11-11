@@ -37,7 +37,7 @@ public class RoomTimer : IUpdatable {
 
         if (tickCount > StartTick + Duration) {
             foreach ((int objectId, FieldPlayer player) in field.Players) {
-                int returnMapId = player.Value.Character.ReturnMaps.Peek();
+                int returnMapId = player.Session.ReturnMapId();
                 player.Session.Send(player.Session.PrepareField(returnMapId, returnMapId)
                     ? FieldEnterPacket.Request(player)
                     : FieldEnterPacket.Error(MigrationError.s_move_err_default));
