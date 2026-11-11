@@ -115,4 +115,32 @@ public class QuestRulesTests {
         Assert.That(QuestRules.ClientStartsItself(QuestType.FieldMission, false, false, [2000002, 2000001], 2000001), Is.False);
         Assert.That(QuestRules.ClientStartsItself(QuestType.FieldMission, false, false, [], 2000001), Is.False);
     }
+
+    // Client rule: CQuestManagerCommon::vfunc_o10_21 (commonfiles/questdata.cpp:376) and NextWeekdayStart
+    // (timeutil.cpp:403). 2026-11-11 is a Wednesday (weekday 4).
+    private static long Local(int year, int month, int day, int hour) =>
+        new DateTimeOffset(new DateTime(year, month, day, hour, 0, 0, DateTimeKind.Local)).ToUnixTimeSeconds();
+
+    [TestCase(0, 0, 2026, 11, 20, false)] // done once
+    [TestCase(2, 0, 2026, 11, 11, false)] // daily, same day
+    [TestCase(2, 0, 2026, 11, 12, true)] // daily, next day
+    [TestCase(3, 2, 2026, 11, 15, false)] // weekly reset monday: sunday before it
+    [TestCase(3, 2, 2026, 11, 16, true)] // weekly reset monday: from monday
+    [TestCase(3, 4, 2026, 11, 17, false)] // weekly reset wednesday, started on a wednesday: a week later
+    [TestCase(3, 4, 2026, 11, 18, true)]
+    [TestCase(1, 0, 2026, 11, 11, true)] // other repeat: at once
+    public void CanStartAgain_ClientRule(int repeat, int resetWeekday, int year, int month, int day, bool expected) {
+        long started = Local(2026, 11, 11, 23);
+        var now = new DateTime(year, month, day, 0, 30, 0, DateTimeKind.Local);
+        Assert.That(QuestRules.CanStartAgain(repeat, resetWeekday, started, now), Is.EqualTo(expected));
+    }
+
+    [TestCase("", 0)]
+    [TestCase("sun", 1)]
+    [TestCase("Mon", 2)]
+    [TestCase("SAT", 7)]
+    [TestCase("60", 0)] // a duration, not a day
+    public void ResetWeekday_ClientNames(string usePeriod, int expected) {
+        Assert.That(Maple2.Model.Metadata.QuestPeriod.ResetWeekday(usePeriod), Is.EqualTo(expected));
+    }
 }

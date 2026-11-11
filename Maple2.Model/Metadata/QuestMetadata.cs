@@ -36,7 +36,12 @@ public record QuestMetadataBasic(
     bool UseReEntryHiddenMap = false, // the quest's hidden field can be entered again (Quest sub-type 19)
     // With a played client: its quest table has no such quest (PlayedClientQuests), so the server neither starts,
     // offers nor sends it.
-    bool NotInPlayedClient = false);
+    bool NotInPlayedClient = false,
+    // basic repeatable: 0 the quest is done once, 2 again on another day, 3 again from the week's reset day; any
+    // other value again at once (CQuestManagerCommon::vfunc_o10_21, questdata.cpp:376).
+    int Repeat = 0,
+    // basic usePeriod as a weekday, 1 (sun) to 7 (sat), the reset day of a weekly quest; 0 none (FUN_14028e160).
+    int ResetWeekday = 0);
 
 public record QuestMetadataRequire(
     short Level,

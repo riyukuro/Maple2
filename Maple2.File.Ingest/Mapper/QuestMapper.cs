@@ -64,7 +64,9 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     CompleteMaps: data.complete?.map,
                     ProgressMaps: data.progressMap.progressMap,
                     UseReEntryHiddenMap: data.basic.useReEntryHiddenMap,
-                    NotInPlayedClient: notInPlayedClient
+                    NotInPlayedClient: notInPlayedClient,
+                    Repeat: data.basic.repeatable,
+                    ResetWeekday: QuestPeriod.ResetWeekday(data.basic.usePeriod)
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,

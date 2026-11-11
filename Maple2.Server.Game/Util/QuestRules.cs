@@ -5,6 +5,28 @@ using Maple2.Model.Metadata;
 namespace Maple2.Server.Game.Util;
 
 public static class QuestRules {
+    // A completed quest that may be started again, the client's own rule (CQuestManagerCommon::vfunc_o10_21,
+    // commonfiles/questdata.cpp:376): repeat 0 never; 2 (daily) not on the calendar day the quest was last
+    // started; 3 (weekly) not before the start of the reset weekday after the last start (NextWeekdayStart,
+    // timeutil.cpp:403); any other repeat at once. Times are local, as the client's CMsTime.
+    public static bool CanStartAgain(int repeat, int resetWeekday, long startTime, DateTime now) {
+        DateTime start = DateTimeOffset.FromUnixTimeSeconds(startTime).LocalDateTime;
+        return repeat switch {
+            0 => false,
+            2 => start.Date != now.Date,
+            3 => now >= NextWeekdayStart(resetWeekday, start),
+            _ => true,
+        };
+    }
+
+    // NextWeekdayStart: the start of the next day with this weekday (1 sun .. 7 sat) after the day of the time; the
+    // same weekday gives a week later.
+    public static DateTime NextWeekdayStart(int weekday, DateTime time) {
+        int dayOfWeek = (int) time.DayOfWeek + 1;
+        int delta = dayOfWeek < weekday ? weekday - dayOfWeek : 7 - (dayOfWeek - weekday);
+        return time.Date.AddDays(delta);
+    }
+
     // The stored quests a condition of this type can move on: not completed, with such a condition, and known to
     // the played client (PlayedClientQuests). The client would get an update for a quest it never loaded otherwise.
     public static IEnumerable<Quest> UpdateCandidates(IEnumerable<Quest> quests, ConditionType type) =>

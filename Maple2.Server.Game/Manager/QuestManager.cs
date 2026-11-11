@@ -129,8 +129,9 @@ public sealed class QuestManager {
     /// Starts a new quest (or prexisting if repeatable).
     /// </summary>
     public QuestError Start(int questId, bool bypassRequirements = false) {
-        if (characterValues.ContainsKey(questId) || accountValues.ContainsKey(questId)) {
-            // TODO: see if you can start the quest again
+        // A quest already held is started again only when it is completed and its repeat allows it (CanStartAgain).
+        TryGetQuest(questId, out Quest? held);
+        if (held != null && !CanStartAgain(held)) {
             return QuestError.s_quest_error_accept_fail;
         }
 
@@ -143,24 +144,39 @@ public sealed class QuestManager {
             return QuestError.s_quest_error_accept_fail;
         }
 
-        var quest = new Quest(metadata) {
-            Track = true,
-            State = QuestState.Started,
-            StartTime = DateTime.Now.ToEpochSeconds(),
-        };
+        Quest? quest;
+        if (held != null) {
+            // The stored row is reused: started again with fresh conditions, its completion count kept. The client
+            // takes the Start packet as a new quest in place of the completed one.
+            quest = held;
+            quest.Track = true;
+            quest.State = QuestState.Started;
+            quest.StartTime = DateTime.Now.ToEpochSeconds();
+            quest.EndTime = 0;
+            quest.Conditions.Clear();
+            for (int i = 0; i < metadata.Conditions.Length; i++) {
+                quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
+            }
+        } else {
+            quest = new Quest(metadata) {
+                Track = true,
+                State = QuestState.Started,
+                StartTime = DateTime.Now.ToEpochSeconds(),
+            };
 
-        for (int i = 0; i < metadata.Conditions.Length; i++) {
-            quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
-        }
+            for (int i = 0; i < metadata.Conditions.Length; i++) {
+                quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
+            }
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        long ownerId = metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
-        quest = db.CreateQuest(ownerId, quest);
-        if (quest == null) {
-            logger.Error("Failed to create quest entry {questId}", metadata.Id);
-            return QuestError.s_quest_error_accept_fail;
+            using GameStorage.Request db = session.GameStorage.Context();
+            long ownerId = metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
+            quest = db.CreateQuest(ownerId, quest);
+            if (quest == null) {
+                logger.Error("Failed to create quest entry {questId}", metadata.Id);
+                return QuestError.s_quest_error_accept_fail;
+            }
+            Add(quest);
         }
-        Add(quest);
 
         // TODO: Confirm inventory can hold all the items.
         foreach (QuestMetadataReward.Item acceptReward in metadata.AcceptReward.EssentialItem) {
@@ -332,6 +348,15 @@ public sealed class QuestManager {
         return false;
     }
 
+    /// <summary>
+    /// A completed quest whose repeat lets it be started again now (QuestRules.CanStartAgain). Not a guild quest: the
+    /// client adds a wait of a day or a week from a time the server does not keep (questdata.cpp:399).
+    /// </summary>
+    public static bool CanStartAgain(Quest quest) {
+        return quest.State == QuestState.Completed && quest.Metadata.Basic.Type != QuestType.GuildQuest
+               && QuestRules.CanStartAgain(quest.Metadata.Basic.Repeat, quest.Metadata.Basic.ResetWeekday, quest.StartTime, DateTime.Now);
+    }
+
     public bool CanComplete(Quest quest) {
         return quest.State != QuestState.Completed && quest.Conditions
             .All(condition => condition.Value.Counter >= condition.Value.Metadata.Value);
@@ -433,7 +458,7 @@ public sealed class QuestManager {
 
         // Get any new quests that can be started
         foreach (QuestMetadata metadata in allQuests) {
-            if (TryGetQuest(metadata.Id, out Quest? quest) && quest.State == QuestState.Completed /* && repeatable */) {
+            if (TryGetQuest(metadata.Id, out Quest? quest) && quest.State == QuestState.Completed && !CanStartAgain(quest)) {
                 continue;
             }
 
