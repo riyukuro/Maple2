@@ -19,12 +19,16 @@ public static class BlackMarketPacket {
         Preview = 8,
     }
 
-    public static ByteWriter Error(BlackMarketError error, int arg1 = 0, int arg2 = 0) {
+    // Client: CBlackMarketMan::FUN_140a21ca0 (blackmarketman.cpp:423): byte request mode, int code, long listing id,
+    // int, int. The request mode is the mode of the request that failed (2 add, 3 remove, 4 search, 5 purchase): codes
+    // 11, 12 and 31 have their own text only with 2, code 23 has another text with 3, and the search page marks the
+    // listing sold out (23) or expired (27) by its id only with 5 and ends its search wait with 4.
+    public static ByteWriter Error(BlackMarketError error, byte requestMode, long listingId = 0, int arg1 = 0, int arg2 = 0) {
         var pWriter = Packet.Of(SendOp.BlackMarket);
         pWriter.Write<Command>(Command.Error);
-        pWriter.WriteByte();
-        pWriter.Write<BlackMarketError>(error);
-        pWriter.WriteLong();
+        pWriter.WriteByte(requestMode);
+        pWriter.WriteInt((int) error);
+        pWriter.WriteLong(listingId);
         pWriter.WriteInt(arg1);
         pWriter.WriteInt(arg2);
 

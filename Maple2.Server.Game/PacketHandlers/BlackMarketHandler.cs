@@ -136,7 +136,7 @@ public class BlackMarketHandler : FieldPacketHandler {
 
         var error = (BlackMarketError) response.Error;
         if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error));
+            session.Send(BlackMarketPacket.Error(error, 4));
             return;
         }
 

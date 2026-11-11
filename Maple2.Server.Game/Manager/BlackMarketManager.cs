@@ -38,12 +38,12 @@ public sealed class BlackMarketManager {
     public void Add(long itemUid, long price, int quantity) {
         Item? item = session.Item.Inventory.Get(itemUid);
         if (item == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_register_not_exist_in_inven));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_register_not_exist_in_inven, 2));
             return;
         }
 
         if (item.Amount < quantity) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_lack_sale_count));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_lack_sale_count, 2));
             return;
         }
 
@@ -55,7 +55,7 @@ public sealed class BlackMarketManager {
         long depositFee = Lua.CalcBlackMarketRegisterDeposit((long) (price * quantity * depositPercent));
 
         if (session.Currency.CanAddMeso(-depositFee) != -depositFee) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 2));
             return;
         }
 
@@ -77,7 +77,7 @@ public sealed class BlackMarketManager {
         using GameStorage.Request db = session.GameStorage.Context();
         listing = db.CreateBlackMarketingListing(listing);
         if (listing == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2));
             CreateRefundErrorMail(item, depositFee);
             return;
         }
@@ -91,7 +91,7 @@ public sealed class BlackMarketManager {
 
         var error = (BlackMarketError) response.Error;
         if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error));
+            session.Send(BlackMarketPacket.Error(error, 2));
             CreateRefundErrorMail(item, depositFee);
             return;
         }
@@ -104,7 +104,7 @@ public sealed class BlackMarketManager {
 
         BlackMarketListing? listing = db.GetBlackMarketListing(listingId);
         if (listing == null || listing.CharacterId != session.CharacterId) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
             return;
         }
 
@@ -116,7 +116,7 @@ public sealed class BlackMarketManager {
 
         var error = (BlackMarketError) response.Error;
         if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error));
+            session.Send(BlackMarketPacket.Error(error, 3));
             return;
         }
 
@@ -147,7 +147,7 @@ public sealed class BlackMarketManager {
 
         mail = db.CreateMail(mail);
         if (mail == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
             logger.Error("Failed to create black market mail for {CharacterId}", session.CharacterId);
             return;
         }
@@ -162,22 +162,22 @@ public sealed class BlackMarketManager {
         using GameStorage.Request db = session.GameStorage.Context();
         BlackMarketListing? listing = db.GetBlackMarketListing(listingId);
         if (listing == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_itemcount));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_itemcount, 5, listingId));
             return;
         }
 
         if (listing.ExpiryTime < DateTime.Now.ToEpochSeconds()) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_buy_expired));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_buy_expired, 5, listingId));
             return;
         }
 
         if (listing.Quantity < quantity) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_purchase_count));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }
 
         if (listing.Price * quantity > session.Currency.Meso) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 5, listingId));
             return;
         }
 
@@ -185,7 +185,7 @@ public sealed class BlackMarketManager {
 
         Mail? receivingMail = CreateBuyerMail(listing, quantity);
         if (receivingMail == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 5, listingId));
             session.Currency.Meso += listing.Price * quantity;
             logger.Error("Failed to create black market purchase mail for {CharacterId}", session.CharacterId);
             return;
@@ -204,7 +204,7 @@ public sealed class BlackMarketManager {
 
             item = db.CreateItem(receivingMail.Id, item);
             if (item is null) {
-                session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close));
+                session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 5, listingId));
                 session.Currency.Meso += listing.Price * quantity;
                 logger.Error("Failed to create item for black market purchase mail for {CharacterId}", session.CharacterId);
                 return;
@@ -222,7 +222,7 @@ public sealed class BlackMarketManager {
 
         var error = (BlackMarketError) response.Error;
         if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error));
+            session.Send(BlackMarketPacket.Error(error, 5, listingId));
             session.Currency.Meso += listing.Price * quantity;
 
             return;
@@ -233,7 +233,7 @@ public sealed class BlackMarketManager {
         // Seller Mail
         Mail? sellerMail = CreateSellerMail(listing, quantity);
         if (sellerMail == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close));
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 5, listingId));
             logger.Error("Failed to create black market sale mail for {CharacterId}", listing.CharacterId);
             return;
         }

@@ -12,6 +12,9 @@ public enum DungeonRoomError {
     s_room_party_err_full_room = 2,
     [Description("You do not have permission to enter.")]
     s_room_dungeon_error_invalidPartyOID = 3,
+    // Client: DungeonRecordManagerCli::OnError case 4 (dungeonrecordcli.cpp:338). The argument is the dungeon room id; the
+    // client shows a box with the date its record of that room expires, and nothing when it has no record of it.
+    s_room_party_err_cooldown = 4,
     [Description("The number of rewards for this dungeon cannot be increased any further.")]
     s_room_dungeon_reward_CantUseExtraReward = 5,
     [Description("You do not have the {0} item.\nDo you want to purchase the item from the Meret Market?")]
