@@ -8,7 +8,8 @@ namespace Maple2.Model.Game.Event;
 public class GameEvent : IByteSerializable {
     public GameEventMetadata Metadata { get; init; }
     public int Id => Metadata.Id;
-    public string Name => Metadata.Type.ToString();
+    // The table's type is "reactor"; the client's class is GameEventReactor.
+    public string Name => Metadata.Type == GameEventType.reactor ? "Reactor" : Metadata.Type.ToString();
     public long StartTime => (long) (Metadata.StartTime.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
     public long EndTime => (long) (Metadata.EndTime.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
 
@@ -149,6 +150,18 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteByte((byte) fieldEffect.MapIds.Length);
                 foreach (int mapId in fieldEffect.MapIds) {
+                    writer.WriteInt(mapId);
+                }
+                break;
+            case Reactor reactor:
+                // GameEvent::vfunc_4 reads the id, then ReactorContext::Read the same id, the count, the end
+                // time and the fields.
+                writer.WriteInt(Id);
+                writer.WriteInt(Id);
+                writer.WriteInt(reactor.DailyCount);
+                writer.WriteLong(EndTime);
+                writer.WriteInt(reactor.MapIds.Length);
+                foreach (int mapId in reactor.MapIds) {
                     writer.WriteInt(mapId);
                 }
                 break;

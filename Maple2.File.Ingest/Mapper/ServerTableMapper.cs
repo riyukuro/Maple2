@@ -1239,6 +1239,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new FieldEffect(
                     MapIds: value1.Split(',').Select(int.Parse).ToArray(),
                     Effect: value2);
+            case GameEventType.reactor:
+                // value1: field ids, value2: the placement count limit (GameEventReactor::ReadReactorData).
+                return new Reactor(
+                    MapIds: value1.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(mapId => int.TryParse(mapId, out int parsed) ? parsed : 0).Where(mapId => mapId > 0).ToArray(),
+                    DailyCount: int.TryParse(value2, out int dailyCount) ? dailyCount : 0);
             case GameEventType.DTReward:
                 string[] itemStrings = value1.Split(';');
 

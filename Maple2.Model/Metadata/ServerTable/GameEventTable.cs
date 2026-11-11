@@ -131,6 +131,15 @@ public record FieldEffect(
     string Effect) : GameEventData;
 
 /// <summary>
+/// Lets players place reactors (CreateReactor items) whose reactor.xml row names this event.
+/// MapIds: the fields a reactor may be placed in. DailyCount: the client refuses a placement once its
+/// counter for the event reaches it.
+/// </summary>
+public record Reactor(
+    int[] MapIds,
+    int DailyCount) : GameEventData;
+
+/// <summary>
 /// Enables quests with eventTag to be enabled/active.
 /// </summary>
 public record QuestTag(
@@ -282,6 +291,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(LoginNotice), "LoginNotice")]
 [JsonDerivedType(typeof(FieldEffect), "FieldEffect")]
 [JsonDerivedType(typeof(QuestTag), "QuestTag")]
+[JsonDerivedType(typeof(Reactor), "Reactor")]
 [JsonDerivedType(typeof(DTReward), "DTReward")]
 [JsonDerivedType(typeof(ConstructShowItem), "ConstructShowItem")]
 [JsonDerivedType(typeof(MassiveConstructionEvent), "MassiveConstructionEvent")]

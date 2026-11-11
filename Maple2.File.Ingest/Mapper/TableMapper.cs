@@ -57,6 +57,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_GEMSTONE_UPGRADE, Table = ParseItemGemstoneUpgrade() };
         yield return new TableMetadata { Name = TableNames.ITEM_EXTRACTION, Table = ParseItemExtraction() };
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
+        yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
         yield return new TableMetadata { Name = TableNames.JOB, Table = ParseJobTable() };
         yield return new TableMetadata { Name = TableNames.MAGIC_PATH, Table = ParseMagicPath() };
         yield return new TableMetadata { Name = TableNames.INSTRUMENT_CATEGORY_INFO, Table = ParseInstrument() };
@@ -214,6 +215,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         return new ItemExtractionTable(results);
+    }
+
+    // table/reactor.xml and table/reactorstate.xml (the parser has no reader for them). Several locales reuse a
+    // reactor id, so the rows are filtered by feature and locale as the client does.
+    private ReactorTable ParseReactor() {
+        return ReactorTableReader.Read(
+            xmlReader.GetXmlDocument(xmlReader.GetEntry("table/reactor.xml")),
+            xmlReader.GetXmlDocument(xmlReader.GetEntry("table/reactorstate.xml")),
+            node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client keeps the rows whose
