@@ -44,7 +44,7 @@ public class SkillMacroHandler : FieldPacketHandler {
             string name = packet.ReadUnicodeString();
             long keyId = packet.ReadLong();
             int skillCount = packet.ReadInt();
-            if (!SkillMacroRules.IsNewName(name, macros.Select(macro => macro.Name))
+            if (!SkillMacroRules.IsNewName(name, macros.Select(macro => macro.Name).ToList())
                 || !SkillMacroRules.IsSkillCount(skillCount, packet.Available)) {
                 return;
             }

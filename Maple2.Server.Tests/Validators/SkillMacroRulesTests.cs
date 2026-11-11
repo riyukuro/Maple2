@@ -8,7 +8,7 @@ public class SkillMacroRulesTests {
     // SkillMacro 0x007B mode 1 starts with the i32 tab count.
     [TestCase(1, true)]
     [TestCase(3, true)]
-    [TestCase(0, false)]
+    [TestCase(0, true)] // the last tab removed
     [TestCase(4, false)]
     [TestCase(-1, false)]
     [TestCase(int.MaxValue, false)]
@@ -43,9 +43,30 @@ public class SkillMacroRulesTests {
         var names = new List<string> { "A" };
         Assert.That(SkillMacroRules.IsNewName("B", names), Is.True);
         Assert.That(SkillMacroRules.IsNewName("A", names), Is.False);
+        Assert.That(SkillMacroRules.IsNewName("a", names), Is.False); // the client compares without case
         Assert.That(SkillMacroRules.IsNewName("", names), Is.False);
-        Assert.That(SkillMacroRules.IsNewName(new string('x', SkillMacroRules.MaxNameLength), names), Is.True);
-        Assert.That(SkillMacroRules.IsNewName(new string('x', SkillMacroRules.MaxNameLength + 1), names), Is.False);
+        Assert.That(SkillMacroRules.IsNewName(new string('x', 5), names), Is.True);
+        Assert.That(SkillMacroRules.IsNewName(new string('x', 6), names), Is.False);
+    }
+
+    // Mode 1's tab names as they come: the box's 5 characters, and the client's own default name on the first tab.
+    [TestCase(16, 5, true)]
+    [TestCase(17, 5, false)]
+    [TestCase(5, 6, false)]
+    [TestCase(5, 16, false)]
+    public void NameLengthByTab(int first, int second, bool expected) {
+        var writer = new ByteWriter();
+        writer.WriteUnicodeString(new string('x', first));
+        writer.WriteUnicodeString(new string('y', second));
+        var packet = new ByteReader(writer.ToArray(), 0);
+        var names = new List<string>();
+        bool ok = true;
+        for (int i = 0; i < 2; i++) {
+            string name = packet.ReadUnicodeString();
+            ok &= SkillMacroRules.IsNewName(name, names);
+            names.Add(name);
+        }
+        Assert.That(ok, Is.EqualTo(expected));
     }
 
     [TestCase(0, 10500001, true)]
