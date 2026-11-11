@@ -134,20 +134,26 @@ public class PartyManager : IDisposable {
     }
 
     // The members who count for a dungeon match search: the online ones.
-    public long[] OnlineMembers() => Party.Members.Values.Where(member => member.Info.Online).Select(member => member.CharacterId).ToArray();
+    // except: a member going offline (logout), counted offline whether or not their info has caught up.
+    public long[] OnlineMembers(long except = 0) => Party.Members.Values
+        .Where(member => member.Info.Online && member.CharacterId != except)
+        .Select(member => member.CharacterId)
+        .ToArray();
 
     public void FindNewLeader(long characterId) {
         PartyMember? newLeader = Party.Members.Values.FirstOrDefault(m => m.CharacterId != characterId && m.Info.Online);
         if (newLeader == null) {
-            CheckForDisband();
+            CheckForDisband(characterId);
             return;
         }
         UpdateLeader(characterId, newLeader.CharacterId);
     }
 
-    public bool CheckForDisband() {
-        if (Party.Members.Values.Count(member => member.Info.Online) < 2 ||
-            Party.Members.Count <= 2) {
+    // leavingId: the member leaving, kicked, or going offline.
+    public bool CheckForDisband(long leavingId = 0) {
+        int online = Party.Members.Values.Count(member => member.Info.Online);
+        bool searching = PartyLookup.DungeonMatch.IsSearching(Party.Id);
+        if (DungeonMatchRules.Disbands(Party.Members.Count, online, OnlineMembers(leavingId).Length, searching)) {
             PartyLookup.Disband(Party.Id);
             return true;
         }
@@ -232,7 +238,7 @@ public class PartyManager : IDisposable {
         if (!Party.Members.TryGetValue(characterId, out PartyMember? member)) {
             return PartyError.s_party_err_not_exist;
         }
-        if (CheckForDisband()) {
+        if (CheckForDisband(characterId)) {
             return PartyError.none;
         }
 
@@ -257,8 +263,12 @@ public class PartyManager : IDisposable {
         if (characterId == Party.LeaderCharacterId) {
             FindNewLeader(characterId);
         }
+        if (!PartyLookup.TryGet(Party.Id, out _)) {
+            // FindNewLeader found no one online and the party went.
+            return PartyError.none;
+        }
 
-        if (CheckForDisband()) {
+        if (CheckForDisband(characterId)) {
             return PartyError.none;
         }
 
@@ -304,8 +314,24 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     }
 
+    // The requestor logged out (Game's CheckDisband). An offline member does not stay in a search (rv40 MAJOR 2):
+    // the leader's going stops the party's search, another member's shrinks its group to the online members.
     public void Disband(long requestorId) => PartyLookup.DungeonMatchStep(() => {
-        int onlineCount = Party.Members.Values.Count(member => member.Info.Online);
+        if (PartyLookup.DungeonMatch.IsSearching(Party.Id)) {
+            if (requestorId == Party.LeaderCharacterId) {
+                PartyLookup.CompleteDungeonMatch(this, PartyLookup.DungeonMatch.Remove(Party.Id));
+            } else {
+                DungeonMatchResult result = PartyLookup.DungeonMatch.Resize(Party.Id, OnlineMembers(requestorId));
+                if (result.Outcome != DungeonMatchOutcome.NotSearching) {
+                    PartyLookup.CompleteDungeonMatch(this, result);
+                }
+            }
+        }
+        if (!PartyLookup.TryGet(Party.Id, out _)) {
+            return;
+        }
+
+        int onlineCount = OnlineMembers(requestorId).Length;
         if (onlineCount == 0) {
             PartyLookup.Disband(Party.Id);
             return;

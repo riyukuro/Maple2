@@ -22,6 +22,13 @@ public static class DungeonMatchRules {
     // again next time (rv40 MAJOR 1).
     public static bool DisbandsWhenSearchEnds(int members) => members <= 1;
 
+    // A member leaves, is kicked, or the leader goes with no one online to take over: does the party go? A party
+    // with no search goes as before, with fewer than 2 online or at most 2 members. A searching party is kept
+    // while anyone else is online, down to one member, so a 2-member party's search goes on for the member left
+    // (the resize rule; it goes when that search ends, DisbandsWhenSearchEnds) (rv40 MAJOR 4).
+    public static bool Disbands(int members, int online, int otherOnline, bool searching) =>
+        searching ? otherOnline == 0 : online < 2 || members <= 2;
+
     // This many more searchers fit in a group of this size: the joined group is at most the room's maximum.
     public static bool HasSpace(DungeonMatchRoom room, int users, int joining = 1) => users + joining <= MaxUsers(room);
 

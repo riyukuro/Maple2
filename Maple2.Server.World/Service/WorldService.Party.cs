@@ -265,6 +265,7 @@ public partial class WorldService {
         }
 
         return partyLookup.DungeonMatchStep(() => {
+            partyLookup.RefreshDungeonMatch();
             PlayerInfo? info = null;
             long[] ids;
             if (partyLookup.TryGetByCharacter(requestorId, out PartyManager? manager)) {

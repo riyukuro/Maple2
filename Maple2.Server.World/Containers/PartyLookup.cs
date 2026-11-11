@@ -117,6 +117,23 @@ public class PartyLookup : IDisposable {
     public void DungeonMatchStep(Action body) => steps.Run(body);
     public static void Defer(Action effect) => LockedSteps.Defer(effect);
 
+    // Before a search: each searching group takes its party's online members now (a member who went offline
+    // without a logout reaching World), and a group whose party is gone or whose leader is offline stops.
+    public void RefreshDungeonMatch() => DungeonMatchStep(() => {
+        foreach (int partyId in DungeonMatch.SearchingParties()) {
+            if (!TryGet(partyId, out PartyManager? manager)) {
+                DungeonMatch.Remove(partyId);
+                continue;
+            }
+            bool leaderOnline = manager.Party.Members.TryGetValue(manager.Party.LeaderCharacterId, out PartyMember? leader) && leader.Info.Online;
+            if (!leaderOnline) {
+                CompleteDungeonMatch(manager, DungeonMatch.Remove(partyId));
+                continue;
+            }
+            DungeonMatchResize(manager);
+        }
+    });
+
     // A member joined or left a party: a searching party's group takes the new count.
     public void DungeonMatchResize(PartyManager manager) => DungeonMatchStep(() => {
         DungeonMatchResult result = DungeonMatch.Resize(manager.Party.Id, manager.OnlineMembers());

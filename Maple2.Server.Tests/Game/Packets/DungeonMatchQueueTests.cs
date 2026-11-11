@@ -382,4 +382,30 @@ public class DungeonMatchQueueTests {
         Assert.That(DungeonMatchRules.DisbandsWhenSearchEnds(0), Is.True);
         Assert.That(DungeonMatchRules.DisbandsWhenSearchEnds(2), Is.False);
     }
+
+    [Test]
+    public void ASearchingPartyIsKeptWhileAnotherMemberIsOnline() {
+        // No search: the old rule, fewer than 2 online or at most 2 members.
+        Assert.That(DungeonMatchRules.Disbands(2, 2, 1, false), Is.True);
+        Assert.That(DungeonMatchRules.Disbands(4, 1, 0, false), Is.True);
+        Assert.That(DungeonMatchRules.Disbands(3, 3, 2, false), Is.False);
+        // Searching: a 2-member party keeps its search for the member left.
+        Assert.That(DungeonMatchRules.Disbands(2, 2, 1, true), Is.False);
+        Assert.That(DungeonMatchRules.Disbands(3, 2, 1, true), Is.False);
+        // No one else online: it goes.
+        Assert.That(DungeonMatchRules.Disbands(2, 1, 0, true), Is.True);
+    }
+
+    [Test]
+    public void ALogoutShrinksTheGroupToTheOnlineMembers() {
+        var queue = new DungeonMatchQueue();
+        var room = new DungeonMatchRoom(700, 1, 4, false);
+        long[] members = M(3);
+        Assert.That(queue.Start(1, 1, [room], members).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        // A member logs out: the group counts the two still online, and a solo now fits twice.
+        queue.Resize(1, members.Take(2).ToArray());
+        Assert.That(queue.CountOf(1).Users, Is.EqualTo(2));
+        Assert.That(queue.Join(1, [room], M(1))!.Value.PartyId, Is.EqualTo(1));
+        Assert.That(queue.Join(1, [room], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+    }
 }
