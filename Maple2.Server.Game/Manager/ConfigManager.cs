@@ -325,6 +325,20 @@ public class ConfigManager {
         session.Send(SkillPointPacket.Sources(skillPoints));
     }
 
+    // The extra skill points of each rank (0 base, 1 awakening) summed over their sources, as the client adds them
+    // to the points from the level (SceneStateGame OnSkillPoint).
+    public int[] ExtraSkillPoints() {
+        var result = new int[SkillPoint.RANKS];
+        foreach (SkillPoint.PointRank point in skillPoints.Points.Values) {
+            foreach ((short rank, int amount) in point.Ranks) {
+                if (rank >= 0 && rank < result.Length) {
+                    result[rank] += amount;
+                }
+            }
+        }
+        return result;
+    }
+
     public void AddSkillPoint(SkillPointSource source, int amount, short rank = 0) {
         skillPoints[source][rank] += amount;
         session.Send(SkillPointPacket.Sources(skillPoints));

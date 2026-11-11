@@ -55,7 +55,16 @@ public record SkillMetadataLevel(
     SkillMetadataDetect Detect,
     SkillMetadataRecovery Recovery,
     SkillEffectMetadata[] Skills,
-    SkillMetadataMotion[] Motions);
+    SkillMetadataMotion[] Motions,
+    SkillMetadataUpgrade? Upgrade = null);
+
+// What a skill needs to be at this level in the skill tree (the level's upgrade element): the character
+// level, other skills of the tree at a level, and quests. Null in metadata ingested before it was added.
+public record SkillMetadataUpgrade(
+    short Level,
+    int[] SkillIds,
+    int[] SkillLevels,
+    int[] QuestIds);
 
 public record SkillMetadataChange(
     SkillMetadataChange.Skill Origin,

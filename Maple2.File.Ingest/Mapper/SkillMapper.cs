@@ -104,7 +104,12 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray()
                         )).ToArray(),
                         AttackPoints: motion.CollectAttackPoints()
-                    )).ToArray()
+                    )).ToArray(),
+                    Upgrade: level.upgrade == null ? null : new SkillMetadataUpgrade(
+                        Level: level.upgrade.level,
+                        SkillIds: level.upgrade.skillIDs,
+                        SkillLevels: level.upgrade.skillLevels,
+                        QuestIds: level.upgrade.questIDs)
                 ));
 
             yield return new StoredSkillMetadata(

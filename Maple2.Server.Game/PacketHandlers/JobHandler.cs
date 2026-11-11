@@ -6,6 +6,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
@@ -108,14 +109,7 @@ public class JobHandler : FieldPacketHandler {
     }
 
     private void HandleUpdate(GameSession session, IByteReader packet) {
-        int count = packet.ReadInt();
-        for (int i = 0; i < count; i++) {
-            int skillId = packet.ReadInt();
-            short points = packet.ReadShort();
-            bool enabled = packet.ReadBool();
-
-            session.Config.Skill.UpdateSkill(skillId, points, enabled);
-        }
+        UpdateTree(session, packet);
 
         session.Send(JobPacket.Update(session.Player, session.Config.Skill.SkillInfo));
         session.Config.UpdateHotbarSkills();
@@ -136,17 +130,49 @@ public class JobHandler : FieldPacketHandler {
     }
 
     private void AutoDistribute(GameSession session, IByteReader packet) {
-        int count = packet.ReadInt();
-        for (int i = 0; i < count; i++) {
-            int skillId = packet.ReadInt();
-            short points = packet.ReadShort();
-            bool enabled = packet.ReadBool();
-
-            session.Config.Skill.UpdateSkill(skillId, points, enabled);
-        }
+        UpdateTree(session, packet);
 
         session.Send(JobPacket.AutoDistribute(session.Player, session.Config.Skill.SkillInfo));
         session.Config.UpdateHotbarSkills();
         session.Config.Skill.UpdatePassiveBuffs();
+    }
+
+    // Modes 9 and 11: i32 count, then per skill i32 id, i16 level, bool learned; the client sends the whole tree.
+    // The tree is stored only if it passes the client's own check (JobSkillRules.Check), whole or not at all.
+    // Either way the reply carries the stored tree: the client has no skill point error and re-reads it.
+    private void UpdateTree(GameSession session, IByteReader packet) {
+        int count = packet.ReadInt();
+        var sent = new List<(int Id, short Level, bool Learned)>(Math.Max(0, Math.Min(count, 1000)));
+        for (int i = 0; i < count; i++) {
+            int skillId = packet.ReadInt();
+            short level = packet.ReadShort();
+            bool learned = packet.ReadBool();
+            sent.Add((skillId, level, learned));
+        }
+
+        SkillInfo info = session.Config.Skill.SkillInfo;
+        var current = new List<JobSkillState>();
+        foreach (SkillRank rank in new[] { SkillRank.Basic, SkillRank.Awakening }) {
+            foreach (SkillType type in Enum.GetValues<SkillType>()) {
+                foreach (SkillInfo.Skill skill in info.GetMainSkills(type, rank)) {
+                    current.Add(new JobSkillState(skill.Id, rank, skill.BaseLevel, skill.MaxLevel, skill.Level));
+                }
+            }
+        }
+
+        List<JobSkillState> tree = JobSkillRules.Apply(current, sent);
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        JobSkillError error = JobSkillRules.Check(tree, session.Player.Value.Character.Level,
+            constants.SkillPointLimitLevel1, constants.SkillPointLimitLevel2, session.Config.ExtraSkillPoints(),
+            (skillId, level) => session.SkillMetadata.TryGet(skillId, level, out SkillMetadata? metadata) ? metadata.Data.Upgrade : null,
+            questId => session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Completed);
+        if (error != JobSkillError.None) {
+            Logger.Information("Job skill tree refused ({Error}) for {CharacterId}", error, session.CharacterId);
+            return;
+        }
+
+        foreach (JobSkillState skill in tree) {
+            session.Config.Skill.UpdateSkill(skill.Id, skill.Level, skill.Level > 0);
+        }
     }
 }
