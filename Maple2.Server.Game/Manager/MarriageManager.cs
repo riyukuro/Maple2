@@ -812,6 +812,7 @@ public sealed class MarriageManager {
 
             couponItemUid = items.First().Uid;
         } else {
+            couponItemUid = 0;
             if (session.Currency.CanAddMeret(-hallData.MeretCost) != -hallData.MeretCost) {
                 return WeddingError.s_wedding_result_err_lack_meratal;
             }
@@ -843,7 +844,7 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_same_field;
         }
 
-        if (!PayWeddingHall(partner, hallData, 0, out WeddingError payError)) {
+        if (!PayWeddingHall(partner, hallData, change: false, 0, out WeddingError payError)) {
             return payError;
         }
 
@@ -866,22 +867,28 @@ public sealed class MarriageManager {
         return WeddingError.s_wedding_propose_ok;
     }
 
-    private bool PayWeddingHall(FieldPlayer partner, WeddingPackage.HallData hallData, long differenceCost, out WeddingError error) {
-        if (couponItemUid != 0) {
-            if (!partner.Session.Item.Inventory.Consume(couponItemUid, 1)) {
+    // The payer is the partner who sent the reservation, so the coupon is the one their ReserveHall picked.
+    private bool PayWeddingHall(FieldPlayer partner, WeddingPackage.HallData hallData, bool change, long differenceCost, out WeddingError error) {
+        MarriageManager payer = partner.Session.Marriage;
+        long couponUid = change ? 0 : payer.couponItemUid;
+        (long cost, bool gifts) = WeddingHallPayRules.Pay(change, couponUid != 0, hallData.MeretCost, differenceCost);
+        if (couponUid != 0) {
+            if (!partner.Session.Item.Inventory.Consume(couponUid, 1)) {
                 error = WeddingError.s_wedding_result_lack_coupon;
                 return false;
             }
-            couponItemUid = 0;
-        } else {
-            long cost = differenceCost > 0 ? differenceCost : hallData.MeretCost;
+            payer.couponItemUid = 0;
+        }
+
+        if (cost > 0) {
             if (partner.Session.Currency.CanAddMeret(-cost) != -cost) {
                 error = WeddingError.s_wedding_result_err_lack_meratal;
                 return false;
             }
             partner.Session.Currency.Meret -= cost;
+        }
 
-            // Mail gift only when paying with Meret, otherwise users can exploit.
+        if (gifts) {
             MailReservationGifts(partner, hallData);
         }
 
@@ -1137,7 +1144,7 @@ public sealed class MarriageManager {
 
         long differenceCost = GetWeddingHallChangeCost(currentHallData, hallData);
 
-        if (!PayWeddingHall(partner, hallData, differenceCost, out WeddingError payError)) {
+        if (!PayWeddingHall(partner, hallData, change: true, differenceCost, out WeddingError payError)) {
             return payError;
         }
 
