@@ -40,4 +40,14 @@ public class ClientGmCommandsTests {
             Assert.That(AdminPermissions.Admin.HasFlag(commands[i].RequiredPermission), Is.True);
         }
     }
+
+    [Test]
+    public void RecallUser_NeedsGameMaster() {
+        var recall = new RecallUserCommand(null!);
+
+        Assert.That(recall.Name, Is.EqualTo("recalluser"));
+        Assert.That(recall.RequiredPermission, Is.EqualTo(AdminPermissions.GameMaster));
+        Assert.That(new Parser(recall).Parse("recalluser Name").Errors, Is.Empty);
+        Assert.That(new Parser(recall).Parse("recalluser").Errors, Is.Not.Empty);
+    }
 }

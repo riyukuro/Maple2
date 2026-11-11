@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -171,5 +172,47 @@ public class ManufacturingMasteryCommand : GameCommand {
     private void Handle(InvocationContext ctx, int recipeId, string kind) {
         Logger.Warning("Unknown GM command ManufacturingMastery from account {AccountId}: recipe {RecipeId}, kind '{Kind}'", session.AccountId, recipeId, kind);
         ctx.Console.Error.WriteLine("ManufacturingMastery is not implemented on this server.");
+    }
+}
+
+// "recalluser <name>": invites a player on this channel to the GM's place (s2c RecallUser 4). The client has no
+// request of its own for this packet; it only answers the confirm box (c2s RecallUser 4).
+public class RecallUserCommand : GameCommand {
+    private readonly GameSession session;
+
+    public RecallUserCommand(GameSession session) : base(AdminPermissions.GameMaster, "recalluser", "Invite a player on this channel to your place.") {
+        this.session = session;
+
+        var name = new Argument<string>("name", "Name of the player.");
+
+        AddArgument(name);
+        this.SetHandler<InvocationContext, string>(Handle, name);
+    }
+
+    private void Handle(InvocationContext ctx, string name) {
+        if (session.Field is null) {
+            return;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        long characterId = db.GetCharacterId(name);
+        if (characterId == 0 || characterId == session.CharacterId || !session.FindSession(characterId, out GameSession? target)) {
+            session.Send(RecallUserPacket.Fail(name, RecallUserPacket.FAIL_DEFAULT));
+            return;
+        }
+
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        PendingUserRecall? pending = target.UserRecall;
+        if (pending != null && now <= pending.EndTime) {
+            // The client would answer a second invite with "busy" (c2s 7, byte 4) and show no box.
+            session.Send(RecallUserPacket.Fail(target.PlayerName, RecallUserPacket.FAIL_BUSY));
+            return;
+        }
+
+        var recall = new PendingUserRecall(PendingUserRecall.NextInviteId(), session.CharacterId, session.PlayerName,
+            session.Player.Value.Character.MapId, now + PendingUserRecall.VALID_SECONDS);
+        target.UserRecall = recall;
+        target.Send(RecallUserPacket.Invite(recall.CallerName, recall.InviteId));
+        ctx.ExitCode = 0;
     }
 }

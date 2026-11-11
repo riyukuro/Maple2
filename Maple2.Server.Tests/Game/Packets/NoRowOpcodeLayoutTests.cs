@@ -276,4 +276,33 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(StateFishingPacket.State(7, StateFishingPacket.STATE_FISHING).ToArray().AsSpan(2).ToArray(),
             Is.EqualTo(new byte[] { 7, 0, 0, 0, 45, 0, 0, 0, 0, 0, 0, 0 }));
     }
+
+    // Client: CSceneStateGame::OnRecallUser (scenestategame.cpp:4733): kind 4 = byte type, name, int invite id;
+    // kinds 5 and 7 = name, byte result; kind 6 = name.
+    [Test]
+    public void RecallUserKinds() {
+        var reader = new ByteReader(RecallUserPacket.Invite("Ab", 77).Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.RecallUser));
+        Assert.That(reader.ReadByte(), Is.EqualTo(4));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Ab"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(77));
+
+        Assert.That(RecallUserPacket.Answer("A", RecallUserPacket.ANSWER_DECLINE).ToArray().AsSpan(2).ToArray(),
+            Is.EqualTo(new byte[] { 5, 1, 0, (byte) 'A', 0, 1 }));
+        Assert.That(RecallUserPacket.Notice("A").ToArray().AsSpan(2).ToArray(), Is.EqualTo(new byte[] { 6, 1, 0, (byte) 'A', 0 }));
+        Assert.That(RecallUserPacket.Fail("A", RecallUserPacket.FAIL_BUSY).ToArray().AsSpan(2).ToArray(),
+            Is.EqualTo(new byte[] { 7, 1, 0, (byte) 'A', 0, 4 }));
+    }
+
+    // c2s RecallUser 4 (CNetworkService::SendRecallUserReply): the answer counts only for the pending invite id, in time.
+    [Test]
+    public void RecallUserAnswerMustMatchThePendingInvite() {
+        var pending = new PendingUserRecall(5, 1, "A", 2000001, 100);
+        Assert.That(PendingUserRecall.Matches(pending, 5, 100), Is.True);
+        Assert.That(PendingUserRecall.Matches(pending, 6, 100), Is.False);
+        Assert.That(PendingUserRecall.Matches(pending, 5, 101), Is.False);
+        Assert.That(PendingUserRecall.Matches(null, 5, 0), Is.False);
+        Assert.That(PendingUserRecall.NextInviteId(), Is.Not.EqualTo(0));
+    }
 }
