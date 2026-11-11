@@ -1241,6 +1241,12 @@ public partial class FieldManager {
                 Broadcast(FunctionCubePacket.UpdateFunctionCube(cube));
                 Broadcast(FunctionCubePacket.UseFurniture(leaverId, cube));
             }
+            // An RPS invite or game ends with the leaver; the partner gets mode 6 with the leaver as actor, which
+            // closes its boxes and takes it out of the game state (statemicrogame.cpp FUN_140b887d0).
+            long rpsPartner = Rps.Remove(leaverId);
+            if (rpsPartner != 0 && TryGetPlayerById(rpsPartner, out FieldPlayer? rpsPlayer)) {
+                rpsPlayer.Session.Send(MicrogamePacket.Failed(leaverId, RpsRules.ReasonFailed));
+            }
             Broadcast(FieldPacket.RemovePlayer(objectId));
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
 

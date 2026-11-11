@@ -125,6 +125,7 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(rps.Rewards.Length);
                 foreach (Rps.RewardData reward in rps.Rewards) {
                     writer.WriteInt(reward.PlayCount);
+                    writer.WriteInt(reward.Rewards.Length); // RpsContext::Read (gameeventcontext.cpp) reads a count per reward
                     foreach (RewardItem item in reward.Rewards) {
                         writer.Write<RewardItem>(item);
                     }

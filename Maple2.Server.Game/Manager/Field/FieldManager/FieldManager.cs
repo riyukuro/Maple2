@@ -67,6 +67,8 @@ public partial class FieldManager : IField {
     public FieldAccelerationStructure? AccelerationStructure { get; private set; }
     // The map's hidden vibrate groups (shown by an AI's showVibrate, hidden again by hideVibrateAll).
     public AiVibrate Vibrate { get; private set; } = new([]);
+    // Microgame 0x0114 (rock-paper-scissors): the pending invites and running games of this field.
+    public Maple2.Model.Validators.RpsMatchTable Rps { get; } = new();
     private readonly UgcMapMetadata ugcMetadata;
 
     internal readonly EventQueue Scheduler;
