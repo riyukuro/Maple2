@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -15,6 +16,7 @@ public static class PlayerHostPacket {
         MiniGameRewardNotice = 4,
         MiniGameRewardReceive = 5,
         AdBalloonWindow = 6,
+        BillboardInstallResult = 7,
     }
 
     public static ByteWriter UseHongBao(HongBao hongBao, int amount) {
@@ -56,6 +58,15 @@ public static class PlayerHostPacket {
         pWriter.Write<Command>(Command.StartMiniGame);
         pWriter.WriteUnicodeString(hostName);
         pWriter.WriteInt(mapId);
+
+        return pWriter;
+    }
+
+    // Read by the billboard dialog: a banner for success, account limit, field limit or failure.
+    public static ByteWriter BillboardInstallResult(BillboardInstallResult result) {
+        var pWriter = Packet.Of(SendOp.PlayerHost);
+        pWriter.WriteByte((byte) Command.BillboardInstallResult);
+        pWriter.WriteInt((int) result);
 
         return pWriter;
     }
