@@ -134,6 +134,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.CallAirTaxi:
                 HandleCallAirTaxi(session, packet, item);
                 break;
+            case ItemFunction.ItemActiveCodiTab:
+                HandleItemActiveCodiTab(session, item);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -682,6 +685,29 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Item.Inventory.Consume(item.Uid, 1);
+    }
+
+    // The client's ItemActiveCodiTab: the parameter is the number of days, 0 = no end. It asks before sending and
+    // refuses by itself when the tab has no end already or the period would pass CodiTabMaxDay.
+    private void HandleItemActiveCodiTab(GameSession session, Item item) {
+        if (session.Field is null) return;
+        if (!int.TryParse(item.Metadata.Function?.Parameters, out int days)) {
+            Logger.Warning("ItemActiveCodiTab item {ItemId} has an invalid parameter", item.Id);
+            return;
+        }
+
+        Character character = session.Player.Value.Character;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!SkinTabPeriod.TryActivate(character.SkinTabStart, character.SkinTabEnd, now, days, Constant.CodiTabMaxDay, out long start, out long end)) {
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            return;
+        }
+
+        character.SkinTabStart = start;
+        character.SkinTabEnd = end;
+        session.Field.Broadcast(ItemUsePacket.ActiveCodiTab(session.Player.ObjectId, start, end, (long) days * SkinTabPeriod.SecondsPerDay));
     }
 
     private void HandleCallAirTaxi(GameSession session, IByteReader packet, Item item) {

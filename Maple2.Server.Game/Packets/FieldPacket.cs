@@ -59,10 +59,10 @@ public static class FieldPacket {
             foreach (Item item in session.Item.Equips.Outfit.Values) {
                 buffer.WriteEquip(item);
             }
-            // Don't know...
+            // The second outfit tab's period (CEquipment::SetLayerPeriod); the client does not use the bool.
             buffer.WriteBool(true);
-            buffer.WriteLong();
-            buffer.WriteLong();
+            buffer.WriteLong(player.Character.SkinTabStart);
+            buffer.WriteLong(player.Character.SkinTabEnd);
             // Outfit2
             buffer.WriteByte();
 

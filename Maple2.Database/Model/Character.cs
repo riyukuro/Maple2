@@ -54,6 +54,8 @@ internal class Character {
                 Picture = other.Picture,
                 Title = other.Title,
                 Insignia = other.Insignia,
+                SkinTabStart = other.SkinTabStart,
+                SkinTabEnd = other.SkinTabEnd,
             },
             Cooldown = new Cooldown {
                 Doctor = other.DoctorCooldown,
@@ -102,6 +104,8 @@ internal class Character {
             Picture = other.Profile.Picture,
             Title = other.Profile.Title,
             Insignia = other.Profile.Insignia,
+            SkinTabStart = other.Profile.SkinTabStart,
+            SkinTabEnd = other.Profile.SkinTabEnd,
             DoctorCooldown = other.Cooldown.Doctor,
             StorageCooldown = other.Cooldown.Storage,
             DeleteTime = other.DeleteTime.ToEpochSeconds(),
@@ -152,6 +156,8 @@ internal class Profile {
     public required string Picture { get; set; }
     public int Title { get; set; }
     public short Insignia { get; set; }
+    public long SkinTabStart { get; set; }
+    public long SkinTabEnd { get; set; }
 }
 
 internal class Cooldown {

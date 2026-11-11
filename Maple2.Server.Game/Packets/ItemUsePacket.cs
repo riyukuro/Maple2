@@ -58,6 +58,21 @@ public static class ItemUsePacket {
         return pWriter;
     }
 
+    // CSceneStateGame::OnActiveCodiTab: sets the second outfit tab's period on the actor. The actor's own client
+    // also shows s_msg_item_active_codi_tab_complete_limitless (addedSeconds 0) or ..._complete_period with
+    // addedSeconds in days, unless silent.
+    public static ByteWriter ActiveCodiTab(int playerObjectId, long start, long end, long addedSeconds, bool silent = false) {
+        var pWriter = Packet.Of(SendOp.ItemUse);
+        pWriter.Write<Command>(Command.FashionCoupon);
+        pWriter.WriteInt(playerObjectId);
+        pWriter.WriteLong(start);
+        pWriter.WriteLong(end);
+        pWriter.WriteLong(addedSeconds);
+        pWriter.WriteBool(silent);
+
+        return pWriter;
+    }
+
     public static ByteWriter BeautyCoupon(int playerObjectId, long itemUid) {
         var pWriter = Packet.Of(SendOp.ItemUse);
         pWriter.Write<Command>(Command.BeautyCoupon);

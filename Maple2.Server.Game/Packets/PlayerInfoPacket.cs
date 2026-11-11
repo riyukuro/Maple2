@@ -9,6 +9,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Core.Packets.Helper;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Packets;
@@ -47,10 +48,11 @@ public static class PlayerInfoPacket {
                 buffer.WriteEquip(item);
             }
 
-            // Outfit 2 from KMS2
-            buffer.WriteBool(true); //has Skin
-            buffer.WriteLong();
-            buffer.WriteLong();
+            // The second outfit tab: whether it is active (the viewer's dialog shows the tab by it) and its period.
+            Character character = session.Player.Value.Character;
+            buffer.WriteBool(SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+            buffer.WriteLong(character.SkinTabStart);
+            buffer.WriteLong(character.SkinTabEnd);
             // Outfit2
             buffer.WriteByte(); // Skin Count
             for (int i = 0; i < 0; i++) {

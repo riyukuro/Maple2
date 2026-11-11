@@ -36,6 +36,7 @@ public static class Constant {
     public const int PerformanceMapId = 2000064; // Queenstown
     public static readonly TimeSpan MaxPerformanceDuration = TimeSpan.FromMinutes(10);
     public const int BaseStorageCount = 36;
+    public const int CodiTabMaxDay = 999; // the client's built-in value; constants.xml has no row for it
     public const float MesoMarketTaxRate = 0.1f;
     public const float MesoMarketRangeRate = 0.2f;
     public const int MesoMarketSellEndDay = 2;

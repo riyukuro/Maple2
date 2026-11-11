@@ -54,5 +54,9 @@ public class Character {
     public long DeathTick;
     public DeathState DeathState;
     public long PremiumTime;
+    // The second outfit tab (the client's codi tab, feature Skin2tab): unix seconds.
+    // Start 0 = never activated; End 0 with a Start = no end.
+    public long SkinTabStart;
+    public long SkinTabEnd;
     public MentorRole MentorRole;
 }
