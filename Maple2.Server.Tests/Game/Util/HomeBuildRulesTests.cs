@@ -52,6 +52,15 @@ public class HomeBuildRulesTests {
         // lowering it never needs the wallet
         Assert.That(HomeBuildRules.CheckBudget(10, 10, 100, 100, 0, 0), Is.EqualTo(Ok));
         Assert.That(HomeBuildRules.CheckBudget(-1, 0, 100, 0, 500, 0), Is.EqualTo(HomeBuildRules.Refused));
+        // A lowered budget must fit into the wallet below its cap; nothing may be cut off.
+        Assert.That(HomeBuildRules.CheckBudget(40, 0, 100, 0, 940, 0, 1000, 1000), Is.EqualTo(Ok));
+        Assert.That(HomeBuildRules.CheckBudget(40, 0, 100, 0, 941, 0, 1000, 1000), Is.EqualTo(HomeBuildRules.Refused));
+        Assert.That(HomeBuildRules.CheckBudget(0, 40, 0, 100, 0, 940, 1000, 1000), Is.EqualTo(Ok));
+        Assert.That(HomeBuildRules.CheckBudget(0, 40, 0, 100, 0, 941, 1000, 1000), Is.EqualTo(HomeBuildRules.Refused));
+        Assert.That(HomeBuildRules.CheckBudget(0, 0, 100, 0, long.MaxValue - 99, 0), Is.EqualTo(HomeBuildRules.Refused));
+        Assert.That(HomeBuildRules.CheckBudget(0, 0, 100, 0, long.MaxValue - 100, 0), Is.EqualTo(Ok));
+        // Raising the budget is not bound by the cap.
+        Assert.That(HomeBuildRules.CheckBudget(150, 0, 100, 0, 1000, 0, 1000, 1000), Is.EqualTo(Ok));
         Assert.That(HomeBuildRules.CheckBudget(0, -1, 0, 100, 0, 500), Is.EqualTo(HomeBuildRules.Refused));
     }
 

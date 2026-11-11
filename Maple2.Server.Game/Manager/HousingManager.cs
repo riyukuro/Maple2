@@ -875,7 +875,11 @@ public class HousingManager {
                 long mesoCost = meso - Home.BuildMeso;
                 long meratCost = merat - Home.BuildMerat;
                 UgcMapError error = HomeBuildRules.CheckBudget(meso, merat, Home.BuildMeso, Home.BuildMerat,
-                    session.Currency.Meso, session.Currency.Meret);
+                    session.Currency.Meso, session.Currency.Meret, Constant.MaxMeso, Constant.MaxMeret);
+                if (error == UgcMapError.s_ugcmap_ok &&
+                    (session.Currency.CanAddMeso(-mesoCost) != -mesoCost || session.Currency.CanAddMeret(-meratCost) != -meratCost)) {
+                    error = HomeBuildRules.Refused;
+                }
                 if (error != UgcMapError.s_ugcmap_ok) {
                     session.Send(CubePacket.UpdateBuildBudget((byte) error));
                     return;

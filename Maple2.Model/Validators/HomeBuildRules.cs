@@ -15,8 +15,14 @@ public static class HomeBuildRules {
 
     // RequestCube 56 sets the budget to the two values. The difference to the stored budget comes out of the
     // owner's wallet, or goes back to it when the budget is lowered.
-    public static UgcMapError CheckBudget(long meso, long merat, long budgetMeso, long budgetMerat, long walletMeso, long walletMerat) {
+    // A lowered budget is refused when the wallet cannot hold what comes back (its cap): the wallet's setters
+    // cut at the cap and the difference would be lost.
+    public static UgcMapError CheckBudget(long meso, long merat, long budgetMeso, long budgetMerat, long walletMeso, long walletMerat,
+                                          long maxMeso = long.MaxValue, long maxMerat = long.MaxValue) {
         if (meso < 0 || merat < 0) {
+            return Refused;
+        }
+        if (budgetMeso - meso > maxMeso - walletMeso || budgetMerat - merat > maxMerat - walletMerat) {
             return Refused;
         }
         if (meso - budgetMeso > walletMeso) {
