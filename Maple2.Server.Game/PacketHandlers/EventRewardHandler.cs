@@ -65,7 +65,21 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimBingoReward:
                 HandleClaimBingoReward(session, packet);
                 return;
-            // Sub-types the KMS 2525 client sends for events that have no logic here yet: read and log only.
+            // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
+            // stamp, item box, snowman, level-up package, burning level-up, item collection and long-term attend
+            // events, and GameEvent writes none of them), so the client's dialogs have no event to show and
+            // there is nothing to pay out. The client has no refusal text for them: read and logged.
+            // Client writers:
+            //   0, 1   uistampeventdialog.cpp:319, :331
+            //   2      uiitemeventopenboxdialog.cpp:226
+            //   5      uibuddyeventlistener.cpp:667 (needs client feature 0x82)
+            //   12, 13 uisnowmaneventdialog.cpp:343, :365
+            //   15     uileveluppackagewidgetdialog.cpp:580
+            //   16     uicharacterlistdialog.cpp:2093
+            //   19     uicollectitemgroupeventdialog.cpp:415
+            //   25     uilongtermattendgiftdialog.cpp:511
+            //   26     uilongtermattendgiftdialog.cpp:385 (1), :535 (0)
+            //   27     gameeventcli.cpp:1194, uilongtermattendgiftdialog.cpp:348
             case Command.ClaimStampReward: // stamp count, special flag
                 Logger.Debug("EventReward {Command} from {CharacterId}: count {Count}, special {Special}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
                 return;
