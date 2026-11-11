@@ -9,6 +9,9 @@ public partial class WorldService {
         if (!playerLookup.TryGet(request.ReceiverId, out PlayerInfo? info)) {
             return Task.FromResult(new BuddyResponse());
         }
+        if (!WorldForwardRules.Forward(info)) {
+            return Task.FromResult(new BuddyResponse());
+        }
 
         int channel = info.Channel;
         if (!channelClients.TryGetClient(channel, out ChannelClient? channelClient)) {
