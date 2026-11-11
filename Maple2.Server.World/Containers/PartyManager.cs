@@ -162,6 +162,7 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryAdd(info.CharacterId, member) && Party.Search != null) {
             Party.Search.MemberCount++;
         }
+        PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
     }
 
@@ -191,6 +192,7 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryRemove(member.CharacterId, out _) && Party.Search != null) {
             Party.Search.MemberCount--;
         }
+        PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
     }
 
@@ -215,6 +217,7 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryRemove(member.CharacterId, out _) && Party.Search != null) {
             Party.Search.MemberCount--;
         }
+        PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
     }
 
@@ -438,7 +441,7 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     }
 
-    public PartyError SetDungeon(long requestorId, int dungeonId, bool set, int dungeonRoomId = 0) {
+    public PartyError SetDungeon(long requestorId, int dungeonId, bool set, int dungeonRoomId = 0, bool matched = false) {
         if (requestorId != Party.LeaderCharacterId) {
             return PartyError.s_party_err_not_chief;
         }
@@ -452,6 +455,7 @@ public class PartyManager : IDisposable {
                 DungeonId = dungeonId,
                 DungeonRoomId = dungeonRoomId,
                 Set = set,
+                Matched = matched,
             },
         });
 

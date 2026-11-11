@@ -45,6 +45,10 @@ public partial class WorldService {
                 return Task.FromResult(SetDungeon(request.RequestorId, request.SetDungeon));
             case PartyRequest.PartyOneofCase.Recall:
                 return Task.FromResult(Recall(request.RequestorId, request.Recall));
+            case PartyRequest.PartyOneofCase.DungeonMatch:
+                return Task.FromResult(DungeonMatch(request.RequestorId, request.DungeonMatch));
+            case PartyRequest.PartyOneofCase.CancelDungeonMatch:
+                return Task.FromResult(CancelDungeonMatch(request.RequestorId, request.CancelDungeonMatch));
             default:
                 return Task.FromResult(new PartyResponse { Error = (int) PartyError.none });
         }
@@ -244,6 +248,108 @@ public partial class WorldService {
         }
 
         return new PartyResponse { Error = (int) manager.Recall(requestorId, recall.MapId, recall.EndTime) };
+    }
+
+    // Party 32/33. A party searches as one group: the leader asks, with every member online, and the group is the
+    // party. A player with no party first takes a slot in the largest searching group with room for them (rule 3)
+    // and joins its party; when there is none, a party of one is made for them and searches on its own.
+    private PartyResponse DungeonMatch(long requestorId, PartyRequest.Types.DungeonMatch match) {
+        var kind = (byte) match.Kind;
+        List<DungeonMatchRoom> rooms = match.Rooms
+            .Select(room => new DungeonMatchRoom(room.Id, room.MinUsers, room.MaxUsers, room.ChangeMaxUsers))
+            .ToList();
+        if (rooms.Count == 0) {
+            return new PartyResponse();
+        }
+
+        lock (partyLookup.DungeonMatchLock) {
+            if (partyLookup.TryGetByCharacter(requestorId, out PartyManager? manager)) {
+                if (manager.Party.LeaderCharacterId != requestorId) {
+                    return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_isNotChief };
+                }
+                if (manager.Party.Members.Values.Any(member => !member.Info.Online)) {
+                    return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_hasOfflineUser };
+                }
+                DungeonMatchResult started = partyLookup.DungeonMatch.Start(manager.Party.Id, kind, rooms, manager.Party.Members.Count);
+                switch (started.Outcome) {
+                    case DungeonMatchOutcome.AlreadySearching:
+                        return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+                    case DungeonMatchOutcome.Searching:
+                        PartyLookup.BroadcastDungeonMatch(manager, kind, true);
+                        break;
+                    case DungeonMatchOutcome.Matched:
+                        partyLookup.CompleteDungeonMatch(manager, started);
+                        break;
+                }
+                return new PartyResponse { PartyId = manager.Party.Id };
+            }
+
+            if (!playerLookup.TryGet(requestorId, out PlayerInfo? info)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+            }
+
+            DungeonMatchResult? joined = partyLookup.DungeonMatch.Join(kind, rooms);
+            if (joined != null) {
+                if (!partyLookup.TryGet(joined.Value.PartyId, out manager)) {
+                    partyLookup.DungeonMatch.Remove(joined.Value.PartyId);
+                } else {
+                    PartyError error = manager.Join(info);
+                    if (error != PartyError.none) {
+                        DungeonMatchResult left = partyLookup.DungeonMatch.Leave(manager.Party.Id);
+                        if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
+                            partyLookup.CompleteDungeonMatch(manager, joined.Value);
+                        } else if (left.Outcome == DungeonMatchOutcome.Stopped) {
+                            partyLookup.CompleteDungeonMatch(manager, left);
+                        }
+                        return new PartyResponse { Error = (int) error };
+                    }
+
+                    bool matched = false;
+                    if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
+                        matched = partyLookup.CompleteDungeonMatch(manager, joined.Value);
+                    } else {
+                        PartyLookup.BroadcastDungeonMatch(manager, kind, true);
+                    }
+                    return new PartyResponse { Party = ToPartyInfo(manager.Party), DungeonMatched = matched };
+                }
+            }
+
+            PartyError createError = partyLookup.Create(requestorId, out int partyId);
+            if (createError != PartyError.none) {
+                return new PartyResponse { Error = (int) createError };
+            }
+            if (!partyLookup.TryGet(partyId, out manager)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+            }
+            DungeonMatchResult own = partyLookup.DungeonMatch.Start(partyId, kind, rooms, 1);
+            if (own.Outcome == DungeonMatchOutcome.Stopped) {
+                partyLookup.Disband(partyId);
+                return new PartyResponse();
+            }
+            bool ownMatched = own.Outcome == DungeonMatchOutcome.Matched && partyLookup.CompleteDungeonMatch(manager, own);
+            return new PartyResponse { Party = ToPartyInfo(manager.Party), DungeonMatched = ownMatched };
+        }
+    }
+
+    // Party 34 by the leader: the party goes with the members found so far when that is enough for a room (rule 2),
+    // else the search stops. Any member can send 34; only the leader's counts (the client's isNotChief error).
+    private PartyResponse CancelDungeonMatch(long requestorId, PartyRequest.Types.CancelDungeonMatch cancel) {
+        lock (partyLookup.DungeonMatchLock) {
+            if (!partyLookup.TryGet(cancel.PartyId, out PartyManager? manager)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+            }
+            if (manager.Party.LeaderCharacterId != requestorId) {
+                return new PartyResponse { Error = (int) PartyError.s_dungeonMatch_error_isNotChief };
+            }
+
+            DungeonMatchResult result = partyLookup.DungeonMatch.Cancel(manager.Party.Id);
+            if (result.Outcome == DungeonMatchOutcome.NotSearching) {
+                PartyLookup.BroadcastDungeonMatch(manager, (byte) cancel.Kind, false);
+            } else {
+                partyLookup.CompleteDungeonMatch(manager, result);
+            }
+            return new PartyResponse { PartyId = manager.Party.Id };
+        }
     }
 
     private static PartyInfo ToPartyInfo(Party party) {

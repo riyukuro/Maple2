@@ -106,11 +106,18 @@ public class DungeonMatchQueueTests {
     }
 
     [Test]
-    public void NoMinimumStartsWithOne() {
+    public void NoMinimumStartsWithOneFound() {
         var queue = new DungeonMatchQueue();
         var solo = new DungeonMatchRoom(400, 0, 4, false);
+        // Nobody found: a cancel is a plain cancel, even where one user may enter.
         queue.Start(1, 1, [solo], 1);
-        Assert.That(queue.Cancel(1).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.Cancel(1).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
+        // A party of two at the minimum that found nobody stops too.
+        queue.Start(2, 1, [Four], 2);
+        Assert.That(queue.Cancel(2).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
+        queue.Start(3, 1, [solo], 1);
+        queue.Join(1, [solo]);
+        Assert.That(queue.Cancel(3), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 3, 1, 400)));
     }
 
     [Test]
@@ -121,6 +128,25 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.Leave(1).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
         Assert.That(queue.Leave(1).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
         Assert.That(queue.Leave(1).Outcome, Is.EqualTo(DungeonMatchOutcome.NotSearching));
+    }
+
+    [Test]
+    public void ResizeFollowsThePartyCount() {
+        var queue = new DungeonMatchQueue();
+        queue.Start(1, 1, [Four, Three], 2);
+        // An invite brings the party to three: full for the three-user room.
+        Assert.That(queue.Resize(1, 3), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 200)));
+        Assert.That(queue.Resize(1, 3).Outcome, Is.EqualTo(DungeonMatchOutcome.NotSearching));
+
+        queue.Start(2, 1, [Four, Three], 2);
+        // Five members fit no room: the search stops.
+        Assert.That(queue.Resize(2, 5).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
+        Assert.That(queue.IsSearching(2), Is.False);
+
+        queue.Start(3, 1, [Four], 3);
+        Assert.That(queue.Resize(3, 2).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(queue.Join(1, [Four])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(queue.Join(1, [Four])!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
 
     [Test]

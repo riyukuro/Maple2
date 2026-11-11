@@ -23,6 +23,8 @@ public sealed class DungeonMatchQueue {
         public required byte Kind;
         public required List<DungeonMatchRoom> Rooms;
         public required int Users;
+        // Searchers Join put in this group: the "members found so far" of rule 2.
+        public int Found;
         public required long Order;
     }
 
@@ -92,20 +94,22 @@ public sealed class DungeonMatchQueue {
 
             best.Rooms = bestRooms!;
             best.Users++;
+            best.Found++;
             DungeonMatchResult result = CheckFull(best);
             return result.Outcome == DungeonMatchOutcome.Matched ? result : result with { Outcome = DungeonMatchOutcome.Searching };
         }
     }
 
-    // Party 34 by the leader (rule 2): with at least the minimum of one of the rooms the party goes with the members
-    // found so far; under it the search stops and the party stays as it is.
+    // Party 34 by the leader (rule 2): when the search found someone and the group has at least the minimum of one
+    // of its rooms, the party goes with the members found so far; otherwise the search stops and the party stays
+    // as it is (a cancel with nobody found is a plain cancel).
     public DungeonMatchResult Cancel(int partyId) {
         lock (mutex) {
             if (!groups.Remove(partyId, out Group? group)) {
                 return new DungeonMatchResult(DungeonMatchOutcome.NotSearching, partyId);
             }
             DungeonMatchRoom? room = group.Rooms
-                .Where(candidate => DungeonMatchRules.CanStart(candidate, group.Users))
+                .Where(candidate => group.Found > 0 && DungeonMatchRules.CanStart(candidate, group.Users))
                 .OrderBy(candidate => candidate.Id)
                 .Cast<DungeonMatchRoom?>()
                 .FirstOrDefault();
@@ -122,11 +126,31 @@ public sealed class DungeonMatchQueue {
                 return new DungeonMatchResult(DungeonMatchOutcome.NotSearching, partyId);
             }
             group.Users--;
+            if (group.Found > 0) {
+                group.Found--;
+            }
             if (group.Users > 0) {
                 return new DungeonMatchResult(DungeonMatchOutcome.Searching, partyId, group.Kind);
             }
             groups.Remove(partyId);
             return new DungeonMatchResult(DungeonMatchOutcome.Stopped, partyId, group.Kind);
+        }
+    }
+
+    // The party's member count changed outside the matchmaker (an invite, a leave, a kick): the group takes the
+    // party's count, keeps the rooms that still hold it, and is matched when it is now full for one of them.
+    public DungeonMatchResult Resize(int partyId, int users) {
+        lock (mutex) {
+            if (!groups.TryGetValue(partyId, out Group? group)) {
+                return new DungeonMatchResult(DungeonMatchOutcome.NotSearching, partyId);
+            }
+            group.Users = users;
+            group.Rooms = group.Rooms.Where(room => users <= DungeonMatchRules.MaxUsers(room, users)).ToList();
+            if (users <= 0 || group.Rooms.Count == 0) {
+                groups.Remove(partyId);
+                return new DungeonMatchResult(DungeonMatchOutcome.Stopped, partyId, group.Kind);
+            }
+            return CheckFull(group);
         }
     }
 

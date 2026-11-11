@@ -264,6 +264,13 @@ message PartyRequest {
     int32 dungeon_id = 2;
     int32 dungeon_room_id = 3;
     bool set = 4;
+    // The room was made by the dungeon matchmaker: every member gets the enter box (Party 0x1f).
+    bool matched = 5;
+  }
+  // The party's dungeon match search started (registered) or ended.
+  message DungeonMatch {
+    int32 kind = 1;
+    bool registered = 2;
   }
   message Recall {
     int64 character_id = 1;
@@ -289,6 +296,7 @@ message PartyRequest {
     CreateSearch create_search = 14;
     SetDungeon set_dungeon = 15;
     Recall recall = 16;
+    DungeonMatch dungeon_match = 17;
   }
 }
 
