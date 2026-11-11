@@ -2,6 +2,9 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Database.Extensions;
+using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -138,7 +141,7 @@ public sealed class NpcScriptManager {
         if (Npc == null) {
             return;
         }
-        ScriptState? scriptState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Script, metadata, Npc.Value.Id);
+        ScriptState? scriptState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Script, metadata, Npc.Value.Id, Npc.MaidUid);
         if (scriptState == null) {
             return;
         }
@@ -217,7 +220,7 @@ public sealed class NpcScriptManager {
                     continue;
                 }
 
-                if (scriptConditionMetadata.ConditionCheck(session)) {
+                if (scriptConditionMetadata.ConditionCheck(session, Npc?.MaidUid ?? 0)) {
                     goToScripts.Add(goToScript);
                 }
             }
@@ -237,7 +240,7 @@ public sealed class NpcScriptManager {
                     continue;
                 }
 
-                if (scriptConditionMetadata.ConditionCheck(session)) {
+                if (scriptConditionMetadata.ConditionCheck(session, Npc?.MaidUid ?? 0)) {
                     goToFailScripts.Add(goToFailScript);
                 }
             }
@@ -437,6 +440,10 @@ public sealed class NpcScriptManager {
             session.Send(NpcTalkPacket.RewardItem(items));
         }
 
+        if (Npc is { MaidUid: not 0 } && (scriptFunction.MaidMoodIncrease != 0 || scriptFunction.MaidClosenessIncrease != 0 || scriptFunction.MaidPay)) {
+            MaidFunction(scriptFunction, Npc.MaidUid);
+        }
+
         if (scriptFunction.PresentExp > 0) {
             session.Player.Value.Character.Exp += scriptFunction.PresentExp;
             session.Send(NpcTalkPacket.RewardExp(scriptFunction.PresentExp));
@@ -447,6 +454,55 @@ public sealed class NpcScriptManager {
                 ? FieldEnterPacket.Request(session.Player)
                 : FieldEnterPacket.Error(MigrationError.s_move_err_default));
         }
+    }
+
+    // The maid functions of a maid npc's script (maidMoodUp, maidAffinityUp, maidPay), for its owner only: the talk
+    // menus that run them are behind maid_auth. maidPay takes the salary of table/maidsalary.xml (mesos for salary
+    // type 0, else merets) and extends the contract by PeriodOfMaidEmployment days from its end, or from now when it
+    // has ended. The maid is changed on the field thread, which owns it.
+    private void MaidFunction(ScriptFunctionMetadata scriptFunction, long maidUid) {
+        FieldManager? field = session.Field;
+        Maid? maid = field?.GetMaid(maidUid);
+        if (field == null || maid == null || maid.OwnerId != session.AccountId) {
+            return;
+        }
+        MaidTable table = session.TableMetadata.MaidTable;
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        bool pay = false;
+        if (scriptFunction.MaidPay) {
+            if (!table.Entries.TryGetValue(maid.MaidId, out MaidTable.Entry? entry)) {
+                logger.Warning("No salary for maid {MaidId}", maid.MaidId);
+            } else if (entry.SalaryType == 0) {
+                if (session.Currency.Meso >= entry.Salary) {
+                    session.Currency.Meso -= entry.Salary;
+                    pay = true;
+                }
+            } else if (session.Currency.Meret >= entry.Salary) {
+                session.Currency.Meret -= entry.Salary;
+                pay = true;
+            }
+        }
+        int mood = scriptFunction.MaidMoodIncrease;
+        int exp = scriptFunction.MaidClosenessIncrease;
+        IReadOnlyDictionary<int, int> exps = table.Exps ?? new Dictionary<int, int>();
+        field.Scheduler.Schedule(() => {
+            if (field.GetMaid(maidUid) != maid) {
+                return; // removed meanwhile
+            }
+            bool changed = mood != 0 && MaidRules.AddMood(maid, mood);
+            if (exp != 0) {
+                int level = maid.Level, oldExp = maid.Exp;
+                MaidRules.AddExp(maid, exp, exps, constants.MaidAffinityMax);
+                changed |= maid.Level != level || maid.Exp != oldExp;
+            }
+            if (pay) {
+                maid.ExpiryTime = MaidRules.PaidUntil(maid.ExpiryTime, DateTime.UtcNow.ToEpochSeconds(), constants.PeriodOfMaidEmployment);
+                changed = true;
+            }
+            if (changed) {
+                field.SaveMaid(maid);
+            }
+        });
     }
 
     #region EnchantTalk

@@ -2333,7 +2333,31 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
         }
 
-        return new MaidTable(results);
+        // table/maidsalary.xml <key id SalaryType SalaryAmount/>: the maid's salary by maid id (CPriceTable::GetSalary).
+        foreach (XmlElement row in MaidRows(reader, "table/maidsalary.xml", "ms2/key")) {
+            if (!int.TryParse(row.GetAttribute("id"), out int maidId) || !results.TryGetValue(maidId, out MaidTable.Entry? maid)) continue;
+            int.TryParse(row.GetAttribute("SalaryType"), out int salaryType);
+            int.TryParse(row.GetAttribute("SalaryAmount"), out int salary);
+            results[maidId] = maid with { SalaryType = salaryType, Salary = Math.Max(0, salary) };
+        }
+
+        // table/maidexp.xml <Exp Level Exp/>: the affinity exp of each level (CMaidExpTable).
+        var exps = new Dictionary<int, int>();
+        foreach (XmlElement row in MaidRows(reader, "table/maidexp.xml", "ms2/Exp")) {
+            if (int.TryParse(row.GetAttribute("Level"), out int level) && level > 0 && int.TryParse(row.GetAttribute("Exp"), out int exp)) {
+                exps[level] = exp;
+            }
+        }
+
+        return new MaidTable(results, exps);
+    }
+
+    private static IEnumerable<XmlElement> MaidRows(M2dReader reader, string file, string path) {
+        foreach (Maple2.File.IO.Crypto.Common.PackFileEntry entry in reader.Files.Where(entry => entry.Name.Equals(file, StringComparison.OrdinalIgnoreCase))) {
+            foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes(path)!) {
+                if (node is XmlElement row) yield return row;
+            }
+        }
     }
 
     private AutoActionTable ParseAutoActionTable() {

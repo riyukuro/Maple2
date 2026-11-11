@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -120,6 +122,145 @@ public class MaidTests {
             Assert.That(MaidRules.Orphans([77, 78, 79], [78, 90]), Is.EqualTo(new long[] { 77, 79 }));
             Assert.That(MaidRules.Orphans([77], [77]), Is.Empty);
             Assert.That(MaidRules.Orphans([77], []), Is.EqualTo(new long[] { 77 }));
+        });
+    }
+
+    private static Maid NewMaid(int level = 1, int exp = 0, int mood = 0) {
+        return new Maid { Uid = 77, OwnerId = 5, ItemId = CubeItemId, MaidId = MaidId, Level = level, Exp = exp, Mood = mood, CreationTime = 1000, ExpiryTime = 2000 };
+    }
+
+    // Levels 1-4 need 10, 20, 30 and 40 exp.
+    private static readonly Dictionary<int, int> Exps = new() { [1] = 10, [2] = 20, [3] = 30, [4] = 40 };
+
+    [Test]
+    public void UserMaid_ListClearsThenCountedMaids() {
+        Maid maid = NewMaid();
+        byte[] body = FieldMaidPacket.Add(maid).ToArray()[3..];
+        byte[] list = UserMaidPacket.List([maid, maid]).ToArray();
+        Assert.That(list.Length, Is.EqualTo(2 + 1 + 4 + 2 * body.Length));
+        var reader = new ByteReader(list, 0);
+        Assert.Multiple(() => {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.UserMaid));
+            Assert.That(reader.ReadByte(), Is.EqualTo(0));
+            Assert.That(reader.ReadInt(), Is.EqualTo(2));
+            Assert.That(reader.ReadByte(), Is.EqualTo(0)); // the first maid's mode
+            Assert.That(reader.ReadLong(), Is.EqualTo(0));
+            Assert.That(reader.ReadLong(), Is.EqualTo(77));
+        });
+    }
+
+    [Test]
+    public void UserMaid_AddUpdateRemoveProperty() {
+        Maid maid = NewMaid();
+        byte[] body = FieldMaidPacket.Add(maid).ToArray()[3..]; // after the opcode and FieldMaid's mode
+        byte[] add = UserMaidPacket.Add(maid).ToArray();
+        byte[] update = UserMaidPacket.Update(maid).ToArray();
+        var remove = new ByteReader(UserMaidPacket.Remove(77).ToArray(), 0);
+        var property = new ByteReader(UserMaidPacket.Property(1234).ToArray(), 0);
+        Assert.Multiple(() => {
+            Assert.That(add[2], Is.EqualTo(1));
+            Assert.That(add[3..], Is.EqualTo(body));
+            Assert.That(update[2], Is.EqualTo(3));
+            Assert.That(update[3..], Is.EqualTo(body));
+            Assert.That(remove.Read<SendOp>(), Is.EqualTo(SendOp.UserMaid));
+            Assert.That(remove.ReadByte(), Is.EqualTo(2));
+            Assert.That(remove.ReadLong(), Is.EqualTo(77));
+            Assert.That(remove.Available, Is.EqualTo(0));
+            Assert.That(property.Read<SendOp>(), Is.EqualTo(SendOp.UserMaid));
+            Assert.That(property.ReadByte(), Is.EqualTo(4));
+            Assert.That(property.ReadInt(), Is.EqualTo(1234));
+            Assert.That(property.Available, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void Mood_StaysIn0To100_AndGrades() {
+        Maid maid = NewMaid(mood: 95);
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.AddMood(maid, 10), Is.True);
+            Assert.That(maid.Mood, Is.EqualTo(100));
+            Assert.That(MaidRules.AddMood(maid, 1), Is.False);
+            Assert.That(MaidRules.AddMood(maid, -150), Is.True);
+            Assert.That(maid.Mood, Is.EqualTo(0));
+            Assert.That(MaidRules.MoodGrade(30), Is.EqualTo(0));
+            Assert.That(MaidRules.MoodGrade(31), Is.EqualTo(1));
+            Assert.That(MaidRules.MoodGrade(70), Is.EqualTo(1));
+            Assert.That(MaidRules.MoodGrade(71), Is.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void AddExp_CarriesOverLevelsAndStopsAtTheLimit() {
+        Maid maid = NewMaid(level: 1, exp: 5);
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.AddExp(maid, 30, Exps, affinityMax: 10), Is.True); // 35: level 1 takes 10, level 2 takes 20
+            Assert.That(maid.Level, Is.EqualTo(3));
+            Assert.That(maid.Exp, Is.EqualTo(5));
+            Assert.That(MaidRules.AddExp(maid, 4, Exps, affinityMax: 10), Is.False);
+            Assert.That(maid.Exp, Is.EqualTo(9));
+        });
+
+        Maid capped = NewMaid(level: 1);
+        MaidRules.AddExp(capped, 1000, Exps, affinityMax: 3);
+        Assert.Multiple(() => {
+            Assert.That(capped.Level, Is.EqualTo(3)); // MaidAffinityMax below the row count
+            Assert.That(capped.Exp, Is.EqualTo(0));
+            Assert.That(MaidRules.IsAffinityLevelAtMax(capped, 3, Exps.Count), Is.True);
+        });
+    }
+
+    [Test]
+    public void AddLevel_StaysUnderTheLimit_AndResetGoesBackToOne() {
+        Maid maid = NewMaid(level: 3, exp: 7);
+        MaidRules.AddLevel(maid, 1, affinityMax: 4, maxLevel: Exps.Count);
+        Assert.Multiple(() => {
+            Assert.That(maid.Level, Is.EqualTo(4));
+            Assert.That(maid.Exp, Is.EqualTo(0));
+        });
+        MaidRules.AddLevel(maid, 1, affinityMax: 4, maxLevel: Exps.Count);
+        Assert.That(maid.Level, Is.EqualTo(4));
+        MaidRules.AddLevel(maid, 1, affinityMax: 2, maxLevel: Exps.Count, ignoreLimit: true);
+        Assert.That(maid.Level, Is.EqualTo(4));
+        MaidRules.ResetLevel(maid);
+        Assert.Multiple(() => {
+            Assert.That(maid.Level, Is.EqualTo(1));
+            Assert.That(maid.Exp, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void Profile_IsTheOwnersWhileUnnamed() {
+        Maid maid = NewMaid();
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.CanEditProfile(maid, 5, debug: false), Is.True);
+            Assert.That(MaidRules.CanEditProfile(maid, 6, debug: true), Is.False);
+            maid.Profile.Name = "n";
+            Assert.That(MaidRules.CanEditProfile(maid, 5, debug: false), Is.False);
+            Assert.That(MaidRules.CanEditProfile(maid, 5, debug: true), Is.True);
+            Assert.That(MaidRules.ProfileTexts(maid.Profile).Count(), Is.EqualTo(13));
+            Assert.That(MaidRules.IsOwner(maid, 5), Is.True);
+            Assert.That(MaidRules.IsOwner(maid, 6), Is.False);
+            Assert.That(MaidRules.IsOwner(null, 5), Is.False);
+        });
+    }
+
+    [Test]
+    public void PaidUntil_ExtendsFromTheEndOrFromNow() {
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.PaidUntil(expiryTime: 5000, now: 1000, periodDays: 2), Is.EqualTo(5000 + 2 * 86400));
+            Assert.That(MaidRules.PaidUntil(expiryTime: 500, now: 1000, periodDays: 2), Is.EqualTo(1000 + 2 * 86400));
+            Assert.That(MaidRules.PaidUntil(expiryTime: 500, now: 1000, periodDays: -1), Is.EqualTo(1000));
+        });
+    }
+
+    [Test]
+    public void TableEntry_SalaryDefaultsToNone() {
+        MaidTable.Entry entry = MaidTable.Row("3", "12", "11001234")!;
+        var table = new MaidTable(new Dictionary<int, MaidTable.Entry> { [3] = entry });
+        Assert.Multiple(() => {
+            Assert.That(entry.SalaryType, Is.EqualTo(0));
+            Assert.That(entry.Salary, Is.EqualTo(0));
+            Assert.That(table.Exps, Is.Null);
         });
     }
 }

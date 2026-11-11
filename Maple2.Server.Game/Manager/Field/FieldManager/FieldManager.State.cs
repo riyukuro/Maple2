@@ -12,6 +12,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
@@ -1108,8 +1109,13 @@ public partial class FieldManager {
         }
 
         Maid? maid;
+        bool hired = false;
         using (GameStorage.Request db = GameStorage.Context()) {
-            maid = db.GetMaid(cube.Id) ?? db.CreateMaid(MaidRules.Hire(cube, maidId, plot.OwnerId, DateTime.UtcNow.ToEpochSeconds(), Constants.PeriodOfMaidEmployment));
+            maid = db.GetMaid(cube.Id);
+            if (maid == null) {
+                maid = db.CreateMaid(MaidRules.Hire(cube, maidId, plot.OwnerId, DateTime.UtcNow.ToEpochSeconds(), Constants.PeriodOfMaidEmployment));
+                hired = maid != null;
+            }
         }
         if (maid == null) {
             // Another field may have made the row first (the create then fails on its key): read it again.
@@ -1141,6 +1147,9 @@ public partial class FieldManager {
             Broadcast(FieldMaidPacket.Add(slot.Maid));
             Broadcast(FieldPacket.AddNpc(fieldNpc));
             Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
+            if (hired) {
+                SendToMaidOwner(slot.Maid.OwnerId, UserMaidPacket.Add(slot.Maid));
+            }
         });
     }
 
@@ -1156,6 +1165,8 @@ public partial class FieldManager {
             RemoveNpcNow(removed.NpcObjectId);
             Broadcast(FieldMaidPacket.Remove(cubeUid));
         });
+        // The maid's row goes with its cube; the owner's maid windows drop it.
+        SendToMaidOwner(removed.Maid.OwnerId, UserMaidPacket.Remove(cubeUid));
     }
 
     // Removes the maids whose cube is no longer on any plot of the field (a plot forfeited or expired, its cubes
@@ -1175,6 +1186,34 @@ public partial class FieldManager {
     }
 
     public Maid? GetMaid(long cubeUid) => maids.TryGetValue(cubeUid, out MaidSlot? slot) ? slot.Maid : null;
+
+    // The object id of a placed maid's npc, 0 while it is not spawned.
+    public int GetMaidNpcObjectId(long cubeUid) => maids.TryGetValue(cubeUid, out MaidSlot? slot) ? slot.NpcObjectId : 0;
+
+    // Saves a placed maid after a change on the field thread and sends it again: FieldMaid add to the field (the npc
+    // dialog and the name read it), UserMaid update to its owner when the owner is here (the maid windows read it).
+    // The caller has changed the maid on the field thread.
+    public bool SaveMaid(Maid maid) {
+        using (GameStorage.Request db = GameStorage.Context()) {
+            if (!db.SaveMaid(maid)) {
+                logger.Warning("Failed to save maid {MaidUid}", maid.Uid);
+                return false;
+            }
+        }
+        if (GetMaidNpcObjectId(maid.Uid) != 0) {
+            Broadcast(FieldMaidPacket.Add(maid));
+        }
+        SendToMaidOwner(maid.OwnerId, UserMaidPacket.Update(maid));
+        return true;
+    }
+
+    private void SendToMaidOwner(long ownerId, ByteWriter packet) {
+        foreach (FieldPlayer player in Players.Values) {
+            if (player.Session.AccountId == ownerId) {
+                player.Session.Send(packet);
+            }
+        }
+    }
     #endregion
 
     public FieldFunctionInteract? TryGetFieldFunctionInteract(string entityId) {

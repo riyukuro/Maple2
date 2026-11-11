@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -110,5 +111,41 @@ public class MaidStorageTests {
 
         using GameStorage.Request check = storage.Context();
         Assert.That(check.GetMaid(cube.Id)?.OwnerId, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void Save_WritesMoodAffinityExpiryAndProfile_AndGetMaidsListsTheOwners() {
+        PlotCube cube = PlaceCube();
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.CreateMaid(new Maid { Uid = cube.Id, OwnerId = 5, ItemId = CubeItemId, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000 }), Is.Not.Null);
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Maid maid = db.GetMaid(cube.Id)!;
+            maid.Mood = 40;
+            maid.Level = 3;
+            maid.Exp = 12;
+            maid.ExpiryTime = 1705184000;
+            maid.Profile = new MaidProfile { Name = "m", Hobby = "h" };
+            Assert.That(db.SaveMaid(maid), Is.True);
+        }
+
+        using GameStorage.Request check = storage.Context();
+        IList<Maid> maids = check.GetMaids(5);
+        Assert.Multiple(() => {
+            Assert.That(maids, Has.Count.EqualTo(1));
+            Assert.That(maids[0].Mood, Is.EqualTo(40));
+            Assert.That(maids[0].Level, Is.EqualTo(3));
+            Assert.That(maids[0].Exp, Is.EqualTo(12));
+            Assert.That(maids[0].ExpiryTime, Is.EqualTo(1705184000));
+            Assert.That(maids[0].Profile.Name, Is.EqualTo("m"));
+            Assert.That(maids[0].Profile.Hobby, Is.EqualTo("h"));
+            Assert.That(check.GetMaids(6), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Save_OfAGoneRow_IsFalse() {
+        using GameStorage.Request db = storage.Context();
+        Assert.That(db.SaveMaid(new Maid { Uid = 99, OwnerId = 5, ItemId = CubeItemId, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000 }), Is.False);
     }
 }

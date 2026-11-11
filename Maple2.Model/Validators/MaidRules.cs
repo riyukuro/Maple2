@@ -28,4 +28,81 @@ public static class MaidRules {
         var placed = new HashSet<long>(cubeIds);
         return maidCubes.Where(uid => !placed.Contains(uid)).ToList();
     }
+
+    // maid_auth: the talker's account owns the maid (null: the npc is not a placed maid).
+    public static bool IsOwner(Maid? maid, long accountId) => maid != null && maid.OwnerId == accountId;
+
+    // CMaid::GetMoodGrade: 0 up to mood 30, 1 up to 70, else 2 (the recipe lead time of the mood).
+    public static int MoodGrade(int mood) => mood <= 30 ? 0 : mood <= 70 ? 1 : 2;
+
+    // CMaid::AddMood: the mood stays in 0..100; true when it changed.
+    public static bool AddMood(Maid maid, int delta) {
+        int old = maid.Mood;
+        maid.Mood = Math.Clamp(maid.Mood + delta, 0, 100);
+        return maid.Mood != old;
+    }
+
+    // The top affinity level: min(MaidAffinityMax, the maidexp row count), the row count when ignoreLimit is set
+    // (CMaid::AddLevel, IsAffinityLevelAtMax).
+    public static int AffinityLimit(int affinityMax, int maxLevel, bool ignoreLimit = false) {
+        return ignoreLimit ? maxLevel : Math.Min(affinityMax, maxLevel);
+    }
+
+    public static bool IsAffinityLevelAtMax(Maid maid, int affinityMax, int maxLevel) {
+        return AffinityLimit(affinityMax, maxLevel) <= maid.Level;
+    }
+
+    // CMaid::AddLevel: the level moves by delta within 0..limit; at the limit the exp is cleared.
+    public static void AddLevel(Maid maid, int delta, int affinityMax, int maxLevel, bool ignoreLimit = false) {
+        int limit = AffinityLimit(affinityMax, maxLevel, ignoreLimit);
+        maid.Level += delta;
+        if (limit <= maid.Level) {
+            maid.Exp = 0;
+        }
+        maid.Level = Math.Max(0, Math.Min(limit, maid.Level));
+    }
+
+    // CMaid::ResetLevel.
+    public static void ResetLevel(Maid maid) {
+        maid.Exp = 0;
+        maid.Level = 1;
+    }
+
+    // Affinity exp gained. The maid dialog shows exp / maidexp[level] as the gauge of the level, so the exp of a level
+    // is what it takes to reach the next one; the gain carries over and stops at the top level (where the exp is 0,
+    // as in AddLevel). Returns true when the level changed.
+    public static bool AddExp(Maid maid, int delta, IReadOnlyDictionary<int, int> exps, int affinityMax) {
+        int limit = AffinityLimit(affinityMax, exps.Count);
+        int oldLevel = maid.Level;
+        if (maid.Level >= limit) {
+            maid.Exp = 0;
+            return false;
+        }
+        maid.Exp = Math.Max(0, maid.Exp + delta);
+        while (maid.Level < limit && exps.TryGetValue(maid.Level, out int need) && need > 0 && maid.Exp >= need) {
+            maid.Exp -= need;
+            maid.Level++;
+        }
+        if (maid.Level >= limit) {
+            maid.Exp = 0;
+        }
+        return maid.Level != oldLevel;
+    }
+
+    // The profile of the maid dialog's save (Maid mode 4): only the owner, and only while the profile has no name
+    // (the dialog's "editable" outside debug mode).
+    public static bool CanEditProfile(Maid maid, long accountId, bool debug) {
+        return maid.OwnerId == accountId && (debug || string.IsNullOrEmpty(maid.Profile.Name));
+    }
+
+    // The 13 texts of a profile, for the ban word check.
+    public static IEnumerable<string> ProfileTexts(MaidProfile profile) {
+        return [profile.Title, profile.Name, profile.BirthDay, profile.Constellation, profile.Height, profile.Weight, profile.Specialty,
+            profile.SpecialDetail, profile.Like, profile.Hate, profile.Hobby, profile.OwnerName, profile.BelongTo];
+    }
+
+    // The contract end after a salary payment of periodDays: from the current end, or from now once it has passed.
+    public static long PaidUntil(long expiryTime, long now, int periodDays) {
+        return Math.Max(expiryTime, now) + (long) Math.Max(periodDays, 0) * 24 * 60 * 60;
+    }
 }

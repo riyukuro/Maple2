@@ -294,6 +294,29 @@ public partial class GameStorage {
             return Context.Maid.Find(cubeUid);
         }
 
+        // The maids of an account's homes (the owner list of UserMaid).
+        public IList<Maid> GetMaids(long ownerId) {
+            return Context.Maid.Where(maid => maid.OwnerId == ownerId)
+                .AsEnumerable()
+                .Select(maid => (Maid) maid!)
+                .ToList();
+        }
+
+        // Writes the mood, affinity, contract end and profile of a maid; false when its row is gone.
+        public bool SaveMaid(Maid maid) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            Model.Maid? model = Context.Maid.Find(maid.Uid);
+            if (model == null) {
+                return false;
+            }
+            model.Mood = maid.Mood;
+            model.Level = maid.Level;
+            model.Exp = maid.Exp;
+            model.ExpiryTime = maid.ExpiryTime.FromEpochSeconds();
+            model.Profile = maid.Profile;
+            return Context.TrySaveChanges();
+        }
+
         // The maid of a placed cube; null when the cube row is gone or the save fails.
         public Maid? CreateMaid(Maid maid) {
             if (!Context.UgcMapCube.Any(cube => cube.Id == maid.Uid)) {

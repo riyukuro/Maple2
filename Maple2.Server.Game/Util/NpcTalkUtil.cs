@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
@@ -9,7 +10,8 @@ using Maple2.Server.Game.Session;
 namespace Maple2.Server.Game.Util;
 
 public static class NpcTalkUtil {
-    public static ScriptState? GetInitialScriptType(GameSession session, ScriptStateType type, ScriptMetadata? metadata, int npcId) {
+    // maidUid: the maid of a maid npc (FieldNpc.MaidUid), for the maid conditions.
+    public static ScriptState? GetInitialScriptType(GameSession session, ScriptStateType type, ScriptMetadata? metadata, int npcId, long maidUid = 0) {
         switch (type) {
             case ScriptStateType.Script:
                 if (metadata is null) {
@@ -46,7 +48,7 @@ public static class NpcTalkUtil {
                         continue;
                     }
 
-                    if (scriptCondition.ConditionCheck(session)) {
+                    if (scriptCondition.ConditionCheck(session, maidUid)) {
                         scriptStates.Add(scriptState);
                     }
                 }
@@ -79,7 +81,7 @@ public static class NpcTalkUtil {
                         continue;
                     }
 
-                    if (scriptCondition.ConditionCheck(session)) {
+                    if (scriptCondition.ConditionCheck(session, maidUid)) {
                         selectScriptStates.Add(scriptState);
                     }
                 }
@@ -141,8 +143,12 @@ public static class NpcTalkUtil {
         return true;
     }
 
-    public static bool ConditionCheck(this ScriptConditionMetadata scriptCondition, GameSession session) {
+    public static bool ConditionCheck(this ScriptConditionMetadata scriptCondition, GameSession session, long maidUid = 0) {
         if (session.Field is null) return false;
+        // maid_auth: the talker owns the maid npc's maid.
+        if (scriptCondition.Maid is { Authority: true } && !MaidRules.IsOwner(maidUid == 0 ? null : session.Field.GetMaid(maidUid), session.AccountId)) {
+            return false;
+        }
         if (scriptCondition.JobCode.Count > 0 && !scriptCondition.JobCode.Contains(session.Player.Value.Character.Job.Code())) {
             return false;
         }
