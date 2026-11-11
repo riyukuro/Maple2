@@ -14,6 +14,7 @@ public class ChatStickerHandler : FieldPacketHandler {
 
     private enum Command : byte {
         Load = 0,
+        Expired = 1,
         Use = 3,
         GroupChat = 4,
         Favorite = 5,
@@ -41,6 +42,15 @@ public class ChatStickerHandler : FieldPacketHandler {
             case Command.Unfavorite:
                 HandleUnfavorite(session, packet);
                 break;
+            case Command.Expired: {
+                // Not handled: the sticker groups whose time has run out on the client.
+                int count = packet.ReadInt();
+                for (int i = 0; i < count; i++) {
+                    packet.ReadInt(); // group id
+                }
+                Logger.Debug("ChatSticker {Command} from {CharacterId}: {Count} groups", command, session.CharacterId, count);
+                break;
+            }
         }
     }
 
