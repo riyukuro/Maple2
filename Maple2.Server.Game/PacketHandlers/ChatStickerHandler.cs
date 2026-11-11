@@ -6,6 +6,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -20,6 +21,8 @@ public class ChatStickerHandler : FieldPacketHandler {
         Favorite = 5,
         Unfavorite = 6,
     }
+
+    private const int MaxExpiredGroups = 1000;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -42,16 +45,36 @@ public class ChatStickerHandler : FieldPacketHandler {
             case Command.Unfavorite:
                 HandleUnfavorite(session, packet);
                 break;
-            case Command.Expired: {
-                // Not handled: the sticker groups whose time has run out on the client.
-                int count = packet.ReadInt();
-                for (int i = 0; i < count; i++) {
-                    packet.ReadInt(); // group id
-                }
-                Logger.Debug("ChatSticker {Command} from {CharacterId}: {Count} groups", command, session.CharacterId, count);
+            case Command.Expired:
+                HandleExpired(session, packet);
                 break;
-            }
         }
+    }
+
+    // CChatEmoticonCli::SendMessenger: the groups whose time has run out by the client's clock. The ones that
+    // have run out by the server's clock too are dropped, with the favourites that belong to them.
+    private void HandleExpired(GameSession session, IByteReader packet) {
+        int count = packet.ReadInt();
+        if (count < 0 || count > MaxExpiredGroups) {
+            return;
+        }
+        var asked = new List<int>(count);
+        for (int i = 0; i < count; i++) {
+            asked.Add(packet.ReadInt());
+        }
+
+        IDictionary<int, long> held = session.Player.Value.Unlock.StickerSets;
+        List<int> expired = ChatStickerRules.Expired(held, asked, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        if (expired.Count == 0) {
+            return;
+        }
+        foreach (int groupId in expired) {
+            held.Remove(groupId);
+        }
+        List<int> favorites = session.Config.RemoveFavoriteChatStickers(stickerId =>
+            TableMetadata.ChatStickerTable.Entries.TryGetValue(stickerId, out ChatStickerMetadata? metadata) && expired.Contains(metadata.GroupId));
+
+        session.Send(ChatStickerPacket.ExpiredNotify(expired, favorites));
     }
 
     private void HandleUse(GameSession session, IByteReader packet) {

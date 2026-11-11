@@ -33,6 +33,23 @@ public static class ChatStickerPacket {
         return pWriter;
     }
 
+    // CChatEmoticonCli::FUN_140a39170 (chatemoticoncli.cpp:179): the groups taken away, then the favourite
+    // stickers taken away with them. The client shows s_msg_chat_emoticon_expired.
+    public static ByteWriter ExpiredNotify(ICollection<int> groupIds, ICollection<int> favoriteIds) {
+        var pWriter = Packet.Of(SendOp.ChatStamp);
+        pWriter.WriteByte((byte) Command.ExpiredNotify);
+        pWriter.WriteInt(groupIds.Count);
+        foreach (int groupId in groupIds) {
+            pWriter.WriteInt(groupId);
+        }
+        pWriter.WriteInt(favoriteIds.Count);
+        foreach (int favoriteId in favoriteIds) {
+            pWriter.WriteInt(favoriteId);
+        }
+
+        return pWriter;
+    }
+
     public static ByteWriter Add(Item item, ChatSticker sticker) {
         var pWriter = Packet.Of(SendOp.ChatStamp);
         pWriter.Write<Command>(Command.Add);

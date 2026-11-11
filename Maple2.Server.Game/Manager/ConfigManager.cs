@@ -287,6 +287,15 @@ public class ConfigManager {
         return true;
     }
 
+    // Takes out every favourite the test picks; returns the ones taken out.
+    public List<int> RemoveFavoriteChatStickers(Func<int, bool> match) {
+        List<int> removed = favoriteStickers.Where(match).ToList();
+        foreach (int stickerId in removed) {
+            favoriteStickers.Remove(stickerId);
+        }
+        return removed;
+    }
+
     public bool TryUnfavoriteChatSticker(int stickerId) {
         if (!favoriteStickers.Contains(stickerId)) {
             return false;
