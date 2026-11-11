@@ -226,7 +226,10 @@ public class RequestCubeHandler : FieldPacketHandler {
             case Command.SetBuildBudget:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: meso {Meso}, merat {Merat}", command, session.CharacterId, packet.ReadLong(), packet.ReadLong());
                 break;
-            case Command.AddBuildPermission: // character name
+            // UIPopUpMenu::SendRequestCube (uipartydialog.cpp:3428, a menu entry that needs client feature 0x100)
+            // and the user command AddUgcMapPriv (usercommandcli.cpp:1151): character name. No helper list is
+            // stored and the answer's error byte (0x39) has no text for this: read and logged.
+            case Command.AddBuildPermission:
             case Command.RemoveBuildPermission:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
                 break;
