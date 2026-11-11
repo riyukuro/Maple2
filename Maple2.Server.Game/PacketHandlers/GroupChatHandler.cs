@@ -2,6 +2,7 @@
 using Maple2.Database.Storage;
 using Maple2.Model.Error;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -50,6 +51,9 @@ public class GroupChatHandler : FieldPacketHandler {
     private void HandleCreate(GameSession session, IByteReader packet) {
         // CGroupChatManager::Create: the player to invite into the new chat, empty for an empty chat.
         string targetPlayerName = packet.ReadUnicodeString();
+        if (!GroupChatRules.NameValid(targetPlayerName)) {
+            return;
+        }
 
         // CGroupChatManager::Create: at most 3 chats per player (GroupChatMaxCapacity is the member limit).
         if (session.GroupChats.Count >= Constant.GroupChatMaxCount) {
@@ -85,8 +89,11 @@ public class GroupChatHandler : FieldPacketHandler {
     }
 
     private void HandleInvite(GameSession session, IByteReader packet) {
-        string targetPlayerName = packet.ReadUnicodeString();
-        int groupChatId = packet.ReadInt();
+        (string targetPlayerName, int groupChatId) = GroupChatRules.ReadInvite(packet);
+        // The client invites only into a chat it is in, and sends no name above 24 letters (groupchatmanager.cpp:506-535).
+        if (!GroupChatRules.NameValid(targetPlayerName) || !session.GroupChats.ContainsKey(groupChatId)) {
+            return;
+        }
         if (CheckInviteTarget(session, targetPlayerName, out long characterId)) {
             Invite(session, targetPlayerName, characterId, groupChatId);
         }
@@ -141,8 +148,7 @@ public class GroupChatHandler : FieldPacketHandler {
     }
 
     private void HandleLeave(GameSession session, IByteReader packet) {
-        int groupChatId = packet.ReadInt();
-        packet.ReadBool(); // 1 when the client's refuse-invites option turned down an invite, 0 when the player leaves
+        (int groupChatId, _) = GroupChatRules.ReadLeave(packet); // 1 when the client's refuse-invites option turned down an invite, 0 when the player leaves
 
         if (!session.GroupChats.ContainsKey(groupChatId)) {
             return;
@@ -160,19 +166,23 @@ public class GroupChatHandler : FieldPacketHandler {
     }
 
     private void HandleChat(GameSession session, IByteReader packet) {
-        string message = packet.ReadUnicodeString();
-        int groupChatId = packet.ReadInt();
+        (string message, int groupChatId) = GroupChatRules.ReadChat(packet);
 
-        if (!session.GroupChats.ContainsKey(groupChatId)) {
+        // The client sends no text above 2048 letters (groupchatmanager.cpp:557-559).
+        if (!GroupChatRules.TextValid(message) || !session.GroupChats.ContainsKey(groupChatId)) {
             return;
         }
 
-        World.GroupChat(new GroupChatRequest {
-            Chat = new GroupChatRequest.Types.Chat {
-                Message = message,
-            },
-            GroupChatId = groupChatId,
-            RequesterId = session.CharacterId,
-        });
+        try {
+            World.GroupChat(new GroupChatRequest {
+                Chat = new GroupChatRequest.Types.Chat {
+                    Message = message,
+                },
+                GroupChatId = groupChatId,
+                RequesterId = session.CharacterId,
+            });
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to send to group chat {GroupChatId}", groupChatId);
+        }
     }
 }
