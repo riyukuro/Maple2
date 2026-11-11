@@ -32,8 +32,17 @@ public sealed class Navigation : IDisposable {
         );
     }
 
+    private static string MeshPath(string name) {
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{name}.navmesh");
+    }
+
+    // Whether the map's navmesh file is there. A field cannot be made without it.
+    public static bool Exists(string name) {
+        return File.Exists(MeshPath(name));
+    }
+
     private DtNavMesh LoadNavMesh() {
-        FileStream fs = new FileStream(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{Name}.navmesh"), FileMode.Open, FileAccess.Read);
+        FileStream fs = new FileStream(MeshPath(Name), FileMode.Open, FileAccess.Read);
         BinaryReader br = new BinaryReader(fs);
         DtMeshSetReader reader = new DtMeshSetReader();
 

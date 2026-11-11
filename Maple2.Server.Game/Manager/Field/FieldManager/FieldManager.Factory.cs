@@ -80,6 +80,13 @@ public partial class FieldManager {
                 return null;
             }
 
+            // Without the navmesh file the field's constructor throws in the middle of a move. Refuse here so
+            // the caller answers the move with its error and the player stays where they are.
+            if (!Navigation.Exists(metadata.XBlock)) {
+                logger.Error("Map:{MapId} has no navmesh file ({XBlock}), field not created", mapId, metadata.XBlock);
+                return null;
+            }
+
             if (!MapMetadata.TryGetUgc(mapId, out UgcMapMetadata? ugcMetadata)) {
                 ugcMetadata = new UgcMapMetadata(mapId, new Dictionary<int, UgcMapGroup>());
             }
