@@ -17,4 +17,26 @@ public class PrestigeRulesTests {
         Assert.That(packet.Available, Is.EqualTo(0));
         Assert.That(PrestigeRules.CanClaimMission(awarded, gainedLevels, requiredCount), Is.EqualTo(expected));
     }
+
+    // Made-up ability: from level 5, one more step every 50 levels, 20 steps at most.
+    [TestCase(1, 5, 50, 20, 4, 0)]
+    [TestCase(1, 5, 50, 20, 5, 1)]
+    [TestCase(1, 5, 50, 20, 54, 1)]
+    [TestCase(1, 5, 50, 20, 55, 2)]
+    [TestCase(1, 5, 50, 20, 5000, 20)]
+    [TestCase(1, 30, 0, 1, 29, 0)]
+    [TestCase(1, 30, 0, 1, 900, 1)]
+    [TestCase(0, 5, 50, 20, 100, 0)]
+    public void AbilityStep_AsTheClientCountsIt(int id, int requiredLevel, int interval, int maxCount, int prestigeLevel, int expected) {
+        Assert.That(PrestigeRules.AbilityStep(id, requiredLevel, interval, maxCount, prestigeLevel), Is.EqualTo((short) expected));
+    }
+
+    [TestCase(999L, 1000L, 7, 100, 0)]
+    [TestCase(1000L, 1000L, 7, 100, 1)]
+    [TestCase(3500L, 1000L, 7, 100, 3)]
+    [TestCase(3500L, 1000L, 99, 100, 1)]
+    [TestCase(3500L, 1000L, 100, 100, 0)]
+    public void LevelsGained_EachLevelOnce(long exp, long expPerLevel, int level, int limit, int expected) {
+        Assert.That(PrestigeRules.LevelsGained(exp, expPerLevel, level, limit), Is.EqualTo(expected));
+    }
 }

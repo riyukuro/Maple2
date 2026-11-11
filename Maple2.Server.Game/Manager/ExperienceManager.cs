@@ -208,18 +208,12 @@ public sealed class ExperienceManager {
 
         PrestigeCurrentExp = Math.Min(amount + PrestigeCurrentExp, long.MaxValue);
 
-        int startLevel = PrestigeLevel;
-        for (int level = startLevel; level < Constants.AdventureLevelLimit; level++) {
-            if (Constants.AdventureLevelLvUpExp > PrestigeCurrentExp) {
-                break;
-            }
-
-            PrestigeCurrentExp -= Constants.AdventureLevelLvUpExp;
-            PrestigeLevel++;
-        }
+        // PrestigeLevelUp adds the levels; adding them here as well counted every level twice.
+        int gained = PrestigeRules.LevelsGained(PrestigeCurrentExp, Constants.AdventureLevelLvUpExp, PrestigeLevel, Constants.AdventureLevelLimit);
+        PrestigeCurrentExp -= gained * Constants.AdventureLevelLvUpExp;
         session.Send(PrestigePacket.AddExp(PrestigeCurrentExp, amount));
-        if (PrestigeLevel > startLevel) {
-            PrestigeLevelUp(PrestigeLevel - startLevel);
+        if (gained > 0) {
+            PrestigeLevelUp(gained);
         }
     }
 
@@ -245,6 +239,9 @@ public sealed class ExperienceManager {
 
         session.Send(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
         session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
+        if (session.Field != null) {
+            session.Player.Buffs.RefreshPrestigeBuffs();
+        }
         CheckPrestigeReward();
     }
 

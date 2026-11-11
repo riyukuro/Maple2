@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
@@ -61,10 +62,11 @@ public class BuffManager : IUpdatable {
     }
 
     public void LoadFieldBuffs() {
-        // Game Events
-        // Prestige
+        // Game Events: the only event kind whose client record names an effect is the burning level-up
+        // (BurningLevelupContext, gameevent.h:213), and the server has no record for that kind.
         EnterField();
         if (Actor is FieldPlayer player) {
+            RefreshPrestigeBuffs();
             player.Session.Config.RefreshLapenshardBuffs();
             player.Session.Config.RefreshCharacterAbilityBuffs();
             player.Session.Config.RefreshPremiumClubBuffs();
@@ -473,6 +475,23 @@ public class BuffManager : IUpdatable {
             if (Actor is FieldPlayer player) {
                 AddBuff(Actor, Actor, player.Session.ServerTableMetadata.ConstantsTable.shadowWorldBuffHpUp, 1, Actor.Field.FieldTick);
                 AddBuff(Actor, Actor, player.Session.ServerTableMetadata.ConstantsTable.shadowWorldBuffMoveProtect, 1, Actor.Field.FieldTick);
+            }
+        }
+    }
+
+    // The prestige abilities the account's prestige level has reached: each is an effect whose level is the
+    // ability's step (PrestigeRules.AbilityStep). The client's prestige window shows an ability as locked
+    // until the character has the effect at that level.
+    public void RefreshPrestigeBuffs() {
+        if (Actor is not FieldPlayer player) {
+            return;
+        }
+
+        int prestigeLevel = player.Session.Exp.PrestigeLevel;
+        foreach (PrestigeLevelAbilityMetadata ability in player.Session.TableMetadata.PrestigeLevelAbilityTable.Entries.Values) {
+            short step = PrestigeRules.AbilityStep(ability.Id, ability.RequiredLevel, ability.Interval, ability.MaxCount, prestigeLevel);
+            if (step > 0 && ability.BuffId > 0 && !HasBuff(ability.BuffId, step)) {
+                AddBuff(Actor, Actor, ability.BuffId, step, Actor.Field.FieldTick);
             }
         }
     }
