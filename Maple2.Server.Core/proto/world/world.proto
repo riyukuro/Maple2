@@ -53,6 +53,8 @@ service World {
   rpc Marriage(maple2.MarriageRequest) returns (maple2.MarriageResponse);
   // PlayerWarp
   rpc PlayerWarp(maple2.PlayerWarpRequest) returns (maple2.PlayerWarpResponse);
+  // CharacterInfo: the profile of a player on another channel
+  rpc CharacterInfo(maple2.CharacterInfoRequest) returns (maple2.CharacterInfoResponse);
   // Admin
   rpc Admin(maple2.AdminRequest) returns (maple2.AdminResponse);
   // Buff

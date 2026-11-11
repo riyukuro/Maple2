@@ -342,6 +342,16 @@ message PlayerWarpResponse {
   int64 owner_id = 6;
 }
 
+// The profile of a player (CharacterInfo) on another channel. The response's packet is the CharacterInfo packet the
+// player's channel wrote, empty when the player is not on it.
+message CharacterInfoRequest {
+  int64 character_id = 1;
+}
+
+message CharacterInfoResponse {
+  bytes packet = 1;
+}
+
 message AdminRequest {
   message Alert {
     string message = 1;

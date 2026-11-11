@@ -23,6 +23,11 @@ public static class PlayerInfoPacket {
         return pWriter;
     }
 
+    // A session can be written once it has entered the game: Player is set then.
+    public static bool CanLoad(GameSession session) {
+        return session.Player is not null;
+    }
+
     public static ByteWriter Load(GameSession session) {
         var pWriter = Packet.Of(SendOp.CharacterInfo);
         pWriter.WriteLong(session.Player.Value.Character.Id);
@@ -32,7 +37,7 @@ public static class PlayerInfoPacket {
         pWriter.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
         using (var buffer = new PoolByteWriter()) {
-            buffer.WriteDetailsBuffer(session.Player);
+            buffer.WriteDetailsBuffer(session.Player, GuildRankName(session.Guild?.GetRank(session.CharacterId)));
 
             pWriter.WriteInt(buffer.Length);
             pWriter.WriteBytes(buffer.Buffer, 0, buffer.Length);
@@ -76,7 +81,21 @@ public static class PlayerInfoPacket {
         return pWriter;
     }
 
-    private static void WriteDetailsBuffer(this PoolByteWriter buffer, FieldPlayer fieldPlayer) {
+    // The name of the player's guild rank, shown after the guild name (s_char_info_guild_name); empty without a guild.
+    public static string GuildRankName(GuildRank? rank) {
+        return rank?.Name ?? string.Empty;
+    }
+
+    // The home's architect scores as the info window reads them: CPCData m_n408 then m_n40c, which
+    // UIPCInfoDialog::vfunc_102 (uipcinfodialog.cpp:1328) shows as "{m_n40c} / {m_n408}" (s_char_info_home_commend),
+    // the same "this month / all time" order as the home info window (UIHomeInfoDialog, uihomeinfodialog.cpp:410). So
+    // the all time score comes first.
+    public static void WriteArchitectScores(IByteWriter buffer, Home home) {
+        buffer.WriteInt(home.ArchitectScore);
+        buffer.WriteInt(home.CurrentArchitectScore);
+    }
+
+    private static void WriteDetailsBuffer(this PoolByteWriter buffer, FieldPlayer fieldPlayer, string guildRank) {
         Player player = fieldPlayer;
         buffer.WriteLong(player.Account.Id);
         buffer.WriteLong(player.Character.Id);
@@ -113,7 +132,7 @@ public static class PlayerInfoPacket {
         buffer.WriteUnicodeString(player.Character.Picture);
         buffer.WriteUnicodeString(player.Character.Motto);
         buffer.WriteUnicodeString(player.Character.GuildName);
-        buffer.WriteUnicodeString(); // GuildRank
+        buffer.WriteUnicodeString(guildRank);
 
         buffer.WriteUnicodeString(player.Home.Name);
         buffer.WriteInt(player.Home.PlotMapId);
@@ -130,8 +149,7 @@ public static class PlayerInfoPacket {
         buffer.WriteInt(player.Character.AchievementInfo.Total);
         buffer.WriteInt(fieldPlayer.Stats.Values.GearScore);
         buffer.WriteLong(player.Character.LastModified.ToEpochSeconds()); // Time entered map/logged in
-        buffer.WriteInt();
-        buffer.WriteInt();
+        WriteArchitectScores(buffer, player.Home);
         buffer.Write<SkinColor>(player.Character.SkinColor);
         buffer.WriteClass<MarriageInfo>(player.Character.MarriageInfo);
     }
