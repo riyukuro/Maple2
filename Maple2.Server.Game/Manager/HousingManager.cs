@@ -152,6 +152,12 @@ public class HousingManager {
         return plot;
     }
 
+    // The field plot when it belongs to this account: the plot a session may edit.
+    public Plot? GetOwnFieldPlot() {
+        Plot? plot = GetFieldPlot();
+        return plot != null && HomeEditRules.OwnsPlot(plot.OwnerId, session.AccountId) ? plot : null;
+    }
+
     public Plot? GetIndoorPlot() {
         if (session.Field is not HomeFieldManager homeField) {
             return null;

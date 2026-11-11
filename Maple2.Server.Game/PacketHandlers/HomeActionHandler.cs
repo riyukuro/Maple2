@@ -3,6 +3,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -203,10 +204,10 @@ public class HomeActionHandler : FieldPacketHandler {
 
     private void HandleChangePortalSettings(GameSession session, IByteReader packet) {
         if (session.Field is null) return;
-        packet.ReadByte();
-        Vector3B coord = packet.Read<Vector3B>();
+        (Vector3B coord, string name, byte method, byte destination, string target) = HomeEditRules.ReadPortal(packet);
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        // The owner's dialog only: a visitor's own home has the same map id and plot number.
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -221,10 +222,17 @@ public class HomeActionHandler : FieldPacketHandler {
             return;
         }
 
-        cube.Interact.PortalSettings.PortalName = packet.ReadUnicodeString();
-        cube.Interact.PortalSettings.Method = (PortalActionType) packet.ReadByte();
-        cube.Interact.PortalSettings.Destination = (CubePortalDestination) packet.ReadByte();
-        cube.Interact.PortalSettings.DestinationTarget = packet.ReadUnicodeString();
+        IEnumerable<string> otherNames = plot.Cubes.Values
+            .Where(x => x.Id != cube.Id && x.Interact?.PortalSettings is not null)
+            .Select(x => x.Interact!.PortalSettings!.PortalName);
+        if (!HomeEditRules.PortalAllowed(name, method, destination, target, otherNames)) {
+            return;
+        }
+
+        cube.Interact.PortalSettings.PortalName = name;
+        cube.Interact.PortalSettings.Method = (PortalActionType) method;
+        cube.Interact.PortalSettings.Destination = (CubePortalDestination) destination;
+        cube.Interact.PortalSettings.DestinationTarget = target;
 
         foreach (FieldPortal portal in session.Field.GetPortals()) {
             session.Field.RemovePortal(portal.ObjectId);
@@ -246,11 +254,10 @@ public class HomeActionHandler : FieldPacketHandler {
     }
 
     private void HandleChangeNoticeSettings(GameSession session, IByteReader packet) {
-        bool editing = packet.ReadBool();
-        Vector3B coord = packet.Read<Vector3B>();
+        (Vector3B coord, string notice, byte distance) = HomeEditRules.ReadNotice(packet);
 
-        Plot? plot = session.Housing.GetFieldPlot();
-        if (plot == null) {
+        Plot? plot = session.Housing.GetOwnFieldPlot();
+        if (plot == null || !HomeEditRules.NoticeAllowed(notice)) {
             return;
         }
 
@@ -264,8 +271,8 @@ public class HomeActionHandler : FieldPacketHandler {
             return;
         }
 
-        cube.Interact.NoticeSettings.Notice = packet.ReadUnicodeString();
-        cube.Interact.NoticeSettings.Distance = packet.ReadByte();
+        cube.Interact.NoticeSettings.Notice = notice;
+        cube.Interact.NoticeSettings.Distance = distance;
 
         session.Field?.Broadcast(HomeActionPacket.SendCubeNoticeSettings(cube, editing: false));
         session.Housing.SaveHome();
@@ -274,7 +281,7 @@ public class HomeActionHandler : FieldPacketHandler {
     private void HandleConfigurableSettings(GameSession session, IByteReader packet) {
         var coord = packet.Read<Vector3B>();
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
