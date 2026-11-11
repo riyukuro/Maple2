@@ -126,7 +126,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 SkillMetadataAttack attack = record.Attack;
                 record.TargetUid++;
                 var damage = new DamageRecord(record.Metadata, attack) {
-                    CasterId = ObjectId,
+                    CasterId = Caster.ObjectId, // the attacking actor; OwnerId stays the region id the client finds the region by
                     OwnerId = ObjectId,
                     SkillId = Value.Id,
                     Level = Value.Level,

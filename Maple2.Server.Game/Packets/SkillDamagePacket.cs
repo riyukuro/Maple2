@@ -73,7 +73,7 @@ public static class SkillDamagePacket {
         pWriter.Write<Command>(Command.DotDamage);
         pWriter.WriteInt(record.Caster.ObjectId);
         pWriter.WriteInt(record.Target.ObjectId);
-        pWriter.WriteInt(record.ProcCount);
+        pWriter.WriteInt(record.BuffObjectId); // the client looks the buff up in the target's buff list by this key
         pWriter.Write<DamageType>(record.Type);
         pWriter.WriteLong(record.HpAmount);
 

@@ -10,7 +10,7 @@ public class DotDamageRecord {
     public readonly IActor Target;
 
     public readonly DamagePropertyRecord Properties;
-    public int ProcCount { get; init; }
+    public int BuffObjectId { get; init; }
 
     public readonly DamageType Type;
     public readonly int HpAmount;

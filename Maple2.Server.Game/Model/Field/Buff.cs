@@ -220,7 +220,7 @@ public class Buff : IUpdatable, IByteSerializable {
         }
 
         var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage) {
-            ProcCount = ProcCount,
+            BuffObjectId = ObjectId,
         };
         var targetUpdated = new List<BasicAttribute>(3);
         if (record.HpAmount != 0) {
