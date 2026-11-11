@@ -646,9 +646,13 @@ public partial class FieldManager : IField {
             return true;
         }
 
-        session.ConditionUpdate(ConditionType.map, codeLong: srcPortal.TargetMapId);
+        // The "map" condition counts a portal that was taken, not one whose entry was refused.
+        bool entered = session.PrepareField(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId);
+        if (entered) {
+            session.ConditionUpdate(ConditionType.map, codeLong: srcPortal.TargetMapId);
+        }
 
-        session.Send(session.PrepareField(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId)
+        session.Send(entered
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
         return true;
