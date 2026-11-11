@@ -14,6 +14,13 @@ public class FallDamageRulesTests {
         Assert.That(FallDamageRules.Distance(height, fieldFallDamage), Is.EqualTo(expected));
     }
 
+    // Out of the field's box: health is taken only in a field with fall damage.
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public void OutOfBoundsHurts(bool fieldFallDamage, bool expected) {
+        Assert.That(FallDamageRules.OutOfBoundsHurts(fieldFallDamage), Is.EqualTo(expected));
+    }
+
     // The packet is one float.
     [Test]
     public void Bytes() {

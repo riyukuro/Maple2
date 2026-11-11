@@ -375,7 +375,9 @@ public partial class FieldManager : IField {
             return;
         }
 
-        player.FallDamage(Constants.FallBoundingAddedDistance);
+        if (Maple2.Model.Validators.FallDamageRules.OutOfBoundsHurts(Metadata.Limit.FallDamage)) {
+            player.FallDamage(Constants.FallBoundingAddedDistance);
+        }
         player.MoveToPosition(player.LastGroundPosition.Align() + new Vector3(0, 0, 150f), default);
     }
 

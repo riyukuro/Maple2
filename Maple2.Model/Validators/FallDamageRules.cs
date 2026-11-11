@@ -13,4 +13,11 @@ public static class FallDamageRules {
         }
         return height - FreeHeight;
     }
+
+    // A player found outside the field's bounding box is put back on the last ground. That is a fall only
+    // where the field has fall damage: the client takes none in a field without it (pcbase.cpp:4356-4358),
+    // so the server must not take health there either.
+    public static bool OutOfBoundsHurts(bool fieldFallDamage) {
+        return fieldFallDamage;
+    }
 }
