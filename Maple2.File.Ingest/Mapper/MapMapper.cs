@@ -64,7 +64,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     PkMode: data.property.pkMode,
                     CanFly: data.property.checkFly,
                     CanClimb: data.property.checkClimb,
-                    IndoorType: data.indoor.type),
+                    IndoorType: data.indoor.type,
+                    MinimapPing: data.property.minimapPing),
                 Limit: new MapMetadataLimit(
                     Capacity: data.property.capacity,
                     MinLevel: data.property.enterMinLevel,

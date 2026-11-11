@@ -19,7 +19,8 @@ public class MinimapPingHandler : FieldPacketHandler {
         byte kind = packet.ReadByte();
         var position = new Vector3(packet.ReadFloat(), packet.ReadFloat(), packet.ReadFloat());
 
-        if (session.Field == null) {
+        // The client's own check, repeated: pings only on a field whose data allows them.
+        if (session.Field == null || !session.Field.Metadata.Property.MinimapPing) {
             return;
         }
 

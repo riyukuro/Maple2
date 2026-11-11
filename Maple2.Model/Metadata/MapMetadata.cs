@@ -59,7 +59,11 @@ public record MapMetadataProperty(
     bool PkMode,
     bool CanFly,
     bool CanClimb,
-    float IndoorType);
+    float IndoorType,
+    // Field property "minimapPing": the client sends and draws minimap pings only where it is set
+    // (UIMinimapDialog::IsPingAllowed); false when absent, as in the client. The JSON store omits false values,
+    // so the default must be false. Data ingested before this field reads as false until re-ingested.
+    bool MinimapPing = false);
 
 public record MapMetadataDrop(
     int Level,
