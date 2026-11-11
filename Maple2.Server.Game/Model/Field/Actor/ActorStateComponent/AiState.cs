@@ -639,7 +639,7 @@ public class AiState {
     private void ProcessNode(HideVibrateAllNode node) { }
 
     private void ProcessNode(TriggerModifyUserValueNode node) {
-        actor.Field.UserValues[node.Key] = node.Value;
+        AiTriggerValue.Modify(actor.Field.UserValues, node.Key, node.Value);
     }
 
     // The one isKeepBattle node (a boss clearing its slaves just before a skill break) keeps the boss in battle.
