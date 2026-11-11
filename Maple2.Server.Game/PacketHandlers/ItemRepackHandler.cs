@@ -50,6 +50,11 @@ public class ItemRepackHandler : FieldPacketHandler {
                 return;
             }
 
+            if (!ScrollRules.RepackUsable(targetItem.ExpiryTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), targetItem.Metadata.Property.PetId != 0)) {
+                session.Send(ItemRepackPacket.Error((ItemRepackError) 2));
+                return;
+            }
+
             // The code is the first one CItemRePackingScrollTable::Check gives
             // (commonfiles/itemrepackingscrolldata.cpp:145-208), so it is the one the client would show itself.
             int code = ScrollRules.RepackCode(

@@ -42,7 +42,16 @@ public static class ScrollRules {
         return transferType is 3 or 5;
     }
 
-    // The first code CItemRePackingScrollTable::Check gives, in its order: enchant switched off (10), scroll
+    // The test before all the others in CItemRePackingScrollTable::Check
+    // (commonfiles/itemrepackingscrolldata.cpp:151, CItem::FUN_140528980 at commonfiles/item.cpp:1717): an
+    // item past its expiry that is not a pet answers 2. The client lets an expired item with a maid id
+    // through and also tests a music score's plays; this server has no maid id in its item data and no
+    // score can be repacked (the slot test refuses it), so neither is modeled.
+    public static bool RepackUsable(long expiryTime, long now, bool pet) {
+        return pet || expiryTime <= 0 || expiryTime > now;
+    }
+
+    // The first code CItemRePackingScrollTable::Check gives after that, in its order: enchant switched off (10), scroll
     // not in the item's list (1), slot (3), rank (4), level (5), transfer type (8), no transfer data (2),
     // trades left, tested without the limit flag (9), bound (1), no repack left (10), locked (11). 0: none.
     public static int RepackCode(bool enchantOk, bool scrollListed, bool slotOk, bool rankOk, bool levelOk, bool transferTypeOk,

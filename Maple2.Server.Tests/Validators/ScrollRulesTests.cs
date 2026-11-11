@@ -87,6 +87,16 @@ public class ScrollRulesTests {
             Is.EqualTo(expected));
     }
 
+    // An item past its expiry is refused before every other test, a pet is not.
+    [TestCase(0, 1000, false, true)]
+    [TestCase(1001, 1000, false, true)]
+    [TestCase(1000, 1000, false, false)]
+    [TestCase(999, 1000, false, false)]
+    [TestCase(999, 1000, true, true)]
+    public void RepackExpired(long expiryTime, long now, bool pet, bool expected) {
+        Assert.That(ScrollRules.RepackUsable(expiryTime, now, pet), Is.EqualTo(expected));
+    }
+
     [Test]
     public void RepackScrollList() {
         Assert.That(ScrollRules.RepackScrollAllowed([], 7), Is.True);
