@@ -48,9 +48,36 @@ public partial class GameStorage {
             Context.TrySaveChanges();
         }
 
-        // Count the number of nurturing items for the given account ID in petBy
-        public int CountNurturingForAccount(int itemId, long accountId) {
-            return Context.Nurturing.AsEnumerable().Count(x => x.InteractId == itemId && x.PlayedBy.Contains(accountId));
+        // The pets the account played with since the daily reset (PlayedBy is emptied by it), of every owner and
+        // every pet item: the client counts one list for all of them (MyPC, mypc.cpp:3985).
+        public IList<NurturingRecord> GetNurturingPlayedBy(long accountId) {
+            return Context.Nurturing.AsEnumerable()
+                .Where(row => row.PlayedBy.Contains(accountId))
+                .Select(row => (row.AccountId, row.InteractId))
+                .ToList()
+                .Select(row => new NurturingRecord(row.AccountId, row.InteractId, FindNurturingCubeId(row.AccountId, row.InteractId)))
+                .ToList();
+        }
+
+        // The account's own pets that grew since `since`. LastFeedTime is the only time kept per pet: it is also
+        // written when the pet is placed and when a visitor plays with it, and it holds one time, not a count.
+        public IList<NurturingRecord> GetNurturingFedSince(long accountId, DateTime since) {
+            return Context.Nurturing
+                .Where(row => row.AccountId == accountId && row.LastFeedTime >= since)
+                .Select(row => row.InteractId)
+                .ToList()
+                .Select(itemId => new NurturingRecord(accountId, itemId, FindNurturingCubeId(accountId, itemId)))
+                .ToList();
+        }
+
+        // The placed cube of a pet (the lowest uid when the item is placed more than once), 0 when none is placed.
+        private long FindNurturingCubeId(long ownerId, int itemId) {
+            return Context.UgcMap.Where(map => map.OwnerId == ownerId)
+                .Join(Context.UgcMapCube, ugcMap => ugcMap.Id, cube => cube.UgcMapId, (ugcMap, cube) => cube)
+                .Where(cube => cube.ItemId == itemId)
+                .OrderBy(cube => cube.Id)
+                .Select(cube => cube.Id)
+                .FirstOrDefault();
         }
     }
 }

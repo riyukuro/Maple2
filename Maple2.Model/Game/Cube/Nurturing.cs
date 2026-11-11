@@ -4,6 +4,23 @@ using Maple2.Tools;
 
 namespace Maple2.Model.Game;
 
+// One pet of the daily record: the owner's account, the pet item and the uid of its placed cube (0: not placed).
+public readonly record struct NurturingRecord(long OwnerId, int ItemId, long CubeId) {
+    // The cube uids the client's daily list holds. The pet in use is listed with the cube that was used, so the
+    // client finds it (MyPC list lookup by cube uid, mypc.cpp:4038); a pet with no placed cube has no uid to list.
+    public static List<long> CubeIds(IEnumerable<NurturingRecord> records, long ownerId, int itemId, long cubeId) {
+        var ids = new List<long>();
+        foreach (NurturingRecord record in records) {
+            long id = record.OwnerId == ownerId && record.ItemId == itemId ? cubeId : record.CubeId;
+            if (id != 0 && !ids.Contains(id)) {
+                ids.Add(id);
+            }
+        }
+
+        return ids;
+    }
+}
+
 public class Nurturing : IByteSerializable {
     public long Exp { get; set; }
     public DateTimeOffset LastFeedTime { get; set; }
@@ -60,8 +77,10 @@ public class Nurturing : IByteSerializable {
         LastFeedTime = DateTimeOffset.Now;
     }
 
-    public bool Play(long accountId, int nurturingEatGrowth, int nurturingPlayMaxCount) {
-        if (PlayedBy.Count >= nurturingPlayMaxCount) {
+    // `maxPlays`: how many accounts may play with this pet per day (a rule of this server; the client has no
+    // check for it).
+    public bool Play(long accountId, int playGrowth, int maxPlays) {
+        if (PlayedBy.Count >= maxPlays) {
             return false;
         }
 
@@ -70,7 +89,7 @@ public class Nurturing : IByteSerializable {
         }
 
         PlayedBy.Add(accountId);
-        Feed(nurturingEatGrowth);
+        Feed(playGrowth);
         return true;
     }
 

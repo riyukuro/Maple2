@@ -46,4 +46,21 @@ public class FunctionCubeNurturingTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(4));
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + (2 + 8) + 4));
     }
+
+    // Client: MyPC::ReadDailyRecords (mypc.cpp:4060-4070) empties both lists before it reads, so a reply holds
+    // every pet of the day. The pet in use is listed with the cube that was used.
+    [Test]
+    public void DailyList_HoldsEveryPetOfTheDay() {
+        NurturingRecord[] played = [
+            new NurturingRecord(OwnerId: 5, ItemId: 100, CubeId: 900),
+            new NurturingRecord(OwnerId: 6, ItemId: 100, CubeId: 901),
+            new NurturingRecord(OwnerId: 7, ItemId: 101, CubeId: 0), // the owner took the pet away
+        ];
+
+        // Owner 6 has the item placed twice; cube 950 was used, not the first one (901).
+        Assert.That(NurturingRecord.CubeIds(played, ownerId: 6, itemId: 100, cubeId: 950), Is.EqualTo(new long[] { 900, 950 }));
+        // A reply for another pet (a feeding of one's own) keeps the played list whole.
+        Assert.That(NurturingRecord.CubeIds(played, ownerId: 1, itemId: 100, cubeId: 800), Is.EqualTo(new long[] { 900, 901 }));
+        Assert.That(NurturingRecord.CubeIds([], ownerId: 1, itemId: 100, cubeId: 800), Is.Empty);
+    }
 }
