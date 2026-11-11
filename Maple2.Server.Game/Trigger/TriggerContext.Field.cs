@@ -217,15 +217,20 @@ public partial class TriggerContext {
     public void SetLadder(int[] triggerIds, bool visible, bool animationEffect, int animationDelay) {
         DebugLog("[SetLadder] triggerIds:[{Id}], visible:{Visible}, animationEffect:{Effect}, animationDelay:{Delay}",
             string.Join(",", triggerIds), visible, animationEffect, animationDelay);
-        foreach (int triggerId in triggerIds) {
-            if (!Objects.Ladders.TryGetValue(triggerId, out TriggerObjectLadder? ladder)) {
-                return;
-            }
-
+        // A missing id skips that ladder only; the ones after it are still set.
+        foreach (TriggerObjectLadder ladder in PresentObjects(Objects.Ladders, triggerIds)) {
             ladder.Visible = visible;
             ladder.Animate = animationEffect;
             ladder.Delay = animationDelay;
             Broadcast(TriggerPacket.Update(ladder));
+        }
+    }
+
+    public static IEnumerable<T> PresentObjects<T>(IReadOnlyDictionary<int, T> objects, int[] triggerIds) {
+        foreach (int triggerId in triggerIds) {
+            if (objects.TryGetValue(triggerId, out T? value)) {
+                yield return value;
+            }
         }
     }
 
