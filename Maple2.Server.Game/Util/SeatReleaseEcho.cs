@@ -5,8 +5,11 @@ namespace Maple2.Server.Game.Util;
 // ends its sitting state, which sends one more (StateUseFurniture::vfunc_5). If the player is still on the
 // field then (a portal inside the field, a refused move), that second request would take the seat again.
 public class SeatReleaseEcho {
-    // The second request follows the answer by one round trip. Sitting down again by hand takes a walk to the
-    // seat and a key press. The length of the window is a guess.
+    // The client has no delay of its own here: the answer handler (functioncubeobject.cpp:2453) ends the sitting
+    // state at once and the state's exit sends the request, so the second request follows the answer by one
+    // round trip. A player who stood up by key gets no such second request, and the server cannot tell the two
+    // apart, so the request is matched by time. One second covers a slow round trip; sitting down again by
+    // hand takes a walk to the seat and a key press.
     public const long WindowMs = 1000;
 
     private string cubeId = string.Empty;
