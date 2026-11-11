@@ -641,8 +641,12 @@ public class AiState {
             return;
         }
 
-        target.Buffs.AddBuff(actor, actor, node.Id, node.Level, actor.Field.FieldTick);
+        target.Buffs.AddBuff(actor, actor, node.Id, BuffNodeLevel(node.Level), actor.Field.FieldTick);
     }
+
+    // Most AI buff nodes (859 of 1620) carry no level attribute and parse as level 0, which no additional effect has;
+    // a missing level is the effect's first level.
+    public static short BuffNodeLevel(short level) => level > 0 ? level : (short) 1;
 
     private void ProcessNode(TargetEffectNode node) {
         actor.Field.Broadcast(NpcNoticePacket.TargetEffect(actor.BattleState.TargetId, node.EffectName));
