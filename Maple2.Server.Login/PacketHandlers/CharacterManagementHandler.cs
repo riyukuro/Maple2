@@ -121,6 +121,16 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         var job = (Job) ((int) jobCode * 10);
         string name = packet.ReadUnicodeString();
 
+        // The client sends gender 0 or 1 and one of the jobs of its create screen.
+        if (!CharacterCreateRules.IsCreateGender(gender)) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_system));
+            return;
+        }
+        if (!TableMetadata.JobTable.Entries.TryGetValue(jobCode, out JobTable.Entry? entry)) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_job_forbidden));
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(name)) {
             session.Send(CharacterListPacket.CreateError(s_char_err_name));
             return;
@@ -147,6 +157,10 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         }
 
         using GameStorage.Request db = GameStorage.Context();
+        if (!CharacterCreateRules.HasFreeSlot(db.CountCharacters(session.AccountId), session.MaxCharacters, Constant.ServerMaxCharacters)) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_char_count));
+            return;
+        }
         long existingId = db.GetCharacterId(name);
         if (existingId != 0) {
             session.Send(CharacterListPacket.CreateError(s_char_err_already_taken));
@@ -190,7 +204,6 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
         packet.Skip(4); // Unknown
 
-        JobTable.Entry entry = TableMetadata.JobTable.Entries[jobCode];
         var character = new Character {
             AccountId = session.AccountId,
             Gender = gender,

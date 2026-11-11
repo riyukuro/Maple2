@@ -35,6 +35,7 @@ public class LoginSession : Core.Network.Session {
     #endregion
 
     private Account account = null!;
+    public int MaxCharacters => account.MaxCharacters;
 
     public int ServerTick;
     public int ClientTick;

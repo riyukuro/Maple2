@@ -81,6 +81,10 @@ public partial class GameStorage {
             return (model, characters);
         }
 
+        public int CountCharacters(long accountId) {
+            return Context.Character.Count(character => character.AccountId == accountId);
+        }
+
         public void SetAllCharacterToOffline() {
             Context.Database.ExecuteSqlRaw("UPDATE `character` SET Channel = -1");
         }
