@@ -1,5 +1,6 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
 
@@ -42,6 +43,41 @@ public static class DungeonRoomRules {
         int taken = expired ? 0 : record.UnionClears;
         int max = rewardCount + (expired ? 0 : record.ExtraSubClears);
         return taken < max;
+    }
+
+    // The extra reward counts bought in the record's period (DungeonRecordCli::GetBonusCountNow,
+    // dungeonrecordcli.cpp:122): ExtraSubClears until UnionCooldownTimestamp, 0 after it or without a record.
+    public static int BonusCountNow(DungeonRecord? record, long now) =>
+        record == null || now >= record.UnionCooldownTimestamp ? 0 : record.ExtraSubClears;
+
+    // The tickets one more extra reward count costs (DungeonRoom::GetExtraRewardTicketCost, dungeonroom.cpp:618): the
+    // room's base count times the coupon rate at the bought count, the last rate once the count is past the list.
+    public static int ExtraTicketCost(DungeonExtraRewardTicket ticket, int bonusCount) {
+        if (ticket.BaseRates.Length == 0) {
+            return 0;
+        }
+        return ticket.BaseCount * ticket.BaseRates[Math.Clamp(bonusCount, 0, ticket.BaseRates.Length - 1)];
+    }
+
+    public enum ExtraRewardVerdict {
+        Ok,
+        NoTicket,
+        AtMax,
+    }
+
+    // Whether one more extra reward count can be bought. NoTicket (the client's OnError 5,
+    // s_room_dungeon_reward_CantUseExtraReward): the room has no coupon, it costs nothing, or its ticket tag is not
+    // one the server knows. AtMax (OnError 7, s_room_dungeon_max_reward_count): the coupon's maxExtraCount is
+    // reached, or the record's byte count is full; a coupon without maxExtraCount has no other limit (the room window
+    // then shows no maximum, uidungeonroomdialog.cpp:923).
+    public static ExtraRewardVerdict CanAddExtraReward(DungeonExtraRewardTicket? ticket, int bonusCount) {
+        if (ticket == null || ticket.TicketTag == ItemTag.None || ExtraTicketCost(ticket, bonusCount) <= 0) {
+            return ExtraRewardVerdict.NoTicket;
+        }
+        if ((ticket.MaxExtraCount > 0 && bonusCount >= ticket.MaxExtraCount) || bonusCount >= byte.MaxValue) {
+            return ExtraRewardVerdict.AtMax;
+        }
+        return ExtraRewardVerdict.Ok;
     }
 
     // A party member's enter state for a room blocks the party's entry at 10 and above, as the client tests it

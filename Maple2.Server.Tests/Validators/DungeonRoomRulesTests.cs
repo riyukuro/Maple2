@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -99,6 +100,53 @@ public class DungeonRoomRulesTests {
     [Test]
     public void HasCountLeft_NoRecordHasACount() {
         Assert.That(DungeonRoomRules.HasCountLeft(null, 1, 0, 100), Is.True);
+    }
+
+    // BonusCountNow: the bought counts until the record's expire (DungeonRecordCli::GetBonusCountNow).
+    [Test]
+    public void BonusCountNow_CountsUntilTheExpire() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.BonusCountNow(Record(0, 200, bonus: 2), 100), Is.EqualTo(2));
+            Assert.That(DungeonRoomRules.BonusCountNow(Record(0, 200, bonus: 2), 200), Is.EqualTo(0));
+            Assert.That(DungeonRoomRules.BonusCountNow(null, 100), Is.EqualTo(0));
+        });
+    }
+
+    // The played client's coupon 2 (rates 1, 2, 4, 8, 16) on a room with base count 1, and coupon 1 (rate 1,
+    // maxExtraCount 8) on a room with base count 10.
+    private static DungeonExtraRewardTicket Ticket(int baseCount, int max, params int[] rates) =>
+        new(1, baseCount, ItemTag.DungeonRewardTicketA, 20300478, max, rates, true);
+
+    [TestCase(0, 1)]
+    [TestCase(1, 2)]
+    [TestCase(4, 16)]
+    [TestCase(9, 16)]
+    [TestCase(-1, 1)]
+    public void ExtraTicketCost_TheRateAtTheBoughtCount(int bonus, int cost) {
+        Assert.That(DungeonRoomRules.ExtraTicketCost(Ticket(1, 0, 1, 2, 4, 8, 16), bonus), Is.EqualTo(cost));
+    }
+
+    [Test]
+    public void ExtraTicketCost_BaseCountTimesRate() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.ExtraTicketCost(Ticket(10, 8, 1), 3), Is.EqualTo(10));
+            Assert.That(DungeonRoomRules.ExtraTicketCost(Ticket(10, 8), 0), Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void CanAddExtraReward_Verdicts() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.CanAddExtraReward(null, 0), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.NoTicket));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(0, 8, 1), 0), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.NoTicket));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(10, 8), 0), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.NoTicket));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(10, 8, 1) with { TicketTag = ItemTag.None }, 0),
+                Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.NoTicket));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(10, 8, 1), 7), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.Ok));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(10, 8, 1), 8), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.AtMax));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(1, 0, 1, 2), 254), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.Ok));
+            Assert.That(DungeonRoomRules.CanAddExtraReward(Ticket(1, 0, 1, 2), 255), Is.EqualTo(DungeonRoomRules.ExtraRewardVerdict.AtMax));
+        });
     }
 
     // PartyBlockingLimit: a member's enter state of 10 and above blocks the party (CPartyManager::CanEnterDungeonRoom).

@@ -32,8 +32,22 @@ public record DungeonRoomMetadata(
     // its boards with this id. 0 = no board.
     int BossRanking = 0,
     // limitEnter: the room is entered only while its reward record has a count left (DungeonRoomRules.HasCountLeft).
-    bool LimitEnter = false
+    bool LimitEnter = false,
+    // extraRewardTicketTableID with its coupon row: the ticket that buys an extra reward count. null without one.
+    DungeonExtraRewardTicket? ExtraRewardTicket = null
 );
+
+// A room's extra reward ticket: the room's extraRewardTicketBaseCount and the Table/DungeonRewardCoupon.xml row of
+// its extraRewardTicketTableID (DungeonRewardCoupon::Load, commonfiles/dungeonrewardcoupon.cpp:74). BaseRates is the
+// rate list of the coupon (baseRate v), MaxExtraCount 0 when the row sets none.
+public record DungeonExtraRewardTicket(
+    int CouponId,
+    int BaseCount,
+    ItemTag TicketTag,
+    int BaseItemId,
+    int MaxExtraCount,
+    int[] BaseRates,
+    bool CanBuyInMeratMarket);
 
 public record DungeonRoomRewardMetadata(
     bool AccountWide,

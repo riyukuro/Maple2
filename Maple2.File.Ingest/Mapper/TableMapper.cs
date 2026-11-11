@@ -1876,11 +1876,18 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
     private DungeonRoomTable ParseDungeonRoom() {
         // The played client's own room table says which rooms limit entry (PlayedClientRooms).
+        // Its coupon table and room rows give the extra reward tickets.
         HashSet<int> playedLimitEnter = [];
+        Dictionary<int, DungeonExtraRewardTicket> playedTickets = [];
         Maple2.File.IO.Crypto.Common.PackFileEntry? roomEntry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.RoomTable);
         if (playedReader != null && roomEntry != null) {
-            playedLimitEnter = PlayedClientRooms.LimitEnter(playedReader.GetXmlDocument(roomEntry),
-                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            Func<System.Xml.XmlElement, bool> available = node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+            System.Xml.XmlDocument roomTable = playedReader.GetXmlDocument(roomEntry);
+            playedLimitEnter = PlayedClientRooms.LimitEnter(roomTable, available);
+            Maple2.File.IO.Crypto.Common.PackFileEntry? couponEntry = playedReader.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.CouponTable);
+            if (couponEntry != null) {
+                playedTickets = PlayedClientRooms.ExtraRewardTickets(roomTable, PlayedClientRooms.Coupons(playedReader.GetXmlDocument(couponEntry), available), available);
+            }
         }
         var dungeons = new Dictionary<int, DungeonRoomMetadata>();
         foreach ((int id, DungeonRoom dungeon) in parser.ParseDungeonRoom()) {
@@ -1935,7 +1942,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 TimerType: (Maple2.Model.Enum.DungeonTimerType) dungeon.timerType,
                 IsExpireTimeOut: dungeon.isExpireTimeOut,
                 BossRanking: dungeon.BossRanking,
-                LimitEnter: playedLimitEnter.Contains(dungeon.dungeonRoomID)
+                LimitEnter: playedLimitEnter.Contains(dungeon.dungeonRoomID),
+                ExtraRewardTicket: playedTickets.GetValueOrDefault(dungeon.dungeonRoomID)
                 ));
         }
 

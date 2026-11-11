@@ -74,7 +74,6 @@ public class DungeonManager {
     public void ResetDailyClears() {
         foreach (DungeonRecord record in Records.Values) {
             record.UnionSubClears = 0;
-            record.ExtraSubClears = 0;
         }
         using GameStorage.Request db = session.GameStorage.Context();
         db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
@@ -85,6 +84,8 @@ public class DungeonManager {
         foreach (DungeonRecord record in Records.Values) {
             record.UnionClears = 0;
             record.ExtraClears = 0;
+            // The bought extra counts expire with the record's period (DungeonRecordCli::GetBonusCountNow).
+            record.ExtraSubClears = 0;
         }
         using GameStorage.Request db = session.GameStorage.Context();
         db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
@@ -291,7 +292,7 @@ public class DungeonManager {
         }
     }
 
-    public void CreateDungeonRoom(int dungeonId, bool withParty) {
+    public void CreateDungeonRoom(int dungeonId, bool withParty, bool useTicket = false) {
         int size = 1;
         if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)) {
             session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_notOpenTimeDungeon));
@@ -311,13 +312,20 @@ public class DungeonManager {
 
         // A limitEnter room is entered only while its reward record has a count left. The client's OnError 4
         // reads the room id and shows that room's record expire (dungeonrecordcli.cpp:338).
+        // With useTicket (UIDungeonRoomInfo::AskExtraTicketEnter, uidungeonroomdialog.cpp:1675: the confirmed box of
+        // a room with an extra reward ticket and no count left) one extra reward count is bought first, as mode 8
+        // buys it; a refused purchase gets that purchase's error and no room.
         if (metadata.LimitEnter) {
-            int rewardId = metadata.Reward.UnionRewardId != 0 ? metadata.Reward.UnionRewardId : metadata.Id;
-            DungeonRoomMetadata rewardRoom = session.TableMetadata.DungeonRoomTable.Entries.GetValueOrDefault(rewardId, metadata);
+            (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(metadata);
             Records.TryGetValue(rewardId, out DungeonRecord? rewardRecord);
             if (!DungeonRoomRules.HasCountLeft(rewardRecord, rewardRoom.Reward.Count, rewardRoom.Reward.SubRewardCount, DateTime.Now.ToEpochSeconds())) {
-                session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_party_err_cooldown, metadata.Id));
-                return;
+                if (!useTicket) {
+                    session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_party_err_cooldown, metadata.Id));
+                    return;
+                }
+                if (!BuyExtraRewardCount(rewardRoom, rewardId)) {
+                    return;
+                }
             }
         }
 
@@ -512,7 +520,7 @@ public class DungeonManager {
             }
             DungeonRecord unionRecord = GetRecord(Metadata.Reward.UnionRewardId);
             // Ensure player can get rewards
-            if (GetDailyClearCount(unionRecord) < unionMetadata.Reward.SubRewardCount && GetWeeklyClearCount(unionRecord) < unionMetadata.Reward.Count) {
+            if (GetDailyClearCount(unionRecord) < unionMetadata.Reward.SubRewardCount && GetWeeklyClearCount(unionRecord) < unionMetadata.Reward.Count + DungeonRoomRules.BonusCountNow(unionRecord, DateTime.Now.ToEpochSeconds())) {
                 UpdateUnionRecord(unionRecord, unionMetadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
             }
@@ -525,7 +533,7 @@ public class DungeonManager {
             UpdateDungeonRecord(record, Metadata, clearTimeStamp);
 
         } else {
-            if (GetDailyClearCount(record) < Metadata.Reward.SubRewardCount && GetWeeklyClearCount(record) < Metadata.Reward.Count) {
+            if (GetDailyClearCount(record) < Metadata.Reward.SubRewardCount && GetWeeklyClearCount(record) < Metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, DateTime.Now.ToEpochSeconds())) {
                 UpdateUnionRecord(record, Metadata, clearTimeStamp);
                 UpdateDungeonRecord(record, Metadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
@@ -574,6 +582,63 @@ public class DungeonManager {
         }
     }
 
+    // The room whose record and coupon count the rewards: the unionRewardID room if it is set (DungeonRoom::GetCoupon,
+    // DungeonRoomInfo::GetRewardRoom), else the room itself.
+    private (DungeonRoomMetadata Room, int Id) RewardRoom(DungeonRoomMetadata metadata) {
+        int rewardId = metadata.Reward.UnionRewardId != 0 ? metadata.Reward.UnionRewardId : metadata.Id;
+        return (session.TableMetadata.DungeonRoomTable.Entries.GetValueOrDefault(rewardId, metadata), rewardId);
+    }
+
+    /// <summary>
+    /// RoomDungeon mode 8 (UIDungeonRoomInfo::OnUseExtraRewardItem, uidungeonroomdialog.cpp:1502): one more reward
+    /// count of the dungeon's reward room, paid with its coupon's ticket items.
+    /// </summary>
+    public void AddExtraRewardCount(int dungeonId) {
+        if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, dungeonId));
+            return;
+        }
+        (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(metadata);
+        BuyExtraRewardCount(rewardRoom, rewardId);
+    }
+
+    // The purchase: the client's errors 5 (no ticket), 7 (at the maximum) and 6 (too few tickets; its nArg is the
+    // room id, ShowLackExtraTicket) name the reward room. On success the record goes out (Update, mode 6) with the
+    // reward notice for an added count (Modify AddExtraCount, RewardNotice mode 7 kind 3). A purchase in an expired
+    // period starts the next one, as a clear would.
+    private bool BuyExtraRewardCount(DungeonRoomMetadata rewardRoom, int rewardId) {
+        DungeonExtraRewardTicket? ticket = rewardRoom.ExtraRewardTicket;
+        Records.TryGetValue(rewardId, out DungeonRecord? existing);
+        DateTime now = DateTime.Now;
+        int bonus = DungeonRoomRules.BonusCountNow(existing, now.ToEpochSeconds());
+        switch (DungeonRoomRules.CanAddExtraReward(ticket, bonus)) {
+            case DungeonRoomRules.ExtraRewardVerdict.NoTicket:
+                session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, rewardId));
+                return false;
+            case DungeonRoomRules.ExtraRewardVerdict.AtMax:
+                session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_max_reward_count, rewardId));
+                return false;
+        }
+
+        int cost = DungeonRoomRules.ExtraTicketCost(ticket!, bonus);
+        if (!session.Item.Inventory.Consume([new IngredientInfo(ticket!.TicketTag, cost)])) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_dungeonRoom_lack_extra_ticket, rewardId));
+            return false;
+        }
+
+        DungeonRecord record = GetRecord(rewardId);
+        if (now.ToEpochSeconds() >= record.UnionCooldownTimestamp) {
+            record.UnionCooldownTimestamp = GetCooldownTime(rewardRoom.CooldownType, rewardRoom.CooldownValue, now);
+            record.UnionClears = 0;
+            record.ExtraClears = 0;
+            record.ExtraSubClears = 0;
+        }
+        record.ExtraSubClears++;
+        session.Send(DungeonRoomPacket.Update(record));
+        session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.AddExtraCount, rewardId));
+        return true;
+    }
+
     private void UpdateUnionRecord(DungeonRecord record, DungeonRoomMetadata metadata, long clearTimeStamp) {
         if (UserRecord == null) {
             return;
@@ -586,12 +651,12 @@ public class DungeonManager {
             record.UnionCooldownTimestamp = GetCooldownTime(metadata.CooldownType, metadata.CooldownValue, clearTime);
             record.UnionClears = 0;
             record.ExtraClears = 0;
+            record.ExtraSubClears = 0;
         }
 
         if (clearTimeStamp > record.UnionSubCooldownTimestamp) {
             record.UnionSubCooldownTimestamp = new DateTime(clearTime.Year, clearTime.Month, clearTime.Day).AddDays(1).ToEpochSeconds();
             record.UnionSubClears = 0;
-            record.ExtraSubClears = 0;
         }
 
         if (metadata.GroupType == DungeonGroupType.colosseum) {
@@ -601,7 +666,7 @@ public class DungeonManager {
             record.UnionSubClears++;
         }
 
-        if (record.UnionClears <= metadata.Reward.Count) {
+        if (record.UnionClears <= metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, clearTimeStamp)) {
             UserRecord.Flag |= DungeonBonusFlag.UnitedWeekly;
         }
 

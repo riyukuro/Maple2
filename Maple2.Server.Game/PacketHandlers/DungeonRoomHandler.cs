@@ -85,13 +85,12 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     }
 
     // UIDungeonRoomInfo::OnUseExtraRewardItem (uidungeonroomdialog.cpp:1502): the dungeon whose extra reward count is
-    // bought with its coupon item, after a confirm box. The client asks only for a room with an
-    // extraRewardTicketTableID; the coupon's item, rates and maximum are rows of Table/DungeonRewardCoupon.xml, which
-    // the data parser does not read. Nothing can be charged, so the answer is the client's own text for a room whose
-    // reward count cannot be raised (DungeonRecordManagerCli::OnError case 5, dungeonrecordcli.cpp:323).
+    // bought with its coupon's ticket items, after a confirm box. The client asks only for a room with an
+    // extraRewardTicketTableID; the coupon (tag, rates, maximum) comes from the played client's
+    // table/dungeonrewardcoupon.xml (PlayedClientRooms). DungeonManager.AddExtraRewardCount charges and answers.
     private static void HandleAddExtraRewardCount(GameSession session, IByteReader packet) {
         int dungeonId = packet.ReadInt();
-        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, dungeonId));
+        session.Dungeon.AddExtraRewardCount(dungeonId);
     }
 
     // UIDungeonRoomInfo::RequestFindHelper and RequestFindMember (uidungeonroomdialog.cpp:1556/1566): the party
@@ -145,9 +144,9 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
         int dungeonId = packet.ReadInt();
         bool withParty = packet.ReadBool();
         packet.ReadInt(); // portal id
-        packet.ReadBool(); // use the extra reward ticket
+        bool useTicket = packet.ReadBool(); // the extra reward ticket, after AskExtraTicketEnter's confirm box
 
-        session.Dungeon.CreateDungeonRoom(dungeonId, withParty);
+        session.Dungeon.CreateDungeonRoom(dungeonId, withParty, useTicket);
     }
 
     private void HandleEnter(GameSession session, IByteReader packet) {
