@@ -170,13 +170,25 @@ public partial class TriggerContext {
         Broadcast(TriggerPacket.UiPlayerRotation(rotation));
     }
 
+    // 52000200's comment calls it a forced quest accept, so the quest's requirements are skipped.
     public void SetQuestAccept(int questId) {
-        ErrorLog("[SetQuestAccept] questId:{QuestId}", questId);
+        DebugLog("[SetQuestAccept] questId:{QuestId}", questId);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            player.Session.Quest.Start(questId, bypassRequirements: true); // a quest the player already has is left alone
+        }
     }
 
+    // Completes the quest for each player who has it started; the script decides when it is done, so its conditions are skipped.
     public void SetQuestComplete(int questId) {
-        ErrorLog("[SetQuestComplete] questId:{QuestId}", questId);
+        DebugLog("[SetQuestComplete] questId:{QuestId}", questId);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            if (player.Session.Quest.TryGetQuest(questId, out Quest? quest) && CanForceCompleteQuest(quest.State)) {
+                player.Session.Quest.Complete(quest, bypassConditions: true);
+            }
+        }
     }
+
+    public static bool CanForceCompleteQuest(QuestState state) => state == QuestState.Started;
 
     public void TalkNpc(int spawnId) {
         ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
