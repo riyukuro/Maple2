@@ -115,6 +115,12 @@ public class ItemDismantleHandler : FieldPacketHandler {
 
         // TODO: Confirm inventory can hold all the items.
         lock (session.Item) {
+            // Nothing staged: the client's result 5 says so and resets the dialog's pending break.
+            if (Array.TrueForAll(session.DismantleStaging, staged => staged == default)) {
+                session.Send(ItemDismantlePacket.Error(5));
+                return;
+            }
+
             var rewards = new Dictionary<int, (int Min, int Max)>();
             for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
                 (long uid, int amount) = session.DismantleStaging[slot];
@@ -173,6 +179,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
         }
 
         IList<Item> items = session.Item.Inventory.Filter(item => item.Rarity <= rarity, type);
+        var added = new List<(short Slot, long Uid, int Amount)>();
         for (short slot = 0, i = 0; slot < session.DismantleStaging.Length && i < items.Count; slot++) {
             if (session.DismantleStaging[slot] != default) {
                 continue;
@@ -203,11 +210,13 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
 
                 session.DismantleStaging[slot] = (item.Uid, item.Amount);
-                session.Send(ItemDismantlePacket.Stage(item.Uid, slot, item.Amount));
+                added.Add((slot, item.Uid, item.Amount));
                 break;
             }
         }
 
+        // One list packet (client mode 6) for the whole auto-add, as the client's reader for this request expects.
+        session.Send(ItemDismantlePacket.StageList(added));
         session.Send(ItemDismantlePacket.Preview(GetRewards(session)));
     }
 
