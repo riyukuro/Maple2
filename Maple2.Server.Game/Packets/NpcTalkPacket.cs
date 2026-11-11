@@ -83,8 +83,8 @@ public static class NpcTalkPacket {
     public static ByteWriter RewardExp(long exp) {
         var pWriter = Packet.Of(SendOp.NpcTalk);
         pWriter.Write<Command>(Command.Action);
-        pWriter.Write<NpcTalkAction>(NpcTalkAction.RewardExp);
-        pWriter.WriteLong(exp);
+        pWriter.WriteByte(8); // the client's exp action; 6 is a meret reward (long)
+        pWriter.WriteInt((int) exp);
 
         return pWriter;
     }
