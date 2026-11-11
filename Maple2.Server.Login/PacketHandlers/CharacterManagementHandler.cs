@@ -36,6 +36,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         Delete = 2,
         CancelDelete = 3,
         ConfirmDelete = 4,
+        Rename = 5,
     }
 
     #region Autofac Autowired
@@ -67,6 +68,9 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 break;
             case Command.ConfirmDelete:
                 HandleDelete(session, packet);
+                break;
+            case Command.Rename:
+                Logger.Debug("CharacterManagement Rename: characterId={CharacterId}, name={Name}", packet.ReadLong(), packet.ReadUnicodeString());
                 break;
             default:
                 throw new ArgumentException($"Invalid CHARACTER_MANAGEMENT type {command}");
