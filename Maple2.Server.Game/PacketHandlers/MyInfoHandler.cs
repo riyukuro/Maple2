@@ -1,5 +1,7 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -15,6 +17,12 @@ public class MyInfoHandler : FieldPacketHandler {
         SetMotto = 0,
     }
 
+    #region Autofac Autowired
+    // ReSharper disable MemberCanBePrivate.Global
+    public required BanWordStorage BanWordStorage { private get; init; }
+    // ReSharper restore All
+    #endregion
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
@@ -25,9 +33,15 @@ public class MyInfoHandler : FieldPacketHandler {
     }
 
     private void HandleSetMotto(GameSession session, IByteReader packet) {
-        string motto = packet.ReadUnicodeString();
+        string motto = MyInfoRules.ReadMotto(packet);
         if (motto.Length > Constant.MaxMottoLength) {
             session.Send(MyInfoPacket.Error(session.Player.ObjectId, $"The motto can only be up to {Constant.MaxMottoLength} letters long."));
+            return;
+        }
+
+        // The client's own refusal for a banned motto: it shows s_ban_check_err_any_word with the text.
+        if (MyInfoRules.MottoBanned(motto, BanWordStorage.ContainsBannedWord)) {
+            session.Send(MyInfoPacket.BanMotto(session.Player.ObjectId, motto));
             return;
         }
 
