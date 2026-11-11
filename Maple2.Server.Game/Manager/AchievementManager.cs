@@ -265,6 +265,9 @@ public sealed class AchievementManager {
 
     // GM debug buttons of the trophy window (Achieve 5). Rewards already given are not taken back by "down".
     public void DebugButton(int achievementId, byte button) {
+        if (!DebugButtonRules.KnownAchieveButton(button)) {
+            return;
+        }
         if (!session.AchievementMetadata.TryGet(achievementId, out AchievementMetadata? metadata) || metadata.Grades.Count == 0) {
             return;
         }

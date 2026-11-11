@@ -15,6 +15,10 @@ public static class DebugButtonRules {
     // Achieve 5 buttons: 0 onDbgUp, 1 onDbgDown, 2 onDbgUp30, 3 onDbgUp99 (UIAchieveDialog).
     // The server's reading of the names: up finishes the grade in progress, up30 and up99 set the counter to 30 %
     // and 99 % of that grade's goal, down is handled apart (one grade back).
+    public static bool KnownAchieveButton(byte button) {
+        return button <= 3;
+    }
+
     public static bool TryUpCounter(byte button, long goal, out long counter) {
         counter = button switch {
             0 => goal,

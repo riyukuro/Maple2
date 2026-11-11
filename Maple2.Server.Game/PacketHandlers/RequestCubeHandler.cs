@@ -909,7 +909,7 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         using GameStorage.Request db = session.GameStorage.Context();
         bool inOwnBag = session.Item.Inventory.Filter(item => item.Blueprint != null && item.Blueprint.BlueprintUid == blueprintId).Count > 0;
-        bool listed = !inOwnBag && db.GetUgcMarketItems().Any(item => item.Blueprint.BlueprintUid == blueprintId);
+        bool listed = !inOwnBag && db.IsUgcMarketBlueprintListed(blueprintId);
         if (!BlueprintPreviewRule.BlueprintAllows(listed, inOwnBag)) {
             return;
         }

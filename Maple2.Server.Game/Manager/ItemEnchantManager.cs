@@ -203,7 +203,8 @@ public class ItemEnchantManager {
 
     // GM debug buttons: the item's stored fail charges are filled or emptied.
     public bool DebugFailCharges(long itemUid, bool fill) {
-        Item? item = session.Item.Inventory.Get(itemUid);
+        // The enchant window also lists worn gear, so look in the bag and in the equips.
+        Item? item = session.Item.GetGear(itemUid);
         if (item == null) {
             return false;
         }

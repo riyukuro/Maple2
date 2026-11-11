@@ -43,6 +43,14 @@ public class DebugButtonRulesTests {
         Assert.That(DebugButtonRules.FailCharges(true, 100, 0), Is.EqualTo(0));
     }
 
+    [TestCase((byte) 0, true)]
+    [TestCase((byte) 3, true)]
+    [TestCase((byte) 4, false)]
+    [TestCase((byte) 255, false)]
+    public void OnlyTheFourAchieveButtonsAreKnown(byte button, bool expected) {
+        Assert.That(DebugButtonRules.KnownAchieveButton(button), Is.EqualTo(expected));
+    }
+
     [TestCase(0, true)]
     [TestCase(14, true)]
     [TestCase(15, false)]
