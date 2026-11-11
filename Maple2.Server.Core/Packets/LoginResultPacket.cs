@@ -45,8 +45,8 @@ public static class LoginResultPacket {
         pWriter.WriteUnicodeString(reason); // Ban reason
         pWriter.WriteLong(accountId);
         pWriter.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds()); // SyncTime
-        pWriter.WriteInt(); // SyncTicks
-        pWriter.WriteByte(); // TimeZone
+        pWriter.WriteInt(TimeSyncPacket.ZoneSeconds(DateTimeOffset.UtcNow, TimeZoneInfo.Local)); // Zone: result 7 sets the client zone (OnLoginResult)
+        pWriter.WriteByte(); // Daylight hours
         pWriter.WriteByte(2); // BlockType
         pWriter.WriteInt(); // Const
         pWriter.WriteLong(); // Const

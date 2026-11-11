@@ -20,8 +20,8 @@ public static class TimeSyncPacket {
         pWriter.Write<Command>(Command.Response);
         pWriter.WriteInt(Environment.TickCount);
         pWriter.WriteLong(time.ToUnixTimeSeconds()); // CMainSystem[28], CMainSystem[30]
-        pWriter.WriteInt(time.Offset.Seconds);
-        pWriter.WriteByte(/*Timezone*/); // 0-24 Hours
+        pWriter.WriteInt(ZoneSeconds(time, TimeZoneInfo.Local));
+        pWriter.WriteByte(); // Daylight hours: the zone seconds already hold daylight saving.
         pWriter.WriteInt(key);
 
         return pWriter;
@@ -32,10 +32,18 @@ public static class TimeSyncPacket {
         pWriter.Write<Command>(Command.Reset);
         pWriter.WriteInt(Environment.TickCount);
         pWriter.WriteLong(time.ToUnixTimeSeconds()); // CMainSystem[28], CMainSystem[30]
-        pWriter.WriteInt(time.Offset.Seconds);
-        pWriter.WriteByte(/*Timezone*/); // 0-24 Hours
+        pWriter.WriteInt(ZoneSeconds(time, TimeZoneInfo.Local));
+        pWriter.WriteByte(); // Daylight hours: the zone seconds already hold daylight saving.
 
         return pWriter;
+    }
+
+    // The zone the client's day runs in, CMsTime::SetTimeZone(zone, dst) (mstime.cpp:273): its local time is UTC minus
+    // zone plus dst hours (CalcZoneOffset), so the zone is the seconds west of UTC (KST -32400). The server's day
+    // (daily reset, alliance missions, quest resets) runs in its local time, so the client gets that zone; with 0 the
+    // client counts the reset to UTC midnight.
+    public static int ZoneSeconds(DateTimeOffset time, TimeZoneInfo zone) {
+        return -(int) zone.GetUtcOffset(time).TotalSeconds;
     }
 
     // Request client to make a request
