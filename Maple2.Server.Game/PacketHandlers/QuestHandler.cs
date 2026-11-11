@@ -162,7 +162,7 @@ public class QuestHandler : FieldPacketHandler {
                 // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world
                 // map's mission attack box. Not handled: the client sends it only while a quest of that
                 // field with an alliance is in progress, and no alliance quest can be started here.
-                Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}", command, session.CharacterId, packet.ReadInt());
+                Logger.Debug("Quest {Command} from {CharacterId}: field {FieldId}", command, session.CharacterId, packet.ReadInt());
                 break;
             case Command.FindUser:
                 HandleFindUser(session, packet);
