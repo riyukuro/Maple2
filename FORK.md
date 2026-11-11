@@ -138,15 +138,15 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 54 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 50 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
 | EventReward | 12 | Guild | 6 | Wedding | 2 |
-| RequestItemEnchant | 8 | RequestCube | 6 | HomeAction | 2 |
+| RequestItemEnchant | 6 | RequestCube | 6 | HomeAction | 2 |
 | Quest | 7 | RoomDungeon | 4 | Party | 2 |
 
-These systems have one unhandled sub-type each: Achieve, FurnishingStorage, InteractObject, Mapleopoly, Ugc.
+These systems have one unhandled sub-type each: FurnishingStorage, InteractObject, Ugc.
 
 Guild handling as a whole is switched off (`HandlingOn` in `GuildHandler.cs`): every guild request is logged and dropped, so no guild can be made, joined or used. The count of 6 above is of sub-types without code; the rest have code that does not run.
 
@@ -156,12 +156,14 @@ Narrowed, with the reason:
 - Ugc 12 (the path of an uploaded wedding profile picture): the upload itself (kind 10) is not accepted and a marriage stores one profile text where the client keeps one per partner, so the request never arrives in normal play and is only logged.
 - Revival 3 (revive a dead summon): only logged. It is not counted in the table above.
 - Quest 15 (sky fortress mission), 17 (epic quest restart), 19 (re-enter a quest's hidden field), 28 (find a player for a quest) and 33 to 35 (alliance quest ticket, accept all, complete all): the server does not load the data or run the system behind them (no sky fortress missions, no restart event, no re-entry flag in the quest data, no alliance quest accept).
-- RequestItemEnchant 9 (refund), 13 and 14 (enchant simulation) and the GM debug buttons 15 to 19: read and logged only. The debug ones need a GM account.
+- RequestItemEnchant 9 (refund), 13 and 14 (enchant simulation) and the GM debug buttons 15, 16 and 19: read and logged only. The debug ones need a GM account. The debug buttons 17 and 18 are handled for a GM account: the item's stored fail charges are filled to a full charge rate or emptied.
 - Party 39 and 43 (join a dungeon party from a chat link): the link is built from a recruiting notice that the server never sends. Party 32 to 34 (dungeon match queue) have no matchmaker behind them.
 - Wedding 9 (the answer to the divorce message box) and 37 (the item of a wedding skill): the server has no divorce flow and does not load the wedding skill table. Both are read and logged. Wedding 34 (the couple message) is handled: the message is saved and shown to both partners.
 - RoomDungeon 8 (buy an extra reward count with a coupon item): the dungeon data the server loads has no coupon item or cost. 15 and 16 (ask for helpers or members): they need the recruiting notice, which the server never sends. 21 (reset the united reward, after a confirm box): what the reset changes is not settled from the client. All are read and logged. 17 (expert mode) and 24 (favourite mark), counted here before, are handled. The four lobby buttons of the dungeon search window (4, 12, 13, 14) belong to the match queue and are not counted.
 - RequestCube 5 (the owner uses the sign of their own plot) and 30 (the two strings of the home summon dialog): what they should do is not settled from the client. 19 (a GM debug index) needs a GM account and is only logged. 56 to 58 (the build budget and the build helpers of a home): the server stores neither. Sub-type 13 has a case but the client never sends it, so it is not counted. 68 (the market's blueprint preview) builds only in the model home, and 70 (the bill of a used blueprint item) is handled.
-- Achieve 5 (GM debug buttons of the trophy window): read and logged only, GM account needed.
+- Achieve 5 (GM debug buttons of the trophy window) is handled for a GM account. The client names the four buttons up, down, up30 and up99; the server reads them as: finish the grade in progress, go one grade back (rewards already given stay), and set the counter to 30 % or 99 % of the grade's goal. That reading comes from the names only.
+- Mapleopoly 5 (the GM debug dice) is handled for a GM account: one roll with the two dice the GM picked, at the cost of a normal roll.
+- Buddy: with "refuse friend requests" on, the request is declined by the server and no longer shown to the refusing client, which used to send a second decline for the entry that was already gone.
 - SkillMacro 1 with no tab (every skill macro tab removed): the save is refused, because the client also sends an empty save when the window closes before the load answer came. A player who removes all tabs gets the stored ones back at the next login.
 
 Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. So are Quest 18 (the quest portal opens again when the quest talk ends) and Buddy 20 (the "refuse friend requests" option: a request is declined on receipt while the option is on; the server asks the client for the option at login and also learns it when the options are saved), Club 12 (the leader hands the club to a member) and HomeAction 1 to 3 (the home owner kills, sends out or revives a visitor from the player menu; only sub-type 3 was counted above). RequestRide 6 (the "ride alone" game option: the field is told and nobody can board the mount while it is on) and FunctionCube 5 and 7 (use a cube; closing a cube's dialog hands the cube back to other players) are handled too, EventReward 8 as well, and the client sends no Prestige sub-type other than the two that were already handled. The two HomeAction entries left are the PvP control dialog (14) and the OX quiz (10). The revive block of a buff (`disableRevivalHere`) is a new metadata property: it is empty until the metadata is ingested again. RequestItemInventory 8 and 9 (sort, expand) and Trade 14 (busy answer) were already handled and are no longer counted. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.

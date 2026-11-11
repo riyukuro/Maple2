@@ -30,8 +30,10 @@ public class AchievementHandler : FieldPacketHandler {
                     return;
                 }
 
-                // Not handled: the debug buttons of the achievement dialog: id and which button (0-3).
-                Logger.Debug("Achievement {Command} from {CharacterId}: {Id}, {Button}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
+                // The debug buttons of the achievement dialog: id and which button (0-3).
+                int debugId = packet.ReadInt();
+                byte debugButton = packet.ReadByte();
+                session.Achievement.DebugButton(debugId, debugButton);
                 break;
         }
     }

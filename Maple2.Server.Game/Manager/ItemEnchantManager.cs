@@ -201,6 +201,23 @@ public class ItemEnchantManager {
         return true;
     }
 
+    // GM debug buttons: the item's stored fail charges are filled or emptied.
+    public bool DebugFailCharges(long itemUid, bool fill) {
+        Item? item = session.Item.Inventory.Get(itemUid);
+        if (item == null) {
+            return false;
+        }
+
+        item.Enchant ??= new ItemEnchant();
+        item.Enchant.Charges = Util.DebugButtonRules.FailCharges(fill, MaxRate, ChargeRate);
+        session.Send(ItemInventoryPacket.UpdateItem(item));
+        if (upgradeItem?.Uid == itemUid && useCharges > item.Enchant.Charges) {
+            SetCharges(item.Enchant.Charges);
+            session.Send(ItemEnchantPacket.UpdateCharges(fodders.Keys, useCharges, fodderWeight, rates));
+        }
+        return true;
+    }
+
     public bool UpdateCharges(int count) {
         if (upgradeItem == null || count < 0 || count > upgradeItem.Enchant?.Charges) {
             return false;

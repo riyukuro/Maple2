@@ -263,6 +263,68 @@ public sealed class AchievementManager {
         return achievement.Grades.ContainsKey(grade);
     }
 
+    // GM debug buttons of the trophy window (Achieve 5). Rewards already given are not taken back by "down".
+    public void DebugButton(int achievementId, byte button) {
+        if (!session.AchievementMetadata.TryGet(achievementId, out AchievementMetadata? metadata) || metadata.Grades.Count == 0) {
+            return;
+        }
+
+        IDictionary<int, Achievement> achievements = metadata.AccountWide ? accountValues : characterValues;
+        if (!achievements.TryGetValue(achievementId, out Achievement? achievement)) {
+            if (button == 1) {
+                return;
+            }
+            int lowest = metadata.Grades.Keys.Min();
+            achievement = new Achievement(metadata) {
+                CurrentGrade = lowest,
+                RewardGrade = lowest,
+            };
+            using GameStorage.Request db = session.GameStorage.Context();
+            achievement = db.CreateAchievement(metadata.AccountWide ? session.AccountId : session.CharacterId, achievement);
+            if (achievement == null) {
+                return;
+            }
+            achievements.Add(achievementId, achievement);
+        }
+
+        if (button == 1) {
+            if (achievement.Grades.Count == 0) {
+                achievement.Counter = 0;
+                session.Send(AchievementPacket.Update(achievement));
+                return;
+            }
+            int last = achievement.Grades.Keys.Max();
+            achievement.Grades.Remove(last);
+            achievement.CurrentGrade = last;
+            achievement.RewardGrade = Math.Min(achievement.RewardGrade, last);
+            achievement.Counter = metadata.Grades.TryGetValue(last - 1, out AchievementMetadataGrade? before) ? before.Condition.Value : 0;
+            AchievementInfo info = session.Player.Value.Character.AchievementInfo;
+            switch (achievement.Category) {
+                case AchievementCategory.Combat:
+                    info.Combat = Math.Max(0, info.Combat - 1);
+                    break;
+                case AchievementCategory.Adventure:
+                    info.Adventure = Math.Max(0, info.Adventure - 1);
+                    break;
+                case AchievementCategory.Life:
+                    info.Lifestyle = Math.Max(0, info.Lifestyle - 1);
+                    break;
+            }
+            session.Send(AchievementPacket.Update(achievement));
+            return;
+        }
+
+        if (achievement.Completed || !metadata.Grades.TryGetValue(achievement.CurrentGrade, out AchievementMetadataGrade? grade)
+            || !Util.DebugButtonRules.TryUpCounter(button, grade.Condition.Value, out long counter)) {
+            return;
+        }
+
+        achievement.Counter = Math.Max(achievement.Counter, counter);
+        if (!RankUp(grade.Condition.Type, achievement, 0)) {
+            session.Send(AchievementPacket.Update(achievement));
+        }
+    }
+
     public void DebugCompleteAllTrophies() {
         ICollection<AchievementMetadata> achievementMetadataCollection = session.AchievementMetadata.GetAll();
         foreach (AchievementMetadata metadata in achievementMetadataCollection) {

@@ -47,8 +47,13 @@ public class MapleopolyHandler : FieldPacketHandler {
                     return;
                 }
 
-                // Not handled: the debug dice button: the two dice values (1-6).
-                Logger.Debug("Mapleopoly {Command} from {CharacterId}: {Dice1}, {Dice2}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
+                // The debug dice button: one roll with the two dice the GM picked. It costs what a roll costs.
+                int debugDice1 = packet.ReadInt();
+                int debugDice2 = packet.ReadInt();
+                if (!DebugButtonRules.DiceAllowed(debugDice1, debugDice2)) {
+                    return;
+                }
+                HandleRoll(session, debugDice1, debugDice2);
                 return;
         }
     }
@@ -66,7 +71,7 @@ public class MapleopolyHandler : FieldPacketHandler {
         session.Send(MapleopolyPacket.Load(blueMarble.Slots, blueMarble.RequiredItem.ItemId, totalSlotValue, freeRollValue, blueMarble.RequiredItem.Amount));
     }
 
-    private void HandleRoll(GameSession session) {
+    private void HandleRoll(GameSession session, int dice1 = 0, int dice2 = 0) {
         GameEvent? gameEvent = session.FindEvent(GameEventType.BlueMarble).FirstOrDefault();
         if (gameEvent?.Metadata.Data is not BlueMarble blueMarble) {
             return;
@@ -86,14 +91,13 @@ public class MapleopolyHandler : FieldPacketHandler {
             }
         }
 
-        // roll two dice
-        int dice1 = Random.Shared.Next(1, 7);
-        int dice2 = Random.Shared.Next(1, 7);
-
-        totalSlotValue += dice1 + dice2;
-        if (dice1 == dice2) {
-            freeRollValue++;
+        // roll two dice, unless the GM debug button gave them
+        if (!DebugButtonRules.DiceAllowed(dice1, dice2)) {
+            dice1 = Random.Shared.Next(1, 7);
+            dice2 = Random.Shared.Next(1, 7);
         }
+
+        (totalSlotValue, freeRollValue) = DebugButtonRules.AfterRoll(totalSlotValue, freeRollValue, dice1, dice2);
 
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyFreeRollAmount, freeRollValue);
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalSlotCount, totalSlotValue);

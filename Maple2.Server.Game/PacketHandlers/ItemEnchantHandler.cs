@@ -165,6 +165,6 @@ public class ItemEnchantHandler : FieldPacketHandler {
     // GM buttons m_debugBtnFillFailStack (17) and m_debugBtnUseAllFailStack (18).
     private void HandleDebugFailStack(GameSession session, IByteReader packet, Command command) {
         long itemUid = packet.ReadLong();
-        Logger.Debug("Enchant debug {Command} {ItemUid} from {CharacterId} not implemented", command, itemUid, session.CharacterId);
+        session.ItemEnchant.DebugFailCharges(itemUid, command == Command.DebugFillFailStack);
     }
 }
