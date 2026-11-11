@@ -13,13 +13,18 @@ public static class RecallUserPacket {
         Fail = 7,
     }
 
-    // The result byte the client itself sends in c2s 7 when an invite arrives while its confirm box is open.
+    // Kind 7 results, by the string the client shows (commonfiles/commonstringtable.cpp, ids 2302 to 2305).
+    public const byte FAIL_REJECT = 0; // every value but 2, 4 and 6: s_recall_user_notify_reject
+    public const byte FAIL_CANNOT_MOVE = 2; // s_recall_user_notify_cannot_move
+    // s_recall_user_notify_already_recalled; also the byte the client sends in c2s 7 when an invite arrives while
+    // its confirm box is open.
     public const byte FAIL_BUSY = 4;
-    // Any value the client has no own message for (2, 4 and 6 have one) shows the default message.
-    public const byte FAIL_DEFAULT = 0;
+    public const byte FAIL_NOT_FOUND = 6; // s_recall_user_notify_not_found
 
-    public const byte ANSWER_ACCEPT = 0;
-    public const byte ANSWER_DECLINE = 1;
+    // Kind 5 results: 0 and 2 show s_recall_user_notify_recall (the player is recalled without a question),
+    // 1 and 3 show s_recall_user_notify_confirm_recall (the player is being asked).
+    public const byte REQUEST_RECALL = 0;
+    public const byte REQUEST_CONFIRM = 1;
 
     // Kind 4: byte type (read, not used), the caller's name, int invite id. The client opens a confirm box with a
     // 20 second timer and answers with c2s 4 (invite id, byte accept).
@@ -33,8 +38,8 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // Kind 5: name, byte result. 0 and 2 show one system message with the name, 1 and 3 another.
-    public static ByteWriter Answer(string name, byte result) {
+    // Kind 5: name, byte result. Tells the caller that the request went out (REQUEST_RECALL or REQUEST_CONFIRM).
+    public static ByteWriter Requested(string name, byte result) {
         var pWriter = Packet.Of(SendOp.RecallUser);
         pWriter.WriteByte((byte) Command.Answer);
         pWriter.WriteUnicodeString(name);
@@ -43,8 +48,8 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // Kind 6: name; one system message with the name.
-    public static ByteWriter Notice(string name) {
+    // Kind 6: name; shows s_recall_user_notify_recalled (the recall was done).
+    public static ByteWriter Recalled(string name) {
         var pWriter = Packet.Of(SendOp.RecallUser);
         pWriter.WriteByte((byte) Command.Notice);
         pWriter.WriteUnicodeString(name);
@@ -52,7 +57,7 @@ public static class RecallUserPacket {
         return pWriter;
     }
 
-    // Kind 7: name, byte result. 2, 4 and 6 each show their own system message, every other value the default one.
+    // Kind 7: name, byte result (a FAIL_ value).
     public static ByteWriter Fail(string name, byte result) {
         var pWriter = Packet.Of(SendOp.RecallUser);
         pWriter.WriteByte((byte) Command.Fail);

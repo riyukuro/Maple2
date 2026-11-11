@@ -45,10 +45,9 @@ public class RecallUserHandler : FieldPacketHandler {
         }
         session.UserRecall = null;
 
-        if (session.FindSession(recall!.CallerId, out GameSession? caller)) {
-            caller.Send(RecallUserPacket.Answer(session.PlayerName, accept ? RecallUserPacket.ANSWER_ACCEPT : RecallUserPacket.ANSWER_DECLINE));
-        }
+        session.FindSession(recall!.CallerId, out GameSession? caller);
         if (!accept) {
+            caller?.Send(RecallUserPacket.Fail(session.PlayerName, RecallUserPacket.FAIL_REJECT));
             return;
         }
 
@@ -56,8 +55,10 @@ public class RecallUserHandler : FieldPacketHandler {
         if (!session.PlayerInfo.GetOrFetch(recall.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
             || !PlayerWarpUtil.GoToPlayer(session, callerInfo)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
-            caller?.Send(RecallUserPacket.Fail(session.PlayerName, RecallUserPacket.FAIL_DEFAULT));
+            caller?.Send(RecallUserPacket.Fail(session.PlayerName, RecallUserPacket.FAIL_CANNOT_MOVE));
+            return;
         }
+        caller?.Send(RecallUserPacket.Recalled(session.PlayerName));
     }
 
     // CNetworkService::SendRecallUserText (networkservice.cpp:529): the caller's name and byte 4, sent when an

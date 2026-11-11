@@ -197,7 +197,7 @@ public class RecallUserCommand : GameCommand {
         using GameStorage.Request db = session.GameStorage.Context();
         long characterId = db.GetCharacterId(name);
         if (characterId == 0 || characterId == session.CharacterId || !session.FindSession(characterId, out GameSession? target)) {
-            session.Send(RecallUserPacket.Fail(name, RecallUserPacket.FAIL_DEFAULT));
+            session.Send(RecallUserPacket.Fail(name, RecallUserPacket.FAIL_NOT_FOUND));
             return;
         }
 
@@ -213,6 +213,7 @@ public class RecallUserCommand : GameCommand {
             session.Player.Value.Character.MapId, now + PendingUserRecall.VALID_SECONDS);
         target.UserRecall = recall;
         target.Send(RecallUserPacket.Invite(recall.CallerName, recall.InviteId));
+        session.Send(RecallUserPacket.Requested(target.PlayerName, RecallUserPacket.REQUEST_CONFIRM));
         ctx.ExitCode = 0;
     }
 }

@@ -288,11 +288,14 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Ab"));
         Assert.That(reader.ReadInt(), Is.EqualTo(77));
 
-        Assert.That(RecallUserPacket.Answer("A", RecallUserPacket.ANSWER_DECLINE).ToArray().AsSpan(2).ToArray(),
+        Assert.That(RecallUserPacket.Requested("A", RecallUserPacket.REQUEST_CONFIRM).ToArray().AsSpan(2).ToArray(),
             Is.EqualTo(new byte[] { 5, 1, 0, (byte) 'A', 0, 1 }));
-        Assert.That(RecallUserPacket.Notice("A").ToArray().AsSpan(2).ToArray(), Is.EqualTo(new byte[] { 6, 1, 0, (byte) 'A', 0 }));
+        Assert.That(RecallUserPacket.Recalled("A").ToArray().AsSpan(2).ToArray(), Is.EqualTo(new byte[] { 6, 1, 0, (byte) 'A', 0 }));
         Assert.That(RecallUserPacket.Fail("A", RecallUserPacket.FAIL_BUSY).ToArray().AsSpan(2).ToArray(),
             Is.EqualTo(new byte[] { 7, 1, 0, (byte) 'A', 0, 4 }));
+        // The client has own messages for 2, 4 and 6; reject must be none of them.
+        Assert.That(new[] { RecallUserPacket.FAIL_CANNOT_MOVE, RecallUserPacket.FAIL_BUSY, RecallUserPacket.FAIL_NOT_FOUND }, Is.EqualTo(new byte[] { 2, 4, 6 }));
+        Assert.That(RecallUserPacket.FAIL_REJECT, Is.Not.AnyOf(2, 4, 6));
     }
 
     // c2s RecallUser 4 (CNetworkService::SendRecallUserReply): the answer counts only for the pending invite id, in time.
