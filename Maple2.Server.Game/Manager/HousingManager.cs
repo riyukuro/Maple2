@@ -865,18 +865,28 @@ public class HousingManager {
                 session.Send(CubePacket.LoadBuildPermission(Home.Builders));
             }
             session.Send(CubePacket.UpdateBuildBudget(0, Home.BuildMeso, Home.BuildMerat));
-            foreach (GameSession helper in HelpersInField()) {
-                helper.Housing.GrantBuild(session);
-            }
+            TellHelpers();
             return;
         }
 
         GameSession? host = FindHost();
-        if (host != null && !host.Housing.Home.IsPlanner && host.Housing.IsBuilder(session.AccountId)) {
+        if (host != null && HomeBuildRules.MayGrant(host.Housing.Home.IsPlanner, host.Housing.IsBuilder(session.AccountId))) {
             GrantBuild(host);
             return;
         }
         RevokeBuild();
+    }
+
+    // The helpers in the owner's home get the owner and the budget (0x35), or lose them while the home is in
+    // a planner mode, where a helper may not build.
+    private void TellHelpers() {
+        foreach (GameSession helper in HelpersInField()) {
+            if (HomeBuildRules.MayGrant(Home.IsPlanner, true)) {
+                helper.Housing.GrantBuild(session);
+            } else {
+                helper.Housing.RevokeBuild();
+            }
+        }
     }
 
     // Before the session leaves a field: the helpers in the owner's home cannot build without the owner.
@@ -888,9 +898,7 @@ public class HousingManager {
 
     private void SendBuildBudget() {
         session.Send(CubePacket.UpdateBuildBudget(0, Home.BuildMeso, Home.BuildMerat));
-        foreach (GameSession helper in HelpersInField()) {
-            helper.Housing.GrantBuild(session);
-        }
+        TellHelpers();
     }
 
     // RequestCube 56.
@@ -964,7 +972,7 @@ public class HousingManager {
             logger.Error("Failed to save the build helpers of home {AccountId}.", session.AccountId);
         }
         session.Send(CubePacket.AddBuildPermission(0, targetId));
-        if (session.Field is HomeFieldManager homeField && homeField.OwnerId == session.AccountId && !Home.IsPlanner) {
+        if (session.Field is HomeFieldManager homeField && homeField.OwnerId == session.AccountId && HomeBuildRules.MayGrant(Home.IsPlanner, true)) {
             FindInField(targetId)?.Housing.GrantBuild(session);
         }
     }

@@ -45,6 +45,12 @@ public static class HomeBuildRules {
         return targetId != 0 && builders.Contains(targetId) ? UgcMapError.s_ugcmap_ok : Refused;
     }
 
+    // Whether an account in the owner's home is told it may build there (ResponseCube 0x35): a listed helper,
+    // and not while the home is in a planner mode. The same answer on every path that tells a helper.
+    public static bool MayGrant(bool planner, bool isBuilder) {
+        return isBuilder && !planner;
+    }
+
     // A cube a helper places is bought from the budget, in the currency of its shop entry.
     public static UgcMapError Charge(Home home, bool merat, long price) {
         UgcMapError error = CanCharge(home, merat, price);

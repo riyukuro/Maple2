@@ -92,6 +92,14 @@ public class HomeBuildRulesTests {
     }
 
     [Test]
+    public void MayGrant_OnlyAListedHelperOutsideThePlanner() {
+        Assert.That(HomeBuildRules.MayGrant(false, true), Is.True);
+        Assert.That(HomeBuildRules.MayGrant(true, true), Is.False);
+        Assert.That(HomeBuildRules.MayGrant(false, false), Is.False);
+        Assert.That(HomeBuildRules.MayGrant(true, false), Is.False);
+    }
+
+    [Test]
     public void CanCharge_AnswersAsChargeAndTakesNothing() {
         var home = new Home { BuildMeso = 40, BuildMerat = 5 };
         Assert.That(HomeBuildRules.CanCharge(home, false, 40), Is.EqualTo(Ok));
