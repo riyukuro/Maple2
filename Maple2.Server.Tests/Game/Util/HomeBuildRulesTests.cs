@@ -10,6 +10,36 @@ namespace Maple2.Server.Tests.Game.Util;
 public class HomeBuildRulesTests {
     private const UgcMapError Ok = UgcMapError.s_ugcmap_ok;
 
+    // A meso cube the server pack lists with price 0 takes the played client's price, and is then refused at
+    // budget 0 instead of being placed free.
+    [Test]
+    public void ClientPriceTable_GivesThePriceTheBudgetIsChargedWith() {
+        var server = new Dictionary<int, Maple2.Model.Metadata.FurnishingShopTable.Entry> {
+            [50200299] = new(50200299, true, Maple2.Model.Enum.FurnishingCurrencyType.Meso, 0),
+            [50100000] = new(50100000, true, Maple2.Model.Enum.FurnishingCurrencyType.Meret, 30),
+        };
+        Maple2.Model.Metadata.FurnishingShopTable.Entry?[] rows = [
+            Maple2.Model.Metadata.FurnishingShopTable.ClientRow("50200299", "1", "50", ""),
+            Maple2.Model.Metadata.FurnishingShopTable.ClientRow("50200300", "true", "70", "3"),
+            Maple2.Model.Metadata.FurnishingShopTable.ClientRow("50200299", "1", "50", "1"),
+            Maple2.Model.Metadata.FurnishingShopTable.ClientRow("x", "1", "50", "1"),
+        ];
+        Assert.That(rows[3], Is.Null);
+        Dictionary<int, Maple2.Model.Metadata.FurnishingShopTable.Entry> merged = Maple2.Model.Metadata.FurnishingShopTable.WithClientRows(server, [rows[0]!, rows[1]!, rows[2]!]);
+
+        Assert.That(merged[50200299], Is.EqualTo(new Maple2.Model.Metadata.FurnishingShopTable.Entry(50200299, true, Maple2.Model.Enum.FurnishingCurrencyType.Meso, 50)));
+        Assert.That(merged[50200300], Is.EqualTo(new Maple2.Model.Metadata.FurnishingShopTable.Entry(50200300, true, Maple2.Model.Enum.FurnishingCurrencyType.Meret, 70)));
+        Assert.That(merged[50100000].Price, Is.EqualTo(30));
+        Assert.That(server[50200299].Price, Is.EqualTo(0));
+
+        var home = new Home { BuildMeso = 0 };
+        Assert.That(HomeBuildRules.Charge(home, merat: false, server[50200299].Price), Is.EqualTo(Ok));
+        Assert.That(HomeBuildRules.Charge(home, merat: false, merged[50200299].Price), Is.EqualTo(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
+        home.BuildMeso = 50;
+        Assert.That(HomeBuildRules.Charge(home, merat: false, merged[50200299].Price), Is.EqualTo(Ok));
+        Assert.That(home.BuildMeso, Is.EqualTo(0));
+    }
+
     [Test]
     public void CheckAdd_RefusesNoOneSelfAndRepeats() {
         var builders = new List<long> { 5 };

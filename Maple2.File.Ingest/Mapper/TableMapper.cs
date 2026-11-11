@@ -43,9 +43,12 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private readonly ItemOptionParser optionParser;
     private readonly string language;
     private readonly M2dReader xmlReader;
+    // The Xml pack of the client that is played, when it is not the data folder's (MS2_PLAYED_CLIENT_XML).
+    private readonly M2dReader? playedReader;
 
-    public TableMapper(M2dReader xmlReader, string language) {
+    public TableMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         this.xmlReader = xmlReader;
+        this.playedReader = playedReader;
         parser = PackTables.NewParser(xmlReader, language);
         optionParser = new ItemOptionParser(xmlReader);
         this.language = language;
@@ -1288,7 +1291,32 @@ public class TableMapper : TypeMapper<TableMetadata> {
             ));
         }
 
-        return new FurnishingShopTable(results);
+        if (playedReader == null) {
+            return new FurnishingShopTable(results);
+        }
+
+        // The played client's own price table: shop_Maid.xml, then shop_UGCAll.xml, as the client loads them
+        // (CPriceTable::Load, commonfiles/pricetable.cpp:53), from the pack's table folder or its region folder.
+        var clientRows = new List<FurnishingShopTable.Entry>();
+        foreach (string file in new[] { "shop_maid.xml", "shop_ugcall.xml" }) {
+            foreach (Maple2.File.IO.Crypto.Common.PackFileEntry entry in playedReader.Files.Where(entry => {
+                string[] parts = entry.Name.ToLowerInvariant().Split('/');
+                return parts.Length is 2 or 3 && parts[0] == "table" && parts[^1] == file;
+            })) {
+                foreach (XmlNode node in playedReader.GetXmlDocument(entry).SelectNodes("ms2/key")!) {
+                    if (node is not XmlElement row) continue;
+                    FurnishingShopTable.Entry? clientRow = FurnishingShopTable.ClientRow(row.GetAttribute("id"), row.GetAttribute("ugcHousingBuy"),
+                        row.GetAttribute("ugcHousingDefaultPrice"), row.GetAttribute("ugcHousingMoneyType"));
+                    if (clientRow != null) {
+                        clientRows.Add(clientRow);
+                    }
+                }
+            }
+        }
+        Dictionary<int, FurnishingShopTable.Entry> merged = FurnishingShopTable.WithClientRows(results, clientRows);
+        int changed = merged.Count(entry => !results.TryGetValue(entry.Key, out FurnishingShopTable.Entry? old) || old != entry.Value);
+        Console.WriteLine($"furnishing shop: {clientRows.Count} rows from the played client's price table, {changed} differ from the server pack's");
+        return new FurnishingShopTable(merged);
     }
 
     private InsigniaTable ParseInsigniaTable() {
