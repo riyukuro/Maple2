@@ -9,6 +9,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -455,7 +456,42 @@ public class RequestCubeHandler : FieldPacketHandler {
         session.Housing.SetPasscode(passcode);
     }
 
-    private void HandleVoteHome(GameSession session) { }
+    // CommendHome: the account commends the home it stands in, once a day (HomeCommendRules). The voter gets the time
+    // of its commendation (ResponseCube 0x19, which turns its recommend button off), the field the home's new scores
+    // (ResponseCube 0x1c for the home info dialog, HomeCommand 1 for the owner when it is here).
+    private void HandleVoteHome(GameSession session) {
+        if (session.Field is not HomeFieldManager home) {
+            session.Send(CubePacket.ConfirmVote((byte) UgcMapError.s_ugcmap_no_owner_to_commend));
+            return;
+        }
+        long ownerId = home.OwnerId;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using GameStorage.Request db = session.GameStorage.Context();
+        long last = db.GetLastHomeCommend(session.AccountId);
+        if (HomeCommendRules.Check(ownerId, session.AccountId, last, now, TimeZoneInfo.Local) is { } error) {
+            session.Send(CubePacket.ConfirmVote((byte) error));
+            return;
+        }
+        if (!db.AddHomeCommend(ownerId, session.AccountId, now)) {
+            session.Send(CubePacket.ConfirmVote((byte) UgcMapError.s_ugcmap_add_commend_home_fail_from_db));
+            return;
+        }
+
+        (long monthBegin, long monthEnd) = HomeCommendRules.MonthSpan(now, TimeZoneInfo.Local);
+        (int current, int total) = db.GetHomeCommendScore(ownerId, monthBegin, monthEnd);
+        home.Home.CurrentArchitectScore = current;
+        home.Home.ArchitectScore = total;
+
+        session.Send(CubePacket.ConfirmVote(0, session.AccountId, now));
+        home.Broadcast(CubePacket.ArchitectScore(current, total));
+        FieldPlayer? owner = home.Players.Values.FirstOrDefault(player => player.Value.Account.Id == ownerId);
+        if (owner != null) {
+            owner.Value.Home.CurrentArchitectScore = current;
+            owner.Value.Home.ArchitectScore = total;
+            home.Broadcast(HomeCommandPacket.UpdateArchitectScore(owner.ObjectId, current, total));
+        }
+        session.ConditionUpdate(ConditionType.commend_home);
+    }
 
     private void HandleSetHomeMessage(GameSession session, IByteReader packet) {
         string message = packet.ReadUnicodeString();

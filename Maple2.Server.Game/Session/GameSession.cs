@@ -449,7 +449,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(InGameRankPacket.Load());
         Send(FieldEnterPacket.Request(Player));
         Party = new PartyManager(World, this);
-        Send(HomeCommandPacket.LoadHome(AccountId));
+        Send(HomeCommandPacket.LoadHome(AccountId, db.GetLastHomeCommend(AccountId)));
         // ResponseCube
         // Mentor
         Send(MentorPacket.MyList());

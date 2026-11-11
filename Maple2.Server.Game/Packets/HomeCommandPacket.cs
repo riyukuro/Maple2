@@ -10,11 +10,13 @@ public static class HomeCommandPacket {
         UpdateArchitectScore = 1,
     }
 
-    public static ByteWriter LoadHome(long accountId) {
+    // The time (epoch seconds) of the account's last house commendation, 0 for none: the client keeps it for the
+    // home info dialog's recommend button.
+    public static ByteWriter LoadHome(long accountId, long lastCommend) {
         var pWriter = Packet.Of(SendOp.HomeCommand);
         pWriter.Write<Command>(Command.Load);
         pWriter.WriteLong(accountId);
-        pWriter.WriteLong(); // last time player nominated home
+        pWriter.WriteLong(lastCommend);
 
         return pWriter;
     }

@@ -52,6 +52,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<PlayerReport> PlayerReports { get; set; } = null!;
     internal DbSet<Ban> Ban { get; set; } = null!;
     internal DbSet<HomeBlock> HomeBlock { get; set; } = null!;
+    internal DbSet<HomeCommend> HomeCommend { get; set; } = null!;
     internal DbSet<NurturingDaily> NurturingDaily { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
@@ -107,6 +108,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<BossClearMember>(Maple2.Database.Model.BossClearMember.Configure);
         modelBuilder.Entity<Ban>(Maple2.Database.Model.Ban.Configure);
         modelBuilder.Entity<HomeBlock>(Maple2.Database.Model.HomeBlock.Configure);
+        modelBuilder.Entity<HomeCommend>(Maple2.Database.Model.HomeCommend.Configure);
         modelBuilder.Entity<NurturingDaily>(Maple2.Database.Model.NurturingDaily.Configure);
     }
 }

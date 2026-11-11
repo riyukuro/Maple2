@@ -225,6 +225,9 @@ public partial class GameStorage {
 
             home.Indoor = indoor;
             home.Outdoor = ToPlotInfo(ugcMaps.FirstOrDefault(map => !map.Indoor));
+            // The architect scores are the home's commendations of this month and of all time.
+            (long monthBegin, long monthEnd) = HomeCommendRules.MonthSpan(DateTimeOffset.UtcNow.ToUnixTimeSeconds(), TimeZoneInfo.Local);
+            (home.CurrentArchitectScore, home.ArchitectScore) = GetHomeCommendScore(ownerId, monthBegin, monthEnd);
             return home;
         }
 

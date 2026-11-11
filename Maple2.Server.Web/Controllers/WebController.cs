@@ -75,6 +75,8 @@ public class WebController : ControllerBase {
             GameRankingType.FameChallengeClearCountPersonal or GameRankingType.FameChallengeShortestClearPersonal => PersonalFameChallenge(type, rankingId, characterId),
             GameRankingType.Colosseum or GameRankingType.ColosseumPreviousSeason => Colosseum(type, seasonId, rankingId, userName),
             GameRankingType.ColosseumPersonal or GameRankingType.ColosseumPersonalPreviousSeason => PersonalColosseum(type, seasonId, rankingId, characterId),
+            GameRankingType.Ugc or GameRankingType.UgcPreviousSeason => HomeCommend(type, seasonId, userName),
+            GameRankingType.UgcPersonal or GameRankingType.UgcPersonalPreviousSeason => PersonalHomeCommend(type, seasonId, accountId),
             _ => new ByteWriter(),
         };
 
@@ -436,6 +438,38 @@ public class WebController : ControllerBase {
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
             ByteWriter writer = ColosseumRanking.Personal(db, type, season, jobCode, characterId);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter HomeCommend(GameRankingType type, int seasonId, string userName) {
+        (long Begin, long End)? month = HomeCommendRanking.Month(type, seasonId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), TimeZoneInfo.Local);
+        string cacheKey = $"HomeCommend_{type}_{month?.Begin}_{SearchKey(userName)}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = HomeCommendRanking.Board(db, type, month, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalHomeCommend(GameRankingType type, int seasonId, long accountId) {
+        (long Begin, long End)? month = HomeCommendRanking.Month(type, seasonId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), TimeZoneInfo.Local);
+        string cacheKey = $"PersonalHomeCommend_{type}_{month?.Begin}_{accountId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = HomeCommendRanking.Personal(db, type, month, accountId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }

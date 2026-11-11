@@ -951,6 +951,30 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("home-block", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.HomeCommend", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("Time")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "Time");
+
+                    b.HasIndex("OwnerId", "Time");
+
+                    b.ToTable("home-commend", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.HomeLayout", b =>
                 {
                     b.Property<long>("Uid")
@@ -2054,6 +2078,21 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Account", null)
                         .WithOne()
                         .HasForeignKey("Maple2.Database.Model.Home", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.HomeCommend", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Maple2.Database.Model.Home", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

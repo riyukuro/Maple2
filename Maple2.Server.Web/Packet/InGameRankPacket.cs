@@ -98,21 +98,25 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    public static ByteWriter Ugc(GameRankingType type) {
+    // The house commendation boards (0x3f, 0x40), as GameRanking::UgcMapCommendation reads them: the header, then a
+    // count of rows, each a rank, the owner's character id (its portrait), name and profile image, the commendations,
+    // an int the client does not use, the owner's account id and the home's name.
+    public static ByteWriter Ugc(GameRankingType type, IList<HomeCommendRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(type);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // 0 ?
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // user name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // user profile
-        pWriter.WriteInt(); // score
-        pWriter.WriteInt(); // 0 ?? perhaps used as a bool to disable/enable guests from entering
-        pWriter.WriteLong(); // home id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // home name
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (HomeCommendRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(info.Commends);
+            pWriter.WriteInt(0); // read, not shown
+            pWriter.WriteLong(info.AccountId);
+            pWriter.WriteUnicodeStringWithLength(info.HomeName);
+        }
 
         return pWriter;
     }
