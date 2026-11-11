@@ -237,9 +237,9 @@ public partial class WorldService {
             return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
         }
 
-        manager.SetDungeon(requestorId, setDungeon.DungeonId, setDungeon.Set, setDungeon.DungeonRoomId, maxUsers: setDungeon.MaxUsers);
+        PartyError error = partyLookup.DungeonMatchStep(() => manager.SetDungeon(requestorId, setDungeon.DungeonId, setDungeon.Set, setDungeon.DungeonRoomId, maxUsers: setDungeon.MaxUsers));
 
-        return new PartyResponse();
+        return new PartyResponse { Error = (int) error };
     }
 
     private PartyResponse Recall(long requestorId, PartyRequest.Types.Recall recall) {

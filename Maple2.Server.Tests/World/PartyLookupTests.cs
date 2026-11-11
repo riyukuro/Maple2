@@ -150,6 +150,26 @@ public class PartyLookupTests {
         Assert.That(manual.Join(Player()), Is.EqualTo(PartyError.none));
     }
 
+    // rv44 MINOR 4: the leader's own room is refused while the party searches or is matched.
+    [Test]
+    public void ALeadersRoomIsRefusedWhileSearchingOrMatched() {
+        PartyManager party = Party(2);
+        long leader = party.Party.LeaderCharacterId;
+        Assert.That(Start(party, new DungeonMatchRoom(100, 1, 4, false)).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(party.SetDungeon(leader, 200, true, 9001, maxUsers: 4), Is.EqualTo(PartyError.s_party_err_dungeon_match_another));
+        Assert.That(party.Party.DungeonSet, Is.False);
+        // Unsetting is not refused.
+        Assert.That(party.SetDungeon(leader, 0, false), Is.EqualTo(PartyError.none));
+
+        PartyManager matched = Party(2);
+        DungeonMatchResult result = Start(matched, new DungeonMatchRoom(100, 1, 2, false));
+        Assert.That(matched.SetDungeon(matched.Party.LeaderCharacterId, 200, true, 9001), Is.EqualTo(PartyError.s_party_err_dungeon_match_another));
+        lookup.CompleteDungeonMatch(matched, result);
+        Assert.That(matched.Party.DungeonLobbyRoomId, Is.EqualTo(9000));
+        // After the match the leader may set a room again.
+        Assert.That(matched.SetDungeon(matched.Party.LeaderCharacterId, 200, true, 9001), Is.EqualTo(PartyError.none));
+    }
+
     // rv42 MINOR 9: the Party Finder listing goes with a disbanded party and with a party that moves away.
     [Test]
     public void ADisbandRemovesThePartysListing() {

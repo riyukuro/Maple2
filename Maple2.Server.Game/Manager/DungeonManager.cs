@@ -325,6 +325,12 @@ public class DungeonManager {
                 return;
         }
 
+        if (withParty && Party!.DungeonMatchKind != 0) {
+            // The party searches (dungeon match): no room of the leader's own (rv44 MINOR 4); World refuses it too.
+            session.Send(PartyPacket.Error(PartyError.s_party_err_dungeon_match_another));
+            return;
+        }
+
         try {
             FieldResponse response = session.World.Field(new FieldRequest {
                 CreateDungeon = new FieldRequest.Types.CreateDungeon {
@@ -356,9 +362,21 @@ public class DungeonManager {
                 },
             };
 
+            PartyError error = PartyError.none;
             try {
-                session.World.Party(request);
+                error = (PartyError) session.World.Party(request).Error;
             } catch (RpcException) { }
+            if (error == PartyError.s_party_err_dungeon_match_another) {
+                // World refused the room (the party searches or is matched): the room made for it goes.
+                try {
+                    session.World.Field(new FieldRequest {
+                        DestroyDungeon = new FieldRequest.Types.DestroyDungeon { RoomId = LobbyRoomId },
+                    });
+                } catch (RpcException) { }
+                LobbyRoomId = 0;
+                session.Send(PartyPacket.Error(error));
+                return;
+            }
         }
 
         Metadata = metadata;

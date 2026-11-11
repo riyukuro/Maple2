@@ -522,6 +522,11 @@ public class PartyManager : IDisposable {
         if (requestorId != Party.LeaderCharacterId) {
             return PartyError.s_party_err_not_chief;
         }
+        // A room the leader makes is refused while the party searches or is matched: the match would overwrite it
+        // and the searchers would skip the party (rv44 MINOR 4). Error 43, as for a search with a room set.
+        if (set && !matched && (PartyLookup.DungeonMatch.IsSearching(Party.Id) || PartyLookup.DungeonMatch.IsMatching(Party.Id))) {
+            return PartyError.s_party_err_dungeon_match_another;
+        }
 
         DungeonMaxUsers = set ? maxUsers : 0;
         Party.DungeonSet = set;
