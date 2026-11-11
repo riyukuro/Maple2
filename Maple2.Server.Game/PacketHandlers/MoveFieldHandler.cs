@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
@@ -92,7 +93,13 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
             return;
         }
 
-        if (!string.IsNullOrEmpty(home.Passcode)) {
+        if (HomeOpenRules.IsPrivate(home.Passcode)) {
+            // A private home takes no visitors; its owner needs no password.
+            if (accountId != session.AccountId) {
+                session.Send(EnterUgcMapPacket.CannotVisitThatCharacterHome());
+                return;
+            }
+        } else if (!string.IsNullOrEmpty(home.Passcode)) {
             if (string.IsNullOrEmpty(passcode)) {
                 session.Send(EnterUgcMapPacket.RequestPassword(accountId));
                 return;

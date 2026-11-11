@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -412,10 +413,12 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleSetPasscode(GameSession session, IByteReader packet) {
-        bool hasPasscode = packet.ReadBool();
-        string passcode = string.Empty;
-        if (hasPasscode) {
-            passcode = packet.ReadUnicodeString();
+        // MyPC::SendHouseSetting: the kind (0 public, 1 password, 2 private), the password text, then a flag byte.
+        byte kind = packet.ReadByte();
+        string text = packet.ReadUnicodeString();
+        if (!HomeOpenRules.TryGetPasscode(kind, text, out string passcode)) {
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_center));
+            return;
         }
 
         session.Housing.SetPasscode(passcode);

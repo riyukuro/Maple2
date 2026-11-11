@@ -9,6 +9,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
@@ -89,7 +90,7 @@ public class HousingManager {
     }
 
     public void SetPasscode(string passcode) {
-        if (passcode.Length != 0 && (passcode.Length != Constant.HomePasscodeLength || !uint.TryParse(passcode, out _))) {
+        if (passcode.Length != 0 && !HomeOpenRules.IsPrivate(passcode) && !HomeOpenRules.IsPasscode(passcode)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_center));
             return;
         }
