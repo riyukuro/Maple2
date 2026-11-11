@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -69,11 +70,16 @@ public class PrestigeHandler : FieldPacketHandler {
         int missionId = packet.ReadInt();
 
         PrestigeMission? mission = session.Exp.PrestigeMissions.FirstOrDefault(m => m.Id == missionId);
-        if (mission == null || mission.Awarded) {
+        if (mission == null) {
             return;
         }
 
         if (!session.TableMetadata.PrestigeMissionTable.Entries.TryGetValue(missionId, out PrestigeMissionMetadata? metadata)) {
+            return;
+        }
+
+        // The client sends the claim only once the mission's gained levels reached its count.
+        if (!PrestigeRules.CanClaimMission(mission.Awarded, mission.GainedLevels, metadata.Count)) {
             return;
         }
 
