@@ -127,6 +127,7 @@ public sealed class MetadataContext(DbContextOptions options) : DbContext(option
         builder.Property(npc => npc.Dead).HasJsonConversion();
         builder.Property(npc => npc.Corpse).HasJsonConversion();
         builder.Property(npc => npc.LookAtTarget).HasJsonConversion();
+        builder.Property(npc => npc.Interact).HasJsonConversion();
     }
 
     private static void ConfigureMapMetadata(EntityTypeBuilder<MapMetadata> builder) {

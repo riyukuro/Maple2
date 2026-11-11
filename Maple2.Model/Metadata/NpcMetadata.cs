@@ -17,7 +17,8 @@ public record NpcMetadata(
     NpcMetadataAction Action,
     NpcMetadataDead Dead,
     NpcMetadataCorpse? Corpse,
-    NpcMetadataLookAtTarget LookAtTarget) : ISearchResult;
+    NpcMetadataLookAtTarget LookAtTarget,
+    NpcMetadataInteract? Interact = null) : ISearchResult;
 
 public record NpcMetadataModel(
     string Name,
@@ -128,6 +129,14 @@ public record NpcMetadataCorpse(
     string CorpseEffect,
     bool HitAble,
     Vector3 Rotation);
+
+// The <interact> row of the npc data (CNpcData +0x458, commonfiles/npcdata.cpp:1595): the npc casts SkillId at
+// SkillLevel when a player has cast at it for CastingTime ms, then is not talkable for CoolTime ms.
+public record NpcMetadataInteract(
+    int SkillId,
+    short SkillLevel,
+    int CastingTime,
+    int CoolTime);
 
 public record NpcMetadataLookAtTarget(
     string TargetDummy,

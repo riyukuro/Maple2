@@ -8,6 +8,7 @@ using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Npc;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.File.Ingest.Mapper;
 
@@ -184,7 +185,9 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                 LookAtTarget: new NpcMetadataLookAtTarget(
                     data.lookattarget.targetdummy,
                     data.lookattarget.lookAtMyPCWhenTalking == 1,
-                    data.lookattarget.useTalkMotion == 1)
+                    data.lookattarget.useTalkMotion == 1),
+                Interact: NpcInteractRules.Parse(data.interact?.interactFunction, data.interact?.interactCastingTime ?? 0,
+                    data.interact?.interactCoolTime ?? 0)
             );
 
             NpcMetadataById[id] = metadata;

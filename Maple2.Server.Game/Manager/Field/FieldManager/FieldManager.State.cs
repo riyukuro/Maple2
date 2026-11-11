@@ -711,6 +711,16 @@ public partial class FieldManager {
     }
 
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {
+        // A friendly npc (e.g. a cannon a player fires by InteractNpc) sides with the players: its hostile
+        // targets are the mobs and its friendly targets the players.
+        if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 } and not FieldPet) {
+            switch (targetType) {
+                case ApplyTargetType.Hostile:
+                    return prisms.Filter(Mobs.Values, limit, ignore);
+                case ApplyTargetType.Friendly:
+                    return prisms.Filter(Players.Values, limit, ignore);
+            }
+        }
         switch (targetType) {
             case ApplyTargetType.Friendly:
                 if (caster is FieldNpc) {

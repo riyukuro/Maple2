@@ -162,7 +162,7 @@ public static class FieldPacket {
         }
 
         pWriter.WriteLong(); // uid for PetNpc
-        pWriter.WriteByte();
+        pWriter.WriteBool(npc.Talkable); // CNpc+0xe50: the client offers an npc's interact only while set
         pWriter.WriteInt(npc.Value.Metadata.Basic.Level);
         pWriter.WriteInt();
 
@@ -184,6 +184,15 @@ public static class FieldPacket {
         }
 
         pWriter.WriteBool(false);
+
+        return pWriter;
+    }
+
+    // InteractNpc 0x0059 (CSceneStateGame::OnInteractNpc): the npc's talkable byte, as in FieldAddNpc.
+    public static ByteWriter InteractNpc(int objectId, bool talkable) {
+        var pWriter = Packet.Of(SendOp.InteractNpc);
+        pWriter.WriteInt(objectId);
+        pWriter.WriteBool(talkable);
 
         return pWriter;
     }

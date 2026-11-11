@@ -4,6 +4,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.ActorStateComponent;
@@ -176,6 +177,21 @@ public class FieldNpc : Actor<Npc> {
     public readonly SkillMetadata?[] Skills;
 
     public int SpawnPointId = 0;
+    // InteractNpc: the field tick from which the npc is talkable again, and whether the field still has to hear it.
+    public long InteractReadyTick { get; private set; }
+    private bool interactCoolingDown;
+    public bool Talkable => NpcInteractRules.Talkable(Value.Metadata.Interact, InteractReadyTick, Field.FieldTick);
+
+    // A player's interact cast completed: the npc casts its interact skill and is not talkable for its cool time.
+    public void Interact(NpcMetadataInteract interact) {
+        if (interact.CoolTime > 0) {
+            InteractReadyTick = Field.FieldTick + interact.CoolTime;
+            interactCoolingDown = true;
+            Field.Broadcast(FieldPacket.InteractNpc(ObjectId, false));
+        }
+        CastAiSkill(interact.SkillId, interact.SkillLevel, faceTarget: 0, facePos: default);
+    }
+
     public bool IsCorpse { get; private set; }
     private long lastCorpseBroadcastTick;
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
@@ -253,6 +269,11 @@ public class FieldNpc : Actor<Npc> {
         }
 
         base.Update(tickCount);
+
+        if (interactCoolingDown && tickCount >= InteractReadyTick) {
+            interactCoolingDown = false;
+            Field.Broadcast(FieldPacket.InteractNpc(ObjectId, true));
+        }
 
         // controls whether currently logged messages should print
         bool playersListeningToDebugNow = false;
