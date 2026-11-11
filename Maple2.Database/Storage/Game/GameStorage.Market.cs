@@ -225,7 +225,7 @@ public partial class GameStorage {
             model.Description ??= string.Empty;
             model.CharacterName ??= string.Empty;
 
-            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? model.Convert(metadata) : null;
+            return game.TryGetItemMetadata(model.ItemId, out ItemMetadata? metadata) ? model.Convert(metadata) : null;
         }
 
         public bool CreateSoldMeretMarketItem(PremiumMarketItem item, long characterId) {

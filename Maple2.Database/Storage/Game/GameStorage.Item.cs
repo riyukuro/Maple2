@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Extensions;
+﻿using System.Diagnostics.CodeAnalysis;
+using Maple2.Database.Extensions;
 using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -11,6 +12,14 @@ using UgcItemLook = Maple2.Model.Game.UgcItemLook;
 namespace Maple2.Database.Storage;
 
 public partial class GameStorage {
+    // The item data an item row of the game DB is loaded with. None when the id has no item data, or when the
+    // played client lacks the item (PlayedClientItems.CanCreate): the client crashes on the packet of such an
+    // item, so it is left out of the inventory, storage, mail, market and buyback lists the way an item without
+    // data is. Its row stays as it is, and the item is back once the data has it again.
+    private bool TryGetItemMetadata(int itemId, [NotNullWhen(true)] out ItemMetadata? metadata) {
+        return itemMetadata.TryGet(itemId, out metadata) && PlayedClientItems.CanCreate(metadata);
+    }
+
     public partial class Request {
         public Item? CreateItem(long ownerId, Item item) {
             Model.Item model = item;
@@ -66,7 +75,7 @@ public partial class GameStorage {
                 return null;
             }
 
-            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? game.RepairEnchant(model.Convert(metadata)) : null;
+            return game.TryGetItemMetadata(model.ItemId, out ItemMetadata? metadata) ? game.RepairEnchant(model.Convert(metadata)) : null;
         }
 
         public UgcItemLook? GetTemplate(long itemUid) {
@@ -223,7 +232,7 @@ public partial class GameStorage {
                 return null;
             }
 
-            return game.itemMetadata.TryGet(model.ItemId, out ItemMetadata? metadata) ? game.RepairEnchant(model.Convert(metadata)) : null;
+            return game.TryGetItemMetadata(model.ItemId, out ItemMetadata? metadata) ? game.RepairEnchant(model.Convert(metadata)) : null;
         }
     }
 }
