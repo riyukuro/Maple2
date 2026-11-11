@@ -944,9 +944,17 @@ public sealed partial class GameSession : Core.Network.Session {
         const int backoffMs = 500;
 
         while (retryCount < maxRetries) {
-            LockResponse? response = World.AcquireLock(new LockRequest {
-                AccountId = accountId,
-            });
+            LockResponse? response;
+            try {
+                response = World.AcquireLock(new LockRequest {
+                    AccountId = accountId,
+                });
+            } catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable) {
+                // A world that is down (stopped before this server) holds no locks and grants none. The save goes on
+                // without the lock, as after the retries below; a throw here would skip the save.
+                Logger.Warning("World unavailable; lock for account {AccountId} not taken", accountId);
+                return;
+            }
 
             if (string.IsNullOrEmpty(response.Error)) {
                 return;
@@ -1099,6 +1107,9 @@ public sealed partial class GameSession : Core.Network.Session {
                     },
                     RequesterId = CharacterId,
                 });
+            } catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable) {
+                // The world keeps the buffs and cooldowns in memory: a world that is down has none left to keep them in.
+                Logger.Warning("World unavailable; buffs of {Player} not kept", PlayerName);
             } catch (Exception ex) { Logger.Error(ex, "Error saving buffs for {Player}", PlayerName); }
         }
     }

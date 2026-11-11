@@ -61,9 +61,17 @@ public class LoginSession : Core.Network.Session {
         const int backoffMs = 500;
 
         while (retryCount < maxRetries) {
-            LockResponse? response = World.AcquireLock(new LockRequest {
-                AccountId = accountId,
-            });
+            LockResponse? response;
+            try {
+                response = World.AcquireLock(new LockRequest {
+                    AccountId = accountId,
+                });
+            } catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable) {
+                // A world that is down (stopped before this server) holds no locks and grants none. The save goes on
+                // without the lock, as after the retries below; a throw here would skip the save.
+                Logger.Warning("World unavailable; lock for account {AccountId} not taken", accountId);
+                return;
+            }
 
             if (string.IsNullOrEmpty(response.Error)) {
                 return;
