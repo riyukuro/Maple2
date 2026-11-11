@@ -44,12 +44,13 @@ public static class ChatStickerPacket {
         return pWriter;
     }
 
-    public static ByteWriter Use(int stickerId, string html) {
+    // CChatEmoticonCli::OnEmoticonTypedInMessenger: sticker id, messenger window name, chat type.
+    public static ByteWriter Use(int stickerId, string windowName, byte chatType) {
         var pWriter = Packet.Of(SendOp.ChatStamp);
         pWriter.Write<Command>(Command.Use);
         pWriter.WriteInt(stickerId);
-        pWriter.WriteUnicodeString(html);
-        pWriter.WriteByte(); // unk
+        pWriter.WriteUnicodeString(windowName);
+        pWriter.WriteByte(chatType);
 
         return pWriter;
     }

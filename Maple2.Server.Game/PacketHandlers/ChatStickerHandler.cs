@@ -56,13 +56,16 @@ public class ChatStickerHandler : FieldPacketHandler {
 
     private void HandleUse(GameSession session, IByteReader packet) {
         int stickerId = packet.ReadInt();
-        string html = packet.ReadUnicodeString();
+        string windowName = packet.ReadUnicodeString();
+        // The chat type selected in the messenger window (UIMessenger::SendEmoticon); the reply hands it back
+        // and the client posts the sticker to that chat (UIMessenger::TypeEmoticon -> SelectSubject).
+        byte chatType = packet.ReadByte();
 
         if (!TryUseSticker(session.Player.Value.Unlock, stickerId)) {
             return;
         }
 
-        session.Send(ChatStickerPacket.Use(stickerId, html));
+        session.Send(ChatStickerPacket.Use(stickerId, windowName, chatType));
     }
 
     private void HandleGroupChat(GameSession session, IByteReader packet) {
