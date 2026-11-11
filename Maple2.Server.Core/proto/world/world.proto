@@ -430,6 +430,11 @@ message ClubRequest {
     string name = 2;
   }
 
+  message ChangeLeader {
+    int64 club_id = 1;
+    string name = 2;
+  }
+
   int64 requestor_id = 1;
   oneof club {
     Create create = 2;
@@ -438,6 +443,7 @@ message ClubRequest {
     Invite invite = 5;
     RespondInvite respond_invite = 6;
     Rename rename = 7;
+    ChangeLeader change_leader = 8;
   }
 }
 

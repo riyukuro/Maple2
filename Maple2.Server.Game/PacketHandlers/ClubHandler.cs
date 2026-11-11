@@ -26,7 +26,7 @@ public class ClubHandler : FieldPacketHandler {
         Invite = 6,
         RespondInvite = 8,
         Leave = 10,
-        Unknown12 = 12,
+        ChangeLeader = 12,
         Buff = 13,
         Rename = 14,
     }
@@ -64,9 +64,8 @@ public class ClubHandler : FieldPacketHandler {
             case Command.Rename:
                 HandleRename(session, packet);
                 break;
-            case Command.Unknown12:
-                // Not handled: club id and a member's name; the client only sends it for the club leader.
-                Logger.Debug("Club {Command} from {CharacterId}: club {ClubId}, {Name}", command, session.CharacterId, packet.ReadLong(), packet.ReadUnicodeString());
+            case Command.ChangeLeader:
+                HandleChangeLeader(session, packet);
                 break;
         }
     }
@@ -240,6 +239,32 @@ public class ClubHandler : FieldPacketHandler {
         long clubId = packet.ReadLong();
         int buffId = packet.ReadInt();
         int buffLevel = packet.ReadInt();
+    }
+
+    // The leader hands the club to the member picked in the member list (client CClubCli::SendClubMode12).
+    private void HandleChangeLeader(GameSession session, IByteReader packet) {
+        long clubId = packet.ReadLong();
+        string name = packet.ReadUnicodeString();
+
+        if (!session.Clubs.ContainsKey(clubId)) {
+            return;
+        }
+        if (name.Length == 0 || name.Length > Maple2.Model.Metadata.Constant.CharacterNameLengthMax) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_null_member));
+            return;
+        }
+
+        ClubResponse response = World.Club(new ClubRequest {
+            RequestorId = session.CharacterId,
+            ChangeLeader = new ClubRequest.Types.ChangeLeader {
+                ClubId = clubId,
+                Name = name,
+            },
+        });
+
+        if (response.Error != 0) {
+            session.Send(ClubPacket.Error((ClubError) response.Error));
+        }
     }
 
     private void HandleRename(GameSession session, IByteReader packet) {

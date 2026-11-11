@@ -32,6 +32,8 @@ public partial class WorldService {
                 return Task.FromResult(LeaveClub(request.RequestorId, request.Leave));
             case ClubRequest.ClubOneofCase.Rename:
                 return Task.FromResult(Rename(request.RequestorId, request.Rename));
+            case ClubRequest.ClubOneofCase.ChangeLeader:
+                return Task.FromResult(ChangeLeader(request.RequestorId, request.ChangeLeader));
             default:
                 return Task.FromResult(new ClubResponse { Error = (int) ClubError.s_club_err_unknown });
         }
@@ -213,6 +215,23 @@ public partial class WorldService {
         }
 
         ClubError error = manager.Rename(rename.Name);
+        if (error != ClubError.none) {
+            return new ClubResponse {
+                Error = (int) error,
+            };
+        }
+
+        return new ClubResponse();
+    }
+
+    private ClubResponse ChangeLeader(long requesterId, ClubRequest.Types.ChangeLeader change) {
+        if (!clubLookup.TryGet(change.ClubId, out ClubManager? manager)) {
+            return new ClubResponse {
+                Error = (int) ClubError.s_club_err_null_club,
+            };
+        }
+
+        ClubError error = manager.ChangeLeader(requesterId, change.Name);
         if (error != ClubError.none) {
             return new ClubResponse {
                 Error = (int) error,

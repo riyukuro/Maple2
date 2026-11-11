@@ -212,6 +212,30 @@ public class ClubManager : IDisposable {
         });
     }
 
+    public ClubError ChangeLeader(long requesterId, string name) {
+        ClubError error = ClubLeaderRule.Pick(Club.LeaderId, requesterId,
+            Club.Members.Values.Select(member => (member.CharacterId, member.Name)), name, out long newLeaderId);
+        if (error != ClubError.none) {
+            return error;
+        }
+        if (!Club.Members.TryGetValue(newLeaderId, out ClubMember? newLeader)) {
+            return ClubError.s_club_err_null_member;
+        }
+
+        Club.Leader = newLeader;
+        Club.LeaderId = newLeader.CharacterId;
+        using (GameStorage.Request db = GameStorage.Context()) {
+            db.SaveClub(Club);
+        }
+        Broadcast(new ClubRequest {
+            UpdateLeader = new ClubRequest.Types.UpdateLeader {
+                CharacterId = newLeader.CharacterId,
+            },
+            ClubId = Club.Id,
+        });
+        return ClubError.none;
+    }
+
     public ClubError Rename(string newName) {
         if (string.Equals(Club.Name, newName, StringComparison.CurrentCultureIgnoreCase)) {
             return ClubError.s_club_err_same_club_name;
