@@ -48,7 +48,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
   - The ride start request carries a byte after the object id, and the response echoes it.
 - **Mentor:** the server no longer sends an initial packet that the client has no reader for, and its writer is removed.
 - **Party:** cancel party search reads one byte; the dungeon match confirm (sub-type 31) has no body; the survival squad register is sub-type 55.
-- **Room dungeon:** the dungeon result is sub-type 10; the stage packets write the int, byte and bool the client reads (create) and nothing after the sub-type (clear).
+- **Room dungeon:** the dungeon result is sub-type 10; the stage packets write the int, byte and bool the client reads (create) and nothing after the sub-type (clear). A room is refused for a party larger than the dungeon's user maximum: a rule of this server, the client's dialog does not test it.
 - **Party search:** Remove sends sub-type 1, and the error's request type is one byte.
 - **Ugc:** the confirmation request reads the client's two strings.
 - **Change attributes:** the ForceFill sub-type is 8 and the debug remake sub-type is 7.
