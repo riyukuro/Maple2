@@ -77,6 +77,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Shop:** a shop item writes the extra flag the client reads.
 - **Character list:** the name change result writes only what the client reads.
 - **User environment:** the gathering counts have no trailing int.
+- **Mail expiry:** the client lists a mail only before its expiry time (CMailInfo::IsExpired), so a mail stored without one (system, wedding, event, market mails) gets the `MailExpiryDays` constant (30 days in the server and client tables) when it is created.
 - **Mail, global portal, premium club:** results the client reads no fields of (mail sent, portal closed, premium club sub-types 3 and 4) write only the sub-type.
 - **Chat stickers:** adding a sticker group writes a group count of 1, not the item stack size.
 - **Strings:** server message codes are mapped to the client's string ids by name.

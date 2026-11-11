@@ -39,7 +39,7 @@ public class Mail : IByteSerializable {
         TitleArgs = new List<(string Key, string Value)>();
         ContentArgs = new List<(string Key, string Value)>();
         Items = new List<Item>();
-        // ExpiryTime will be overwritten, no need to set it here with a parameter passing server constant value.
+        // GameStorage.CreateMail gives a mail without an expiry the MailExpiryDays constant.
     }
 
     public Mail(int mailExpiryDays) {
@@ -47,6 +47,14 @@ public class Mail : IByteSerializable {
         ContentArgs = new List<(string Key, string Value)>();
         Items = new List<Item>();
         ExpiryTime = DateTimeOffset.UtcNow.AddDays(mailExpiryDays).ToUnixTimeSeconds();
+    }
+
+    // CMailInfo::IsExpired hides a mail once the server time reaches its expiry (UIMailListDialog::RefreshMailList),
+    // so a mail stored without one would be counted in the badge but never listed.
+    public void SetDefaultExpiry(int mailExpiryDays, long now) {
+        if (ExpiryTime <= 0 && mailExpiryDays > 0) {
+            ExpiryTime = now + mailExpiryDays * 86400L;
+        }
     }
 
     public void Update(Mail other) {

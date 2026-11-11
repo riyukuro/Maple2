@@ -81,6 +81,7 @@ public partial class GameStorage {
         }
 
         public Mail? CreateMail(Mail mail) {
+            mail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             Model.Mail model = mail;
             model.Id = 0;
             if (mail.Items.Count == 0) {
