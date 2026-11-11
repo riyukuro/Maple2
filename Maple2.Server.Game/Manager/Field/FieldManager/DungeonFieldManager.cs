@@ -27,6 +27,29 @@ public class DungeonFieldManager : FieldManager {
         PartyId = partyId;
     }
 
+    /// <summary>
+    /// The room timer of a dungeon room (DungeonRoom timerType, durationTick): none for timerType none or no duration.
+    /// </summary>
+    public static RoomTimerType? RoomTimerTypeOf(DungeonTimerType timerType, int durationTick) {
+        if (durationTick <= 0) {
+            return null;
+        }
+        return timerType switch {
+            DungeonTimerType.clock => RoomTimerType.Clock,
+            DungeonTimerType.gauge => RoomTimerType.Gauge,
+            _ => null,
+        };
+    }
+
+    // isExpireTimeOut: the room is closed when its time runs out. Without it the time running out
+    // is only the dungeon_timeout condition, and the room's script decides what follows.
+    public void StartRoomTimer() {
+        if (RoomTimerTypeOf(DungeonMetadata.TimerType, DungeonMetadata.DurationTick) is not RoomTimerType type) {
+            return;
+        }
+        SetRoomTimer(type, DungeonMetadata.DurationTick, DungeonMetadata.IsExpireTimeOut);
+    }
+
     public void ChangeState(DungeonState state) {
         DungeonRoomRecord.State = state;
         DungeonRoomRecord.EndTick = FieldTick;

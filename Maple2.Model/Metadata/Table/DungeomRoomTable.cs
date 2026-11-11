@@ -25,7 +25,9 @@ public record DungeonRoomMetadata(
     bool LeaveAfterCloseReward,
     int[] PartyMissions,
     int[] UserMissions,
-    bool MoveToBackupField
+    bool MoveToBackupField,
+    DungeonTimerType TimerType,
+    bool IsExpireTimeOut
 );
 
 public record DungeonRoomRewardMetadata(

@@ -810,7 +810,11 @@ public partial class FieldManager {
     }
 
     public void SetRoomTimer(RoomTimerType type, int duration) {
-        RoomTimer = new RoomTimer(this, type, duration);
+        SetRoomTimer(type, duration, expiresRoom: true);
+    }
+
+    public void SetRoomTimer(RoomTimerType type, int duration, bool expiresRoom) {
+        RoomTimer = new RoomTimer(this, type, duration, expiresRoom);
     }
 
     public void AddHongBao(FieldPlayer owner, int sourceItemId, int itemId, int totalUser, int durationSec, int itemCount) {
@@ -1105,6 +1109,11 @@ public partial class FieldManager {
     #region Events
     public void OnAddPlayer(FieldPlayer added) {
         Players[added.ObjectId] = added;
+        // A dungeon room's timer starts with its first player; later players get the running one.
+        if (RoomTimer == null && this is DungeonFieldManager dungeonField) {
+            dungeonField.StartRoomTimer();
+        }
+        RoomTimer?.Load(added);
         // LOAD:
         foreach (FieldLiftable liftable in fieldLiftables.Values.Where(liftable => liftable.FinishTick > 0)) {
             added.Session.Send(LiftablePacket.Add(liftable));

@@ -261,7 +261,9 @@ public partial class FieldManager {
                         }
 
                         Model.RoomTimer? roomTimer = field.RoomTimer;
-                        if (roomTimer is null) {
+                        // A timer that does not close the room (a dungeon without isExpireTimeOut, or a stopped
+                        // time) leaves the room to the empty-field rule.
+                        if (roomTimer is null || !roomTimer.ExpiresRoom || roomTimer.Clock.Stopped) {
                             if (field.fieldEmptySince is null) {
                                 logger.Verbose("Field {MapId} {RoomId} is empty, starting timer", field.MapId, field.RoomId);
                                 field.fieldEmptySince = DateTime.UtcNow;

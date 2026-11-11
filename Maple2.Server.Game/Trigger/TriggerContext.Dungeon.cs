@@ -32,8 +32,14 @@ public partial class TriggerContext {
         }
     }
 
+    // The room timer actions follow the shipped scripts' own comments on them: set_end_time ends the
+    // time function, close_timer closes the timer window, stop_timer stops the time (for the mission
+    // rank time), reset_time runs the timer again for the given seconds, set_lap_time places a mark on
+    // the gauge timer (milliseconds from the start), move_lap_time_to_now moves a mark to the present.
+    // Without a room timer they do nothing.
     public void DungeonCloseTimer() {
-        ErrorLog("[DungeonCloseTimer]");
+        DebugLog("[DungeonCloseTimer]");
+        Field.RoomTimer?.Close();
     }
 
     public void DungeonDisableRanking() {
@@ -75,23 +81,28 @@ public partial class TriggerContext {
     }
 
     public void DungeonMoveLapTimeToNow(int id) {
-        ErrorLog("[DungeonMoveLapTimeToNow] id:{Id}", id);
+        DebugLog("[DungeonMoveLapTimeToNow] id:{Id}", id);
+        Field.RoomTimer?.MoveLapToNow(id);
     }
 
     public void DungeonResetTime(int seconds) {
-        ErrorLog("[DungeonResetTime] seconds:{Seconds}", seconds);
+        DebugLog("[DungeonResetTime] seconds:{Seconds}", seconds);
+        Field.RoomTimer?.Restart(seconds * 1000);
     }
 
     public void DungeonSetEndTime() {
-        ErrorLog("[DungeonSetEndTime]");
+        DebugLog("[DungeonSetEndTime]");
+        Field.RoomTimer?.End();
     }
 
     public void DungeonSetLapTime(int id, int lapTime) {
-        ErrorLog("[DungeonSetLapTime] id:{Id}, lapTime:{LapTime}", id, lapTime);
+        DebugLog("[DungeonSetLapTime] id:{Id}, lapTime:{LapTime}", id, lapTime);
+        Field.RoomTimer?.SetLap(id, lapTime);
     }
 
     public void DungeonStopTimer() {
-        ErrorLog("[DungeonStopTimer]");
+        DebugLog("[DungeonStopTimer]");
+        Field.RoomTimer?.Stop();
     }
 
     public void RandomAdditionalEffect(
@@ -188,9 +199,10 @@ public partial class TriggerContext {
         return Field.Players.Values.Count >= dungeonField.Size;
     }
 
+    // The room's time ran out and was not ended. Without a room timer it stays false.
     public bool DungeonTimeout() {
-        ErrorLog("[DungeonTimeout]");
-        return false;
+        DebugLog("[DungeonTimeout]");
+        return Field.RoomTimer?.TimedOut(Field.FieldTick) ?? false;
     }
 
     public bool IsDungeonRoom(bool negate) {

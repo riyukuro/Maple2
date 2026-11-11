@@ -1872,7 +1872,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 LeaveAfterCloseReward: dungeon.isLeaveAfterCloseReward,
                 PartyMissions: dungeon.partyMissions,
                 UserMissions: dungeon.userMissions,
-                MoveToBackupField: dungeon.isMoveOutToBackupField
+                MoveToBackupField: dungeon.isMoveOutToBackupField,
+                TimerType: (Maple2.Model.Enum.DungeonTimerType) dungeon.timerType,
+                IsExpireTimeOut: dungeon.isExpireTimeOut
                 ));
         }
 
