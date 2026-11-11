@@ -18,7 +18,7 @@ public class KeyTableHandler : FieldPacketHandler {
         AddQuickSlot = 4,
         RemoveQuickSlot = 5,
         Unknown6 = 6,
-        Unknown7 = 7,
+        LeaveSkillSet = 7,
         SetActiveHotBar = 8,
     }
 
@@ -37,8 +37,11 @@ public class KeyTableHandler : FieldPacketHandler {
                 RemoveQuickSlot(session, packet);
                 return;
             case Command.Unknown6:
+                // The client has no writer for 6.
                 break;
-            case Command.Unknown7:
+            case Command.LeaveSkillSet:
+                // CKeyTable::SendKeyTableMode7, on leaving the skill set mode. The client sends its keys with
+                // SetKeyBind (2) just before, which is stored there, so nothing is left to do.
                 break;
             case Command.SetActiveHotBar:
                 SetActiveHotBar(session, packet);
