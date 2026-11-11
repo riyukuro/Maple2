@@ -67,6 +67,7 @@ public static class GuildPacket {
         UpdateFocus = 68,
         SendMail = 71,
         PvpHistory = 74,
+        PvpSeason = 75,
         AddTag = 77,
         RemoveTag = 78,
         Error = 79,
@@ -775,6 +776,16 @@ public static class GuildPacket {
     public static ByteWriter PvpHistory() {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.PvpHistory);
+        pWriter.WriteInt(0);
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketPvpSeasonHistory (guildmanager.cpp:2826): the same shape with season rows. The
+    // client empties its season list first, then redraws the tab.
+    public static ByteWriter PvpSeason() {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.PvpSeason);
         pWriter.WriteInt(0);
 
         return pWriter;

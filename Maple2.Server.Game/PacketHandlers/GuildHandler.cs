@@ -135,7 +135,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 HandlePvpHistory(session, packet);
                 return;
             case Command.PvpSeason:
-                Logger.Debug("Guild PvP season request from {CharacterId} not implemented", session.CharacterId);
+                HandlePvpSeason(session);
                 return;
             case Command.SendApplication:
                 HandleSendApplication(session, packet);
@@ -773,6 +773,16 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
 
         session.Send(GuildPacket.PvpHistory());
+    }
+
+    // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1152): no body; sent once per login, after
+    // the history request. Until the answer comes the client does not draw the season part of the tab.
+    private void HandlePvpSeason(GameSession session) {
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        session.Send(GuildPacket.PvpSeason());
     }
 
     // CGuildManager::SendGuildMode82: the guild to ask, sent only by a player without a guild. The reply makes
