@@ -123,9 +123,20 @@ public static class ItemSocketPacket {
         return pWriter;
     }
 
-    public static ByteWriter TransferSocket() {
+    // Client 2525 FUN_1406295b0 (itemsocketsystemutil.cpp:933), called by the socket transfer page for 13:
+    // long source uid, source socket block, long target uid, target socket block, bool, then the target's
+    // transfer block when the bool is set. The client stops reading when a uid is not the item it staged.
+    public static ByteWriter TransferSocket(Item source, Item target) {
         var pWriter = Packet.Of(SendOp.ItemSocketSystem);
         pWriter.Write<Command>(Command.TransferSocket);
+        pWriter.WriteLong(source.Uid);
+        pWriter.WriteClass<ItemSocket>(source.Socket ?? ItemSocket.Default);
+        pWriter.WriteLong(target.Uid);
+        pWriter.WriteClass<ItemSocket>(target.Socket ?? ItemSocket.Default);
+        pWriter.WriteBool(target.Transfer != null);
+        if (target.Transfer != null) {
+            pWriter.WriteClass<ItemTransfer>(target.Transfer);
+        }
 
         return pWriter;
     }
