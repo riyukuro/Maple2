@@ -85,6 +85,24 @@ public class ItemBoxManager {
         };
     }
 
+    // Adds an item that came out of the box. A drop row with isAnnounce is announced to the world with the box's
+    // name and a link to the inventory item that took it; an item that goes to the mail instead is not announced.
+    private bool AddFromBox(Item box, Item newItem) {
+        Item? target = null;
+        if (!session.Item.Inventory.Add(newItem, true, onAdded: added => target ??= added)) {
+            return false;
+        }
+        if (ShouldAnnounce(newItem, target)) {
+            ChatUtil.SendItemBoxAnnouncement(session, target!, box.Id);
+        }
+        return true;
+    }
+
+    // Currency, medals and furnishings do not become an inventory item (no target), so there is nothing to link.
+    public static bool ShouldAnnounce(Item newItem, Item? target) {
+        return newItem.AnnounceOnOpen && target is { Uid: > 0 };
+    }
+
     private ItemBoxError LogAndReturnError(string? type) {
         logger.Error("Invalid box type: {Type}", type);
         return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
@@ -139,7 +157,7 @@ public class ItemBoxManager {
 
             foreach (Item newItem in items) {
                 totalItems.Add(newItem);
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
             }
@@ -182,7 +200,7 @@ public class ItemBoxManager {
 
             foreach (Item newItem in items) {
                 totalItems.Add(newItem);
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
             }
@@ -232,7 +250,7 @@ public class ItemBoxManager {
         }
 
         foreach ((Item newItem, _) in results) {
-            if (!session.Item.Inventory.Add(newItem, true)) {
+            if (!AddFromBox(item, newItem)) {
                 session.Item.MailItem(newItem);
             }
         }
@@ -269,7 +287,7 @@ public class ItemBoxManager {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
             foreach (Item newItem in itemList) {
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                     error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 }
@@ -317,7 +335,7 @@ public class ItemBoxManager {
                 if (newItem == null) {
                     continue;
                 }
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                     error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 }
@@ -327,7 +345,7 @@ public class ItemBoxManager {
 
             itemList = itemList.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, individualDropBoxId));
             foreach (Item newItem in itemList) {
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                     error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 }
@@ -375,13 +393,13 @@ public class ItemBoxManager {
                 if (newItem == null) {
                     continue;
                 }
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
             }
 
             foreach (Item newItem in items) {
-                if (!session.Item.Inventory.Add(newItem, true)) {
+                if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
             }
@@ -416,7 +434,7 @@ public class ItemBoxManager {
             totalItems = totalItems.Concat(items).ToList();
             foreach (Item createdItem in items) {
                 createdItem.GachaDismantleId = gachaInfoId;
-                if (!session.Item.Inventory.Add(createdItem, true)) {
+                if (!AddFromBox(item, createdItem)) {
                     session.Item.MailItem(createdItem);
                 }
             }

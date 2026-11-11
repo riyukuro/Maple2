@@ -247,7 +247,9 @@ public class ItemDropManager {
                 createdItem.Enchant = ItemEnchantManager.GetEnchant(field.ServerTableMetadata.EnchantOptionTable, createdItem, selectedItem.EnchantLevel);
             }
 
-            // TODO: SockDataId, DisableBreak, Announce
+            createdItem.AnnounceOnOpen = selectedItem.Announce;
+
+            // TODO: SockDataId, DisableBreak
 
             yield return createdItem;
         }

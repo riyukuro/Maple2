@@ -28,6 +28,8 @@ public class Item : IByteSerializable, IByteDeserializable {
     public long UnlockTime;
     public short GlamorForges;
     public int GachaDismantleId;
+    // Not saved: the drop row (isAnnounce) asks for a world announcement when this item comes out of an item box.
+    public bool AnnounceOnOpen;
 
     public ItemAppearance? Appearance;
     public ItemStats? Stats;

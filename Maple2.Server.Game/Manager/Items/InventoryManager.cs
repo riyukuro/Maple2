@@ -153,7 +153,8 @@ public class InventoryManager {
         }
     }
 
-    public bool Add(Item add, bool notifyNew = false, bool commit = false) {
+    // onAdded: called with each inventory item that took part of the amount (a new row or a stack it merged into).
+    public bool Add(Item add, bool notifyNew = false, bool commit = false, Action<Item>? onAdded = null) {
         lock (session.Item) {
             if (session.Field is null) {
                 logger.Warning("Tried to add item while not in a field");
@@ -196,7 +197,7 @@ public class InventoryManager {
                     totalAmount -= toFill;
                     Item? itemToStack = session.Field.ItemDrop.CreateItem(add.Id, add.Rarity, toFill);
                     if (itemToStack is null) return false;
-                    if (!Add(itemToStack, notifyNew, commit)) {
+                    if (!Add(itemToStack, notifyNew, commit, onAdded)) {
                         logger.Error("Failed to add partial stack during multi-step stacking");
                         return false;
                     }
@@ -216,7 +217,7 @@ public class InventoryManager {
                     Item? stackItem = session.Field.ItemDrop.CreateItem(add.Id, add.Rarity);
                     if (stackItem is null) return false;
                     stackItem.Amount = slotMax;
-                    if (!Add(stackItem, notifyNew, commit)) return false;
+                    if (!Add(stackItem, notifyNew, commit, onAdded)) return false;
                 }
 
                 // 3. Add remainder stack
@@ -224,7 +225,7 @@ public class InventoryManager {
                     Item? remainderItem = session.Field.ItemDrop.CreateItem(add.Id, add.Rarity);
                     if (remainderItem is null) return false;
                     remainderItem.Amount = remainder;
-                    if (!Add(remainderItem, notifyNew, commit)) return false;
+                    if (!Add(remainderItem, notifyNew, commit, onAdded)) return false;
                 }
 
                 return true;
@@ -282,6 +283,7 @@ public class InventoryManager {
                 session.Send(item.Uid == add.Uid
                     ? ItemInventoryPacket.Add(add)
                     : ItemInventoryPacket.UpdateAmount(item.Uid, item.Amount));
+                onAdded?.Invoke(item);
 
                 if (notifyNew) {
                     session.Send(ItemInventoryPacket.NotifyNew(item.Uid, added));
