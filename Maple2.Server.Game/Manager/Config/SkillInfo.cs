@@ -193,7 +193,10 @@ public class SkillInfo : IByteSerializable {
     }
 
     public void WriteTo(IByteWriter writer) {
-        writer.WriteInt(1);
+        // JobSystem's rank, which decides which skills the client shows as learned (rank >= the skill's
+        // job level). The client computes it as JobTable::GetJobRank: the last digit of the job + 1,
+        // so 1 for a first job and 2 after the awakening.
+        writer.WriteInt((int) Job % 10 + 1);
         writer.WriteInt((int) Job.Code());
         int count = 0;
         for (int i = 0; i < SKILL_TYPES; i++) {
