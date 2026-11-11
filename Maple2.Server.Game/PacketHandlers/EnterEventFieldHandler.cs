@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -23,22 +24,24 @@ public class EnterEventFieldHandler : FieldPacketHandler {
     public override void Handle(GameSession session, IByteReader packet) {
         using GameStorage.Request db = GameStorage.Context();
         GameEvent? gameEvent = session.FindEvent(GameEventType.EventFieldPopup).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not EventFieldPopup fieldPopup) {
-            session.Send(ChatPacket.Alert(StringCode.s_err_timeevent_move_field));
-            return;
+        var fieldPopup = gameEvent?.Metadata.Data as EventFieldPopup;
+        switch (EnterEventFieldRules.Decide(session.Field != null, session.Player.IsDead, fieldPopup != null,
+                    session.Field != null && fieldPopup != null && session.Field.MapId == fieldPopup.MapId, session.Player.InBattle)) {
+            case EnterEventFieldRules.Result.NoField:
+                return;
+            case EnterEventFieldRules.Result.Dead:
+            case EnterEventFieldRules.Result.NoEvent:
+                session.Send(ChatPacket.Alert(StringCode.s_err_timeevent_move_field));
+                return;
+            case EnterEventFieldRules.Result.SameField:
+                session.Send(ChatPacket.Alert(StringCode.s_err_timeevent_samefield));
+                return;
+            case EnterEventFieldRules.Result.InBattle:
+                session.Send(ChatPacket.Alert(StringCode.s_err_timeevent_battle));
+                return;
         }
 
-        if (session.Player.Field.MapId == fieldPopup.MapId) {
-            session.Send(ChatPacket.Alert(StringCode.s_err_timeevent_samefield));
-            return;
-        }
-
-        if (session.Player.InBattle) {
-            session.Send(ChatPacket.Alert(StringCode.s_err_timeevent_battle));
-            return;
-        }
-
-        session.Send(session.PrepareField(fieldPopup.MapId)
+        session.Send(session.PrepareField(fieldPopup!.MapId)
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
