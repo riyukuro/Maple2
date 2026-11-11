@@ -111,7 +111,13 @@ public class ItemExchangeScroll : FieldPacketHandler {
         long scrollItemUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
 
-        Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
+        Item? scrollItem;
+        bool hasTarget;
+        // Both lookups under the item lock, as every other inventory read of this handler.
+        lock (session.Item) {
+            scrollItem = session.Item.Inventory.Get(scrollItemUid);
+            hasTarget = session.Item.Inventory.Get(itemUid) != null;
+        }
         if (scrollItem == null) {
             session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
             return;
@@ -120,7 +126,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
             return;
         }
-        if (session.Item.Inventory.Get(itemUid) == null) {
+        if (!hasTarget) {
             return; // the client looks the target up in its inventory and drops the reply without it
         }
 

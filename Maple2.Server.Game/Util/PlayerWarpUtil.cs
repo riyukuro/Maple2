@@ -18,7 +18,7 @@ public static class PlayerWarpUtil {
 
     /// <summary>
     /// Moves the player to where the target player stands: same room, another room on this channel, or another channel.
-    /// Returns false when the target's position could not be found.
+    /// Returns false when the target's position could not be found or the field could not be prepared.
     /// </summary>
     public static bool GoToPlayer(GameSession session, PlayerInfo playerInfo) {
         if (session.Field is null) return false;
@@ -42,9 +42,11 @@ public static class PlayerWarpUtil {
         }
 
         if (playerInfo.Channel == session.Player.Value.Character.Channel) {
-            session.Send(session.PrepareField(playerInfo.MapId, roomId: warpResponse.RoomId, position: position)
-                ? FieldEnterPacket.Request(session.Player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            if (!session.PrepareField(playerInfo.MapId, roomId: warpResponse.RoomId, position: position)) {
+                session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                return false;
+            }
+            session.Send(FieldEnterPacket.Request(session.Player));
             return true;
         }
 

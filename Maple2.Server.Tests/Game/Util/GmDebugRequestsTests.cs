@@ -1,4 +1,7 @@
 using System;
+using System.Runtime.CompilerServices;
+using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Session;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Util;
 
@@ -60,6 +63,25 @@ public class GmDebugRequestsTests {
         Assert.That(removed.EffectId, Is.EqualTo(10511973));
         Assert.That(add.Available, Is.EqualTo(0));
         Assert.That(remove.Available, Is.EqualTo(0));
+    }
+
+    // A sender that is not a GM (here: a session without a player) is dropped before the mode byte is read.
+    [Test]
+    public void SetDebugMode_FromANonGmReadsNothing() {
+        var session = (GameSession) RuntimeHelpers.GetUninitializedObject(typeof(GameSession));
+        GC.SuppressFinalize(session); // never constructed, so its finalizer has nothing to release
+        ByteReader reader = Reader("04 2A 00 00 00 01 32 00 00 00 00 00 00 00");
+
+        new SetDebugModeHandler().Handle(session, reader);
+
+        Assert.That(reader.Available, Is.EqualTo(14));
+    }
+
+    [Test]
+    public void RecallUser_DeadOrInADungeonIsNotMoved() {
+        Assert.That(UserRecallUtil.CanBeMoved(false, false), Is.True);
+        Assert.That(UserRecallUtil.CanBeMoved(true, false), Is.False);
+        Assert.That(UserRecallUtil.CanBeMoved(false, true), Is.False);
     }
 
     [Test]

@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
@@ -51,8 +52,9 @@ public class RecallUserHandler : FieldPacketHandler {
             return;
         }
 
-        // The caller must still be on the map the invite was sent from.
-        if (!session.PlayerInfo.GetOrFetch(recall!.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
+        // The caller must still be on the map the invite was sent from, and the player in a state to leave.
+        if (!UserRecallUtil.CanBeMoved(session.Player.IsDead, session.Field is DungeonFieldManager)
+            || !session.PlayerInfo.GetOrFetch(recall!.CallerId, out PlayerInfo? callerInfo) || !callerInfo.Online || callerInfo.MapId != recall.MapId
             || !PlayerWarpUtil.GoToPlayer(session, callerInfo)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
             UserRecallUtil.TellCaller(session, name, recall.CallerId, false, RecallUserPacket.FAIL_CANNOT_MOVE);

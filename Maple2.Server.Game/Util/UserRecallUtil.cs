@@ -7,16 +7,27 @@ namespace Maple2.Server.Game.Util;
 
 // The recall invite (RecallUser 0x8C) on one channel and across channels.
 public static class UserRecallUtil {
+    private static readonly object InviteLock = new();
+
+    // Whether a player who accepted may be moved now: not while dead and not out of a dungeon room.
+    public static bool CanBeMoved(bool dead, bool inDungeon) {
+        return !dead && !inDungeon;
+    }
+
     // Shows the invite to `target` (a session of this channel). Returns 0, or the failure value for the caller.
     public static int Invite(GameSession target, long callerId, string callerName, int mapId) {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (!PendingUserRecall.CanInvite(target.UserRecall, now)) {
-            // The client would answer a second invite with "busy" (c2s 7, byte 4) and show no box.
-            return RecallUserPacket.FAIL_BUSY;
-        }
+        PendingUserRecall recall;
+        // Two callers at once: the test and the set are one step, so only one invite goes out.
+        lock (InviteLock) {
+            if (!PendingUserRecall.CanInvite(target.UserRecall, now)) {
+                // The client would answer a second invite with "busy" (c2s 7, byte 4) and show no box.
+                return RecallUserPacket.FAIL_BUSY;
+            }
 
-        var recall = new PendingUserRecall(PendingUserRecall.NextInviteId(), callerId, callerName, mapId, now + PendingUserRecall.VALID_SECONDS);
-        target.UserRecall = recall;
+            recall = new PendingUserRecall(PendingUserRecall.NextInviteId(), callerId, callerName, mapId, now + PendingUserRecall.VALID_SECONDS);
+            target.UserRecall = recall;
+        }
         target.Send(RecallUserPacket.Invite(recall.CallerName, recall.InviteId));
         return 0;
     }
