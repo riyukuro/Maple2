@@ -4,5 +4,6 @@ public enum WidgetType : byte {
     None = 0,
     Guide = 1,
     SceneMovie = 5,
-    Round = 12,
+    // UITypingGameDialog Success/FailGameProgress: int 1 or 0.
+    TypingGame = 12,
 }

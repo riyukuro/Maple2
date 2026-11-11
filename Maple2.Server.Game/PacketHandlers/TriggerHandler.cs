@@ -75,17 +75,9 @@ public class TriggerHandler : FieldPacketHandler {
                     session.Send(TriggerPacket.UiSkipMovie(arg));
                 }
                 break;
-            case WidgetType.Round:
-                // TODO: This is all a guess
-                if (session.Field.Widgets.TryGetValue(widgetType.ToString(), out Widget? roundWidget)) {
-                    switch (arg) {
-                        case 0: // 0 = FailGameProgress
-                            roundWidget.Conditions["GameFail"] = 0;
-                            break;
-                        case 1: // 1 = SuccessGameProgress
-                            roundWidget.Conditions["GameClear"] = 0;
-                            break;
-                    }
+            case WidgetType.TypingGame:
+                if (session.Field.Widgets.TryGetValue(widgetType.ToString(), out Widget? typingWidget) && typingWidget is TypingGameWidget typingGame) {
+                    typingGame.State.Reply(arg);
                 }
                 break;
             default:

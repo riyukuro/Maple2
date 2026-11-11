@@ -17,6 +17,8 @@ public partial class TriggerContext {
             "SceneMovie" => new SceneMovieWidget(Field),
             "Guide" => new GuideWidget(Field),
             "SurvivalContents" => new SurvivalContentsWidget(Field),
+            "TypingGame" => new TypingGameWidget(Field),
+            "Round" => new RoundWidget(Field),
             _ => new Widget(Field),
         };
         Field.Widgets[type] = widget;
