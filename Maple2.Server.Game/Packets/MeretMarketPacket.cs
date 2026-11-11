@@ -210,6 +210,12 @@ public static class MeretMarketPacket {
         pWriter.WriteInt();
         pWriter.WriteInt();
         pWriter.WriteInt(); // error code?
+        // The client reads four more ints after the echoed request: the buyer's buy count,
+        // the sold count, and two counts of a design item. The fork tracks none of them.
+        pWriter.WriteInt();
+        pWriter.WriteInt();
+        pWriter.WriteInt();
+        pWriter.WriteInt();
         return pWriter;
     }
 
