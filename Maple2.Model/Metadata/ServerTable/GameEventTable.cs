@@ -140,6 +140,13 @@ public record Reactor(
     int DailyCount) : GameEventData;
 
 /// <summary>
+/// Marks fields on the world map. Xml is the event's value1 as the client parses it:
+/// &lt;ms&gt;&lt;v fieldID iconFrame eventStr offsetX offsetY scale /&gt;...&lt;/ms&gt;.
+/// </summary>
+public record WorldmapIcon(
+    string Xml) : GameEventData;
+
+/// <summary>
 /// Enables quests with eventTag to be enabled/active.
 /// </summary>
 public record QuestTag(
@@ -292,6 +299,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(FieldEffect), "FieldEffect")]
 [JsonDerivedType(typeof(QuestTag), "QuestTag")]
 [JsonDerivedType(typeof(Reactor), "Reactor")]
+[JsonDerivedType(typeof(WorldmapIcon), "WorldmapIcon")]
 [JsonDerivedType(typeof(DTReward), "DTReward")]
 [JsonDerivedType(typeof(ConstructShowItem), "ConstructShowItem")]
 [JsonDerivedType(typeof(MassiveConstructionEvent), "MassiveConstructionEvent")]

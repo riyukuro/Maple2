@@ -1239,6 +1239,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new FieldEffect(
                     MapIds: value1.Split(',').Select(int.Parse).ToArray(),
                     Effect: value2);
+            case GameEventType.WorldmapIcon:
+                // value1 is sent as it is; GameEventWorldmapIconCli::OnStart parses it.
+                return string.IsNullOrWhiteSpace(value1) ? null : new WorldmapIcon(Xml: value1);
             case GameEventType.reactor:
                 // value1: field ids, value2: the placement count limit (GameEventReactor::ReadReactorData).
                 return new Reactor(

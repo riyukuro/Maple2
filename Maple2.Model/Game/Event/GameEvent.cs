@@ -165,6 +165,10 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(mapId);
                 }
                 break;
+            case WorldmapIcon worldmapIcon:
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(worldmapIcon.Xml);
+                break;
             case QuestTag questTag:
                 writer.WriteInt(Id);
                 writer.WriteUnicodeString(questTag.Tag);
