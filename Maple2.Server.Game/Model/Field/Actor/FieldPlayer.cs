@@ -447,9 +447,13 @@ public class FieldPlayer : Actor<Player> {
         // Move to spawn point if not instant revival
         if (!instant) {
             if (Field.TryGetPlayerSpawn(-1, out FieldPlayerSpawnPoint? point)) {
-                // Same placement as entering the field at a spawn point; MoveToPosition drops the move
-                // without a word when the point itself is not on the navigation mesh.
-                Session.Send(PortalPacket.MoveByPortal(this, point.Position + new Vector3(0, 0, 25), point.Rotation));
+                // Same placement as entering the field at a spawn point: 25 above it, and the packet
+                // writer adds those 25. MoveToPosition drops the move without a word when the point
+                // itself is not on the navigation mesh. The stored position follows what was sent, so
+                // the server does not keep the player at the death spot until the next client sync.
+                Session.Send(PortalPacket.MoveByPortal(this, point.Position, point.Rotation));
+                Position = point.Position + new Vector3(0, 0, 25);
+                Rotation = point.Rotation;
             } else {
                 Logger.Debug("Revive of {CharacterId} in map {MapId}: no enabled player spawn point, not moved", Value.Character.Id, Field.MapId);
             }
