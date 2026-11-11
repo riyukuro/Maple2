@@ -31,7 +31,7 @@ public class HeartbeatRulesTests {
         var tracker = new MigrationTracker(Lifetime);
         int recorded = 1;
 
-        tracker.Begin(7, recorded, Start);
+        tracker.Begin(7, recorded, 2, Start);
         DateTime miss = Start.AddSeconds(1);
         Assert.That(HeartbeatRules.MarksOffline(1, recorded, tracker.IsLeaving(7, 1, miss)), Is.False);
 
@@ -47,7 +47,7 @@ public class HeartbeatRulesTests {
     [Test]
     public void ChannelChange_ThatNeverArrives_CountsAfterTheTokenLifetime() {
         var tracker = new MigrationTracker(Lifetime);
-        tracker.Begin(7, 1, Start);
+        tracker.Begin(7, 1, 2, Start);
 
         Assert.That(tracker.IsLeaving(7, 1, Start + Lifetime - TimeSpan.FromMilliseconds(1)), Is.True);
         Assert.That(tracker.IsLeaving(7, 1, Start + Lifetime), Is.False);
@@ -57,12 +57,38 @@ public class HeartbeatRulesTests {
     [Test]
     public void Tracker_KnowsOnlyWhoLeft() {
         var tracker = new MigrationTracker(Lifetime);
-        tracker.Begin(7, 1, Start);
-        tracker.Begin(0, 1, Start); // a login without a character
+        tracker.Begin(7, 1, 2, Start);
+        tracker.Begin(0, 1, 2, Start); // a login without a character
 
         Assert.That(tracker.IsLeaving(8, 1, Start), Is.False);
         Assert.That(tracker.IsLeaving(0, 1, Start), Is.False);
         Assert.That(tracker.IsLeaving(7, 2, Start), Is.False);
         Assert.That(tracker.IsLeaving(7, 1, Start.AddSeconds(-1)), Is.False);
+    }
+
+    // The call MigrateOut makes: the channel on record and the channel of the token. A move that stays on the
+    // channel is not a channel change, and a miss there counts at once.
+    [Test]
+    public void Begin_SkipsAMoveInsideOneChannel() {
+        var tracker = new MigrationTracker(Lifetime);
+        tracker.Begin(7, 1, 1, Start);
+
+        Assert.That(tracker.Count, Is.EqualTo(0));
+        Assert.That(HeartbeatRules.MarksOffline(1, 1, tracker.IsLeaving(7, 1, Start)), Is.True);
+    }
+
+    // The entry leaves when the record's channel is written (arrival or logout), not only on a later miss.
+    [Test]
+    public void End_RemovesTheEntry() {
+        var tracker = new MigrationTracker(Lifetime);
+        tracker.Begin(7, 1, 2, Start);
+        tracker.Begin(8, 1, 2, Start);
+        Assert.That(tracker.Count, Is.EqualTo(2));
+
+        tracker.End(7);
+        tracker.End(9); // unknown: nothing happens
+        Assert.That(tracker.Count, Is.EqualTo(1));
+        Assert.That(tracker.IsLeaving(7, 1, Start), Is.False);
+        Assert.That(tracker.IsLeaving(8, 1, Start), Is.True);
     }
 }

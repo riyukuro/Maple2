@@ -9,6 +9,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Channel.Service;
 using Maple2.Server.Core.Helpers;
 using Maple2.Server.World.Containers;
+using Maple2.Server.Core.Sync;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
 using Serilog;
@@ -83,7 +84,14 @@ public class WorldServer {
                 foreach (PlayerInfo playerInfo in playerInfoLookup.GetOnlinePlayerInfos()) {
                     if (playerInfo.CharacterId == 0) {
                         logger.Information("Player {CharacterId} is online without a character id, setting to offline", playerInfo.CharacterId);
-                        playerInfo.Channel = -1;
+                        // No character id to tell the channels about: only the record changes, under its lock
+                        // and only while it still names the channel it was read with.
+                        playerInfo.ApplyIfOn(playerInfo.Channel, new PlayerUpdateRequest {
+                            AccountId = playerInfo.AccountId,
+                            CharacterId = playerInfo.CharacterId,
+                            LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+                            Channel = -1,
+                        });
                         continue;
                     }
                     int askedChannel = playerInfo.Channel;
@@ -139,23 +147,17 @@ public class WorldServer {
             Migrations.IsLeaving(playerInfo.CharacterId, askedChannel, DateTime.UtcNow));
     }
 
-    private void SetOfflineIfOn(PlayerInfo playerInfo, int channel) {
-        playerInfoLookup.UpdateIfOn(channel, new PlayerUpdateRequest {
-            AccountId = playerInfo.AccountId,
-            CharacterId = playerInfo.CharacterId,
-            LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
-            Channel = -1,
-        });
-    }
-
-    public void SetOffline(PlayerInfo playerInfo, bool async = true) {
-        playerInfoLookup.Update(new PlayerUpdateRequest {
-            AccountId = playerInfo.AccountId,
-            CharacterId = playerInfo.CharacterId,
-            LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
-            Channel = -1,
-            Async = async,
-        });
+    // Sets the record offline at once, and only while it still names `channel`: a login on another channel in
+    // the meantime is kept.
+    public void SetOfflineIfOn(PlayerInfo playerInfo, int channel) {
+        if (playerInfoLookup.UpdateIfOn(channel, new PlayerUpdateRequest {
+                AccountId = playerInfo.AccountId,
+                CharacterId = playerInfo.CharacterId,
+                LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+                Channel = -1,
+            })) {
+            Migrations.End(playerInfo.CharacterId);
+        }
     }
 
     private void Loop() {

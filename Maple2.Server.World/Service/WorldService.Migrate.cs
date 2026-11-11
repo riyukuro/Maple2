@@ -52,9 +52,9 @@ public partial class WorldService {
                 }
 
                 // A player who is online leaves the channel of the record: the heartbeat of that channel
-                // must not mark them offline while the token is valid.
+                // must not mark them offline while the token is valid. A move inside the channel is not noted.
                 if (playerLookup.TryGet(request.CharacterId, out Maple2.Model.Game.PlayerInfo? leaving) && leaving.Online) {
-                    worldServer.Migrations.Begin(request.CharacterId, leaving.Channel, DateTime.UtcNow);
+                    worldServer.Migrations.Begin(request.CharacterId, leaving.Channel, channel, DateTime.UtcNow);
                 }
 
                 var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type);

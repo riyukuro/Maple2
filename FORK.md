@@ -93,6 +93,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
   - Revival: coupon revive and summon revive.
   - Meret Market: UGC sale details, the by-id lists (at most 20 ids) and the random sale requests.
   - System shop: every shop kind; closing one clears the open shop.
+- **World:** a channel change is not shown to buddies, party, guild, club, group chat and spouse as a logout and a login. While the migration token is valid (30 s), a failed heartbeat of the channel being left does not mark the player offline. The span equals the heartbeat period, so a client that is closed during a channel change is shown as logged out by the second heartbeat after the change began: after 30 s at the earliest and about 60 s at the latest (the commit that added this says "within about 30 s").
 - **Network:** a session is closed gracefully after the last send, so the last packet is not lost to a reset.
 
 ## Database migrations

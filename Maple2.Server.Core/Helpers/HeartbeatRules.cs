@@ -27,13 +27,22 @@ public class MigrationTracker {
         this.lifetime = lifetime;
     }
 
-    public void Begin(long characterId, int fromChannel, DateTime now) {
-        if (characterId == 0) {
+    // A move inside one channel (toChannel == fromChannel) is not noted: the player's session stays on that
+    // channel, so a miss there means what it always means.
+    public void Begin(long characterId, int fromChannel, int toChannel, DateTime now) {
+        if (characterId == 0 || fromChannel == toChannel) {
             return;
         }
 
         leaving[characterId] = (fromChannel, now);
     }
+
+    // The channel change is over: the record's channel was written (the login on the new channel, or a logout).
+    public void End(long characterId) {
+        leaving.TryRemove(characterId, out _);
+    }
+
+    public int Count => leaving.Count;
 
     // True while the player is on the way out of `channel`. An entry of another channel says nothing: the
     // player has arrived and the record names the new channel.

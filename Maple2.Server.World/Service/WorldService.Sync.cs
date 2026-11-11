@@ -40,6 +40,11 @@ public partial class WorldService {
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Player updated with invalid job: {request.Job}"));
         }
 
+        // A written channel ends the channel change of that player: the login on the new channel or a logout.
+        if (request.HasChannel) {
+            worldServer.Migrations.End(request.CharacterId);
+        }
+
         // TODO: How should we handle failed updated?
         playerLookup.Update(request);
         return Task.FromResult(new PlayerUpdateResponse());
@@ -88,15 +93,17 @@ public partial class WorldService {
                 if (AdminLevel.IsGm(playerInfo.AccountAdminPermissions)) {
                     continue;
                 }
-                if (!channelClients.TryGetClient(playerInfo.Channel, out channelClient)) {
-                    logger.Error("No registry for channel: {Channel}", playerInfo.Channel);
+                // The record is set offline only while it still names the channel that was asked to disconnect.
+                int askedChannel = playerInfo.Channel;
+                if (!channelClients.TryGetClient(askedChannel, out channelClient)) {
+                    logger.Error("No registry for channel: {Channel}", askedChannel);
                     continue;
                 }
 
                 channelClient.Disconnect(new DisconnectRequest {
                     CharacterId = playerInfo.CharacterId,
                 });
-                worldServer.SetOffline(playerInfo);
+                worldServer.SetOfflineIfOn(playerInfo, askedChannel);
             }
             return Task.FromResult(new DisconnectResponse {
                 Success = true,
@@ -112,8 +119,9 @@ public partial class WorldService {
             throw new RpcException(new Status(StatusCode.PermissionDenied, $"Cannot disconnect player with admin permissions: {info.CharacterId}"));
         }
 
-        if (!channelClients.TryGetClient(info.Channel, out channelClient)) {
-            logger.Error("No registry for channel: {Channel}", info.Channel);
+        int channel = info.Channel;
+        if (!channelClients.TryGetClient(channel, out channelClient)) {
+            logger.Error("No registry for channel: {Channel}", channel);
             return Task.FromResult(new DisconnectResponse());
         }
 
@@ -123,14 +131,14 @@ public partial class WorldService {
 
         if (!disconnectResponse.Success) {
             logger.Information("Disconnect failed for character: {CharacterId}", info.CharacterId);
-            worldServer.SetOffline(info);
+            worldServer.SetOfflineIfOn(info, channel);
             return Task.FromResult(new DisconnectResponse {
                 Success = true,
             });
         }
 
         logger.Information("Disconnect successful for character: {CharacterId}", info.CharacterId);
-        worldServer.SetOffline(info);
+        worldServer.SetOfflineIfOn(info, channel);
         return Task.FromResult(disconnectResponse);
     }
 

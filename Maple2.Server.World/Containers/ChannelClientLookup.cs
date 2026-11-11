@@ -8,6 +8,7 @@ using Grpc.Net.Client;
 using Maple2.Database.Extensions;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Sync;
 using Serilog;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
 
@@ -238,7 +239,17 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
 
     private void UpdateAllPlayersToOffline(int channelId) {
         foreach (PlayerInfo playerInfo in playerInfoLookup.GetPlayersOnChannel(channelId)) {
-            playerInfo.Channel = -1;
+            // Compared and written in one step: a player who logged in on another channel since the list was
+            // read stays online there, and the other channels are not told otherwise.
+            if (playerInfo.ApplyIfOn(channelId, new PlayerUpdateRequest {
+                    AccountId = playerInfo.AccountId,
+                    CharacterId = playerInfo.CharacterId,
+                    LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+                    Channel = -1,
+                }) == null) {
+                continue;
+            }
+
             foreach ((int id, ChannelClient channelClient) in this) {
                 if (id == channelId) {
                     continue;
