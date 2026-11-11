@@ -124,6 +124,18 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
+    [Test]
+    public void StorageHistory_IsMode112WithZeroRows() {
+        ByteWriter writer = GuildPacket.StorageHistory();
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(112));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     [Test]
     public void SendMail_IsMode71WithNoBody() {
         ByteWriter writer = GuildPacket.SendMail();

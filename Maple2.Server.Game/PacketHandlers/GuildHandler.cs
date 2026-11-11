@@ -1101,8 +1101,14 @@ public class GuildHandler : PacketHandler<GameSession> {
         string playerName = packet.ReadUnicodeString();
     }
 
+    // CGuildManager::SendGuildMode112: sent once when the storage log is opened, with no body; the client
+    // asks again until it gets an answer. No guild storage gift is handled (Guild 109), so the log is empty.
     private void HandleUpdateGiftLog(GameSession session) {
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
 
+        session.Send(GuildPacket.StorageHistory());
     }
 
     // CGuildManager::FUN_1413b8540: the count of donations. One donation costs the guildDonateMeso constant

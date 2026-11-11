@@ -81,6 +81,7 @@ public static class GuildPacket {
         UsePersonalBuff = 91,
         AddContribution = 97,
         // 96, 104, 107, 109
+        StorageHistory = 112,
         Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
         // 114, 115, 116, 119, 120
     }
@@ -763,6 +764,16 @@ public static class GuildPacket {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.UsePersonalBuff);
         pWriter.WriteInt(buffId);
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketStorageHistory (0x70): a count, then per row the giver, the receiver, the item and
+    // the time. The server keeps no guild storage log, so only the empty list can be written.
+    public static ByteWriter StorageHistory() {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.StorageHistory);
+        pWriter.WriteInt(0);
 
         return pWriter;
     }
