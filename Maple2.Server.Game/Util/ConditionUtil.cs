@@ -183,7 +183,7 @@ public static class ConditionUtil {
         return false;
     }
 
-    private static bool CheckTarget(this ConditionMetadata.Parameters target, GameSession session, ConditionType conditionType, string stringValue = "", long longValue = 0) {
+    internal static bool CheckTarget(this ConditionMetadata.Parameters target, GameSession session, ConditionType conditionType, string stringValue = "", long longValue = 0) {
         switch (conditionType) {
             case ConditionType.stay_cube:
                 if (target.Strings != null && target.Strings.Contains(stringValue)) {
@@ -244,6 +244,7 @@ public static class ConditionUtil {
             case ConditionType.revise_achieve_multi_grade:
             case ConditionType.revise_achieve_single_grade:
             case ConditionType.chat:
+            case ConditionType.character_ability_learn:
                 if (target.Range != null && target.Range.Value.Min >= longValue &&
                     target.Range.Value.Max <= longValue) {
                     return true;

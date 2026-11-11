@@ -573,7 +573,19 @@ public class ConfigManager {
         character.Abilities.Add(abilityId);
         session.Send(CharacterAbilityPacket.Learn(abilityId));
         RefreshCharacterAbilityBuffs();
+        // Trophies 23100216-23100220: character_ability_learn, target = the ability's category.
+        session.ConditionUpdate(ConditionType.character_ability_learn, targetLong: entry!.CategoryId);
         return true;
+    }
+
+    // CharacterAbility mode 3 (GM only, checked by the handler): learns every table ability, then sends the
+    // load packet with the whole list. Chosen here: no trophy counts, as for a GM tool.
+    public void LearnAllCharacterAbilities() {
+        Character character = AbilityCharacter;
+        List<int> ids = CharacterAbilityRules.LearnAllIds(session.TableMetadata.CharacterAbilityTable.Entries.Keys, character.Abilities);
+        character.Abilities.AddRange(ids);
+        LoadCharacterAbilities();
+        RefreshCharacterAbilityBuffs();
     }
 
     // CharacterAbility mode 1: for CharacterAbilityResetMeso mesos, once per CharacterAbilityResetCoolTimeMinute.
@@ -597,6 +609,8 @@ public class ConfigManager {
         character.AbilityResetTime = now;
         LoadCharacterAbilities();
         session.Send(CharacterAbilityPacket.Reset());
+        // Trophy 23100221: character_ability_reset, no target.
+        session.ConditionUpdate(ConditionType.character_ability_reset);
         return true;
     }
 

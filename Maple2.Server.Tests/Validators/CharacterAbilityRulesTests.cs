@@ -1,11 +1,13 @@
 ﻿using System.Collections.Generic;
 using System.Xml;
 using Maple2.File.Ingest.Mapper;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -141,5 +143,28 @@ public class CharacterAbilityRulesTests {
         Dictionary<int, CharacterAbilityTable.Entry> rows = TableMapper.ReadCharacterAbilities(document, node => node.GetAttribute("locale") == "");
         Assert.That(rows.Keys, Is.EquivalentTo(new[] { 1001, 1002 }));
         Assert.That(rows[1002], Is.EqualTo(new CharacterAbilityTable.Entry(1002, 2, 55, 9002, 2)));
+    }
+
+    // Mode 3: the table ids not learned yet, sorted, each once.
+    [Test]
+    public void LearnAll_TakesTheRest() {
+        Assert.That(CharacterAbilityRules.LearnAllIds([1003, 1001, 1002], new List<int> { 1002 }), Is.EqualTo(new[] { 1001, 1003 }));
+        Assert.That(CharacterAbilityRules.LearnAllIds([1001], new List<int> { 1001 }), Is.Empty);
+    }
+
+    // Trophies 23100216-23100220 name the category as target ("1".."5"); the learn passes the learned ability's
+    // category.
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    public void LearnTrophy_MatchesCategory(long category, bool expected) {
+        var target = new ConditionMetadata.Parameters(Integers: [2]);
+        Assert.That(target.CheckTarget(null!, ConditionType.character_ability_learn, longValue: category), Is.EqualTo(expected));
+    }
+
+    // Trophy 23100221 (character_ability_reset) has no target or code, so every reset counts.
+    [Test]
+    public void ResetTrophy_HasNoTarget() {
+        var condition = new ConditionMetadata(ConditionType.character_ability_reset, 1, null, null);
+        Assert.That(condition.Check(null!), Is.True);
     }
 }

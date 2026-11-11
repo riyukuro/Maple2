@@ -69,4 +69,16 @@ public static class CharacterAbilityRules {
         }
         return missing;
     }
+
+    // Mode 3 (GM chat command LearnAllAbility, usercommandcli.cpp:1958): every table ability not learned yet, in id
+    // order. Chosen here: level, points and the open quest are not tested, as for a GM tool.
+    public static List<int> LearnAllIds(IEnumerable<int> tableIds, ICollection<int> learned) {
+        var ids = new List<int>();
+        foreach (int id in tableIds.Order()) {
+            if (!learned.Contains(id) && !ids.Contains(id)) {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
 }
