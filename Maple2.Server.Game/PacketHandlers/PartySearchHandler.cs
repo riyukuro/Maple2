@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Party;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -42,6 +43,13 @@ public class PartySearchHandler : FieldPacketHandler {
     }
 
     private void HandleAdd(GameSession session, IByteReader packet) {
+        // Read and checked before a party is made for the listing, so a refused request leaves none behind.
+        (string listingName, bool noApproval, int size) = PartySearchRules.ReadAdd(packet);
+        if (!PartySearchRules.ValidAdd(listingName, size, session.ServerTableMetadata.ConstantsTable.PartySearchRegisterComboValues)) {
+            session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_invalid_type));
+            return;
+        }
+
         if (session.Party.Party == null) {
             // Create new party
             PartyResponse partyResponse = World.Party(new PartyRequest {
@@ -59,10 +67,6 @@ public class PartySearchHandler : FieldPacketHandler {
                 session.Send(PartyPacket.Load(session.Party.Party!));
             }
         }
-
-        string listingName = packet.ReadUnicodeString();
-        bool noApproval = packet.ReadBool();
-        int size = packet.ReadInt();
 
         if (session.Party.Party == null) {
             session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
