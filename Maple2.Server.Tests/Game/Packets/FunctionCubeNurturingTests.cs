@@ -33,6 +33,24 @@ public class FunctionCubeNurturingTests {
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + (2 + 8) + 8 + 4 + 8 + 4 + 16));
     }
 
+    // Client: functioncubeobject.cpp:2554-2576: 12 is read as 11 and makes the pet act without the notice.
+    [Test]
+    public void ActWithoutNoticeIsMode12() {
+        ByteWriter writer = FunctionCubePacket.Feed(77, CubeOf("4_12"), 1700000000, [501, 501], [], notice: false);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.FunctionCube));
+        Assert.That(reader.ReadByte(), Is.EqualTo(12));
+        Assert.That(reader.ReadLong(), Is.EqualTo(77));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("4_12"));
+        Assert.That(reader.ReadLong(), Is.EqualTo(1700000000));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.ReadLong(), Is.EqualTo(501));
+        Assert.That(reader.ReadLong(), Is.EqualTo(501));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 8 + (2 + 8) + 8 + 4 + 16 + 4));
+    }
+
     // Client: functioncubeobject.cpp:2580: long character id, text cube id, int error.
     [Test]
     public void NurturingErrorIsMode13() {

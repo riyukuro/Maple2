@@ -201,6 +201,9 @@ public class FunctionCubeHandler : FieldPacketHandler {
             db.UpdateNurturing(session.AccountId, fieldCube.InteractCube);
 
             session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldCube.InteractCube));
+            // Nothing was fed: mode 12, the pet acts and no fed notice is shown. The client does not show when
+            // the server sends 12; taking a stage gift is the one pet action here that is not a feeding or a play.
+            SendDailyRecord(session, db, fieldCube, session.AccountId, notice: false);
             return;
         }
 
@@ -289,11 +292,11 @@ public class FunctionCubeHandler : FieldPacketHandler {
 
     // The client replaces its whole daily record with each reply (MyPC::ReadDailyRecords, mypc.cpp:4060-4070,
     // empties both lists first), so both lists are sent whole: one entry per feeding and one per play of today.
-    private static void SendDailyRecord(GameSession session, GameStorage.Request db, FieldFunctionInteract cube, long ownerId) {
+    private static void SendDailyRecord(GameSession session, GameStorage.Request db, FieldFunctionInteract cube, long ownerId, bool notice = true) {
         int itemId = cube.InteractCube.Metadata.Id;
         List<long> fed = NurturingRecord.CubeIds(db.GetNurturingDaily(session.AccountId, played: false), ownerId, itemId, cube.CubeId);
         List<long> played = NurturingRecord.CubeIds(db.GetNurturingDaily(session.AccountId, played: true), ownerId, itemId, cube.CubeId);
-        session.Send(FunctionCubePacket.Feed(session.CharacterId, cube.InteractCube, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), fed, played));
+        session.Send(FunctionCubePacket.Feed(session.CharacterId, cube.InteractCube, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), fed, played, notice));
     }
 
     private Mail? CreateOwnerMail(GameSession session, long ownerId, FunctionCubeMetadata.NurturingData nurturing) {

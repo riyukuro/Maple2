@@ -16,6 +16,7 @@ public static class FunctionCubePacket {
         SuccessLifeSkill = 9,
         FailLifeSkill = 10,
         Feed = 11,
+        NurturingAct = 12,
         NurturingError = 13,
     }
 
@@ -78,10 +79,12 @@ public static class FunctionCubePacket {
     // Client 2525 CFunctionCubeManager packet reader (functioncubeobject.cpp:2554) and MyPC::ReadDailyRecords
     // (mypc.cpp:4060): long character id (the packet is dropped unless it is the reader's own), text cube id,
     // then the daily record: long mark time, int count x long (cubes fed today), int count x long (cube uids
-    // played with today). 11 also shows the fed / played notice with the list sizes as the day's counts.
-    public static ByteWriter Feed(long characterId, InteractCube cube, long markTime, IReadOnlyCollection<long> fedToday, IReadOnlyCollection<long> playedToday) {
+    // played with today). 11 and 12 make the pet act (CNurturingCubeObject, functioncubeobject.cpp:2011-2042); 11
+    // also shows the fed / played notice with the list sizes as the day's counts (`notice`). 14 reads the record
+    // only and has no writer here.
+    public static ByteWriter Feed(long characterId, InteractCube cube, long markTime, IReadOnlyCollection<long> fedToday, IReadOnlyCollection<long> playedToday, bool notice = true) {
         var pWriter = Packet.Of(SendOp.FunctionCube);
-        pWriter.Write<Command>(Command.Feed);
+        pWriter.Write<Command>(notice ? Command.Feed : Command.NurturingAct);
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(cube.Id);
         pWriter.WriteLong(markTime);
