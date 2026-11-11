@@ -88,8 +88,8 @@ public static class MeretMarketPacket {
     public static ByteWriter UpdateProfit(long saleId) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.UpdateProfit);
-        pWriter.WriteLong(saleId);
-        pWriter.WriteLong(saleId);
+        pWriter.WriteLong(); // sales total, compared with the seller limit
+        pWriter.WriteLong(); // time until which the player's listings show as sold out
 
         return pWriter;
     }
