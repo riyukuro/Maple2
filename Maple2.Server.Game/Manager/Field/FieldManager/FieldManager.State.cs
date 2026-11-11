@@ -1056,6 +1056,7 @@ public partial class FieldManager {
                 // Already removed
                 return;
             }
+            NpcEffects.TryRemove(objectId, out _);
             Broadcast(FieldPacket.RemoveNpc(objectId));
             Broadcast(ProxyObjectPacket.RemoveNpc(objectId));
             npc.Dispose();
@@ -1199,6 +1200,10 @@ public partial class FieldManager {
         }
 
         added.Session.Send(TriggerPacket.Load(TriggerObjects));
+        var effects = LiveNpcEffects(NpcEffects, objectId => Npcs.ContainsKey(objectId) || Mobs.ContainsKey(objectId));
+        if (effects.Count > 0) {
+            added.Session.Send(TriggerPacket.LoadEffects(effects));
+        }
 
         if (background != null) {
             added.Session.Send(FieldPropertyPacket.Background(background));

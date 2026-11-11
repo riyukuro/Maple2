@@ -22,6 +22,18 @@ public partial class FieldManager {
     // Dungeon variables of a field that is not part of a dungeon instance (a dungeon's fields use their room
     // record's store instead).
     public readonly ConcurrentDictionary<int, int> DungeonVariables = new();
+    // Nif effects add_effect_nif put on npcs, by npc object id; a player who enters later gets them in one
+    // Trigger LoadEffects packet, as the client keeps them in its own table by object id.
+    public readonly ConcurrentDictionary<int, (string NifPath, bool IsOutline, float Scale, float RotateZ)> NpcEffects = new();
+
+    // The effects of npcs still in the field, in the LoadEffects packet's form.
+    public static List<(int ObjectId, string NifPath, bool IsOutline, float Scale, float RotateZ)> LiveNpcEffects(
+            IReadOnlyDictionary<int, (string NifPath, bool IsOutline, float Scale, float RotateZ)> effects, Func<int, bool> isLive) {
+        return effects.Where(entry => isLive(entry.Key))
+            .OrderBy(entry => entry.Key)
+            .Select(entry => (entry.Key, entry.Value.NifPath, entry.Value.IsOutline, entry.Value.Scale, entry.Value.RotateZ))
+            .ToList();
+    }
 
     // The ceremony of a wedding hall room, set when the first character enters it by Wedding 0x1a; null in every
     // other field.

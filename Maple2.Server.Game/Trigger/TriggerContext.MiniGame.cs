@@ -163,9 +163,21 @@ public partial class TriggerContext {
     }
 
     #region CathyMart
-    public void AddEffectNif(int spawnPointId, string nifPath, bool isOutline, float scale, int rotateZ) { }
+    // The client (WorldService::AddEffect, worldservice_1.cpp) keys the effect by the object id it names and
+    // draws the nif on that entity; the script names the npc by its spawn point.
+    public void AddEffectNif(int spawnPointId, string nifPath, bool isOutline, float scale, int rotateZ) {
+        foreach (FieldNpc npc in Field.EnumerateNpcs().Where(npc => npc.SpawnPointId == spawnPointId)) {
+            Field.NpcEffects[npc.ObjectId] = (nifPath, isOutline, scale, rotateZ);
+            Broadcast(TriggerPacket.AddEffect(npc.ObjectId, nifPath, isOutline, scale, rotateZ));
+        }
+    }
 
-    public void RemoveEffectNif(int spawnPointId) { }
+    public void RemoveEffectNif(int spawnPointId) {
+        foreach (FieldNpc npc in Field.EnumerateNpcs().Where(npc => npc.SpawnPointId == spawnPointId)) {
+            Field.NpcEffects.TryRemove(npc.ObjectId, out _);
+            Broadcast(TriggerPacket.RemoveEffect(npc.ObjectId));
+        }
+    }
     #endregion
 
     #region HideAndSeek
