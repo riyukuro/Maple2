@@ -175,7 +175,7 @@ Packets the client reads that the server never sends, although a player can ask 
 - InteractNpc 0x0059 (the interact key on an NPC that has an interact state): no handler; the NPC's state flag is never changed.
 - FittingDoll 0x007B (the fitting doll in a home): the server has no fitting doll storage.
 - FieldMaid 0x009D, UserMaid 0x009E and MaidCraftItem 0x00A9 (the home maid and its crafting): the server has no maid system.
-- RecallUser 0x008C (call another player to your place): only the recall scroll item is handled; the request to recall a player is not.
+- RecallUser 0x008C (call another player to your place): the client has no request that starts it, so the GM command `recalluser <name>` sends the invite to a player on the same channel. The confirm box's answer is handled: the caller is told, and on accept the player is moved to the caller. A second caller during a pending invite is told the player is busy. Not settled from the client code: which of the two answer messages means accept, and when kind 6 is sent (it has a writer and no sender). A player on another channel is answered as not found.
 - Gamble 0x009C, CardReverseGame 0x00DA, PlayArcade 0x00D8, TreeWatering 0x0118 and BirthdayCard 0x0111 (event windows): the server's event table has no data for these events.
 - SmartRecommendBilling 0x00A0 and NoticeDialog 0x00CF (shop recommendation and notice windows): the server has no content for them.
 - PcBangBonus 0x00A5 and SetPcBang 0x00B5 (PC cafe benefits): accounts carry no PC cafe state.
@@ -184,13 +184,13 @@ Packets the client reads that the server never sends, although a player can ask 
 - WaitingTicketUpdate 0x00B4 (the login queue): the server has no login queue, so the client never waits.
 - DungeonMatch 0x00EF and DungeonHelp 0x0109 (dungeon match queue and helper call): no matchmaker and no recruiting notice, as for Party 32 to 34 and RoomDungeon 15 and 16 above.
 - MeretUse 0x0117 (the event meret balance after a purchase): the server keeps no event meret balance; purchases update the normal meret packet.
-- StateFishingData 0x00FA (another player's fishing state): sent to the others in the field when a player starts and stops fishing. A player who enters the field later is not told about players already fishing.
+- StateFishingData 0x00FA (another player's fishing state): sent to the others in the field when a player starts and stops fishing. A player who enters the field later is told which players are already fishing.
 - RelocateWorld 0x0072 (the world transfer request): no handler; the server runs one world, so there is no world list and no transfer address to send.
 - Cash 0x00AD (the cash inventory and cash shop requests): no handler and no cash shop data; the server's shop is the Meret Market, which has its own packets.
 - CharacterAbility 0x00DF (the character ability window): no handler; the server stores no learned abilities, ability points or reset time.
 - Microgame 0x0114 (a rock-paper-scissors game between two players): no handler and no game state on the server.
 - DynamicBanword 0x0124 (the client sends its ban word list version when it enters the game): the handler only logs the request. The server's ban words are the client's own static list, so there is no newer list to send.
-- ChangeAttributes 0x00C8 kind 8 and ItemExchange 0x0102 kind 0: not sent. ChangeAttributes answers with kinds 1, 2, 4 (the cost of the staged item), 5 (error) and 6 (the pending change when the window opens); ItemExchange with kind 2 and, for the GM fill buttons, kind 3.
+- ChangeAttributes 0x00C8 kind 8 (a GM-level client asks for the cost again): it has a writer and nothing sends it. ChangeAttributes answers with kinds 1, 2, 4 (the cost of the staged item), 5 (error) and 6 (the pending change when the window opens). ItemExchange 0x0102 kind 0 is sent when a target item is put into the exchange scroll window and lists the scroll's ingredients (the same list for every target); kind 2 is the result and kind 3 answers the GM fill buttons.
 - DebugMode 0x0087 (the answer to the GM debug window's switches): not handled; it would need a GM account.
 
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
