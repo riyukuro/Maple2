@@ -57,9 +57,19 @@ public class RevivalHandler : FieldPacketHandler {
             Logger.Debug("Safe revive refused for {CharacterId}: map {MapId} has NoRevivalHere", session.CharacterId, session.Field.MapId);
             return;
         }
+        // With the room's default revival limit used up the client turns this button into "leave the dungeon"
+        // (UIRevivalDialog::GetFirstButtonLabel) and does not send the request.
+        bool inDungeon = session.Field is DungeonFieldManager;
+        if (inDungeon && !session.Dungeon.HasDefaultRevivalLeft()) {
+            Logger.Debug("Safe revive refused for {CharacterId}: dungeon revival limit used up", session.CharacterId);
+            return;
+        }
         // Revive player - this will handle moving to spawn point
         if (session.Player.Revive()) {
             session.Player.Tombstone = null;
+            if (inDungeon) {
+                session.Dungeon.CountDefaultRevival();
+            }
         } else {
             Logger.Debug("Safe revive ignored for {CharacterId}: dead {Dead}, tombstone {Tombstone}",
                 session.CharacterId, session.Player.IsDead, session.Player.Tombstone != null);

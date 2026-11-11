@@ -70,4 +70,15 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(10000));
         Assert.That(writer.Length, Is.EqualTo(2 + 4));
     }
+
+    // Client: CSceneStateGame::OnDungeonReviveCount (scenestategame.cpp:5074): one int, the revivals used.
+    [Test]
+    public void DungeonReviveCountIsOneInt() {
+        ByteWriter writer = RevivalPacket.DungeonReviveCount(2);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.DungeonReviveCount));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(writer.Length, Is.EqualTo(2 + 4));
+    }
 }

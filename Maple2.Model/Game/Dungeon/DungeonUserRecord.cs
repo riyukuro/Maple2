@@ -21,6 +21,8 @@ public class DungeonUserRecord : IUserContentRecord {
     public int HighestScore = -1;
     public DungeonBonusFlag Flag = DungeonBonusFlag.None;
     public int Round;
+    // Default (first button) revivals used in this run; the room's defaultRevivalLimitCount caps them.
+    public int RevivalCount;
 
     public DungeonUserRecord(int dungeonId, long characterId) {
         DungeonId = dungeonId;

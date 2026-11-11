@@ -94,6 +94,9 @@ public class DungeonManager {
             return;
         }
 
+        // The client keeps the count in a global that no other packet resets, so every dungeon field gets it.
+        session.Send(RevivalPacket.DungeonReviveCount(UserRecord?.RevivalCount ?? 0));
+
         if (session.Field.FieldInstance.Type == InstanceType.DungeonLobby) {
             session.Send(DungeonWaitingPacket.Set(Lobby.DungeonId, Lobby.Size));
         } else {
@@ -107,6 +110,22 @@ public class DungeonManager {
             pWriter.WriteShort(); // counter
             session.Send(pWriter);*/
         }
+    }
+
+    // The room's defaultRevivalLimitCount: 0 means no limit (UIRevivalDialog::GetFirstButtonLabel).
+    public bool HasDefaultRevivalLeft() {
+        if (session.Field is not DungeonFieldManager || Metadata == null || UserRecord == null) {
+            return true;
+        }
+        return Metadata.Limit.MaxRevivalCount <= 0 || UserRecord.RevivalCount < Metadata.Limit.MaxRevivalCount;
+    }
+
+    public void CountDefaultRevival() {
+        if (UserRecord == null) {
+            return;
+        }
+        UserRecord.RevivalCount++;
+        session.Send(RevivalPacket.DungeonReviveCount(UserRecord.RevivalCount));
     }
 
     public void UpdateDungeonEnterLimit() {

@@ -23,6 +23,16 @@ public static class RevivalPacket {
         return pWriter;
     }
 
+    // Client: CSceneStateGame::OnDungeonReviveCount (scenestategame.cpp:5074): int revivals used in this dungeon.
+    // UIRevivalDialog::GetFirstButtonLabel (uirevivaldialog.cpp:787) shows the room's defaultRevivalLimitCount minus
+    // this value on the first button, and turns the button into "leave the dungeon" when nothing is left.
+    public static ByteWriter DungeonReviveCount(int used) {
+        var pWriter = Packet.Of(SendOp.DungeonReviveCount);
+        pWriter.WriteInt(used);
+
+        return pWriter;
+    }
+
     public static ByteWriter Revive(int objectId) {
         var pWriter = Packet.Of(SendOp.Revival);
         pWriter.WriteInt(objectId);
