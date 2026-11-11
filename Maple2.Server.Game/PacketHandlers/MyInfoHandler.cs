@@ -27,7 +27,7 @@ public class MyInfoHandler : FieldPacketHandler {
     private void HandleSetMotto(GameSession session, IByteReader packet) {
         string motto = packet.ReadUnicodeString();
         if (motto.Length > Constant.MaxMottoLength) {
-            session.Send(MyInfoPacket.Error($"The motto can only be up to {Constant.MaxMottoLength} letters long."));
+            session.Send(MyInfoPacket.Error(session.Player.ObjectId, $"The motto can only be up to {Constant.MaxMottoLength} letters long."));
             return;
         }
 

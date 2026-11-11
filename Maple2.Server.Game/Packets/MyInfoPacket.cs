@@ -17,9 +17,11 @@ public static class MyInfoPacket {
         return pWriter;
     }
 
-    public static ByteWriter BanMotto(string motto) {
+    // CSceneStateGame::OnMyInfo (scenestategame.cpp:4195) looks the player up by the object id first and drops the
+    // packet when there is none, so the error forms need the receiver's own object id.
+    public static ByteWriter BanMotto(int objectId, string motto) {
         var pWriter = Packet.Of(SendOp.MyInfo);
-        pWriter.WriteInt();
+        pWriter.WriteInt(objectId);
         pWriter.WriteUnicodeString(motto);
         pWriter.Write<MyInfoError>(MyInfoError.s_ban_check_err_any_word);
         pWriter.WriteUnicodeString();
@@ -27,9 +29,9 @@ public static class MyInfoPacket {
         return pWriter;
     }
 
-    public static ByteWriter Error(string message) {
+    public static ByteWriter Error(int objectId, string message) {
         var pWriter = Packet.Of(SendOp.MyInfo);
-        pWriter.WriteInt();
+        pWriter.WriteInt(objectId);
         pWriter.WriteUnicodeString();
         pWriter.Write<MyInfoError>(MyInfoError.custom_message);
         pWriter.WriteUnicodeString(message);
