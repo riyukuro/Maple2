@@ -9,6 +9,11 @@ public static class HomeBlockRules {
     // The memo input of the client's dialog takes 50 characters (the same input as the buddy memo).
     public const int MaxMemoLength = 50;
 
+    // The memo is shown in the owner's block list; it meets the server's ban-word list like other free text.
+    public static bool MemoBanned(string memo, System.Func<string, bool> isBanned) {
+        return !string.IsNullOrWhiteSpace(memo) && isBanned(memo);
+    }
+
     public static int MaxBlocks(int maxBlockCount) {
         return maxBlockCount > 0 ? maxBlockCount : DefaultMaxBlocks;
     }

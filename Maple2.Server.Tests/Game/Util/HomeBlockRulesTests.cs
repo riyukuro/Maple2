@@ -19,6 +19,21 @@ public class HomeBlockRulesTests {
         Assert.That(HomeBlockRules.MaxBlocks(0), Is.EqualTo(HomeBlockRules.DefaultMaxBlocks));
     }
 
+    // Modes 2 and 5: i64, string memo. A banned memo is refused, an empty one is not looked up.
+    [Test]
+    public void MemoBanned_UsesTheBanWordCheck() {
+        var writer = new Maple2.PacketLib.Tools.ByteWriter();
+        writer.WriteLong(42);
+        writer.WriteUnicodeString("bad memo");
+        var reader = new Maple2.PacketLib.Tools.ByteReader(writer.ToArray(), 0);
+        Assert.That(reader.ReadLong(), Is.EqualTo(42));
+        string memo = HomeBlockRules.TrimMemo(reader.ReadUnicodeString());
+        Assert.That(reader.Available, Is.EqualTo(0));
+        Assert.That(HomeBlockRules.MemoBanned(memo, text => text.Contains("bad")), Is.True);
+        Assert.That(HomeBlockRules.MemoBanned("fine", text => text.Contains("bad")), Is.False);
+        Assert.That(HomeBlockRules.MemoBanned("", _ => true), Is.False);
+    }
+
     [Test]
     public void TrimMemo_CutsAtTheInputLength() {
         Assert.That(HomeBlockRules.TrimMemo("note"), Is.EqualTo("note"));

@@ -1,7 +1,9 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -21,6 +23,12 @@ public class HomeBlockHandler : FieldPacketHandler {
         UpdateMemo = 5,
     }
 
+    #region Autofac Autowired
+    // ReSharper disable MemberCanBePrivate.Global
+    public required BanWordStorage BanWordStorage { private get; init; }
+    // ReSharper restore All
+    #endregion
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
@@ -36,9 +44,13 @@ public class HomeBlockHandler : FieldPacketHandler {
         }
     }
 
-    private static void HandleAdd(GameSession session, IByteReader packet) {
+    private void HandleAdd(GameSession session, IByteReader packet) {
         long characterId = packet.ReadLong();
         string memo = HomeBlockRules.TrimMemo(packet.ReadUnicodeString());
+        if (HomeBlockRules.MemoBanned(memo, BanWordStorage.ContainsBannedWord)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+            return;
+        }
 
         using GameStorage.Request db = session.GameStorage.Context();
         long? targetAccountId = db.GetHomeBlockAccountId(characterId);
@@ -78,9 +90,13 @@ public class HomeBlockHandler : FieldPacketHandler {
         session.Send(HomeBlockPacket.Remove(id));
     }
 
-    private static void HandleUpdateMemo(GameSession session, IByteReader packet) {
+    private void HandleUpdateMemo(GameSession session, IByteReader packet) {
         long id = packet.ReadLong();
         string memo = HomeBlockRules.TrimMemo(packet.ReadUnicodeString());
+        if (HomeBlockRules.MemoBanned(memo, BanWordStorage.ContainsBannedWord)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
+            return;
+        }
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (!db.UpdateHomeBlockMemo(session.AccountId, id, memo)) {
