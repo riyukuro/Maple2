@@ -58,7 +58,8 @@ public sealed class RideManager {
         session.Field.Broadcast(RidePacket.Start(Ride));
         if (Ride.Metadata.Stats.Count > 0) {
             session.Stats.SetBattleMountStats(Ride.Metadata.Stats);
-            session.Field.Broadcast(StatsPacket.Init(session.Player));
+            session.Send(StatsPacket.Init(session.Player));
+            session.Field.Broadcast(StatsPacket.Update(session.Player), session);
         }
         return true;
 

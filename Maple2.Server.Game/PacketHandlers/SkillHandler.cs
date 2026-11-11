@@ -124,7 +124,8 @@ public class SkillHandler : FieldPacketHandler {
         session.Player.InBattle = record.Metadata.State.InBattle;
         session.Player.ActiveSkills.Add(record);
         session.Field.Broadcast(SkillPacket.Use(record));
-        session.Field.Broadcast(StatsPacket.Init(session.Player));
+        session.Send(StatsPacket.Init(session.Player));
+        session.Field.Broadcast(StatsPacket.Update(session.Player), session);
 
         session.Player.ApplyEffects(record.Metadata.Data.Skills, session.Player, session.Player, EventConditionType.Activate, skillId: record.SkillId, targets: [session.Player]);
         session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnSkillCasted, skillId: record.SkillId);

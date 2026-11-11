@@ -18,11 +18,7 @@ public static class StatsPacket {
         var pWriter = Packet.Of(SendOp.Stat);
         pWriter.WriteInt(entity.ObjectId);
         pWriter.Write<Command>(Command.Update);
-        pWriter.WriteByte(Stats.BASIC_TOTAL);
-        for (int i = 0; i < Stats.BASIC_TOTAL; i++) {
-            var attribute = (BasicAttribute) i;
-            pWriter.WriteAttribute(attribute, stats[attribute]);
-        }
+        pWriter.WriteAllStats(stats);
 
         return pWriter;
     }
@@ -69,6 +65,17 @@ public static class StatsPacket {
     }
 
     #region Helpers
+    // Client: MyPC::vfunc_90 (mypc.cpp:1078) reads count 0x23 as every stat in order. Only the player's own client
+    // reads it this way: PC::vfunc_90 reads the same count as the five stats of WritePlayerStats, so this form goes
+    // to the owner alone.
+    public static void WriteAllStats(this IByteWriter pWriter, Stats stats) {
+        pWriter.WriteByte(Stats.BASIC_TOTAL);
+        for (int i = 0; i < Stats.BASIC_TOTAL; i++) {
+            var attribute = (BasicAttribute) i;
+            pWriter.WriteAttribute(attribute, stats[attribute]);
+        }
+    }
+
     // Client: PC::vfunc_90 (pc.cpp:1644), count 0x23: per value kind long stat 4, int stats 0xd, 0xe, 0x20, 0x16
     // (health, attack speed, move speed, mount speed, jump height).
     public static void WritePlayerStats(this IByteWriter pWriter, Stats stats) {

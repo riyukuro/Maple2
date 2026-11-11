@@ -147,7 +147,7 @@ public class StatsManager {
             Values[BasicAttribute.Health].Current = 0;
         }
 
-        Actor.Field.Broadcast(StatsPacket.Init(player));
+        player.Session.Send(StatsPacket.Init(player));
         Actor.Field.Broadcast(StatsPacket.Update(player), player.Session);
 
         player.Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
