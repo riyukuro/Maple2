@@ -8,6 +8,8 @@ using Maple2.Server.Core.Packets;
 namespace Maple2.Server.Game.Packets;
 
 public static class ChatPacket {
+    // The byte after the chat type: the sender is a GM. Every receiver but the sender then sees the name and
+    // the text in the client's GM chat colour (white by default). It is set from the sender's account.
     public static ByteWriter Message(Player player, ChatType type, string message) {
         var pWriter = Packet.Of(SendOp.UserChat);
         pWriter.WriteLong(player.Account.Id);
@@ -16,7 +18,7 @@ public static class ChatPacket {
         pWriter.WriteBool(false);
         pWriter.WriteUnicodeString(message);
         pWriter.Write<ChatType>(type);
-        pWriter.WriteBool(false);
+        pWriter.WriteBool(AdminLevel.IsGm(player.Account.AdminPermissions));
         pWriter.WriteInt();
 
         switch (type) {
@@ -36,7 +38,7 @@ public static class ChatPacket {
         return pWriter;
     }
 
-    public static ByteWriter Message(long accountId, long characterId, string characterName, ChatType type, string message, int superChatId = 0, long clubId = 0) {
+    public static ByteWriter Message(long accountId, long characterId, string characterName, ChatType type, string message, int superChatId = 0, long clubId = 0, bool gm = false) {
         var pWriter = Packet.Of(SendOp.UserChat);
         pWriter.WriteLong(accountId);
         pWriter.WriteLong(characterId);
@@ -44,7 +46,7 @@ public static class ChatPacket {
         pWriter.WriteBool(false);
         pWriter.WriteUnicodeString(message);
         pWriter.Write<ChatType>(type);
-        pWriter.WriteBool(false);
+        pWriter.WriteBool(gm);
         pWriter.WriteInt();
 
         switch (type) {
@@ -64,7 +66,7 @@ public static class ChatPacket {
         return pWriter;
     }
 
-    public static ByteWriter Whisper(long accountId, long characterId, string name, string message, string? unknown = null) {
+    public static ByteWriter Whisper(long accountId, long characterId, string name, string message, string? unknown = null, bool gm = false) {
         ChatType type = unknown == null ? ChatType.WhisperTo : ChatType.WhisperFrom;
 
         var pWriter = Packet.Of(SendOp.UserChat);
@@ -74,7 +76,8 @@ public static class ChatPacket {
         pWriter.WriteBool(false);
         pWriter.WriteUnicodeString(message);
         pWriter.Write<ChatType>(type);
-        pWriter.WriteBool(false);
+        // Only the received line: the sender's own copy carries the recipient's name and stays normal.
+        pWriter.WriteBool(gm && type == ChatType.WhisperFrom);
         pWriter.WriteInt();
 
         if (type == ChatType.WhisperFrom) {

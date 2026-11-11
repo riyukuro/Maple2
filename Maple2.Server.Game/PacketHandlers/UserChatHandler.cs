@@ -111,6 +111,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Whisper = new ChatRequest.Types.Whisper { RecipientId = info.CharacterId, RecipientName = recipient },
         };
 
@@ -142,6 +143,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Party = new ChatRequest.Types.Party {
                 PartyId = session.Party.Id,
             },
@@ -163,6 +165,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Guild = new ChatRequest.Types.Guild {
                 GuildId = session.Guild.Id,
             },
@@ -200,6 +203,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             World = new ChatRequest.Types.World(),
         };
 
@@ -229,7 +233,7 @@ public class UserChatHandler : FieldPacketHandler {
             session.Currency.Meret -= meretCost;
         }
 
-        session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message));
+        session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message, gm: AdminLevel.IsGm(session.Player.AdminPermissions)));
     }
 
     private void HandleSuper(GameSession session, string message, ICollection<long> itemUids) {
@@ -252,6 +256,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Super = new ChatRequest.Types.Super { ItemId = session.SuperChatId },
         };
 
@@ -278,6 +283,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Club = new ChatRequest.Types.Club { ClubId = clubId },
         };
 
@@ -293,6 +299,7 @@ public class UserChatHandler : FieldPacketHandler {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { itemUids },
+            Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Wedding = new ChatRequest.Types.Wedding { ItemId = 0 },
         };
 

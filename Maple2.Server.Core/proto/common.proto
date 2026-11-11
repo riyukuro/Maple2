@@ -55,6 +55,8 @@ message ChatRequest {
   string name = 3;
   string message = 4;
   repeated int64 item_uids = 5;
+  // The sender's account is a GM (set by the sender's channel): the line is drawn in the GM colour.
+  bool gm = 30;
 
   oneof chat {
     Whisper whisper = 6;
