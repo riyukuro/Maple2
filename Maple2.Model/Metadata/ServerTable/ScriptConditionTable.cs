@@ -39,5 +39,8 @@ public record ScriptConditionMetadata(
         KeyValuePair<string, bool> HallState,
         bool? HasReservation,
         int MarriageDays,
-        string CoolingOff);
+        string CoolingOff,
+        // weddingHallEntryType: the kind of visitor (GroomBride is the couple of the ceremony), with ! for not.
+        // Null in data ingested before the field was read.
+        KeyValuePair<string, bool>? HallEntryType = null);
 }

@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.Util;
@@ -142,6 +143,12 @@ public static class NpcTalkUtil {
     public static bool ConditionCheck(this ScriptConditionMetadata scriptCondition, GameSession session) {
         if (session.Field is null) return false;
         if (scriptCondition.JobCode.Count > 0 && !scriptCondition.JobCode.Contains(session.Player.Value.Character.Job.Code())) {
+            return false;
+        }
+
+        // The npcs of a wedding hall: the state of the ceremony and whether the talker is one of its couple.
+        if (scriptCondition.Wedding is { } wedding && !WeddingCeremony.ScriptCondition(session.Field.Wedding, session.CharacterId,
+                wedding.HallState.Key, wedding.HallState.Value, wedding.HallEntryType?.Key, wedding.HallEntryType?.Value ?? true)) {
             return false;
         }
 

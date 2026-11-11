@@ -261,8 +261,8 @@ public static class TriggerFunctionMapping {
         { "wait_seconds_user_value", attrs => new Trigger.WaitSecondsUserValue(attrs?["key"]?.Value ?? string.Empty, attrs?["desc"]?.Value ?? string.Empty) },
         { "wait_tick", attrs => new Trigger.WaitTick(ParseInt(attrs?["wait_tick"]?.Value)) },
         { "wedding_entry_in_field", attrs => new Trigger.WeddingEntryInField(attrs?["entry_type"]?.Value ?? string.Empty, ParseBool(attrs?["is_in_field"]?.Value)) },
-        { "wedding_hall_state", attrs => new Trigger.WeddingHallState(attrs?["hallState"]?.Value ?? string.Empty, ParseBool(attrs?["success"]?.Value)) },
-        { "wedding_mutual_agree_result", attrs => new Trigger.WeddingMutualAgreeResult(attrs?["agree_type"]?.Value ?? string.Empty) },
+        { "wedding_hall_state", attrs => new Trigger.WeddingHallState(attrs?["hall_state"]?.Value ?? attrs?["hallState"]?.Value ?? string.Empty, ParseBoolOr(attrs?["success"]?.Value, true)) },
+        { "wedding_mutual_agree_result", attrs => new Trigger.WeddingMutualAgreeResult(attrs?["agree_type"]?.Value ?? string.Empty, ParseBoolOr(attrs?["success"]?.Value, true)) },
         { "widget_value", attrs => new Trigger.WidgetValue(attrs?["type"]?.Value ?? string.Empty, attrs?["widget_name"]?.Value ?? string.Empty, attrs?["condition"]?.Value ?? string.Empty, ParseBool(attrs?["negate"]?.Value), attrs?["desc"]?.Value ?? string.Empty) },
         { "any_one", _ => new Trigger.GroupAnyOne() },
         { "all_of", _ => new Trigger.GroupAllOf() },
@@ -354,6 +354,12 @@ public static class TriggerFunctionMapping {
     public static int ParseInt(string? value) => int.TryParse(value, out int v) ? v : 0;
 
     public static float ParseFloat(string? value) => float.TryParse(value, out float v) ? v : 0f;
+
+    // A flag whose absence has a meaning of its own: the hall triggers test a state with success 1, with
+    // success 0 and without the attribute, which stands for the plain test.
+    public static bool ParseBoolOr(string? value, bool absent) {
+        return string.IsNullOrEmpty(value) ? absent : ParseBool(value);
+    }
 
     public static bool ParseBool(string? value) {
         if (string.IsNullOrEmpty(value)) return false;

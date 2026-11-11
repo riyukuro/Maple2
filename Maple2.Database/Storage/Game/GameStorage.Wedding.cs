@@ -48,6 +48,20 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // The vow was completed: an engaged couple becomes married at the given time. Refused for any other
+        // state, so a ceremony cannot marry a couple twice or bring back a marriage that is being ended.
+        public bool SetMarried(long marriageId, DateTime time) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || !Marriage.CanMarry(model.Status)) {
+                return false;
+            }
+
+            model.Status = MaritalStatus.Married;
+            model.MarriageTime = time;
+            Context.Marriage.Update(model); // requests do not track what they load
+            return Context.TrySaveChanges();
+        }
+
         public bool DeleteMarriage(long marriageId) {
             Model.Marriage? marriage = Context.Marriage.Find(marriageId);
             if (marriage == null) {
@@ -74,6 +88,7 @@ public partial class GameStorage {
             return new Marriage {
                 Id = marriage.Id,
                 CreationTime = marriage.CreationTime.ToEpochSeconds(),
+                MarriageTime = marriage.MarriageTime?.ToEpochSeconds() ?? 0,
                 ExpHistory = marriage.ExpHistory.Select<Model.MarriageExp, MarriageExp>(exp => exp).ToList(),
                 Partner1 = new MarriagePartner {
                     Info = partner1.CharacterId == characterId ? partner2 : partner1,
@@ -99,6 +114,7 @@ public partial class GameStorage {
             return owner == null || partner == null ? new MarriageInfo() : new MarriageInfo {
                 Status = model.Status,
                 CreationTime = model.CreationTime.ToEpochSeconds(),
+                MarriageTime = model.MarriageTime?.ToEpochSeconds() ?? 0,
                 Partner1Name = owner.Name,
                 Partner2Name = partner.Name,
             };

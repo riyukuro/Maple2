@@ -311,11 +311,11 @@ public partial class Trigger {
         public bool Evaluate(TriggerContext context) => context.WeddingHallState(state, success);
     }
 
-    public class WeddingMutualAgreeResult(string agreeType) : ICondition {
+    public class WeddingMutualAgreeResult(string agreeType, bool success) : ICondition {
         public string Name => "wedding_mutual_agree_result";
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
-        public bool Evaluate(TriggerContext context) => context.WeddingMutualAgreeResult(agreeType);
+        public bool Evaluate(TriggerContext context) => context.WeddingMutualAgreeResult(agreeType, success);
     }
 
     public class WidgetValue(string type, string widgetName, string widgeArg, bool negate, string desc) : ICondition {

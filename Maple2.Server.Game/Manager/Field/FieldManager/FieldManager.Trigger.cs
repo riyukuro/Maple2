@@ -17,6 +17,10 @@ public partial class FieldManager {
     public readonly Dictionary<string, Widget> Widgets = new();
     public readonly Dictionary<int, List<TriggerState>> States = new();
 
+    // The ceremony of a wedding hall room, set when the first character enters it by Wedding 0x1a; null in every
+    // other field.
+    public WeddingCeremony? Wedding;
+
     public FieldTrigger? AddTrigger(TriggerModel trigger) {
         try {
             var fieldTrigger = new FieldTrigger(this, NextLocalId(), trigger) {

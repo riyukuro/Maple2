@@ -137,6 +137,26 @@ public sealed class MarriageManager {
         CheckMarriageHallExpiration();
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
         session.Send(WeddingPacket.UpdateHall(WeddingHall));
+        // The ticket is the client's way into the hall (Wedding 0x1a). The couple gets its own while the
+        // ceremony time is inside the client's window.
+        if (WeddingHall.Id != 0 && Marriage.Id != 0
+            && WeddingCeremony.InEnterWindow(WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            session.Send(WeddingPacket.Ticket(Marriage.Id, WeddingHall));
+        }
+    }
+
+    // The vow was completed in the hall (trigger WeddingVowComplete) and the marriage is stored as married.
+    public void SetMarried(long marriageTime) {
+        if (Marriage.Id == 0) {
+            return;
+        }
+
+        Marriage.Status = MaritalStatus.Married;
+        Marriage.MarriageTime = marriageTime;
+        MarriageInfo info = session.Player.Value.Character.MarriageInfo;
+        info.Status = MaritalStatus.Married;
+        info.MarriageTime = marriageTime;
+        session.Send(WeddingPacket.UpdateMarriage(Marriage));
     }
 
     private void CheckEngagementExpiration() {

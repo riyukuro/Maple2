@@ -3,6 +3,7 @@ using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Model;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Packets;
@@ -24,9 +25,11 @@ public static class WeddingPacket {
         DeclineReservationChange = 21,
         AcceptReservationChange = 22,
         Unknown23 = 23,
+        Ticket = 24,
         SearchInvitee = 27,
         SendInvite = 29,
-        StartCeremony = 30,
+        MutualAgree = 30,
+        MutualCancel = 31,
     }
 
     public static ByteWriter UpdateMarriage(Marriage marriage) {
@@ -139,6 +142,40 @@ public static class WeddingPacket {
         pWriter.Write<Command>(Command.AcceptReservationChange);
         pWriter.WriteClass<WeddingHall>(hall);
         pWriter.WriteLong(differenceCost);
+
+        return pWriter;
+    }
+
+    // Client: WeddingManager::OnInvitationTicket (weddingmanager.cpp:259): the id the ticket is kept under, which
+    // the client sends back in Wedding 0x1a to enter, then the hall ticket.
+    public static ByteWriter Ticket(long marriageId, WeddingHall hall) {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.Ticket);
+        pWriter.WriteLong(marriageId);
+        pWriter.WriteClass<WeddingHall>(hall);
+
+        return pWriter;
+    }
+
+    // Client: WeddingManager::OnMode1e (weddingmanager.cpp:341): a byte; 1 and 2 open the yes/no box of the
+    // start and the end of the ceremony, 3 is followed by the partner's name and starts the steps in which the
+    // character types it.
+    public static ByteWriter MutualAgree(WeddingAgreeType type, string partnerName) {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.MutualAgree);
+        pWriter.WriteByte((byte) type);
+        if (type == WeddingAgreeType.PartnerName) {
+            pWriter.WriteUnicodeString(partnerName);
+        }
+
+        return pWriter;
+    }
+
+    // Client: WeddingManager::OnMode1f (weddingmanager.cpp:358): a byte; closes the open box of that question.
+    public static ByteWriter MutualCancel(WeddingAgreeType type) {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.MutualCancel);
+        pWriter.WriteByte((byte) type);
 
         return pWriter;
     }

@@ -5,6 +5,8 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -31,7 +33,7 @@ public class WeddingHandler : FieldPacketHandler {
         EnterCeremony = 26,
         InvitationFindUser = 27,
         SendInvitation = 28,
-        StartCeremony = 30,
+        MutualAgreeAnswer = 30,
         SetCoupleMessage = 34,
         ReceiveSkillItem = 37,
     }
@@ -72,6 +74,9 @@ public class WeddingHandler : FieldPacketHandler {
                 return;
             case Command.EnterCeremony:
                 HandleEnterCeremony(session, packet);
+                return;
+            case Command.MutualAgreeAnswer:
+                HandleMutualAgreeAnswer(session, packet);
                 return;
             case Command.InvitationFindUser:
                 HandleInvitationFindUser(session, packet);
@@ -251,28 +256,68 @@ public class WeddingHandler : FieldPacketHandler {
         }
     }
 
+    // Client: WeddingManager::SendInvitation (weddingmanager.cpp:386) sends the id of a ticket it holds. The
+    // ticket is offered while its time is at most 1800 s away (CollectTickets, :906), so the same window is the
+    // server's rule. Each marriage has its own room of the hall map.
     private static void HandleEnterCeremony(GameSession session, IByteReader packet) {
         long marriageId = packet.ReadLong();
-        using GameStorage.Request db = session.GameStorage.Context();
-        WeddingHall? hall = db.GetWeddingHall(marriageId: marriageId);
-        if (hall == null) {
+        if (session.Field == null) {
+            return;
+        }
+
+        WeddingHall? hall;
+        Marriage? marriage;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            hall = db.GetWeddingHall(marriageId: marriageId);
+            marriage = hall == null ? null : db.GetMarriage(weddingId: marriageId);
+        }
+        if (hall == null || marriage == null) {
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_err_invalid_wedding_hall));
             return;
         }
 
-        DateTime ceremonyTime = hall.CeremonyTime.FromEpochSeconds();
-
-        // Can enter only within 5 minutes before the ceremony
-        if (DateTime.Now >= ceremonyTime.AddMinutes(-5)) {
+        if (!WeddingCeremony.InEnterWindow(hall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_invalid_time));
             return;
         }
 
-        // Cannot enter after 30 minutes from the ceremony scheduled time
-        if (DateTime.Now > ceremonyTime.AddMinutes(30)) {
+        var ceremony = new WeddingCeremony(marriage.Id, marriage.Partner1.CharacterId, marriage.Partner2.CharacterId);
+        if (!WeddingCeremony.CanEnter(ceremony.IsCouple(session.CharacterId), hall.Public, hall.GuestList.ContainsKey(session.CharacterId))) {
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_common));
             return;
         }
+
+        if (!session.TableMetadata.WeddingTable.Packages.TryGetValue(hall.PackageId, out WeddingPackage? package)
+            || !package.Halls.TryGetValue(hall.PackageHallId, out WeddingPackage.HallData? hallData)) {
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_err_invalid_wedding_hall));
+            return;
+        }
+
+        // The hour of the ceremony, not of the entry, picks the day or the night map, so that everyone who enters
+        // in the window meets in one room.
+        int mapId = WeddingCeremony.HallMap(hallData.MapId, hallData.NightMapId, hall.CeremonyTime.FromEpochSeconds().Hour);
+        if (session.Field.MapId == mapId && session.Field.Wedding?.MarriageId == marriageId) {
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_same_place));
+            return;
+        }
+
+        if (!session.PrepareField(mapId, out FieldManager? field, ownerId: marriageId)) {
+            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            return;
+        }
+
+        Interlocked.CompareExchange(ref field.Wedding, ceremony, null);
+        session.Send(FieldEnterPacket.Request(session.Player));
+    }
+
+    // Client: WeddingManager::OnActingAnswer (weddingmanager.cpp:821) sends the type of the box and the answer;
+    // the typed-name steps end with type 3 and true (OnLastStepAnswer, :809). Only an answer of one of the couple
+    // to a question the hall trigger has open is kept.
+    private static void HandleMutualAgreeAnswer(GameSession session, IByteReader packet) {
+        var type = (WeddingAgreeType) packet.ReadByte();
+        bool accept = packet.ReadBool();
+
+        session.Field?.Wedding?.Answer(session.CharacterId, type, accept);
     }
 
     private static void HandleInvitationFindUser(GameSession session, IByteReader packet) {

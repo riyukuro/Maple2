@@ -1101,6 +1101,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<DateTime?>("MarriageTime")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<long>("Partner1Id")
                         .HasColumnType("bigint");
 

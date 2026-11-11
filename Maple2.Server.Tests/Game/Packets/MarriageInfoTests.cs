@@ -14,6 +14,7 @@ public class MarriageInfoTests {
         var info = new MarriageInfo {
             Status = status,
             CreationTime = 1000,
+            MarriageTime = 1000,
             Partner1Name = "ab",
             Partner2Name = "c",
         };

@@ -19,15 +19,22 @@ public class Marriage : IByteSerializable {
     public long Exp { get; set; }
     public string Profile { get; set; } = string.Empty;
     public long CreationTime { get; set; }
+    // The time the vow was completed in the wedding hall; 0 until then.
+    public long MarriageTime { get; set; }
 
     public IList<MarriageExp> ExpHistory { get; set; } = [];
+
+    // Only an engaged couple can be married by a ceremony.
+    public static bool CanMarry(MaritalStatus status) => status == MaritalStatus.Engaged;
 
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteLong(Id);
         writer.WriteByte((byte) Status);
         writer.WriteLong(CreationTime);
-        writer.WriteLong(); // wedding time ?
+        // Client: WeddingProxy::Read (weddingproxy.cpp:227) reads the state time and then the marriage time, the
+        // one its divorce check counts from.
+        writer.WriteLong(MarriageTime);
         writer.WriteClass<MarriagePartner>(Partner1);
         writer.WriteClass<MarriagePartner>(Partner2);
         writer.WriteLong(Exp);
@@ -80,6 +87,7 @@ public class MarriagePartner : IByteSerializable, IDisposable {
 public class MarriageInfo : IByteSerializable {
     public MaritalStatus Status { get; set; }
     public long CreationTime { get; set; }
+    public long MarriageTime { get; set; }
     public string Partner1Name { get; set; } = string.Empty;
     public string Partner2Name { get; set; } = string.Empty;
     public void WriteTo(IByteWriter writer) {
@@ -88,6 +96,6 @@ public class MarriageInfo : IByteSerializable {
         writer.WriteUnicodeString(Partner1Name);
         writer.WriteUnicodeString(Partner2Name);
         writer.WriteLong(Status == MaritalStatus.Engaged ? CreationTime : 0);
-        writer.WriteLong(Status == MaritalStatus.Married ? CreationTime : 0);
+        writer.WriteLong(Status == MaritalStatus.Married ? MarriageTime : 0);
     }
 }

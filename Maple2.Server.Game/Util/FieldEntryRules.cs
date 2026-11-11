@@ -80,9 +80,10 @@ public static class FieldEntryRules {
     // The name for log lines of a session; empty before the character is loaded (an arrival with a bad token).
     // A map entered with an owner id that has one room per owner instead of one room for everyone: the
     // map of a guild event, which each guild plays in its own room, and a guild house map, which is the
-    // house of one guild. Homes have their own path and a given room id names the room itself.
+    // house of one guild, and a wedding hall map, where the owner is the marriage whose ceremony it holds. Homes
+    // have their own path and a given room id names the room itself.
     public static bool HasOwnerRoom(InstanceType type, long ownerId, int roomId) {
-        return ownerId != 0 && roomId == 0 && type is InstanceType.GuildEvent or InstanceType.GuildHouse;
+        return ownerId != 0 && roomId == 0 && type is InstanceType.GuildEvent or InstanceType.GuildHouse or InstanceType.WeddingHall;
     }
 
     public static string LogName(string? characterName) {

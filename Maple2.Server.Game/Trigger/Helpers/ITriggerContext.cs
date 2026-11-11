@@ -254,6 +254,6 @@ public interface ITriggerContext {
     public bool WaitTick(int waitTick);
     public bool WeddingEntryInField(string entryType, bool isInField);
     public bool WeddingHallState(string state, bool success);
-    public bool WeddingMutualAgreeResult(string agreeType);
+    public bool WeddingMutualAgreeResult(string agreeType, bool success);
     public bool WidgetValue(string type, string widgetName, string widgeArg, bool negate, string desc);
 }

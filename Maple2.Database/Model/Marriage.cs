@@ -16,6 +16,8 @@ internal class Marriage {
     public required string Partner1Message { get; set; }
     public required string Partner2Message { get; set; }
     public DateTime CreationTime { get; set; }
+    // Set when the vow is completed in the wedding hall.
+    public DateTime? MarriageTime { get; set; }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Marriage?(Maple2.Model.Game.Marriage? other) {
@@ -27,6 +29,7 @@ internal class Marriage {
             Partner1Message = other.Partner1.Message,
             Partner2Message = other.Partner2.Message,
             CreationTime = other.CreationTime.FromEpochSeconds(),
+            MarriageTime = other.MarriageTime > 0 ? other.MarriageTime.FromEpochSeconds() : null,
         };
     }
 
