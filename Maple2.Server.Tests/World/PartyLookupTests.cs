@@ -121,6 +121,35 @@ public class PartyLookupTests {
         Assert.That(Start(party, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
 
+    // rv44 MINOR 3: no join while the party is matched, nor past the set room's maxUserCount.
+    [Test]
+    public void AMatchedPartyTakesNoJoinUntilItsRoomIsSetWithSpace() {
+        PartyManager party = Party(2);
+        DungeonMatchResult result = Start(party, new DungeonMatchRoom(100, 1, 2, false));
+        Assert.That(result.MaxUsers, Is.EqualTo(2));
+        Assert.That(party.Join(Player()), Is.EqualTo(PartyError.s_party_err_full_limit_player));
+        // The matchmaker's own join of a searcher it counted is not refused.
+        Assert.That(party.Join(Player(), matchmaker: true), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Members.Count, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void ASetRoomTakesJoinsUpToItsMaxUserCount() {
+        PartyManager party = Party(2);
+        DungeonMatchResult result = Start(party, new DungeonMatchRoom(100, 1, 2, false));
+        lookup.CompleteDungeonMatch(party, result);
+        Assert.That(party.Party.DungeonSet, Is.True);
+        Assert.That(party.Join(Player()), Is.EqualTo(PartyError.s_party_err_full_limit_player));
+
+        // A room set by the leader (manual): joins up to its cap, then none; unset, the party's capacity again.
+        PartyManager manual = Party(2);
+        manual.SetDungeon(manual.Party.LeaderCharacterId, 100, true, 9001, maxUsers: 3);
+        Assert.That(manual.Join(Player()), Is.EqualTo(PartyError.none));
+        Assert.That(manual.Join(Player()), Is.EqualTo(PartyError.s_party_err_full_limit_player));
+        manual.SetDungeon(manual.Party.LeaderCharacterId, 0, false);
+        Assert.That(manual.Join(Player()), Is.EqualTo(PartyError.none));
+    }
+
     // rv42 MINOR 9: the Party Finder listing goes with a disbanded party and with a party that moves away.
     [Test]
     public void ADisbandRemovesThePartysListing() {

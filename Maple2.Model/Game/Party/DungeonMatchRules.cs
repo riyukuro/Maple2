@@ -17,6 +17,12 @@ public static class DungeonMatchRules {
     // size of a room already made, so a search would be full at 2.
     public static int MaxUsers(DungeonMatchRoom room) => room.MaxUsers;
 
+    // A party join (an invite accepted, a Party Finder join) is refused while the party is matched and its room is
+    // being made, and once a dungeon room is set when the party holds the room's maxUserCount (rv44 MINOR 3).
+    // roomMaxUsers 0: not known (nothing is tested).
+    public static bool RefusesJoin(bool matching, bool dungeonSet, int members, int roomMaxUsers) =>
+        matching || (dungeonSet && roomMaxUsers > 0 && members >= roomMaxUsers);
+
     // A party whose search ended (stopped, cancelled, or its room could not be made) with one member left is the
     // party of one made for a solo searcher, or what is left of a party: it goes, so the player searches solo
     // again next time (rv40 MAJOR 1).

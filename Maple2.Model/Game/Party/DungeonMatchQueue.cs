@@ -13,7 +13,8 @@ public enum DungeonMatchOutcome {
     AlreadySearching,
 }
 
-public readonly record struct DungeonMatchResult(DungeonMatchOutcome Outcome, int PartyId = 0, byte Kind = 0, int RoomId = 0);
+// MaxUsers: a matched room's maxUserCount (the most the party may then hold, rv44 MINOR 3).
+public readonly record struct DungeonMatchResult(DungeonMatchOutcome Outcome, int PartyId = 0, byte Kind = 0, int RoomId = 0, int MaxUsers = 0);
 
 // A copy of a searching group, to put it back (Restore) when the party side of a join or pull fails.
 public sealed record DungeonMatchGroup(int PartyId, byte Kind, IReadOnlyList<DungeonMatchRoom> Rooms, IReadOnlyList<long> Members, IReadOnlyList<long> FoundIds, long Order) {
@@ -268,7 +269,7 @@ public sealed class DungeonMatchQueue {
                 return new DungeonMatchResult(DungeonMatchOutcome.Stopped, partyId, group.Kind);
             }
             matching.Add(partyId);
-            return new DungeonMatchResult(DungeonMatchOutcome.Matched, partyId, group.Kind, room.Value.Id);
+            return new DungeonMatchResult(DungeonMatchOutcome.Matched, partyId, group.Kind, room.Value.Id, DungeonMatchRules.MaxUsers(room.Value));
         }
     }
 
@@ -329,6 +330,6 @@ public sealed class DungeonMatchQueue {
         }
         groups.Remove(group.PartyId);
         matching.Add(group.PartyId);
-        return new DungeonMatchResult(DungeonMatchOutcome.Matched, group.PartyId, group.Kind, full.Value.Id);
+        return new DungeonMatchResult(DungeonMatchOutcome.Matched, group.PartyId, group.Kind, full.Value.Id, DungeonMatchRules.MaxUsers(full.Value));
     }
 }

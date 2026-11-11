@@ -453,6 +453,8 @@ message PartyRequest {
     int32 dungeon_id = 2;
     int32 dungeon_room_id = 3;
     bool set = 4;
+    // The room's maxUserCount: once the room is set the party takes no member past it.
+    int32 max_users = 5;
   }
   // A party recall scroll: call the other members to the requestor.
   message Recall {

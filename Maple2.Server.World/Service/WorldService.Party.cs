@@ -237,7 +237,7 @@ public partial class WorldService {
             return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
         }
 
-        manager.SetDungeon(requestorId, setDungeon.DungeonId, setDungeon.Set, setDungeon.DungeonRoomId);
+        manager.SetDungeon(requestorId, setDungeon.DungeonId, setDungeon.Set, setDungeon.DungeonRoomId, maxUsers: setDungeon.MaxUsers);
 
         return new PartyResponse();
     }
@@ -356,7 +356,8 @@ public partial class WorldService {
 
     // A player with no party takes the slot the queue gave them in target's group.
     private static PartyError JoinSolo(PartyManager target, PlayerInfo info) {
-        PartyError error = target.Join(info);
+        // The queue has counted the searcher and may have marked the party matched already.
+        PartyError error = target.Join(info, matchmaker: true);
         if (error == PartyError.none && target.Party.Members.TryGetValue(info.CharacterId, out PartyMember? member)) {
             target.SendLoad([member]);
         }

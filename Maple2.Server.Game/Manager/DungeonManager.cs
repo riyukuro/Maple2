@@ -352,6 +352,7 @@ public class DungeonManager {
                     DungeonId = dungeonId,
                     DungeonRoomId = LobbyRoomId,
                     Set = true,
+                    MaxUsers = metadata.Limit.MaxUserCount,
                 },
             };
 

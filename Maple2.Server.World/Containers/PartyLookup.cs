@@ -218,7 +218,7 @@ public class PartyLookup : IDisposable {
                             return;
                         }
                         if (lobbyRoomId != 0) {
-                            current.SetDungeon(current.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true);
+                            current.SetDungeon(current.Party.LeaderCharacterId, result.RoomId, true, lobbyRoomId, matched: true, maxUsers: result.MaxUsers);
                         } else {
                             EndSearchParty(current);
                         }

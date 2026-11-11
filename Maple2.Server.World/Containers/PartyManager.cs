@@ -201,8 +201,13 @@ public class PartyManager : IDisposable {
         }
     }
 
-    public PartyError Join(PlayerInfo info) => PartyLookup.DungeonMatchStep(() => {
+    // matchmaker: the dungeon matchmaker's own join of a searcher, which the queue has counted already.
+    public PartyError Join(PlayerInfo info, bool matchmaker = false) => PartyLookup.DungeonMatchStep(() => {
         if (Party.Members.Count >= Party.Capacity) {
+            return PartyError.s_party_err_full_limit_player;
+        }
+        if (!matchmaker && DungeonMatchRules.RefusesJoin(PartyLookup.DungeonMatch.IsMatching(Party.Id), Party.DungeonSet, Party.Members.Count, DungeonMaxUsers)) {
+            // The client has no error of its own for it; "the party is full" is the nearest.
             return PartyError.s_party_err_full_limit_player;
         }
         if (Party.Members.ContainsKey(info.CharacterId)) {
@@ -510,11 +515,15 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     }
 
-    public PartyError SetDungeon(long requestorId, int dungeonId, bool set, int dungeonRoomId = 0, bool matched = false) {
+    // The set room's maxUserCount (0: none set, or not known).
+    public int DungeonMaxUsers { get; private set; }
+
+    public PartyError SetDungeon(long requestorId, int dungeonId, bool set, int dungeonRoomId = 0, bool matched = false, int maxUsers = 0) {
         if (requestorId != Party.LeaderCharacterId) {
             return PartyError.s_party_err_not_chief;
         }
 
+        DungeonMaxUsers = set ? maxUsers : 0;
         Party.DungeonSet = set;
         Party.DungeonId = dungeonId;
         Party.DungeonLobbyRoomId = dungeonRoomId;

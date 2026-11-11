@@ -34,7 +34,7 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.Join(1, [Four], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
         Assert.That(queue.Join(1, [Four], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
         DungeonMatchResult full = queue.Join(1, [Four], M(1))!.Value;
-        Assert.That(full, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100)));
+        Assert.That(full, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100, 4)));
         Assert.That(queue.IsSearching(1), Is.False);
         // The matched group is gone: the next searcher finds no group.
         Assert.That(queue.Join(1, [Four], M(1)), Is.Null);
@@ -43,7 +43,7 @@ public class DungeonMatchQueueTests {
     [Test]
     public void PartyAtTheMaximumIsMatchedAtOnce() {
         var queue = new DungeonMatchQueue();
-        Assert.That(queue.Start(1, 1, [Three], M(3)), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 200)));
+        Assert.That(queue.Start(1, 1, [Three], M(3)), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 200, 3)));
         // Rooms the party is too large for are not searched.
         Assert.That(queue.Start(2, 1, [Three], M(4)).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
     }
@@ -54,7 +54,7 @@ public class DungeonMatchQueueTests {
         queue.Start(1, 1, [Change], M(1));
         Assert.That(queue.Join(1, [Change], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
         Assert.That(queue.Join(1, [Change], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
-        Assert.That(queue.Join(1, [Change], M(1))!.Value, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 300)));
+        Assert.That(queue.Join(1, [Change], M(1))!.Value, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 300, 4)));
         // A party of the row maximum is matched at once.
         Assert.That(queue.Start(2, 1, [Change], M(4)).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
     }
@@ -68,7 +68,7 @@ public class DungeonMatchQueueTests {
         DungeonMatchResult joined = queue.Join(1, [Four], M(1))!.Value;
         // Two groups of 2: the one that started first.
         Assert.That(joined.PartyId, Is.EqualTo(2));
-        Assert.That(queue.Join(1, [Four], M(1))!.Value, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 100)));
+        Assert.That(queue.Join(1, [Four], M(1))!.Value, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 100, 4)));
         Assert.That(queue.Join(1, [Four], M(1))!.Value.PartyId, Is.EqualTo(3));
     }
 
@@ -103,7 +103,7 @@ public class DungeonMatchQueueTests {
         var queue = new DungeonMatchQueue();
         queue.Start(1, 1, [Four], M(1));
         queue.Join(1, [Four], M(1));
-        Assert.That(queue.Cancel(1, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100)));
+        Assert.That(queue.Cancel(1, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100, 4)));
         Assert.That(queue.Cancel(1, 1).Outcome, Is.EqualTo(DungeonMatchOutcome.NotSearching));
     }
 
@@ -127,7 +127,7 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.Cancel(2, 1).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
         queue.Start(3, 1, [solo], M(1));
         queue.Join(1, [solo], M(1));
-        Assert.That(queue.Cancel(3, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 3, 1, 400)));
+        Assert.That(queue.Cancel(3, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 3, 1, 400, 4)));
     }
 
     [Test]
@@ -146,7 +146,7 @@ public class DungeonMatchQueueTests {
         var queue = new DungeonMatchQueue();
         queue.Start(1, 1, [Four, Three], [1, 2]);
         // An invite brings the party to three: full for the three-user room.
-        Assert.That(queue.Resize(1, [1, 2, 3]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 200)));
+        Assert.That(queue.Resize(1, [1, 2, 3]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 200, 3)));
         Assert.That(queue.Resize(1, [1, 2, 3]).Outcome, Is.EqualTo(DungeonMatchOutcome.NotSearching));
 
         queue.Start(2, 1, [Four, Three], [4, 5]);
@@ -179,7 +179,7 @@ public class DungeonMatchQueueTests {
         queue.Join(1, [five], [9]);
         queue.Resize(2, [1, 2, 9]);
         Assert.That(queue.CountOf(2), Is.EqualTo((3, 1)));
-        Assert.That(queue.Cancel(2, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 500)));
+        Assert.That(queue.Cancel(2, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 500, 5)));
     }
 
     // rv42 MAJOR 1: every member counts, online or not; an offline member keeps its slot.
@@ -218,7 +218,7 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.CountOf(1), Is.EqualTo((5, 2)));
         Assert.That(queue.CountOf(2), Is.EqualTo((3, 0)));
         // Found rose by the party's members: the leader may now start early.
-        Assert.That(queue.Cancel(1, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 600)));
+        Assert.That(queue.Cancel(1, 1), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 600, 8)));
     }
 
     [Test]
@@ -256,7 +256,7 @@ public class DungeonMatchQueueTests {
         var queue = new DungeonMatchQueue();
         var five = new DungeonMatchRoom(500, 2, 5, false);
         queue.Start(1, 1, [five], [1, 2, 3]);
-        Assert.That(queue.Join(1, [five], [4, 5]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 500)));
+        Assert.That(queue.Join(1, [five], [4, 5]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 500, 5)));
         Assert.That(queue.IsSearching(1), Is.False);
     }
 
@@ -427,7 +427,7 @@ public class DungeonMatchQueueTests {
         var queue = new DungeonMatchQueue();
         queue.Start(1, 1, [Four], [1]);
         DungeonMatchPull pull = StartAndPull(queue, 2, Four, [2, 3, 4]);
-        Assert.That(pull.Result, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 100)));
+        Assert.That(pull.Result, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 100, 4)));
         Assert.That(pull.Pulled.Select(group => group.PartyId), Is.EqualTo(new[] { 1 }));
         Assert.That(queue.IsSearching(1), Is.False);
     }
@@ -436,7 +436,7 @@ public class DungeonMatchQueueTests {
     public void TwoAndTwoOnACapOfFourMatch() {
         var queue = new DungeonMatchQueue();
         queue.Start(1, 1, [Four], [1, 2]);
-        Assert.That(queue.Join(1, [Four], [3, 4]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100)));
+        Assert.That(queue.Join(1, [Four], [3, 4]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100, 4)));
     }
 
     [Test]
@@ -445,7 +445,7 @@ public class DungeonMatchQueueTests {
         var five = new DungeonMatchRoom(500, 2, 5, false);
         queue.Start(1, 1, [five], [1, 2]);
         DungeonMatchPull pull = StartAndPull(queue, 2, five, [3, 4, 5]);
-        Assert.That(pull.Result, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 500)));
+        Assert.That(pull.Result, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 500, 5)));
         Assert.That(pull.Before!.Users, Is.EqualTo(3));
     }
 
