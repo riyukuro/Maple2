@@ -37,7 +37,8 @@ public class RequestReportHandler : FieldPacketHandler {
                 break;
             case ReportCategory.Poster:
                 var posterFlag = packet.Read<PosterReportFlag>();
-                int posterId = packet.ReadInt();
+                // The client sends the poster id as a long (UIReportDialog::SendReport).
+                long posterId = packet.ReadLong();
                 string templateId = packet.ReadUnicodeString();
                 db.ReportPoster(characterId, playerName, session.CharacterId, session.PlayerName, reason, posterId, templateId, posterFlag);
                 break;

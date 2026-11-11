@@ -34,7 +34,7 @@ public partial class GameStorage {
             Context.TrySaveChanges();
         }
 
-        public void ReportPoster(long characterId, string playerName, long reporterCharacterId, string reporterName, string reason, int posterId, string templateId, PosterReportFlag flag) {
+        public void ReportPoster(long characterId, string playerName, long reporterCharacterId, string reporterName, string reason, long posterId, string templateId, PosterReportFlag flag) {
             Context.PlayerReports.Add(new PlayerReport {
                 ReporterCharacterId = reporterCharacterId,
                 ReporterName = reporterName,
