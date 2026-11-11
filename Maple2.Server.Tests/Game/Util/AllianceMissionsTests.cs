@@ -371,13 +371,15 @@ public class AllianceMissionsTests {
     }
 
     // The fame a completed mission gives: the reward's useMainFamePoint and an alliance are needed; rank D of a main
-    // alliance gives 700 in KR (the window's +700), 90 elsewhere.
+    // alliance gives 700 (the window's +700) and rank C 800 in every locale, as the client's script has it.
     [NonParallelizable]
     [TestCase("KR", AllianceType.DarkWind, 4, 1, 700)]
     [TestCase("KR", AllianceType.GreenHoods, 0, 2, 4000)]
     [TestCase("KR", AllianceType.KritiasGreenHoods, 4, 1, 90)]
-    [TestCase("NA", AllianceType.DarkWind, 4, 1, 90)]
-    [TestCase("NA", AllianceType.DarkWind, 1, 2, 2000)]
+    [TestCase("NA", AllianceType.DarkWind, 4, 1, 700)]
+    [TestCase("NA", AllianceType.DarkWind, 3, 1, 800)]
+    [TestCase("NA", AllianceType.DarkWind, 1, 2, 3000)]
+    [TestCase("NA", AllianceType.KritiasGreenHoods, 4, 1, 90)]
     [TestCase("KR", AllianceType.DarkWind, 4, 0, 0)]
     [TestCase("KR", AllianceType.AnyFaction, 4, 1, 0)]
     public void FameReward(string locale, AllianceType alliance, int rank, int useMainFamePoint, int expected) {

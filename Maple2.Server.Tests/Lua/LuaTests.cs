@@ -482,18 +482,19 @@ public class LuaTests {
         Assert.That(ours, Is.EqualTo((int) maple2Lua.CalcPetEnchantBookCost((ushort) rarity)));
     }
 
-    // Rank D (4) of a main alliance with useMainFamePoint 1: 700 in KR, 90 elsewhere.
-    [Test]
-    public void TestCalcQuestRewardFamePoint() {
-        Assert.That(Server.Game.LuaFunctions.Lua.CalcQuestRewardFamePoint(4, 0, 1, 3), Is.EqualTo(V(90, 700)));
-        for (int rank = -1; rank <= 6; rank++) {
-            for (int use = 0; use <= 3; use++) {
-                foreach (int alliance in new[] { 1, 5, 6, 9 }) {
-                    int ours = Server.Game.LuaFunctions.Lua.CalcQuestRewardFamePoint(rank, 0, use, alliance);
-                    Assert.That(ours, Is.EqualTo((int) maple2Lua.CalcQuestRewardFamePoint(rank, 0, use, alliance)),
-                        $"rank {rank} use {use} alliance {alliance}");
-                }
-            }
-        }
+    // The client's own script, in every locale (it has no locale test, unlike the upstream server script): the first
+    // five alliances get 2000/1500/1000/800/700 and x2 for a useMainFamePoint of 2 or more, later alliances
+    // 230/200/140/100/90 and x10. The rank and the flag are clamped to the tables.
+    [TestCase(4, 1, 3, 700)]
+    [TestCase(3, 1, 1, 800)]
+    [TestCase(0, 2, 5, 4000)]
+    [TestCase(1, 3, 2, 3000)]
+    [TestCase(4, 1, 6, 90)]
+    [TestCase(0, 2, 9, 2300)]
+    [TestCase(-1, 0, 1, 2000)]
+    [TestCase(5, 1, 1, 0)]
+    [TestCase(6, 1, 6, 0)]
+    public void TestCalcQuestRewardFamePoint(int rank, int use, int alliance, int expected) {
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcQuestRewardFamePoint(rank, 0, use, alliance), Is.EqualTo(expected));
     }
 }
