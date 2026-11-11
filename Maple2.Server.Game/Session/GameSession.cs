@@ -232,8 +232,24 @@ public sealed partial class GameSession : Core.Network.Session {
             portalId = -1;
         }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
-            Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
-            return false;
+            // The saved field cannot be made (for one, its map has no navmesh file). A plain entry goes to the
+            // return field, then to the default one, so the character is not locked out of the game.
+            if (migrationType == MigrationType.Normal) {
+                foreach (int fallbackId in FieldEntryRules.Fallbacks(fieldId, player.Character.ReturnMaps.Peek(), Constant.DefaultReturnMapId)) {
+                    if (!MapMetadata.TryGet(fallbackId, out _)) {
+                        continue;
+                    }
+                    Vector3 fallbackPosition = fallbackId == player.Character.ReturnMaps.Peek() ? player.Character.ReturnPosition : default;
+                    if (PrepareField(fallbackId, out fieldManager, position: fallbackPosition)) {
+                        Logger.Warning("Character:{CharacterId} enters Map:{FallbackId}, Map:{MapId} could not be made", characterId, fallbackId, fieldId);
+                        break;
+                    }
+                }
+            }
+            if (fieldManager == null) {
+                Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
+                return false;
+            }
         }
         switch (migrationType) {
             case MigrationType.DecorPlanner:

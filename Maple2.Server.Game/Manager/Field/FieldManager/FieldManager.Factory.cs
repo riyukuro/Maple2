@@ -162,6 +162,15 @@ public partial class FieldManager {
                 ugcMetadata = new UgcMapMetadata(dungeonMetadata.LobbyFieldId, new Dictionary<int, UgcMapGroup>());
             }
 
+            // Every field of the dungeon needs its navmesh file. Check them all before any field is made, so
+            // a missing one refuses the whole dungeon instead of throwing after the lobby exists.
+            foreach (int fieldId in dungeonMetadata.FieldIds.Prepend(dungeonMetadata.LobbyFieldId)) {
+                if (MapMetadata.TryGet(fieldId, out MapMetadata? checkMetadata) && !Navigation.Exists(checkMetadata.XBlock)) {
+                    logger.Error("Dungeon:{DungeonId} Map:{MapId} has no navmesh file ({XBlock}), dungeon not created", dungeonMetadata.Id, fieldId, checkMetadata.XBlock);
+                    return null;
+                }
+            }
+
             MapEntityMetadata? entities = MapEntities.Get(mapMetadata.XBlock);
             if (entities == null) {
                 throw new InvalidOperationException($"Failed to load entities for map: {dungeonMetadata.LobbyFieldId}");
