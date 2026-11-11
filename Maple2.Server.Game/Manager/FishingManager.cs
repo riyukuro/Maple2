@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -26,6 +27,9 @@ public class FishingManager {
     private bool fishFightGame;
     private FishTable.Fish? selectedFish;
     private FishingTile? selectedTile;
+    // The cast in progress: whether its fish bites, and the field tick of the bite.
+    private bool bite;
+    private long biteTick;
     private IDictionary<Vector3, FishingTile> tiles = new Dictionary<Vector3, FishingTile>();
 
     private ConstantsTable Constants => serverTableMetadata.ConstantsTable;
@@ -245,7 +249,8 @@ public class FishingManager {
         bool hasAutoFish = session.Player.Buffs.HasBuff(BuffEventType.AutoFish);
 
         // Fishing Success
-        if (Random.Shared.Next(0, 10000) < selectedFish.BaitProbability) {
+        bite = Random.Shared.Next(0, 10000) < selectedFish.BaitProbability;
+        if (bite) {
             if (!hasAutoFish && Random.Shared.Next(0, 10000) < Constants.fishFightingProp) {
                 fishFightGame = true;
             }
@@ -256,7 +261,8 @@ public class FishingManager {
             fishingTick = Random.Shared.Next(fishingTick + 1, fishingTick * 2); // If tick is over bore duration, it will fail
         }
 
-        session.Send(FishingPacket.Start((session.Field.FieldTick + fishingTick).Truncate32(), fishFightGame));
+        biteTick = session.Field.FieldTick + fishingTick;
+        session.Send(FishingPacket.Start(biteTick.Truncate32(), fishFightGame));
 
         return FishingError.none;
     }
@@ -281,6 +287,8 @@ public class FishingManager {
 
         bool hasAutoFish = session.Player.Buffs.HasBuff(BuffEventType.AutoFish);
 
+        // The result byte is the client's: it counts only for a cast that had a bite, once the bite tick has come.
+        success = FishingRules.IsCatch(success, bite, session.Field.FieldTick, biteTick);
         if (success) {
             AddFish(fishSize, hasAutoFish);
             CatchItem(spotMetadata);
@@ -289,6 +297,9 @@ public class FishingManager {
             session.Send(FishingPacket.CatchFish(selectedFish.Id, fishSize, hasAutoFish));
             fishFightGame = false;
         }
+        // One catch per cast: the next one needs a new start.
+        selectedFish = null;
+        bite = false;
 
         return FishingError.none;
     }
