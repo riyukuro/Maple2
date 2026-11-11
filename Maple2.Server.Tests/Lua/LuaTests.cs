@@ -395,4 +395,50 @@ public class LuaTests {
             Assert.That(Server.Game.LuaFunctions.Lua.CalcPetEvolutionResultLevel(rarity, levelLimit), Is.EqualTo(expected));
         });
     }
+
+    [TestCase(22000L, 50)]
+    [TestCase(22000L, 60)]
+    [TestCase(55000L, 70)]
+    [TestCase(90000L, 0)]
+    public void TestCalcPetExp(long exp, int levelLimit) {
+        long ours = Server.Game.LuaFunctions.Lua.CalcPetExp(exp, levelLimit);
+        Assert.That(ours, Is.EqualTo((long) maple2Lua.CalcPetExp(exp, (ushort) levelLimit)));
+    }
+
+    [TestCase(1, 1, 1, 0L, 0, 10, 50)]
+    [TestCase(3, 2, 5, 1234L, 3, 10, 60)]
+    [TestCase(4, 3, 10, 0L, 9, 10, 70)]
+    [TestCase(4, 4, 1, 500L, 10, 10, 50)]
+    [TestCase(5, 5, 30, 77777L, 25, 10, 50)]
+    [TestCase(2, 3, 2, 10L, 59, 10, 50)]
+    [TestCase(2, 4, 2, 10L, 70, 10, 60)]
+    [TestCase(1, 2, 3, 0L, 0, 0, 50)]
+    public void TestCalcPetEnchantExp(int targetRarity, int fodderRarity, int fodderLevel, long fodderExp, int count, int limit, int levelLimit) {
+        (long Base, long Bonus) ours = Server.Game.LuaFunctions.Lua.CalcPetEnchantExp(targetRarity, fodderRarity, fodderLevel, fodderExp, count, limit, levelLimit);
+        var theirs = maple2Lua.CalcPetEnchantExp((ushort) targetRarity, (ushort) fodderRarity, (ushort) fodderLevel, fodderExp, count, limit, (ushort) levelLimit);
+        Assert.Multiple(() => {
+            Assert.That(ours.Base, Is.EqualTo((long) theirs.Item1));
+            Assert.That(ours.Bonus, Is.EqualTo((long) theirs.Item2));
+        });
+    }
+
+    [TestCase(1, 1, 1, 0L)]
+    [TestCase(2, 3, 10, 5000L)]
+    [TestCase(3, 1, 25, 0L)]
+    [TestCase(4, 2, 2, 120L)]
+    [TestCase(5, 5, 50, 0L)]
+    public void TestCalcPetEnchantCost(int targetRarity, int fodderRarity, int fodderLevel, long fodderExp) {
+        int ours = Server.Game.LuaFunctions.Lua.CalcPetEnchantCost(targetRarity, fodderRarity, fodderLevel, fodderExp);
+        Assert.That(ours, Is.EqualTo((int) maple2Lua.CalcPetEnchantCost((ushort) targetRarity, (ushort) fodderRarity, (ushort) fodderLevel, fodderExp)));
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(5)]
+    public void TestCalcPetEnchantBookCost(int rarity) {
+        int ours = Server.Game.LuaFunctions.Lua.CalcPetEnchantBookCost(rarity);
+        Assert.That(ours, Is.EqualTo((int) maple2Lua.CalcPetEnchantBookCost((ushort) rarity)));
+    }
 }

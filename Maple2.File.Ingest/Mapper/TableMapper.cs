@@ -66,6 +66,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
         yield return new TableMetadata { Name = TableNames.PET_EVOLUTION, Table = ParsePetEvolution() };
+        yield return new TableMetadata { Name = TableNames.PET_EXP, Table = ParsePetExp() };
         yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
         yield return new TableMetadata { Name = TableNames.JOB, Table = ParseJobTable() };
         yield return new TableMetadata { Name = TableNames.MAGIC_PATH, Table = ParseMagicPath() };
@@ -321,6 +322,44 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return results;
 
         static int ParseIntOr(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML. The client skips the rows its
+    // feature or locale filter refuses (IsElementAvailable) and the levels outside 1-99; a later row with the
+    // same level replaces an earlier one (CExpTable::LoadPetExp).
+    private PetExpTable ParsePetExp() {
+        return new PetExpTable(ReadPetExps(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/petexp.xml"))));
+    }
+
+    private static readonly string[] PetExpColumns = ["normal", "rare", "elite", "excellent", "legendary", "artifact"];
+
+    public static Dictionary<int, long[]> ReadPetExps(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var results = new Dictionary<int, long[]>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/exp");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!available(node)) {
+                continue;
+            }
+
+            string levelText = node.GetAttribute("level");
+            int level = string.IsNullOrWhiteSpace(levelText) ? 0 : int.Parse(levelText.Trim(), CultureInfo.InvariantCulture);
+            if (level < 1 || level > 99) {
+                continue;
+            }
+
+            var row = new long[PetExpColumns.Length];
+            for (int i = 0; i < row.Length; i++) {
+                string value = node.GetAttribute(PetExpColumns[i]);
+                row[i] = string.IsNullOrWhiteSpace(value) ? 0 : long.Parse(value.Trim(), CultureInfo.InvariantCulture);
+            }
+            results[level] = row;
+        }
+        return results;
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client keeps the rows whose

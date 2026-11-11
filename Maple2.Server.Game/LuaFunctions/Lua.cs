@@ -970,6 +970,94 @@ public static class Lua {
         return (ItemRemakeRedcrystalTag, crystalCount, ItemRemakeCrystalChipTag, crystalChipCount, ItemRemakeMetaCellTag, metaCellCount);
     }
 
+    // calc_petExp: the exp a pet needs for its next level, scaled by the pet item's level limit
+    // (x1 for 50, x1.5 for 60, x2.25 for 70, any other limit x1). The client casts the result to an integer.
+    public static long CalcPetExp(long exp, int levelLimit) {
+        return (long) (exp * PetLevelMultiplier(levelLimit));
+    }
+
+    // calc_petEnchantExp: the exp one pet fusion fodder gives, as (base, bonus). The arguments are the target
+    // pet's rarity (not read), the fodder's rarity, pet level and pet exp, the player's fusion count before this
+    // fodder, the daily bonus limit and the fodder item's level limit. While count + 1 stays within the limit
+    // the fodder gives its full rarity exp and a 3000 bonus; after that the rarity part falls linearly to 20%
+    // at a count of 60. A fodder rarity outside 1-5 reads nil in the script's tables; here it counts as 0.
+    public static (long Base, long Bonus) CalcPetEnchantExp(int targetRarity, int fodderRarity, int fodderLevel, long fodderExp,
+            int count, int limit, int levelLimit) {
+        double multiplier = PetLevelMultiplier(levelLimit);
+        double rarityExp = PetEnchantRarityExp(fodderRarity) * multiplier;
+        double levelExp = PetEnchantLevelExp(fodderRarity) * multiplier;
+
+        int next = count + 1;
+        double factor;
+        double bonus = 0;
+        if (next <= limit) {
+            factor = 1;
+            bonus = 3000 * multiplier;
+        } else if (next < 60) {
+            factor = 1 - (next - limit) * 0.8 / (60 - limit);
+        } else {
+            factor = 0.2;
+        }
+
+        double total = Math.Floor(factor * rarityExp) + Math.Floor(0.8 * (levelExp * Math.Max(0, fodderLevel - 1) + fodderExp));
+        return ((long) total, (long) bonus);
+    }
+
+    // calc_petEnchantCost: the meso one pet fusion fodder costs, by the target pet's rarity and the fodder's
+    // pet level: the base cost plus a per-level step. The fodder rarity and pet exp are passed but not read.
+    public static int CalcPetEnchantCost(int targetRarity, int fodderRarity, int fodderLevel, long fodderExp) {
+        int step = targetRarity switch {
+            1 => 1000,
+            2 => 10000,
+            3 => 50000,
+            4 => 150000,
+            5 => 250000,
+            _ => 0,
+        };
+        return CalcPetEnchantBaseCost(targetRarity) + Math.Max(0, fodderLevel - 1) * step;
+    }
+
+    // calc_petEnchantBookCost: the meso one pet exp book costs, the base cost of the target pet's rarity.
+    public static int CalcPetEnchantBookCost(int targetRarity) {
+        return CalcPetEnchantBaseCost(targetRarity);
+    }
+
+    // calc_petEnchantBaseCost: 3000/5000/10000/30000/50000 for rarity 1-5; any other rarity reads nil (0).
+    public static int CalcPetEnchantBaseCost(int rarity) {
+        return rarity switch {
+            1 => 3000,
+            2 => 5000,
+            3 => 10000,
+            4 => 30000,
+            5 => 50000,
+            _ => 0,
+        };
+    }
+
+    private static double PetLevelMultiplier(int levelLimit) => levelLimit switch {
+        60 => 1.5,
+        70 => 2.25,
+        _ => 1,
+    };
+
+    private static int PetEnchantRarityExp(int rarity) => rarity switch {
+        1 => 1500,
+        2 => 3000,
+        3 => 12000,
+        4 => 24000,
+        5 => 48000,
+        _ => 0,
+    };
+
+    private static int PetEnchantLevelExp(int rarity) => rarity switch {
+        1 => 22000,
+        2 => 55000,
+        3 => 90000,
+        4 => 90000,
+        5 => 90000,
+        _ => 0,
+    };
+
     // calc_petEvolutionCost: the meso one evolution fodder of this rarity costs. The script's table has four
     // entries; any other rarity reads nil, which the client takes as 0.
     public static long CalcPetEvolutionCost(int rarity) {
