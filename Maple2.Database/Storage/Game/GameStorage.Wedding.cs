@@ -254,6 +254,44 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // A changed reservation: the old hall row is replaced by a new one that keeps the old row's guests.
+        // The old row is locked as in AddWeddingGuests for the read of its guests, the delete and the insert,
+        // so an invitation is stored either before the change (and is carried over) or finds the old hall gone
+        // (and is refused, unpaid). Null when the old hall is gone or the save failed; nothing is changed then.
+        public WeddingHall? ChangeWeddingHall(long hallId, WeddingHall hall, Marriage marriage) {
+            try {
+                using (IDbContextTransaction transaction = Context.Database.BeginTransaction()) {
+                    Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `wedding-hall` WHERE `Id` = {0} FOR UPDATE", hallId);
+                    Model.WeddingHall? old = Context.WeddingHall.Find(hallId);
+                    if (old == null) {
+                        return null;
+                    }
+                    Context.Entry(old).Reload();
+                    if (Context.Entry(old).State == EntityState.Detached) {
+                        return null;
+                    }
+
+                    Model.WeddingHall model = hall;
+                    model.Id = 0; // a new row with its own id
+                    model.MarriageId = marriage.Id;
+                    model.OwnerId = marriage.Partner1.CharacterId;
+                    model.CreationTime = DateTime.Now;
+                    model.GuestList = new Dictionary<long, long>(old.GuestList);
+                    Context.WeddingHall.Remove(old);
+                    Context.WeddingHall.Add(model);
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
+
+                    transaction.Commit();
+                }
+                return GetWeddingHall(marriage);
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to change wedding hall {HallId}", hallId);
+                return null;
+            }
+        }
+
         // Adds guests (character id, account id) to a hall's stored list. The whole list after it, or null:
         // with an error when the stored list does not take them (WeddingInviteRules.Merge), with error none
         // when the hall is gone or the save failed. The two partners can send from different channel
@@ -268,8 +306,12 @@ public partial class GameStorage {
                 if (hall == null) {
                     return null;
                 }
-                // The context may hold the row from before the lock.
+                // The context may hold the row from before the lock. A row that was deleted while this
+                // request waited for the lock (a cancelled or changed reservation) is detached by the reload.
                 Context.Entry(hall).Reload();
+                if (Context.Entry(hall).State == EntityState.Detached) {
+                    return null;
+                }
 
                 Dictionary<long, long>? list = WeddingInviteRules.Merge(hall.GuestList, guests, max, out error);
                 if (list == null) {

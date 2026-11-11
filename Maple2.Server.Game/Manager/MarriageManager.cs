@@ -1116,17 +1116,12 @@ public sealed class MarriageManager {
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
-        // The changed hall is stored as a new row: it keeps the guests of the old one.
+        // The changed hall is stored as a new row that keeps the guests of the old one; the read of the
+        // guests, the delete and the new row are one transaction under the old row's lock.
         WeddingHall before = WeddingHall;
-        UnconfirmedReservation.GuestList = StoredGuests(db);
-        if (!db.DeleteWeddingHall(WeddingHall.Id)) {
-            logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
-            return WeddingError.s_wedding_result_err_system;
-        }
-
-        WeddingHall? weddingHall = db.CreateWeddingHall(UnconfirmedReservation, Marriage);
+        WeddingHall? weddingHall = db.ChangeWeddingHall(WeddingHall.Id, UnconfirmedReservation, Marriage);
         if (weddingHall == null) {
-            logger.Error("Failed to create wedding hall for {CharacterId}", session.CharacterId);
+            logger.Error("Failed to change wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
             return WeddingError.s_wedding_result_err_system;
         }
 
