@@ -19,8 +19,9 @@ public class GuildManager : IDisposable {
 
     public readonly Guild Guild;
     private readonly ConcurrentDictionary<long, (string, DateTime)> pendingInvites;
-    // One join at a time, by invite or by request: the capacity check and the insert are one step.
-    private readonly object joinLock = new();
+    // The lock of the guild's own values. One join at a time, by invite or by request (the capacity check
+    // and the insert are one step), and every change of the fund or the experience.
+    private readonly object guildLock = new();
 
     public GuildManager(Guild guild) {
         Guild = guild;
@@ -106,7 +107,7 @@ public class GuildManager : IDisposable {
     }
 
     public GuildError Join(string requestorName, PlayerInfo info) {
-        lock (joinLock) {
+        lock (guildLock) {
             return JoinLocked(requestorName, info);
         }
     }
@@ -256,15 +257,23 @@ public class GuildManager : IDisposable {
         requestor.WeeklyContribution += contribution;
         requestor.TotalContribution += contribution;
 
-        GuildTable.Property property = GuildProperty();
-        Guild.Experience += property.CheckInExp;
-        Guild.Funds += property.CheckInFund;
+        // Under the guild lock, as every other change of the fund (donation, skill upgrade): an add made
+        // outside it could be lost against one of those.
+        int guildExp;
+        int guildFund;
+        lock (guildLock) {
+            GuildTable.Property property = GuildProperty();
+            Guild.Experience += property.CheckInExp;
+            Guild.Funds += property.CheckInFund;
+            guildExp = Guild.Experience;
+            guildFund = Guild.Funds;
+        }
 
         Broadcast(new GuildRequest {
             UpdateContribution = new GuildRequest.Types.UpdateContribution {
                 ContributorId = requestor.CharacterId,
-                GuildExp = Guild.Experience,
-                GuildFund = Guild.Funds,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
             },
         });
         Broadcast(new GuildRequest {
@@ -286,7 +295,7 @@ public class GuildManager : IDisposable {
         }
 
         GuildBuff upgraded;
-        lock (joinLock) {
+        lock (guildLock) {
             int index = -1;
             for (int i = 0; i < Guild.Buffs.Count; i++) {
                 if (Guild.Buffs[i].Id == buffId) {
@@ -342,7 +351,7 @@ public class GuildManager : IDisposable {
         lock (member) {
             long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
             int today = GuildRules.DonationsToday(member.DailyDonationCount, member.DonationTime, dayStart);
-            lock (joinLock) {
+            lock (guildLock) {
                 if (!GuildRules.CanDonate(count, member.JoinTime, dayStart, today, property.DonateMax, Guild.Funds, fund,
                         Math.Min(property.FundMax, int.MaxValue))) {
                     return GuildError.s_guild_err_unknown;
