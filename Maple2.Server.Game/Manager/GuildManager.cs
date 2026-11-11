@@ -274,7 +274,7 @@ public class GuildManager : IDisposable {
     }
 
     public bool UpdateRank(string requestorName, int rankId, string name, GuildPermission permission) {
-        GuildRank? rank = Guild?.Ranks.ElementAtOrDefault(rankId);
+        GuildRank? rank = Guild?.Ranks.FirstOrDefault(r => r.Id == rankId);
         if (rank == null) {
             return false;
         }

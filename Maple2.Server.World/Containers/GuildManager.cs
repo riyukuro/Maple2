@@ -307,9 +307,13 @@ public class GuildManager : IDisposable {
         if (Guild.LeaderCharacterId != requestorId) {
             return GuildError.s_guild_err_no_authority;
         }
-        GuildRank? rank = Guild.Ranks.ElementAtOrDefault(rankId);
-        if (rankId < 0 || rank == null) {
+        // Ranks are matched by their id, the index the client sends, not by list position.
+        GuildRank? rank = Guild.Ranks.FirstOrDefault(r => r.Id == rankId);
+        if (rank == null) {
             return GuildError.s_guild_err_invalid_grade_index;
+        }
+        if ((int) permission is < 0 or > 4095) {
+            return GuildError.s_guild_err_invalid_grade_data;
         }
 
         rank.Name = name;

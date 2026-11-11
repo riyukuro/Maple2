@@ -599,6 +599,10 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     // CGuildManager::SendGuildMode67: the rank index, then the whole rank with the same index. The client sends
     // it only from the master, for a rank it lists, with a name of at most 15 characters (the m_gradeName input).
+    // Its checks: index 0..5 and CGuildGrade::IsValid (rights 0..4095). It also lets an index one above the
+    // highest rank through, but its only caller (UIGuildDialog OnChangeGrade) skips every index the guild has no
+    // rank for, and the members' reader of the update (OnPacketGradeUpdated) drops an unknown index, so the
+    // server takes only ranks that exist.
     private void HandleUpdateRank(GameSession session, IByteReader packet) {
         byte rankId = packet.ReadByte();
         var rank = packet.ReadClass<GuildRank>();
@@ -606,7 +610,8 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (session.Guild.Guild == null) {
             return;
         }
-        if (rank.Id != rankId || rank.Name.Length is 0 or > MaxRankNameLength) {
+        if (rank.Id != rankId || rankId >= MaxRanks || (int) rank.Permission is < 0 or > MaxRankPermission
+            || rank.Name.Length is 0 or > MaxRankNameLength) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data));
             return;
         }
@@ -629,9 +634,14 @@ public class GuildHandler : PacketHandler<GameSession> {
 
             // CGuildManager::OnPacketGradeChanged: the master's "rank changed" box.
             session.Send(GuildPacket.UpdateRank(rank));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to update guild rank {RankId} of guild {GuildId}", rankId, session.Guild.Id);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
+    private const int MaxRanks = 6;
+    private const int MaxRankPermission = 4095;
     private const int MaxRankNameLength = 15;
 
     private void HandleUpdateFocus(GameSession session, IByteReader packet) {
