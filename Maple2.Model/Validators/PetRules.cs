@@ -8,6 +8,11 @@ public static class PetRules {
         return name.Length > 0 && name.Length <= MaxNameLength;
     }
 
+    // The client also runs its pet name filter; the server runs its ban-word list.
+    public static bool IsAllowedName(string name, Func<string, bool> isBanned) {
+        return IsName(name) && !string.IsNullOrWhiteSpace(name) && !isBanned(name);
+    }
+
     // The client asks for no merets while the pet has a rename left, and for the pet rename price after that.
     public static int RenameCost(short renameRemaining, int price) {
         return renameRemaining > 0 ? 0 : price;

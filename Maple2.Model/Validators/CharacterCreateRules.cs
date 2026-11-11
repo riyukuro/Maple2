@@ -8,6 +8,16 @@ public static class CharacterCreateRules {
         return gender is Gender.Male or Gender.Female;
     }
 
+    // What create and the name change item both refuse before the name is looked up: a blank name, and a
+    // name the ban-word list matches.
+    public static bool IsBlankName(string name) {
+        return string.IsNullOrWhiteSpace(name);
+    }
+
+    public static bool IsAllowedName(string name, Func<string, bool> isBanned) {
+        return !IsBlankName(name) && !isBanned(name);
+    }
+
     // An account holds at most its own slot count, and never more than the server's.
     public static bool HasFreeSlot(int owned, int accountMax, int serverMax) {
         return owned >= 0 && owned < Math.Min(accountMax, serverMax);

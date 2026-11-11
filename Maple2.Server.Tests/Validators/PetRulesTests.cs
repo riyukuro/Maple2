@@ -28,6 +28,16 @@ public class PetRulesTests {
     }
 
     [Test]
+    public void BannedAndBlankNamesAreRefused() {
+        System.Func<string, bool> banned = name => name.Contains("bad");
+        Assert.That(PetRules.IsAllowedName("Bo", banned), Is.True);
+        Assert.That(PetRules.IsAllowedName("sobad", banned), Is.False);
+        // Three spaces: 03 00 20 00 20 00 20 00.
+        var packet = new ByteReader(new byte[] { 0x03, 0x00, 0x20, 0x00, 0x20, 0x00, 0x20, 0x00 }, 0);
+        Assert.That(PetRules.IsAllowedName(packet.ReadUnicodeString(), banned), Is.False);
+    }
+
+    [Test]
     public void FirstRenameIsFreeLaterOnesCost() {
         Assert.That(PetRules.RenameCost(1, 100), Is.EqualTo(0));
         Assert.That(PetRules.RenameCost(0, 100), Is.EqualTo(100));

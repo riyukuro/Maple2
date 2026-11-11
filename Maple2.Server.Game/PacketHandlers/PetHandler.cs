@@ -1,5 +1,7 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -12,6 +14,12 @@ namespace Maple2.Server.Game.PacketHandlers;
 
 public class PetHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestPet;
+
+    #region Autofac Autowired
+    // ReSharper disable MemberCanBePrivate.Global
+    public required BanWordStorage BanWordStorage { private get; init; }
+    // ReSharper restore All
+    #endregion
 
     private enum Command : byte {
         Summon = 0,
@@ -97,6 +105,10 @@ public class PetHandler : FieldPacketHandler {
         }
 
         string name = packet.ReadUnicodeString();
+        // The client's rename box shows its own error for a filtered name and never sends it.
+        if (!PetRules.IsAllowedName(name, BanWordStorage.ContainsBannedWord)) {
+            return;
+        }
         session.Pet.Rename(name);
     }
 

@@ -24,6 +24,7 @@ public class ItemUseHandler : FieldPacketHandler {
     // ReSharper disable MemberCanBePrivate.Global
     public required GameStorage GameStorage { private get; init; }
     public required TableMetadataStorage TableMetadata { private get; init; }
+    public required BanWordStorage BanWordStorage { private get; init; }
     // ReSharper restore All
     #endregion
 
@@ -386,6 +387,11 @@ public class ItemUseHandler : FieldPacketHandler {
     private void HandleChangeCharacterName(GameSession session, IByteReader packet, Item item) {
         string newName = packet.ReadUnicodeString();
 
+        // The same blank and ban-word checks as the character create.
+        if (CharacterCreateRules.IsBlankName(newName)) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_name));
+            return;
+        }
         // Counted the way the client counts for its region (Hangul and CJK count twice).
         int width = NameValidator.CharacterNameWidth(newName, Target.LOCALE);
         if (width < 0) {
@@ -399,6 +405,11 @@ public class ItemUseHandler : FieldPacketHandler {
 
         if (width > Constant.CharacterNameLengthMax) {
             session.Send(CharacterListPacket.CreateError(s_char_err_system));
+            return;
+        }
+
+        if (!CharacterCreateRules.IsAllowedName(newName, BanWordStorage.ContainsBannedWord)) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_ban_any));
             return;
         }
 

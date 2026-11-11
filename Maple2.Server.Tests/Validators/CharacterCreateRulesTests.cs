@@ -26,4 +26,21 @@ public class CharacterCreateRulesTests {
     public void FreeSlot(int owned, int accountMax, int serverMax, bool expected) {
         Assert.That(CharacterCreateRules.HasFreeSlot(owned, accountMax, serverMax), Is.EqualTo(expected));
     }
+
+    // RequestItemUse with the name change item: after the item uid, the new name.
+    [Test]
+    public void NameChangeRefusesBlankAndBannedNames() {
+        System.Func<string, bool> banned = name => name.Contains("bad");
+        // Two spaces: 02 00 20 00 20 00.
+        var blank = new ByteReader(new byte[] { 0x02, 0x00, 0x20, 0x00, 0x20, 0x00 }, 0);
+        string name = blank.ReadUnicodeString();
+        Assert.That(CharacterCreateRules.IsBlankName(name), Is.True);
+        Assert.That(CharacterCreateRules.IsAllowedName(name, banned), Is.False);
+
+        var writer = new ByteWriter();
+        writer.WriteUnicodeString("sobad");
+        var packet = new ByteReader(writer.ToArray(), 0);
+        Assert.That(CharacterCreateRules.IsAllowedName(packet.ReadUnicodeString(), banned), Is.False);
+        Assert.That(CharacterCreateRules.IsAllowedName("Good", banned), Is.True);
+    }
 }

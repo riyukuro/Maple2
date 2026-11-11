@@ -91,6 +91,18 @@ public class HomeOpenRulesTests {
     }
 
     [Test]
+    public void NoSixDigitCodeReadsAsPrivate() {
+        // The marker is the word "private": not six characters and not digits, so no code a player can set equals it.
+        Assert.That(HomeOpenRules.PrivatePasscode, Is.EqualTo("private"));
+        for (int code = 0; code <= 999999; code++) {
+            string text = code.ToString("D6");
+            Assert.That(HomeOpenRules.IsPrivate(text), Is.False);
+        }
+        Assert.That(HomeOpenRules.IsPrivate(""), Is.False);
+        Assert.That(HomeOpenRules.IsPrivate(null), Is.False);
+    }
+
+    [Test]
     public void OtherKindsAreRefused() {
         Assert.That(Read(Body(3, ""), out _), Is.False);
         Assert.That(Read(Body(0xFF, "123456"), out _), Is.False);
