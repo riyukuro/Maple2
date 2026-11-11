@@ -12,4 +12,15 @@ public class TriggerDungeonResultTests {
         Assert.That(TriggerContext.CanFailDungeon(DungeonState.Clear), Is.False);
         Assert.That(TriggerContext.CanFailDungeon(DungeonState.Fail), Is.False);
     }
+
+    [Test]
+    public void DungeonState_ComparesTheResultName() {
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.None, "Fail"), Is.False);
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.Fail, "Fail"), Is.True);
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.Clear, "Fail"), Is.False);
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.Clear, "Clear"), Is.True);
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.None, ""), Is.False);
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.Fail, "2"), Is.True);
+        Assert.That(TriggerContext.DungeonStateMatches(DungeonState.None, "7"), Is.False);
+    }
 }

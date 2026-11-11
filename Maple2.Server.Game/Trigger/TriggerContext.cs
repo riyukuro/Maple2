@@ -274,10 +274,18 @@ public partial class TriggerContext : ITriggerContext {
         return CompareUserValue(elapsed, playSeconds, operatorType);
     }
 
-    // Scripts seem to just check if this is "Fail"
+    // The room record's result by name (the shipped scripts test only "Fail"); outside a dungeon room the
+    // old test (an empty name) stays.
     public bool DungeonState(string checkState) {
-        ErrorLog("[GetDungeonState]");
-        return checkState == "";
+        DebugLog("[DungeonState] checkState:{CheckState}", checkState);
+        if (Field is not DungeonFieldManager dungeonField) {
+            return checkState == "";
+        }
+        return DungeonStateMatches(dungeonField.DungeonRoomRecord.State, checkState);
+    }
+
+    public static bool DungeonStateMatches(Maple2.Model.Enum.DungeonState state, string checkState) {
+        return Enum.TryParse(checkState, true, out Maple2.Model.Enum.DungeonState wanted) && Enum.IsDefined(wanted) && wanted == state;
     }
 
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType) {
