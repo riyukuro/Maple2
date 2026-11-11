@@ -119,18 +119,8 @@ public class PartyManager : IDisposable {
         }
 
         request.PartyId = Party.Id;
-        foreach (IGrouping<short, PartyMember> group in Party.Members.Values.Where(member => Party.Vote.Voters.Contains(member.CharacterId)).GroupBy(member => member.Info.Channel)) {
-            if (!ChannelClients.TryGetClient(group.Key, out ChannelClient? client)) {
-                continue;
-            }
-
-            request.ReceiverIds.Clear();
-            request.ReceiverIds.AddRange(group.Select(member => member.Info.CharacterId).Where(member => Party.Vote.Voters.Contains(member)));
-
-            try {
-                client.Party(request);
-            } catch { }
-        }
+        // Through the step queue as every broadcast (rv44 MINOR 1).
+        Send(request, Party.Members.Values.Where(member => Party.Vote.Voters.Contains(member.CharacterId)).ToArray());
     }
 
     // The members who count for a dungeon match search: every member, online or not (rv42 MAJOR 1), so the party
@@ -292,7 +282,9 @@ public class PartyManager : IDisposable {
         return PartyError.none;
     });
 
-    public PartyError UpdateLeader(long requestorId, long characterId) {
+    // UpdateLeader, the ready check, the kick vote and the recall are steps too, so their sends keep step order
+    // with the matchmaker's (rv44 MINOR 1: a leader hand-over no longer passes an AddMember still queued).
+    public PartyError UpdateLeader(long requestorId, long characterId) => PartyLookup.DungeonMatchStep(() => {
         if (!Party.Members.TryGetValue(requestorId, out PartyMember? requestor)) {
             return PartyError.s_party_err_not_found;
         }
@@ -320,7 +312,7 @@ public class PartyManager : IDisposable {
         }
 
         return PartyError.none;
-    }
+    });
 
     // The requestor logged out (Game's CheckDisband). An offline member keeps a slot in a search (rv42 MAJOR 1): the
     // group is not resized. A leader who logs out hands the party over first and the search goes on with the new
@@ -353,7 +345,7 @@ public class PartyManager : IDisposable {
         return string.Empty;
     }
 
-    public PartyError StartReadyCheck(long requestorId) {
+    public PartyError StartReadyCheck(long requestorId) => PartyLookup.DungeonMatchStep(() => {
         if (!Party.Members.TryGetValue(requestorId, out PartyMember? requestor)) {
             return PartyError.s_party_err_not_found;
         }
@@ -370,28 +362,32 @@ public class PartyManager : IDisposable {
 
         Task.Factory.StartNew(() => {
             Thread.Sleep(TimeSpan.FromSeconds(Constants.PartyVoteReadyDurationSeconds));
-            if (Party.Vote == null) {
-                return;
-            }
-            int count = Party.Vote.Disapprovals.Count + Party.Vote.Approvals.Count;
-            if (count >= Party.Vote.Voters.Count) {
-                Party.Vote = null;
-                return;
-            }
-
-            Broadcast(new PartyRequest {
-                ExpiredVote = new PartyRequest.Types.ExpiredVote {
-                    PartyId = Party.Id,
-                },
-            });
-
-            Party.Vote = null;
+            PartyLookup.DungeonMatchStep(ExpireReadyCheck);
         });
 
         return PartyError.none;
+    });
+
+    private void ExpireReadyCheck() {
+        if (Party.Vote == null) {
+            return;
+        }
+        int count = Party.Vote.Disapprovals.Count + Party.Vote.Approvals.Count;
+        if (count >= Party.Vote.Voters.Count) {
+            Party.Vote = null;
+            return;
+        }
+
+        Broadcast(new PartyRequest {
+            ExpiredVote = new PartyRequest.Types.ExpiredVote {
+                PartyId = Party.Id,
+            },
+        });
+
+        Party.Vote = null;
     }
 
-    public PartyError ReadyCheckReply(long requestorId, bool reply) {
+    public PartyError ReadyCheckReply(long requestorId, bool reply) => PartyLookup.DungeonMatchStep(() => {
         if (Party.Vote == null) {
             return PartyError.s_party_err_not_found;
         }
@@ -422,7 +418,7 @@ public class PartyManager : IDisposable {
         CheckEndVote();
 
         return PartyError.none;
-    }
+    });
 
     private void CheckEndVote() {
         if (Party.Vote == null) {
@@ -456,7 +452,7 @@ public class PartyManager : IDisposable {
         }
     }
 
-    public PartyError VoteKick(long requestorId, long targetId) {
+    public PartyError VoteKick(long requestorId, long targetId) => PartyLookup.DungeonMatchStep(() => {
         if (!Party.Members.ContainsKey(requestorId)) {
             return PartyError.s_party_err_not_found;
         }
@@ -482,24 +478,26 @@ public class PartyManager : IDisposable {
         Task.Factory.StartNew(() => {
             // TODO: The duration is wrong.
             Thread.Sleep(TimeSpan.FromSeconds(Constants.PartyVoteReadyDurationSeconds));
-            if (Party.Vote == null) {
-                return;
-            }
+            PartyLookup.DungeonMatchStep(() => {
+                if (Party.Vote == null) {
+                    return;
+                }
 
-            Broadcast(new PartyRequest {
-                ExpiredVote = new PartyRequest.Types.ExpiredVote {
-                    PartyId = Party.Id,
-                },
+                Broadcast(new PartyRequest {
+                    ExpiredVote = new PartyRequest.Types.ExpiredVote {
+                        PartyId = Party.Id,
+                    },
+                });
+
+                Party.Vote = null;
             });
-
-            Party.Vote = null;
         });
 
         return PartyError.none;
-    }
+    });
 
     // A party recall scroll: every member's channel offers the recall to its members but the requestor.
-    public PartyError Recall(long requestorId, int mapId, long endTime) {
+    public PartyError Recall(long requestorId, int mapId, long endTime) => PartyLookup.DungeonMatchStep(() => {
         if (!Party.Members.TryGetValue(requestorId, out PartyMember? requestor)) {
             return PartyError.s_party_err_not_found;
         }
@@ -513,7 +511,7 @@ public class PartyManager : IDisposable {
             },
         });
         return PartyError.none;
-    }
+    });
 
     // The set room's maxUserCount (0: none set, or not known).
     public int DungeonMaxUsers { get; private set; }

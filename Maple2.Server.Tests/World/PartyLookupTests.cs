@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -14,6 +15,7 @@ public class PartyLookupTests {
         public int RoomId = 9000;
         public Action? WhileMakingRoom;
         public bool Throw;
+        public bool Async;
         public readonly List<int> Made = [];
         public readonly List<int> Destroyed = [];
 
@@ -29,6 +31,14 @@ public class PartyLookupTests {
         }
 
         protected override void DestroyMatchedRoom(int lobbyRoomId) => Destroyed.Add(lobbyRoomId);
+
+        protected override void RunRoomTask(Action work) {
+            if (Async) {
+                base.RunRoomTask(work);
+            } else {
+                work();
+            }
+        }
     }
 
     private long nextId = 5000;
@@ -119,6 +129,31 @@ public class PartyLookupTests {
         Assert.That(lookup.DungeonMatch.IsMatching(party.Party.Id), Is.False);
         Assert.That(party.Party.DungeonSet, Is.False);
         Assert.That(Start(party, room).Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+    }
+
+    // rv44 MINOR 1: the room call runs off the effect drain; a later step's effect runs while it waits.
+    [Test]
+    public void ASlowRoomCallHoldsNoOtherEffect() {
+        PartyManager party = Party(2);
+        DungeonMatchResult result = Start(party, new DungeonMatchRoom(100, 1, 2, false));
+        using var entered = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        lookup.Async = true;
+        lookup.WhileMakingRoom = () => {
+            entered.Set();
+            gate.Wait(TimeSpan.FromSeconds(10));
+        };
+        lookup.CompleteDungeonMatch(party, result);
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+
+        bool ran = false;
+        lookup.DungeonMatchStep(() => PartyLookup.Defer(() => ran = true));
+        Assert.That(ran, Is.True);
+        Assert.That(lookup.DungeonMatch.IsMatching(party.Party.Id), Is.True);
+
+        gate.Set();
+        Assert.That(SpinWait.SpinUntil(() => party.Party.DungeonSet, TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(lookup.DungeonMatch.IsMatching(party.Party.Id), Is.False);
     }
 
     // rv44 MINOR 3: no join while the party is matched, nor past the set room's maxUserCount.

@@ -19,11 +19,11 @@ public partial class ChannelService {
             case PartyRequest.PartyOneofCase.AddMember:
                 return Task.FromResult(AddPartyMember(request.PartyId, request.ReceiverIds, request.AddMember));
             case PartyRequest.PartyOneofCase.RemoveMember:
-                return Task.FromResult(RemovePartyMember(request.ReceiverIds, request.RemoveMember));
+                return Task.FromResult(RemovePartyMember(request.PartyId, request.ReceiverIds, request.RemoveMember));
             case PartyRequest.PartyOneofCase.UpdateLeader:
                 return Task.FromResult(UpdatePartyLeader(request.ReceiverIds, request.UpdateLeader));
             case PartyRequest.PartyOneofCase.Disband:
-                return Task.FromResult(Disband(request.ReceiverIds, request.Disband));
+                return Task.FromResult(Disband(request.PartyId, request.ReceiverIds, request.Disband));
             case PartyRequest.PartyOneofCase.StartReadyCheck:
                 return Task.FromResult(StartReadyCheck(request.ReceiverIds, request.StartReadyCheck));
             case PartyRequest.PartyOneofCase.VoteReply:
@@ -104,9 +104,10 @@ public partial class ChannelService {
         return new PartyResponse();
     }
 
-    private PartyResponse RemovePartyMember(IEnumerable<long> receiverIds, PartyRequest.Types.RemoveMember remove) {
+    // A remove or disband for a party the session has already left (a matchmaker move, rv44 MINOR 1) is skipped.
+    private PartyResponse RemovePartyMember(int partyId, IEnumerable<long> receiverIds, PartyRequest.Types.RemoveMember remove) {
         foreach (long characterId in receiverIds) {
-            if (!server.GetSession(characterId, out GameSession? session)) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Party.Party?.Id != partyId) {
                 continue;
             }
 
@@ -132,9 +133,9 @@ public partial class ChannelService {
         return new PartyResponse();
     }
 
-    private PartyResponse Disband(IEnumerable<long> receiverIds, PartyRequest.Types.Disband disband) {
+    private PartyResponse Disband(int partyId, IEnumerable<long> receiverIds, PartyRequest.Types.Disband disband) {
         foreach (long characterId in receiverIds) {
-            if (!server.GetSession(characterId, out GameSession? session)) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Party.Party?.Id != partyId) {
                 continue;
             }
 

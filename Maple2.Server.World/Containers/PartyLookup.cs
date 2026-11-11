@@ -193,7 +193,8 @@ public class PartyLookup : IDisposable {
     // What a queue step leaves to the party: a matched group gets its room (made on the first channel, as the
     // leader's CreateDungeon would) and the enter box; a stopped one is told the search ended. Searching: nothing.
     // The room is made after the step's lock is released; the party stays marked matching until then (it cannot
-    // search again), and a party gone meanwhile has its room destroyed (rv42 MINOR 6).
+    // search again), and a party gone meanwhile has its room destroyed (rv42 MINOR 6). The room calls run on a task
+    // of their own, not on the effect drain, so a slow channel holds no other party's sends (rv44 MINOR 1).
     public void CompleteDungeonMatch(PartyManager manager, DungeonMatchResult result) => DungeonMatchStep(() => {
         switch (result.Outcome) {
             case DungeonMatchOutcome.Matched:
@@ -201,7 +202,7 @@ public class PartyLookup : IDisposable {
                 int size = manager.Party.Members.Count;
                 int partyId = manager.Party.Id;
                 long leaderId = manager.Party.LeaderCharacterId;
-                Defer(() => {
+                Defer(() => RunRoomTask(() => {
                     int lobbyRoomId = 0;
                     try {
                         lobbyRoomId = CreateMatchedRoom(leaderId, partyId, result.RoomId, size);
@@ -213,7 +214,7 @@ public class PartyLookup : IDisposable {
                         DungeonMatch.EndMatching(partyId);
                         if (!TryGet(partyId, out PartyManager? current)) {
                             if (lobbyRoomId != 0) {
-                                Defer(() => DestroyMatchedRoom(lobbyRoomId));
+                                Defer(() => RunRoomTask(() => DestroyMatchedRoom(lobbyRoomId)));
                             }
                             return;
                         }
@@ -223,7 +224,7 @@ public class PartyLookup : IDisposable {
                             EndSearchParty(current);
                         }
                     });
-                });
+                }));
                 break;
             case DungeonMatchOutcome.Stopped:
                 BroadcastDungeonMatch(manager, result.Kind, false);
@@ -247,6 +248,12 @@ public class PartyLookup : IDisposable {
         });
     }
 
+    // Virtual: the tests run the room work inline.
+    protected virtual void RunRoomTask(Action work) => Task.Run(work);
+
+    // A room call that gets no answer in this time counts as failed (chosen here).
+    public const int RoomCallDeadlineSeconds = 10;
+
     // Virtual: the tests' seam for the channel call.
     protected virtual int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
@@ -260,7 +267,7 @@ public class PartyLookup : IDisposable {
                     Size = size,
                     PartyId = partyId,
                 },
-            });
+            }, deadline: DateTime.UtcNow.AddSeconds(RoomCallDeadlineSeconds));
             return response.Error == (int) MigrationError.ok ? response.RoomId : 0;
         } catch (Exception ex) {
             logger.Error(ex, "Dungeon match room for party {PartyId} not made", partyId);
@@ -276,7 +283,7 @@ public class PartyLookup : IDisposable {
         try {
             client.Field(new FieldRequest {
                 DestroyDungeon = new FieldRequest.Types.DestroyDungeon { RoomId = lobbyRoomId },
-            });
+            }, deadline: DateTime.UtcNow.AddSeconds(RoomCallDeadlineSeconds));
         } catch (Exception ex) {
             logger.Error(ex, "Dungeon match room {RoomId} not destroyed", lobbyRoomId);
         }
