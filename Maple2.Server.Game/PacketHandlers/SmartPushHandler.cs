@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -44,7 +45,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
 
         int successCount = 0;
         for (int i = 0; i < amount; i++) {
-            if (metadata.RequiredItem.Tag != ItemTag.None && !session.Item.Inventory.Consume([metadata.RequiredItem])) {
+            if (!TakeRequiredItem(session, metadata)) {
                 // Out of items part way: the gathers already done are still reported.
                 break;
             }
@@ -82,7 +83,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
             return;
         }
 
-        if (metadata.RequiredItem.Tag != ItemTag.None && !session.Item.Inventory.Consume([metadata.RequiredItem])) {
+        if (!TakeRequiredItem(session, metadata)) {
             return;
         }
 
@@ -93,6 +94,19 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         }
 
         session.Buffs.AddBuff(session.Player, session.Player, (int) metadata.Value, 1, session.Field.FieldTick);
+    }
+
+    // By the tag when the push names one, else by the item id; a push with neither needs no item.
+    private static bool TakeRequiredItem(GameSession session, SmartPushMetadata metadata) {
+        if (metadata.RequiredItem.Tag != ItemTag.None) {
+            return session.Item.Inventory.Consume([metadata.RequiredItem]);
+        }
+        if (metadata.RequiredItemId != 0 && metadata.RequiredItem.Amount > 0) {
+            return session.Item.Inventory.ConsumeItemComponents([
+                new ItemComponent(metadata.RequiredItemId, -1, metadata.RequiredItem.Amount, ItemTag.None),
+            ]);
+        }
+        return true;
     }
 
     private AutoActionMetaData? FindPackage(GameSession session, SmartPushMetadata smartPushMetadata, int packageId) {

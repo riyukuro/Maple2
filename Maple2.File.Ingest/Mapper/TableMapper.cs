@@ -14,6 +14,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Tools.Extensions;
 using DayOfWeek = System.DayOfWeek;
 using ChatSticker = Maple2.File.Parser.Xml.Table.ChatSticker;
@@ -1871,17 +1872,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private SmartPushTable ParseSmartPushTable() {
         var results = new Dictionary<int, SmartPushMetadata>();
         foreach ((int id, SmartPush smartPush) in parser.ParseSmartPush()) {
-            var requiredItem = new IngredientInfo(ItemTag.None, 0);
-            var requiredItemTag = ItemTag.None;
-            if (smartPush.requireItem.Length != 0) {
-                string[] requiredItemArray = smartPush.requireItem[0].Split(":");
-                if (requiredItemArray.Length == 2) {
-                    requiredItemTag = Enum.TryParse(requiredItemArray[1], out ItemTag tag) ? tag : ItemTag.None;
-                }
-                requiredItem = new IngredientInfo(
-                    tag: requiredItemTag,
-                    amount: int.Parse(smartPush.requireItem[2]));
-            }
+            (int requiredItemId, string requiredTagName, int requiredAmount) = SmartPushRules.ParseRequiredItem(smartPush.requireItem);
+            ItemTag requiredItemTag = Enum.TryParse(requiredTagName, out ItemTag tag) ? tag : ItemTag.None;
+            var requiredItem = new IngredientInfo(requiredItemTag, requiredAmount);
 
             results.Add(id, new SmartPushMetadata(
                 Id: id,
@@ -1889,7 +1882,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 Type: Enum.TryParse(smartPush.actionType, out SmartPushType type) ? type : SmartPushType.none,
                 Value: smartPush.actionValue,
                 MeretCost: smartPush.requireMerat,
-                RequiredItem: requiredItem));
+                RequiredItem: requiredItem,
+                RequiredItemId: requiredItemId));
         }
         return new SmartPushTable(results);
     }

@@ -32,6 +32,15 @@ public class SmartPushRulesTests {
     }
 
     [Test]
+    public void RequiredItem() {
+        Assert.That(SmartPushRules.ParseRequiredItem(new[] { "20300078", "1", "1" }), Is.EqualTo((20300078, "", 1)));
+        Assert.That(SmartPushRules.ParseRequiredItem(new[] { "20300078:AutoGathering", "1", "2" }), Is.EqualTo((20300078, "AutoGathering", 2)));
+        Assert.That(SmartPushRules.ParseRequiredItem(new string[0]), Is.EqualTo((0, "", 0)));
+        Assert.That(SmartPushRules.ParseRequiredItem(new[] { "x" }), Is.EqualTo((0, "", 0)));
+        Assert.That(SmartPushRules.ParseRequiredItem(new[] { "5", "1", "-3" }), Is.EqualTo((5, "", 0)));
+    }
+
+    [Test]
     public void Affords() {
         Assert.That(SmartPushRules.Affords(30, 30), Is.True);
         Assert.That(SmartPushRules.Affords(29, 30), Is.False);

@@ -11,4 +11,6 @@ public record SmartPushMetadata(
     SmartPushType Type,
     long Value,
     long MeretCost,
-    IngredientInfo RequiredItem);
+    IngredientInfo RequiredItem,
+    // The item id of requireItem, used when it names no tag (CSmartPushTable, smartpushtable.cpp:138-141).
+    int RequiredItemId = 0);
