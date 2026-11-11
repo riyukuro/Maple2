@@ -62,7 +62,7 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
         writer.WriteInt(1);
         writer.WriteInt(MapId);
         writer.WriteInt(MapId);
-        writer.WriteInt(); // instance (room) id, as FieldAddUser writes it; not known here, and a home map id is not one
+        writer.WriteInt(RoomId); // instance (room) id, as FieldAddUser writes it
         writer.WriteShort(Level);
         writer.WriteShort(Channel);
         writer.WriteInt((int) Job.Code());
@@ -131,6 +131,7 @@ public class CharacterInfo {
     public DeathState DeathState { get; set; }
     // Location
     public int MapId { get; set; }
+    public int RoomId { get; set; }
     public short Channel { get; set; } = -1;
     public long LastOnlineTime { get; set; }
     public int RetryHeartbeat { get; set; } = 3;
@@ -163,6 +164,7 @@ public class CharacterInfo {
         Job = other.Job;
         Level = other.Level;
         MapId = other.MapId;
+        RoomId = other.RoomId;
         Channel = other.Channel;
         LastOnlineTime = other.LastOnlineTime;
         GuildId = other.GuildId;
@@ -181,6 +183,7 @@ public class CharacterInfo {
             job: player.Character.Job,
             level: player.Character.Level) {
             MapId = player.Character.MapId,
+            RoomId = player.Character.RoomId,
             Channel = player.Character.Channel,
             GuildId = player.Character.GuildId,
             GuildName = player.Character.GuildName,

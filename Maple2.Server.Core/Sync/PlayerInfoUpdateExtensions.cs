@@ -42,6 +42,9 @@ public static class PlayerInfoUpdateExtensions {
         }
         if (update.Type.HasFlag(UpdateField.Map) && update.Request.HasMapId) {
             info.MapId = update.Request.MapId;
+            if (update.Request.HasRoomId) {
+                info.RoomId = update.Request.RoomId;
+            }
         }
         if (update.Type.HasFlag(UpdateField.Channel) && update.Request.HasChannel) {
             info.Channel = (short) update.Request.Channel;
@@ -100,6 +103,7 @@ public static class PlayerInfoUpdateExtensions {
         }
         if (type.HasFlag(UpdateField.Map)) {
             self.MapId = other.MapId;
+            self.RoomId = other.RoomId;
         }
         if (type.HasFlag(UpdateField.Channel)) {
             self.Channel = other.Channel;
@@ -156,6 +160,7 @@ public static class PlayerInfoUpdateExtensions {
         }
         if (type.HasFlag(UpdateField.Map)) {
             request.MapId = info.MapId;
+            request.RoomId = info.RoomId;
         }
         if (type.HasFlag(UpdateField.Channel)) {
             request.Channel = info.Channel;

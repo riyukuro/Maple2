@@ -63,7 +63,7 @@ public class PlayerInfoUpdateEvent {
         if (request.HasGearScore && player.GearScore != request.GearScore) {
             Type |= UpdateField.GearScore;
         }
-        if (request.HasMapId && player.MapId != request.MapId) {
+        if ((request.HasMapId && player.MapId != request.MapId) || (request.HasRoomId && player.RoomId != request.RoomId)) {
             Type |= UpdateField.Map;
         }
         if ((request.HasChannel && player.Channel != request.Channel) ||

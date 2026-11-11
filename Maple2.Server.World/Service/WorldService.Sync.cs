@@ -149,6 +149,7 @@ public partial class WorldService {
             PremiumTime = info.PremiumTime,
             LastOnlineTime = info.LastOnlineTime,
             MapId = info.MapId,
+            RoomId = info.RoomId,
             Channel = info.Channel,
             Health = new HealthUpdate {
                 CurrentHp = info.CurrentHp,

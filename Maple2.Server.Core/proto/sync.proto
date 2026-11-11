@@ -70,6 +70,8 @@ message PlayerUpdateRequest {
 
   // Batch updates in a queue rather than immediately forwarding.
   bool async = 24;
+  // Instance (room) id of the field the player is in; sent together with map_id.
+  optional int32 room_id = 25;
 }
 
 message PlayerUpdateResponse {
@@ -105,4 +107,5 @@ message PlayerInfoResponse {
   repeated DungeonEnterLimitUpdate dungeon_enter_limits = 21;
   int32 death_state = 22;
   int32 mentor_role = 23;
+  int32 room_id = 24;
 }

@@ -22,6 +22,7 @@ public interface IPlayerInfo {
     public MentorRole MentorRole { get; set; }
     // Location
     public int MapId { get; set; }
+    public int RoomId { get; set; }
     public short Channel { get; set; }
     // Home
     public string HomeName { get; set; }

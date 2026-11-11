@@ -492,6 +492,7 @@ public sealed partial class GameSession : Core.Network.Session {
             AccountId = AccountId,
             CharacterId = CharacterId,
             MapId = Field.MapId,
+            RoomId = Field.RoomId,
             Async = true,
         });
 
