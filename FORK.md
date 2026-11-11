@@ -148,7 +148,9 @@ The client sends 47 sub-types that the server does not handle yet. They are list
 
 These systems have one unhandled sub-type each: FurnishingStorage, InteractObject, Ugc.
 
-Guild handling as a whole is switched off (`HandlingOn` in `GuildHandler.cs`): every guild request is logged and dropped, so no guild can be made, joined or used. The count of 6 above is of sub-types without code; the rest have code that does not run.
+Guild handling is switched on (`HandlingOn` in `GuildHandler.cs`). The count of 6 above is of sub-types without code.
+
+Guild rank rights, as the client tests them before it sends: invite 2, expel 4, notice 8, change a member's rank 32, emblem 64. The notice and emblem buttons of the guild window are enabled from rights 8 and 64 (and for the leader), so a rank with rights 3 has both grey and sends nothing. The server sends a changed rank (29, with the rights) and a changed member rank (21) to every member in the form the client reads, and the client stores them and hands them to the window; an open window showed the new rank name, the new member rank and the invite button only after it was reopened in the live try. That part is inside the window's Flash file and is not answered by a packet.
 
 Narrowed, with the reason:
 - FurnishingStorage 4 (take a stored furnishing item into the bag): the server keeps every furnishing item in the furnishing storage and has no bag tab for them, so the request is dropped and the item stays stored. Placing the item from the storage works.

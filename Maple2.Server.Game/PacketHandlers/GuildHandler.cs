@@ -74,8 +74,8 @@ public class GuildHandler : PacketHandler<GameSession> {
     // ReSharper restore All
     #endregion
 
-    // Guild handling is off on this branch. A field, not a constant, so the switch below is not unreachable code (CS0162).
-    private static readonly bool HandlingOn = false;
+    // Guild handling is on. A field, not a constant, so the check below stays compiled either way.
+    private static readonly bool HandlingOn = true;
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
@@ -335,6 +335,12 @@ public class GuildHandler : PacketHandler<GameSession> {
     private void HandleRespondInvite(GameSession session, IByteReader packet) {
         var invite = packet.ReadClass<GuildInvite>();
         bool accepted = packet.ReadBool();
+
+        // An invite stays open for a while; one accepted after joining another guild must not join a second one.
+        if (accepted && session.Guild.Guild != null) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_already_exist));
+            return;
+        }
 
         try {
             var request = new GuildRequest {
