@@ -69,4 +69,9 @@ public enum ItemFunction {
     RecallWedding = 63,
     WeddingChat = 64,
     PetStudy = 65,
+    // In the client's item-use function table; only KR rows of the item data name them.
+    ItemActiveCodiTab = 66,
+    OpenItemBoxLimitedQuantity = 67,
+    OpenPetBox = 68,
+    QuestStart = 69,
 }
