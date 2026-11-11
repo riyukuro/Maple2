@@ -43,6 +43,7 @@ public static class PartyPacket {
         ReadyCheck = 48,
         EndVote = 49,
         SurvivalPartySearch = 55, // OnPartySurvivalSquadRegister (partymanager.cpp:473)
+        DungeonRoomCreate = 56, // OnPartyDungeonRoomCreate (partymanager.cpp:1503)
     }
 
     public static ByteWriter Error(PartyError error, string targetName = "") {
@@ -225,6 +226,16 @@ public static class PartyPacket {
         var pWriter = Packet.Of(SendOp.Party);
         pWriter.Write<Command>(Command.DungeonReset);
         pWriter.WriteBool(dungeonSet);
+        pWriter.WriteInt(dungeonId);
+
+        return pWriter;
+    }
+
+    // Client: CPartyManager::OnPartyDungeonRoomCreate (partymanager.cpp:1503): int dungeon id. A member who is not the
+    // leader gets a yes/no box naming the dungeon; yes sends RoomDungeon 3 (enter the lobby). The leader's client ignores it.
+    public static ByteWriter DungeonRoomCreate(int dungeonId) {
+        var pWriter = Packet.Of(SendOp.Party);
+        pWriter.Write<Command>(Command.DungeonRoomCreate);
         pWriter.WriteInt(dungeonId);
 
         return pWriter;
