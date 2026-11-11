@@ -308,12 +308,17 @@ public class EquipManager {
         }
 
         lock (session.Item) {
-            if (!Badge.TryRemove(slot, out Item? unequipBadge)) {
+            if (!Badge.ContainsKey(slot)) {
                 return true; // Nothing to unequip
             }
 
+            // Checked before the badge comes off: a full tab used to drop the badge.
             if (session.Item.Inventory.FreeSlots(InventoryType.Badge) == 0) {
                 return false;
+            }
+
+            if (!Badge.TryRemove(slot, out Item? unequipBadge)) {
+                return true;
             }
 
             if (unequipBadge.Badge == null) {

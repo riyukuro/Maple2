@@ -1,6 +1,7 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -34,6 +35,7 @@ public static class EquipPacket {
     private enum BadgeCommand : byte {
         Equip = 0,
         Unequip = 1,
+        Error = 4,
     }
 
     public static ByteWriter EquipBadge(IActor<Player> player, Item item) {
@@ -45,6 +47,15 @@ public static class EquipPacket {
         pWriter.WriteInt(item.Rarity);
         pWriter.Write<BadgeType>(item.Badge?.Type ?? BadgeType.None);
         pWriter.WriteClass<Item>(item);
+
+        return pWriter;
+    }
+
+    // The client shows one of its s_gem_error_* lines for the i16.
+    public static ByteWriter BadgeError(BadgeEquipError error) {
+        var pWriter = Packet.Of(SendOp.BadgeEquip);
+        pWriter.WriteByte((byte) BadgeCommand.Error);
+        pWriter.WriteShort((short) error);
 
         return pWriter;
     }

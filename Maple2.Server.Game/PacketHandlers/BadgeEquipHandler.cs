@@ -1,10 +1,12 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Packets;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -36,18 +38,31 @@ public class BadgeEquipHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         packet.Read<BadgeType>(); // We are using static slots based on badge type
 
-        // Disconnect if this fails to avoid bad state.
-        if (!session.Item.Equips.EquipBadge(itemUid)) {
-            session.Disconnect();
+        // The client has its own error lines for a refused badge (mode 4).
+        Item? badge = session.Item.Inventory.Get(itemUid);
+        BadgeEquipError? error = BadgeRules.EquipError(badge != null, badge?.Badge != null, badge?.IsExpired() ?? false);
+        if (error != null) {
+            session.Send(EquipPacket.BadgeError(error.Value));
+            return;
         }
+
+        // A false here has already sent its own message box (level, job, binding).
+        session.Item.Equips.EquipBadge(itemUid);
     }
 
     private void HandleUnequip(GameSession session, IByteReader packet) {
         var slot = packet.Read<BadgeType>();
 
-        // Disconnect if this fails to avoid bad state.
+        bool knownSlot = Enum.IsDefined<BadgeType>(slot);
+        BadgeEquipError? error = BadgeRules.UnequipError(knownSlot, knownSlot && session.Item.Equips.Get(slot) != null,
+            session.Item.Inventory.FreeSlots(InventoryType.Badge));
+        if (error != null) {
+            session.Send(EquipPacket.BadgeError(error.Value));
+            return;
+        }
+
         if (!session.Item.Equips.UnequipBadge(slot)) {
-            session.Disconnect();
+            session.Send(EquipPacket.BadgeError(BadgeEquipError.Unknown));
         }
     }
 
