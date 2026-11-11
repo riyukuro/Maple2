@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 
 namespace Maple2.Model.Game;
@@ -5,7 +6,29 @@ namespace Maple2.Model.Game;
 // The invitations to a reserved wedding hall (Wedding 0x1b find a character, 0x1c send). The client's own
 // checks are WeddingManager::CanInvite (weddingmanager.cpp:417) and UIWeddingInvitationDialog::SendInvitation
 // (uiweddinginvitationdialog.cpp:223); the server repeats them on what it stores.
+public enum WeddingGuestMail {
+    Invite,
+    Change,
+    Cancel,
+}
+
 public static class WeddingInviteRules {
+    // The title and text keys of a mail to a guest. The client's string table has one pair for the invitation,
+    // one for a changed and one for a cancelled wedding.
+    public static (StringCode Title, StringCode Content) MailKeys(WeddingGuestMail mail) {
+        return mail switch {
+            WeddingGuestMail.Change => (StringCode.s_wedding_mail_change_title_receiver, StringCode.s_wedding_mail_change_contents_receiver),
+            WeddingGuestMail.Cancel => (StringCode.s_wedding_mail_cancel_title_receiver, StringCode.s_wedding_mail_cancel_contents_receiver),
+            _ => (StringCode.s_wedding_mail_title_receiver, StringCode.s_wedding_mail_contents_receiver),
+        };
+    }
+
+    // A changed reservation is mailed to the guests when what their invitation shows changed: the time or
+    // the hall. A change of the public flag alone is not.
+    public static bool ChangeMail(WeddingHall before, WeddingHall after) {
+        return before.CeremonyTime != after.CeremonyTime || before.PackageId != after.PackageId || before.PackageHallId != after.PackageHallId;
+    }
+
     // The client sends no invitation from 10 minutes before the ceremony time on.
     public const int LateSeconds = 600;
 

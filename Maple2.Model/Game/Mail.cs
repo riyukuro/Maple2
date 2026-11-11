@@ -77,8 +77,11 @@ public class Mail : IByteSerializable {
         Content = $"""<ms2><v key="{content.ToString()}" /></ms2>""";
     }
 
-    public void SetWeddingInvite(WeddingHall hall) {
-        WeddingInvite = $"""<ms2><wedding groom="{hall.ReserverName}" bride="{hall.PartnerName}" date="{hall.CeremonyTime}" package="{hall.PackageId}" hall="{hall.PackageHallId}"/></ms2>""";
+    // cancel: the attribute cancelMail the client reads as a bool next to the others
+    // (WeddingManager::ReadTicketMail) and gives to the mail window with the wedding data.
+    public void SetWeddingInvite(WeddingHall hall, bool cancel = false) {
+        string cancelMail = cancel ? " cancelMail=\"true\"" : string.Empty;
+        WeddingInvite = $"""<ms2><wedding groom="{hall.ReserverName}" bride="{hall.PartnerName}" date="{hall.CeremonyTime}" package="{hall.PackageId}" hall="{hall.PackageHallId}"{cancelMail}/></ms2>""";
     }
 
     public bool MesoCollected() {

@@ -192,7 +192,24 @@ public sealed class MarriageManager {
         WeddingHall.GuestList = list;
         session.Currency.Meso -= cost;
 
+        MailGuests(db, WeddingHall, guests, WeddingGuestMail.Invite);
+
+        session.Send(WeddingPacket.InvitationOk());
+        session.Send(WeddingPacket.UpdateHall(WeddingHall));
+        long partnerId = Partner.CharacterId;
+        if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession) && partnerSession.Marriage.WeddingHall.Id == WeddingHall.Id) {
+            partnerSession.Marriage.WeddingHall.GuestList = new Dictionary<long, long>(list);
+            partnerSession.Send(WeddingPacket.UpdateHall(partnerSession.Marriage.WeddingHall));
+        }
+        return WeddingError.none;
+    }
+
+    // A mail of type 112 to each guest, from this player. The mail list shows the title and text the server
+    // sends (UIMailListDialog::SetMailInfo) and reads a text given as a string key from the client's own table
+    // (MailTextValue::Load); the table has a pair of keys for the invitation, the change and the cancel.
+    private void MailGuests(GameStorage.Request db, WeddingHall hall, IEnumerable<long> guests, WeddingGuestMail kind) {
         string senderName = session.Player.Value.Character.Name;
+        (StringCode title, StringCode content) = WeddingInviteRules.MailKeys(kind);
         foreach (long guestId in guests) {
             var mail = new Mail {
                 ReceiverId = guestId,
@@ -200,15 +217,12 @@ public sealed class MarriageManager {
                 SenderName = senderName,
                 Type = MailType.WeddingInvite,
             };
-            // The mail list shows the title and text the server sends (UIMailListDialog::SetMailInfo) and reads a
-            // text given as a string key from the client's own table (MailTextValue::Load); the table has
-            // the invitation's two keys.
-            mail.SetTitle(StringCode.s_wedding_mail_title_receiver);
-            mail.SetContent(StringCode.s_wedding_mail_contents_receiver);
-            mail.SetWeddingInvite(WeddingHall);
+            mail.SetTitle(title);
+            mail.SetContent(content);
+            mail.SetWeddingInvite(hall, cancel: kind == WeddingGuestMail.Cancel);
             mail = db.CreateMail(mail);
             if (mail == null) {
-                logger.Error("Failed to create the wedding invitation mail for {CharacterId}", guestId);
+                logger.Error("Failed to create the wedding guest mail for {CharacterId}", guestId);
                 continue;
             }
 
@@ -219,15 +233,13 @@ public sealed class MarriageManager {
                 });
             } catch { /* ignored */ }
         }
+    }
 
-        session.Send(WeddingPacket.InvitationOk());
-        session.Send(WeddingPacket.UpdateHall(WeddingHall));
-        long partnerId = Partner.CharacterId;
-        if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession) && partnerSession.Marriage.WeddingHall.Id == WeddingHall.Id) {
-            partnerSession.Marriage.WeddingHall.GuestList = new Dictionary<long, long>(list);
-            partnerSession.Send(WeddingPacket.UpdateHall(partnerSession.Marriage.WeddingHall));
-        }
-        return WeddingError.none;
+    // The guests of the stored hall, read before it is deleted: the partner may have invited since this
+    // session loaded it.
+    private Dictionary<long, long> StoredGuests(GameStorage.Request db) {
+        WeddingHall? stored = db.GetWeddingHall(Marriage);
+        return new Dictionary<long, long>(stored?.GuestList ?? WeddingHall.GuestList);
     }
 
     // The vow was completed in the hall (trigger WeddingVowComplete) and the marriage is stored as married.
@@ -978,8 +990,11 @@ public sealed class MarriageManager {
         } catch { /* ignored */
         }
 
+        Dictionary<long, long> cancelGuests = StoredGuests(db);
         if (!db.DeleteWeddingHall(WeddingHall.Id)) {
             logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
+        } else {
+            MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
         }
 
         session.Send(WeddingPacket.AcceptCancelReservation(response));
@@ -999,8 +1014,11 @@ public sealed class MarriageManager {
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
+        Dictionary<long, long> cancelGuests = StoredGuests(db);
         if (!db.DeleteWeddingHall(WeddingHall.Id)) {
             logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
+        } else {
+            MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
         }
 
         session.Send(WeddingPacket.AcceptCancelReservation(WeddingError.accept_reservation_cancel));
@@ -1098,6 +1116,9 @@ public sealed class MarriageManager {
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
+        // The changed hall is stored as a new row: it keeps the guests of the old one.
+        WeddingHall before = WeddingHall;
+        UnconfirmedReservation.GuestList = StoredGuests(db);
         if (!db.DeleteWeddingHall(WeddingHall.Id)) {
             logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
             return WeddingError.s_wedding_result_err_system;
@@ -1111,6 +1132,9 @@ public sealed class MarriageManager {
 
         WeddingHall = weddingHall;
         partner.Session.Marriage.WeddingHall = weddingHall;
+        if (WeddingInviteRules.ChangeMail(before, weddingHall)) {
+            MailGuests(db, weddingHall, weddingHall.GuestList.Keys, WeddingGuestMail.Change);
+        }
         session.Send(WeddingPacket.AcceptReservationChange(WeddingHall, differenceCost));
         partner.Session.Send(WeddingPacket.AcceptReservationChange(WeddingHall, differenceCost));
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
@@ -98,6 +99,41 @@ public class WeddingInviteRulesTests {
 
         Assert.That(WeddingInviteRules.Merge(stored, new Dictionary<long, long> { [33] = 3, [44] = 4 }, 3, out error), Is.Null);
         Assert.That(error, Is.EqualTo(WeddingError.s_wedding_result_wedding_invitation_count));
+    }
+
+    // The guests of a changed or cancelled hall: each kind of mail has its own pair of keys, the cancel mail
+    // carries the attribute WeddingManager::ReadTicketMail reads as a bool, and a change of only the public
+    // flag mails nobody.
+    [Test]
+    public void GuestMail_KeysCancelAttributeAndChange() {
+        Assert.That(WeddingInviteRules.MailKeys(WeddingGuestMail.Invite),
+            Is.EqualTo((StringCode.s_wedding_mail_title_receiver, StringCode.s_wedding_mail_contents_receiver)));
+        Assert.That(WeddingInviteRules.MailKeys(WeddingGuestMail.Change),
+            Is.EqualTo((StringCode.s_wedding_mail_change_title_receiver, StringCode.s_wedding_mail_change_contents_receiver)));
+        Assert.That(WeddingInviteRules.MailKeys(WeddingGuestMail.Cancel),
+            Is.EqualTo((StringCode.s_wedding_mail_cancel_title_receiver, StringCode.s_wedding_mail_cancel_contents_receiver)));
+
+        static WeddingHall Of(long time, int package, int hallId, bool open = false) {
+            WeddingHall result = WeddingHall.Default;
+            result.CeremonyTime = time;
+            result.PackageId = package;
+            result.PackageHallId = hallId;
+            result.Public = open;
+            return result;
+        }
+
+        WeddingHall hall = Of(Time, 2, 3);
+        var mail = new Mail();
+        mail.SetWeddingInvite(hall);
+        Assert.That(mail.WeddingInvite, Does.Not.Contain("cancelMail"));
+        Assert.That(mail.WeddingInvite, Does.Contain($"date=\"{Time}\" package=\"2\" hall=\"3\"/>"));
+        mail.SetWeddingInvite(hall, cancel: true);
+        Assert.That(mail.WeddingInvite, Does.Contain("hall=\"3\" cancelMail=\"true\"/>"));
+
+        Assert.That(WeddingInviteRules.ChangeMail(hall, Of(Time, 2, 3, true)), Is.False);
+        Assert.That(WeddingInviteRules.ChangeMail(hall, Of(Time + 3600, 2, 3)), Is.True);
+        Assert.That(WeddingInviteRules.ChangeMail(hall, Of(Time, 2, 4)), Is.True);
+        Assert.That(WeddingInviteRules.ChangeMail(hall, Of(Time, 3, 3)), Is.True);
     }
 
     // UIWeddingGuestDialog::OnStrangerFound: account id, character id, name; OnInvitationOk reads nothing.
