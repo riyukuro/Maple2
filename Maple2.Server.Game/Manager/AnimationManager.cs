@@ -58,13 +58,30 @@ public class AnimationManager {
             return;
         }
 
-        string idleName = "Idle_A";
-        if (actor is FieldNpc npc) {
-            idleName = npc.Value.Metadata.Action.Actions.FirstOrDefault()?.Name ?? idleName;
-            IdleSequenceId = RigMetadata.Sequences.FirstOrDefault(sequence => sequence.Key.Contains(idleName)).Value.Id;
-            return;
+        string? actionName = actor is FieldNpc npc ? npc.Value.Metadata.Action.Actions.FirstOrDefault()?.Name : null;
+        IdleSequenceId = FindIdleSequenceId(RigMetadata.Sequences, actionName);
+    }
+
+    /// <summary>
+    /// The sequence an npc idles in: the one named for its first normal action, else the first one whose name
+    /// holds that action, else Idle_A, else 0. Names are matched without case: some npc rows write the action
+    /// in another case than the rig (npc 21420518 has "down_Idle_A", its rig 11000751_Dwarf1 "Down_Idle_A"),
+    /// and some name one the rig does not have at all.
+    /// </summary>
+    public static short FindIdleSequenceId(IReadOnlyDictionary<string, AnimationSequenceMetadata> sequences, string? actionName) {
+        if (!string.IsNullOrEmpty(actionName)) {
+            foreach ((string name, AnimationSequenceMetadata sequence) in sequences) {
+                if (name.Equals(actionName, StringComparison.OrdinalIgnoreCase)) {
+                    return sequence.Id;
+                }
+            }
+            foreach ((string name, AnimationSequenceMetadata sequence) in sequences) {
+                if (name.Contains(actionName, StringComparison.OrdinalIgnoreCase)) {
+                    return sequence.Id;
+                }
+            }
         }
-        IdleSequenceId = RigMetadata.Sequences.FirstOrDefault(sequence => sequence.Key == idleName).Value.Id;
+        return sequences.TryGetValue("Idle_A", out AnimationSequenceMetadata? idle) ? idle.Id : (short) 0;
     }
 
     public AnimationManager(GameSession session) {
