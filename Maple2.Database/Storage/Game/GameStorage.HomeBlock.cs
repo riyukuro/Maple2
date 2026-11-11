@@ -99,7 +99,9 @@ public partial class GameStorage {
                 return false;
             }
 
+            // Requests do not track what they load, so the changed row has to be handed to the context.
             block.Memo = memo;
+            Context.HomeBlock.Update(block);
             return Context.TrySaveChanges();
         }
 
