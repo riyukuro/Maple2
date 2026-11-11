@@ -22,6 +22,19 @@ public class QuestSummonPortalTests {
         }));
     }
 
+    // CQuestManager::OnQuest mode 0 (questmanager_2.cpp:946): one int, the error. 7 is the alliance quest
+    // completion ticket text, the answer to sub-type 33.
+    [Test]
+    public void Error_IsMode0_ThenTheErrorAsInt() {
+        ByteWriter writer = QuestPacket.Error(Maple2.Model.Error.QuestError.s_alliance_quest_completion_ticket_error);
+        byte[] body = writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
+
+        Assert.That(body, Is.EqualTo(new byte[] {
+            0x00, // mode
+            0x07, 0x00, 0x00, 0x00, // error
+        }));
+    }
+
     [Test]
     public void OnlyAStartedQuestWithAPortal_InATalk_WithNoPortalUp() {
         Assert.That(QuestRules.CanResummonPortal(QuestState.Started, true, true, false), Is.True);

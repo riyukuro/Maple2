@@ -38,7 +38,7 @@ public static class QuestPacket {
     public static ByteWriter Error(QuestError error) {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.Error);
-        pWriter.Write<QuestError>(error);
+        pWriter.WriteInt((int) error);
 
         return pWriter;
     }

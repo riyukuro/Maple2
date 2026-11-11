@@ -129,8 +129,15 @@ public class QuestHandler : FieldPacketHandler {
             case Command.ResumeDungeon:
                 HandleReEnterHiddenMap(session, packet);
                 break;
-            case Command.SkyFortressMission:
             case Command.AllianceQuest:
+                // UIAllianceQuestDialog::SendQuestMode33 (unit_140bf60f0_uialliancequestdialog.cpp:705): the
+                // id of an alliance quest in progress that the player wants to complete with completion
+                // tickets. The server runs no alliance quests, so no quest can be completed this way; the
+                // answer is the client's own text for a ticket that could not be used (Quest error 7).
+                packet.ReadInt();
+                session.Send(QuestPacket.Error(QuestError.s_alliance_quest_completion_ticket_error));
+                break;
+            case Command.SkyFortressMission:
                 // Not handled: one quest id.
                 Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}", command, session.CharacterId, packet.ReadInt());
                 break;
