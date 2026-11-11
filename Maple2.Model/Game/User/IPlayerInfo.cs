@@ -20,6 +20,7 @@ public interface IPlayerInfo {
     public long TotalHp { get; set; }
     public DeathState DeathState { get; set; }
     public MentorRole MentorRole { get; set; }
+    public AdminPermissions AccountAdminPermissions { get; set; }
     // Location
     public int MapId { get; set; }
     public int RoomId { get; set; }

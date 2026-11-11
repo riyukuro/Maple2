@@ -103,7 +103,7 @@ The client has one GM level byte. The server sends it from the account's permiss
 
 The level only switches client features on (debug keys, filter skip, debug buttons). The client can raise it by itself, so every GM action is still checked on the server.
 
-The GM grade byte in the party, guild and buddy views comes from the account as it was loaded at login; a `perm` change shows there after a relog. The field view and the Admin packet follow at once.
+The GM grade byte in the party, guild and buddy views comes from the player info the World server keeps. A `perm` change is sent to World as a player update and goes on to the channels with the other profile fields, so those views follow it the next time they are sent. The field view and the Admin packet follow at once.
 
 GM chat commands the client's own GM windows and hotkeys send (each needs the permission in brackets):
 

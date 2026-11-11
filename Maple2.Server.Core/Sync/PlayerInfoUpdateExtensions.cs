@@ -25,6 +25,9 @@ public static class PlayerInfoUpdateExtensions {
             if (update.Request.HasMentorRole) {
                 info.MentorRole = (MentorRole) update.Request.MentorRole;
             }
+            if (update.Request.HasAdminPermissions) {
+                info.AccountAdminPermissions = (AdminPermissions) update.Request.AdminPermissions;
+            }
         }
         if (update.Type.HasFlag(UpdateField.PremiumTime) && update.Request.HasPremiumTime) {
             info.PremiumTime = update.Request.PremiumTime;
@@ -91,6 +94,7 @@ public static class PlayerInfoUpdateExtensions {
             self.GuildId = other.GuildId;
             self.GuildName = other.GuildName;
             self.MentorRole = other.MentorRole;
+            self.AccountAdminPermissions = other.AccountAdminPermissions;
         }
         if (type.HasFlag(UpdateField.Job)) {
             self.Job = other.Job;
@@ -148,6 +152,7 @@ public static class PlayerInfoUpdateExtensions {
             request.GuildId = info.GuildId;
             request.GuildName = info.GuildName;
             request.MentorRole = (int) info.MentorRole;
+            request.AdminPermissions = (int) info.AccountAdminPermissions;
         }
         if (type.HasFlag(UpdateField.Job)) {
             request.Job = (int) info.Job;

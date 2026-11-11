@@ -36,6 +36,7 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
             GuildName = player.Character.GuildName,
             MentorRole = player.Character.MentorRole,
             Channel = player.Character.Channel,
+            AccountAdminPermissions = player.Account.AdminPermissions,
         };
     }
 
@@ -57,7 +58,7 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
         writer.WriteLong(CharacterId);
         writer.WriteUnicodeString(Name);
         writer.Write<Gender>(Gender);
-        writer.WriteByte(AdminLevel.Of(AccountAdminPermissions)); // GM grade: 50 or more shows as a GM (as loaded at login; a later perm change shows after a relog)
+        writer.WriteByte(AdminLevel.Of(AccountAdminPermissions)); // GM grade: 50 or more shows as a GM
         writer.WriteLong(AccountId);
         writer.WriteInt(1);
         writer.WriteInt(MapId);

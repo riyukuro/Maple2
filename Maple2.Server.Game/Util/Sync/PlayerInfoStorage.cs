@@ -62,6 +62,7 @@ public class PlayerInfoStorage {
                 PlotExpiryTime = response.Home.ExpiryTime.Seconds,
                 PremiumTime = response.PremiumTime,
                 LastOnlineTime = response.LastOnlineTime,
+                AccountAdminPermissions = (AdminPermissions) response.AdminPermissions,
                 DungeonEnterLimits = response.DungeonEnterLimits.ToDictionary(limit => limit.DungeonId, limit => (DungeonEnterLimit) limit.Limit),
             };
 

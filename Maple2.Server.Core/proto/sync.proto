@@ -67,6 +67,8 @@ message PlayerUpdateRequest {
   repeated DungeonEnterLimitUpdate dungeon_enter_limits = 21;
   optional int32 death_state = 22;
   optional int32 mentor_role = 23;
+  // The account's AdminPermissions (the GM grade in party, guild and buddy views).
+  optional int32 admin_permissions = 26;
 
   // Batch updates in a queue rather than immediately forwarding.
   bool async = 24;
@@ -108,4 +110,5 @@ message PlayerInfoResponse {
   int32 death_state = 22;
   int32 mentor_role = 23;
   int32 room_id = 24;
+  int32 admin_permissions = 25;
 }

@@ -6,6 +6,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
@@ -63,6 +64,7 @@ public class AdminPermissionCommand : GameCommand {
             player.AdminPermissions |= flag;
             player.Session.CommandHandler.RegisterCommands();
             player.Session.Send(AdminPacket.Level(AdminLevel.Of(player.AdminPermissions)));
+            SendGrade(player);
             ctx.Console.Out.WriteLine($"Permission {flag} set on {playerName}.");
             player.Session.Send(NoticePacket.Notice(NoticePacket.Flags.MessageBox | NoticePacket.Flags.Message, new InterfaceText($"<FONT size='18'>Granted admin permission: <FONT color='#73eafd'>{flag.ToString()}</FONT></FONT>", true)));
         }
@@ -121,8 +123,19 @@ public class AdminPermissionCommand : GameCommand {
             }
             player.Session.CommandHandler.RegisterCommands();
             player.Session.Send(AdminPacket.Level(AdminLevel.Of(player.AdminPermissions)));
+            SendGrade(player);
             ctx.Console.Out.WriteLine($"Permission {flag} removed from {playerName}.");
         }
+    }
+
+    // The GM grade in party, guild and buddy views comes from the player info World keeps: tell it.
+    private static void SendGrade(FieldPlayer player) {
+        player.Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+            AccountId = player.Session.AccountId,
+            CharacterId = player.Session.CharacterId,
+            AdminPermissions = (int) player.AdminPermissions,
+            Async = true,
+        });
     }
 
     private class ViewCommand : Command {

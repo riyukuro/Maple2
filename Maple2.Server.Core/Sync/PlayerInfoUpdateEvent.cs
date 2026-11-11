@@ -53,6 +53,8 @@ public class PlayerInfoUpdateEvent {
             Type |= UpdateField.Profile;
         } else if (request.HasGuildName && player.GuildName != request.GuildName) {
             Type |= UpdateField.Profile;
+        } else if (request.HasAdminPermissions && player.AccountAdminPermissions != (AdminPermissions) request.AdminPermissions) {
+            Type |= UpdateField.Profile;
         }
         if (request.HasJob && player.Job != (Job) request.Job) {
             Type |= UpdateField.Job;

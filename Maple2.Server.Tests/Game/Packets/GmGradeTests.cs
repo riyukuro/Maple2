@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Core.Sync;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -41,5 +42,25 @@ public class GmGradeTests {
         info.WriteTo(writer);
 
         Assert.That(writer.Buffer[GradeInBlock], Is.EqualTo((byte) grade));
+    }
+
+    // A `perm` change travels as a player update: it counts as a profile change and reaches the views.
+    [Test]
+    public void PlayerUpdate_CarriesAPermChange() {
+        var info = new PlayerInfo(new CharacterInfo(1, 2, Name, "", "", Gender.Male, Job.Newbie, 1), "", new AchievementInfo(), []);
+        var request = new PlayerUpdateRequest { AccountId = 1, CharacterId = 2, AdminPermissions = (int) AdminPermissions.GameMaster };
+
+        var update = new PlayerInfoUpdateEvent(info, request);
+        Assert.That(update.Type.HasFlag(UpdateField.Profile), Is.True);
+        info.Update(update);
+        Assert.That(info.AccountAdminPermissions, Is.EqualTo(AdminPermissions.GameMaster));
+
+        // The same value again is no change.
+        Assert.That(new PlayerInfoUpdateEvent(info, request).Type, Is.EqualTo(UpdateField.None));
+
+        // World forwards a profile change with the permissions in it.
+        var forward = new PlayerUpdateRequest { AccountId = 1, CharacterId = 2 };
+        forward.SetFields(UpdateField.Profile, info);
+        Assert.That(forward.AdminPermissions, Is.EqualTo((int) AdminPermissions.GameMaster));
     }
 }
