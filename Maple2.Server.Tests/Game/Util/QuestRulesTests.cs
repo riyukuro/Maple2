@@ -62,6 +62,54 @@ public class QuestRulesTests {
         Assert.That(QuestRules.CanReEnterHiddenMap(QuestState.Started, true, [], 2000001, false), Is.False);
     }
 
+    // Quest sub-type 28: the tests of CQuestConditionCheckerUserFind (conditionutil.cpp:882). Made-up ids.
+    private static readonly QuestRules.FoundUser Found = new(JobCode: 30, Level: 42, Gender: 1, FinderGender: 0, TitleId: 777, RideId: 555, EquipItemIds: [1001, 1002]);
+
+    [TestCase("dict:{jobId:30}", true)]
+    [TestCase("dict:{jobId:40}", false)]
+    [TestCase("dict:{level:40 100}", true)]
+    [TestCase("dict:{level:43 100}", false)]
+    [TestCase("dict:{level:40}", false)] // the client refuses a level that is not a pair
+    [TestCase("dict:{gender:1}", true)]
+    [TestCase("dict:{gender:0}", false)]
+    [TestCase("dict:{gender:2}", true)] // 2 is either
+    [TestCase("dict:{equipItemIds:1001 1002}", true)]
+    [TestCase("dict:{equipItemIds:1001 1003}", false)]
+    [TestCase("dict:{equipItemIdsAnd:1001 1003}", false)]
+    [TestCase("dict:{equipItemIdsOr:1003 1002}", true)]
+    [TestCase("dict:{equipItemIdsOr:1003 1004}", false)]
+    [TestCase("dict:{titleId:777}", true)]
+    [TestCase("dict:{titleId:778}", false)]
+    [TestCase("dict:{rideeId:555}", true)]
+    [TestCase("dict:{rideeId:556}", false)]
+    [TestCase("dict:{oppositeGender:1}", true)]
+    [TestCase("dict:{oppositeGender:0}", false)]
+    [TestCase("dict:{somethingElse:5}", true)] // a key without a test is skipped
+    [TestCase("titleId:777", false)] // not a dictionary
+    public void MatchesUserFind_OneKey(string target, bool expected) {
+        Assert.That(QuestRules.MatchesUserFind([target], Found), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void MatchesUserFind_SplitDictionaryNeedsEveryKey() {
+        // The ingest splits the target on commas, so a dictionary of three keys arrives as three pieces.
+        Assert.That(QuestRules.MatchesUserFind(["dict:{level:30 100", "gender:1", "jobId:30}"], Found), Is.True);
+        Assert.That(QuestRules.MatchesUserFind(["dict:{level:30 100", "gender:0", "jobId:30}"], Found), Is.False);
+        Assert.That(QuestRules.MatchesUserFind(null, Found), Is.False);
+        Assert.That(QuestRules.MatchesUserFind([], Found), Is.False);
+        Assert.That(QuestRules.ParseDict(["dict:{level:30 100", "gender:1}"]), Is.EqualTo(new System.Collections.Generic.Dictionary<string, string> { ["level"] = "30 100", ["gender"] = "1" }));
+    }
+
+    [TestCase(false, false, false, 200f, 155f, 150f, true)]
+    [TestCase(false, false, false, 306f, 155f, 150f, false)] // too far
+    [TestCase(false, false, false, 9000f, 0f, 150f, true)] // constant not loaded
+    [TestCase(true, false, false, 10f, 155f, 150f, false)] // PvP field
+    [TestCase(false, true, false, 0f, 155f, 150f, false)] // the player's own id
+    [TestCase(false, false, true, 10f, 155f, 150f, false)] // dead target
+    public void CanFindUser(bool pvpField, bool self, bool targetDead, float distance, float reach, float slack, bool expected) {
+        Assert.That(QuestRules.CanFindUser(pvpField, self, targetDead, distance, reach, slack), Is.EqualTo(expected));
+    }
+
     [Test]
     public void ClientStartsItself_ExplorationQuestOfAnotherField() {
         Assert.That(QuestRules.ClientStartsItself(QuestType.FieldMission, false, false, [2000002, 2000001], 2000001), Is.False);

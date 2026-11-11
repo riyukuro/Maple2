@@ -1,10 +1,14 @@
-﻿using Maple2.Database.Storage;
+﻿using System.Numerics;
+using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -131,8 +135,7 @@ public class QuestHandler : FieldPacketHandler {
                 Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}", command, session.CharacterId, packet.ReadInt());
                 break;
             case Command.FindUser:
-                // Not handled: quest id, then the character the player used the quest action on.
-                Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}, target {Target}", command, session.CharacterId, packet.ReadInt(), packet.ReadLong());
+                HandleFindUser(session, packet);
                 break;
         }
     }
@@ -270,6 +273,35 @@ public class QuestHandler : FieldPacketHandler {
         session.Send(session.PrepareField(basic.ProgressMaps![0])
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+    }
+
+    // QuestUserFindAction::vfunc_2 (actionkeyobject.cpp:3035): the quest id, then the character id of the
+    // player the quest action was used on. The answer is the quest's progress (Quest 2).
+    private static void HandleFindUser(GameSession session, IByteReader packet) {
+        int questId = packet.ReadInt();
+        long characterId = packet.ReadLong();
+
+        if (session.Field is null || !session.Field.TryGetPlayerById(characterId, out FieldPlayer? target)) {
+            return;
+        }
+
+        if (!QuestRules.CanFindUser(session.Field.Metadata.Property.Type == MapType.Pvp, characterId == session.CharacterId, target.IsDead,
+                Vector3.Distance(session.Player.Position, target.Position),
+                session.ServerTableMetadata.ConstantsTable.InteractionDistance, InteractRules.ReachSlack)) {
+            return;
+        }
+
+        Character character = target.Value.Character;
+        EquipManager equips = target.Session.Item.Equips;
+        int[] equipItemIds = equips.Gear.Values.Concat(equips.Outfit.Values).Concat(equips.Badge.Values).Select(item => item.Id).ToArray();
+        session.Quest.UpdateUserFind(questId, new QuestRules.FoundUser(
+            JobCode: (int) character.Job.Code(),
+            Level: character.Level,
+            Gender: (int) character.Gender,
+            FinderGender: (int) session.Player.Value.Character.Gender,
+            TitleId: character.Title,
+            RideId: target.Session.Ride.Ride?.Metadata.Id ?? 0,
+            EquipItemIds: equipItemIds));
     }
 
     private static void HandleGoToDungeon(GameSession session, IByteReader packet) {

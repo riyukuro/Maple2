@@ -239,6 +239,32 @@ public sealed class QuestManager {
         }
     }
 
+    // Quest sub-type 28: the player used the quest action on another player. Each user_find condition of the
+    // started quest that is not full yet and that the found player meets goes up by one.
+    public bool UpdateUserFind(int questId, in QuestRules.FoundUser user) {
+        if (!TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started) {
+            return false;
+        }
+
+        bool changed = false;
+        foreach (Quest.Condition condition in quest.Conditions.Values) {
+            if (condition.Metadata.Type != ConditionType.user_find || condition.Counter >= condition.Metadata.Value) {
+                continue;
+            }
+            if (!QuestRules.MatchesUserFind(condition.Metadata.Target?.Strings, user)) {
+                continue;
+            }
+
+            condition.Counter++;
+            changed = true;
+        }
+
+        if (changed) {
+            session.Send(QuestPacket.Update(quest));
+        }
+        return changed;
+    }
+
     /// <summary>
     /// Checks if player can start a quest.
     /// </summary>
