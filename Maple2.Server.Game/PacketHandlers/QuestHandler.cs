@@ -86,6 +86,11 @@ public class QuestHandler : FieldPacketHandler {
                 HandleDispatch(session, packet);
                 break;
             case Command.RemoteComplete:
+            case Command.ClaimEventQuestReward:
+            case Command.ClaimMentoringQuestReward:
+            case Command.ClaimWeddingQuestReward:
+                // The reward buttons of the daily mission, level-up package, time-run event, mentoring and
+                // wedding pages. Each page marks a row as taken once the quest's state is completed.
                 HandleRemoteComplete(session, packet);
                 return;
             case Command.CompleteFieldMission:
@@ -109,10 +114,7 @@ public class QuestHandler : FieldPacketHandler {
             }
             case Command.SkyFortressMission:
             case Command.CinematicProgress:
-            case Command.ClaimEventQuestReward:
-            case Command.ClaimMentoringQuestReward:
             case Command.AllianceQuest:
-            case Command.ClaimWeddingQuestReward:
                 // Not handled: one quest id.
                 Logger.Debug("Quest {Command} from {CharacterId}: quest {QuestId}", command, session.CharacterId, packet.ReadInt());
                 break;
