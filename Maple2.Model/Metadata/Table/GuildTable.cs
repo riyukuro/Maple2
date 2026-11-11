@@ -14,7 +14,8 @@ public record GuildTable(
         short RequireLevel,
         int Cost,
         int UpgradeCost,
-        int Duration);
+        int Duration,
+        int Cooldown = 0);
 
     public record House(
         int MapId,

@@ -224,7 +224,8 @@ public static class GuildRules {
 
     // Guild 90 (CGuildManager::FUN_1413b8fe0), in the client's order: the master asks, the row of the skill's
     // level must exist, its requireLevel must not be above the guild level, the fund pays its cost, and the
-    // skill is not running (CGuildSkill::IsUsable: the time of use plus the duration is over). The skills
+    // skill is neither running nor cooling down (CGuildSkill::IsUsable: the time of use plus the duration,
+    // and the time of use plus the cooltime, are both over). The skills
     // above 10000 are the personal ones (Guild 91) and are refused here.
     public static GuildError CheckUseSkill(bool isMaster, int skillId, GuildTable.Buff? row, int guildLevel, int funds,
                                            long useTime, long now) {
@@ -240,15 +241,24 @@ public static class GuildRules {
         if (row.Cost < 0 || row.Cost > (IsEventFundSkill(skillId) ? 0 : funds)) {
             return GuildError.s_guild_err_not_enough_guild_fund;
         }
-        if (IsSkillRunning(row, useTime, now)) {
+        if (SkillRemainingSeconds(row, useTime, now) > 0 || SkillCooldownSeconds(row, useTime, now) > 0) {
             return GuildError.s_guild_err_cannot_use_skill;
         }
         return GuildError.none;
     }
 
-    // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds.
-    public static bool IsSkillRunning(GuildTable.Buff row, long useTime, long now) {
-        return useTime != 0 && useTime + row.Duration * 60L > now;
+    // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds. A
+    // skill that was never used has the time 0.
+    public static long SkillRemainingSeconds(GuildTable.Buff row, long useTime, long now) {
+        if (useTime == 0) {
+            return 0;
+        }
+        return Math.Max(0, useTime + row.Duration * 60L - now);
+    }
+
+    // CGuildSkill::GetRemainingCooldown: the table's cooltime is in minutes too, counted from the time of use.
+    public static long SkillCooldownSeconds(GuildTable.Buff row, long useTime, long now) {
+        return Math.Max(0, useTime + row.Cooldown * 60L - now);
     }
 
     // The master keeps rank 0 until the master changes.

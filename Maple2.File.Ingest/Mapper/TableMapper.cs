@@ -863,7 +863,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     RequireLevel: buff.requireLevel,
                     Cost: buff.cost,
                     UpgradeCost: buff.upgradeCost,
-                    Duration: buff.duration);
+                    Duration: buff.duration,
+                    Cooldown: buff.cooltime);
             }
             guildBuffs.Add(id, buffLevels);
         }

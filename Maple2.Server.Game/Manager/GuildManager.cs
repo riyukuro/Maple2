@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
@@ -292,6 +293,29 @@ public class GuildManager : IDisposable {
             return true;
         }
         return false;
+    }
+
+    // The effects of the guild skills that are running, for the time they have left; called when the member
+    // enters a field, so that a member who logs in, joins or changes field after the use has them too.
+    public void LoadSkillBuffs() {
+        FieldManager? field = session.Field;
+        if (Guild == null || field == null) {
+            return;
+        }
+
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        foreach (GuildBuff buff in Guild.Buffs) {
+            if (buff.Id > 10000 || !session.TableMetadata.GuildTable.Buffs.TryGetValue(buff.Id, out IReadOnlyDictionary<short, GuildTable.Buff>? levels)
+                                || !levels.TryGetValue((short) buff.Level, out GuildTable.Buff? row) || row.Id <= 0) {
+                continue;
+            }
+
+            long remaining = GuildRules.SkillRemainingSeconds(row, buff.ExpiryTime, now);
+            if (remaining > 0) {
+                session.Player.Buffs.AddBuff(session.Player, session.Player, row.Id, row.Level, field.FieldTick,
+                    durationMs: (int) Math.Min(remaining * 1000L, int.MaxValue));
+            }
+        }
     }
 
     // Guild 55 (CGuildManager::FUN_1413c3460): the client replaces the skill it holds with the one sent and

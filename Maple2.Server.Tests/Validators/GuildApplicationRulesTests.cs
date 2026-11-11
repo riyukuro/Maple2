@@ -143,6 +143,23 @@ public class GuildApplicationRulesTests {
         // 60 minutes from the time of use.
         Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 1000, 4599), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
         Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 500, 1000, 4600), Is.EqualTo(GuildError.none));
+        // A cooltime of 90 minutes holds the next use back after the 60 minutes of the effect.
+        GuildTable.Buff cooling = row with { Cooldown = 90 };
+        Assert.That(GuildRules.CheckUseSkill(true, 1, cooling, 3, 500, 1000, 4600), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, cooling, 3, 500, 1000, 6399), Is.EqualTo(GuildError.s_guild_err_cannot_use_skill));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, cooling, 3, 500, 1000, 6400), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUseSkill(true, 1, cooling, 3, 500, 0, 1700000000), Is.EqualTo(GuildError.none), "never used");
+    }
+
+    // What a member who logs in while the skill runs gets: the client's remaining time.
+    [TestCase(0, 1000, 0, Description = "never used")]
+    [TestCase(1000, 1000, 3600)]
+    [TestCase(1000, 2500, 2100)]
+    [TestCase(1000, 4600, 0)]
+    [TestCase(1000, 9000, 0)]
+    public void UseSkill_RemainingSeconds(long useTime, long now, long expected) {
+        var row = new GuildTable.Buff(Id: 1, Level: 1, RequireLevel: 3, Cost: 500, UpgradeCost: 0, Duration: 60);
+        Assert.That(GuildRules.SkillRemainingSeconds(row, useTime, now), Is.EqualTo(expected));
     }
 
     [Test]
