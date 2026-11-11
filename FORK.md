@@ -165,6 +165,13 @@ The checker follows the client's item reader (CItem::ReadFromStream, commonfiles
    - `TST_CMD_FILE`: once a second, the game server reads a file named after this prefix and the character id, and runs each line as a chat command **as the logged-in player**. Never set it on a server that others can reach.
    - `TST_PKT_DIR`: the server appends every packet that clients send, including chat, to a log file per character in this directory.
 
+## Errata in commit subjects
+
+Published commits are not rewritten, so wrong numbers in their subjects are listed here.
+
+- `6fea6fcf` and `fce39da6` say "Guild 0x0054". The opcode is `RecvOp.Guild = 0x004B`.
+- `e319062d` says "RequestPet 0x00C2". The opcode is `RecvOp.RequestPet = 0x0078`.
+
 ## Licence
 
 AGPL-3.0, as upstream. See LICENSE.
