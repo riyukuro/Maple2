@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
@@ -80,8 +81,12 @@ public sealed class StorageManager : IDisposable {
     public void Deposit(long uid, short slot, int amount) {
         lock (session.Item) {
             Item? deposit = session.Item.Inventory.Get(uid);
-            if (deposit == null || deposit.Amount < amount) {
+            if (deposit == null || !StorageRules.IsCount(amount, deposit.Amount)) {
                 session.Send(StorageInventoryPacket.Error(s_item_err_invalid_count));
+                return;
+            }
+            // The client keeps the pet that is out in the inventory and never asks.
+            if (!StorageRules.CanDeposit(uid, session.Pet?.Pet.Uid ?? 0)) {
                 return;
             }
 
@@ -114,13 +119,19 @@ public sealed class StorageManager : IDisposable {
     public void Withdraw(long uid, short slot, int amount) {
         lock (session.Item) {
             Item? withdraw = items.Get(uid);
-            if (withdraw == null || withdraw.Amount < amount) {
+            if (withdraw == null || !StorageRules.IsCount(amount, withdraw.Amount)) {
                 session.Send(StorageInventoryPacket.Error(s_item_err_invalid_count));
                 return;
             }
 
             if (withdraw.Binding != null && withdraw.Binding.CharacterId != session.CharacterId) {
                 session.Send(StorageInventoryPacket.Error(s_item_err_binditem_store_out));
+                return;
+            }
+
+            // A failed add discards the item: with no room it must not leave the storage.
+            if (!session.Item.Inventory.CanAdd(withdraw, amount)) {
+                session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
                 return;
             }
 

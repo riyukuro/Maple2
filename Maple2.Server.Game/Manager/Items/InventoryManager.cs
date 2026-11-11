@@ -6,6 +6,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -361,6 +362,14 @@ public class InventoryManager {
             }
 
             return false;
+        }
+    }
+
+    // Room for <paramref name="amount"/> pieces of the item: a free slot, or stacks that take all of them.
+    public bool CanAdd(Item item, int amount) {
+        lock (session.Item) {
+            return tabs.TryGetValue(item.Inventory, out ItemCollection? items)
+                   && StorageRules.HasRoom(items.OpenSlots, items.GetStackResult(item, amount));
         }
     }
 
