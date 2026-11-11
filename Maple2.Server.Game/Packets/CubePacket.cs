@@ -574,7 +574,10 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter CalculateEstimate(Dictionary<FurnishingCurrencyType, long> cubeCosts, int cubeCount) {
+    // Client: FUN_140ee83f0 (uiugccubebilldialog.cpp:283): byte count, int, count x (byte pay type, long amount),
+    // bool preview. With preview set the bill is only shown; without it the client confirms with RequestCube 70,
+    // at once when the bill is empty.
+    public static ByteWriter CalculateEstimate(Dictionary<FurnishingCurrencyType, long> cubeCosts, int cubeCount, bool preview = true) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.CalculateEstimate);
         pWriter.WriteByte((byte) cubeCosts.Keys.Count);
@@ -583,7 +586,7 @@ public static class CubePacket {
             pWriter.Write<FurnishingCurrencyType>(moneyType);
             pWriter.WriteLong(amount);
         }
-        pWriter.WriteBool(true); // Always true, if false doesn't show the estimate
+        pWriter.WriteBool(preview);
 
         return pWriter;
     }

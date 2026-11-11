@@ -138,12 +138,12 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 54 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 52 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
 | EventReward | 12 | RequestItemEnchant | 5 | Party | 2 |
-| RequestCube | 9 | Wedding | 2 | | |
+| RequestCube | 7 | Wedding | 2 | | |
 | Quest | 7 | HomeAction | 2 | | |
 | Guild | 6 | | | | |
 | RoomDungeon | 4 | | | | |

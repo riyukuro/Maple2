@@ -29,6 +29,8 @@ public class HousingManager {
     private readonly ILogger logger = Log.Logger.ForContext<HousingManager>();
 
     public ItemBlueprint? StagedItemBlueprint = null;
+    // Uid of the blueprint item the staged blueprint came from; the client names it when it confirms the bill.
+    public long StagedBlueprintItemUid;
 
     public HousingManager(GameSession session, TableMetadataStorage tableMetadata) {
         this.session = session;

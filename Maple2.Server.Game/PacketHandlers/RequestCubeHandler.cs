@@ -214,8 +214,8 @@ public class RequestCubeHandler : FieldPacketHandler {
             case Command.RemoveBuildPermission:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
                 break;
-            case Command.ApplyBlueprint: // blueprint uid, sent after the cost estimate
-                Logger.Debug("RequestCube {Command} from {CharacterId}: blueprint {Uid}", command, session.CharacterId, packet.ReadLong());
+            case Command.ApplyBlueprint:
+                HandleApplyBlueprint(session, packet);
                 break;
         }
     }
@@ -667,31 +667,64 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         Home home = session.Player.Value.Home;
 
-        HomeLayout? layout;
         // blueprint load
         if (slot is 0) {
-            if (session.Housing.StagedItemBlueprint is null) {
-                return;
-            }
+            ApplyStagedBlueprint(session, plot);
+            return;
+        }
 
-            using GameStorage.Request db = session.GameStorage.Context();
-            layout = db.GetHomeLayout(session.Housing.StagedItemBlueprint.BlueprintUid);
-            if (layout is null) {
-                Logger.Error("Failed to load layout for {AccountId}", session.AccountId);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
-                return;
-            }
-        } else {
-            layout = home.Layouts.FirstOrDefault(homeLayout => homeLayout.Id == slot);
-            if (layout is null) {
-                Logger.Error("Failed to find layout {Slot} for {AccountId}", slot, session.AccountId);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
-                return;
-            }
+        HomeLayout? layout = home.Layouts.FirstOrDefault(homeLayout => homeLayout.Id == slot);
+        if (layout is null) {
+            Logger.Error("Failed to find layout {Slot} for {AccountId}", slot, session.AccountId);
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            return;
         }
 
         session.Housing.StagedItemBlueprint = null;
-        session.Housing.ApplyLayout(plot, layout, isBlueprint: slot is 0);
+        session.Housing.StagedBlueprintItemUid = 0;
+        session.Housing.ApplyLayout(plot, layout);
+    }
+
+    // The client confirms the bill of a blueprint item (UIUGCCubeBillDialog::SendRequestCube and FUN_140ee83f0,
+    // uiugccubebilldialog.cpp:222, :302): long uid of the item whose use opened the bill.
+    private void HandleApplyBlueprint(GameSession session, IByteReader packet) {
+        long itemUid = packet.ReadLong();
+
+        Plot? plot = session.Housing.GetFieldPlot();
+        if (plot is null) {
+            return;
+        }
+
+        if (plot.Cubes.Count != 0) {
+            session.Send(NoticePacket.Message(StringCode.s_err_ugcmap_package_clear_indoor_first, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+            return;
+        }
+
+        if (!BlueprintBillRule.Confirms(session.Housing.StagedItemBlueprint != null, session.Housing.StagedBlueprintItemUid, itemUid)) {
+            return;
+        }
+
+        ApplyStagedBlueprint(session, plot);
+    }
+
+    private void ApplyStagedBlueprint(GameSession session, Plot plot) {
+        if (session.Housing.StagedItemBlueprint is null) {
+            return;
+        }
+
+        HomeLayout? layout;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            layout = db.GetHomeLayout(session.Housing.StagedItemBlueprint.BlueprintUid);
+        }
+        if (layout is null) {
+            Logger.Error("Failed to load layout for {AccountId}", session.AccountId);
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            return;
+        }
+
+        session.Housing.StagedItemBlueprint = null;
+        session.Housing.StagedBlueprintItemUid = 0;
+        session.Housing.ApplyLayout(plot, layout, isBlueprint: true);
     }
 
 

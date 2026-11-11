@@ -184,7 +184,10 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Housing.StagedItemBlueprint = item.Blueprint;
-        session.Send(CubePacket.BuyCubes(result.cubeCosts, result.cubeCount));
+        session.Housing.StagedBlueprintItemUid = item.Uid;
+        // The client has a blueprint bill pending for this item (FUN_140ee8610, uiugccubebilldialog.cpp:181) and
+        // confirms it with RequestCube 70. The bill is not a preview, so the confirm is sent.
+        session.Send(CubePacket.CalculateEstimate(result.cubeCosts, result.cubeCount, preview: false));
     }
 
     private static void HandleStoryBook(GameSession session, Item item) {
