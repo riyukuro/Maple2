@@ -1,4 +1,6 @@
-﻿using Maple2.Model.Game.Dungeon;
+﻿using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -163,8 +165,9 @@ public partial class TriggerContext {
 
     #region DarkStream
     // A Dark Stream run (see DarkStreamGame): start_game opens the score dialog, a cleared spawn sends the new
-    // score, and clearing the last round sends the result. The best score before the run, the exp, the meso,
-    // the habi and the reward items are sent as 0 (FORK.md names what is missing for them).
+    // score, and clearing the last round gives each player in the field the reward row of the rounds cleared
+    // (table/darkstream.xml: the exp, the meso, the habi and the items, an item to the bag or else by mail) and
+    // sends it in the result. The best score before the run is sent as 0 (no best score is kept).
     public void DarkStreamSpawnMonster(int[] spawnIds, int score) {
         DebugLog("[DarkStreamSpawnMonster] spawnIds:{SpawnIds}, score:{Score}", string.Join(", ", spawnIds), score);
         foreach (int spawnId in spawnIds) {
@@ -189,7 +192,32 @@ public partial class TriggerContext {
         if (Field.DarkStream is not { } game || !game.ClearRound(round)) {
             return;
         }
-        Field.Broadcast(DarkStreamPacket.Result(game.Score, 0, 0, 0, 0));
+        long roomExp = Field is DungeonFieldManager dungeonField ? dungeonField.DungeonMetadata.Reward.Exp : 0;
+        DarkStreamGame.Reward reward = DarkStreamGame.RewardOf(Field.TableMetadata.DarkStreamTable.Entries, game.RoundsCleared, roomExp)
+            ?? new DarkStreamGame.Reward(0, 0, 0, []);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            GiveDarkStreamReward(player, reward);
+            player.Session.Send(DarkStreamPacket.Result(game.Score, 0, reward.Exp, reward.Meso, reward.Habi, reward.Items));
+        }
+    }
+
+    private void GiveDarkStreamReward(FieldPlayer player, DarkStreamGame.Reward reward) {
+        player.Session.Exp.AddExp(reward.Exp);
+        if (reward.Meso > 0) {
+            player.Session.Currency.Meso += reward.Meso;
+        }
+        if (reward.Habi > 0) {
+            player.Session.Currency[CurrencyType.HaviFruit] += reward.Habi;
+        }
+        foreach (RewardItem rewardItem in reward.Items) {
+            Item? item = Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item == null) {
+                continue;
+            }
+            if (!player.Session.Item.Inventory.Add(item, true)) {
+                player.Session.Item.MailItem(item);
+            }
+        }
     }
     #endregion
 

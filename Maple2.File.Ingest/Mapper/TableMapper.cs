@@ -65,6 +65,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
+        yield return new TableMetadata { Name = TableNames.DARK_STREAM, Table = ParseDarkStream() };
         yield return new TableMetadata { Name = TableNames.PET_EVOLUTION, Table = ParsePetEvolution() };
         yield return new TableMetadata { Name = TableNames.PET_EXP, Table = ParsePetExp() };
         yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
@@ -291,6 +292,57 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 AdditionalEffectLevel: int.Parse(node.GetAttribute("additionalEffectLevel").Trim(), CultureInfo.InvariantCulture));
         }
         return results;
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML. The rows are keyed by round; the
+    // rows without a locale come first, and a later row for the same round (a locale's) replaces an earlier
+    // one, with the feature and locale filter the other tables use. items holds the reward items as
+    // id,rank,count (the order of ItemEntity's itemID, grade and count, which the result packet sends); the
+    // shipped rows hold one item each, so more items are read as further triples in the same list.
+    private DarkStreamTable ParseDarkStream() {
+        return new DarkStreamTable(ReadDarkStreamRewards(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/darkstream.xml"))));
+    }
+
+    public static Dictionary<int, DarkStreamTable.Entry> ReadDarkStreamRewards(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var results = new Dictionary<int, DarkStreamTable.Entry>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/reward");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!available(node)) {
+                continue;
+            }
+
+            int round = ParseIntOr(node.GetAttribute("round"));
+            string expRate = node.GetAttribute("expRate");
+            results[round] = new DarkStreamTable.Entry(
+                Round: round,
+                ExpRate: string.IsNullOrWhiteSpace(expRate) ? 0f : float.Parse(expRate.Trim(), CultureInfo.InvariantCulture),
+                Meso: ParseIntOr(node.GetAttribute("meso")),
+                Habi: ParseIntOr(node.GetAttribute("habi")),
+                Items: ParseItems(node.GetAttribute("items")));
+        }
+        return results;
+
+        static int ParseIntOr(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
+
+        static List<RewardItem> ParseItems(string value) {
+            string[] parts = value.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length % 3 != 0) {
+                throw new FormatException($"Dark Stream reward items are not id,rank,count triples: {value}");
+            }
+            var items = new List<RewardItem>();
+            for (int i = 0; i < parts.Length; i += 3) {
+                items.Add(new RewardItem(
+                    int.Parse(parts[i], CultureInfo.InvariantCulture),
+                    short.Parse(parts[i + 1], CultureInfo.InvariantCulture),
+                    int.Parse(parts[i + 2], CultureInfo.InvariantCulture)));
+            }
+            return items;
+        }
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client skips the rows its

@@ -1,3 +1,6 @@
+﻿using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+
 namespace Maple2.Server.Game.Model;
 
 /// <summary>
@@ -19,6 +22,8 @@ public class DarkStreamGame {
     public int DamagePenalty { get; private set; }
     public int Score { get; private set; }
     public bool Ended { get; private set; }
+    // The last round the script cleared.
+    public int RoundsCleared { get; private set; }
 
     private readonly Dictionary<int, int> spawnScores = new();
 
@@ -52,10 +57,34 @@ public class DarkStreamGame {
     /// </summary>
     /// <returns>Whether it was the last round, which ends the run (once).</returns>
     public bool ClearRound(int round) {
-        if (Ended || round < Rounds) {
+        if (Ended) {
+            return false;
+        }
+        RoundsCleared = Math.Max(RoundsCleared, round);
+        if (round < Rounds) {
             return false;
         }
         Ended = true;
         return true;
+    }
+
+    public readonly record struct Reward(int Exp, int Meso, int Habi, IReadOnlyList<RewardItem> Items);
+
+    /// <summary>
+    /// The reward of a run (table/darkstream.xml): the row of the rounds cleared, or the row of the most rounds
+    /// below them when the table has no row for them. The table gives the exp as a rate; the exp is the rate
+    /// times the Dark Stream room's rewardExp, the rule the dungeon rooms' own rewardExpRate follows. Neither
+    /// the client nor the table says so (the client reads rewardExp and the rate but uses neither, and the exp
+    /// table has no Dark Stream row), so the rule is inferred.
+    /// </summary>
+    public static Reward? RewardOf(IReadOnlyDictionary<int, DarkStreamTable.Entry> table, int roundsCleared, long roomExp) {
+        DarkStreamTable.Entry? entry = table.Values
+            .Where(row => row.Round <= roundsCleared)
+            .MaxBy(row => row.Round);
+        if (entry == null) {
+            return null;
+        }
+        long exp = (long) Math.Round(roomExp * (double) entry.ExpRate);
+        return new Reward((int) Math.Clamp(exp, 0, int.MaxValue), entry.Meso, entry.Habi, entry.Items);
     }
 }

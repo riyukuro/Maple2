@@ -1,3 +1,4 @@
+﻿using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -8,7 +9,9 @@ namespace Maple2.Server.Game.Packets;
 // 0 opens the score dialog at 0 points, 1 sets the points (an int; the dialog shows a score below 0),
 // 2 closes the score dialog and opens the result dialog. The result is five ints (the run's score, the best
 // score before the run, the exp, the meso and the habi; the dialog shows a new record when the score is
-// above the best one and no habi when it is 0 or less), then a byte count of reward items.
+// above the best one and no habi when it is 0 or less), then a byte count of reward items, each as the client's
+// ItemEntity::Read reads it: an int item id, a short rank, an int count and four bools (sent as false). The
+// dialog shows the items the item table knows, with their count.
 public static class DarkStreamPacket {
     private enum Command : byte {
         Open = 0,
@@ -29,8 +32,7 @@ public static class DarkStreamPacket {
         return pWriter;
     }
 
-    // No reward items are sent: the round reward table (items included) is not in the server data.
-    public static ByteWriter Result(int score, int bestScore, int exp, int meso, int habi) {
+    public static ByteWriter Result(int score, int bestScore, int exp, int meso, int habi, IReadOnlyList<RewardItem> items) {
         var pWriter = Packet.Of(SendOp.DarkStream);
         pWriter.WriteByte((byte) Command.Result);
         pWriter.WriteInt(score);
@@ -38,7 +40,16 @@ public static class DarkStreamPacket {
         pWriter.WriteInt(exp);
         pWriter.WriteInt(meso);
         pWriter.WriteInt(habi);
-        pWriter.WriteByte(0);
+        pWriter.WriteByte((byte) items.Count);
+        foreach (RewardItem item in items) {
+            pWriter.WriteInt(item.ItemId);
+            pWriter.WriteShort(item.Rarity);
+            pWriter.WriteInt(item.Amount);
+            pWriter.WriteBool(item.Unknown1);
+            pWriter.WriteBool(item.Unknown2);
+            pWriter.WriteBool(item.Unknown3);
+            pWriter.WriteBool(item.Unknown4);
+        }
         return pWriter;
     }
 }

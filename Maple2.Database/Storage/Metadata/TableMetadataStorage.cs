@@ -12,6 +12,7 @@ public class TableMetadataStorage {
     private readonly Lazy<ItemEnchantTransformTable> itemEnchantTransformTable;
     private readonly Lazy<CharacterAbilityTable> characterAbilityTable;
     private readonly Lazy<ClubBuffTable> clubBuffTable;
+    private readonly Lazy<DarkStreamTable> darkStreamTable;
     private readonly Lazy<PetEvolutionTable> petEvolutionTable;
     private readonly Lazy<PetExpTable> petExpTable;
     private readonly Lazy<ReactorTable> reactorTable;
@@ -87,6 +88,7 @@ public class TableMetadataStorage {
     public ItemEnchantTransformTable ItemEnchantTransformTable => itemEnchantTransformTable.Value;
     public CharacterAbilityTable CharacterAbilityTable => characterAbilityTable.Value;
     public ClubBuffTable ClubBuffTable => clubBuffTable.Value;
+    public DarkStreamTable DarkStreamTable => darkStreamTable.Value;
     public PetEvolutionTable PetEvolutionTable => petEvolutionTable.Value;
     public PetExpTable PetExpTable => petExpTable.Value;
     public ReactorTable ReactorTable => reactorTable.Value;
@@ -163,6 +165,7 @@ public class TableMetadataStorage {
         itemEnchantTransformTable = Retrieve<ItemEnchantTransformTable>(context, TableNames.ITEM_ENCHANT_TRANSFORM);
         characterAbilityTable = Retrieve<CharacterAbilityTable>(context, TableNames.CHARACTER_ABILITY);
         clubBuffTable = Retrieve<ClubBuffTable>(context, TableNames.CLUB_BUFF);
+        darkStreamTable = Retrieve<DarkStreamTable>(context, TableNames.DARK_STREAM);
         petEvolutionTable = Retrieve<PetEvolutionTable>(context, TableNames.PET_EVOLUTION);
         petExpTable = Retrieve<PetExpTable>(context, TableNames.PET_EXP);
         reactorTable = Retrieve<ReactorTable>(context, TableNames.REACTOR);

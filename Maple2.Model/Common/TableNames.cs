@@ -10,6 +10,7 @@ public static class TableNames {
     public const string ITEM_ENCHANT_TRANSFORM = "itemenchanttransform.xml";
     public const string CHARACTER_ABILITY = "characterability.xml";
     public const string CLUB_BUFF = "clubbuff.xml";
+    public const string DARK_STREAM = "darkstream.xml";
     public const string PET_EVOLUTION = "petevolution.xml";
     public const string PET_EXP = "petexp.xml";
     public const string REACTOR = "reactor.xml";
