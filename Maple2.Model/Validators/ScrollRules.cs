@@ -31,7 +31,6 @@ public static class ScrollRules {
         return petScroll ? petItem : Array.IndexOf(slots, slot) >= 0;
     }
 
-    // Scrolls charged for one repack; the client counts every stack of the scroll's item id.
     // CItemRePackingScrollTable::Check: an item whose enchant history is switched off is refused
     // with the remain-count message (10).
     public static bool RepackEnchantAllowed(bool hasEnchant, bool enabled) {
@@ -43,6 +42,26 @@ public static class ScrollRules {
         return transferType is 3 or 5;
     }
 
+    // The first code CItemRePackingScrollTable::Check gives, in its order: enchant switched off (10), scroll
+    // not in the item's list (1), slot (3), rank (4), level (5), transfer type (8), no transfer data (2),
+    // trades left, tested without the limit flag (9), bound (1), no repack left (10), locked (11). 0: none.
+    public static int RepackCode(bool enchantOk, bool scrollListed, bool slotOk, bool rankOk, bool levelOk, bool transferTypeOk,
+                                 bool hasTransfer, int tradesLeft, bool bound, bool repackLeft, bool locked) {
+        if (!enchantOk) return 10;
+        if (!scrollListed) return 1;
+        if (!slotOk) return 3;
+        if (!rankOk) return 4;
+        if (!levelOk) return 5;
+        if (!transferTypeOk) return 8;
+        if (!hasTransfer) return 2;
+        if (tradesLeft > 0) return 9;
+        if (bound) return 1;
+        if (!repackLeft) return 10;
+        if (locked) return 11;
+        return 0;
+    }
+
+    // Scrolls charged for one repack; the client counts every stack of the scroll's item id.
     public static bool HasRepackScrolls(int have, int need) {
         return have >= Math.Max(1, need);
     }

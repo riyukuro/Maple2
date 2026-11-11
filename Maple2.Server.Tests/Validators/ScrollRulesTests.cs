@@ -68,6 +68,25 @@ public class ScrollRulesTests {
         Assert.That(ScrollRules.HasRepackLeft(limit, used), Is.EqualTo(expected));
     }
 
+    // Each line fails one more check than the line below it: the code is the earliest failing check's.
+    [TestCase(false, false, false, false, false, false, false, 1, true, false, true, 10)]
+    [TestCase(true, false, false, false, false, false, false, 1, true, false, true, 1)]
+    [TestCase(true, true, false, false, false, false, false, 1, true, false, true, 3)]
+    [TestCase(true, true, true, false, false, false, false, 1, true, false, true, 4)]
+    [TestCase(true, true, true, true, false, false, false, 1, true, false, true, 5)]
+    [TestCase(true, true, true, true, true, false, false, 1, true, false, true, 8)]
+    [TestCase(true, true, true, true, true, true, false, 1, true, false, true, 2)]
+    [TestCase(true, true, true, true, true, true, true, 1, true, false, true, 9)]
+    [TestCase(true, true, true, true, true, true, true, 0, true, false, true, 1)]
+    [TestCase(true, true, true, true, true, true, true, 0, false, false, true, 10)]
+    [TestCase(true, true, true, true, true, true, true, 0, false, true, true, 11)]
+    [TestCase(true, true, true, true, true, true, true, 0, false, true, false, 0)]
+    public void RepackCodeOrder(bool enchantOk, bool scrollListed, bool slotOk, bool rankOk, bool levelOk, bool transferTypeOk,
+                                bool hasTransfer, int tradesLeft, bool bound, bool repackLeft, bool locked, int expected) {
+        Assert.That(ScrollRules.RepackCode(enchantOk, scrollListed, slotOk, rankOk, levelOk, transferTypeOk, hasTransfer, tradesLeft, bound, repackLeft, locked),
+            Is.EqualTo(expected));
+    }
+
     [Test]
     public void RepackScrollList() {
         Assert.That(ScrollRules.RepackScrollAllowed([], 7), Is.True);
