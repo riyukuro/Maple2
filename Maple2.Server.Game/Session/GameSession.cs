@@ -907,6 +907,12 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         try {
+            UserRecallUtil.DropPending(this);
+        } catch (Exception ex) {
+            Logger.Error(ex, "Error dropping the recall invite of {Player}", PlayerName);
+        }
+
+        try {
             Scheduler.Stop();
             if (OnLoop != null) OnLoop -= Scheduler.InvokeAll;
             server.OnDisconnected(this);

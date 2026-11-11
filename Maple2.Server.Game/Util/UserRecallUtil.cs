@@ -49,6 +49,16 @@ public static class UserRecallUtil {
         }
     }
 
+    // The invited player's session ends (log off or a channel change) before the answer: the caller is told
+    // "not found" instead of hearing nothing.
+    public static void DropPending(GameSession target) {
+        PendingUserRecall? pending = target.UserRecall;
+        target.UserRecall = null;
+        if (PendingUserRecall.IsOpen(pending, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            TellCaller(target, target.PlayerName, pending!.CallerId, false, RecallUserPacket.FAIL_NOT_FOUND);
+        }
+    }
+
     // Tells the caller how the invite ended: directly on this channel, else through the World server.
     // The name is passed in: after a channel change has started, the session may have no player any more.
     public static void TellCaller(GameSession target, string targetName, long callerId, bool recalled, byte fail) {

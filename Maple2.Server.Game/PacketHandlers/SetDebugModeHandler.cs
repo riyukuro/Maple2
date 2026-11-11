@@ -14,15 +14,18 @@ namespace Maple2.Server.Game.PacketHandlers;
 
 // The client's debug mode (a GM hotkey) and the windows it opens. GM only.
 // Mode 2: a click on a minimap entity in debug mode, with the entity's position. The sender is moved there.
-// Mode 4: the NPC control window. The health, additional effect, skill and stop skill buttons are applied; the
-// others are read and logged.
-// The client has no reader for a reply (0x87 DebugMode is in its opcode list, no case reads it).
+// Mode 4: the NPC control window. Picking an NPC is answered with its skill list and state (0x87 DebugMode,
+// kinds 6 and 5); the health, additional effect, skill and stop skill buttons are applied; the others are read
+// and logged.
+// Mode 7: the debug guide window's "multi execute": the lines go to every GM in the sender's field (0x87
+// kind 7), whose client enters them in its chat.
 public class SetDebugModeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.SetDebugMode;
 
     private const byte MODE_SWITCH = 0;
     private const byte MODE_MINIMAP = 2;
     private const byte MODE_NPC_CONTROL = 4;
+    private const byte MODE_GUIDE = 7;
 
     public override void Handle(GameSession session, IByteReader packet) {
         // The mode byte is read after the check, so a plain account changes nothing.
@@ -40,6 +43,9 @@ public class SetDebugModeHandler : FieldPacketHandler {
                 return;
             case MODE_NPC_CONTROL:
                 HandleNpcControl(session, packet);
+                return;
+            case MODE_GUIDE:
+                HandleGuide(session, packet);
                 return;
             default:
                 Logger.Debug("SetDebugMode: mode {Mode} from account {AccountId} not handled", mode, session.AccountId);
@@ -73,6 +79,10 @@ public class SetDebugModeHandler : FieldPacketHandler {
         }
 
         switch (request.Command) {
+            case GmNpcControlRequest.Select:
+                session.Send(DebugModePacket.NpcSkills(npc.Value.Metadata.Skill.Entries.Select(entry => (entry.Id, (int) entry.Level)).ToList()));
+                SendNpcState(session, npc);
+                return;
             case GmNpcControlRequest.HealthPercent:
             case GmNpcControlRequest.HealthValue:
                 Stat health = npc.Stats.Values[BasicAttribute.Health];
@@ -82,6 +92,7 @@ public class SetDebugModeHandler : FieldPacketHandler {
                 }
                 health.Add(target - health.Current);
                 session.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));
+                SendNpcState(session, npc);
                 return;
             case GmNpcControlRequest.AddEffect:
                 if (request.EffectLevel is < 1 or > short.MaxValue
@@ -112,6 +123,34 @@ public class SetDebugModeHandler : FieldPacketHandler {
             default:
                 Logger.Debug("SetDebugMode: NPC control command {Command} on {ObjectId} from account {AccountId} not handled", request.Command, request.ObjectId, session.AccountId);
                 return;
+        }
+    }
+
+    // The window's text: the movement state as the node, the AI file as the headline, the battle target and
+    // the six stats it lists. The server keeps no AI trace, so "tracking" is off and there is no extra data.
+    private static void SendNpcState(GameSession session, FieldNpc npc) {
+        Stat health = npc.Stats.Values[BasicAttribute.Health];
+        session.Send(DebugModePacket.NpcState(npc.ObjectId, npc.MovementState.State.ToString(), npc.AiState.AiMetadata?.Name ?? string.Empty,
+            npc.BattleState.TargetId, false, [],
+            npc.Stats.Values[BasicAttribute.PhysicalAtk].Total, npc.Stats.Values[BasicAttribute.MagicalAtk].Total,
+            npc.Stats.Values[BasicAttribute.Defense].Total, npc.Stats.Values[BasicAttribute.CriticalRate].Total,
+            health.Current, health.Total));
+    }
+
+    private void HandleGuide(GameSession session, IByteReader packet) {
+        List<(string Command, string Argument)>? lines = GmGuideRequest.Read(packet);
+        if (lines == null || session.Field == null) {
+            return;
+        }
+
+        // The client that gets the lines enters them in its own chat, so each one comes back as a chat
+        // command of that account and passes that command's own permission check. Plain accounts get nothing.
+        Logger.Information("SetDebugMode: {Count} guide command lines from account {AccountId}", lines.Count, session.AccountId);
+        ByteWriter reply = DebugModePacket.GuideCommands(session.PlayerName, lines);
+        foreach (FieldPlayer player in session.Field.Players.Values) {
+            if (GmCheck.IsGm(player.AdminPermissions)) {
+                player.Session.Send(reply);
+            }
         }
     }
 }

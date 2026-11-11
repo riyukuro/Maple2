@@ -10,7 +10,8 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
     public const byte Select = 0; // the NPC was picked; no fields
     public const byte HealthPercent = 1; // long, 1 to 100
     public const byte HealthValue = 2; // long, above 0
-    public const byte UseSkill = 8; // short loop, short count, count x (int skill id, int level)
+    // UINpcControlDialog (uinpccontroldialog.cpp:395-402): short loop, short count, count x (int skill id, int level)
+    public const byte UseSkill = 8;
     public const byte StopSkill = 9; // no fields
     public const byte AiFile = 0xD; // one string
     public const byte AddEffect = 0xE; // int id, int level, int
@@ -90,5 +91,32 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
             default:
                 return -1;
         }
+    }
+}
+
+// 0x50 SetDebugMode, mode 7: the "multi execute" button of the debug guide window
+// (UIDebugGuideDialog::SendCommand, uidebugguidedialog.cpp:446). After the mode byte: int count, then per
+// line the command text and its argument (an empty string when the line takes none).
+public static class GmGuideRequest {
+    public const int MaxLines = 32;
+    public const int MaxLength = 256;
+
+    // The lines, or null when the count or a text is outside what a window sends.
+    public static List<(string Command, string Argument)>? Read(IByteReader packet) {
+        int count = packet.ReadInt();
+        if (count is < 1 or > MaxLines) {
+            return null;
+        }
+
+        var lines = new List<(string, string)>(count);
+        for (int i = 0; i < count; i++) {
+            string command = packet.ReadUnicodeString();
+            string argument = packet.ReadUnicodeString();
+            if (command.Length is < 1 or > MaxLength || argument.Length > MaxLength) {
+                return null;
+            }
+            lines.Add((command, argument));
+        }
+        return lines;
     }
 }

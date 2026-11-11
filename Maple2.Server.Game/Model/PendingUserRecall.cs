@@ -27,6 +27,13 @@ public record PendingUserRecall(int InviteId, long CallerId, string CallerName, 
     }
 
     /// <summary>
+    /// Whether the caller still waits for an answer: an invite is pending and has not run out.
+    /// </summary>
+    public static bool IsOpen(PendingUserRecall? pending, long now) {
+        return pending != null && now <= pending.EndTime;
+    }
+
+    /// <summary>
     /// Whether an answer (c2s RecallUser 4) with this invite id is for the pending invite and in time.
     /// </summary>
     public static bool Matches(PendingUserRecall? pending, int inviteId, long now) {

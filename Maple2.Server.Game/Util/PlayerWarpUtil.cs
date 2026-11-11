@@ -51,6 +51,7 @@ public static class PlayerWarpUtil {
         }
 
         session.MigrationSave();
+        bool moved = false;
         try {
             var request = new MigrateOutRequest {
                 AccountId = session.AccountId,
@@ -70,12 +71,13 @@ public static class PlayerWarpUtil {
             var endpoint = new IPEndPoint(IPAddress.Parse(response.IpAddress), response.Port);
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, playerInfo.MapId));
             session.State = SessionState.ChangeMap;
+            moved = true;
         } catch (RpcException ex) {
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             session.Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
         } finally {
             session.Disconnect();
         }
-        return true;
+        return moved; // false: the World server refused the channel change
     }
 }

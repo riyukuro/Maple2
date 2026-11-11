@@ -39,7 +39,7 @@ public class CommandRouter {
         var dictionaryBuilder = ImmutableDictionary.CreateBuilder<string, GameCommand>();
         foreach (GameCommand command in context.Resolve<IEnumerable<GameCommand>>(new NamedParameter("session", session))) {
             // Check permissions based on command type
-            if (session.Player?.AdminPermissions.HasFlag(command.RequiredPermission) ?? false) {
+            if (Allowed(session.Player?.AdminPermissions, command)) {
                 listBuilder.Add(command);
                 foreach (string alias in command.Aliases) {
                     dictionaryBuilder.Add(alias.ToLower(), command);
@@ -49,6 +49,11 @@ public class CommandRouter {
 
         commands = listBuilder.ToImmutable();
         aliasLookup = dictionaryBuilder.ToImmutable();
+    }
+
+    // Whether an account with these permissions gets the command; no player, no command.
+    public static bool Allowed(AdminPermissions? permissions, GameCommand command) {
+        return permissions?.HasFlag(command.RequiredPermission) ?? false;
     }
 
     public int Invoke(string commandLine) {
