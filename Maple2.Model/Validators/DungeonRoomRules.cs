@@ -178,4 +178,25 @@ public static class DungeonRoomRules {
                 return clearTime;
         }
     }
+
+    // Every time in a period has the same CooldownEnd, so a record still in its period has the expiry the rule
+    // gives now. One that does not was written by an older rule: a weekday counted from Sunday 0 at the clear's
+    // time of day, 1 to 7 days after the clear, kept until it passed. Its clear is taken at the earliest, a period
+    // before that end, and the record gets the rule's end of that clear, its counts kept: the end of the week the
+    // clear was in, or one already past, which a clear then starts again. A record past its expiry or a room
+    // without a valid period is left.
+    public static bool HealCooldown(DungeonRecord record, DungeonCooldownType type, int cooldownValue, DateTime now) {
+        long nowStamp = new DateTimeOffset(now).ToUnixTimeSeconds();
+        if (nowStamp >= record.UnionCooldownTimestamp) {
+            return false;
+        }
+        DateTime end = CooldownEnd(type, cooldownValue, now);
+        if (end <= now || new DateTimeOffset(end).ToUnixTimeSeconds() == record.UnionCooldownTimestamp) {
+            return false;
+        }
+        int days = type == DungeonCooldownType.nextDay ? 1 : 7;
+        DateTime written = DateTimeOffset.FromUnixTimeSeconds(record.UnionCooldownTimestamp).LocalDateTime;
+        record.UnionCooldownTimestamp = new DateTimeOffset(CooldownEnd(type, cooldownValue, written.AddDays(-days))).ToUnixTimeSeconds();
+        return true;
+    }
 }

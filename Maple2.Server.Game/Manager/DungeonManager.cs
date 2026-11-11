@@ -60,6 +60,8 @@ public class DungeonManager {
                 }
                 Records.Add(metadata.Id, record);
             }
+            // A period end written by an older rule is healed before the client or a script reads it.
+            DungeonRoomRules.HealCooldown(record, metadata.CooldownType, metadata.CooldownValue, DateTime.Now);
 
             DungeonEnterLimit limit = GetEnterLimit(metadata);
             EnterLimits[metadata.Id] = limit;
@@ -820,6 +822,7 @@ public class DungeonManager {
         if (record.ClearTimestamp == 0) {
             record.ClearTimestamp = clearTimeStamp;
         }
+        DungeonRoomRules.HealCooldown(record, metadata.CooldownType, metadata.CooldownValue, clearTime);
         if (clearTimeStamp > record.UnionCooldownTimestamp) {
             record.UnionCooldownTimestamp = GetCooldownTime(metadata.CooldownType, metadata.CooldownValue, clearTime);
             record.UnionClears = 0;

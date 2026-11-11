@@ -253,4 +253,44 @@ public class DungeonRoomRulesTests {
             Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCount(record, after), Is.EqualTo(0));
         });
     }
+
+    private static long Epoch(string time) => new DateTimeOffset(DateTime.Parse(time)).ToUnixTimeSeconds();
+
+    // A record written by the older rule (Sunday 14:08 for a Friday room) is still in its period: it gets the
+    // rule's end, Friday midnight, and keeps its count, so the round taken still reads as a reward taken.
+    [Test]
+    public void HealCooldown_AnOlderRulesEndGetsTheRulesEnd() {
+        var record = new DungeonRecord(900401) { UnionClears = 1, UnionCooldownTimestamp = Epoch("2026-11-15 14:08") };
+        Assert.That(DungeonRoomRules.HealCooldown(record, DungeonCooldownType.dayOfWeeks, 6, DateTime.Parse("2026-11-11 16:00")), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(record.UnionCooldownTimestamp, Is.EqualTo(Epoch("2026-11-13 00:00")));
+            Assert.That(record.UnionClears, Is.EqualTo(1));
+            Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCount(record, Epoch("2026-11-12 10:00")), Is.EqualTo(1));
+            Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCount(record, Epoch("2026-11-13 00:01")), Is.EqualTo(0));
+        });
+    }
+
+    // On Saturday the old end (Sunday) is still ahead, but the week of the clear ended on Friday: healed, the
+    // record is past its end and the count is back.
+    [Test]
+    public void HealCooldown_AnOlderRulesEndPastTheRulesEndIsOver() {
+        var record = new DungeonRecord(900401) { UnionClears = 1, UnionCooldownTimestamp = Epoch("2026-11-15 14:08") };
+        Assert.That(DungeonRoomRules.HealCooldown(record, DungeonCooldownType.dayOfWeeks, 6, DateTime.Parse("2026-11-14 10:00")), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(record.UnionCooldownTimestamp, Is.EqualTo(Epoch("2026-11-13 00:00")));
+            Assert.That(Maple2.Server.Game.Manager.DungeonManager.RewardCount(record, Epoch("2026-11-14 10:00")), Is.EqualTo(0));
+            Assert.That(DungeonRoomRules.HasCountLeft(record, 13, 0, Epoch("2026-11-14 10:00")), Is.True);
+        });
+    }
+
+    [TestCase("2026-11-13 00:00", "2026-11-11 16:00", DungeonCooldownType.dayOfWeeks, 6)] // the rule's own end
+    [TestCase("2026-11-10 14:08", "2026-11-11 16:00", DungeonCooldownType.dayOfWeeks, 6)] // already over
+    [TestCase("2026-11-15 14:08", "2026-11-11 16:00", DungeonCooldownType.none, 6)] // no period
+    [TestCase("2026-11-15 14:08", "2026-11-11 16:00", DungeonCooldownType.dayOfWeeks, 9)] // no valid day
+    [TestCase("2026-11-12 00:00", "2026-11-11 23:00", DungeonCooldownType.nextDay, 0)]
+    public void HealCooldown_LeavesAValidOrEndedRecord(string end, string now, DungeonCooldownType type, int value) {
+        var record = new DungeonRecord(900402) { UnionClears = 2, UnionCooldownTimestamp = Epoch(end) };
+        Assert.That(DungeonRoomRules.HealCooldown(record, type, value, DateTime.Parse(now)), Is.False);
+        Assert.That(record.UnionCooldownTimestamp, Is.EqualTo(Epoch(end)));
+    }
 }
