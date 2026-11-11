@@ -81,7 +81,7 @@ public static class GuildPacket {
         UsePersonalBuff = 91,
         AddContribution = 97,
         // 96, 104, 107, 109
-        Donated = 110,
+        Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
         // 114, 115, 116, 119, 120
     }
 
@@ -700,15 +700,18 @@ public static class GuildPacket {
         pWriter.Write<Command>(Command.ListAppliedGuilds);
         pWriter.WriteInt(applications.Count);
         foreach (GuildApplication application in applications) {
+            // Client: CGuildJoinRequestForChar::ReadStream (guilddef_1.cpp:404). The int after the name is the
+            // guild's experience (the join page turns it into the guild level); the text is the leader's name.
             pWriter.WriteBool(true);
             pWriter.WriteLong(application.Id);
             pWriter.WriteLong(application.Guild.Id);
             pWriter.WriteUnicodeString(application.Guild.Name);
+            pWriter.WriteInt(application.Guild.Experience);
             pWriter.WriteUnicodeString(application.Guild.Emblem);
             pWriter.Write<AchievementInfo>(application.Guild.AchievementInfo);
             pWriter.WriteInt(application.Guild.Members.Count);
             pWriter.WriteInt(application.Guild.Capacity);
-            pWriter.WriteUnicodeString();
+            pWriter.WriteUnicodeString(application.Guild.LeaderName);
             pWriter.WriteLong(application.Applicant.AccountId);
             pWriter.WriteLong(application.Applicant.CharacterId);
             pWriter.WriteLong(application.CreationTime);

@@ -83,6 +83,20 @@ public static class NpcControlPacket {
         npc.SequenceId = -1;
     }
 
+    // Client: CNpc::ApplySyncBlock (sequence -2 / -3): byte absolute, then two points and two floats, or one
+    // point. Nothing follows the block before the state's own fields.
+    internal static void WriteJump(this IByteWriter buffer, bool isAbsolute, Vector3 start, Vector3 end, float angle, float scale) {
+        buffer.WriteBool(isAbsolute);
+        if (isAbsolute) {
+            buffer.Write<Vector3>(start);
+            buffer.Write<Vector3>(end);
+            buffer.WriteFloat(angle);
+            buffer.WriteFloat(scale);
+        } else {
+            buffer.Write<Vector3>(end); // end offset
+        }
+    }
+
     private static void WriteNpcEntry(this PoolByteWriter buffer, FieldNpc npc,
             byte flags, Vector3S velocity, short animSpeed, int bossTargetId,
             ActorState state, short seqId) {
@@ -103,19 +117,7 @@ public static class NpcControlPacket {
 
         // Animation (-2 = Jump_A, -3 = Jump_B)
         if (seqId is ANI_JUMP_A or ANI_JUMP_B) {
-            bool isAbsolute = false;
-            buffer.WriteBool(isAbsolute);
-
-            if (isAbsolute) {
-                buffer.Write<Vector3>(new Vector3(0, 0, 0)); // start pos
-                buffer.Write<Vector3>(new Vector3(0, 0, 0)); // end pos
-                buffer.WriteFloat(0); // angle
-                buffer.WriteFloat(0); // scale
-            } else {
-                buffer.Write<Vector3>(new Vector3(0, 0, 0)); // end offset
-            }
-
-            buffer.Write<ActorState>(state);
+            buffer.WriteJump(isAbsolute: false, default, default, 0, 0);
         }
 
         switch (state) {
