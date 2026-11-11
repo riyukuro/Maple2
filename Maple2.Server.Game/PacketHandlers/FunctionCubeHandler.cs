@@ -31,6 +31,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
     private enum Command : byte {
         Begin = 4,
         Use = 5,
+        Close = 7,
     }
 
     // The client only lists the cubes within reach of the character.
@@ -52,6 +53,10 @@ public class FunctionCubeHandler : FieldPacketHandler {
                         HandleUseCube(session, interactId);
                     }
                 }
+                break;
+            case Command.Close:
+                // Not handled: the cube's id string, sent when the dialog opened from the cube closes.
+                Logger.Debug("FunctionCube {Command} from {CharacterId}: {InteractId}", command, session.CharacterId, packet.ReadUnicodeString());
                 break;
         }
     }
