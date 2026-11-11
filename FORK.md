@@ -138,17 +138,17 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 61 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 59 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
 | RequestCube | 9 | RequestItemEnchant | 5 | FunctionCube | 2 |
 | EventReward | 9 | Wedding | 3 | BuddyBadge | 2 |
-| Quest | 7 | HomeAction | 3 | | |
+| Quest | 7 | HomeAction | 2 | | |
 | Guild | 6 | Party | 2 | | |
 | RoomDungeon | 5 | | | | |
 
-These systems have one unhandled sub-type each: Achieve, Club, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Ugc.
+These systems have one unhandled sub-type each: Achieve, FurnishingStorage, InteractObject, Mapleopoly, Prestige, RequestRide, Ugc.
 
 Narrowed, with the reason:
 - FurnishingStorage 4 (take a stored furnishing item into the bag): the server keeps every furnishing item in the furnishing storage and has no bag tab for them, so the request is dropped and the item stays stored. Placing the item from the storage works.
@@ -158,7 +158,7 @@ Narrowed, with the reason:
 - Party 39 and 43 (join a dungeon party from a chat link): the link is built from a recruiting notice that the server never sends. Party 32 to 34 (dungeon match queue) have no matchmaker behind them.
 - Achieve 5 (GM debug buttons of the trophy window): read and logged only, GM account needed.
 
-Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. So are Quest 18 (the quest portal opens again when the quest talk ends) and Buddy 20 (the "refuse friend requests" option: a request is declined on receipt while the option is on; the server learns the option when the options are saved). RequestItemInventory 8 and 9 (sort, expand) and Trade 14 (busy answer) were already handled and are no longer counted. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.
+Revival 1 (the meret revive in place, which was only logged and not counted above) and ChatSticker 1 (expired sticker groups) are handled now. So are Quest 18 (the quest portal opens again when the quest talk ends) and Buddy 20 (the "refuse friend requests" option: a request is declined on receipt while the option is on; the server asks the client for the option at login and also learns it when the options are saved), Club 12 (the leader hands the club to a member) and HomeAction 1 to 3 (the home owner kills, sends out or revives a visitor from the player menu; counted as one entry above). The two HomeAction entries left are the PvP control dialog (14) and the OX quiz (10). The revive block of a buff (`disableRevivalHere`) is a new metadata property: it is empty until the metadata is ingested again. RequestItemInventory 8 and 9 (sort, expand) and Trade 14 (busy answer) were already handled and are no longer counted. The meret revive charges the price the button shows, or one free revive coupon when the box is ticked and a coupon is held; the revive debuff is added only if the server's constants name it.
 
 The checker follows the client's item reader (CItem::ReadFromStream, commonfiles/item.cpp:2655). It picks the item's optional blocks from the item tables, which it reads at run time. Where a packet does not carry the item id, the checker reads a plain item.
 
