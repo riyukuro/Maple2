@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -15,6 +16,12 @@ public class StateHandler : FieldPacketHandler {
     }
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        packet.ReadByte(); // argument
+        packet.ReadInt(); // client tick
+        if (command == Command.Jump) {
+            packet.Read<Vector3>(); // position
+        }
+
         switch (command) {
             case Command.Jump:
                 HandleJump(session);
