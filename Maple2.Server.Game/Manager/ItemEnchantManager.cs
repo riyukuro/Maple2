@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -415,14 +416,15 @@ public class ItemEnchantManager {
             return false;
         }
         Item? item = session.Item.GetGear(itemUid);
-        if (item == null || item.Metadata.Property.LimitBreakMaxLevel == 0 ||
-            (item.LimitBreak?.Level == 0 && item.Enchant?.Enchants < 15)) {
+        // A new item has neither record yet: it counts as level 0 and enchant 0.
+        if (item == null || !LimitBreakRules.IsItem(item.Metadata.Property.LimitBreakMaxLevel,
+                item.LimitBreak?.Level ?? 0, item.Enchant?.Enchants ?? 0)) {
             session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_invalid_item));
             return false;
         }
 
         item.LimitBreak ??= new ItemLimitBreak();
-        if (item.LimitBreak.Level >= item.Metadata.Property.LimitBreakMaxLevel) {
+        if (LimitBreakRules.IsMaxLevel(item.Metadata.Property.LimitBreakMaxLevel, item.LimitBreak.Level)) {
             session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_max_unlimited_grade));
             return false;
         }
@@ -474,7 +476,9 @@ public class ItemEnchantManager {
         }
 
         limitBreakItemUpgrade.LimitBreak.Level++;
-        limitBreakItemUpgrade.Enchant!.Enchants = 0;
+        if (limitBreakItemUpgrade.Enchant != null) {
+            limitBreakItemUpgrade.Enchant.Enchants = 0;
+        }
         session.Send(LimitBreakPacket.StageItem(item, limitBreakItemUpgrade, catalysts));
 
         return true;
@@ -482,15 +486,16 @@ public class ItemEnchantManager {
 
     public bool LimitBreakEnchant(long itemUid) {
         Item? item = session.Item.GetGear(itemUid);
-        if (item == null || upgradeItem == null || limitBreakItemUpgrade?.LimitBreak == null || upgradeItem.Uid != item.Uid ||
-            item.Metadata.Property.LimitBreakMaxLevel == 0 ||
-            (item.LimitBreak?.Level == 0 && item.Enchant?.Enchants < 15)) {
+        if (item == null || upgradeItem == null || limitBreakItemUpgrade?.LimitBreak == null ||
+            !LimitBreakRules.IsItem(item.Metadata.Property.LimitBreakMaxLevel,
+                item.LimitBreak?.Level ?? 0, item.Enchant?.Enchants ?? 0) ||
+            !LimitBreakRules.IsStaged(upgradeItem.Uid, limitBreakItemUpgrade.LimitBreak.Level, item.Uid, item.LimitBreak?.Level ?? 0)) {
             session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_invalid_item));
             return false;
         }
 
         item.LimitBreak ??= new ItemLimitBreak();
-        if (item.LimitBreak.Level >= item.Metadata.Property.LimitBreakMaxLevel) {
+        if (LimitBreakRules.IsMaxLevel(item.Metadata.Property.LimitBreakMaxLevel, item.LimitBreak.Level)) {
             session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_max_unlimited_grade));
             return false;
         }
@@ -500,7 +505,9 @@ public class ItemEnchantManager {
         }
 
         upgradeItem.LimitBreak = limitBreakItemUpgrade.LimitBreak.Clone();
-        upgradeItem.Enchant!.Enchants = 0;
+        if (upgradeItem.Enchant != null) {
+            upgradeItem.Enchant.Enchants = 0;
+        }
         session.Send(LimitBreakPacket.LimitBreak(upgradeItem));
         if (upgradeItem.LimitBreak.Level == upgradeItem.Metadata.Property.LimitBreakMaxLevel) {
             session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_max_unlimited_grade));
@@ -516,13 +523,14 @@ public class ItemEnchantManager {
         }
 
         lock (session.Item) {
-            if (!session.Item.Inventory.Consume(catalysts)) {
-                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
+            // The meso first: the materials were consumed and kept when the meso then fell short.
+            if (!LimitBreakRules.CanPay(session.Currency.Meso, mesoCost) || session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
+                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
                 return false;
             }
 
-            if (session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
-                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
+            if (!session.Item.Inventory.Consume(catalysts)) {
+                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
                 return false;
             }
             session.Currency.Meso -= mesoCost;
