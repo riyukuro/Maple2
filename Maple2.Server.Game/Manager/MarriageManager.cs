@@ -41,7 +41,9 @@ public sealed class MarriageManager {
     // the proposer's. Both sides are set together and cleared together: on the answer, on the proposer's
     // cancel, when either player leaves the field (also run on disconnect), and after the timeout.
     private static readonly object ProposalLock = new();
-    private const long ProposalTimeoutMs = 30000; // the client's answer box closes itself after 20 s
+    // The target's answer box sends answer 6 (no answer) by itself after 20 s, which ends the proposal;
+    // the 30 s timeout only covers a client that never sends it.
+    private const long ProposalTimeoutMs = 30000;
     private long proposalTo;
     private long proposalFrom;
     private long proposalExpireTick;
@@ -78,12 +80,14 @@ public sealed class MarriageManager {
         }
     }
 
-    // Drops any proposal this player is part of, on both sides (field leave and disconnect).
+    // Drops any proposal this player is part of, on both sides (field leave and disconnect). The other
+    // player is found by character id among this channel's sessions, so it does not matter which field
+    // either is on now; a player who moved to another channel lost the record with that move.
     public void ClearProposal() {
         lock (ProposalLock) {
             long partnerId = proposalTo != 0 ? proposalTo : proposalFrom;
-            if (partnerId != 0 && session.Field != null && session.Field.TryGetPlayerById(partnerId, out FieldPlayer? partner)) {
-                MarriageManager other = partner.Session.Marriage;
+            if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession)) {
+                MarriageManager other = partnerSession.Marriage;
                 if (other.proposalTo == session.CharacterId) other.proposalTo = 0;
                 if (other.proposalFrom == session.CharacterId) other.proposalFrom = 0;
             }
