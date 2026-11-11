@@ -95,7 +95,14 @@ public class TriggerObjectCube(Ms2TriggerCube metadata) : TriggerObject<Ms2Trigg
 
 public class TriggerObjectCamera(Ms2TriggerCamera metadata) : TriggerObject<Ms2TriggerCamera>(metadata);
 
-public class TriggerObjectAgent(Ms2TriggerAgent metadata) : TriggerObject<Ms2TriggerAgent>(metadata);
+// Client 2525 has no agent class: TriggerObject::Create (client/ms2/triggeractioncli.cpp:450) gives an agent the
+// base TriggerObject, whose event handler (:435) reads nothing after the id that
+// CTriggerService::FUN_141863a90 (client/ms2/triggerservice.cpp:951) takes.
+public class TriggerObjectAgent(Ms2TriggerAgent metadata) : TriggerObject<Ms2TriggerAgent>(metadata) {
+    public override void WriteTo(IByteWriter writer) {
+        writer.WriteInt(Id);
+    }
+}
 
 public class TriggerBox {
     // Some extra height to compensate for entity height
