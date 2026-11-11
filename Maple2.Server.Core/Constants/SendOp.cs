@@ -293,5 +293,6 @@ public enum SendOp : ushort {
     HideAndSeek = 0x012B,
     MessengerBrowserStamp = 0x012C,
     LimitBreak = 0x012E,
+    HomeBlock = 0x0138,
 
 }

@@ -822,6 +822,34 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("home", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.HomeBlock", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Memo")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "AccountId")
+                        .IsUnique();
+
+                    b.ToTable("home-block", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.HomeLayout", b =>
                 {
                     b.Property<long>("Uid")

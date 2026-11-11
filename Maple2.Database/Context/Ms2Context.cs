@@ -47,6 +47,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<DungeonRecord> DungeonRecord { get; set; } = null!;
     internal DbSet<PlayerReport> PlayerReports { get; set; } = null!;
     internal DbSet<Ban> Ban { get; set; } = null!;
+    internal DbSet<HomeBlock> HomeBlock { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         base.OnModelCreating(modelBuilder);
@@ -96,5 +97,6 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
 
         modelBuilder.Entity<DungeonRecord>(Maple2.Database.Model.DungeonRecord.Configure);
         modelBuilder.Entity<Ban>(Maple2.Database.Model.Ban.Configure);
+        modelBuilder.Entity<HomeBlock>(Maple2.Database.Model.HomeBlock.Configure);
     }
 }

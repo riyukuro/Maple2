@@ -87,6 +87,11 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
             return;
         }
 
+        if (accountId != session.AccountId && db.IsHomeBlocked(accountId, session.AccountId)) {
+            session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.EntranceBlocked));
+            return;
+        }
+
         if (!string.IsNullOrEmpty(home.Passcode)) {
             if (string.IsNullOrEmpty(passcode)) {
                 session.Send(EnterUgcMapPacket.RequestPassword(accountId));

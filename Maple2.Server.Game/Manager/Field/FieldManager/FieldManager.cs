@@ -567,6 +567,11 @@ public partial class FieldManager : IField {
                             return false;
                         }
 
+                        if (home.AccountId != session.AccountId && IsHomeBlocked(session, home.AccountId)) {
+                            session.Send(HomeBlockPacket.Result(HomeBlockPacket.Error.EntranceBlocked));
+                            return false;
+                        }
+
                         session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId);
                         return true;
                 }
@@ -704,6 +709,11 @@ public partial class FieldManager : IField {
         using GameStorage.Request db = session.GameStorage.Context();
         Home? home = db.GetHome(fieldPortal.HomeId);
         return home;
+    }
+
+    private static bool IsHomeBlocked(GameSession session, long ownerAccountId) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        return db.IsHomeBlocked(ownerAccountId, session.AccountId);
     }
 
     #region DebugUtils

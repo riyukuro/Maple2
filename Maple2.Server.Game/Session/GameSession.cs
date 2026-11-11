@@ -273,6 +273,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         Buddy.Load();
+        Send(HomeBlockPacket.Load(db.GetHomeBlocks(AccountId)));
 
         try {
             PlayerConfigResponse configResponse = World.PlayerConfig(new PlayerConfigRequest {
