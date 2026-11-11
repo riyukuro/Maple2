@@ -42,9 +42,10 @@ public class MiniGameUserRecord : IUserContentRecord {
 
         writer.WriteInt(RewardItems.Count);
         foreach (RewardItem item in RewardItems) {
+            // DungeonRewardInfo::Read (commonfiles/commonstruct_wa.cpp:337): item id, count, then rank.
             writer.WriteInt(item.ItemId);
-            writer.WriteInt(item.Rarity);
             writer.WriteInt(item.Amount);
+            writer.WriteInt(item.Rarity);
             writer.WriteBool(item.Unknown1);
             writer.WriteBool(item.Unknown2);
             writer.WriteBool(item.Unknown3);
