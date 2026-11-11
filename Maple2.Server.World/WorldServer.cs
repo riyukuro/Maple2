@@ -86,14 +86,14 @@ public class WorldServer {
                         playerInfo.Channel = -1;
                         continue;
                     }
-                    if (!channelClients.TryGetClient(playerInfo.Channel, out ChannelClient? channel)) {
+                    int askedChannel = playerInfo.Channel;
+                    if (!channelClients.TryGetClient(askedChannel, out ChannelClient? channel)) {
                         // Player is online and without a channel, set them to offline.
                         logger.Information("Player {CharacterId} is online without a channel, setting to offline", playerInfo.CharacterId);
-                        SetOffline(playerInfo);
+                        SetOfflineIfOn(playerInfo, askedChannel);
                         continue;
                     }
 
-                    int askedChannel = playerInfo.Channel;
                     try {
                         HeartbeatResponse? response = channel.Heartbeat(new HeartbeatRequest {
                             CharacterId = playerInfo.CharacterId,
@@ -101,11 +101,12 @@ public class WorldServer {
                         if (response is { Success: false }) {
                             // A player between two channels has no session on the old one, so the answer does
                             // not count while the player is on the way out of that channel. Otherwise only
-                            // the answer of the channel the player is still recorded on counts, and the record
-                            // is changed at once: a queued change would be applied after the login on the new
-                            // channel and leave the player recorded as offline there.
+                            // the answer of the channel the player is still recorded on counts. The record
+                            // is compared and changed in one step and at once: a queued change, or one made
+                            // after a separate check, could land on top of the login on the new channel and
+                            // leave the player recorded as offline there.
                             if (MarksOffline(playerInfo, askedChannel)) {
-                                SetOffline(playerInfo, async: false);
+                                SetOfflineIfOn(playerInfo, askedChannel);
                             }
                             continue;
                         }
@@ -116,7 +117,7 @@ public class WorldServer {
                             continue;
                         }
                         if (MarksOffline(playerInfo, askedChannel)) {
-                            SetOffline(playerInfo, async: false);
+                            SetOfflineIfOn(playerInfo, askedChannel);
                         }
                     }
 
@@ -136,6 +137,15 @@ public class WorldServer {
     private bool MarksOffline(PlayerInfo playerInfo, int askedChannel) {
         return HeartbeatRules.MarksOffline(askedChannel, playerInfo.Channel,
             Migrations.IsLeaving(playerInfo.CharacterId, askedChannel, DateTime.UtcNow));
+    }
+
+    private void SetOfflineIfOn(PlayerInfo playerInfo, int channel) {
+        playerInfoLookup.UpdateIfOn(channel, new PlayerUpdateRequest {
+            AccountId = playerInfo.AccountId,
+            CharacterId = playerInfo.CharacterId,
+            LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+            Channel = -1,
+        });
     }
 
     public void SetOffline(PlayerInfo playerInfo, bool async = true) {

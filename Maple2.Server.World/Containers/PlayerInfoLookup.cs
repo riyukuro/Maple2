@@ -129,8 +129,19 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
             return null; // No entry to update
         }
 
-        info.Update(@event);
+        info.Apply(@event);
         return info;
+    }
+
+    // Applies the request at once, and only while the record still names `expectedChannel`: the compare and the
+    // write are one step, so a login on another channel is never overwritten.
+    public bool UpdateIfOn(int expectedChannel, PlayerUpdateRequest request) {
+        if (!cache.TryGetValue(request.CharacterId, out PlayerInfo? info)) {
+            return false;
+        }
+
+        PlayerInfoUpdateEvent? @event = info.ApplyIfOn(expectedChannel, request);
+        return @event != null && Notify(info, @event.Type);
     }
 
     private bool Notify(PlayerInfo info, UpdateField type) {

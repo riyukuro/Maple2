@@ -5,6 +5,32 @@ using Maple2.Model.Game;
 namespace Maple2.Server.Core.Sync;
 
 public static class PlayerInfoUpdateExtensions {
+    // Every change of a World record goes through Apply or ApplyIfOn, under the record's lock, so that the
+    // compare of ApplyIfOn and its write are one step against a login on another channel.
+    public static void Apply(this IPlayerInfo info, PlayerInfoUpdateEvent update) {
+        lock (info) {
+            info.Update(update);
+        }
+    }
+
+    // Applies `request` only while the record still names `expectedChannel`. Returns the applied event, or null
+    // when the record names another channel by now (the player has logged in there) or nothing would change.
+    public static PlayerInfoUpdateEvent? ApplyIfOn(this IPlayerInfo info, int expectedChannel, PlayerUpdateRequest request) {
+        lock (info) {
+            if (info.Channel != expectedChannel) {
+                return null;
+            }
+
+            var update = new PlayerInfoUpdateEvent(info, request);
+            if (update.Type == UpdateField.None) {
+                return null;
+            }
+
+            info.Update(update);
+            return update;
+        }
+    }
+
     public static void Update(this IPlayerInfo info, PlayerInfoUpdateEvent update) {
         if (update.Type.HasFlag(UpdateField.Profile)) {
             if (update.Request.HasName) {
