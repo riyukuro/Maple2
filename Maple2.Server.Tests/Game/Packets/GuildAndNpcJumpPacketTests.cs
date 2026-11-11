@@ -42,7 +42,7 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
-    // CGuildManager::FUN_1413c3460 (0x37): the name, then CGuildSkill::Read (id, level, expiry time).
+    // CGuildManager::FUN_1413c39e0 (0x39): the name, the house level, the theme.
     [Test]
     public void UpgradeHouse_IsMode57WithNameLevelAndTheme() {
         ByteWriter writer = GuildPacket.UpgradeHouse("Master", 2, 3);
@@ -56,6 +56,7 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c3ef0 (0x3b): the name, then CGuildNpc::ReadPacket (kind, level).
     [Test]
     public void UpgradeNpc_IsMode59WithNameKindAndLevel() {
         ByteWriter writer = GuildPacket.UpgradeNpc("Master", new GuildNpc(GuildNpcType.Goods, 3));
@@ -69,6 +70,7 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c3460 (0x37): the name, then CGuildSkill::Read (id, level, expiry time).
     [Test]
     public void UpgradeBuff_IsMode55WithNameAndSkill() {
         ByteWriter writer = GuildPacket.UpgradeBuff("Master", new GuildBuff(10002, 3, 0x0102030405060708));

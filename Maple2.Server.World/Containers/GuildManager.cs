@@ -298,6 +298,8 @@ public class GuildManager : IDisposable {
         }
 
         GuildBuff upgraded;
+        int guildExp;
+        int guildFund;
         lock (guildLock) {
             int index = -1;
             for (int i = 0; i < Guild.Buffs.Count; i++) {
@@ -337,14 +339,16 @@ public class GuildManager : IDisposable {
                 Guild.Buffs[index] = buff;
                 return GuildError.s_guild_err_unknown;
             }
+            guildExp = Guild.Experience;
+            guildFund = Guild.Funds;
         }
 
         // No contributor: the members get the new fund (51) without a contribution line.
         Broadcast(new GuildRequest {
             UpdateContribution = new GuildRequest.Types.UpdateContribution {
                 ContributorId = 0,
-                GuildExp = Guild.Experience,
-                GuildFund = Guild.Funds,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
             },
         });
         Broadcast(new GuildRequest {
@@ -359,7 +363,6 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
-    // Guild 113. The channel has checked the member's meso and takes it after this call succeeds.
     // Guild 71. The server's own limit (GuildRules.MailCooldownSeconds), kept here so that it holds on every
     // channel; the mail right is checked here too. The turn is taken before the channel writes the mails.
     public GuildError TakeMailTurn(long requestorId) {
@@ -390,6 +393,7 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_member;
         }
 
+        int guildExp;
         int guildFund;
         int rank;
         lock (guildLock) {
@@ -415,11 +419,12 @@ public class GuildManager : IDisposable {
                 Guild.HouseTheme = oldTheme;
                 return GuildError.s_guild_err_unknown;
             }
+            guildExp = Guild.Experience;
             guildFund = Guild.Funds;
             rank = Guild.HouseRank;
         }
 
-        BroadcastHouse(requestor.Name, guildFund, rank, theme);
+        BroadcastHouse(requestor.Name, guildExp, guildFund, rank, theme);
         return GuildError.none;
     }
 
@@ -429,6 +434,7 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_member;
         }
 
+        int guildExp;
         int guildFund;
         int rank;
         lock (guildLock) {
@@ -451,11 +457,12 @@ public class GuildManager : IDisposable {
                 Guild.HouseTheme = oldTheme;
                 return GuildError.s_guild_err_unknown;
             }
+            guildExp = Guild.Experience;
             guildFund = Guild.Funds;
             rank = Guild.HouseRank;
         }
 
-        BroadcastHouse(requestor.Name, guildFund, rank, theme);
+        BroadcastHouse(requestor.Name, guildExp, guildFund, rank, theme);
         return GuildError.none;
     }
 
@@ -469,11 +476,11 @@ public class GuildManager : IDisposable {
     }
 
     // No contributor: the members get the new fund (51) without a contribution line, then the house (57).
-    private void BroadcastHouse(string requestorName, int guildFund, int rank, int theme) {
+    private void BroadcastHouse(string requestorName, int guildExp, int guildFund, int rank, int theme) {
         Broadcast(new GuildRequest {
             UpdateContribution = new GuildRequest.Types.UpdateContribution {
                 ContributorId = 0,
-                GuildExp = Guild.Experience,
+                GuildExp = guildExp,
                 GuildFund = guildFund,
             },
         });
@@ -493,6 +500,7 @@ public class GuildManager : IDisposable {
         }
 
         GuildNpc upgraded;
+        int guildExp;
         int guildFund;
         lock (guildLock) {
             int index = -1;
@@ -540,6 +548,7 @@ public class GuildManager : IDisposable {
                 }
                 return GuildError.s_guild_err_unknown;
             }
+            guildExp = Guild.Experience;
             guildFund = Guild.Funds;
         }
 
@@ -547,7 +556,7 @@ public class GuildManager : IDisposable {
         Broadcast(new GuildRequest {
             UpdateContribution = new GuildRequest.Types.UpdateContribution {
                 ContributorId = 0,
-                GuildExp = Guild.Experience,
+                GuildExp = guildExp,
                 GuildFund = guildFund,
             },
         });
@@ -562,12 +571,15 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Guild 113. The channel has taken the member's meso before this call and gives it back on a refusal.
     public GuildError Donate(long requestorId, int count, long fund, out GuildMember? member) {
         if (!Guild.Members.TryGetValue(requestorId, out member)) {
             return GuildError.s_guild_err_null_member;
         }
 
         GuildTable.Property property = GuildProperty();
+        int guildExp;
+        int guildFund;
         lock (member) {
             long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
             int today = GuildRules.DonationsToday(member.DailyDonationCount, member.DonationTime, dayStart);
@@ -599,14 +611,16 @@ public class GuildManager : IDisposable {
                     member.DonationTime = oldTime;
                     return GuildError.s_guild_err_unknown;
                 }
+                guildExp = Guild.Experience;
+                guildFund = Guild.Funds;
             }
         }
 
         Broadcast(new GuildRequest {
             UpdateContribution = new GuildRequest.Types.UpdateContribution {
                 ContributorId = member.CharacterId,
-                GuildExp = Guild.Experience,
-                GuildFund = Guild.Funds,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
             },
         });
 
