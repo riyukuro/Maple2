@@ -230,6 +230,9 @@ public class RequestCubeHandler : FieldPacketHandler {
             // and the user command AddUgcMapPriv (usercommandcli.cpp:1151): character name. No helper list is
             // stored and the answer's error byte (0x39) has no text for this: read and logged.
             case Command.AddBuildPermission:
+            // UIHomeInfoDialog::SendRequestCubeMode58 (uihomeinfodialog.cpp:674, the remove button of the helper
+            // list) and the user command RemoveUgcMapPriv (usercommandcli.cpp:1157): character name. The list is
+            // filled only by ResponseCube 0x3b, which the server never sends, so it is always empty.
             case Command.RemoveBuildPermission:
                 Logger.Debug("RequestCube {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
                 break;
