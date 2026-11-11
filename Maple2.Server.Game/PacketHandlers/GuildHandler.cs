@@ -1292,7 +1292,14 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Send(GuildPacket.VsGameTicket(registered: false, notify: false));
     }
 
+    // Guild 120 (CGuildManager::SendGuildMode120, guildmanager.cpp:3386): no body; the member takes the
+    // entry prompt of 119 (FUN_1413c45e0, :2679). The server opens no vs-game and sends no prompt, so there
+    // is nothing to enter: the client's open game is cleared (119 with the id 0 shows no prompt).
     private void HandleJoinGuildEvent(GameSession session) {
+        if (session.Guild.Guild == null) {
+            return;
+        }
 
+        session.Send(GuildPacket.VsGameOpen(0));
     }
 }

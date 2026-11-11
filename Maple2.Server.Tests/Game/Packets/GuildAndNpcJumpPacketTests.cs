@@ -228,6 +228,19 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c45e0 (0x77): the game id; 0 opens no prompt.
+    [TestCase(0)]
+    [TestCase(7)]
+    public void VsGameOpen_IsMode119WithTheGameId(int gameId) {
+        ByteWriter writer = GuildPacket.VsGameOpen(gameId);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(119));
+        Assert.That(reader.ReadInt(), Is.EqualTo(gameId));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
     [Test]
     public void StorageHistory_IsMode112WithZeroRows() {

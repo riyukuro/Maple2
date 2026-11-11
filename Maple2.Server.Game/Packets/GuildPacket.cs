@@ -87,7 +87,8 @@ public static class GuildPacket {
         StorageHistory = 112,
         Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
         VsGameTicket = 118,
-        // 114, 115, 116, 119, 120
+        VsGameOpen = 119,
+        // 114, 115, 116, 120
     }
 
     public static ByteWriter Load(Guild guild) {
@@ -835,6 +836,16 @@ public static class GuildPacket {
         pWriter.Write<Command>(Command.VsGameTicket);
         pWriter.WriteBool(registered);
         pWriter.WriteBool(notify);
+
+        return pWriter;
+    }
+
+    // CGuildManager::FUN_1413c45e0 (0x77, guildmanager.cpp:2679): the id of the vs-game that opened; the
+    // client clears its ticket flag and, for an id other than 0, asks whether to enter (30 seconds).
+    public static ByteWriter VsGameOpen(int gameId) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.VsGameOpen);
+        pWriter.WriteInt(gameId);
 
         return pWriter;
     }
