@@ -151,7 +151,7 @@ public static class CharacterListPacket {
         writer.WriteLong(character.Id);
         writer.WriteUnicodeString(character.Name);
         writer.Write<Gender>(character.Gender);
-        writer.WriteByte(1); // charObj+0x11c8, client stores this value
+        writer.WriteByte(AdminLevel.Of(account.AdminPermissions)); // GM grade: 50 or more shows as a GM
         writer.WriteLong();
         writer.WriteInt(); // read and discarded by client
         writer.WriteInt(character.MapId);

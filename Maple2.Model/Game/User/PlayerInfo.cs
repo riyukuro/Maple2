@@ -57,7 +57,7 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
         writer.WriteLong(CharacterId);
         writer.WriteUnicodeString(Name);
         writer.Write<Gender>(Gender);
-        writer.WriteByte(1);
+        writer.WriteByte(AdminLevel.Of(AccountAdminPermissions)); // GM grade: 50 or more shows as a GM
         writer.WriteLong(AccountId);
         writer.WriteInt(1);
         writer.WriteInt(MapId);
