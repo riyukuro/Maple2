@@ -22,7 +22,6 @@ public class DungeonRecord : IByteSerializable {
     public DungeonRecord(int dungeonId) {
         DungeonId = dungeonId;
         LifetimeRecord = -1;
-        CurrentRecord = -1;
     }
 
     public void WriteTo(IByteWriter writer) {
