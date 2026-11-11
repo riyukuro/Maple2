@@ -363,6 +363,18 @@ public static class GuildRules {
         return result;
     }
 
+    // Guild 109 (CGuildManager::FUN_1413bb490, guildmanager.cpp:1046): the client's own tests before it
+    // sends, made again: a count, the storage holds it, and a receiver in the guild.
+    public static GuildError CheckStorageGift(int count, int stored, bool receiverIsMember) {
+        if (!receiverIsMember) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (count <= 0 || stored < count) {
+            return GuildError.s_guild_err_unknown;
+        }
+        return GuildError.none;
+    }
+
     // CGuildSkill::GetRemainingDuration: the table's duration is in minutes, the times are in seconds (the
     // client's table reader GuildSkill::FUN_1404d4cb0 stores duration * 60 and cooltime * 60, and the
     // getters add them to the time of use). A skill that was never used has the time 0.

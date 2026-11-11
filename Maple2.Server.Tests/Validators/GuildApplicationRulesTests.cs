@@ -355,4 +355,13 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.RunningSkillEffects(skills, table, 4600), Is.Empty, "nothing after the end");
         Assert.That(GuildRules.RunningSkillEffects([new GuildBuff(1, 2, 0)], table, 100), Is.Empty, "never used");
     }
+
+    [TestCase(1, 1, true, GuildError.none)]
+    [TestCase(1, 0, true, GuildError.s_guild_err_unknown)]
+    [TestCase(0, 5, true, GuildError.s_guild_err_unknown)]
+    [TestCase(-1, 5, true, GuildError.s_guild_err_unknown)]
+    [TestCase(1, 1, false, GuildError.s_guild_err_null_member)]
+    public void StorageGift_Rules(int count, int stored, bool receiverIsMember, GuildError expected) {
+        Assert.That(GuildRules.CheckStorageGift(count, stored, receiverIsMember), Is.EqualTo(expected));
+    }
 }

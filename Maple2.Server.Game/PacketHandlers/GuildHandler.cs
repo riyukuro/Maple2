@@ -1153,9 +1153,25 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Migrate(house.MapId, session.Guild.Id);
     }
 
+    // Guild 109 (CGuildManager::FUN_1413bb490, guildmanager.cpp:1046): an item of the guild storage for a
+    // member. Body: the item (ItemEntity::Write, commonstruct_wa.cpp:84: int id, short rank, int count,
+    // 4 bools), then the receiver's name. The server keeps no guild storage, so the storage holds 0 of
+    // every item and the gift is refused with the result byte (OnPacketStorageGiftResult, :2963).
     private void HandleSendGift(GameSession session, IByteReader packet) {
         var gift = packet.Read<RewardItem>();
         string playerName = packet.ReadUnicodeString();
+        Guild? guild = session.Guild.Guild;
+        if (guild == null) {
+            return; // The client's reader drops 109 outside a guild.
+        }
+
+        bool receiverIsMember = guild.Members.Values.Any(member => member.Name == playerName);
+        const int stored = 0;
+        GuildError error = GuildRules.CheckStorageGift(gift.Amount, stored, receiverIsMember);
+        if (error == GuildError.none) {
+            error = GuildError.s_guild_err_unknown; // not reached while nothing is stored
+        }
+        session.Send(GuildPacket.StorageGift(error));
     }
 
     // CGuildManager::SendGuildMode112: sent once when the storage log is opened, with no body; the client

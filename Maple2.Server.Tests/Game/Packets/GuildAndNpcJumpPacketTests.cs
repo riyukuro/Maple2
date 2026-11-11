@@ -1,7 +1,9 @@
 ﻿using System.Numerics;
 using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
@@ -171,6 +173,25 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
         Assert.That(reader.ReadByte(), Is.EqualTo(99));
         Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // CGuildManager::OnPacketStorageGiftResult (0x6d): the result byte, and the receiver only for 0.
+    [Test]
+    public void StorageGift_IsMode109_ReceiverOnlyOnSuccess() {
+        ByteWriter writer = GuildPacket.StorageGift(GuildError.s_guild_err_unknown, "ignored");
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(109));
+        Assert.That(reader.ReadByte(), Is.EqualTo((byte) GuildError.s_guild_err_unknown));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+
+        writer = GuildPacket.StorageGift(GuildError.none, "B");
+        reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(109));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("B"));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 

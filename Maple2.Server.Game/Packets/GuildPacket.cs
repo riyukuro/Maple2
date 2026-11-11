@@ -82,7 +82,8 @@ public static class GuildPacket {
         UsePersonalBuff = 91,
         AddContribution = 97,
         OpenEvent = 99,
-        // 96, 104, 107, 109
+        // 96, 104, 107
+        StorageGift = 109,
         StorageHistory = 112,
         Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
         // 114, 115, 116, 119, 120
@@ -809,6 +810,19 @@ public static class GuildPacket {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.PvpSeason);
         pWriter.WriteInt(0);
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketStorageGiftResult (0x6d, guildmanager.cpp:2963): a result byte; the receiver's
+    // name follows only for the result 0. 54 prints the need-period text, any other result prints nothing.
+    public static ByteWriter StorageGift(GuildError result, string receiver = "") {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.StorageGift);
+        pWriter.WriteByte((byte) result);
+        if (result == GuildError.none) {
+            pWriter.WriteUnicodeString(receiver);
+        }
 
         return pWriter;
     }
