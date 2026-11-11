@@ -465,6 +465,8 @@ public sealed partial class GameSession : Core.Network.Session {
         return true;
     }
 
+    private long resummonPetUid;
+
     private void LeaveField() {
         InteractStarted.Clear();
         CubeStarted.Clear();
@@ -473,6 +475,8 @@ public sealed partial class GameSession : Core.Network.Session {
         DismantleOpened = false;
         Trade?.Dispose();
         Storage?.Dispose();
+        // A summoned pet leaves the field with its owner and is summoned again in the next one (EnterField).
+        resummonPetUid = Pet?.Pet.Uid ?? 0;
         Pet?.Dispose();
         Instrument = null;
         GuideObject = null;
@@ -559,6 +563,12 @@ public sealed partial class GameSession : Core.Network.Session {
         Field.OnAddPlayer(Player);
         Scheduler.Start();
         State = SessionState.Connected;
+        if (resummonPetUid != 0) {
+            // Before the stats packets below: the summon rebuilds the owner's stats with the pet's.
+            long petUid = resummonPetUid;
+            resummonPetUid = 0;
+            PacketHandlers.PetHandler.SummonPet(this, petUid);
+        }
         Housing.EnterBuildField();
 
         PlayerInfo.SendUpdate(new PlayerUpdateRequest {
