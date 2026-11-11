@@ -138,15 +138,13 @@ The client reads no reply of its own for these three; it shows the normal item, 
 
 ## Known not to work
 
-The client sends 52 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
+The client sends 54 sub-types that the server does not handle yet. They are listed here per system, with the number of unhandled sub-types:
 
 | system | count | system | count | system | count |
 |---|---|---|---|---|---|
-| EventReward | 12 | RequestItemEnchant | 5 | Party | 2 |
-| RequestCube | 7 | Wedding | 2 | | |
-| Quest | 7 | HomeAction | 2 | | |
-| Guild | 6 | | | | |
-| RoomDungeon | 4 | | | | |
+| EventReward | 12 | Guild | 6 | Wedding | 2 |
+| RequestItemEnchant | 8 | RequestCube | 6 | HomeAction | 2 |
+| Quest | 7 | RoomDungeon | 4 | Party | 2 |
 
 These systems have one unhandled sub-type each: Achieve, FurnishingStorage, InteractObject, Mapleopoly, Ugc.
 
@@ -162,6 +160,7 @@ Narrowed, with the reason:
 - Party 39 and 43 (join a dungeon party from a chat link): the link is built from a recruiting notice that the server never sends. Party 32 to 34 (dungeon match queue) have no matchmaker behind them.
 - Wedding 9 (the answer to the divorce message box) and 37 (the item of a wedding skill): the server has no divorce flow and does not load the wedding skill table. Both are read and logged. Wedding 34 (the couple message) is handled: the message is saved and shown to both partners.
 - RoomDungeon 8 (buy an extra reward count with a coupon item): the dungeon data the server loads has no coupon item or cost. 15 and 16 (ask for helpers or members): they need the recruiting notice, which the server never sends. 21 (reset the united reward, after a confirm box): what the reset changes is not settled from the client. All are read and logged. 17 (expert mode) and 24 (favourite mark), counted here before, are handled. The four lobby buttons of the dungeon search window (4, 12, 13, 14) belong to the match queue and are not counted.
+- RequestCube 5 (the owner uses the sign of their own plot) and 30 (the two strings of the home summon dialog): what they should do is not settled from the client. 19 (a GM debug index) needs a GM account and is only logged. 56 to 58 (the build budget and the build helpers of a home): the server stores neither. Sub-type 13 has a case but the client never sends it, so it is not counted. 68 (the market's blueprint preview) builds only in the model home, and 70 (the bill of a used blueprint item) is handled.
 - Achieve 5 (GM debug buttons of the trophy window): read and logged only, GM account needed.
 - SkillMacro 1 with no tab (every skill macro tab removed): the save is refused, because the client also sends an empty save when the window closes before the load answer came. A player who removes all tabs gets the stored ones back at the next login.
 
