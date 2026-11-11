@@ -57,6 +57,16 @@ public class InteractObjectHandler : FieldPacketHandler {
             if (session.InteractStarted.Count >= InteractRules.MaxStarted) {
                 break;
             }
+            // The client starts only on an object within reach (interactobject.cpp:1075, stateinteractdata.cpp:283, 382).
+            if (session.Field?.TryGetInteract(name, out FieldInteract? interact) != true) {
+                continue;
+            }
+            float reach = interact.Value.Type == InteractType.Gathering
+                ? session.ServerTableMetadata.ConstantsTable.MasteryObjectInteractionDistance
+                : InteractRules.OtherReach;
+            if (!InteractRules.InReach(session.Player.Position, interact.Position, reach)) {
+                continue;
+            }
             session.InteractStarted.Add(name);
         }
     }

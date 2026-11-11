@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -47,11 +48,16 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 if (count < 0 || count > MaxCubesPerRequest) {
                     return;
                 }
+                if (command == Command.Begin) {
+                    session.CubeStarted.Clear();
+                }
                 for (int i = 0; i < count; i++) {
                     string interactId = packet.ReadUnicodeString();
                     packet.ReadByte();
                     if (command == Command.Use) {
                         HandleUseCube(session, interactId);
+                    } else {
+                        HandleBeginCube(session, interactId);
                     }
                 }
                 break;
@@ -79,6 +85,19 @@ public class FunctionCubeHandler : FieldPacketHandler {
         session.Field?.Broadcast(FunctionCubePacket.UseFurniture(session.CharacterId, cube));
     }
 
+    // The client begins on the farming and breeding cubes within the MasteryObjectInteractionDistance
+    // constant of the character (statehomemade.cpp:177); the use that follows is taken only for those.
+    private void HandleBeginCube(GameSession session, string interactId) {
+        FieldFunctionInteract? fieldInteract = session.Field?.TryGetFieldFunctionInteract(interactId);
+        if (fieldInteract is null || !InteractRules.NeedsBegin(fieldInteract.Value.ControlType)) {
+            return;
+        }
+        if (!InteractRules.InReach(session.Player.Position, fieldInteract.Position, Constants.MasteryObjectInteractionDistance)) {
+            return;
+        }
+        session.CubeStarted.Add(interactId);
+    }
+
     private void HandleUseCube(GameSession session, string interactId) {
         if (!interactId.Contains('_')) {
             Logger.Error("Unexpected interactId {0}", interactId);
@@ -99,6 +118,9 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 break;
             case InteractCubeControlType.Farming:
             case InteractCubeControlType.Breeding:
+                if (!session.CubeStarted.Remove(interactId)) {
+                    return;
+                }
                 FieldFunctionInteract? fieldFunctionInteract = session.Field?.TryGetFieldFunctionInteract(fieldInteract.InteractCube.Id);
                 if (fieldFunctionInteract != null && fieldFunctionInteract.Use()) {
                     session.Send(FunctionCubePacket.UpdateFunctionCube(fieldFunctionInteract.InteractCube));
