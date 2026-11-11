@@ -92,6 +92,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
   - Enchant sub-type 15 writes the uid and the whole item.
   - The limit break preview has no meso field.
   - Adding a pet item writes no string before the item.
+- **Ability window:** learn (mode 2) and reset (mode 1) are handled; the GM learn-all request (mode 3) is not. The abilities are the client's `table/characterability.xml`, a new metadata table: it needs a re-ingest, and the Release server stops at start without it. The learned ids are kept in the character's Experience JSON and the reset time in its Cooldown JSON (no migration). Bonus points are sent as 0.
 - **Function cube:** the command numbers are the client's, and a gathering success writes the count 1 the client adds to its tally.
 - **Requests read without a reply yet** (each logs what it read; the reply needs state the server does not keep):
   - Item merge choice, revert and material select; manufacture through the enchant scroll; socket transfer; exchange scroll target and fill.
