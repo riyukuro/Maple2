@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -77,7 +78,11 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        // TODO Also check MyListings Count against Constant.MesoMarketListLimit (s_mesoMarket_error_maxCountOwnProduct)
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (!MesoMarketRules.HasListingSlot(db.GetMyMesoListingsByAccountId(session.AccountId).Count, Constant.MesoMarketListLimit)) {
+            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_maxCountOwnProduct));
+            return;
+        }
         if (session.Player.Value.Account.MesoMarketListed >= Constant.MesoMarketListLimitDay) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_maxCountRegister));
             return;
@@ -95,7 +100,6 @@ public class MesoMarketHandler : FieldPacketHandler {
             Amount = amount,
         };
 
-        using GameStorage.Request db = session.GameStorage.Context();
         listing = db.CreateMesoListing(listing);
         if (listing == null) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_errorDB));
@@ -136,7 +140,7 @@ public class MesoMarketHandler : FieldPacketHandler {
         long minMesos = packet.ReadLong();
         long maxMesos = packet.ReadLong();
 
-        if (maxMesos < minMesos) {
+        if (!MesoMarketRules.IsSearchRange(minMesos, maxMesos)) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_invalidSearchParam));
             return;
         }
