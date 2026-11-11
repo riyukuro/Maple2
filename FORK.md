@@ -181,6 +181,11 @@ Packets the client reads that the server never sends, although a player can ask 
 - DungeonMatch 0x00EF and DungeonHelp 0x0109 (dungeon match queue and helper call): no matchmaker and no recruiting notice, as for Party 32 to 34 and RoomDungeon 15 and 16 above.
 - MeretUse 0x0117 (the event meret balance after a purchase): the server keeps no event meret balance; purchases update the normal meret packet.
 - StateFishingData 0x00FA (another player's fishing state): fishing itself works; the server does not send the state of a fishing player to the others in the field.
+- RelocateWorld 0x0072 (the world transfer request): no handler; the server runs one world, so there is no world list and no transfer address to send.
+- Cash 0x00AD (the cash inventory and cash shop requests): no handler and no cash shop data; the server's shop is the Meret Market, which has its own packets.
+- CharacterAbility 0x00DF (the character ability window): no handler; the server stores no learned abilities, ability points or reset time.
+- Microgame 0x0114 (a rock-paper-scissors game between two players): no handler and no game state on the server.
+- DynamicBanword 0x0124 (the client sends its ban word list version when it enters the game): the handler only logs the request. The server's ban words are the client's own static list, so there is no newer list to send.
 - ChangeAttributes 0x00C8 kinds 4, 6 and 8 and ItemExchange 0x0102 kinds 0 and 3: the server answers these windows only with the kinds it handles (ChangeAttributes 1, 2 and the error 5; ItemExchange 2).
 - DebugMode 0x0087 (the answer to the GM debug window's switches): not handled; it would need a GM account.
 
