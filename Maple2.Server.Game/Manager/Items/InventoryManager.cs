@@ -265,9 +265,11 @@ public class InventoryManager {
 
             if (commit) {
                 // The stacks the item merged into changed too. An item merged away completely was already
-                // discarded above and is not saved back to the character.
+                // discarded above and is not saved back to the character. A just-created item was written
+                // with its full amount; when part of it merged into stacks, save its lowered amount as well,
+                // or the merged part exists twice in the database until the next character save.
                 List<Item> changed = result.Select(entry => entry.Item1).Where(item => item.Uid != add.Uid).ToList();
-                if (!justCreated && add.Amount > 0) {
+                if (add.Amount > 0 && (!justCreated || changed.Count > 0)) {
                     changed.Add(add);
                 }
                 if (changed.Count > 0) {
