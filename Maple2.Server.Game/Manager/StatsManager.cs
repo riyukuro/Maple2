@@ -176,7 +176,28 @@ public class StatsManager {
 
     private void AddEquips(FieldPlayer player) {
         Values.GearScore = 0;
+        long now = DateTime.Now.ToEpochSeconds();
+        bool vip = player.Session.Config.IsPremiumClubActive();
+        long characterId = player.Value.Character.Id;
+        int characterLevel = player.Value.Character.Level;
+        // An item the client does not count gives it no stats either (SetItemRules.GivesStats).
+        bool Gives(Item item, int layer) {
+            return SetItemRules.GivesStats(layer, SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
+                item.Metadata.Limit.RequireVip, vip, item.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel));
+        }
+
+        // The outfit tab's items add their own stats as the equip tab's do (equipment.cpp:3009-3020 runs for
+        // every layer but the second outfit layer).
+        foreach (Item item in player.Session.Item.Equips.Outfit.Values) {
+            if (item.Stats != null && Gives(item, 1)) {
+                AddItemStats(item.Stats);
+            }
+        }
+
         foreach (Item item in player.Session.Item.Equips.Gear.Values) {
+            if (!Gives(item, 0)) {
+                continue;
+            }
             if (item.Stats != null) {
                 AddItemStats(item.Stats);
             }

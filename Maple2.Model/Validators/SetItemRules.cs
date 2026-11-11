@@ -40,6 +40,14 @@ public static class SetItemRules {
         return levelLimit <= level;
     }
 
+    // Whether a worn item's own stats join the character's totals: only an item that counts (Counted), in
+    // the equip tab (layer 0) or the outfit tab (layer 1). The client adds a worn item's stats in the same
+    // branch that counts it as a set piece (CEquipment::FUN_1411e76c0, equipment.cpp:2999-3020); the second
+    // outfit layer (2) has its own branch with no stats (equipment.cpp:2977-2998).
+    public static bool GivesStats(int layer, bool counted) {
+        return counted && layer is 0 or 1;
+    }
+
     // An item's expiry time has passed (CItem::IsExpired, item.cpp:1303; 0 = no expiry). A pet item is never
     // held back by it (item.cpp:1719).
     public static bool Expired(long expiryTime, long now, bool pet) {

@@ -58,6 +58,15 @@ public class SetItemRulesTests {
     }
 
     [Test]
+    public void GivesStats_CountedItemOfTheEquipOrOutfitTab() {
+        Assert.That(SetItemRules.GivesStats(layer: 0, counted: true), Is.True);
+        Assert.That(SetItemRules.GivesStats(layer: 1, counted: true), Is.True);
+        Assert.That(SetItemRules.GivesStats(layer: 2, counted: true), Is.False);
+        Assert.That(SetItemRules.GivesStats(layer: 0, counted: false), Is.False);
+        Assert.That(SetItemRules.GivesStats(layer: 1, counted: false), Is.False);
+    }
+
+    [Test]
     public void SetKey_OriginIdWhenTheItemHasOne() {
         Assert.That(SetItemRules.SetKey(itemId: 7002, originId: 7001), Is.EqualTo(7001));
         Assert.That(SetItemRules.SetKey(itemId: 7002, originId: 0), Is.EqualTo(7002));
