@@ -113,6 +113,34 @@ public static class UgcRules {
         }
     }
 
+    // The new slots of ReserveBannerSlots are written one by one, each by its own call of write (the
+    // caller gives each its own database context: a failed insert stays tracked in the context it was
+    // tried in and would fail every later write there). A slot whose write throws is taken out of the
+    // list and out of got; the others stay. Returns the slots that failed.
+    public static List<BannerSlot> SaveReservedSlots(List<BannerSlot> slots, List<BannerSlot> got, List<BannerSlot> created,
+                                                     Action<BannerSlot> write, Action<BannerSlot, Exception>? failed = null) {
+        var lost = new List<BannerSlot>();
+        foreach (BannerSlot slot in created) {
+            try {
+                write(slot);
+            } catch (Exception ex) {
+                failed?.Invoke(slot, ex);
+                ReleaseBannerSlot(slots, slot);
+                got.Remove(slot);
+                lost.Add(slot);
+            }
+        }
+        return lost;
+    }
+
+    // A slot has its id from the database. Between ReserveBannerSlots and its write a new slot is in
+    // the list with id 0: it is not a slot an upload can name (uid 0 names none) and has no row to remove.
+    public static bool BannerSlotSaved(long id) => id != 0;
+
+    public static BannerSlot? FindSavedBannerSlot(IEnumerable<BannerSlot> slots, long uid) {
+        return BannerSlotSaved(uid) ? slots.FirstOrDefault(slot => slot.Id == uid) : null;
+    }
+
     // Whether the character may upload to a reserved slot. The slot belongs to the character that
     // reserved it (ownerId, 0 when not known: the owner is kept in memory only). A slot with no owner
     // and no design takes an upload from anyone, at the usual price: the owner is lost whenever the

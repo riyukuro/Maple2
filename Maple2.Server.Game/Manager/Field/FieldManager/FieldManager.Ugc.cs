@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Ugc;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Field;
 using Maple2.Server.Game.Packets;
@@ -30,7 +31,7 @@ public partial class FieldManager {
 
         using GameStorage.Request db = GameStorage.Context();
         foreach (UgcBanner ugcBanner in Banners.Values) {
-            List<BannerSlot> expiredSlots = ugcBanner.SlotsSnapshot().Where(x => x.Expired).ToList();
+            List<BannerSlot> expiredSlots = ugcBanner.SlotsSnapshot().Where(x => x.Expired && UgcRules.BannerSlotSaved(x.Id)).ToList(); // a slot not written yet has no row
 
             db.RemoveBannerSlots(expiredSlots);
             lock (ugcBanner.Slots) {

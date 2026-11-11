@@ -194,6 +194,43 @@ public class UgcRulesTests {
         Assert.That(slots.Select(slot => slot.Hour), Is.EquivalentTo(new[] { 14, 15, 16 }));
     }
 
+    // Mode 19 writes: the first write fails, the later ones are still made and kept.
+    [Test]
+    public void BannerReserveFirstWriteFails() {
+        DateTimeOffset now = new(2026, 11, 11, 12, 30, 0, TimeSpan.Zero);
+        var slots = new List<BannerSlot>();
+        (int Date, int Hour)[] asked = [(20261111, 13), (20261111, 14), (20261111, 15)];
+        List<BannerSlot> got = UgcRules.ReserveBannerSlots(slots, 1, asked, 7, 24, now, out List<BannerSlot> created);
+        int writes = 0;
+        var reported = new List<int>();
+        List<BannerSlot> lost = UgcRules.SaveReservedSlots(slots, got, created, slot => {
+            if (writes++ == 0) {
+                throw new InvalidOperationException("first write");
+            }
+            slot.Id = 100 + writes;
+        }, (slot, _) => reported.Add(slot.Hour));
+        Assert.That(writes, Is.EqualTo(3));
+        Assert.That(lost.Select(slot => slot.Hour), Is.EqualTo(new[] { 13 }));
+        Assert.That(reported, Is.EqualTo(new[] { 13 }));
+        Assert.That(got.Select(slot => slot.Hour), Is.EqualTo(new[] { 14, 15 }));
+        Assert.That(slots.Select(slot => slot.Hour), Is.EqualTo(new[] { 14, 15 }));
+        Assert.That(got.All(slot => slot.Id != 0), Is.True);
+    }
+
+    // Between the reserve and its write a new slot has id 0: an upload naming uid 0 finds no slot and
+    // the field's removal of expired rows leaves it.
+    [Test]
+    public void BannerSlotNotSaved() {
+        var unsaved = new BannerSlot(1, 20991231, 2) { OwnerId = 7 };
+        var saved = new BannerSlot(1, 20991231, 3) { Id = 55, OwnerId = 7 };
+        var slots = new List<BannerSlot> { unsaved, saved };
+        Assert.That(UgcRules.FindSavedBannerSlot(slots, 0), Is.Null);
+        Assert.That(UgcRules.FindSavedBannerSlot(slots, 55), Is.SameAs(saved));
+        Assert.That(UgcRules.FindSavedBannerSlot(slots, 56), Is.Null);
+        Assert.That(UgcRules.BannerSlotSaved(unsaved.Id), Is.False);
+        Assert.That(UgcRules.BannerSlotSaved(saved.Id), Is.True);
+    }
+
     // The copy is taken under the list's lock and does not follow later changes of the list; the
     // slots in it are the banner's own objects.
     [Test]

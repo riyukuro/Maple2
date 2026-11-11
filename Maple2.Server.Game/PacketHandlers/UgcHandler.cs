@@ -268,7 +268,7 @@ public class UgcHandler : FieldPacketHandler {
         byte hours = packet.ReadByte();
         for (int i = 0; i < hours; i++) {
             var reservation = packet.Read<UgcBannerReservation>();
-            BannerSlot? bannerSlot = banner.SlotsSnapshot().FirstOrDefault(slot => slot.Id == reservation.Uid);
+            BannerSlot? bannerSlot = UgcRules.FindSavedBannerSlot(banner.SlotsSnapshot(), reservation.Uid);
             UgcItemLook? shown = bannerSlot?.Template;
             bool taken = bannerSlot == null || !UgcRules.BannerSlotOpenTo(bannerSlot.OwnerId, shown?.CharacterId ?? 0,
                 !string.IsNullOrEmpty(shown?.Url), session.CharacterId);
@@ -648,18 +648,11 @@ public class UgcHandler : FieldPacketHandler {
         // hour get it once. The rows are written after the lock: the field thread takes the same lock
         // in its update and must not wait for the database.
         List<BannerSlot> newSlots = UgcRules.ReserveBannerSlots(banner.Slots, banner.Id, asked, session.CharacterId, room, DateTimeOffset.UtcNow, out List<BannerSlot> created);
-        if (created.Count > 0) {
+        // One context per slot: a failed insert stays tracked in its context and would fail the rest.
+        UgcRules.SaveReservedSlots(banner.Slots, newSlots, created, slot => {
             using GameStorage.Request db = session.GameStorage.Context();
-            foreach (BannerSlot slot in created) {
-                try {
-                    db.AddBannerSlot(slot);
-                } catch (Exception ex) {
-                    Logger.Error(ex, "Failed to save banner slot {BannerId} {Date} {Hour}", bannerId, slot.Date, slot.Hour);
-                    UgcRules.ReleaseBannerSlot(banner.Slots, slot);
-                    newSlots.Remove(slot);
-                }
-            }
-        }
+            db.AddBannerSlot(slot);
+        }, (slot, ex) => Logger.Error(ex, "Failed to save banner slot {BannerId} {Date} {Hour}", bannerId, slot.Date, slot.Hour));
 
         session.Send(UgcPacket.ReserveBannerSlots(bannerId, newSlots));
     }
