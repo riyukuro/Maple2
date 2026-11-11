@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Model.Validators;
@@ -21,4 +22,26 @@ public static class ItemRemakeRules {
 
     // One lock item keeps one option; a request that keeps more is refused whole.
     public static bool LocksAllowed(int count) => count is 0 or 1;
+
+    // The client's lock item (GetLockItemId, GetLockItemLevel; itemremakescrolldata.cpp:407): the lock tag of the
+    // item's kind (armor 102, weapon 101, accessory 103, pet 104 in its tag table), and for an equip the equip's
+    // rarity, which the client asks only with OptionBlock02 (on in the played client). Any item with the tag and
+    // that rarity serves; a pet's lock item may be of any rarity.
+    public static ItemTag? LockTag(bool armor, bool weapon, bool accessory, bool pet) {
+        if (armor) {
+            return ItemTag.LockItemOptionArmor;
+        }
+        if (weapon) {
+            return ItemTag.LockItemOptionWeapon;
+        }
+        if (accessory) {
+            return ItemTag.LockItemOptionAccessory;
+        }
+        return pet ? ItemTag.LockItemOptionPet : null;
+    }
+
+    public static int LockRarity(bool pet, int rarity) => pet ? 0 : rarity;
+
+    public static bool IsLockItem(ItemTag lockTag, int lockRarity, ItemTag tag, int rarity) =>
+        tag == lockTag && (lockRarity == 0 || rarity == lockRarity);
 }

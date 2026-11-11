@@ -243,61 +243,22 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         return true;
     }
 
-    // TODO: Rather than selecting first time, select best option (e.g. earliest expiring,untradeable)
+    // The lock item the client asks for (ItemRemakeRules.LockTag): any inventory item with the lock tag of the
+    // item's kind and, for an equip, the equip's rarity. The first one found is taken.
     public static Item? GetLockConsumeItem(GameSession session, Item changeItem) {
         if (!IsValidItem(changeItem)) {
             return null;
         }
 
-        if (changeItem.Type.IsWeapon) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionWeapon || item.IsExpired()) {
-                    return false;
-                }
-                return item.Rarity switch {
-                    4 => item.Id is 30000859 or 30001134 or 30001162,
-                    5 => item.Id is 30001039 or 30050859 or 30051134 or 30051162,
-                    6 => item.Id is 30060859 or 30061134 or 30061162,
-                    _ => false,
-                };
-            }, InventoryType.Misc).FirstOrDefault();
+        ItemTag? lockTag = ItemRemakeRules.LockTag(changeItem.Type.IsArmor, changeItem.Type.IsWeapon,
+            changeItem.Type.IsAccessory, changeItem.Type.IsCombatPet);
+        if (lockTag == null) {
+            return null;
         }
-        if (changeItem.Type.IsArmor) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionArmor || item.IsExpired()) {
-                    return false;
-                }
-                return item.Rarity switch {
-                    4 => item.Id is 30000860 or 30000891 or 30000911 or 30001163,
-                    5 => item.Id is 30001040 or 30050860 or 30050911 or 30051163 or 31002003,
-                    6 => item.Id is 30060860 or 30060911 or 30061163 or 31001995,
-                    _ => false,
-                };
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        if (changeItem.Type.IsAccessory) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionAccessory || item.IsExpired()) {
-                    return false;
-                }
-                // TODO: 30061170=(Event) Accessory Attribute Lock Scroll
-                return item.Rarity switch {
-                    4 => item.Id is 30000889 or 30001038 or 30001164,
-                    5 => item.Id is 30050889 or 30051038 or 30051164,
-                    6 => item.Id is 30060889 or 30061038 or 30061164,
-                    _ => false,
-                };
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        if (changeItem.Type.IsCombatPet) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionPet || item.IsExpired()) {
-                    return false;
-                }
-                return item.Id is 30000923 or 30000924 or 30001308;
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        return null;
+        int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsCombatPet, changeItem.Rarity);
+        return session.Item.Inventory.Filter(item => !item.IsExpired()
+            && ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity),
+            InventoryType.Misc).FirstOrDefault();
     }
 
     // Client TabContentsPetRemakeOption / UIItemRemakeOptionDialog: the player keeps the current
