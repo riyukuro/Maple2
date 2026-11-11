@@ -1,7 +1,9 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -45,7 +47,7 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
             }
 
             Item? scroll = session.Item.Inventory.Get(scrollUid);
-            if (!int.TryParse(scroll?.Metadata.Function?.Parameters, out int scrollId)) {
+            if (scroll?.Metadata.Function?.Type != ItemFunction.ItemSocketScroll || !int.TryParse(scroll.Metadata.Function.Parameters, out int scrollId)) {
                 session.Send(ItemSocketScrollPacket.Error(s_itemsocket_scroll_error_invalid_scroll));
                 return;
             }
@@ -89,7 +91,7 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
         if (item.Socket.UnlockSlots >= metadata.SocketCount) {
             return s_itemsocket_scroll_error_already_socket_unlock;
         }
-        if (item.Metadata.Limit.Level < metadata.MinLevel || item.Metadata.Limit.Level > metadata.MaxLevel) {
+        if (!ScrollRules.SocketLevelAllowed(item.Metadata.Limit.Level, metadata.MinLevel, metadata.MaxLevel)) {
             return s_itemsocket_scroll_error_impossible_level;
         }
         if (!metadata.ItemTypes.Contains(item.Type.Type)) {
