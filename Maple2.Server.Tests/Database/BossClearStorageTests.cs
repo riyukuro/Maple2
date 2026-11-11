@@ -12,7 +12,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Maple2.Server.Tests.Database;
 
 // The boss clears (boss-clear, boss-clear-member) and the irrq.aspx boss boards built from them, on an in-memory
-// database. The answers are read the way the client's GameRanking::BossKillCount, BossKillRecord and MyRank read them.
+// database. The answers are read the way the client's GameRanking::BossKillCount, BossKillRecord, BossRumbleCount,
+// BossRumbleRecord and MyRank read them.
 public class BossClearStorageTests {
     private const int Board1 = 70001;
     private const int Board2 = 70002;
@@ -92,8 +93,9 @@ public class BossClearStorageTests {
         return rows;
     }
 
-    private static List<(int Rank, long Id, string Name, int Clears)> ReadCounts(ByteWriter writer, int rankingId) {
-        (int count, ByteReader reader) = ReadHeader(writer, GameRankingType.BossClearCount);
+    private static List<(int Rank, long Id, string Name, int Clears)> ReadCounts(ByteWriter writer, int rankingId,
+            GameRankingType type = GameRankingType.BossClearCount) {
+        (int count, ByteReader reader) = ReadHeader(writer, type);
         var rows = new List<(int, long, string, int)>();
         for (int i = 0; i < count; i++) {
             int rank = reader.ReadInt();
@@ -251,6 +253,106 @@ public class BossClearStorageTests {
         Assert.That(ReadCounts(Board(GameRankingType.BossClearCount, Board1, "alpha"), Board1), Is.EqualTo(new[] { (2, alpha, "alpha", 1) }));
         Assert.That(ReadCounts(Board(GameRankingType.BossClearCount, Board1, "gamma"), Board1), Is.Empty);
         Assert.That(ReadCounts(Board(GameRankingType.BossClearCount, Board1, "nobody"), Board1), Is.Empty);
+    }
+    #endregion
+
+    #region Fame challenge
+    private ByteWriter FameBoard(GameRankingType type, int rankingId, string userName = "") {
+        using GameStorage.Request db = storage.Context();
+        return BossRanking.FameChallengeBoard(db, type, rankingId, userName);
+    }
+
+    private int FamePersonalRank(GameRankingType type, int rankingId, long characterId) {
+        using GameStorage.Request db = storage.Context();
+        (int rank, ByteReader reader) = ReadHeader(BossRanking.FameChallengePersonal(db, type, rankingId, characterId), type);
+        Assert.That(reader.Available, Is.EqualTo(0));
+        return rank;
+    }
+
+    private record FameRow(int Rank, long RowId, long CharacterId, string Name, string Image, int Level, int JobCode, int RankingId,
+        int Seconds, string Date);
+
+    // GameRanking::BossRumbleRecord: one character per row.
+    private static List<FameRow> ReadFameClears(ByteWriter writer, GameRankingType type) {
+        (int count, ByteReader reader) = ReadHeader(writer, type);
+        var rows = new List<FameRow>();
+        for (int i = 0; i < count; i++) {
+            rows.Add(new FameRow(reader.ReadInt(), reader.ReadLong(), reader.ReadLong(), reader.ReadUnicodeStringWithLength(),
+                reader.ReadUnicodeStringWithLength(), reader.ReadInt(), reader.ReadInt(), reader.ReadInt(), reader.ReadInt(),
+                reader.ReadUnicodeStringWithLength()));
+        }
+        Assert.That(reader.Available, Is.EqualTo(0));
+        return rows;
+    }
+
+    [Test]
+    public void FameFirstClears_OneRowPerCharacter_ItsFirstClear() {
+        long alpha = CreateCharacter("alpha", Job.Knight, 60);
+        long beta = CreateCharacter("beta", Job.Wizard, 55);
+        long a1 = Clear(Board1, alpha, 400, 1_800_000_100, alpha);
+        Clear(Board1, alpha, 200, 1_800_000_300, alpha);
+        long b1 = Clear(Board1, beta, 300, 1_800_000_200, beta);
+        Clear(Board2, beta, 100, 1_700_000_000, beta);
+
+        List<FameRow> rows = ReadFameClears(FameBoard(GameRankingType.FameChallengeFirstClears, Board1), GameRankingType.FameChallengeFirstClears);
+        Assert.That(rows, Has.Count.EqualTo(2));
+        Assert.That(rows[0], Is.EqualTo(new FameRow(1, a1, alpha, "alpha", "pic/alpha.png", 60, (int) JobCode.Knight, Board1, 400,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_100).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"))));
+        Assert.That(rows[1].Rank, Is.EqualTo(2));
+        Assert.That((rows[1].RowId, rows[1].CharacterId, rows[1].JobCode, rows[1].Seconds), Is.EqualTo((b1, beta, (int) JobCode.Wizard, 300)));
+    }
+
+    [Test]
+    public void FameShortestClears_OneRowPerCharacter_ItsFastestClear_ThenTheEarlierOne() {
+        long alpha = CreateCharacter("alpha", Job.Knight);
+        long beta = CreateCharacter("beta", Job.Wizard);
+        long gamma = CreateCharacter("gamma", Job.Archer);
+        Clear(Board1, alpha, 400, 1_800_000_100, alpha);
+        long a2 = Clear(Board1, alpha, 250, 1_800_000_400, alpha);
+        long b1 = Clear(Board1, beta, 250, 1_800_000_300, beta);
+        long g1 = Clear(Board1, gamma, 500, 1_800_000_000, gamma);
+
+        List<FameRow> rows = ReadFameClears(FameBoard(GameRankingType.FameChallengeShortestClears, Board1), GameRankingType.FameChallengeShortestClears);
+        Assert.That(rows.ConvertAll(row => (row.Rank, row.RowId, row.CharacterId, row.Seconds)), Is.EqualTo(new[] {
+            (1, b1, beta, 250), (2, a2, alpha, 250), (3, g1, gamma, 500),
+        }));
+
+        Assert.That(FamePersonalRank(GameRankingType.FameChallengeShortestClearPersonal, Board1, beta), Is.EqualTo(1));
+        Assert.That(FamePersonalRank(GameRankingType.FameChallengeShortestClearPersonal, Board1, gamma), Is.EqualTo(3));
+        Assert.That(FamePersonalRank(GameRankingType.FameChallengeShortestClearPersonal, Board2, gamma), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void FameClearCount_TheCountRowsWithTheFameType_AndItsOwnRank() {
+        long alpha = CreateCharacter("alpha", Job.Knight);
+        long beta = CreateCharacter("beta", Job.Wizard);
+        Clear(Board1, alpha, 400, 1_800_000_100, alpha);
+        Clear(Board1, beta, 300, 1_800_000_200, beta);
+        Clear(Board1, beta, 300, 1_800_000_300, beta);
+
+        Assert.That(ReadCounts(FameBoard(GameRankingType.FameChallengeClearCount, Board1), Board1, GameRankingType.FameChallengeClearCount),
+            Is.EqualTo(new[] { (1, beta, "beta", 2), (2, alpha, "alpha", 1) }));
+        Assert.That(ReadCounts(FameBoard(GameRankingType.FameChallengeClearCount, Board1, "alpha"), Board1, GameRankingType.FameChallengeClearCount),
+            Is.EqualTo(new[] { (2, alpha, "alpha", 1) }));
+        Assert.That(FamePersonalRank(GameRankingType.FameChallengeClearCountPersonal, Board1, alpha), Is.EqualTo(2));
+        Assert.That(FamePersonalRank(GameRankingType.FameChallengeClearCountPersonal, Board2, alpha), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void FameBoards_ADeletedCharacterHasNoRow() {
+        long alpha = CreateCharacter("alpha", Job.Knight);
+        long beta = CreateCharacter("beta", Job.Wizard);
+        Clear(Board1, alpha, 400, 1_800_000_100, alpha);
+        Clear(Board1, beta, 300, 1_800_000_200, beta);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.DeleteCharacter(7, alpha), Is.True);
+        }
+
+        foreach (GameRankingType type in new[] { GameRankingType.FameChallengeFirstClears, GameRankingType.FameChallengeShortestClears }) {
+            List<FameRow> rows = ReadFameClears(FameBoard(type, Board1), type);
+            Assert.That(rows.ConvertAll(row => (row.Rank, row.CharacterId)), Is.EqualTo(new[] { (1, beta) }), type.ToString());
+        }
+        Assert.That(FamePersonalRank(GameRankingType.FameChallengeShortestClearPersonal, Board1, beta), Is.EqualTo(1));
     }
     #endregion
 }

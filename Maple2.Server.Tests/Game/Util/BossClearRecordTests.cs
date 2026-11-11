@@ -20,12 +20,12 @@ public class BossClearRecordTests {
     [TestCase(DungeonGroupType.reverseRaid)]
     [TestCase(DungeonGroupType.lapenta)]
     [TestCase(DungeonGroupType.turka)]
+    [TestCase(DungeonGroupType.fameChallenge)]
     public void KeepsBossClear_TheBossBoardGroups_WithABossRanking(DungeonGroupType group) {
         Assert.That(DungeonFieldManager.KeepsBossClear(Room(group, 70001)), Is.True);
         Assert.That(DungeonFieldManager.KeepsBossClear(Room(group, 0)), Is.False);
     }
 
-    [TestCase(DungeonGroupType.fameChallenge)]
     [TestCase(DungeonGroupType.colosseum)]
     [TestCase(DungeonGroupType.normal)]
     public void KeepsBossClear_NotOtherGroups(DungeonGroupType group) {

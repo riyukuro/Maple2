@@ -152,11 +152,13 @@ public class DungeonFieldManager : FieldManager {
     /// <summary>
     /// Whether a clear of the room goes on a boss board: the room has a BossRanking and its group is one whose
     /// board asks for the clears (the ranking dialog's boss boards 7, 8, 9, 0xf and 0x11 list the rooms of
-    /// these groups that have a BossRanking, and ask for 0x47/0x48/0x51/0x5b with it).
+    /// these groups that have a BossRanking, and ask for 0x47/0x48/0x51/0x5b with it; its fame challenge board
+    /// 0xc lists the fameChallenge rooms that have one, and asks for 0x8d/0x8e/0x97/0xa1/0xa2 with it).
     /// </summary>
     public static bool KeepsBossClear(DungeonRoomMetadata metadata) =>
         metadata.BossRanking != 0 && metadata.GroupType is DungeonGroupType.raid or DungeonGroupType.chaosRaid
-            or DungeonGroupType.reverseRaid or DungeonGroupType.lapenta or DungeonGroupType.turka;
+            or DungeonGroupType.reverseRaid or DungeonGroupType.lapenta or DungeonGroupType.turka
+            or DungeonGroupType.fameChallenge;
 
     /// <summary>A player of the room at its clear: the character, its party id (0 without one) and that party's leader.</summary>
     public readonly record struct BossClearPlayer(long CharacterId, int PartyId, long PartyLeaderId);

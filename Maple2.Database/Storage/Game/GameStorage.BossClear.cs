@@ -148,6 +148,62 @@ public partial class GameStorage {
             return characterId == default ? null : GetBossClearCount(rankingId, characterId);
         }
 
+        // The fame challenge boards 0x97 and 0xa2 have one row per character: its first clear of the board (the
+        // earliest first), or its fastest one (then the earlier one). Equal ones go by the row id. The own rank
+        // (0xa1) is the character's place on the fastest board.
+        public IList<BossClearRankInfo> GetFameChallengeFirstClears(int rankingId) {
+            return FameChallengeBoard(rankingId, FameChallengeBestClears(rankingId, fastest: false).Take(200).ToList());
+        }
+
+        public IList<BossClearRankInfo> GetFameChallengeShortestClears(int rankingId) {
+            return FameChallengeBoard(rankingId, FameChallengeBestClears(rankingId, fastest: true).Take(200).ToList());
+        }
+
+        // 0 when the character has no clear of the board.
+        public int GetFameChallengeShortestClearRank(int rankingId, long characterId) {
+            int index = FameChallengeBestClears(rankingId, fastest: true).FindIndex(row => row.CharacterId == characterId);
+            return index + 1;
+        }
+
+        // The best clear of each character with one (the first or the fastest), in the board's order.
+        private List<FameChallengeClearRow> FameChallengeBestClears(int rankingId, bool fastest) {
+            IEnumerable<FameChallengeClearRow> rows = (from member in BossClearMembers()
+                                                      join clear in Context.BossClear.AsNoTracking() on member.ClearId equals clear.Id
+                                                      where clear.RankingId == rankingId
+                                                      select new FameChallengeClearRow {
+                                                          CharacterId = member.CharacterId,
+                                                          ClearId = clear.Id,
+                                                          Seconds = clear.Seconds,
+                                                          ClearTime = clear.ClearTime,
+                                                      }).AsEnumerable();
+            IOrderedEnumerable<FameChallengeClearRow> ordered = fastest
+                ? rows.OrderBy(row => row.Seconds).ThenBy(row => row.ClearTime).ThenBy(row => row.ClearId)
+                : rows.OrderBy(row => row.ClearTime).ThenBy(row => row.ClearId);
+            // GroupBy keeps the order of each key's first row, and that row is the character's best.
+            return ordered.GroupBy(row => row.CharacterId).Select(group => group.First()).ToList();
+        }
+
+        private IList<BossClearRankInfo> FameChallengeBoard(int rankingId, List<FameChallengeClearRow> rows) {
+            long[] characterIds = rows.Select(row => row.CharacterId).ToArray();
+            Dictionary<long, BossClearMemberInfo> characters = Context.Character.AsNoTracking()
+                .Where(character => characterIds.Contains(character.Id))
+                .Select(character => new { character.Id, character.Name, character.Profile, character.Level, character.Job })
+                .AsEnumerable()
+                .ToDictionary(character => character.Id, character => new BossClearMemberInfo(character.Id, character.Name,
+                    character.Profile.Picture ?? string.Empty, character.Level, character.Job.Code()));
+
+            return rows.Where(row => characters.ContainsKey(row.CharacterId))
+                .Select((row, index) => new BossClearRankInfo(
+                    Rank: index + 1,
+                    ClearId: row.ClearId,
+                    RankingId: rankingId,
+                    LeaderId: row.CharacterId,
+                    Seconds: row.Seconds,
+                    ClearTime: row.ClearTime.ToEpochSeconds(),
+                    Members: [characters[row.CharacterId]]))
+                .ToList();
+        }
+
         private static BossClearCountRankInfo ToCountRankInfo(BossClearCountRow row, int rank) {
             return new BossClearCountRankInfo(rank, row.CharacterId, row.Name, row.Profile?.Picture ?? string.Empty, row.Clears);
         }
@@ -159,6 +215,13 @@ public partial class GameStorage {
             public Model.Profile Profile { get; init; } = null!;
             public short Level { get; init; }
             public Job Job { get; init; }
+        }
+
+        private class FameChallengeClearRow {
+            public long CharacterId { get; init; }
+            public long ClearId { get; init; }
+            public int Seconds { get; init; }
+            public DateTime ClearTime { get; init; }
         }
 
         private class BossClearCountRow {

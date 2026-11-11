@@ -117,13 +117,14 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    // The boss clear count board (0x48), as the client's GameRanking::BossKillCount reads it: the header, then a
+    // The clear count boards, the boss one (0x48) and the fame challenge one (0x8e), as the client's
+    // GameRanking::BossKillCount and GameRanking::BossRumbleCount read them (the same rows): the header, then a
     // count of rows, each a rank, the character id, the name, the profile image and three ints, of which the client
     // shows the second (the clears). The first goes out as the board's ranking id and the third as 0; the client
     // does not use them.
-    public static ByteWriter BossClearCount(int rankingId, IList<BossClearCountRankInfo> rankInfos) {
+    public static ByteWriter BossClearCount(GameRankingType type, int rankingId, IList<BossClearCountRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.WriteInt((int) GameRankingType.BossClearCount);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         pWriter.WriteInt(rankInfos.Count);
@@ -192,64 +193,30 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    public static ByteWriter FortressRumbleSRankClear() {
+    // The first clears (0x97) and fastest clears (0xa2) of a fame challenge board, as the client's
+    // GameRanking::BossRumbleRecord reads them: the header, then a count of rows, each a rank, a long the client does
+    // not use (the clear's row id), the character id, its name and profile image, its level and job code, an int the
+    // client does not use (the board's ranking id), the clear time in seconds (shown as minutes and seconds) and the
+    // clear date. A row is one character (the board's rooms are for one player).
+    public static ByteWriter FameChallengeClears(GameRankingType type, IList<BossClearRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(GameRankingType.FortressRumbleSRankClear);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // fortress/dungeon id
-        pWriter.WriteInt(); // score
-        pWriter.WriteInt((int) JobCode.None);
-
-        return pWriter;
-
-    }
-
-    public static ByteWriter FortressRumbleEarlyVictory() {
-        var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(GameRankingType.FortressRumbleEarlyVictory);
-        pWriter.WriteInt(0);
-        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteLong(); // account id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // level
-        pWriter.Write<Job>(Job.Newbie); // job
-        pWriter.WriteInt(); // fortress/dungeon id
-        pWriter.WriteInt(); // clear in seconds
-        pWriter.WriteUnicodeStringWithLength(); // clear timestamp
-
-        return pWriter;
-    }
-
-    // same as above..
-    public static ByteWriter FortressRumbleShortestTime() {
-        var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(GameRankingType.FortressRumbleShortestTime);
-        pWriter.WriteInt(0);
-        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteLong(); // account id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // level
-        pWriter.Write<Job>(Job.Newbie); // job
-        pWriter.WriteInt(); // fortress/dungeon id
-        pWriter.WriteInt(); // clear in seconds
-        pWriter.WriteUnicodeStringWithLength(); // clear timestamp
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (BossClearRankInfo info in rankInfos) {
+            BossClearMemberInfo member = info.Members[0];
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.ClearId); // read, not used by the client
+            pWriter.WriteLong(member.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(member.Name);
+            pWriter.WriteUnicodeStringWithLength(member.Profile);
+            pWriter.WriteInt(member.Level);
+            pWriter.WriteInt((int) member.JobCode);
+            pWriter.WriteInt(info.RankingId); // read, not used by the client
+            pWriter.WriteInt(info.Seconds);
+            pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.ClearTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        }
 
         return pWriter;
     }

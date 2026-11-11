@@ -27,11 +27,13 @@ public enum GameRankingType {
     ArcadePersonalPreviousSeason = 102,
     Arcade = 103,
     ArcadePreviousSeason = 104,
-    FortressRumblePersonalSRankClear = 141,
-    FortressRumbleSRankClear = 142,
-    FortressRumbleEarlyVictory = 151,
-    FortressRumblePersonalShortestTime = 161,
-    FortressRumbleShortestTime = 162,
+    // The fame challenge board (the ranking dialog's board 0xc; the ranking id is the room's BossRanking): the
+    // clears per character and its own rank, the first clears, the fastest clears and its own rank there.
+    FameChallengeClearCountPersonal = 141,
+    FameChallengeClearCount = 142,
+    FameChallengeFirstClears = 151,
+    FameChallengeShortestClearPersonal = 161,
+    FameChallengeShortestClears = 162,
     ColosseumPersonal = 201,
     ColosseumPersonalPreviousSeason = 202,
     Colosseum = 203,

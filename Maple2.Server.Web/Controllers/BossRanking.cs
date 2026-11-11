@@ -21,15 +21,43 @@ public static class BossRanking {
                 return InGameRankPacket.BossClears(type, db.GetBossShortestClears(rankingId));
         }
         if (string.IsNullOrEmpty(userName)) {
-            return InGameRankPacket.BossClearCount(rankingId, db.GetBossClearCounts(rankingId));
+            return InGameRankPacket.BossClearCount(GameRankingType.BossClearCount, rankingId, db.GetBossClearCounts(rankingId));
         }
 
         BossClearCountRankInfo? info = db.GetBossClearCount(rankingId, userName);
-        return InGameRankPacket.BossClearCount(rankingId, info != null ? new List<BossClearCountRankInfo> { info } : []);
+        return InGameRankPacket.BossClearCount(GameRankingType.BossClearCount, rankingId, info != null ? new List<BossClearCountRankInfo> { info } : []);
     }
 
     // 0x47: the character's rank on the clear count board, 0 without a clear.
     public static ByteWriter Personal(GameStorage.Request db, int rankingId, long characterId) {
         return InGameRankPacket.PersonalRank(GameRankingType.BossClearCountPersonal, db.GetBossClearCount(rankingId, characterId)?.Rank ?? 0);
+    }
+
+    // The fame challenge board (0xc) has one tab per fame challenge room with a BossRanking, with the same three
+    // modes from the same kept clears: the clears per character (0x8e, the own rank 0x8d), the first clear of each
+    // character (0x97) and the fastest clear of each character (0xa2, the own rank 0xa1). Its rooms are for one
+    // player, so a row is one character.
+    public static ByteWriter FameChallengeBoard(GameStorage.Request db, GameRankingType type, int rankingId, string userName) {
+        switch (type) {
+            case GameRankingType.FameChallengeFirstClears:
+                return InGameRankPacket.FameChallengeClears(type, db.GetFameChallengeFirstClears(rankingId));
+            case GameRankingType.FameChallengeShortestClears:
+                return InGameRankPacket.FameChallengeClears(type, db.GetFameChallengeShortestClears(rankingId));
+        }
+        if (string.IsNullOrEmpty(userName)) {
+            return InGameRankPacket.BossClearCount(GameRankingType.FameChallengeClearCount, rankingId, db.GetBossClearCounts(rankingId));
+        }
+
+        BossClearCountRankInfo? info = db.GetBossClearCount(rankingId, userName);
+        return InGameRankPacket.BossClearCount(GameRankingType.FameChallengeClearCount, rankingId,
+            info != null ? new List<BossClearCountRankInfo> { info } : []);
+    }
+
+    // 0x8d: the character's rank on the clear count board; 0xa1: its rank on the fastest clear board. 0 without a clear.
+    public static ByteWriter FameChallengePersonal(GameStorage.Request db, GameRankingType type, int rankingId, long characterId) {
+        int rank = type == GameRankingType.FameChallengeShortestClearPersonal
+            ? db.GetFameChallengeShortestClearRank(rankingId, characterId)
+            : db.GetBossClearCount(rankingId, characterId)?.Rank ?? 0;
+        return InGameRankPacket.PersonalRank(type, rank);
     }
 }
