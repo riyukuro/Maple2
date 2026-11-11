@@ -158,6 +158,11 @@ public static class NpcTalkUtil {
             return false;
         }
 
+        // weddingHallBooking: whether the talker's marriage has a reserved hall.
+        if (scriptCondition.Wedding is { HasReservation: not null } booking && !session.Marriage.HasReservation(booking.HasReservation)) {
+            return false;
+        }
+
         foreach ((int questId, bool started) in scriptCondition.QuestStarted) {
             session.Quest.TryGetQuest(questId, out Quest? quest);
             if (started && quest is not { State: QuestState.Started }) {

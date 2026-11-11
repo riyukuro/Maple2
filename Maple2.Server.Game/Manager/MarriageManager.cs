@@ -519,6 +519,12 @@ public sealed class MarriageManager {
         return DivorceRules.ScriptCondition(userState, marriageDays, coolingOff, Marriage.Status, IsFiler, Marriage.MarriageTime, Now);
     }
 
+    // weddingHallBooking: whether the marriage has a reserved hall. A hall past its keep time is dropped first.
+    public bool HasReservation(bool? wanted) {
+        CheckMarriageHallExpiration();
+        return WeddingInviteRules.HasReservation(wanted, WeddingHall.Id);
+    }
+
     // A divorce step of an npc script function. False when it is refused; the client was then sent the reason.
     public bool DivorceFunction(string function) {
         if (session.Field == null) {

@@ -178,4 +178,15 @@ public class WeddingInviteRulesTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(0x1d));
         Assert.That(packet.Length, Is.EqualTo(3));
     }
+
+    [Test]
+    public void HasReservation() {
+        // weddingHallBooking 1 needs a reserved hall, 0 needs none, no value tests nothing.
+        Assert.That(WeddingInviteRules.HasReservation(true, 7), Is.True);
+        Assert.That(WeddingInviteRules.HasReservation(true, 0), Is.False);
+        Assert.That(WeddingInviteRules.HasReservation(false, 0), Is.True);
+        Assert.That(WeddingInviteRules.HasReservation(false, 7), Is.False);
+        Assert.That(WeddingInviteRules.HasReservation(null, 0), Is.True);
+        Assert.That(WeddingInviteRules.HasReservation(null, 7), Is.True);
+    }
 }

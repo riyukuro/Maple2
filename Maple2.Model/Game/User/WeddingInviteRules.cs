@@ -13,6 +13,12 @@ public enum WeddingGuestMail {
 }
 
 public static class WeddingInviteRules {
+    // weddingHallBooking of an npc script condition (the planner's reserve and change states): 1 asks for a
+    // reserved hall of the talker's marriage, 0 for none. Null is no test. Hall id 0 is no reservation.
+    public static bool HasReservation(bool? wanted, long hallId) {
+        return wanted == null || (hallId != 0) == wanted;
+    }
+
     // The title and text keys of a mail to a guest. The client's string table has one pair for the invitation,
     // one for a changed and one for a cancelled wedding.
     public static (StringCode Title, StringCode Content) MailKeys(WeddingGuestMail mail) {
