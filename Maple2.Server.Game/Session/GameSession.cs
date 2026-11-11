@@ -76,6 +76,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // ReSharper restore UnusedAutoPropertyAccessor.Global
     #endregion
 
+    // Home invites this player sent that are waiting for an answer (memory only).
+    public HomeInviteTracker HomeInvites { get; } = new();
     public ConfigManager Config { get; set; } = null!;
     // 1 once GlobalFactor (0x82) has been answered on this connection.
     public int GlobalFactorSent;

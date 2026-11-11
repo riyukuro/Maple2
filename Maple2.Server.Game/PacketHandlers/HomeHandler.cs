@@ -59,7 +59,9 @@ public class HomeHandler : PacketHandler<GameSession> {
         if (inviterId == 0 || inviterId == session.CharacterId) {
             return;
         }
-        if (session.FindSession(inviterId, out GameSession? inviter)) {
+        // Only an answer to a live invite from that player is passed on; the entry is used up by any answer.
+        // Answer 1 grants nothing here: the invited client enters through RequestMoveField (visit home) on its own.
+        if (session.FindSession(inviterId, out GameSession? inviter) && inviter.HomeInvites.TryAnswer(session.CharacterId, Environment.TickCount64)) {
             inviter.Send(HomeInvitePacket.Result((HomeInvitePacket.InviteResult) answer, session.Player.Value.Character.Name));
         }
     }
@@ -95,6 +97,7 @@ public class HomeHandler : PacketHandler<GameSession> {
             return;
         }
 
+        session.HomeInvites.Add(characterId, Environment.TickCount64);
         targetSession.Send(HomeInvitePacket.Invite(session.Player.Value.Character));
         session.Send(HomeInvitePacket.Result(HomeInvitePacket.InviteResult.Waiting, playerName));
     }
