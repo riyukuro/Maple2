@@ -23,6 +23,7 @@ public class TradeHandler : FieldPacketHandler {
         SetMesos = 10,
         Finalize = 11,
         Complete = 13,
+        Unknown14 = 14,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -58,6 +59,10 @@ public class TradeHandler : FieldPacketHandler {
                 return;
             case Command.Complete:
                 HandleComplete(session);
+                return;
+            case Command.Unknown14:
+                // Not handled: one long.
+                Logger.Debug("Trade {Command} from {CharacterId}: {Uid}", command, session.CharacterId, packet.ReadLong());
                 return;
         }
     }
