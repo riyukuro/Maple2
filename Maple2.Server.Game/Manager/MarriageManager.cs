@@ -200,6 +200,11 @@ public sealed class MarriageManager {
                 SenderName = senderName,
                 Type = MailType.WeddingInvite,
             };
+            // The mail list shows the title and text the server sends (UIMailListDialog::SetMailInfo) and reads a
+            // text given as a string key from the client's own table (MailTextValue::Load); the table has
+            // the invitation's two keys.
+            mail.SetTitle(StringCode.s_wedding_mail_title_receiver);
+            mail.SetContent(StringCode.s_wedding_mail_contents_receiver);
             mail.SetWeddingInvite(WeddingHall);
             mail = db.CreateMail(mail);
             if (mail == null) {
