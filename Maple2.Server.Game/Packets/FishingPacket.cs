@@ -77,7 +77,7 @@ public static class FishingPacket {
         pWriter.WriteInt(rewards.Count);
         foreach (Item item in rewards) {
             pWriter.WriteInt(item.Id);
-            pWriter.WriteInt(item.Amount);
+            pWriter.WriteShort((short) item.Amount);
         }
 
         return pWriter;
