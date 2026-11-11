@@ -646,6 +646,55 @@ public static class Lua {
     }
     #endregion
 
+    #region ItemBreak
+    private const int ItemBreakLuckyBagCouponId = 40100027;
+    private const int ItemBreakFreeLuckyBagCouponId = 40100032;
+    private const string SkinCrystalItemTag = "SkinCrystal";
+
+    // calcMeratSkinItemBreakReward: what dismantling an outfit gives when it has no break table entry. Skin
+    // types 1, 2 and 5 give lucky bag coupons, 3 and 4 the free ones, more for a higher grade; type 99 gives a
+    // count of 0. Any other type, and the NA branch, give nothing. levelLimit and price are not used.
+    public static (string, int, int?, int?, string) CalcMeratSkinItemBreakReward(ushort levelLimit, int grade, long price, int skinType) {
+        if (Locale == LocaleNa) {
+            return (string.Empty, 0, null, null, string.Empty);
+        }
+
+        int amount = 1;
+        switch (skinType) {
+            case 1:
+                if (grade == 3) {
+                    amount *= 10;
+                } else if (grade >= 4) {
+                    amount *= 20;
+                }
+                return ("account", 1, ItemBreakLuckyBagCouponId, amount, SkinCrystalItemTag);
+            case 2:
+                if (grade == 1) {
+                    amount *= 4;
+                } else if (grade == 2) {
+                    amount *= 5;
+                } else if (grade == 3) {
+                    amount *= 10;
+                } else if (grade >= 4) {
+                    amount *= 20;
+                }
+                return ("account", 1, ItemBreakLuckyBagCouponId, amount, SkinCrystalItemTag);
+            case 3:
+            case 4:
+            case 5:
+                if (grade >= 1) {
+                    amount *= Math.Min(grade, 4);
+                }
+                return (skinType == 5 ? "account" : "character", 1,
+                    skinType == 5 ? ItemBreakLuckyBagCouponId : ItemBreakFreeLuckyBagCouponId, amount, SkinCrystalItemTag);
+            case 99:
+                return ("account", 1, ItemBreakLuckyBagCouponId, 0, SkinCrystalItemTag);
+            default:
+                return (string.Empty, 0, null, null, string.Empty);
+        }
+    }
+    #endregion
+
     #region Gathering
     public static float CalcGatheringObjectSuccessRate(int currentCount, int highPropLimitCount, int normalPropLimit, int someoneElsesHome = 1) {
         if (someoneElsesHome == 0) {

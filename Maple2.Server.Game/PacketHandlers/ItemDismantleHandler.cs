@@ -6,6 +6,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -295,12 +296,19 @@ public class ItemDismantleHandler : FieldPacketHandler {
             }
         } else if (item.GachaDismantleId != 0 && TableMetadata.GachaInfoTable.Entries.TryGetValue(item.GachaDismantleId, out GachaInfoTable.Entry? gachaEntry)) {
             yield return (gachaEntry.CoinItemId, gachaEntry.CoinItemAmount, gachaEntry.CoinItemAmount);
+        } else if (item.Metadata.Property.IsSkin) {
+            // An outfit without a break table entry gives what the script's calcMeratSkinItemBreakReward gives
+            // (the client lists it the same way); one with none cannot be staged in the client.
+            (_, int count, int? rewardId, int? rewardAmount, _) = Lua.CalcMeratSkinItemBreakReward(
+                (ushort) item.Metadata.Limit.Level, item.Rarity, 0, item.Metadata.Property.SkinType);
+            if (count > 0 && rewardId is > 0 && rewardAmount is > 0) {
+                yield return (rewardId.Value, rewardAmount.Value * amount, rewardAmount.Value * amount);
+            }
         } else {
             // TODO: Calculate onyx to reward from item rarity/enchant
             int minAdd = MIN_ONYX * item.Rarity * amount;
             int maxAdd = MAX_ONYX * item.Rarity * amount;
             yield return (ONYX_ID, minAdd, maxAdd);
         }
-        // TODO: ItemSkinCrystal reward from outfits?
     }
 }

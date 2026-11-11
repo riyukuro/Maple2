@@ -287,6 +287,29 @@ public class LuaTests {
         Assert.That(Server.Game.LuaFunctions.Lua.CalcItemMergeRevertMeso(4, 22), Is.EqualTo(500000));
     }
 
+    // The outfit dismantle reward: the port gives the script's value for every grade and skin type.
+    [Test]
+    public void CalcMeratSkinItemBreakReward() {
+        int[] skinTypes = [0, 1, 2, 3, 4, 5, 6, 98, 99, 100];
+        Assert.Multiple(() => {
+            foreach (int skinType in skinTypes) {
+                for (int grade = 0; grade <= 7; grade++) {
+                    (string, int, int?, int?, string) script = maple2Lua.CalcMeretSkinItemBreakReward(50, grade, 0, skinType);
+                    (string, int, int?, int?, string) port = Server.Game.LuaFunctions.Lua.CalcMeratSkinItemBreakReward(50, grade, 0, skinType);
+                    Assert.That(port.Item2, Is.EqualTo(script.Item2), $"count, skinType {skinType} grade {grade}");
+                    Assert.That(port.Item3, Is.EqualTo(script.Item3), $"item, skinType {skinType} grade {grade}");
+                    Assert.That(port.Item4, Is.EqualTo(script.Item4), $"amount, skinType {skinType} grade {grade}");
+                    if (script.Item2 > 0) {
+                        Assert.That(port.Item1, Is.EqualTo(script.Item1), $"bind, skinType {skinType} grade {grade}");
+                        Assert.That(port.Item5, Is.EqualTo(script.Item5), $"tag, skinType {skinType} grade {grade}");
+                    }
+                }
+            }
+        });
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcMeratSkinItemBreakReward(50, 4, 0, 1).Item4, Is.EqualTo(V<int?>(null, 20)));
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcMeratSkinItemBreakReward(50, 2, 0, 3).Item3, Is.EqualTo(V<int?>(null, 40100032)));
+    }
+
     [TestCase(1, 0)]
     [TestCase(8, 0)]
     [TestCase(10, 100)]
