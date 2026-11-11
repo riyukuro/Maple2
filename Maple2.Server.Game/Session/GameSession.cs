@@ -390,6 +390,7 @@ public sealed partial class GameSession : Core.Network.Session {
         MiniGameRecord = null;
 
         Buffs?.LeaveField();
+        Marriage?.ClearProposal();
 
         if (Field != null) {
             Scheduler.Stop();

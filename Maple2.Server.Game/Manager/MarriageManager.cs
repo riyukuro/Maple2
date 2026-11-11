@@ -37,6 +37,69 @@ public sealed class MarriageManager {
         WeddingHall = db.GetWeddingHall(Marriage) ?? WeddingHall.Default;
     }
 
+    // A proposal waiting for its answer. The proposer keeps the target's character id, the target keeps
+    // the proposer's. Both sides are set together and cleared together: on the answer, on the proposer's
+    // cancel, when either player leaves the field (also run on disconnect), and after the timeout.
+    private static readonly object ProposalLock = new();
+    private const long ProposalTimeoutMs = 30000; // the client's answer box closes itself after 20 s
+    private long proposalTo;
+    private long proposalFrom;
+    private long proposalExpireTick;
+
+    // Stores the proposal on both players. False when either already has one waiting.
+    public bool BeginProposal(FieldPlayer target) {
+        MarriageManager other = target.Session.Marriage;
+        lock (ProposalLock) {
+            ExpireProposal();
+            other.ExpireProposal();
+            if (proposalTo != 0 || proposalFrom != 0 || other.proposalTo != 0 || other.proposalFrom != 0) {
+                return false;
+            }
+            long expireTick = Environment.TickCount64 + ProposalTimeoutMs;
+            proposalTo = target.Value.Character.Id;
+            proposalExpireTick = expireTick;
+            other.proposalFrom = session.CharacterId;
+            other.proposalExpireTick = expireTick;
+            return true;
+        }
+    }
+
+    // Ends the proposal this player sent to the target. False when there is no such proposal waiting.
+    public bool EndProposalTo(FieldPlayer target) {
+        MarriageManager other = target.Session.Marriage;
+        lock (ProposalLock) {
+            ExpireProposal();
+            if (proposalTo == 0 || proposalTo != target.Value.Character.Id || other.proposalFrom != session.CharacterId) {
+                return false;
+            }
+            proposalTo = 0;
+            other.proposalFrom = 0;
+            return true;
+        }
+    }
+
+    // Drops any proposal this player is part of, on both sides (field leave and disconnect).
+    public void ClearProposal() {
+        lock (ProposalLock) {
+            long partnerId = proposalTo != 0 ? proposalTo : proposalFrom;
+            if (partnerId != 0 && session.Field != null && session.Field.TryGetPlayerById(partnerId, out FieldPlayer? partner)) {
+                MarriageManager other = partner.Session.Marriage;
+                if (other.proposalTo == session.CharacterId) other.proposalTo = 0;
+                if (other.proposalFrom == session.CharacterId) other.proposalFrom = 0;
+            }
+            proposalTo = 0;
+            proposalFrom = 0;
+        }
+    }
+
+    // Both sides of a proposal carry the same expiry, so each side drops its own record.
+    private void ExpireProposal() {
+        if ((proposalTo != 0 || proposalFrom != 0) && Environment.TickCount64 >= proposalExpireTick) {
+            proposalTo = 0;
+            proposalFrom = 0;
+        }
+    }
+
     public void Load() {
         CheckEngagementExpiration();
         CheckMarriageHallExpiration();

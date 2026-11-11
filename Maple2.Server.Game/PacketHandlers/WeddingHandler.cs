@@ -105,6 +105,10 @@ public class WeddingHandler : FieldPacketHandler {
 
         WeddingError error = session.Marriage.Propose(otherPlayer);
 
+        if (error == WeddingError.s_wedding_msg_box_propose_to && !session.Marriage.BeginProposal(otherPlayer)) {
+            error = WeddingError.s_wedding_result_err_already_propose_request;
+        }
+
         session.Send(WeddingPacket.Error(error));
         if (error == WeddingError.s_wedding_msg_box_propose_to) {
             otherPlayer.Session.Send(WeddingPacket.Proposal(session.PlayerName, session.CharacterId));
@@ -114,17 +118,25 @@ public class WeddingHandler : FieldPacketHandler {
 
     private static void HandleProposalReply(GameSession session, IByteReader packet) {
         if (session.Field is null) return;
-        var response = packet.Read<WeddingError>();
-        long playerId = packet.ReadLong();
+        // WeddingManager::OnProposeAnswer: 1 accept, 2 decline, 6 the answer box timed out.
+        var response = (WeddingError) packet.ReadShort();
+        long playerId = packet.ReadLong(); // the proposer
 
-        if (!session.PlayerInfo.GetOrFetch(playerId, out PlayerInfo? playerInfo) ||
-            !session.Field.TryGetPlayer(playerInfo.Name, out FieldPlayer? otherPlayer)) {
+        if (response is not (WeddingError.s_wedding_propose_ok or WeddingError.s_wedding_result_decline_propose
+                or WeddingError.s_wedding_result_cancel_propose_expire)) {
+            return;
+        }
+        // Only an answer to the proposal this player is waiting on, from the player who sent it.
+        if (!session.Field.TryGetPlayerById(playerId, out FieldPlayer? otherPlayer) ||
+            !otherPlayer.Session.Marriage.EndProposalTo(session.Player)) {
             return;
         }
 
         if (response != WeddingError.s_wedding_propose_ok) {
-            session.ConditionUpdate(ConditionType.wedding_propose_decline);
-            otherPlayer.Session.ConditionUpdate(ConditionType.wedding_propose_declined);
+            if (response == WeddingError.s_wedding_result_decline_propose) {
+                session.ConditionUpdate(ConditionType.wedding_propose_decline);
+                otherPlayer.Session.ConditionUpdate(ConditionType.wedding_propose_declined);
+            }
             otherPlayer.Session.Send(WeddingPacket.Error(response));
             return;
         }
@@ -141,12 +153,15 @@ public class WeddingHandler : FieldPacketHandler {
         if (session.Field is null) return;
         long playerId = packet.ReadLong(); // character id of the player who got the proposal
 
-        session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_cancel_propose_to));
-        if (session.PlayerInfo.GetOrFetch(playerId, out PlayerInfo? playerInfo) &&
-            session.Field.TryGetPlayer(playerInfo.Name, out FieldPlayer? otherPlayer)) {
-            // Result 5 shows the withdrawn notice and steps the message box queue (WeddingManager::OnResult).
-            otherPlayer.Session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_cancel_propose_from));
+        // Only the proposer of a waiting proposal can withdraw it, and only from its target.
+        if (!session.Field.TryGetPlayerById(playerId, out FieldPlayer? otherPlayer) ||
+            !session.Marriage.EndProposalTo(otherPlayer)) {
+            return;
         }
+
+        session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_cancel_propose_to));
+        // Result 5 shows the withdrawn notice and steps the message box queue (WeddingManager::OnResult).
+        otherPlayer.Session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_cancel_propose_from));
     }
 
     private static void HandleReserveHall(GameSession session, IByteReader packet) {
