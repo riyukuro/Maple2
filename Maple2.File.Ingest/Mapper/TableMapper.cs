@@ -66,6 +66,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
         yield return new TableMetadata { Name = TableNames.DARK_STREAM, Table = ParseDarkStream() };
+        yield return new TableMetadata { Name = TableNames.DUNGEON_SEASON, Table = ParseDungeonSeason() };
         yield return new TableMetadata { Name = TableNames.PET_EVOLUTION, Table = ParsePetEvolution() };
         yield return new TableMetadata { Name = TableNames.PET_EXP, Table = ParsePetExp() };
         yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
@@ -292,6 +293,48 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 AdditionalEffectLevel: int.Parse(node.GetAttribute("additionalEffectLevel").Trim(), CultureInfo.InvariantCulture));
         }
         return results;
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML, with the feature and locale filter
+    // the other tables use. Rows keep the file's order (GetCurrentSeason takes the first row holding the time)
+    // and the rewards are sorted highest requireScore first, as DungeonSeason::Load sorts them.
+    private DungeonSeasonTable ParseDungeonSeason() {
+        return new DungeonSeasonTable(ReadDungeonSeasons(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/dungeonseason.xml"))));
+    }
+
+    public static List<DungeonSeasonTable.Entry> ReadDungeonSeasons(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var results = new List<DungeonSeasonTable.Entry>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/DungeonSeason");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!available(node)) {
+                continue;
+            }
+
+            DungeonSeasonTable.Reward[] rewards = node.SelectNodes("Reward")?.OfType<XmlElement>()
+                .Select(reward => new DungeonSeasonTable.Reward(
+                    RequireScore: ParseIntOr(reward.GetAttribute("requireScore")),
+                    ItemId: ParseIntOr(reward.GetAttribute("itemID"))))
+                .OrderByDescending(reward => reward.RequireScore)
+                .ToArray() ?? [];
+            results.Add(new DungeonSeasonTable.Entry(
+                SeasonId: ParseIntOr(node.GetAttribute("seasonID")),
+                StartTime: ParseTime(node.GetAttribute("startTime"), DateTime.MinValue),
+                EndTime: ParseTime(node.GetAttribute("endTime"), DateTime.MaxValue),
+                MaxSeasonScore: ParseIntOr(node.GetAttribute("maxSeasonScore")),
+                SystemMailId: ParseIntOr(node.GetAttribute("systemMailID")),
+                DayOfWeeks: ParseIntOr(node.GetAttribute("dayOfWeeks")),
+                Rewards: rewards));
+        }
+        return results;
+
+        static int ParseIntOr(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
+        static DateTime ParseTime(string value, DateTime fallback) =>
+            DateTime.TryParseExact(value.Trim(), "yyyy-MM-dd-HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime time) ? time : fallback;
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The rows are keyed by round; the

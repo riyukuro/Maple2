@@ -512,8 +512,39 @@ public class DungeonManager {
         UserRecord.TotalSeconds = (int) (Lobby.DungeonRoomRecord.EndTick - Lobby.DungeonRoomRecord.StartTick) / 1000;
 
         CalculateRewards(clearTimestamp, withRookie);
+        if (UserRecord.IsDungeonSuccess) {
+            UpdateRankScore(clearTimestamp);
+        }
 
         session.Send(DungeonRewardPacket.Dungeon(UserRecord));
+    }
+
+    // The rank score of a clear (DungeonScoreRules), on every clear of a room with a rank table, whether or not
+    // the clear still had a reward count left: LifetimeRecord keeps the best score, and in a season rank room
+    // CurrentRecord keeps the best score of the season week, its expiry in CooldownTimestamp (the long the client
+    // reads as the expiry of that timed value, DungeonRecord m_68).
+    private void UpdateRankScore(long clearTimeStamp) {
+        if (Metadata == null || UserRecord == null) {
+            return;
+        }
+        int rankTableId = DungeonScoreRules.RankTableId(Metadata.RankTableId, Metadata.GroupType);
+        if (rankTableId == 0 || !session.TableMetadata.DungeonConfigTable.MissionRanks.TryGetValue(rankTableId, out DungeonMissionRankMetadata? rankTable)) {
+            return;
+        }
+
+        DungeonRecord record = GetRecord(Metadata.Id);
+        short score = DungeonScoreRules.RunScore(UserRecord.Missions.Values.Select(mission => mission.Score), rankTable.MaxScore);
+        DungeonScoreRules.ApplyLifetime(record, score);
+
+        if (DungeonScoreRules.IsSeasonRankRoom(Metadata.GroupType, Metadata.Limit.MinLevel, session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel)) {
+            DateTime clearTime = clearTimeStamp.FromEpochSeconds();
+            DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(clearTime);
+            if (season != null) {
+                DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.EndTime);
+                DungeonScoreRules.ApplySeason(record, score, clearTimeStamp, expiry.ToEpochSeconds());
+            }
+        }
+        session.Send(DungeonRoomPacket.Update(record));
     }
 
     private void CalculateRewards(long clearTimeStamp, bool withRookie) {
@@ -735,7 +766,6 @@ public class DungeonManager {
         if (UserRecord == null) {
             return;
         }
-        DateTime clearTime = clearTimeStamp.FromEpochSeconds();
         if (record.ClearTimestamp == 0) {
             record.ClearTimestamp = clearTimeStamp;
         }
@@ -745,13 +775,13 @@ public class DungeonManager {
             return;
         }
 
-        // TODO: Rank score
         if (metadata.GroupType == DungeonGroupType.colosseum) {
             record.TotalClears = UserRecord.Round;
         } else {
             record.TotalClears++;
         }
-        record.CooldownTimestamp = GetCooldownTime(metadata.CooldownType, metadata.CooldownValue, clearTime);
+        // CooldownTimestamp is not the room cooldown: the client reads it as the expiry of CurrentRecord, and
+        // nothing on the server read the cooldown written here. UpdateRankScore sets it.
         session.Send(DungeonRoomPacket.Update(record));
     }
 

@@ -84,6 +84,7 @@ public static class TableNames {
     public const string DUNGEON_ROOM = "dungeonroom.xml";
     public const string DUNGEON_RANK_REWARD = "dungeonrankreward.xml";
     public const string DUNGEON_CONFIG = "dungeonconfig.xml";
+    public const string DUNGEON_SEASON = "dungeonseason.xml";
     public const string DUNGEON_MISSION = "dungeonmission.xml";
     public const string DUNGEON_ROUND_DATA = "dungeonrounddata.xml";
 
