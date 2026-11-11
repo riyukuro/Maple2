@@ -191,7 +191,30 @@ public static class MeretMarketPacket {
     public static ByteWriter Purchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.Purchase);
-        // The request's record is sent back: the kind byte comes first, the quantity is the int after the index.
+        WriteBuyRecord(pWriter, kind, flag, childMarketItemId, bookmarkId, totalQuantity, itemIndex, unknown, price, premiumMarketId, ugcMarketItemId);
+        // The client reads four more ints after the echoed request: the buyer's buy count,
+        // the sold count, and two counts of a design item. The fork tracks none of them.
+        pWriter.WriteInt();
+        pWriter.WriteInt();
+        pWriter.WriteInt();
+        pWriter.WriteInt();
+        return pWriter;
+    }
+
+    // 0x1F, CMeratMarketMan::OnBuyFailed: the request's record, then the i32 error code. The client keeps the
+    // code on its queued purchase, sends the next queued one, and lists the failed products with
+    // GetPurchaseErrorText(code) when the queue is done.
+    public static ByteWriter FailPurchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId, int error) {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.Write<Command>(Command.FailPurchase);
+        WriteBuyRecord(pWriter, kind, flag, childMarketItemId, bookmarkId, totalQuantity, itemIndex, unknown, price, premiumMarketId, ugcMarketItemId);
+        pWriter.WriteInt(error);
+        return pWriter;
+    }
+
+    // CMeratMarketPacket::BuyPacket::Read (meratmarketbasketinfo.cpp): the request's record is sent back.
+    private static void WriteBuyRecord(ByteWriter pWriter, byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId) {
+        // The kind byte comes first, the quantity is the int after the index.
         pWriter.WriteByte(kind);
         pWriter.WriteInt(premiumMarketId);
         pWriter.WriteLong(ugcMarketItemId);
@@ -210,14 +233,7 @@ public static class MeretMarketPacket {
         pWriter.WriteInt();
         pWriter.WriteInt();
         pWriter.WriteInt();
-        pWriter.WriteInt(); // error code?
-        // The client reads four more ints after the echoed request: the buyer's buy count,
-        // the sold count, and two counts of a design item. The fork tracks none of them.
         pWriter.WriteInt();
-        pWriter.WriteInt();
-        pWriter.WriteInt();
-        pWriter.WriteInt();
-        return pWriter;
     }
 
     public static ByteWriter FeaturedPremium(byte section, byte tabId, byte marketSlots, IList<MarketItem> marketItems) {

@@ -314,6 +314,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (gift) {
             // TODO: Implement gifting. This wasn't enabled in GMS2
             Logger.Warning("Gifting in Meret Market is not implemented");
+            Fail(PurchaseErrorGiftCannot);
             return;
         }
 
@@ -324,8 +325,10 @@ public class MeretMarketHandler : FieldPacketHandler {
         //    return;
         //}
 
-        Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId);
+        int error = PurchaseErrorUnknown;
+        Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId, out error);
         if (item == null) {
+            Fail(error);
             return;
         }
 
@@ -338,6 +341,11 @@ public class MeretMarketHandler : FieldPacketHandler {
         session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId));
         return;
 
+        // Without a 0x1F answer the client's purchase queue waits for good.
+        void Fail(int code) {
+            session.Send(MeretMarketPacket.FailPurchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId, code));
+        }
+
         PlayerInfo? GetGiftedPlayerInfo(GameSession session, string name) {
             if (string.IsNullOrWhiteSpace(name)) {
                 return null;
@@ -349,7 +357,16 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
     }
 
-    private Item? PurchasePremiumItem(GameSession session, int premiumMarketId, int childMarketItemId) {
+    // Purchase error codes with their own text in CMeratMarketMan::GetPurchaseErrorText (meratmarketman.cpp).
+    // A code without a case there shows the client's generic error text with the number.
+    private const int PurchaseErrorUnknown = 1;
+    private const int PurchaseErrorAchievementComplete = 0xB1; // s_meratmarket_error_result_buy_achieve_complete
+    private const int PurchaseErrorLevel = 0xB4; // s_meratmarket_error_buy_limit_level (or the product's level text)
+    private const int PurchaseErrorJob = 0xB5; // s_meratmarket_error_buy_limit_job
+    private const int PurchaseErrorGiftCannot = 0xA4; // s_meratmarket_error_result_gift_cannot
+
+    private Item? PurchasePremiumItem(GameSession session, int premiumMarketId, int childMarketItemId, out int error) {
+        error = PurchaseErrorUnknown;
         PremiumMarketItem? entry = session.GetPremiumMarketItem(premiumMarketId, childMarketItemId);
         if (entry == null) {
             return null;
@@ -363,15 +380,18 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         if ((entry.Metadata.RequireMinLevel > 0 && entry.Metadata.RequireMinLevel > session.Player.Value.Character.Level) ||
             (entry.Metadata.RequireMaxLevel > 0 && entry.Metadata.RequireMaxLevel < session.Player.Value.Character.Level)) {
+            error = PurchaseErrorLevel;
             return null;
         }
 
         // If JobRequirement is None, no job is eligible.
         if ((entry.Metadata.JobRequirement & session.Player.Value.Character.Job.Code().FilterFlag()) == JobFilterFlag.None) {
+            error = PurchaseErrorJob;
             return null;
         }
 
         if (entry.Metadata.RequireAchievementId > 0 && session.Achievement.HasAchievement(entry.Metadata.RequireAchievementId, entry.Metadata.RequireAchievementRank)) {
+            error = PurchaseErrorAchievementComplete;
             return null;
         }
 
