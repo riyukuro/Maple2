@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -300,10 +301,37 @@ public class NpcTalkHandler : FieldPacketHandler {
             return;
         }
 
+        // UIAllianceQuestDialog onAccept (unit_140bf60f0_uialliancequestdialog.cpp:288): the quest id, then 2 when the
+        // client's quest manager holds the quest as ready to complete, or 0 when it may be started. The window lists
+        // the alliance quests itself from the client's quest table, so only alliance quests are taken here.
         int questId = packet.ReadInt();
-        packet.ReadShort(); // 2 or 0. 2 = Start quest, 0 = Complete quest.
+        short mode = packet.ReadShort();
+        HandleAllianceQuest(session, questId, mode);
+    }
 
-        // TODO: similar to HandleQuest but we'll need to check questId against the available quests for the player.
+    private static void HandleAllianceQuest(GameSession session, int questId, short mode) {
+        switch (mode) {
+            case 0:
+                if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || metadata.Basic.Type != QuestType.AllianceQuest) {
+                    return;
+                }
+                QuestError error = session.Quest.Start(questId);
+                if (error != QuestError.none) {
+                    session.Send(QuestPacket.Error(error));
+                }
+                return;
+            case 2:
+                if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.Metadata.Basic.Type != QuestType.AllianceQuest) {
+                    return;
+                }
+                // Complete answers a full inventory itself.
+                if (!session.Quest.CanComplete(quest)) {
+                    session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
+                    return;
+                }
+                session.Quest.Complete(quest);
+                return;
+        }
     }
 
     private void HandleTalkAlliance(GameSession session) {

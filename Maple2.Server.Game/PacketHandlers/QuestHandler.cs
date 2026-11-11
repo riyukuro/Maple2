@@ -134,8 +134,8 @@ public class QuestHandler : FieldPacketHandler {
             case Command.AllianceQuest:
                 // UIAllianceQuestDialog::SendQuestMode33 (unit_140bf60f0_uialliancequestdialog.cpp:705): the
                 // id of an alliance quest in progress that the player wants to complete with completion
-                // tickets. The server runs no alliance quests, so no quest can be completed this way; the
-                // answer is the client's own text for a ticket that could not be used (Quest error 7).
+                // tickets. Not handled: the server takes no completion tickets, so no quest is completed this
+                // way; the answer is the client's own text for a ticket that could not be used (Quest error 7).
                 packet.ReadInt();
                 session.Send(QuestPacket.Error(QuestError.s_alliance_quest_completion_ticket_error));
                 break;
@@ -148,8 +148,10 @@ public class QuestHandler : FieldPacketHandler {
                 break;
             case Command.AllianceCompleteAll:
                 // UIAllianceQuestDialog::SendQuestMode35 (unit_140bf60f0_uialliancequestdialog.cpp:693): no
-                // body. Not handled: the client offers it only when an alliance quest in progress can be
-                // completed (CanCompleteAllQuests, :632), and no alliance quest can be started here.
+                // body. Not handled: the client offers it only when an alliance quest in progress of the talk
+                // npc's alliance can be completed (CanCompleteAllQuests, :632), and the server's quest data
+                // does not name a quest's alliance, so it cannot tell which quests are meant. Each quest is
+                // completed from the window on its own (NpcTalk 8).
                 Logger.Debug("Quest {Command} from {CharacterId}", command, session.CharacterId);
                 break;
             case Command.EpicRestart:
@@ -161,7 +163,7 @@ public class QuestHandler : FieldPacketHandler {
             case Command.SkyFortressMission:
                 // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world
                 // map's mission attack box. Not handled: the client sends it only while a quest of that
-                // field with an alliance is in progress, and no alliance quest can be started here.
+                // field with an alliance is in progress, and what the attack does on the server is not known.
                 Logger.Debug("Quest {Command} from {CharacterId}: field {FieldId}", command, session.CharacterId, packet.ReadInt());
                 break;
             case Command.FindUser:
