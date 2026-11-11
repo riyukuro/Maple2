@@ -288,7 +288,8 @@ public partial class FieldManager {
                             bool success = fields[mapId].TryRemove(roomId, out _);
                             foreach (((int MapId, long OwnerId) key, int ownerRoomId) in ownerRooms) {
                                 if (key.MapId == mapId && ownerRoomId == roomId) {
-                                    ownerRooms.TryRemove(key, out _);
+                                    // Only the pair seen: GetOwnerRoom may have stored a new room for the key since.
+                                    ownerRooms.TryRemove(new KeyValuePair<(int MapId, long OwnerId), int>(key, ownerRoomId));
                                 }
                             }
                             logger.Debug("Field {MapId}, RoomId {RoomId}, removed: {Success}", mapId, roomId, success);
