@@ -261,6 +261,11 @@ public class FieldNpc : Actor<Npc> {
     }
 
     private NpcTask? NextRoutine(long tickCount) {
+        // A summoned pet keeps up with its owner instead of wandering around where it was summoned.
+        if (this is FieldPet { OwnerId: not 0 } summoned) {
+            return summoned.NextFollowTask();
+        }
+
         if (Patrol?.WayPoints.Count > 0 && Navigation is not null) {
             return NextWaypoint();
         }

@@ -41,11 +41,14 @@ public static class PetPacket {
         return pWriter;
     }
 
-    public static ByteWriter UnSummon(FieldPet pet) {
+    public static ByteWriter UnSummon(FieldPet pet) => UnSummon(pet.OwnerId, pet.Pet.Uid);
+
+    // For the owner the client also prints "You dismissed your pet." (CPetManager::OnPetUnsummoned).
+    public static ByteWriter UnSummon(int ownerObjectId, long petUid) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
         pWriter.Write<Command>(Command.UnSummon);
-        pWriter.WriteInt(pet.OwnerId);
-        pWriter.WriteLong(pet.Pet.Uid);
+        pWriter.WriteInt(ownerObjectId);
+        pWriter.WriteLong(petUid);
 
         return pWriter;
     }

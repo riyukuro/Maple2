@@ -156,6 +156,18 @@ public sealed class AgentNavigation {
         return smoothPath;
     }
 
+    private bool loggedOffMesh;
+
+    // A goal with no navmesh polygon near it is outside the walkable map: no path is tried. Logged once per actor.
+    private void LogOffMesh(Vector3 goal) {
+        if (loggedOffMesh) {
+            return;
+        }
+        loggedOffMesh = true;
+        Logger.Warning("No path for npc {NpcId} (object {ObjectId}): goal {Goal} is off the navmesh of field {MapId}",
+            npc.Value.Metadata.Id, npc.ObjectId, goal, field.MapId);
+    }
+
     public bool HasPath => currentPath != null && currentPath.Count > 0;
 
     public bool UpdatePosition() {
@@ -284,7 +296,12 @@ public sealed class AgentNavigation {
             return false;
         }
 
-        if (!field.FindNearestPoly(goal, out _, out RcVec3f end)) {
+        if (!field.FindNearestPoly(goal, out long endRef, out RcVec3f end)) {
+            return false;
+        }
+
+        if (endRef == 0) {
+            LogOffMesh(goal);
             return false;
         }
 
@@ -312,6 +329,10 @@ public sealed class AgentNavigation {
         // get target in navmesh space
         RcVec3f target = DotRecastHelper.ToNavMeshSpace(goal);
 
+        if (distance <= 0) {
+            return false;
+        }
+
         // get distance in navmesh space
         float fDistance = distance * DotRecastHelper.MapRotation.GetRightAxis().Length();
 
@@ -322,7 +343,12 @@ public sealed class AgentNavigation {
         RcVec3f positionAway = RcVec3f.Add(position, RcVec3f.Normalize(direction) * -fDistance);
 
         // find the nearest poly to the positionAway
-        if (!field.FindNearestPoly(positionAway, out _, out RcVec3f positionAwayNavMesh)) {
+        if (!field.FindNearestPoly(positionAway, out long awayRef, out RcVec3f positionAwayNavMesh)) {
+            return false;
+        }
+
+        if (awayRef == 0) {
+            LogOffMesh(DotRecastHelper.FromNavMeshSpace(positionAway));
             return false;
         }
 

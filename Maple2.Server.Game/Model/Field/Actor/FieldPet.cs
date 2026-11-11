@@ -1,4 +1,5 @@
-﻿using DotRecast.Detour.Crowd;
+﻿using System.Numerics;
+using DotRecast.Detour.Crowd;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -7,7 +8,11 @@ using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Model.ActorStateComponent;
+using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
+using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
 namespace Maple2.Server.Game.Model;
 
@@ -88,6 +93,44 @@ public sealed class FieldPet : FieldNpc {
         }
 
         damage.Targets.TryAdd(ObjectId, targetRecord);
+    }
+
+    private NpcTask? followWalk;
+
+    /// <summary>
+    /// The next idle task of a summoned pet: stay, run to the owner, or (far away, e.g. after a GM coordinate
+    /// move) appear next to the owner. See <see cref="PetFollow"/>.
+    /// </summary>
+    public NpcTask? NextFollowTask() {
+        if (owner == null || owner.Field != Field) {
+            return MovementState.TryStandby(null, true);
+        }
+
+        switch (PetFollow.Decide(Position, owner.Position, out Vector3 target)) {
+            case PetFollow.Action.Warp:
+                followWalk = null;
+                WarpTo(target);
+                return MovementState.TryStandby(null, true);
+            case PetFollow.Action.Walk:
+                if (followWalk is { Status: NpcTaskStatus.Cancelled }) {
+                    // The last walk found no path (another floor, off the navmesh): put the pet with its owner.
+                    followWalk = null;
+                    WarpTo(owner.Position);
+                    return MovementState.TryStandby(null, true);
+                }
+                followWalk = MovementState.TryMoveTo(target, false);
+                return followWalk;
+            default:
+                followWalk = null;
+                return MovementState.TryStandby(null, true);
+        }
+    }
+
+    private void WarpTo(Vector3 position) {
+        if (Navigation == null || !Navigation.UpdatePosition(position)) {
+            Position = position;
+        }
+        SendControl = true;
     }
 
     protected override void Remove(TimeSpan delay) => Field.RemovePet(ObjectId, delay);

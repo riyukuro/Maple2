@@ -245,7 +245,9 @@ public class BattleState {
             candidates = new List<(float, IActor)>();
         }
 
-        if (friendlyType == 0) {
+        // A summoned pet runs the taming AI too; its npc is hostile, so it would pick its own owner (or another
+        // player) as the target to trace and run from. A summoned pet follows its owner instead (FieldPet).
+        if (friendlyType == 0 && actor is not FieldPet { OwnerId: not 0 }) {
             foreach (FieldPlayer player in actor.Field.Players.Values) {
                 if (player.InvisibleFromNpc) {
                     continue;

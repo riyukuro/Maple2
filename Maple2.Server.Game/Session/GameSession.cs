@@ -467,6 +467,8 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     private long resummonPetUid;
+    // The client was told the pet is away (a field that allows no pet); sent once until the pet is back.
+    private bool resummonUnSummonSent;
     // The pet to bring back after a move to another channel or game server (MigrateOutRequest.pet_uid).
     public long SummonedPetUid => Pet?.Pet.Uid ?? resummonPetUid;
 
@@ -481,8 +483,9 @@ public sealed partial class GameSession : Core.Network.Session {
         // A summoned pet leaves the field with its owner and is summoned again in the next one (EnterField).
         if (Pet != null) {
             resummonPetUid = Pet.Pet.Uid;
+            resummonUnSummonSent = false;
         }
-        Pet?.Dispose();
+        Pet?.Dispose(fieldChange: true);
         Instrument = null;
         GuideObject = null;
         HeldCube = null;
@@ -573,7 +576,13 @@ public sealed partial class GameSession : Core.Network.Session {
             // Before the stats packets below: the summon rebuilds the owner's stats with the pet's.
             long petUid = resummonPetUid;
             resummonPetUid = 0;
+            resummonUnSummonSent = false;
             PacketHandlers.PetHandler.SummonPet(this, petUid);
+        } else if (resummonPetUid != 0 && !resummonUnSummonSent) {
+            resummonUnSummonSent = true;
+            // The quiet unsummon in LeaveField left the client's summon uid set; clear it now that this
+            // field keeps the pet away (the client prints the dismiss line here).
+            Send(PetPacket.UnSummon(Player.ObjectId, resummonPetUid));
         }
         Housing.EnterBuildField();
 

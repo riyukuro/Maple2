@@ -174,7 +174,16 @@ public sealed class PetManager : IDisposable {
         session.Send(PetPacket.UpdateLootConfig(OwnerId, config.LootConfig));
     }
 
-    public void Dispose() {
+    /// <summary>
+    /// Who gets the UnSummon packet. The client prints "You dismissed your pet." when its own player's pet is
+    /// unsummoned, so a field change (the pet is summoned again in the next field) tells only the others.
+    /// </summary>
+    public static bool UnSummonToOwner(bool fieldChange) => !fieldChange;
+
+    public void Dispose() => Dispose(false);
+
+    /// <param name="fieldChange">The owner is leaving the field; the pet comes back in the next one.</param>
+    public void Dispose(bool fieldChange) {
         using GameStorage.Request db = session.GameStorage.Context();
         lock (session.Item) {
             db.SavePetConfig(Pet.Uid, config);
@@ -182,7 +191,7 @@ public sealed class PetManager : IDisposable {
         }
 
         session.Field?.RemovePet(pet.ObjectId);
-        session.Field?.Broadcast(PetPacket.UnSummon(pet));
+        session.Field?.Broadcast(PetPacket.UnSummon(pet), UnSummonToOwner(fieldChange) ? null : session);
         session.Pet = null;
     }
 

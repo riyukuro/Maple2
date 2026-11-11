@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Serilog;
 using static Maple2.Model.Metadata.AiMetadata;
@@ -481,7 +482,7 @@ public class AiState {
             return;
         }
 
-        float distance = float.MaxValue;
+        float? skillDistance = null;
 
         if (node.SkillIdx != 0) {
             SkillMetadata? skill = TryGetSkill(node.SkillIdx);
@@ -490,9 +491,11 @@ public class AiState {
                 return;
             }
 
-            distance = skill.Data.Detect.Distance; // naive impl, might need to revisit
+            skillDistance = skill.Data.Detect.Distance; // naive impl, might need to revisit
         }
 
+        // till="1200" is the distance to keep; unbounded (float.MaxValue) made PathAwayFrom aim ~2^31 away.
+        float distance = AiRunaway.Distance(node.Till, skillDistance);
         NpcTask task = actor.MovementState.TryMoveTargetDistance(actor.BattleState.Target!, distance, true, node.Animation, 1);
 
         SetNodeTask(task, node.Limit);
