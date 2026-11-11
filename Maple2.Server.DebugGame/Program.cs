@@ -37,6 +37,11 @@ using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 CultureInfo.CurrentCulture = new("en-US");
 
 DotEnv.Load();
+// An unknown LOCALE stops the server with one line instead of Target's type-initializer stack trace.
+if (!Locale.TryRead(out _, out string localeError)) {
+    Console.Error.WriteLine(localeError);
+    Environment.Exit(1);
+}
 
 AddChannelResponse? response = null;
 try {
