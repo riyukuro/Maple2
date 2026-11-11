@@ -902,7 +902,23 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // A preview builds only in the model home, never in a real home or another planner.
+        if (!BlueprintPreviewRule.PlotAllows(plot.PlotMode)) {
+            return;
+        }
+
+        if (plot.Cubes.Count != 0) {
+            session.Send(NoticePacket.Message(StringCode.s_err_ugcmap_package_clear_indoor_first, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+            return;
+        }
+
         using GameStorage.Request db = session.GameStorage.Context();
+        bool inOwnBag = session.Item.Inventory.Filter(item => item.Blueprint != null && item.Blueprint.BlueprintUid == blueprintId).Count > 0;
+        bool listed = !inOwnBag && db.GetUgcMarketItems().Any(item => item.Blueprint.BlueprintUid == blueprintId);
+        if (!BlueprintPreviewRule.BlueprintAllows(listed, inOwnBag)) {
+            return;
+        }
+
         HomeLayout? layout = db.GetHomeLayout(blueprintId);
         if (layout is null) {
             Logger.Error("Failed to load layout for {AccountId}", session.AccountId);

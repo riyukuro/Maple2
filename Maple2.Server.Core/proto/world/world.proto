@@ -94,6 +94,7 @@ message MigrateOutRequest {
 enum MigrationType {
   NORMAL = 0;
   DECOR_PLANNER = 1;
+  MODEL_HOME = 2;
   BLUEPRINT_DESIGNER = 3;
   DUNGEON = 4;
 }

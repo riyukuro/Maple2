@@ -41,4 +41,27 @@ public class CubeBlueprintBillTests {
         Assert.That(BlueprintBillRule.Confirms(false, 55, 55), Is.False);
         Assert.That(BlueprintBillRule.Confirms(true, 0, 0), Is.False);
     }
+
+    // RequestCube 68: the market preview builds only in the model home.
+    [TestCase(PlotMode.ModelHome, true)]
+    [TestCase(PlotMode.Normal, false)]
+    [TestCase(PlotMode.DecorPlanner, false)]
+    [TestCase(PlotMode.BlueprintPlanner, false)]
+    public void PreviewOnlyInTheModelHome(PlotMode mode, bool expected) {
+        Assert.That(BlueprintPreviewRule.PlotAllows(mode), Is.EqualTo(expected));
+    }
+
+    [TestCase(true, false, true)]
+    [TestCase(false, true, true)]
+    [TestCase(false, false, false)]
+    public void PreviewOnlyOfAListedOrOwnedBlueprint(bool listed, bool owned, bool expected) {
+        Assert.That(BlueprintPreviewRule.BlueprintAllows(listed, owned), Is.EqualTo(expected));
+    }
+
+    // The model-home move carries plot mode 2 as the migration type; the entry sets the planner mode from it.
+    [Test]
+    public void ModelHomeMigrationTypeIsThePlotMode() {
+        Assert.That((int) Maple2.Server.World.Service.MigrationType.ModelHome, Is.EqualTo((int) PlotMode.ModelHome));
+        Assert.That((int) MigrationType.ModelHome, Is.EqualTo((int) PlotMode.ModelHome));
+    }
 }

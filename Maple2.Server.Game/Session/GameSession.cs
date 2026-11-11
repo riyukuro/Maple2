@@ -266,6 +266,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
         switch (migrationType) {
             case MigrationType.DecorPlanner:
+            case MigrationType.ModelHome:
             case MigrationType.BlueprintDesigner:
                 player.Home.EnterPlanner((PlotMode) migrationType);
                 Housing.GetFieldPlot()?.SetPlannerMode((PlotMode) migrationType);
