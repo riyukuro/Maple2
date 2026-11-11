@@ -93,7 +93,7 @@ public interface IField : IDisposable {
     public bool TryGetInteract(string entityId, [NotNullWhen(true)] out FieldInteract? fieldInteract);
     public bool UsePortal(GameSession session, int portalId, string password);
     public bool LiftupCube(in Vector3B coordinates, [NotNullWhen(true)] out LiftupWeapon? liftupWeapon);
-    public void MovePlayerAlongPath(string pathName);
+    public void MovePlayerAlongPath(string pathName, Func<FieldPlayer, bool>? moves = null);
 
     public bool RemoveNpc(int objectId, TimeSpan removeDelay = default);
     public bool RemovePet(int objectId, TimeSpan removeDelay = default);

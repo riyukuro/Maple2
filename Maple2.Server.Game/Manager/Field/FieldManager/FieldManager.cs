@@ -737,13 +737,17 @@ public partial class FieldManager : IField {
         return true;
     }
 
-    public void MovePlayerAlongPath(string pathName) {
+    // moves: the players to send (patrol_condition_user); null sends every player.
+    public void MovePlayerAlongPath(string pathName, Func<FieldPlayer, bool>? moves = null) {
         MS2PatrolData? patrolData = Entities.Patrols.FirstOrDefault(p => p.Name == pathName);
         if (patrolData is null) {
             return;
         }
 
         foreach (FieldPlayer player in Players.Values) {
+            if (moves != null && !moves(player)) {
+                continue;
+            }
             if (!NpcMetadata.TryGet(Constant.DummyNpc(player.Value.Character.Gender), out NpcMetadata? npcMetadata)) {
                 continue;
             }

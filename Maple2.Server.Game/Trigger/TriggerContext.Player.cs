@@ -146,7 +146,8 @@ public partial class TriggerContext {
     }
 
     public void PatrolConditionUser(string patrolName, int patrolIndex, int additionalEffectId) {
-        ErrorLog("[PatrolConditionUser] patrolName:{Name}, patrolIndex:{Index}, additionalEffectId:{EffectId}", patrolName, patrolIndex, additionalEffectId);
+        DebugLog("[PatrolConditionUser] patrolName:{Name}, patrolIndex:{Index}, additionalEffectId:{EffectId}", patrolName, patrolIndex, additionalEffectId);
+        Field.MovePlayerAlongPath(patrolName, player => ConditionUserPatrol.Moves(additionalEffectId, id => player.Buffs.HasBuff(id)));
     }
 
     public void SetAchievement(int triggerId, string type, string code) {
