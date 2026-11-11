@@ -222,7 +222,7 @@ public record ConstantsTable(
     int UGCShopSellMinPrice = 0,
     int UGCShopSellMaxPrice = 0,
     int UGCShopSaleDay = 0,
-    int UGCShopAdFeeMerat = 0,
+    int UGCShopAdFeeMerat = 100, // the client's built-in value, used when no row passes the locale and feature filter
     int UGCShopAdHour = 0,
     int UGCShopSellingRestrictAmount = 200000,
     int MeratMarketHomeBannerShowTick = 0,
@@ -376,8 +376,8 @@ public record ConstantsTable(
     float invokeEffectTargetCountFactor10 = 0f,
     int MeratRevivalDebuffCode = 0,
     float MeratRevivalFeeReduceLimit = 0f,
-    int MeratConsumeWorldChat = 0,
-    int MeratConsumeChannelChat = 0,
+    int MeratConsumeWorldChat = 5, // the client's built-in value, used when no row passes the locale and feature filter
+    int MeratConsumeChannelChat = 2, // the client's built-in value, used when no row passes the locale and feature filter
     int MeratConsumeSuperChat = 0,
     int guildPVPMatchingTime = 0,
     int guildPVPWinPoint = 0,
@@ -633,7 +633,7 @@ public record ConstantsTable(
     int QuestPortalDimensionZ = 0,
     int QuestPortalSummonTime = 0,
     int QuestPortalDistanceFromNpc = 0,
-    int PetChangeNameMerat = 0,
+    int PetChangeNameMerat = 100, // the client's built-in value, used when no row passes the locale and feature filter
     int ConstructAuthorityMax = 0,
     int HonorTokenResetDayOfWeek = 0,
     int HonorTokenResetTimeHour = 0,
@@ -713,7 +713,7 @@ public record ConstantsTable(
     int WebBrowserPopupSizeHeightMax = 0,
     int GlobalPortalMinLevel = 0,
     int userMassiveExtraRewardMax = 0,
-    int SkillBookTreeAddTabFeeMerat = 0,
+    int SkillBookTreeAddTabFeeMerat = 1000, // the client's built-in value, used when no row passes the locale and feature filter
     int MentorRequireLevel = 0,
     int MenteeRequireLevel = 0,
     int MentorMaxWaitingCount = 0,
@@ -947,7 +947,7 @@ public record ConstantsTable(
     string MesoMarketTokenDetailUrl = "http://maplestory2.nexon.net/en/news/article/45213",
     int OneShotSkillID = 0,
     short[] bagSlotTabPetEquipCount = null!,
-    int MeratAirTaxiPrice = 0,
+    int MeratAirTaxiPrice = 390, // the client's built-in value, used when no row passes the locale and feature filter
     int FindDungeonHelpEasyDungeonLevel = 0,
     int FameContentsRequireQuestID = 91000013,
     int FameExpedContentsRequireQuestID = 50101050,
