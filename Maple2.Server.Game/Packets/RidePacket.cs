@@ -14,6 +14,7 @@ public static class RidePacket {
         Join = 3,
         Leave = 4,
         ChangeShared = 5,
+        RideAlone = 6,
     }
 
     public static ByteWriter Start(Ride ride) {
@@ -59,6 +60,16 @@ public static class RidePacket {
         pWriter.Write<Command>(Command.Leave);
         pWriter.WriteInt(ownerId);
         pWriter.WriteInt(leaverId);
+
+        return pWriter;
+    }
+
+    // The client reads: object id of the player, then the "ride alone" option byte.
+    public static ByteWriter RideAlone(int objectId, bool alone) {
+        var pWriter = Packet.Of(SendOp.ResponseRide);
+        pWriter.WriteByte((byte) Command.RideAlone);
+        pWriter.WriteInt(objectId);
+        pWriter.WriteBool(alone);
 
         return pWriter;
     }

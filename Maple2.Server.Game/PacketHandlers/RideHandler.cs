@@ -21,7 +21,7 @@ public class RideHandler : FieldPacketHandler {
         Change = 2,
         Join = 3,
         Leave = 4,
-        Unknown6 = 6,
+        RideAlone = 6,
     }
 
     #region Autofac Autowired
@@ -48,9 +48,8 @@ public class RideHandler : FieldPacketHandler {
             case Command.Leave:
                 HandleLeave(session);
                 return;
-            case Command.Unknown6:
-                // Not handled: one byte.
-                Logger.Debug("Ride {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
+            case Command.RideAlone:
+                HandleRideAlone(session, packet);
                 return;
         }
     }
@@ -88,6 +87,20 @@ public class RideHandler : FieldPacketHandler {
         }
 
         session.Ride.Mount(item, flag);
+    }
+
+    // The community game option "ride alone" changed. The same byte ends the ride-on action of a mount.
+    private void HandleRideAlone(GameSession session, IByteReader packet) {
+        bool alone = packet.ReadBool();
+        if (session.Field == null) {
+            return;
+        }
+
+        Ride? ride = session.Ride.Ride;
+        if (ride != null && ride.OwnerId == session.Player.ObjectId) {
+            ride.Action.Flag = alone;
+        }
+        session.Field.Broadcast(RidePacket.RideAlone(session.Player.ObjectId, alone));
     }
 
     private void HandleStop(GameSession session, IByteReader packet) {
@@ -132,6 +145,10 @@ public class RideHandler : FieldPacketHandler {
             return;
         }
         if (other.Session.Ride.Ride == null || other.Session.Ride.Ride.Passengers.Length == 0) {
+            return;
+        }
+        if (other.Session.Ride.Ride.Action.Flag) {
+            // The owner rides alone; the client shows no board prompt on such a mount.
             return;
         }
 
