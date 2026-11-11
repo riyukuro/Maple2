@@ -8,7 +8,7 @@ public class SkillMacroRulesTests {
     // SkillMacro 0x007B mode 1 starts with the i32 tab count.
     [TestCase(1, true)]
     [TestCase(3, true)]
-    [TestCase(0, true)] // the last tab removed
+    [TestCase(0, false)] // an empty save is not stored (a close before the load answer sends one)
     [TestCase(4, false)]
     [TestCase(-1, false)]
     [TestCase(int.MaxValue, false)]

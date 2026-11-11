@@ -10,10 +10,10 @@ public static class SkillMacroRules {
     // is s_skill_compact_control_default_tabname, which no box limits: 16 is the longest in the client's languages.
     public const int MaxDefaultNameLength = 16;
 
-    // The client removes a tab without asking how many are left, so an empty list can come; on the next load it
-    // makes the default tab again.
+    // The client removes a tab without asking how many are left and saves on every close, also before the load
+    // answer came. An empty list is refused so that such an early close does not wipe the stored tabs.
     public static bool IsTabCount(int count) {
-        return count is >= 0 and <= MaxTabs;
+        return count is >= 1 and <= MaxTabs;
     }
 
     public static int NameLimit(int index) {
