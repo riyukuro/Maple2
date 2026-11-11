@@ -5,7 +5,7 @@ namespace Maple2.Model.Metadata;
 // The dungeon missions the played client can build, read from that client's own mission table
 // (table/dungeonmission.xml). The client builds each mission id of RoomStageDungeon 0 with
 // DungeonMissionCli::Create (client/ms2/dungeonmissioncli.cpp:84) and asserts when it gets null
-// (RoomStageDungeonCli::OnInitMissions, roomstagedungeoncli.cpp:141). It gets null when its table has no
+// (RoomStageDungeonCli::OnInitMissions, roomstagedungeoncli.cpp:104, MS2_ASSERT_AT 0x68). It gets null when its table has no
 // mission for the id, or when no mission class is registered under "DungeonMission" + the row's type.
 // The table (DungeonMissionDataTable::ReadFromXml, commonfiles/dungeonmissiondatatable.cpp:73) keeps a
 // <DungeonMission> row only when it passes IsElementAvailable (commonfiles/commonutil.cpp:1047: a set
