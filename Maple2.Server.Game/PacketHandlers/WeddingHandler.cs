@@ -84,8 +84,7 @@ public class WeddingHandler : FieldPacketHandler {
                 Logger.Debug("Wedding {Command} from {CharacterId}: {Answer}", command, session.CharacterId, packet.ReadShort());
                 return;
             case Command.SetCoupleMessage:
-                // Not handled: the couple message typed in the wedding page.
-                Logger.Debug("Wedding {Command} from {CharacterId}: {Length} characters", command, session.CharacterId, packet.ReadUnicodeString().Length);
+                session.Marriage.SetCoupleMessage(packet.ReadUnicodeString());
                 return;
             case Command.ReceiveSkillItem:
                 // Not handled: the id of the wedding skill whose item is requested.

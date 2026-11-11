@@ -8,6 +8,7 @@ using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Util.Sync;
 using Serilog;
 
@@ -83,6 +84,27 @@ public sealed class MarriageManager {
     // Drops any proposal this player is part of, on both sides (field leave and disconnect). The other
     // player is found by character id among this channel's sessions, so it does not matter which field
     // either is on now; a player who moved to another channel lost the record with that move.
+    // The couple message of this player: stored, saved and shown to both partners.
+    // The partner is found among this channel's sessions; on another channel they see it at their next load.
+    public void SetCoupleMessage(string message) {
+        if (!CoupleMessageRule.Apply(Marriage, session.CharacterId, message)) {
+            return;
+        }
+
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            db.SaveMarriage(Marriage);
+        }
+        session.Send(WeddingPacket.UpdateMarriage(Marriage));
+
+        long partnerId = Partner.CharacterId;
+        if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession)) {
+            Marriage other = partnerSession.Marriage.Marriage;
+            if (CoupleMessageRule.Apply(other, session.CharacterId, message)) {
+                partnerSession.Send(WeddingPacket.UpdateMarriage(other));
+            }
+        }
+    }
+
     public void ClearProposal() {
         lock (ProposalLock) {
             long partnerId = proposalTo != 0 ? proposalTo : proposalFrom;
