@@ -146,10 +146,13 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
+    // The dungeon room id from DungeonRoom.xml; a field that is no dungeon room has 0.
     public bool DungeonId(int dungeonId) {
-        ErrorLog("[GetDungeonId]");
-        return dungeonId == 0;
+        DebugLog("[DungeonId] dungeonId:{DungeonId}", dungeonId);
+        return DungeonIdMatches(Field.DungeonId, dungeonId);
     }
+
+    public static bool DungeonIdMatches(int fieldDungeonId, int dungeonId) => fieldDungeonId == dungeonId;
 
     public bool DungeonLevel(int level) {
         ErrorLog("[GetDungeonLevel]");
