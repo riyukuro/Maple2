@@ -40,6 +40,22 @@ public class HomeBuildRulesTests {
         Assert.That(home.BuildMeso, Is.EqualTo(0));
     }
 
+    // CPriceTable::LoadHousing (commonfiles/pricetable.cpp:111) skips no row: a row without the ugcHousing
+    // attributes is stored with buy false, price 0 and money type 1 over what the id had, and the client then
+    // refuses to buy that item. So such a row replaces a priced server row here too.
+    [Test]
+    public void ClientPriceTable_RowWithoutHousingAttributesReplacesAsNotBuyable() {
+        var server = new Dictionary<int, Maple2.Model.Metadata.FurnishingShopTable.Entry> {
+            [50100000] = new(50100000, true, Maple2.Model.Enum.FurnishingCurrencyType.Meret, 30),
+        };
+        Maple2.Model.Metadata.FurnishingShopTable.Entry? row = Maple2.Model.Metadata.FurnishingShopTable.ClientRow("50100000", "", "", "");
+        Assert.That(row, Is.EqualTo(new Maple2.Model.Metadata.FurnishingShopTable.Entry(50100000, false, (Maple2.Model.Enum.FurnishingCurrencyType) 1, 0)));
+
+        Dictionary<int, Maple2.Model.Metadata.FurnishingShopTable.Entry> merged = Maple2.Model.Metadata.FurnishingShopTable.WithClientRows(server, [row!]);
+        Assert.That(merged[50100000].Buyable, Is.False);
+        Assert.That(merged[50100000].Price, Is.EqualTo(0));
+    }
+
     [Test]
     public void CheckAdd_RefusesNoOneSelfAndRepeats() {
         var builders = new List<long> { 5 };
