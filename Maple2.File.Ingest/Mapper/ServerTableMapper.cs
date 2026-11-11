@@ -1484,6 +1484,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     private ItemMergeTable ParseItemMergeOptionTable() {
         var results = new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>>();
+        Dictionary<(int Id, int Part), int[]> partLimits = ClientPartLimits();
         foreach ((int id, MergeOption mergeOption) in parser.ParseItemMergeOption()) {
             var slots = new Dictionary<int, ItemMergeTable.Entry>();
             foreach (MergeOption.Slot slotEntry in mergeOption.slot) {
@@ -1589,7 +1590,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     Materials: ingredients.ToArray(),
                     BasicOptions: basicOptions,
                     SpecialOptions: specialOptions
-                );
+                ) {
+                    PartLimit = partLimits.GetValueOrDefault((id, slotEntry.part)),
+                };
 
                 slots.Add(slotEntry.part, slot);
             }
@@ -1602,6 +1605,28 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
         }
         return new ItemMergeTable(results);
+
+        // The server pack's table has no partLimit; the client's Table/itemMergeOptionBase.xml has it per
+        // (mergeOption id, slot part). The data folder's pack first, then the played client's, whose row wins.
+        // Without a client pack, or with one this parser cannot read, the rows carry no list.
+        Dictionary<(int Id, int Part), int[]> ClientPartLimits() {
+            var limits = new Dictionary<(int Id, int Part), int[]>();
+            foreach (M2dReader? reader in new[] { clientReader, playedReader }) {
+                if (reader == null) {
+                    continue;
+                }
+                try {
+                    foreach (MergeOptionNew option in new ItemOptionParser(reader).ParseMergeOptionBaseNew()) {
+                        foreach (Slot slot in option.slot) {
+                            limits[(option.id, slot.part)] = slot.partLimit ?? [];
+                        }
+                    }
+                } catch (Exception ex) {
+                    Console.WriteLine($"item merge: the client's partLimit lists were not read ({ex.GetType().Name}: {ex.Message})");
+                }
+            }
+            return limits;
+        }
 
         ItemComponent? ParseItemMaterial(string[] itemMaterial) {
             var tag = ItemTag.None;

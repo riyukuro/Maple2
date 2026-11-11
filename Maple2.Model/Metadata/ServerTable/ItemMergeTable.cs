@@ -12,7 +12,12 @@ public record ItemMergeTable(
         ItemComponent[] Materials,
         IReadOnlyDictionary<BasicAttribute, Option> BasicOptions,
         IReadOnlyDictionary<SpecialAttribute, Option> SpecialOptions
-    );
+    ) {
+        // The slot's partLimit list in the client's Table/itemMergeOptionBase.xml: when it is not empty the
+        // item's equip subtype must be in it (CItemMergeOptionTable::GetMergeData, itemmergeoptiontable.cpp:445).
+        // Null in a row that was ingested before this field existed, or without the client's pack: not judged.
+        public int[]? PartLimit { get; init; }
+    }
 
     public record Option(
         Range<int>[] Values,

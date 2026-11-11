@@ -176,6 +176,30 @@ public class ItemMergePacketTests {
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 61), byPart), Is.Null);
     }
 
+    // A row with a partLimit list takes only the equip subtypes in it; an empty or missing list takes all
+    // (CItemMergeOptionTable::GetMergeData). The list survives the table's JSON, and a row stored without
+    // one reads back with none.
+    [Test]
+    public void MergeSlot_PartLimit() {
+        static ItemMergeTable Table(int[]? partLimit) => new(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
+            [37000002] = new() {
+                [0] = new ItemMergeTable.Entry(0, 100, [], new Dictionary<BasicAttribute, ItemMergeTable.Option>(),
+                    new Dictionary<SpecialAttribute, ItemMergeTable.Option>()) { PartLimit = partLimit },
+            },
+        });
+        ItemMetadata material = Leveled(37000002, 19, 2, 60);
+        Assert.That(ItemMergeManager.MergeSlot(Table([13, 14]), Leveled(11300001, 1, 13, 50), material), Is.Not.Null);
+        Assert.That(ItemMergeManager.MergeSlot(Table([13, 14]), Leveled(11300001, 1, 22, 50), material), Is.Null);
+        Assert.That(ItemMergeManager.MergeSlot(Table([]), Leveled(11300001, 1, 22, 50), material), Is.Not.Null);
+        Assert.That(ItemMergeManager.MergeSlot(Table(null), Leveled(11300001, 1, 22, 50), material), Is.Not.Null);
+
+        string json = System.Text.Json.JsonSerializer.Serialize(Table([13, 14]).Entries[37000002][0]);
+        Assert.That(System.Text.Json.JsonSerializer.Deserialize<ItemMergeTable.Entry>(json)!.PartLimit, Is.EqualTo(new[] { 13, 14 }));
+        string old = System.Text.Json.JsonSerializer.Serialize(Table(null).Entries[37000002][0]).Replace(",\"PartLimit\":null", "");
+        Assert.That(old, Does.Not.Contain("PartLimit"));
+        Assert.That(System.Text.Json.JsonSerializer.Deserialize<ItemMergeTable.Entry>(old)!.PartLimit, Is.Null);
+    }
+
     private static Item Merged(int id, int rarity, int type = 1, int subType = 13, EquipSlot[]? slots = null) {
         Item item = ItemOf(id, rarity, 5, null, type, subType, slots);
         item.Stats = new ItemStats();

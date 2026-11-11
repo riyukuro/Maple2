@@ -43,6 +43,8 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Item merge:**
   - Request and response sub-types are renumbered to the client's.
   - The option preview (Select) is written in the client's layout.
+  - The merge table row is found as in the client: by the item's xml equip subtype (for a material of subtype 1, else part 0), with the level limits and the row's `partLimit` list. The list is read at ingest from the client's `table/itemmergeoptionbase.xml`, so it needs a re-ingest; rows without it are not judged by it.
+  - Known limit: the client takes the merge table id from the material's item xml, attribute `param1` of `property`. The data parser's item `Property` class has no `param1` field, so the server asks the table by the material's item id, and the ingest copies the rows of table id 37000055 to the eight materials that share it. With `param1` in the parser the copies can go.
 - **Ride:**
   - RideSync reads one trailing int per record.
   - The ride start request carries a byte after the object id, and the response echoes it.
