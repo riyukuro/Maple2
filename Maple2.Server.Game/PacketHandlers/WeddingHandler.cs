@@ -80,14 +80,20 @@ public class WeddingHandler : FieldPacketHandler {
                 HandleSendInvitation(session, packet);
                 return;
             case Command.DivorceReply:
-                // Not handled: the answer to the divorce message box (13 = yes, 14 = no).
+                // WeddingManager::OnDivorceAnswer (weddingmanager.cpp:480): the answer to the divorce message box
+                // (13 = yes, 14 = no). The box opens only on Wedding 8 from the server, which is never sent: the
+                // server has no divorce flow (the request, sub-type 7, is not read either). Answered with the
+                // client's text for a marriage that is in no state to divorce (result 0x2d).
                 Logger.Debug("Wedding {Command} from {CharacterId}: {Answer}", command, session.CharacterId, packet.ReadShort());
+                session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_invaild_state_divorce));
                 return;
             case Command.SetCoupleMessage:
                 session.Marriage.SetCoupleMessage(packet.ReadUnicodeString());
                 return;
             case Command.ReceiveSkillItem:
-                // Not handled: the id of the wedding skill whose item is requested.
+                // UIWeddingPageSkill::vfunc_3 (uiweddingpage.cpp:310): the id of a wedding skill of type 1 whose
+                // item the character does not hold. The skills and their items are in the client's wedding table,
+                // which the server's data does not have; the result texts have none for this. Read and logged.
                 Logger.Debug("Wedding {Command} from {CharacterId}: skill {Id}", command, session.CharacterId, packet.ReadInt());
                 return;
         }
