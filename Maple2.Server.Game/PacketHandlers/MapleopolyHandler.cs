@@ -60,10 +60,9 @@ public class MapleopolyHandler : FieldPacketHandler {
 
         int freeRollValue = session.GameEvent.Get(GameEventUserValueType.MapleopolyFreeRollAmount, gameEvent.Id, gameEvent.EndTime).Int();
         int totalSlotValue = session.GameEvent.Get(GameEventUserValueType.MapleopolyTotalSlotCount, gameEvent.Id, gameEvent.EndTime).Int();
-        int ticketAmount = session.Item.Inventory.Find(blueMarble.RequiredItem.ItemId)
-            .Sum(ticket => ticket.Amount);
 
-        session.Send(MapleopolyPacket.Load(blueMarble.Slots, blueMarble.RequiredItem.ItemId, totalSlotValue, freeRollValue, ticketAmount));
+        // The client shows the fourth value as the ticket count one roll costs; it counts the owned tickets itself.
+        session.Send(MapleopolyPacket.Load(blueMarble.Slots, blueMarble.RequiredItem.ItemId, totalSlotValue, freeRollValue, blueMarble.RequiredItem.Amount));
     }
 
     private void HandleRoll(GameSession session) {
@@ -97,7 +96,7 @@ public class MapleopolyHandler : FieldPacketHandler {
 
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyFreeRollAmount, freeRollValue);
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalSlotCount, totalSlotValue);
-        session.Send(MapleopolyPacket.Roll(totalSlotValue, dice1, dice2));
+        session.Send(MapleopolyPacket.Roll(totalSlotValue, dice1, dice2, freeRollValue));
     }
 
     private void HandleResult(GameSession session) {
@@ -150,7 +149,9 @@ public class MapleopolyHandler : FieldPacketHandler {
         int totalNewTrips = totalSlotValue / blueMarble.Slots.Length;
         RewardNewTrips(session, gameEvent, totalNewTrips);
 
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips, totalSlotValue);
+        // The position a move tile leads to is kept: after a backward or forward result the client asks for the
+        // result of the tile it walked to. RewardNewTrips stores the trip count itself.
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalSlotCount, totalSlotValue);
         session.Send(MapleopolyPacket.Result(slot, totalSlotValue, freeRollValue));
     }
 
