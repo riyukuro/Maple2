@@ -47,13 +47,22 @@ public static class NpcControlPacket {
         return pWriter;
     }
 
+    /// <summary>
+    /// The AI jump node: state 6 (gosJump, the client's StateJumpNpc) with sequence -2 or -3 and the absolute jump
+    /// block. Send it once: every packet with sequence -2 / -3 starts the arc again.
+    /// </summary>
+    public static ByteWriter Jump(FieldNpc npc, short seqId, Vector3 from, Vector3 to, float duration, float scale) =>
+        SingleNpcPacket(npc, flags: 2, velocity: default, animSpeed: 100,
+            bossTargetId: npc.BattleState.TargetId, state: ActorState.Jump, seqId: seqId, jump: (from, to, duration, scale));
+
     private static ByteWriter SingleNpcPacket(FieldNpc npc, byte flags, Vector3S velocity,
-            short animSpeed, int bossTargetId, ActorState state, short seqId) {
+            short animSpeed, int bossTargetId, ActorState state, short seqId,
+            (Vector3 From, Vector3 To, float Duration, float Scale)? jump = null) {
         var pWriter = Packet.Of(SendOp.NpcControl);
         pWriter.WriteShort(1);
 
         using var buffer = new PoolByteWriter();
-        buffer.WriteNpcEntry(npc, flags, velocity, animSpeed, bossTargetId, state, seqId);
+        buffer.WriteNpcEntry(npc, flags, velocity, animSpeed, bossTargetId, state, seqId, jump);
         pWriter.WriteShort((short) buffer.Length);
         pWriter.WriteBytes(buffer.ToArray());
         return pWriter;
@@ -99,7 +108,7 @@ public static class NpcControlPacket {
 
     private static void WriteNpcEntry(this PoolByteWriter buffer, FieldNpc npc,
             byte flags, Vector3S velocity, short animSpeed, int bossTargetId,
-            ActorState state, short seqId) {
+            ActorState state, short seqId, (Vector3 From, Vector3 To, float Duration, float Scale)? jump = null) {
         buffer.WriteInt(npc.ObjectId);
         buffer.WriteByte(flags);
         buffer.Write<Vector3S>(npc.Position);
@@ -115,9 +124,14 @@ public static class NpcControlPacket {
         buffer.WriteShort(seqId);
         buffer.WriteShort(npc.SequenceCounter);
 
-        // Animation (-2 = Jump_A, -3 = Jump_B)
+        // Animation (-2 = Jump_A, -3 = Jump_B). The relative block used to send (0, 0, 0) as the end, which flew the
+        // npc to the world origin; without a jump the npc now hops on the spot.
         if (seqId is ANI_JUMP_A or ANI_JUMP_B) {
-            buffer.WriteJump(isAbsolute: false, default, default, 0, 0);
+            if (jump is { } arc) {
+                buffer.WriteJump(isAbsolute: true, arc.From, arc.To, arc.Duration, arc.Scale);
+            } else {
+                buffer.WriteJump(isAbsolute: false, default, npc.Position, 0, 0);
+            }
         }
 
         switch (state) {
