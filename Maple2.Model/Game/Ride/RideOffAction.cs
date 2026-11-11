@@ -49,7 +49,8 @@ public class RideOffAction : IByteSerializable, IByteDeserializable {
             RideOffType.UseFunctionItem => new RideOffActionUseFunctionItem(),
             RideOffType.Nurturing => new RideOffActionNurturing(),
             RideOffType.UseGlideItem => new RideOffActionUseGlideItem(),
-            // Types with no extra fields. React (20) has no case in the client's reader.
+            RideOffType.React => new RideOffActionReact(),
+            // Types with no extra fields.
             RideOffType.BeautyShop or RideOffType.Hold or RideOffType.DisableField or RideOffType.Dead
                 or RideOffType.AdditionalEffect or RideOffType.RidingUi or RideOffType.AutoClimb
                 or RideOffType.Groggy or RideOffType.UnRideSkill or RideOffType.HideAndSeek => new RideOffAction(type),
@@ -303,6 +304,17 @@ public class RideOffActionUseFunctionItem() : RideOffAction(RideOffType.UseFunct
         base.ReadFrom(reader);
         itemUid = reader.ReadLong();
         value = ReadString(reader);
+    }
+}
+
+// The client sends React (20) when the player uses a reactor while mounted (ActionKeyObject): the
+// reactor id and name. Its reply reader (ReadRideOffAction) has no case for 20, so the reply carries
+// the default action (type 0) instead: the player is dismounted and uses the reactor again.
+public class RideOffActionReact() : RideOffAction(RideOffType.Default) {
+    public override void ReadFrom(IByteReader reader) {
+        base.ReadFrom(reader);
+        reader.ReadInt(); // reactor id
+        ReadString(reader); // reactor name
     }
 }
 
