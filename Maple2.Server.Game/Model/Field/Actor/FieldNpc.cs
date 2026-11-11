@@ -104,6 +104,9 @@ public class FieldNpc : Actor<Npc> {
     private long idleTaskLimitTick;
 
     public readonly Dictionary<string, int> AiExtraData = new();
+    // Set by the GM NPC control window (SetDebugMode 4, AI off): the NPC stops choosing what to do next.
+    // What it already does (a move, a cast) runs to its end.
+    public volatile bool AiOff;
 
     public FieldNpc(FieldManager field, int objectId, DtCrowdAgent? agent, Npc npc, string aiPath, string spawnAnimation = "", string? patrolDataUUID = null) : base(field, objectId, npc, field.NpcMetadata) {
         IdleSequenceMetadata = npc.Animations.GetValueOrDefault("Idle_A") ?? new AnimationSequenceMetadata(string.Empty, -1, 1f, []);
@@ -174,8 +177,10 @@ public class FieldNpc : Actor<Npc> {
 
         if (!isSpawning) {
             BattleState.Update(tickCount);
-            AiState.Update(tickCount);
-            DoIdleBehavior(tickCount);
+            if (!AiOff) {
+                AiState.Update(tickCount);
+                DoIdleBehavior(tickCount);
+            }
         }
 
         MovementState.Update(tickCount);

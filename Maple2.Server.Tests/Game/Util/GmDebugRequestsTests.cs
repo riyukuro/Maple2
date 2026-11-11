@@ -462,4 +462,78 @@ public class GmDebugRequestsTests {
         Assert.That(PlayerWarpUtil.GoToPlayer(session, info), Is.False);
         Assert.That(world.Calls, Is.EqualTo(1));
     }
+
+    // A channel change is refused, not thrown, when the World server answers with no usable address.
+    [Test]
+    public void GoToPlayer_EndpointRefusesABadAddressOrPort() {
+        Assert.That(PlayerWarpUtil.TryEndpoint("127.0.0.1", 20001, out System.Net.IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint!.ToString(), Is.EqualTo("127.0.0.1:20001"));
+        foreach (string? address in new[] { null, "", "localhost", "1.2.3.4.5", "not an address" }) {
+            Assert.That(PlayerWarpUtil.TryEndpoint(address, 20001, out endpoint), Is.False);
+            Assert.That(endpoint, Is.Null);
+        }
+        foreach (int port in new[] { 0, -1, 65536 }) {
+            Assert.That(PlayerWarpUtil.TryEndpoint("127.0.0.1", port, out endpoint), Is.False);
+        }
+    }
+
+    // The AI on, AI off and extra buttons (uinpccontroldialog.cpp:517-534): one long, 0.
+    [Test]
+    public void NpcControl_AiButtonsAreOneLong() {
+        foreach (byte command in new[] { GmNpcControlRequest.AiOn, GmNpcControlRequest.AiOff, GmNpcControlRequest.Extra }) {
+            var writer = new ByteWriter();
+            writer.WriteInt(77);
+            writer.WriteByte(command);
+            writer.WriteLong(0);
+            var reader = new ByteReader(writer.ToArray(), 0);
+            GmNpcControlRequest request = GmNpcControlRequest.Read(reader);
+            Assert.That(request.ObjectId, Is.EqualTo(77));
+            Assert.That(request.Command, Is.EqualTo(command));
+            Assert.That(reader.Available, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void NpcControl_ExtraListIsSortedAndBounded() {
+        var values = new Dictionary<string, int>();
+        for (int i = 0; i < GmNpcControlRequest.MaxExtra + 5; i++) {
+            values["k" + (99 - i)] = i;
+        }
+        List<(string Key, int Value)> list = GmNpcControlRequest.ExtraList(values);
+        Assert.That(list.Count, Is.EqualTo(GmNpcControlRequest.MaxExtra));
+        Assert.That(list[0], Is.EqualTo(("k63", 36)));
+        Assert.That(list[1].Key, Is.EqualTo("k64"));
+        Assert.That(GmNpcControlRequest.ExtraList(new Dictionary<string, int>()), Is.Empty);
+    }
+
+    [Test]
+    public void NpcControl_HeadlineMarksASwitchedOffAi() {
+        Assert.That(GmNpcControlRequest.Headline("AI_Default.xml", false), Is.EqualTo("AI_Default.xml"));
+        Assert.That(GmNpcControlRequest.Headline("AI_Default.xml", true), Is.EqualTo("AI_Default.xml (AI off)"));
+        Assert.That(GmNpcControlRequest.Headline(null, true), Is.EqualTo("- (AI off)"));
+    }
+
+    // AI off is the handler's own switch on the NPC, and a plain account cannot reach it.
+    [Test]
+    public void NpcControl_AiOffFromAPlainAccountChangesNothing() {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        GameSession session = SessionOf(AdminPermissions.None);
+        var field = (FieldManager) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager));
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        var mobs = new ConcurrentDictionary<int, FieldNpc>();
+        mobs[77] = npc;
+        typeof(FieldManager).GetField("<Mobs>k__BackingField", flags)!.SetValue(field, mobs);
+        session.Field = field;
+
+        var writer = new ByteWriter();
+        writer.WriteByte(4);
+        writer.WriteInt(77);
+        writer.WriteByte(GmNpcControlRequest.AiOff);
+        writer.WriteLong(0);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        new SetDebugModeHandler().Handle(session, reader);
+
+        Assert.That(npc.AiOff, Is.False);
+        Assert.That(reader.Position, Is.EqualTo(0));
+    }
 }

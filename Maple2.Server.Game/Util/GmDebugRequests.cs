@@ -10,6 +10,10 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
     public const byte Select = 0; // the NPC was picked; no fields
     public const byte HealthPercent = 1; // long, 1 to 100
     public const byte HealthValue = 2; // long, above 0
+    // UINpcControlDialog buttons (uinpccontroldialog.cpp:517-534): each writes one long, 0.
+    public const byte AiOn = 4;
+    public const byte AiOff = 5;
+    public const byte Extra = 0xB;
     // UINpcControlDialog (uinpccontroldialog.cpp:395-402): short loop, short count, count x (int skill id, int level)
     public const byte UseSkill = 8;
     public const byte StopSkill = 9; // no fields
@@ -67,6 +71,20 @@ public readonly record struct GmNpcControlRequest(int ObjectId, byte Command, lo
         }
 
         return new GmNpcControlRequest(objectId, command, value, effectId, effectLevel, skillCount, text, skillId, skillLevel);
+    }
+
+    // The window's extra data list has no scroll bar; more entries than this are not sent.
+    public const int MaxExtra = 32;
+
+    // The NPC's AI values for the window's extra data list: by key, at most MaxExtra.
+    public static List<(string Key, int Value)> ExtraList(IEnumerable<KeyValuePair<string, int>> values) {
+        return values.OrderBy(entry => entry.Key, StringComparer.Ordinal).Take(MaxExtra).Select(entry => (entry.Key, entry.Value)).ToList();
+    }
+
+    // The headline of the window's text: the AI file, marked while the AI is switched off.
+    public static string Headline(string? aiName, bool aiOff) {
+        string name = string.IsNullOrEmpty(aiName) ? "-" : aiName;
+        return aiOff ? name + " (AI off)" : name;
     }
 
     // The health the two health commands ask for, or -1 when the command is another one or the value is

@@ -124,6 +124,17 @@ public class SetDebugModeHandler : FieldPacketHandler {
             case GmNpcControlRequest.StopSkill:
                 npc.MovementState.CastTask?.Cancel();
                 return;
+            case GmNpcControlRequest.AiOn:
+            case GmNpcControlRequest.AiOff:
+                npc.AiOff = request.Command == GmNpcControlRequest.AiOff;
+                Logger.Information("SetDebugMode: AI of NPC {NpcId} (object {ObjectId}) in field {MapId} switched {State} by account {AccountId}",
+                    npc.Value.Id, npc.ObjectId, session.Field.MapId, npc.AiOff ? "off" : "on", session.AccountId);
+                SendNpcState(session, npc);
+                return;
+            case GmNpcControlRequest.Extra:
+                // The window has no reader of its own for this button; its extra data is part of kind 5.
+                SendNpcState(session, npc);
+                return;
             default:
                 Logger.Debug("SetDebugMode: NPC control command {Command} on {ObjectId} from account {AccountId} not handled", request.Command, request.ObjectId, session.AccountId);
                 return;
@@ -134,8 +145,15 @@ public class SetDebugModeHandler : FieldPacketHandler {
     // the six stats it lists. The server keeps no AI trace, so "tracking" is off and there is no extra data.
     private static void SendNpcState(GameSession session, FieldNpc npc) {
         Stat health = npc.Stats.Values[BasicAttribute.Health];
-        session.Send(DebugModePacket.NpcState(npc.ObjectId, npc.MovementState.State.ToString(), npc.AiState.AiMetadata?.Name ?? string.Empty,
-            npc.BattleState.TargetId, false, [],
+        List<(string Key, int Value)> extra;
+        try {
+            extra = GmNpcControlRequest.ExtraList(npc.AiExtraData);
+        } catch (InvalidOperationException) {
+            // The field thread changed the values while they were read; the next state text has them.
+            extra = [];
+        }
+        session.Send(DebugModePacket.NpcState(npc.ObjectId, npc.MovementState.State.ToString(), GmNpcControlRequest.Headline(npc.AiState.AiMetadata?.Name, npc.AiOff),
+            npc.BattleState.TargetId, false, extra,
             npc.Stats.Values[BasicAttribute.PhysicalAtk].Total, npc.Stats.Values[BasicAttribute.MagicalAtk].Total,
             npc.Stats.Values[BasicAttribute.Defense].Total, npc.Stats.Values[BasicAttribute.CriticalRate].Total,
             health.Current, health.Total));
