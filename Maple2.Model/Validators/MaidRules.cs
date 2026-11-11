@@ -23,6 +23,13 @@ public static class MaidRules {
         };
     }
 
+    // A furnishing storage entry an added furnishing may join. A maid furnishing never stacks: its maid is keyed by
+    // the storage item uid while it is stored, so each maid item keeps an entry of its own. It may take an emptied
+    // entry (amount 0, kept to reuse its uid): the maid of an emptied entry moved to the cube placed from it.
+    public static bool CanJoin(Item stored, int itemId, string? templateUrl, bool maidItem) {
+        return stored.Id == itemId && stored.Template?.Url == templateUrl && (!maidItem || stored.Amount == 0);
+    }
+
     // The maids (by cube uid) whose cube is not among cubeIds, the cubes now on the field's plots.
     public static List<long> Orphans(IEnumerable<long> maidCubes, IEnumerable<long> cubeIds) {
         var placed = new HashSet<long>(cubeIds);

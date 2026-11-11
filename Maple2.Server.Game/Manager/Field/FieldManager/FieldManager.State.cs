@@ -1093,7 +1093,8 @@ public partial class FieldManager {
     // The maid of a maid cube placed on plot: its row, made on the first placement, and its npc on the cube. The
     // slot is held at once; the npc is spawned on the field thread (the crowd is not thread safe). The FieldMaid
     // add goes first: the client looks the npc's maid up by the maid uid of its FieldAddNpc.
-    public void AddMaid(PlotCube cube, Plot plot) {
+    // announce: the maid is new to its owner's list under this uid (moved from its storage item), as a hired one is.
+    public void AddMaid(PlotCube cube, Plot plot, bool announce = false) {
         int maidId = MaidRules.MaidId(cube.Metadata, plot.IsPlanner);
         if (maidId == 0 || maids.ContainsKey(cube.Id)) {
             return;
@@ -1147,7 +1148,7 @@ public partial class FieldManager {
             Broadcast(FieldMaidPacket.Add(slot.Maid));
             Broadcast(FieldPacket.AddNpc(fieldNpc));
             Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
-            if (hired) {
+            if (hired || announce) {
                 SendToMaidOwner(slot.Maid.OwnerId, UserMaidPacket.Add(slot.Maid));
             }
         });
@@ -1165,7 +1166,7 @@ public partial class FieldManager {
             RemoveNpcNow(removed.NpcObjectId);
             Broadcast(FieldMaidPacket.Remove(cubeUid));
         });
-        // The maid's row goes with its cube; the owner's maid windows drop it.
+        // The owner's maid windows drop the cube uid (a picked-up maid comes back under its storage item uid).
         SendToMaidOwner(removed.Maid.OwnerId, UserMaidPacket.Remove(cubeUid));
     }
 

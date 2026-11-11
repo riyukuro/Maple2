@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -8,13 +9,15 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Maple2.Server.Tests.Database;
 
 // The maid row of a maid cube through GameStorage, on an in-memory database: made only for a placed cube, read back
-// with its values, and deleted with the cube.
+// with its values, deleted with the cube, and moved to the storage item and back when the cube is picked up and
+// placed again.
 // The times are real ones: the row keeps them as local DateTimes, and one before the epoch reads back as 0.
 public class MaidStorageTests {
     private const int CubeItemId = 50400001;
@@ -147,5 +150,110 @@ public class MaidStorageTests {
     public void Save_OfAGoneRow_IsFalse() {
         using GameStorage.Request db = storage.Context();
         Assert.That(db.SaveMaid(new Maid { Uid = 99, OwnerId = 5, ItemId = CubeItemId, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000 }), Is.False);
+    }
+
+    private const long StoredUid = 900001; // a made-up storage item uid
+
+    private void Hire(long uid, int mood = 0) {
+        using GameStorage.Request db = storage.Context();
+        Assert.That(db.CreateMaid(new Maid { Uid = uid, OwnerId = 5, ItemId = CubeItemId, MaidId = 3, Mood = mood, CreationTime = 1700000000, ExpiryTime = 1702592000 }), Is.Not.Null);
+    }
+
+    [Test]
+    public void Pickup_MovesTheMaidToTheItem_AndPlacementMovesItToTheNewCube() {
+        PlotCube cube = PlaceCube();
+        Hire(cube.Id, mood: 40);
+
+        // Pickup: the row moves to the storage item before the cube row is deleted.
+        using (GameStorage.Request db = storage.Context()) {
+            Maid? moved = db.MoveMaid(cube.Id, StoredUid);
+            Assert.That(moved?.Uid, Is.EqualTo(StoredUid));
+            Assert.That(db.DeleteCube(cube), Is.True);
+        }
+        using (GameStorage.Request check = storage.Context()) {
+            Assert.That(check.GetMaid(cube.Id), Is.Null);
+            Assert.That(check.GetMaid(StoredUid)?.Mood, Is.EqualTo(40));
+            Assert.That(check.GetMaids(5).Select(maid => maid.Uid), Is.EqualTo(new[] { StoredUid }));
+        }
+
+        // Placement from that item: the row moves to the new cube with its values.
+        PlotCube placed = PlaceCube();
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.MoveMaid(StoredUid, placed.Id)?.Uid, Is.EqualTo(placed.Id));
+        }
+        using GameStorage.Request after = storage.Context();
+        Maid? maid = after.GetMaid(placed.Id);
+        Assert.Multiple(() => {
+            Assert.That(after.GetMaid(StoredUid), Is.Null);
+            Assert.That(maid?.Mood, Is.EqualTo(40));
+            Assert.That(maid?.CreationTime, Is.EqualTo(1700000000));
+            Assert.That(maid?.ExpiryTime, Is.EqualTo(1702592000));
+        });
+    }
+
+    [Test]
+    public void MoveMaid_WithoutAMaid_OrOntoATakenUid_IsRefused() {
+        PlotCube first = PlaceCube();
+        PlotCube second = PlaceCube();
+        Hire(first.Id, mood: 10);
+        Hire(second.Id, mood: 20);
+
+        using GameStorage.Request db = storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(db.MoveMaid(StoredUid, first.Id), Is.Null);
+            Assert.That(db.MoveMaid(first.Id, second.Id), Is.Null);
+            Assert.That(db.GetMaid(first.Id)?.Mood, Is.EqualTo(10));
+            Assert.That(db.GetMaid(second.Id)?.Mood, Is.EqualTo(20));
+        });
+    }
+
+    [Test]
+    public void DeleteMaid_RemovesAStoredMaid() {
+        PlotCube cube = PlaceCube();
+        Hire(cube.Id);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.MoveMaid(cube.Id, StoredUid), Is.Not.Null);
+            Assert.That(db.DeleteMaid(StoredUid), Is.True);
+            Assert.That(db.DeleteMaid(StoredUid), Is.False);
+        }
+        using GameStorage.Request check = storage.Context();
+        Assert.That(check.GetMaids(5), Is.Empty);
+    }
+
+    [Test]
+    public void SaveCubes_DroppingACube_DropsItsMaid_ButNotAStoredOne() {
+        PlotCube kept = PlaceCube();
+        PlotCube dropped = PlaceCube();
+        PlotCube picked = PlaceCube();
+        Hire(dropped.Id);
+        Hire(picked.Id);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.MoveMaid(picked.Id, StoredUid), Is.Not.Null);
+            Assert.That(db.DeleteCube(picked), Is.True);
+        }
+
+        var plot = (PlotInfo) RuntimeHelpers.GetUninitializedObject(typeof(PlotInfo));
+        plot.Id = PlotId;
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveCubes(plot, [kept]), Is.Not.Null);
+        }
+        using GameStorage.Request check = storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(check.GetMaid(dropped.Id), Is.Null);
+            Assert.That(check.GetMaid(StoredUid), Is.Not.Null);
+        });
+    }
+
+    [Test]
+    public void StorageEntries_AMaidItemNeverStacks() {
+        ItemMetadata maidItem = Metadata();
+        var held = new Item(maidItem, amount: 1, initialize: false) { Uid = StoredUid };
+        var emptied = new Item(maidItem, amount: 0, initialize: false) { Uid = StoredUid + 1 };
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.CanJoin(held, CubeItemId, null, maidItem: true), Is.False);
+            Assert.That(MaidRules.CanJoin(emptied, CubeItemId, null, maidItem: true), Is.True);
+            Assert.That(MaidRules.CanJoin(held, CubeItemId, null, maidItem: false), Is.True);
+            Assert.That(MaidRules.CanJoin(held, CubeItemId + 1, null, maidItem: false), Is.False);
+        });
     }
 }

@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Maple2.Database.Model;
 
-// A placed maid, keyed by its furnishing cube's uid; the row goes with the cube.
+// A maid, keyed by the uid the client knows its furnishing by: the cube uid while the furnishing is placed, the
+// furnishing storage item uid while it is stored (the client's CUserMaidManager and the maid item tooltip look a
+// maid up by that uid). No key to the cube table: the row moves to the item when the cube is picked up, and the
+// paths that delete cubes without returning them to storage remove their maid rows themselves.
 internal class Maid {
     public long Id { get; set; }
     public long OwnerId { get; set; }
@@ -54,10 +57,6 @@ internal class Maid {
         builder.ToTable("maid");
         builder.HasKey(maid => maid.Id);
         builder.Property(maid => maid.Id).ValueGeneratedNever();
-        builder.HasOne<UgcMapCube>()
-            .WithOne()
-            .HasForeignKey<Maid>(maid => maid.Id)
-            .OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(maid => maid.OwnerId);
         builder.Property(maid => maid.Profile).HasJsonConversion().IsRequired();
     }

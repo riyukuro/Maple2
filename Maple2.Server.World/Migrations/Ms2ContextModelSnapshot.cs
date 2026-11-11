@@ -2164,15 +2164,6 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Maple2.Database.Model.Maid", b =>
-                {
-                    b.HasOne("Maple2.Database.Model.UgcMapCube", null)
-                        .WithOne()
-                        .HasForeignKey("Maple2.Database.Model.Maid", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Maple2.Database.Model.Marriage", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Character", null)

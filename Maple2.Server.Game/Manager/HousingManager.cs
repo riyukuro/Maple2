@@ -700,12 +700,15 @@ public class HousingManager {
             return false;
         }
 
+        long storedUid = 0; // the storage item the cube was placed from, when it was in storage already
         if (helper != null) {
             if (!TryBuyFromBudget(helper, cube, shopEntry, result)) {
                 DeleteCube(result);
                 return false;
             }
-        } else if (!session.Item.Furnishing.TryAddCube(cube.Id, result)) {
+        } else if (session.Item.Furnishing.TryAddCube(cube.Id, result)) {
+            storedUid = cube.Id;
+        } else {
             long itemUid = session.Item.Furnishing.AddCube(cube);
             if (itemUid == 0) {
                 DeleteCube(result);
@@ -748,8 +751,36 @@ public class HousingManager {
         }
 
         plot.Cubes.Add(position, result);
-        session.Field.AddMaid(result, plot);
+        session.Field.AddMaid(result, plot, announce: MoveMaidToCube(storedUid, result, plot));
         return true;
+    }
+
+    // A maid item placed from storage brings its maid: the maid row moves from the item uid to the cube uid, the uid
+    // the client knows the placed furnishing by. True when a maid moved (the owner's list drops the item uid here
+    // and gets the cube uid when the maid is placed).
+    private bool MoveMaidToCube(long storedUid, PlotCube cube, Plot plot) {
+        if (storedUid == 0 || MaidRules.MaidId(cube.Metadata, plot.IsPlanner) == 0) {
+            return false;
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (db.MoveMaid(storedUid, cube.Id) == null) {
+            return false;
+        }
+        session.Send(UserMaidPacket.Remove(storedUid));
+        return true;
+    }
+
+    // A maid cube picked up keeps its maid: the row moves from the cube uid to the storage item the cube went back
+    // to, which the maid item tooltip and the owner's list look it up by.
+    private void MoveMaidToItem(PlotCube cube, long itemUid) {
+        if (cube.Metadata.Housing?.MaidId is not > 0) {
+            return;
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        Maid? moved = db.MoveMaid(cube.Id, itemUid);
+        if (moved != null) {
+            session.Send(UserMaidPacket.Add(moved));
+        }
     }
 
     public bool TryRemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube, GameSession? helper = null) {
@@ -792,11 +823,14 @@ public class HousingManager {
             FittingDollHandler.ReturnItems(session, cube.Id);
         }
 
-        if (!session.Item.Furnishing.RetrieveCube(cube.Id)) {
+        long itemUid = session.Item.Furnishing.RetrieveCube(cube.Id);
+        if (itemUid == 0) {
             logger.Error("Failed to deposit cube {CubeId} back into storage.", cube.Id);
             return false;
         }
 
+        // Before the cube row goes, which would take a maid still keyed by it.
+        MoveMaidToItem(cube, itemUid);
         DeleteCube(cube);
 
         return true;

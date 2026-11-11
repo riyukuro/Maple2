@@ -66,6 +66,7 @@ public partial class GameStorage {
             ugcMap.ExpiryTime = DateTime.UtcNow + days;
             ugcMap.Name = characterName;
             Context.UgcMap.Update(ugcMap);
+            DeletePlotMaids(ugcMap.Id);
             Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMap.Id).Delete();
 
             return Context.TrySaveChanges() ? ToPlotInfo(ugcMap) : null;
@@ -106,6 +107,7 @@ public partial class GameStorage {
             model.OwnerId = 0;
             model.Name = string.Empty;
             model.ExpiryTime = DateTimeOffset.UtcNow;
+            DeletePlotMaids(model.Id);
             Context.UgcMapCube.Where(cube => cube.UgcMapId == model.Id).Delete();
             Context.UgcMap.Update(model);
 
@@ -226,6 +228,11 @@ public partial class GameStorage {
             foreach (UgcMapCube cube in Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id)) {
                 if (!updated.Contains(cube.Id)) {
                     Context.UgcMapCube.Remove(cube);
+                    // A cube dropped here does not go back to storage, so its maid goes too.
+                    Model.Maid? maid = Context.Maid.Find(cube.Id);
+                    if (maid != null) {
+                        Context.Maid.Remove(maid);
+                    }
                 }
             }
 
@@ -280,7 +287,7 @@ public partial class GameStorage {
             }
 
             Context.UgcMapCube.Remove(model);
-            // The maid row of a maid cube goes with it (a cascading key on a relational DB; removed here for the others).
+            // The maid row of a maid cube goes with it, unless MoveMaid has moved it to the cube's storage item first.
             if (cube.Metadata.Housing?.MaidId > 0) {
                 Model.Maid? maid = Context.Maid.Find(cube.Id);
                 if (maid != null) {
@@ -290,8 +297,43 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        public Maid? GetMaid(long cubeUid) {
-            return Context.Maid.Find(cubeUid);
+        // The maid keyed by uid: a placed cube's uid or a stored furnishing item's uid.
+        public Maid? GetMaid(long uid) {
+            return Context.Maid.Find(uid);
+        }
+
+        // Re-keys a maid from one uid to another (cube to storage item on pickup, item to cube on placement), keeping
+        // its mood, affinity, contract and profile. Null when there is no maid at fromUid or toUid is taken.
+        public Maid? MoveMaid(long fromUid, long toUid) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            Model.Maid? model = Context.Maid.Find(fromUid);
+            if (model == null || fromUid == toUid || Context.Maid.Find(toUid) != null) {
+                return null;
+            }
+            Model.Maid moved = (Maid) model!;
+            moved.Id = toUid;
+            Context.Maid.Remove(model);
+            Context.Maid.Add(moved);
+            return Context.TrySaveChanges() ? moved : null;
+        }
+
+        // Removes the maid keyed by uid (a stored maid item deleted from the storage); false when there was none.
+        public bool DeleteMaid(long uid) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            Model.Maid? model = Context.Maid.Find(uid);
+            if (model == null) {
+                return false;
+            }
+            Context.Maid.Remove(model);
+            return Context.TrySaveChanges();
+        }
+
+        // The maids of a plot's cubes, before the cubes are deleted without going back to storage.
+        private void DeletePlotMaids(long ugcMapId) {
+            List<long> cubeIds = Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).Select(cube => cube.Id).ToList();
+            if (cubeIds.Count > 0) {
+                Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).Delete();
+            }
         }
 
         // The maids of an account's homes (the owner list of UserMaid).

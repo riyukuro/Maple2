@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
@@ -198,10 +199,11 @@ public class FurnishingManager {
         }
     }
 
-    public bool RetrieveCube(long uid) {
+    // Returns the cube to storage: the uid of the storage item it went to, 0 when it was not in the inventory.
+    public long RetrieveCube(long uid) {
         lock (session.Item) {
             if (!RemoveInventory(uid, out PlotCube? cube)) {
-                return false;
+                return 0;
             }
 
             long itemUid = AddStorage(cube);
@@ -210,7 +212,7 @@ public class FurnishingManager {
                 throw new InvalidOperationException($"Failed to return cube: {cube.Id} to storage");
             }
 
-            return true;
+            return itemUid;
         }
     }
 
@@ -236,7 +238,8 @@ public class FurnishingManager {
         const int amount = 1;
 
         lock (session.Item) {
-            Item? stored = storage.FirstOrDefault(existing => existing.Id == item.Id && existing.Template?.Url == template?.Url);
+            bool maidItem = item.Metadata.Housing?.MaidId > 0;
+            Item? stored = storage.FirstOrDefault(existing => MaidRules.CanJoin(existing, item.Id, template?.Url, maidItem));
             if (stored == null) {
                 if (storage.OpenSlots <= 0) {
                     logger.Error("Furnishing storage is full, cannot add item: {ItemId}", item.Id);
@@ -302,7 +305,13 @@ public class FurnishingManager {
             item.Amount = 0;
 
             session.Send(FurnishingStoragePacket.Remove(itemUid));
-            return;
+            // A stored maid item takes its maid with it.
+            if (item.Metadata.Housing?.MaidId > 0) {
+                using GameStorage.Request db = session.GameStorage.Context();
+                if (db.DeleteMaid(itemUid)) {
+                    session.Send(UserMaidPacket.Remove(itemUid));
+                }
+            }
         }
     }
 
