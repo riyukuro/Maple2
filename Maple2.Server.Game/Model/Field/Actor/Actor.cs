@@ -124,7 +124,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         long damageAmount = 0;
         for (int i = 0; i < attack.Damage.Count; i++) {
             Reflect(caster);
-            if (attack.Damage.DamageByTargetMaxHp > 0) {
+            if (caster is FieldPlayer { DeathPower: true } && this is FieldNpc) {
+                // GM toggle: the hit takes all the health that is left.
+                long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
+                targetRecord.AddDamage(DamageType.Normal, health);
+                damageAmount -= health;
+            } else if (attack.Damage.DamageByTargetMaxHp > 0) {
                 targetRecord.AddDamage(DamageType.Normal, (long) (Stats.Values[BasicAttribute.Health].Total * attack.Damage.DamageByTargetMaxHp));
                 damageAmount -= (long) (Stats.Values[BasicAttribute.Health].Total * attack.Damage.DamageByTargetMaxHp);
             } else if (attack.Damage.IsConstDamage) {

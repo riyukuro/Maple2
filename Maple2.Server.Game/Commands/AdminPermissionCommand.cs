@@ -115,6 +115,10 @@ public class AdminPermissionCommand : GameCommand {
             }
 
             player.AdminPermissions &= ~flag;
+            if (!AdminLevel.IsGm(player.AdminPermissions)) {
+                player.InvisibleFromNpc = false;
+                player.DeathPower = false;
+            }
             player.Session.CommandHandler.RegisterCommands();
             player.Session.Send(AdminPacket.Level(AdminLevel.Of(player.AdminPermissions)));
             ctx.Console.Out.WriteLine($"Permission {flag} removed from {playerName}.");

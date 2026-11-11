@@ -96,6 +96,9 @@ public class FieldPlayer : Actor<Player> {
     #region DebugFlags
     private bool debugAi = false;
     public bool DebugSkills = false;
+    // GM toggles (chat commands of the client's GM hotkeys); cleared when the account stops being a GM.
+    public bool InvisibleFromNpc = false;
+    public bool DeathPower = false;
     #endregion
 
     public int TagId = 1;

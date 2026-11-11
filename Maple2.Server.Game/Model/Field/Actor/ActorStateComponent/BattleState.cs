@@ -199,6 +199,9 @@ public class BattleState {
         IActor? target = null;
 
         if (actor.Field.Players.TryGetValue(TargetId, out FieldPlayer? targetPlayer)) {
+            if (targetPlayer.InvisibleFromNpc) {
+                return false;
+            }
             target = targetPlayer;
         } else if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc)) {
             target = targetNpc;
@@ -244,6 +247,9 @@ public class BattleState {
 
         if (friendlyType == 0) {
             foreach (FieldPlayer player in actor.Field.Players.Values) {
+                if (player.InvisibleFromNpc) {
+                    continue;
+                }
                 if (ShouldTargetActor(player, sightSquared, sightHeightUp, sightHeightDown, ref nextTargetDistance, candidates)) {
                     nextTarget = player;
                 }
