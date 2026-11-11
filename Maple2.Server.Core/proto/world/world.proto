@@ -234,6 +234,12 @@ message GuildRequest {
     int64 guild_id = 1;
     string message = 2;
   }
+  message UpdateRank {
+    int64 guild_id = 1;
+    int32 rank_id = 2;
+    string name = 3;
+    int32 permission = 4;
+  }
   message UpdateEmblem {
     int64 guild_id = 1;
     string emblem = 2;
@@ -261,6 +267,7 @@ message GuildRequest {
     UpdateNotice update_notice = 12;
     UpdateEmblem update_emblem = 13;
     UpdatePoster update_poster = 14;
+    UpdateRank update_rank = 15;
   }
 }
 

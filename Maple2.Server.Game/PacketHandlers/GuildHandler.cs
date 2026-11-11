@@ -597,10 +597,42 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     }
 
+    // CGuildManager::SendGuildMode67: the rank index, then the whole rank with the same index. The client sends
+    // it only from the master, for a rank it lists, with a name of at most 15 characters (the m_gradeName input).
     private void HandleUpdateRank(GameSession session, IByteReader packet) {
-        packet.ReadByte();
+        byte rankId = packet.ReadByte();
         var rank = packet.ReadClass<GuildRank>();
+
+        if (session.Guild.Guild == null) {
+            return;
+        }
+        if (rank.Id != rankId || rank.Name.Length is 0 or > MaxRankNameLength) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data));
+            return;
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                UpdateRank = new GuildRequest.Types.UpdateRank {
+                    GuildId = session.Guild.Id,
+                    RankId = rankId,
+                    Name = rank.Name,
+                    Permission = (int) rank.Permission,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            // CGuildManager::OnPacketGradeChanged: the master's "rank changed" box.
+            session.Send(GuildPacket.UpdateRank(rank));
+        } catch (RpcException) { /* ignored */ }
     }
+
+    private const int MaxRankNameLength = 15;
 
     private void HandleUpdateFocus(GameSession session, IByteReader packet) {
         packet.ReadByte();

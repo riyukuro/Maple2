@@ -1,4 +1,5 @@
 ﻿using Grpc.Core;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.World.Containers;
@@ -41,6 +42,8 @@ public partial class WorldService {
                 return Task.FromResult(UpdateGuildEmblem(request.RequestorId, request.UpdateEmblem));
             case GuildRequest.GuildOneofCase.UpdatePoster:
                 return Task.FromResult(UpdateGuildPoster(request.RequestorId, request.UpdatePoster));
+            case GuildRequest.GuildOneofCase.UpdateRank:
+                return Task.FromResult(UpdateGuildRank(request.RequestorId, request.UpdateRank));
             default:
                 return Task.FromResult(new GuildResponse { Error = (int) GuildError.s_guild_err_none });
         }
@@ -200,6 +203,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = notice.GuildId };
+    }
+
+    private GuildResponse UpdateGuildRank(long requestorId, GuildRequest.Types.UpdateRank rank) {
+        if (!guildLookup.TryGet(rank.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.UpdateRank(requestorId, rank.RankId, rank.Name, (GuildPermission) rank.Permission);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = rank.GuildId };
     }
 
     private GuildResponse UpdateGuildEmblem(long requestorId, GuildRequest.Types.UpdateEmblem emblem) {

@@ -298,6 +298,39 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // CGuildManager::SendGuildMode67: only the master edits a rank, and only one that exists (the guild
+    // dialog edits the ranks it lists). The rank's name and permissions change; its members keep it.
+    public GuildError UpdateRank(long requestorId, int rankId, string name, GuildPermission permission) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (Guild.LeaderCharacterId != requestorId) {
+            return GuildError.s_guild_err_no_authority;
+        }
+        GuildRank? rank = Guild.Ranks.ElementAtOrDefault(rankId);
+        if (rankId < 0 || rank == null) {
+            return GuildError.s_guild_err_invalid_grade_index;
+        }
+
+        rank.Name = name;
+        rank.Permission = permission;
+
+        using (GameStorage.Request db = GameStorage.Context()) {
+            db.SaveGuild(Guild);
+        }
+
+        Broadcast(new GuildRequest {
+            UpdateRank = new GuildRequest.Types.UpdateRank {
+                RequestorName = requestor.Name,
+                RankId = rankId,
+                Name = rank.Name,
+                Permission = (int) rank.Permission,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     public GuildError UpdateEmblem(long requestorId, string emblem) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;

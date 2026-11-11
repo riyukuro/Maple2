@@ -273,6 +273,19 @@ public class GuildManager : IDisposable {
         return true;
     }
 
+    public bool UpdateRank(string requestorName, int rankId, string name, GuildPermission permission) {
+        GuildRank? rank = Guild?.Ranks.ElementAtOrDefault(rankId);
+        if (rank == null) {
+            return false;
+        }
+
+        rank.Name = name;
+        rank.Permission = permission;
+        // CGuildManager::OnPacketGradeUpdated: who changed it, then the rank; it refreshes the members of that rank.
+        session.Send(GuildPacket.NotifyUpdateRank(new InterfaceText(requestorName), rank));
+        return true;
+    }
+
     public bool UpdateEmblem(string requestorName, string emblem) {
         if (Guild == null) {
             return false;
