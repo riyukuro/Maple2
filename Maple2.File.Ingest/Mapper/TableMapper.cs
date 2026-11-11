@@ -61,6 +61,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_GEMSTONE_UPGRADE, Table = ParseItemGemstoneUpgrade() };
         yield return new TableMetadata { Name = TableNames.ITEM_EXTRACTION, Table = ParseItemExtraction() };
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
+        yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
         yield return new TableMetadata { Name = TableNames.JOB, Table = ParseJobTable() };
         yield return new TableMetadata { Name = TableNames.MAGIC_PATH, Table = ParseMagicPath() };
@@ -228,6 +229,38 @@ public class TableMapper : TypeMapper<TableMetadata> {
             xmlReader.GetXmlDocument(xmlReader.GetEntry("table/reactor.xml")),
             xmlReader.GetXmlDocument(xmlReader.GetEntry("table/reactorstate.xml")),
             node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML.
+    private CharacterAbilityTable ParseCharacterAbility() {
+        XmlDocument document = xmlReader.GetXmlDocument(xmlReader.GetEntry("table/characterability.xml"));
+        return new CharacterAbilityTable(ReadCharacterAbilities(document,
+            node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"))));
+    }
+
+    public static Dictionary<int, CharacterAbilityTable.Entry> ReadCharacterAbilities(XmlDocument document, Func<XmlElement, bool> keep) {
+        var results = new Dictionary<int, CharacterAbilityTable.Entry>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/ability");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!keep(node)) {
+                continue;
+            }
+
+            int id = int.Parse(node.GetAttribute("id"), CultureInfo.InvariantCulture);
+            results[id] = new CharacterAbilityTable.Entry(
+                Id: id,
+                CategoryId: ParseIntOr(node.GetAttribute("categoryID")),
+                RequireLevel: (short) ParseIntOr(node.GetAttribute("requireLevel")),
+                AdditionalEffectId: ParseIntOr(node.GetAttribute("additionalEffectID")),
+                AdditionalEffectLevel: (short) ParseIntOr(node.GetAttribute("additionalEffectLevel")));
+        }
+        return results;
+
+        int ParseIntOr(string value) => string.IsNullOrEmpty(value) ? 0 : int.Parse(value, CultureInfo.InvariantCulture);
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client keeps the rows whose

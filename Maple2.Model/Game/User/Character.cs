@@ -38,6 +38,10 @@ public class Character {
     public long StorageCooldown;
     public long DoctorCooldown;
 
+    // The ability window: learned ability ids and the time of the last reset (seconds, 0 = never).
+    public List<int> Abilities = [];
+    public long AbilityResetTime;
+
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;
     public string Picture = string.Empty;

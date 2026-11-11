@@ -66,6 +66,7 @@ public class BuffManager : IUpdatable {
         EnterField();
         if (Actor is FieldPlayer player) {
             player.Session.Config.RefreshLapenshardBuffs();
+            player.Session.Config.RefreshCharacterAbilityBuffs();
             player.Session.Config.RefreshPremiumClubBuffs();
             player.Session.Guild.LoadSkillBuffs();
 

@@ -437,7 +437,7 @@ public sealed partial class GameSession : Core.Network.Session {
         } catch (RpcException ex) {
             Logger.Warning(ex, "Failed to fetch active field bosses");
         }
-        // CharacterAbility
+        Config.LoadCharacterAbilities();
         Config.LoadKeyTable();
         Send(GuideRecordPacket.Load(Config.GuideRecords));
         // DailyWonder*

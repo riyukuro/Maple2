@@ -533,6 +533,77 @@ public class ConfigManager {
         lapenshards[slot] = id;
     }
 
+    #region CharacterAbility
+    private Character AbilityCharacter => session.Player.Value.Character;
+
+    // Bonus points have no source in the client, so none are given.
+    public void LoadCharacterAbilities() {
+        session.Send(CharacterAbilityPacket.Load(AbilityCharacter.Abilities, AbilityCharacter.AbilityResetTime, 0));
+    }
+
+    // CharacterAbility mode 2.
+    public bool LearnCharacterAbility(int abilityId) {
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        Character character = AbilityCharacter;
+        bool questDone = session.Quest.TryGetQuest(constants.CharacterAbilityOpenQuestID, out Quest? quest) && quest.State == QuestState.Completed;
+        if (!CharacterAbilityRules.IsOpen(character.Level, questDone)) {
+            return false;
+        }
+
+        int requireLevel = session.TableMetadata.CharacterAbilityTable.Entries.TryGetValue(abilityId, out CharacterAbilityTable.Entry? entry) ? entry.RequireLevel : -1;
+        int free = CharacterAbilityRules.FreePoints(character.Level, constants.CharacterAbilityDefaultPoint, 0, character.Abilities.Count);
+        if (!CharacterAbilityRules.CanLearn(requireLevel, character.Abilities.Contains(abilityId), character.Level, free)) {
+            return false;
+        }
+
+        character.Abilities.Add(abilityId);
+        session.Send(CharacterAbilityPacket.Learn(abilityId));
+        RefreshCharacterAbilityBuffs();
+        return true;
+    }
+
+    // CharacterAbility mode 1: for CharacterAbilityResetMeso mesos, once per CharacterAbilityResetCoolTimeMinute.
+    public bool ResetCharacterAbilities() {
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        Character character = AbilityCharacter;
+        long now = DateTime.Now.ToEpochSeconds();
+        long wait = CharacterAbilityRules.ResetWait(character.AbilityResetTime, now, constants.CharacterAbilityResetCoolTimeMinute);
+        long price = constants.CharacterAbilityResetMeso;
+        if (CharacterAbilityRules.CanReset(character.Abilities.Count, wait, session.Currency.Meso, price) != CharacterAbilityRules.ResetStep.Reset) {
+            return false;
+        }
+
+        session.Currency.Meso -= price;
+        foreach (int abilityId in character.Abilities) {
+            if (session.TableMetadata.CharacterAbilityTable.Entries.TryGetValue(abilityId, out CharacterAbilityTable.Entry? entry) && entry.AdditionalEffectId > 0) {
+                session.Player.Buffs.Remove(entry.AdditionalEffectId, session.Player.ObjectId);
+            }
+        }
+        character.Abilities.Clear();
+        character.AbilityResetTime = now;
+        LoadCharacterAbilities();
+        session.Send(CharacterAbilityPacket.Reset());
+        return true;
+    }
+
+    // Gives the effects of the learned abilities that the player does not have
+    // (CharacterAbilityRules.MissingEffects). Called on learn and at every field entry.
+    public void RefreshCharacterAbilityBuffs() {
+        if (session.Field is not { } field) {
+            return;
+        }
+
+        IReadOnlyDictionary<int, CharacterAbilityTable.Entry> entries = session.TableMetadata.CharacterAbilityTable.Entries;
+        foreach ((int id, short level) in CharacterAbilityRules.MissingEffects(AbilityCharacter.Abilities,
+                     abilityId => entries.TryGetValue(abilityId, out CharacterAbilityTable.Entry? entry) ? (entry.AdditionalEffectId, entry.AdditionalEffectLevel) : null,
+                     (id, level) => session.Player.Buffs.HasBuff(id, level))) {
+            if (field.SkillMetadata.TryGetEffect(id, level, out _)) {
+                session.Player.Buffs.AddBuff(session.Player, session.Player, id, level, field.FieldTick);
+            }
+        }
+    }
+    #endregion
+
     // Gives the effects of the worn lapenshards that the player does not have (LapenshardRules.MissingEffects).
     // Called when a shard is put on or taken off and at every field entry.
     public void RefreshLapenshardBuffs() {

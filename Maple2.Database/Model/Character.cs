@@ -48,6 +48,7 @@ internal class Character {
             Experience = new Experience {
                 Exp = other.Exp,
                 RestExp = other.RestExp,
+                Abilities = other.Abilities.ToArray(),
             },
             Profile = new Profile {
                 Motto = other.Motto,
@@ -60,6 +61,7 @@ internal class Character {
             Cooldown = new Cooldown {
                 Doctor = other.DoctorCooldown,
                 Storage = other.StorageCooldown,
+                AbilityReset = other.AbilityResetTime,
             },
             Currency = new CharacterCurrency(),
             Mastery = new Mastery() {
@@ -97,6 +99,7 @@ internal class Character {
             SkinColor = other.SkinColor,
             Exp = other.Experience.Exp,
             RestExp = other.Experience.RestExp,
+            Abilities = other.Experience.Abilities?.ToList() ?? [],
             MapId = other.MapId,
             ReturnMaps = new LimitedStack<int>(3, other.ReturnMapId),
             Mastery = other.Mastery,
@@ -108,6 +111,7 @@ internal class Character {
             SkinTabEnd = other.Profile.SkinTabEnd,
             DoctorCooldown = other.Cooldown.Doctor,
             StorageCooldown = other.Cooldown.Storage,
+            AbilityResetTime = other.Cooldown.AbilityReset,
             DeleteTime = other.DeleteTime.ToEpochSeconds(),
             Channel = other.Channel,
             ReturnChannel = other.ReturnChannel,
@@ -149,6 +153,8 @@ internal class Character {
 internal class Experience {
     public long Exp { get; set; }
     public long RestExp { get; set; }
+    // Learned ability ids of the ability window; kept in this JSON column so that no migration is needed.
+    public int[]? Abilities { get; set; }
 }
 
 internal class Profile {
@@ -163,6 +169,7 @@ internal class Profile {
 internal class Cooldown {
     public long Storage { get; set; }
     public long Doctor { get; set; }
+    public long AbilityReset { get; set; }
 }
 
 internal class CharacterCurrency {

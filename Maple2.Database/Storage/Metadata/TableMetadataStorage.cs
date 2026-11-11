@@ -10,6 +10,7 @@ public class TableMetadataStorage {
     private readonly Lazy<ItemBreakTable> itemBreakTable;
     private readonly Lazy<ItemExtractionTable> itemExtractionTable;
     private readonly Lazy<ItemEnchantTransformTable> itemEnchantTransformTable;
+    private readonly Lazy<CharacterAbilityTable> characterAbilityTable;
     private readonly Lazy<ReactorTable> reactorTable;
     private readonly Lazy<GemstoneUpgradeTable> gemstoneUpgradeTable;
     private readonly Lazy<JobTable> jobTable;
@@ -80,6 +81,7 @@ public class TableMetadataStorage {
     public ItemBreakTable ItemBreakTable => itemBreakTable.Value;
     public ItemExtractionTable ItemExtractionTable => itemExtractionTable.Value;
     public ItemEnchantTransformTable ItemEnchantTransformTable => itemEnchantTransformTable.Value;
+    public CharacterAbilityTable CharacterAbilityTable => characterAbilityTable.Value;
     public ReactorTable ReactorTable => reactorTable.Value;
     public GemstoneUpgradeTable GemstoneUpgradeTable => gemstoneUpgradeTable.Value;
     public JobTable JobTable => jobTable.Value;
@@ -151,6 +153,7 @@ public class TableMetadataStorage {
         itemBreakTable = Retrieve<ItemBreakTable>(context, TableNames.ITEM_BREAK_INGREDIENT);
         itemExtractionTable = Retrieve<ItemExtractionTable>(context, TableNames.ITEM_EXTRACTION);
         itemEnchantTransformTable = Retrieve<ItemEnchantTransformTable>(context, TableNames.ITEM_ENCHANT_TRANSFORM);
+        characterAbilityTable = Retrieve<CharacterAbilityTable>(context, TableNames.CHARACTER_ABILITY);
         reactorTable = Retrieve<ReactorTable>(context, TableNames.REACTOR);
         gemstoneUpgradeTable = Retrieve<GemstoneUpgradeTable>(context, TableNames.ITEM_GEMSTONE_UPGRADE);
         jobTable = Retrieve<JobTable>(context, TableNames.JOB);
