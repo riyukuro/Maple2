@@ -14,6 +14,15 @@ public static class DismantleRules {
         return summonedPetUid == 0 || itemUid != summonedPetUid;
     }
 
+    // The socket part of an outfit's dismantle reward (ItemBreakCommon 0x140530c90): each opened socket returns
+    // percent of the unlock ingredient's count, at least 1, and nothing at 0 percent.
+    public static int SkinSocketRefund(int unlockCount, int percent, int openSockets) {
+        if (percent <= 0 || unlockCount <= 0 || openSockets <= 0) {
+            return 0;
+        }
+        return Math.Max(1, unlockCount * percent / 100) * openSockets;
+    }
+
     // The stacks a reward of <paramref name="total"/> pieces is given in. Each stack is one item:
     // giving the whole remainder on every pass paid a reward above the stack size more than once.
     public static IEnumerable<int> Stacks(int total, int slotMax) {

@@ -310,6 +310,23 @@ public class LuaTests {
         Assert.That(Server.Game.LuaFunctions.Lua.CalcMeratSkinItemBreakReward(50, 2, 0, 3).Item3, Is.EqualTo(V<int?>(null, 40100032)));
     }
 
+    // The outfit socket refund: the percent and an outfit's unlock ingredient match the script.
+    [Test]
+    public void CalcMeratSkinItemBreakRefundPercent() {
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcMeratSkinItemBreakRefundPercent(), Is.EqualTo(maple2Lua.CalcMeretSkinItemBreakRefundPercent()));
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcMeratSkinItemBreakRefundPercent(), Is.EqualTo(V(0f, 75f)));
+        Assert.Multiple(() => {
+            foreach (int skinType in new[] { 1, 2, 3, 4, 5, 99 }) {
+                for (int grade = 1; grade <= 6; grade++) {
+                    (int, string, int) script = maple2Lua.CalcItemSocketUnlockIngredient(0, grade, 50, 0, skinType);
+                    (int, string, int) port = Server.Game.LuaFunctions.Lua.CalcItemSocketUnlockIngredient(0, grade, 50, 0, skinType);
+                    Assert.That(port, Is.EqualTo(script), $"skinType {skinType} grade {grade}");
+                }
+            }
+        });
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcItemSocketUnlockIngredient(0, 4, 50, 0, 2), Is.EqualTo((1, "SkinCrystal", 690)));
+    }
+
     [TestCase(1, 0)]
     [TestCase(8, 0)]
     [TestCase(10, 100)]

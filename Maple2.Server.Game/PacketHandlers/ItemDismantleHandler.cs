@@ -29,6 +29,12 @@ public class ItemDismantleHandler : FieldPacketHandler {
     private const int MIN_ONYX = 700;
     private const int MAX_ONYX = 1000;
 
+    // The item a tag pays out as, from the tag rows of the client's table/itemdata.xml (CItemDataTable::LoadTagItemIds).
+    private static readonly Dictionary<string, int> TagItemIds = new() {
+        ["SkinCrystal"] = 40100027,
+        ["CrystalPiece"] = 40100001,
+    };
+
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required ItemMetadataStorage ItemMetadata { private get; init; }
@@ -303,6 +309,18 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 (ushort) item.Metadata.Limit.Level, item.Rarity, 0, item.Metadata.Property.SkinType);
             if (count > 0 && rewardId is > 0 && rewardAmount is > 0) {
                 yield return (rewardId.Value, rewardAmount.Value * amount, rewardAmount.Value * amount);
+            }
+
+            // Each opened socket gives back calcMeratSkinItemBreakRefundPercent of its unlock ingredient (the
+            // client's ItemBreakCommon adds it to the reward list); the confirm sums it with a reward of the same item.
+            int openSockets = item.Socket?.UnlockSlots ?? 0;
+            if (openSockets > 0) {
+                (_, string unlockTag, int unlockCount) = Lua.CalcItemSocketUnlockIngredient(0, item.Rarity,
+                    (ushort) item.Metadata.Limit.Level, 0, item.Metadata.Property.SkinType);
+                int refund = DismantleRules.SkinSocketRefund(unlockCount, (int) Lua.CalcMeratSkinItemBreakRefundPercent(), openSockets);
+                if (refund > 0 && TagItemIds.TryGetValue(unlockTag, out int refundId)) {
+                    yield return (refundId, refund * amount, refund * amount);
+                }
             }
         } else {
             // TODO: Calculate onyx to reward from item rarity/enchant

@@ -693,6 +693,15 @@ public static class Lua {
                 return (string.Empty, 0, null, null, string.Empty);
         }
     }
+
+    // calcMeratSkinItemBreakRefundPercent: the share of an outfit's socket unlock cost that dismantling it returns
+    // for each opened socket; none in the NA and JP branches.
+    public static float CalcMeratSkinItemBreakRefundPercent() {
+        if (Locale == LocaleNa || Locale == LocaleJp) {
+            return 0;
+        }
+        return 75;
+    }
     #endregion
 
     #region Gathering

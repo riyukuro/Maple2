@@ -59,4 +59,14 @@ public class DismantleRulesTests {
         var rewards = new Dictionary<int, (int Min, int Max)> { [1] = (5, 5), [2] = (0, 0) };
         Assert.That(DismantleRules.MaxRewardStacks(rewards, id => id == 1 ? null : 10), Is.Empty);
     }
+
+    // The outfit socket refund: 75% of the 690 unlock crystals per opened socket, at least 1, none at 0%.
+    [TestCase(690, 75, 1, 517)]
+    [TestCase(690, 75, 3, 1551)]
+    [TestCase(690, 0, 3, 0)] // NA, JP
+    [TestCase(690, 75, 0, 0)] // no socket opened
+    [TestCase(1, 75, 2, 2)] // rounds down to 0, given as 1
+    public void SkinSocketRefund(int unlockCount, int percent, int openSockets, int expected) {
+        Assert.That(DismantleRules.SkinSocketRefund(unlockCount, percent, openSockets), Is.EqualTo(expected));
+    }
 }
