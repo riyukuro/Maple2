@@ -303,6 +303,19 @@ public class GuildManager : IDisposable {
         return true;
     }
 
+    // Guild 57 (CGuildManager::FUN_1413c39e0): the client sets the house level and theme it holds and prints
+    // s_guild_notify_house_upgrade.
+    public bool UpdateHouse(string requestorName, int rank, int theme) {
+        if (Guild == null) {
+            return false;
+        }
+
+        Guild.HouseRank = rank;
+        Guild.HouseTheme = theme;
+        session.Send(GuildPacket.UpgradeHouse(requestorName, rank, theme));
+        return true;
+    }
+
     public bool UpdateNotice(string requestorName, string message) {
         if (Guild == null) {
             return false;

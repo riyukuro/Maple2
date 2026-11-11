@@ -43,6 +43,8 @@ public partial class ChannelService {
                 return Task.FromResult(GuildApplicationAnswered(request.ReceiverIds, request.ApplicationAnswered));
             case GuildRequest.GuildOneofCase.UpgradeNpc:
                 return Task.FromResult(UpgradeGuildNpc(request.ReceiverIds, request.UpgradeNpc));
+            case GuildRequest.GuildOneofCase.UpdateHouse:
+                return Task.FromResult(UpdateGuildHouse(request.ReceiverIds, request.UpdateHouse));
             case GuildRequest.GuildOneofCase.UpgradeBuff:
                 return Task.FromResult(UpgradeGuildBuff(request.ReceiverIds, request.UpgradeBuff));
             case GuildRequest.GuildOneofCase.ApplicationResult:
@@ -191,6 +193,18 @@ public partial class ChannelService {
             }
 
             session.Guild.UpgradeNpc(update.RequestorName, new GuildNpc((GuildNpcType) update.Type, update.Level));
+        }
+
+        return new GuildResponse();
+    }
+
+    private GuildResponse UpdateGuildHouse(IEnumerable<long> receiverIds, GuildRequest.Types.UpdateHouse update) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Guild.UpdateHouse(update.RequestorName, update.Rank, update.Theme);
         }
 
         return new GuildResponse();

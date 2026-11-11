@@ -357,6 +357,72 @@ public class GuildManager : IDisposable {
     }
 
     // Guild 113. The channel has checked the member's meso and takes it after this call succeeds.
+    // Guild 101. The fund and the house are saved before the answer; a failed save undoes them.
+    public GuildError UpgradeHouse(long requestorId, int theme) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        int guildFund;
+        int rank;
+        lock (guildLock) {
+            GuildTable.House? next = null;
+            if (TableMetadata.GuildTable.Houses.TryGetValue(Guild.HouseRank + 1, out IReadOnlyDictionary<int, GuildTable.House>? themes)) {
+                themes.TryGetValue(theme, out next);
+            }
+            GuildError error = GuildRules.CheckUpgradeHouse(requestorId == Guild.LeaderCharacterId, next,
+                GuildProperty().Level, Guild.Funds);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            int oldFunds = Guild.Funds;
+            int oldRank = Guild.HouseRank;
+            int oldTheme = Guild.HouseTheme;
+            Guild.Funds -= next!.UpgradeCost;
+            Guild.HouseRank = oldRank + 1;
+            Guild.HouseTheme = theme;
+            if (!TrySave()) {
+                Guild.Funds = oldFunds;
+                Guild.HouseRank = oldRank;
+                Guild.HouseTheme = oldTheme;
+                return GuildError.s_guild_err_unknown;
+            }
+            guildFund = Guild.Funds;
+            rank = Guild.HouseRank;
+        }
+
+        BroadcastHouse(requestor.Name, guildFund, rank, theme);
+        return GuildError.none;
+    }
+
+    private bool TrySave() {
+        try {
+            using GameStorage.Request db = GameStorage.Context();
+            return db.SaveGuild(Guild);
+        } catch (Exception) {
+            return false;
+        }
+    }
+
+    // No contributor: the members get the new fund (51) without a contribution line, then the house (57).
+    private void BroadcastHouse(string requestorName, int guildFund, int rank, int theme) {
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = 0,
+                GuildExp = Guild.Experience,
+                GuildFund = guildFund,
+            },
+        });
+        Broadcast(new GuildRequest {
+            UpdateHouse = new GuildRequest.Types.UpdateHouse {
+                RequestorName = requestorName,
+                Rank = rank,
+                Theme = theme,
+            },
+        });
+    }
+
     // Guild 114. The fund and the NPC are saved before the answer; a failed save undoes both.
     public GuildError UpgradeNpc(long requestorId, GuildNpcType type) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {

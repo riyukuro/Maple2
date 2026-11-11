@@ -67,6 +67,21 @@ public class GuildApplicationRulesTests {
     private static GuildTable.Buff SkillRow(short requireLevel, int upgradeCost) =>
         new(Id: 90000001, Level: 1, RequireLevel: requireLevel, Cost: 100, UpgradeCost: upgradeCost, Duration: 60);
 
+    private static GuildTable.House HouseRow(int requireLevel, int upgradeCost, int reThemeCost) =>
+        new(MapId: 1, RequireLevel: requireLevel, UpgradeCost: upgradeCost, ReThemeCost: reThemeCost, Facilities: []);
+
+    [Test]
+    public void UpgradeHouse_Rules() {
+        GuildTable.House next = HouseRow(6, 500, 100);
+
+        Assert.That(GuildRules.CheckUpgradeHouse(true, next, 6, 500), Is.EqualTo(GuildError.none));
+        Assert.That(GuildRules.CheckUpgradeHouse(true, null, 6, 500), Is.EqualTo(GuildError.s_guild_err_unknown), "no such level or theme");
+        Assert.That(GuildRules.CheckUpgradeHouse(false, next, 6, 500), Is.EqualTo(GuildError.s_guild_err_no_master));
+        Assert.That(GuildRules.CheckUpgradeHouse(true, next, 5, 500), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_level));
+        Assert.That(GuildRules.CheckUpgradeHouse(true, next, 6, 499), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+        Assert.That(GuildRules.CheckUpgradeHouse(true, HouseRow(6, -1, 0), 6, 499), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+    }
+
     [Test]
     public void UpgradeNpc_Rules() {
         var next = new GuildTable.Npc(GuildNpcType.Equip, Level: 2, RequireGuildLevel: 3, RequireHouseLevel: 2, UpgradeCost: 500);

@@ -147,6 +147,12 @@ message GuildRequest {
     int32 level = 3;
     int64 expiry_time = 4;
   }
+  // Guild 57: the guild house at its new level and theme.
+  message UpdateHouse {
+    string requestor_name = 1;
+    int32 rank = 2;
+    int32 theme = 3;
+  }
   // Guild 59: a guild NPC at its new level.
   message UpgradeNpc {
     string requestor_name = 1;
@@ -181,6 +187,7 @@ message GuildRequest {
     ApplicationResult application_result = 18;
     UpgradeBuff upgrade_buff = 19;
     UpgradeNpc upgrade_npc = 20;
+    UpdateHouse update_house = 21;
   }
 }
 

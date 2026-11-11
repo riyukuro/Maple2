@@ -983,8 +983,31 @@ public class GuildHandler : PacketHandler<GameSession> {
         int index = packet.ReadInt();
     }
 
+    // CGuildManager::FUN_1413ba820: the body is the theme chosen for the next house level, not the level;
+    // the level is always the guild's own plus 1. The World server checks, pays and saves; every member
+    // gets the new fund (51) and the house (57).
     private void HandleUpgradeHouseRank(GameSession session, IByteReader packet) {
-        int rank = packet.ReadInt();
+        int theme = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                UpgradeHouse = new GuildRequest.Types.UpgradeHouse {
+                    GuildId = session.Guild.Id,
+                    Theme = theme,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+            }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to upgrade guild house");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUpgradeHouseTheme(GameSession session, IByteReader packet) {
