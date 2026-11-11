@@ -68,4 +68,14 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.ClearsPartyDungeon(7, 0), Is.False);
         Assert.That(FieldEntryRules.ClearsPartyDungeon(0, 0), Is.False);
     }
+
+    // Guild 100: two guilds that open the same event do not meet in one room.
+    [Test]
+    public void GuildEventMap_HasOneRoomPerGuild() {
+        Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.GuildEvent, 5, 0), Is.True);
+        Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.GuildEvent, 0, 0), Is.False, "no owner");
+        Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.GuildEvent, 5, 9), Is.False, "a named room");
+        Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.solo, 5, 0), Is.False);
+        Assert.That(FieldEntryRules.HasOwnerRoom(InstanceType.ugcMap, 5, 0), Is.False, "homes have their own path");
+    }
 }

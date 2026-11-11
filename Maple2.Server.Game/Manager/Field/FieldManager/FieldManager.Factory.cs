@@ -8,6 +8,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Util;
 using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
@@ -39,6 +40,7 @@ public partial class FieldManager {
 
         private readonly ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>> fields = []; // Key MapId, RoomId
         private readonly ConcurrentDictionary<long, HomeFieldManager> homes = []; // Key: OwnerId
+        private readonly ConcurrentDictionary<(int MapId, long OwnerId), int> ownerRooms = []; // Value: RoomId
         private readonly ConcurrentDictionary<int, DungeonFieldManager> dungeons = []; // Key: RoomId
         private readonly ConcurrentDictionary<int, DungeonFieldManager> subDungeonFields = []; // Key: RoomId. This is for rooms created by the dungeon lobby.
 
@@ -284,6 +286,11 @@ public partial class FieldManager {
                     foreach ((int roomId, FieldManager fieldManager) in fields[mapId]) {
                         if (fieldManager.Disposed) {
                             bool success = fields[mapId].TryRemove(roomId, out _);
+                            foreach (((int MapId, long OwnerId) key, int ownerRoomId) in ownerRooms) {
+                                if (key.MapId == mapId && ownerRoomId == roomId) {
+                                    ownerRooms.TryRemove(key, out _);
+                                }
+                            }
                             logger.Debug("Field {MapId}, RoomId {RoomId}, removed: {Success}", mapId, roomId, success);
                         }
                     }
@@ -428,6 +435,9 @@ public partial class FieldManager {
                         }
                         break;
                     default:
+                        if (FieldEntryRules.HasOwnerRoom(metadata.Type, ownerId, roomId)) {
+                            return GetOwnerRoom();
+                        }
                         if (ownerId == 0 && roomId == 0) {
                             return Create(mapId);
                         }
@@ -448,6 +458,22 @@ public partial class FieldManager {
 
             return mapFields.TryGetValue(roomId, out FieldManager? field) ? field :
                 Create(mapId, ownerId: ownerId, roomId: roomId);
+
+            // One room of the map per owner (a guild): the owner's room while it runs, else a new one.
+            // Called under the map's lock.
+            FieldManager? GetOwnerRoom() {
+                if (ownerRooms.TryGetValue((mapId, ownerId), out int ownerRoomId)
+                    && fields.TryGetValue(mapId, out ConcurrentDictionary<int, FieldManager>? ownerFields)
+                    && ownerFields.TryGetValue(ownerRoomId, out FieldManager? ownerField) && !ownerField.Disposed) {
+                    return ownerField;
+                }
+
+                FieldManager? created = Create(mapId);
+                if (created != null) {
+                    ownerRooms[(mapId, ownerId)] = created.RoomId;
+                }
+                return created;
+            }
 
             FieldManager? FindRoom() {
                 if (fields.TryGetValue(mapId, out ConcurrentDictionary<int, FieldManager>? roomFields) && roomFields.TryGetValue(roomId, out FieldManager? field)) {
