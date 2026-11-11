@@ -19,11 +19,14 @@ public class HomeActionHandler : FieldPacketHandler {
     private enum Command : byte {
         Smite = 1,
         Kick = 2,
+        PopupMenu3 = 3,
         Survey = 5,
         ChangePortalSettings = 6,
         UpdateBallCoord = 7,
+        Quiz = 10,
         ChangeNoticeSettings = 12,
         SendConfigurableSettings = 13,
+        PvpControl = 14,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -44,7 +47,45 @@ public class HomeActionHandler : FieldPacketHandler {
             case Command.SendConfigurableSettings:
                 HandleConfigurableSettings(session, packet);
                 break;
+            case Command.Smite:
+            case Command.Kick:
+            case Command.PopupMenu3:
+                // Not handled: the character name picked in the player popup menu.
+                Logger.Debug("HomeAction {Command} from {CharacterId}: {Name}", command, session.CharacterId, packet.ReadUnicodeString());
+                break;
+            case Command.Quiz:
+                HandleQuiz(session, packet);
+                break;
+            case Command.PvpControl:
+                // Not handled: a constant 1 and the six values of the PvP control dialog.
+                Logger.Debug("HomeAction {Command} from {CharacterId}: {Type} {A} {B} {C} {D} {E} {F}", command, session.CharacterId,
+                    packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte());
+                break;
         }
+    }
+
+    // Not handled: the OX quiz event. Reads what the client writes for each of its sub-types.
+    private void HandleQuiz(GameSession session, IByteReader packet) {
+        byte type = packet.ReadByte();
+        switch (type) {
+            case 0: // long quiz id, int, int
+                packet.ReadLong();
+                packet.ReadInt();
+                packet.ReadInt();
+                break;
+            case 5: // int, int
+                packet.ReadInt();
+                packet.ReadInt();
+                break;
+            case 10: // the host's question
+                packet.ReadUnicodeString();
+                break;
+            case 11: // the answer: 1 = O, 0 = X
+                packet.ReadByte();
+                break;
+            // 1, 2, 3, 7, 8, 9, 16, 17, 18: no fields
+        }
+        Logger.Debug("HomeAction Quiz {Type} from {CharacterId}", type, session.CharacterId);
     }
 
     private static void HandleSurvey(GameSession session, IByteReader packet) {
