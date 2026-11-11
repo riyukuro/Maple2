@@ -83,6 +83,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public int GlobalFactorSent;
     public MailManager Mail { get; set; } = null!;
     public GuildManager Guild { get; set; } = null!;
+    public SeatReleaseEcho SeatRelease { get; } = new();
     public BuddyManager Buddy { get; set; } = null!;
     public ItemManager Item { get; set; } = null!;
     public HousingManager Housing { get; set; } = null!;

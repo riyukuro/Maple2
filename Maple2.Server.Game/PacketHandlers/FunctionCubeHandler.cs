@@ -112,6 +112,17 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 }
 
                 bool isInDefaultState = fieldInteract.InteractCube.State == fieldInteract.InteractCube.Metadata.DefaultState;
+                long tick = Environment.TickCount64;
+                if (fieldInteract.Value.ControlType == InteractCubeControlType.Switch) {
+                    // A switch has no sitting state on the client, so no second request follows.
+                } else if (isInDefaultState) {
+                    // The client's second request for a seat it just left is not a new sit-down.
+                    if (session.SeatRelease.Swallow(interactId, tick)) {
+                        return;
+                    }
+                } else if (fieldInteract.InteractCube.InteractingCharacterId == session.CharacterId) {
+                    session.SeatRelease.Released(interactId, tick);
+                }
                 fieldInteract.InteractCube.State = isInDefaultState ? InteractCubeState.InUse : fieldInteract.InteractCube.Metadata.DefaultState;
                 fieldInteract.InteractCube.InteractingCharacterId = isInDefaultState ? session.CharacterId : 0;
                 session.Field?.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldInteract.InteractCube));
