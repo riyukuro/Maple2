@@ -13,6 +13,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
@@ -66,12 +67,9 @@ public class UgcHandler : FieldPacketHandler {
     }
 
     private void HandleUpload(GameSession session, IByteReader packet) {
+        // CUgcManager::SendUGCMode1: the item uid of the upload control, the upload head, then the data of the kind.
         packet.ReadLong();
-        var info = packet.Read<UgcInfo>();
-        packet.ReadLong();
-        packet.ReadInt();
-        packet.ReadShort();
-        packet.ReadShort(); // -256
+        UgcUploadHeader info = UgcUploadHeader.Read(packet);
 
         switch (info.Type) {
             case UgcType.Item:
@@ -326,14 +324,9 @@ public class UgcHandler : FieldPacketHandler {
     }
 
     private void HandleConfirmation(GameSession session, IByteReader packet) {
-        var info = packet.Read<UgcInfo>();
-        packet.ReadUnicodeString(); // object name
-        packet.ReadUnicodeString(); // name
-        long ugcUid = packet.ReadLong();
-        string ugcGuid = packet.ReadUnicodeString();
-        packet.ReadByte(); // upload type
-        packet.ReadByte(); // upload state
-        packet.ReadUnicodeString(); // path (CUgcUploadProxy::Write)
+        UgcUploadHeader info = UgcUploadHeader.Read(packet);
+        long ugcUid = info.UgcUid;
+        string ugcGuid = info.UgcName;
 
         if (info.AccountId != session.AccountId || info.CharacterId != session.CharacterId || ugcUid == 0) {
             Logger.Warning("Invalid UGC confirmation {AccountId} {CharacterId} {UgcUid}", info.AccountId, info.CharacterId, ugcUid);
