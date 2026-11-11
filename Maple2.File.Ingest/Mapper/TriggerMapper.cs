@@ -243,6 +243,11 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
                 newAttribute.Value = xmlAttribute.Value;
                 node.Attributes.Append(newAttribute);
             }
+
+            // The skip target is a state name: fix it like the state and transition names, or it is never found.
+            if (node.Attributes["name"]?.Value is "set_skip" or "set_scene_skip" && node.Attributes["state"] is { } skipState) {
+                skipState.Value = FixClassName(skipState.Value);
+            }
         }
 
         foreach (XmlNode node in xml.SelectNodes("//condition")!) {
