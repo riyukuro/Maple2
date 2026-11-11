@@ -74,11 +74,8 @@ public class ItemInventoryHandler : FieldPacketHandler {
         // The client sets this from the confirm box it shows only when the tab holds stackable items
         // (UIInventoryDialog::OnSortConfirm), so it asks to merge stacks; it does not ask to remove expired items.
         bool mergeStacks = packet.ReadBool();
-        if (mergeStacks) {
-            Logger.Debug("Inventory sort with stack merge from {CharacterId}: merge not implemented", session.CharacterId);
-        }
 
-        session.Item.Inventory.Sort(type);
+        session.Item.Inventory.Sort(type, mergeStacks: mergeStacks);
     }
 
     private void HandleExpand(GameSession session, IByteReader packet) {

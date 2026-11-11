@@ -527,7 +527,7 @@ public class InventoryManager {
         return true;
     }
 
-    public void Sort(InventoryType type, bool removeExpired = false) {
+    public void Sort(InventoryType type, bool removeExpired = false, bool mergeStacks = false) {
         lock (session.Item) {
             if (!tabs.TryGetValue(type, out ItemCollection? items)) {
                 session.Send(ItemInventoryPacket.Error(s_item_err_not_active_tab));
@@ -540,6 +540,14 @@ public class InventoryManager {
                     if (items.Remove(item.Uid, out Item? removed)) {
                         Discard(removed);
                     }
+                }
+            }
+
+            if (mergeStacks) {
+                // The changed amounts go out with the reloaded tab below and are saved with the inventory.
+                // Emptied stacks are deleted at that save; they were merged, not destroyed, so no item_destroy.
+                foreach (Item emptied in items.MergeStacks()) {
+                    delete.Add(emptied);
                 }
             }
 

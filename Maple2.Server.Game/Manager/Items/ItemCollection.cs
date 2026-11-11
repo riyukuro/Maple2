@@ -217,6 +217,32 @@ public class ItemCollection : IEnumerable<Item> {
         }
     }
 
+    /// <summary>
+    /// Moves the amounts of stackable items onto earlier stacks of the same item (same rules as <see cref="Stack"/>).
+    /// </summary>
+    /// <returns>The items emptied by the merge; they are already removed from this collection.</returns>
+    public IList<Item> MergeStacks() {
+        var emptied = new List<Item>();
+        mutex.EnterWriteLock();
+        try {
+            for (int i = 0; i < items.Length; i++) {
+                if (items[i] is not { } stackTo) continue;
+                for (int j = i + 1; j < items.Length && stackTo.Amount < stackTo.Metadata.Property.SlotMax; j++) {
+                    if (items[j] is not { } stackFrom || StackItem(stackTo, stackFrom) == 0 || stackFrom.Amount > 0) {
+                        continue;
+                    }
+                    items[j] = null;
+                    uidToSlot.Remove(stackFrom.Uid);
+                    Count--;
+                    emptied.Add(stackFrom);
+                }
+            }
+        } finally {
+            mutex.ExitWriteLock();
+        }
+        return emptied;
+    }
+
     public void Sort() {
         mutex.EnterWriteLock();
         try {
