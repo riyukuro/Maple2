@@ -146,8 +146,12 @@ public class PartyLookup : IDisposable {
             return pull.Result;
         }
         foreach (DungeonMatchGroup group in failed) {
-            if (TryGet(group.PartyId, out _)) {
-                DungeonMatch.Restore(group);
+            if (TryGet(group.PartyId, out PartyManager? stayed)) {
+                // The party searches on its own again; a restore that finds it full or stopped is completed (rv44 MINOR 6).
+                DungeonMatchResult restored = DungeonMatch.Restore(group);
+                if (restored.Outcome != DungeonMatchOutcome.Searching) {
+                    CompleteDungeonMatch(stayed, restored);
+                }
             }
         }
         return DungeonMatch.Restore(pull.Before!, moved);

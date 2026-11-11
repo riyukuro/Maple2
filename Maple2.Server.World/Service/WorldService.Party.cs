@@ -301,18 +301,17 @@ public partial class WorldService {
                     partyLookup.DungeonMatch.EndMatching(joined.Value.PartyId);
                 } else {
                     PartyError error = manager != null ? partyLookup.MoveMembers(manager, target) : JoinSolo(target, info!);
-                    if (error != PartyError.none) {
-                        // The group is put back as it was, still searching, and no room is made (rv42 MINOR 5).
-                        partyLookup.CompleteDungeonMatch(target, partyLookup.DungeonMatch.Restore(before!));
-                        return new PartyResponse { Error = (int) error };
+                    if (error == PartyError.none) {
+                        if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
+                            partyLookup.CompleteDungeonMatch(target, joined.Value);
+                        } else {
+                            PartyLookup.BroadcastDungeonMatch(target, kind, true);
+                        }
+                        return new PartyResponse { PartyId = target.Party.Id };
                     }
-
-                    if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
-                        partyLookup.CompleteDungeonMatch(target, joined.Value);
-                    } else {
-                        PartyLookup.BroadcastDungeonMatch(target, kind, true);
-                    }
-                    return new PartyResponse { PartyId = target.Party.Id };
+                    // The group is put back as it was, still searching, and no room is made (rv42 MINOR 5); the
+                    // searcher then starts a search of their own below (rv44 MINOR 6).
+                    partyLookup.CompleteDungeonMatch(target, partyLookup.DungeonMatch.Restore(before!));
                 }
             }
 
