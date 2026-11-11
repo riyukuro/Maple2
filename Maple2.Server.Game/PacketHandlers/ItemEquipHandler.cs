@@ -32,10 +32,11 @@ public class ItemEquipHandler : FieldPacketHandler {
     private void HandleEquip(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         var equipSlot = packet.Read<EquipSlot>();
-        bool isSkin = packet.ReadBool();
+        // The tab the item goes to: 0 gear, 1 outfit, 2 the second outfit tab (Unk_Inventory::RequestEquipItem).
+        byte kind = packet.ReadByte();
 
         // Disconnect if this fails to avoid bad state.
-        if (session.Item.Equips.Equip(itemUid, equipSlot, isSkin)) {
+        if (session.Item.Equips.Equip(itemUid, equipSlot, kind)) {
             session.Stats.Refresh();
         }
     }
@@ -50,7 +51,7 @@ public class ItemEquipHandler : FieldPacketHandler {
         }
     }
 
-    // This is probably for Skin2
+    // The client sends this when a worn item is dragged onto another equip slot (EquipSlot::vfunc_18).
     private void HandleEquip2(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         var equipSlot = packet.Read<EquipSlot>();

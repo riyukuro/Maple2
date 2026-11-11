@@ -53,10 +53,10 @@ public static class PlayerInfoPacket {
             buffer.WriteBool(SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
             buffer.WriteLong(character.SkinTabStart);
             buffer.WriteLong(character.SkinTabEnd);
-            // Outfit2
-            buffer.WriteByte(); // Skin Count
-            for (int i = 0; i < 0; i++) {
-                // buffer.WriteEquip();
+            // The second outfit tab's items.
+            buffer.WriteByte((byte) session.Item.Equips.Outfit2.Count);
+            foreach (Item item in session.Item.Equips.Outfit2.Values) {
+                buffer.WriteEquip(item);
             }
 
             pWriter.WriteInt(buffer.Length);

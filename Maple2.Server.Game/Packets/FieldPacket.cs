@@ -63,8 +63,11 @@ public static class FieldPacket {
             buffer.WriteBool(true);
             buffer.WriteLong(player.Character.SkinTabStart);
             buffer.WriteLong(player.Character.SkinTabEnd);
-            // Outfit2
-            buffer.WriteByte();
+            // The second outfit tab's items.
+            buffer.WriteByte((byte) session.Item.Equips.Outfit2.Count);
+            foreach (Item item in session.Item.Equips.Outfit2.Values) {
+                buffer.WriteEquip(item);
+            }
 
             pWriter.WriteDeflated(buffer.Buffer, 0, buffer.Length);
         }

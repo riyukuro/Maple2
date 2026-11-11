@@ -6,6 +6,7 @@ using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager.Items;
 
@@ -14,6 +15,8 @@ public class EquipManager {
 
     public readonly ConcurrentDictionary<EquipSlot, Item> Gear;
     public readonly ConcurrentDictionary<EquipSlot, Item> Outfit;
+    // The second outfit tab (the client's equip kind 2).
+    public readonly ConcurrentDictionary<EquipSlot, Item> Outfit2;
     public readonly ConcurrentDictionary<BadgeType, Item> Badge;
 
     private readonly List<Item> delete = [];
@@ -23,10 +26,11 @@ public class EquipManager {
 
         Gear = new ConcurrentDictionary<EquipSlot, Item>();
         Outfit = new ConcurrentDictionary<EquipSlot, Item>();
+        Outfit2 = new ConcurrentDictionary<EquipSlot, Item>();
         Badge = new ConcurrentDictionary<BadgeType, Item>();
 
         // Load from DB
-        foreach ((ItemGroup tab, List<Item> items) in db.GetItemGroups(session.CharacterId, ItemGroup.Gear, ItemGroup.Outfit, ItemGroup.Badge)) {
+        foreach ((ItemGroup tab, List<Item> items) in db.GetItemGroups(session.CharacterId, ItemGroup.Gear, ItemGroup.Outfit, ItemGroup.Outfit2, ItemGroup.Badge)) {
             foreach (Item item in items) {
                 EquipSlot equipSlot = item.EquipSlot();
 
@@ -45,6 +49,13 @@ public class EquipManager {
                         }
                         Outfit[equipSlot] = item;
                         break;
+                    case ItemGroup.Outfit2:
+                        if (equipSlot is EquipSlot.Unknown) {
+                            delete.Add(item);
+                            continue;
+                        }
+                        Outfit2[equipSlot] = item;
+                        break;
                     case ItemGroup.Badge:
                         if (item.Badge != null) {
                             Badge[item.Badge.Type] = item;
@@ -58,6 +69,7 @@ public class EquipManager {
     public Item? Get(long itemUid) {
         return Gear.Values.FirstOrDefault(item => item.Uid == itemUid)
                ?? Outfit.Values.FirstOrDefault(item => item.Uid == itemUid)
+               ?? Outfit2.Values.FirstOrDefault(item => item.Uid == itemUid)
                ?? Badge.Values.FirstOrDefault(item => item.Uid == itemUid);
     }
 
@@ -79,9 +91,26 @@ public class EquipManager {
     /// <param name="isSkin">Whether the item is a skin or not.</param>
     /// <returns>The items if any that were unequipped to equip this item.</returns>
     public bool Equip(long itemUid, EquipSlot slot, bool isSkin) {
+        return Equip(itemUid, slot, isSkin ? EquipKind.Outfit : EquipKind.Gear);
+    }
+
+    /// <summary>
+    /// Equips an item to a slot of the tab the client names: 0 gear, 1 outfit, 2 the second outfit tab.
+    /// </summary>
+    public bool Equip(long itemUid, EquipSlot slot, byte kind) {
         if (!Enum.IsDefined<EquipSlot>(slot)) {
             return false;
         }
+        if (kind == EquipKind.Outfit2) {
+            Character character = session.Player.Value.Character;
+            bool tabActive = SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            if (!EquipKind.CanUseOutfit2(slot, tabActive)) {
+                return false;
+            }
+        } else if (kind > EquipKind.Outfit2) {
+            return false;
+        }
+        bool isSkin = kind != EquipKind.Gear;
 
         lock (session.Item) {
             // Check that item is valid and can be equipped.
@@ -103,7 +132,7 @@ public class EquipManager {
                 return false;
             }
 
-            ConcurrentDictionary<EquipSlot, Item> equips = isSkin ? Outfit : Gear;
+            ConcurrentDictionary<EquipSlot, Item> equips = Tab(kind);
             if (item.Metadata.SlotNames.Length > 1) { // Two-Handed Weapon, Overall Armor
                 int requiredFreeSlots = 0;
                 foreach (EquipSlot removeSlot in item.Metadata.SlotNames) {
@@ -124,12 +153,12 @@ public class EquipManager {
                 return false;
             }
 
-            if (!UnequipInternal(slot, isSkin, item.Slot)) {
+            if (!UnequipInternal(slot, kind, item.Slot)) {
                 throw new InvalidOperationException("Failed to unequip item");
             }
             if (item.Metadata.SlotNames.Length > 1) { // Two-Handed Weapon, Overall Armor
                 foreach (EquipSlot unequipSlot in item.Metadata.SlotNames) {
-                    if (!UnequipInternal(unequipSlot, isSkin)) {
+                    if (!UnequipInternal(unequipSlot, kind)) {
                         throw new InvalidOperationException("Failed to unequip item");
                     }
                 }
@@ -139,10 +168,15 @@ public class EquipManager {
                 session.Item.Bind(item);
             }
 
-            item.Group = isSkin ? ItemGroup.Outfit : ItemGroup.Gear;
+            item.Group = kind switch {
+                EquipKind.Outfit2 => ItemGroup.Outfit2,
+                EquipKind.Outfit => ItemGroup.Outfit,
+                _ => ItemGroup.Gear,
+            };
             item.Slot = (short) slot;
             equips[slot] = item;
-            session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, item, 0));
+            // The client puts an item of type 2 into the second outfit tab; any other item goes by its own kind.
+            session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, item, kind == EquipKind.Outfit2 ? EquipKind.Outfit2 : EquipKind.Gear));
             if (item.Template != null) {
                 session.ConditionUpdate(ConditionType.change_ugc_equip);
             }
@@ -161,7 +195,7 @@ public class EquipManager {
             // Unequip from Gear.
             foreach ((EquipSlot slot, Item item) in Gear) {
                 if (itemUid == item.Uid) {
-                    if (UnequipInternal(slot, false)) {
+                    if (UnequipInternal(slot, EquipKind.Gear)) {
                         session.Stats.Refresh();
                         return true;
                     }
@@ -171,7 +205,17 @@ public class EquipManager {
             // Unequip from Outfit.
             foreach ((EquipSlot slot, Item item) in Outfit) {
                 if (itemUid == item.Uid) {
-                    if (UnequipInternal(slot, true)) {
+                    if (UnequipInternal(slot, EquipKind.Outfit)) {
+                        session.Stats.Refresh();
+                        return true;
+                    }
+                }
+            }
+
+            // Unequip from the second outfit tab.
+            foreach ((EquipSlot slot, Item item) in Outfit2) {
+                if (itemUid == item.Uid) {
+                    if (UnequipInternal(slot, EquipKind.Outfit2)) {
                         session.Stats.Refresh();
                         return true;
                     }
@@ -294,8 +338,17 @@ public class EquipManager {
         }
     }
 
-    private bool UnequipInternal(EquipSlot slot, bool isSkin, short inventorySlot = -1) {
-        ConcurrentDictionary<EquipSlot, Item> equips = isSkin ? Outfit : Gear;
+    private ConcurrentDictionary<EquipSlot, Item> Tab(byte kind) {
+        return kind switch {
+            EquipKind.Outfit2 => Outfit2,
+            EquipKind.Outfit => Outfit,
+            _ => Gear,
+        };
+    }
+
+    private bool UnequipInternal(EquipSlot slot, byte kind, short inventorySlot = -1) {
+        bool isSkin = kind != EquipKind.Gear;
+        ConcurrentDictionary<EquipSlot, Item> equips = Tab(kind);
         if (!equips.TryRemove(slot, out Item? unequipItem)) {
             return true; // Nothing to unequip
         }
@@ -363,6 +416,7 @@ public class EquipManager {
             db.SaveItems(0, delete.ToArray());
             db.SaveItems(session.CharacterId, Gear.Values.ToArray());
             db.SaveItems(session.CharacterId, Outfit.Values.ToArray());
+            db.SaveItems(session.CharacterId, Outfit2.Values.ToArray());
             db.SaveItems(session.CharacterId, Badge.Values.ToArray());
         }
     }

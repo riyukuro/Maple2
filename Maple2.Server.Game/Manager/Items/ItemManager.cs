@@ -47,7 +47,8 @@ public class ItemManager {
     /// <returns>Item if it exists</returns>
     public Item? GetOutfit(long uid) {
         Item? item = Inventory.Get(uid, InventoryType.Outfit);
-        return item ?? Equips.Outfit.Values.FirstOrDefault(outfit => outfit.Uid == uid);
+        return item ?? Equips.Outfit.Values.FirstOrDefault(outfit => outfit.Uid == uid)
+            ?? Equips.Outfit2.Values.FirstOrDefault(outfit => outfit.Uid == uid);
     }
 
     public void Bind(Item item) {
