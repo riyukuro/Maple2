@@ -18,6 +18,12 @@ public static class CharacterCreateRules {
         return !IsBlankName(name) && !isBanned(name);
     }
 
+    // The equips of a create: no slot twice, and hair, face and clothes are there.
+    public static bool IsCreateOutfit(IReadOnlyCollection<EquipSlot> slots) {
+        return slots.Distinct().Count() == slots.Count
+               && slots.Contains(EquipSlot.HR) && slots.Contains(EquipSlot.FA) && slots.Contains(EquipSlot.CL);
+    }
+
     // An account holds at most its own slot count, and never more than the server's.
     public static bool HasFreeSlot(int owned, int accountMax, int serverMax) {
         return owned >= 0 && owned < Math.Min(accountMax, serverMax);

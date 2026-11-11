@@ -27,6 +27,23 @@ public class CharacterCreateRulesTests {
         Assert.That(CharacterCreateRules.HasFreeSlot(owned, accountMax, serverMax), Is.EqualTo(expected));
     }
 
+    // CharacterManagement 0x0009 sub-type 1 equips: u8 count, then per equip i32 item id, u8 slot, its look.
+    [TestCase(new byte[] { 1, 2, 8, 9, 11 }, true)]
+    [TestCase(new byte[] { 1, 2, 8 }, true)]
+    [TestCase(new byte[] { }, false)]
+    [TestCase(new byte[] { 2, 8, 9, 11 }, false)] // no hair
+    [TestCase(new byte[] { 1, 2, 9, 11 }, false)] // no clothes
+    [TestCase(new byte[] { 1, 8, 9 }, false)] // no face
+    [TestCase(new byte[] { 1, 1, 2, 8 }, false)] // hair twice
+    public void CreateOutfitSlots(byte[] wireSlots, bool expected) {
+        var slots = new System.Collections.Generic.List<EquipSlot>();
+        var packet = new ByteReader(wireSlots, 0);
+        while (packet.Available > 0) {
+            slots.Add((EquipSlot) packet.ReadByte());
+        }
+        Assert.That(CharacterCreateRules.IsCreateOutfit(slots), Is.EqualTo(expected));
+    }
+
     // RequestItemUse with the name change item: after the item uid, the new name.
     [Test]
     public void NameChangeRefusesBlankAndBannedNames() {

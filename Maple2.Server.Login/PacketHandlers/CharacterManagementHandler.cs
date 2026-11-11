@@ -210,6 +210,12 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
         packet.Skip(4); // Unknown
 
+        // Each item is a default item of its slot; the set must also be a whole look, each slot once.
+        if (!CharacterCreateRules.IsCreateOutfit(outfits.Select(outfit => (EquipSlot) outfit.Slot).ToList())) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_invalid_def_item));
+            return;
+        }
+
         var character = new Character {
             AccountId = session.AccountId,
             Gender = gender,
