@@ -20,4 +20,12 @@ public static class DungeonRoomRules {
         }
         return CreateVerdict.Ok;
     }
+
+    // limitDayOfWeeks: the days a room can be entered, none for every day. The client reads the list as day
+    // numbers with Sunday 1 (DungeonRoom ReadDayBits, commonfiles/dungeonroom.cpp:408) and tests the bit of
+    // the server time's day, CMsTime::GetDayOfWeek = tm_wday + 1 (wireframemanager.cpp:126); the ingest maps
+    // those numbers to the same days. Its refusal is DungeonRecordManagerCli::OnError 0xc,
+    // s_room_dungeon_canEnterDayOfWeeks (dungeonrecordcli.cpp:371).
+    public static bool OpenOnDay(IReadOnlyCollection<DayOfWeek> days, DayOfWeek today) =>
+        days.Count == 0 || days.Contains(today);
 }

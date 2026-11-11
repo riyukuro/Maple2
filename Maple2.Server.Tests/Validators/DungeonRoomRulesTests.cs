@@ -1,3 +1,4 @@
+using System;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -13,6 +14,34 @@ public class DungeonRoomRulesTests {
     [TestCase(true, 2, 4, 10, false, DungeonRoomRules.CreateVerdict.Ok)]
     public void Create(bool withParty, int partySize, int min, int max, bool gm, DungeonRoomRules.CreateVerdict expected) {
         Assert.That(DungeonRoomRules.CanCreate(withParty, partySize, min, max, gm), Is.EqualTo(expected));
+    }
+
+    // The guild raid rows of the played client's table: limitDayOfWeeks="1,2,3,4,6,7" (no Thursday).
+    private static readonly DayOfWeek[] GuildRaidDays = [
+        DayOfWeek.Sunday, DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Friday, DayOfWeek.Saturday,
+    ];
+
+    [TestCase(DayOfWeek.Sunday, true)]
+    [TestCase(DayOfWeek.Wednesday, true)]
+    [TestCase(DayOfWeek.Thursday, false)]
+    [TestCase(DayOfWeek.Saturday, true)]
+    public void OpenOnDay_TheListedDays(DayOfWeek today, bool open) {
+        Assert.That(DungeonRoomRules.OpenOnDay(GuildRaidDays, today), Is.EqualTo(open));
+    }
+
+    [Test]
+    public void OpenOnDay_NoListIsEveryDay() {
+        foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>()) {
+            Assert.That(DungeonRoomRules.OpenOnDay([], day), Is.True);
+        }
+    }
+
+    // The ingest's day numbers are the client's: Sunday 1 to Saturday 7 (CMsTime::GetDayOfWeek = tm_wday + 1).
+    [Test]
+    public void ParserDayNumbersAreTheClients() {
+        Assert.That((int) Maple2.File.Parser.Enum.DayOfWeek.sun, Is.EqualTo(1));
+        Assert.That((int) Maple2.File.Parser.Enum.DayOfWeek.thu, Is.EqualTo(5));
+        Assert.That((int) Maple2.File.Parser.Enum.DayOfWeek.sat, Is.EqualTo(7));
     }
 
     [Test]

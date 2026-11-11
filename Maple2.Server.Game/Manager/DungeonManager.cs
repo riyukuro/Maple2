@@ -303,6 +303,12 @@ public class DungeonManager {
             return;
         }
 
+        // The server's local day, as the cooldowns use it.
+        if (!DungeonRoomRules.OpenOnDay(metadata.Limit.DayOfWeeks, DateTime.Now.DayOfWeek)) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_canEnterDayOfWeeks));
+            return;
+        }
+
         if (withParty) {
             if (Party == null) {
                 session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_invalidPartyOID));
