@@ -1,10 +1,12 @@
 ﻿using System.Net;
+using Maple2.Tools;
 
 namespace Maple2.Server.Core.Constants;
 
 public static class Target {
     public const string SERVER_NAME = "Paperwood";
-    public const string LOCALE = "NA";
+    // The same LOCALE setting the ingest filtered the data by; an unknown value stops the server.
+    public static readonly string LOCALE = Locale.Read();
 
     public static readonly IPAddress LoginIp = IPAddress.Loopback;
     public static readonly ushort LoginPort = 20001;

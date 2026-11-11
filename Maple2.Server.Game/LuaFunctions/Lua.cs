@@ -425,10 +425,8 @@ public static class Lua {
             }
             result2 = local2;
         } else if (limitBreakLevel < 80) {
-            if (Target.LOCALE != LocaleKr) {
-                if (Target.LOCALE == LocaleCn) {
-                    // Empty block
-                }
+            // calcItemLevel: KR and CN take the per-grade coefficients, other regions the grade >= 4 split.
+            if (Target.LOCALE == LocaleKr || Target.LOCALE == LocaleCn) {
                 if (grade == 4) {
                     if (gearScore < 70) {
                         result = GetAdditionalItemLevelCoefficientR5(enchantLevel);
@@ -444,6 +442,12 @@ public static class Lua {
                     result = GetAdditionalItemLevelCoefficient(enchantLevel);
                     local2 = local3 * result;
                 }
+            } else if (grade >= 4) {
+                result = GetAdditionalItemLevelCoefficientNa(enchantLevel);
+                local2 = local3 * result;
+            } else {
+                result = GetAdditionalItemLevelCoefficient(enchantLevel);
+                local2 = local3 * result;
             }
             result2 = local2;
         } else if (grade >= 4) {
@@ -1943,14 +1947,13 @@ public static class Lua {
         float addNddEpicGrade;
 
         if (levelLimit < 60) {
-            if (Target.LOCALE != LocaleKr) {
-                if (Target.LOCALE == LocaleCn) {
-                    addNddGrade = GetWeaponGradeAddNdd(grade);
-                    addNddEpicGrade = GetWeaponGradeAddNdd(4);
-                } else {
-                    addNddGrade = GetWeaponGradeAddNdd50Na(grade);
-                    addNddEpicGrade = GetWeaponGradeAddNdd50Na(4);
-                }
+            // constant_value_addndd: KR and CN use the base table, other regions the 50 NA table.
+            if (Target.LOCALE == LocaleKr || Target.LOCALE == LocaleCn) {
+                addNddGrade = GetWeaponGradeAddNdd(grade);
+                addNddEpicGrade = GetWeaponGradeAddNdd(4);
+            } else {
+                addNddGrade = GetWeaponGradeAddNdd50Na(grade);
+                addNddEpicGrade = GetWeaponGradeAddNdd50Na(4);
             }
         } else if (levelLimit < 70) {
             if (Target.LOCALE == LocaleKr) {

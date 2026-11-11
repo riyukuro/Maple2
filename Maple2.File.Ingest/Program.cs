@@ -46,8 +46,11 @@ if (languageEnv == null) {
 }
 language = languageEnv.ToLower();
 
-// The feature.xml / feature_setting.xml column the data is filtered by. KR is the client's default region.
-string locale = (Environment.GetEnvironmentVariable("LOCALE") ?? "KR").ToUpperInvariant();
+// The feature.xml / feature_setting.xml column the data is filtered by (Maple2.Tools.Locale, shared with the server).
+if (!Locale.TryRead(out string locale, out string localeError)) {
+    Console.Error.WriteLine(localeError);
+    Environment.Exit(1);
+}
 
 string? ms2Root = Environment.GetEnvironmentVariable("MS2_DATA_FOLDER");
 if (ms2Root == null) {

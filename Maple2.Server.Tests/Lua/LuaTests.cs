@@ -7,6 +7,12 @@ namespace Maple2.Server.Tests.Lua;
 public class LuaTests {
     private readonly Maple2.Lua.Lua maple2Lua = new Maple2.Lua.Lua(Target.LOCALE);
 
+    // The expected values below are the NA script's. Under another LOCALE the script takes its own branch
+    // (KR: Codex 1370, Rook Star 70, fire prism star WapMax 36222), and the port is checked against it in the same test.
+    private static void NaValues() {
+        Assume.That(Target.LOCALE, Is.EqualTo("NA"), "expected values are the NA script's");
+    }
+
     [OneTimeTearDown]
     public void OneTimeTearDown() {
         maple2Lua.Dispose();
@@ -14,6 +20,7 @@ public class LuaTests {
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringThrowingStar() {
+        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -52,6 +59,7 @@ public class LuaTests {
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringThrowingStar_Enchanted() {
+        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -90,6 +98,7 @@ public class LuaTests {
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringKnife() {
+        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -128,6 +137,7 @@ public class LuaTests {
 
     [Test]
     public void TestCalcItemLevel_RookStar() {
+        NaValues();
         // Arrange
         const int gearScore = 7;
         const int rarity = 1;
@@ -166,6 +176,7 @@ public class LuaTests {
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringCodex() {
+        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -184,6 +195,7 @@ public class LuaTests {
 
     [Test]
     public void TestCalcItemLevel_ExceptionalAdventuringScepter() {
+        NaValues();
         // Arrange
         const int gearScore = 67;
         const int rarity = 4;
@@ -315,6 +327,7 @@ public class LuaTests {
 
     [TestCase(0, 1, 34, 0, 80, 6, 70, 67659f)] // fire prism star
     public void TestConstantValueWapMax(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, float expected) {
+        NaValues();
         // Act
         (float, float) maple2LuaResult = maple2Lua.ConstantValueWapMax(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
         (float, float) luaResult = Server.Game.LuaFunctions.Lua.ConstantValueWapMax(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
@@ -328,6 +341,7 @@ public class LuaTests {
 
     [TestCase(0, 1, 34, 0, 80, 6, 70, 50008f)] // fire prism star
     public void TestConstantValueWapMin(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, float expected) {
+        NaValues();
         // Act
         (float, float) maple2LuaResult = maple2Lua.ConstantValueWapMin(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
         (float, float) luaResult = Server.Game.LuaFunctions.Lua.ConstantValueWapMin(baseValue, deviation, itemType, jobCode, optionLevelFactor, grade, (ushort) levelLimit);
