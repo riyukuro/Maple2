@@ -1314,6 +1314,22 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new PremiumClubTable(premiumClubBuffs, premiumClubItems, premiumClubPackages);
     }
 
+    // The item ids of the played client's item data (PlayedClientItems), null without a played client or when
+    // its pack has no item data.
+    private HashSet<int>? playedItemIds;
+    private HashSet<int>? PlayedItemIds() {
+        if (playedReader == null) {
+            return null;
+        }
+        if (playedItemIds == null) {
+            playedItemIds = PlayedClientItems.Ids(
+                playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            Console.WriteLine($"played client: {playedItemIds.Count} items in its item data");
+        }
+        return playedItemIds.Count == 0 ? null : playedItemIds;
+    }
+
     private IndividualItemDropTable ParseIndividualItemDropTable() {
         var results = new Dictionary<int, Dictionary<byte, IList<IndividualItemDropTable.Entry>>>();
         results = MergeIndividualItemDropTable(results, parser.ParseIndividualItemDrop());
@@ -1327,7 +1343,14 @@ public class TableMapper : TypeMapper<TableMetadata> {
         results = MergeIndividualItemDropTable(results, parser.ParseIndividualItemDropQuestMob());
         results = MergeIndividualItemDropTable(results, parser.ParseIndividualItemDropQuestObj());
 
-        return new IndividualItemDropTable(results);
+        // Rows of items the played client has no item data for are left out (PlayedClientItems).
+        HashSet<int>? known = PlayedItemIds();
+        if (known == null) {
+            return new IndividualItemDropTable(results);
+        }
+        Dictionary<int, Dictionary<byte, IList<IndividualItemDropTable.Entry>>> kept = PlayedClientItems.Keep(results, known, out PlayedClientItems.Count count, out int boxesDropped);
+        Console.WriteLine($"individualitemdrop: {count} (items not in the played client's item data), {boxesDropped} boxes left empty dropped");
+        return new IndividualItemDropTable(kept);
     }
 
     private Dictionary<int, Dictionary<byte, IList<IndividualItemDropTable.Entry>>> MergeIndividualItemDropTable(Dictionary<int, Dictionary<byte, IList<IndividualItemDropTable.Entry>>> results, IEnumerable<(int Id, IDictionary<byte, List<IndividualItemDrop>>)> parser) {
@@ -2068,6 +2091,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         var itemResults = new Dictionary<int, RewardContentTable.Item>();
+        HashSet<int>? knownItems = PlayedItemIds();
+        var rewardItemCount = new PlayedClientItems.Count();
         foreach ((int id, RewardContentItem content) in parser.ParseRewardContentItem()) {
             List<RewardContentTable.Item.Data> itemData = [];
             foreach (RewardContentValue value in content.v) {
@@ -2078,11 +2103,14 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 itemData.Add(new RewardContentTable.Item.Data(
                     MinLevel: value.minLevel,
                     MaxLevel: value.maxLevel,
-                    RewardItems: items.ToArray()));
+                    RewardItems: knownItems == null ? items.ToArray() : PlayedClientItems.Keep(items.ToArray(), knownItems, ref rewardItemCount)));
             }
             itemResults.Add(id, new RewardContentTable.Item(
                 Id: id,
                 ItemData: itemData.ToArray()));
+        }
+        if (knownItems != null) {
+            Console.WriteLine($"rewardcontentitem: {rewardItemCount} (items not in the played client's item data)");
         }
 
         var mesoStaticResults = new Dictionary<int, long>();

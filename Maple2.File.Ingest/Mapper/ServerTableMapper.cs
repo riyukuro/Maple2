@@ -675,6 +675,22 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         );
     }
 
+    // The item ids of the played client's item data (PlayedClientItems), null without a played client or when
+    // its pack has no item data.
+    private HashSet<int>? playedItemIds;
+    private HashSet<int>? PlayedItemIds() {
+        if (playedReader == null) {
+            return null;
+        }
+        if (playedItemIds == null) {
+            playedItemIds = PlayedClientItems.Ids(
+                playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            Console.WriteLine($"played client: {playedItemIds.Count} items in its item data");
+        }
+        return playedItemIds.Count == 0 ? null : playedItemIds;
+    }
+
     private IndividualDropItemTable ParseIndividualItemDropTable() {
         var results = new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>();
 
@@ -739,7 +755,16 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
             results.Add(id, entries);
         }
-        return new IndividualDropItemTable(results);
+
+        // A played client of another version has no item data for some of the server's items; their rows are
+        // left out (PlayedClientItems), and a box left with no rows goes.
+        HashSet<int>? known = PlayedItemIds();
+        if (known == null) {
+            return new IndividualDropItemTable(results);
+        }
+        Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> kept = PlayedClientItems.Keep(results, known, out PlayedClientItems.Count count, out int boxesDropped);
+        Console.WriteLine($"individualItemDrop: {count} (items not in the played client's item data), {boxesDropped} boxes left empty dropped");
+        return new IndividualDropItemTable(kept);
 
         int GetQuestId(string comment, string reference1) {
             if (reference1.Contains("Quest")) {
