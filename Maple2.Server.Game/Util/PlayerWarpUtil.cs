@@ -24,6 +24,17 @@ public static class PlayerWarpUtil {
         return EndpointHelper.TryEndpoint(address, port, out endpoint);
     }
 
+    public enum GoToKind { Portal, Field, Channel }
+
+    // How the player gets to the target. The channel is tested first: room ids and map ids repeat on every
+    // channel, so the same room id and map id on another channel is still another place.
+    public static GoToKind Decide(int targetChannel, int ownChannel, int targetRoomId, int ownRoomId, int targetMapId, int ownMapId) {
+        if (targetChannel != ownChannel) {
+            return GoToKind.Channel;
+        }
+        return targetRoomId == ownRoomId && targetMapId == ownMapId ? GoToKind.Portal : GoToKind.Field;
+    }
+
     /// <summary>
     /// Moves the player to where the target player stands: same room, another room on this channel, or another channel.
     /// Returns false when the target's position could not be found or the field could not be prepared.
@@ -44,12 +55,14 @@ public static class PlayerWarpUtil {
         }
 
         var position = new Vector3(warpResponse.X, warpResponse.Y, warpResponse.Z + VERTICAL_SPAWN_OFFSET);
-        if (warpResponse.RoomId == session.Field.RoomId && playerInfo.MapId == session.Player.Value.Character.MapId) {
+        GoToKind kind = Decide(playerInfo.Channel, session.Player.Value.Character.Channel, warpResponse.RoomId, session.Field.RoomId,
+            playerInfo.MapId, session.Player.Value.Character.MapId);
+        if (kind == GoToKind.Portal) {
             session.Send(PortalPacket.MoveByPortal(session.Player, position, session.Player.Rotation));
             return true;
         }
 
-        if (playerInfo.Channel == session.Player.Value.Character.Channel) {
+        if (kind == GoToKind.Field) {
             if (!session.PrepareField(playerInfo.MapId, roomId: warpResponse.RoomId, position: position)) {
                 session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
                 return false;
