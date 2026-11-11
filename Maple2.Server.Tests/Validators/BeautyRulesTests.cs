@@ -1,3 +1,4 @@
+using Maple2.Model.Error;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -117,6 +118,39 @@ public class BeautyRulesTests {
         }
         Assert.That(BeautyRules.StyleSlots(30, extended, 5), Is.EqualTo(35));
         Assert.That(BeautyRules.ExtendedSlots(extended, 1, 5), Is.EqualTo(-1));
+    }
+
+    // Mode 17 from the first full list to the last extension: each save buys one extension, the save
+    // after the last is refused with the client's code 19, a save without merets with code 20, and a
+    // list with an open slot buys nothing.
+    [Test]
+    public void FullExtendSave() {
+        int extended = 0;
+        long meret = 5 * 490;
+        for (int saved = 30; saved < 35; saved++) {
+            Assert.That(BeautyRules.SaveNeedsExtension(BeautyRules.OpenStyleSlots(30, extended, 5, saved)), Is.True);
+            Assert.That(BeautyRules.ExtendCheck(extended, 1, 5, meret, 490), Is.EqualTo(BeautyRules.ExtendStep.Extend));
+            extended = BeautyRules.ExtendedSlots(extended, 1, 5);
+            meret -= 490;
+            Assert.That(BeautyRules.OpenStyleSlots(30, extended, 5, saved), Is.EqualTo(1));
+        }
+        Assert.That(BeautyRules.ExtendCheck(extended, 1, 5, 490, 490), Is.EqualTo(BeautyRules.ExtendStep.AtMax));
+        Assert.That(BeautyRules.ExtendCheck(0, 1, 5, 489, 490), Is.EqualTo(BeautyRules.ExtendStep.NoMeret));
+        Assert.That(BeautyRules.SaveNeedsExtension(1), Is.False);
+    }
+
+    // The mode 8 codes of the client's switches.
+    [Test]
+    public void ErrorCodes() {
+        Assert.That((int) BeautyError.lack_currency, Is.EqualTo(2));
+        Assert.That((int) BeautyError.s_beauty_msg_error_color, Is.EqualTo(0xc));
+        Assert.That((int) BeautyError.none, Is.EqualTo(0x12));
+        Assert.That((int) BeautyError.s_beauty_msg_error_style_slot_max, Is.EqualTo(0x13));
+        Assert.That((int) BeautyError.s_beauty_msg_error_style_slot_extend_max, Is.EqualTo(0x13));
+        Assert.That((int) BeautyError.s_err_lack_merat_ask, Is.EqualTo(0x14));
+        Assert.That((int) BeautyError.s_beauty_msg_error_style_disable_gender, Is.EqualTo(0x17));
+        Assert.That((int) BeautyError.s_beauty_msg_error_style_apply_already, Is.EqualTo(0x18));
+        Assert.That((int) BeautyError.s_beauty_msg_error_style_save_cant_not_beauty_day, Is.EqualTo(0x19));
     }
 
     // Mode 17: i64 item uid. Mode 19: nothing.

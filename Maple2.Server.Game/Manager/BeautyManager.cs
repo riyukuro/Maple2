@@ -66,16 +66,17 @@ public sealed class BeautyManager : IDisposable {
     // test and price box, uibeautyshopstyledialog.cpp:986-1007). The client adds the slots on SaveSlots.
     public bool ExtendSlots() {
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
-        int extended = BeautyRules.ExtendedSlots(session.Player.Value.Unlock.HairSlotExpand, constants.BeautyStyleExpandSlotCount1time, constants.BeautyStyleMaxSlotCount);
-        if (extended < 0) {
-            return false;
-        }
-
+        short owned = session.Player.Value.Unlock.HairSlotExpand;
         long price = constants.BeautyStyleExpandSlotPrice;
-        if (!BeautyRules.Affords(session.Currency.Meret, price)) {
-            session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
-            return false;
+        switch (BeautyRules.ExtendCheck(owned, constants.BeautyStyleExpandSlotCount1time, constants.BeautyStyleMaxSlotCount, session.Currency.Meret, price)) {
+            case BeautyRules.ExtendStep.AtMax:
+                session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_slot_extend_max));
+                return false;
+            case BeautyRules.ExtendStep.NoMeret:
+                session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
+                return false;
         }
+        int extended = BeautyRules.ExtendedSlots(owned, constants.BeautyStyleExpandSlotCount1time, constants.BeautyStyleMaxSlotCount);
 
         session.Currency.Meret -= price;
         session.Player.Value.Unlock.HairSlotExpand = (short) extended;
@@ -95,6 +96,7 @@ public sealed class BeautyManager : IDisposable {
         }
 
         if (OpenSlots <= 0) {
+            session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_slot_max));
             return;
         }
 

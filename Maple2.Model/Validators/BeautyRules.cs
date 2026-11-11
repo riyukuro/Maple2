@@ -20,6 +20,22 @@ public static class BeautyRules {
         return extended + perExtension;
     }
 
+    public enum ExtendStep { Extend, AtMax, NoMeret }
+
+    // One extension asked (modes 17 and 19): refused at the most with the client's code 19, refused
+    // without the merets with code 20 (uibeautyshopstyledialog.cpp:1340-1351), else bought.
+    public static ExtendStep ExtendCheck(int extended, int perExtension, int maxExtra, long meret, long price) {
+        if (ExtendedSlots(extended, perExtension, maxExtra) < 0) {
+            return ExtendStep.AtMax;
+        }
+        return Affords(meret, price) ? ExtendStep.Extend : ExtendStep.NoMeret;
+    }
+
+    // Mode 17 (save into a full list): the extension is bought only when no slot is open.
+    public static bool SaveNeedsExtension(int openSlots) {
+        return openSlots <= 0;
+    }
+
     // The saved style slots a character has: the client's base (BeautyStyleDefaultSlotCount,
     // uibeautyshopstyledialog.cpp:426-428) plus the bought ones, never past the client's most
     // (base + BeautyStyleMaxSlotCount, :420-423). 36 stands in only for a constant that is not loaded.

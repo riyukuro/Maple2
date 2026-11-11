@@ -401,7 +401,7 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Beauty.OpenSlots <= 0 && !session.Beauty.ExtendSlots()) {
+        if (BeautyRules.SaveNeedsExtension(session.Beauty.OpenSlots) && !session.Beauty.ExtendSlots()) {
             return;
         }
         session.Beauty.AddHair(uid);
@@ -480,7 +480,14 @@ public class BeautyHandler : FieldPacketHandler {
             // The colors are read before the fee is taken: a short packet charges nothing.
             ItemAppearance appearance = BeautyRules.ReadDyeColors(packet, item.EquipSlot() == EquipSlot.CP);
             if (!Pay(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata)) {
-                return;
+                // The client waits for one answer per entry: an item update or an error with a code
+                // other than 0 (uiitemcoloringdialog.cpp:577-591, 939-955, 1044, 1321-1327), and while
+                // it waits it refuses to restart the window (:1248). A fee paid in currency has sent
+                // its error; a missing voucher has sent a notice only, which the client does not count.
+                if (useVoucher) {
+                    session.Send(BeautyPacket.Error(BeautyError.lack_currency));
+                }
+                continue;
             }
 
             item.Appearance = appearance;
