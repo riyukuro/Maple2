@@ -1496,6 +1496,15 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
     }
 
+    // A merge slot's part as the client keys it. The client reads a slot without the part attribute as part 0
+    // (CItemMergeOptionData's constructor sets m_nId 0, Load reads "part" over it, itemmergeoptiontable.cpp:281
+    // and :295) and asks part 0 for a material whose subtype is not 1 (FindMergeData, :674). The parser reads
+    // a missing part as 1. No client slot has part 1 and no item has equip subtype 1 (0, or 12 to 83), so a 1
+    // is a slot without part.
+    public static int MergePart(int parsedPart) {
+        return parsedPart == 1 ? 0 : parsedPart;
+    }
+
     private ItemMergeTable ParseItemMergeOptionTable() {
         var results = new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>>();
         Dictionary<(int Id, int Part), int[]> partLimits = ClientPartLimits();
@@ -1598,17 +1607,18 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                             Weights: weights.ToArray());
                     }
                 }
+                int part = MergePart(slotEntry.part);
                 var slot = new ItemMergeTable.Entry(
-                    Slot: slotEntry.part,
+                    Slot: part,
                     MesoCost: slotEntry.consumeMeso,
                     Materials: ingredients.ToArray(),
                     BasicOptions: basicOptions,
                     SpecialOptions: specialOptions
                 ) {
-                    PartLimit = partLimits.GetValueOrDefault((id, slotEntry.part)),
+                    PartLimit = partLimits.GetValueOrDefault((id, part)),
                 };
 
-                slots.Add(slotEntry.part, slot);
+                slots.Add(part, slot);
             }
             results.Add(id, slots);
         }
@@ -1664,7 +1674,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 try {
                     foreach (MergeOptionNew option in new ItemOptionParser(reader).ParseMergeOptionBaseNew()) {
                         foreach (Slot slot in option.slot) {
-                            limits[(option.id, slot.part)] = slot.partLimit ?? [];
+                            limits[(option.id, MergePart(slot.part))] = slot.partLimit ?? [];
                         }
                     }
                 } catch (Exception ex) {

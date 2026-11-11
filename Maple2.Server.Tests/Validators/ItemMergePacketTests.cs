@@ -255,6 +255,47 @@ public class ItemMergePacketTests {
         Assert.That(((ItemMergeTable) converter.ConvertFromProvider(converter.ConvertToProvider(plain)!)!).TableIds, Is.Null);
     }
 
+    // Stage offers every inventory material the table answers for, asked by its table id: a material whose
+    // table id is not its item id is offered, one without a row or of another property type is not.
+    [Test]
+    public void Materials_AskedByTableId() {
+        var table = new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
+            [37000101] = new() {
+                [13] = new ItemMergeTable.Entry(13, 100, [], new Dictionary<BasicAttribute, ItemMergeTable.Option>(),
+                    new Dictionary<SpecialAttribute, ItemMergeTable.Option>()),
+            },
+        }) { TableIds = new Dictionary<int, int> { [37000105] = 37000101 } };
+        static Item Material(int id, long uid, int type = 19) => new(Leveled(id, type, 1, 60), 4) { Uid = uid };
+        Item hat = new(Leveled(11300001, 1, 13, 50), 4) { Uid = 1 };
+        Item[] inventory = [Material(37000101, 11), Material(37000105, 12), Material(37000106, 13), Material(37000101, 14, 3)];
+
+        Assert.That(ItemMergeManager.Materials(table, hat, inventory), Is.EqualTo(new long[] { 11, 12 }));
+    }
+
+    // A slot without part is the client's part 0 (the parser gives 1): an any-part material with a
+    // partLimit list then finds its row for every part in the list.
+    [Test]
+    public void MergePart_MissingPartIsZero() {
+        Assert.That(Maple2.File.Ingest.Mapper.ServerTableMapper.MergePart(1), Is.EqualTo(0));
+        Assert.That(Maple2.File.Ingest.Mapper.ServerTableMapper.MergePart(0), Is.EqualTo(0));
+        Assert.That(Maple2.File.Ingest.Mapper.ServerTableMapper.MergePart(13), Is.EqualTo(13));
+        Assert.That(Maple2.File.Ingest.Mapper.ServerTableMapper.MergePart(22), Is.EqualTo(22));
+
+        int part = Maple2.File.Ingest.Mapper.ServerTableMapper.MergePart(1);
+        var table = new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
+            [37000102] = new() {
+                [part] = new ItemMergeTable.Entry(part, 100, [], new Dictionary<BasicAttribute, ItemMergeTable.Option>(),
+                    new Dictionary<SpecialAttribute, ItemMergeTable.Option>()) { PartLimit = [13, 14] },
+            },
+        });
+        ItemMetadata material = Leveled(37000102, 19, 2, 60);
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 50), material), Is.Not.Null);
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11400001, 1, 14, 50), material), Is.Not.Null);
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11500001, 1, 15, 50), material), Is.Null);
+        // A material of subtype 1 asks by part, so it finds nothing in a table of one slot without part.
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 13, 50), Leveled(37000102, 19, 1, 60)), Is.Null);
+    }
+
     // The hand copies of table 37000055 are made with or without the played pack; an id with rows of its own
     // keeps them, and nothing is copied when 37000055 has no rows.
     [Test]

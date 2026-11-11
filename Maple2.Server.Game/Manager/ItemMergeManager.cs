@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -72,21 +73,22 @@ public sealed class ItemMergeManager {
         }
         upgradeItem = item;
 
-        List<long> catalystUids = [];
-        foreach ((int id, Dictionary<int, ItemMergeTable.Entry> options) in session.ServerTableMetadata.ItemMergeTable.Entries) {
-            IList<Item> catalysts = session.Item.Inventory.Find(id).ToList();
-            if (!catalysts.Any()) {
-                continue;
-            }
+        IList<Item> inventory = session.Item.Inventory.Filter(candidate => candidate.Metadata.Property.Type == 19);
+        session.Send(ItemMergePacket.Stage(Materials(session.ServerTableMetadata.ItemMergeTable, item, inventory)));
+    }
 
-            foreach (Item catalyst in catalysts) {
-                if (MergeSlot(session.ServerTableMetadata.ItemMergeTable, item.Metadata, catalyst.Metadata) != null) {
-                    catalystUids.Add(catalyst.Uid);
-                }
+    // The materials offered for an item. The client shows the uids of mode 1 as they come
+    // (UIItemMergeOptionDialog::FUN_1419d11b0, uiitemmergeoptiondialog.cpp:836) and asks its table by the
+    // material's table id, its property param1 (FindMergeData, itemmergeoptiontable.cpp:674), not by the
+    // item id. So every inventory item is tried as a material and the table is not walked by item id.
+    public static List<long> Materials(ItemMergeTable table, Item item, IEnumerable<Item> inventory) {
+        List<long> uids = [];
+        foreach (Item material in inventory) {
+            if (!material.IsExpired() && MergeSlot(table, item.Metadata, material.Metadata) != null) {
+                uids.Add(material.Uid);
             }
         }
-
-        session.Send(ItemMergePacket.Stage(catalystUids));
+        return uids;
     }
 
     public void SelectCrystal(long itemUid, long crystalUid) {
