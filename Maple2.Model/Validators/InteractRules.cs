@@ -43,6 +43,21 @@ public static class InteractRules {
         return type is InteractCubeControlType.Farming or InteractCubeControlType.Breeding;
     }
 
+    // The names one start packet leaves in the session's set: the old names go, each named object the
+    // field has within reach is kept, MaxStarted at most. lookup gives null for a name the field does
+    // not have, else whether the object is in reach.
+    public static void TakeStarts(ISet<string> started, IEnumerable<string> names, Func<string, bool?> lookup) {
+        started.Clear();
+        foreach (string name in names) {
+            if (started.Count >= MaxStarted) {
+                break;
+            }
+            if (lookup(name) == true) {
+                started.Add(name);
+            }
+        }
+    }
+
     // The ends to take from one end packet, each name once. A gathered object needs its name in the last
     // start packet and is taken off it; any other object needs only to be in reach. lookup gives null for
     // a name the field does not have.

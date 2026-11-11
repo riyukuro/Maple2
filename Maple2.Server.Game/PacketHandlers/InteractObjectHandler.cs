@@ -52,20 +52,13 @@ public class InteractObjectHandler : FieldPacketHandler {
     // Start and End carry a count, then that many object names (CInteractObject and StateInteraction senders).
     private void HandleStart(GameSession session, IByteReader packet) {
         // The names are kept: the end of a gathered object is taken only if this start named it.
-        session.InteractStarted.Clear();
-        foreach (string name in InteractRules.ReadNames(packet)) {
-            if (session.InteractStarted.Count >= InteractRules.MaxStarted) {
-                break;
-            }
-            // The client starts only on an object within reach (interactobject.cpp:1075, stateinteractdata.cpp:283, 382).
+        // The client starts only on an object within reach (interactobject.cpp:1075, stateinteractdata.cpp:283, 382).
+        InteractRules.TakeStarts(session.InteractStarted, InteractRules.ReadNames(packet), name => {
             if (session.Field?.TryGetInteract(name, out FieldInteract? interact) != true) {
-                continue;
+                return null;
             }
-            if (!InReach(session, interact)) {
-                continue;
-            }
-            session.InteractStarted.Add(name);
-        }
+            return InReach(session, interact);
+        });
     }
 
     private static bool InReach(GameSession session, FieldInteract interact) {

@@ -49,6 +49,25 @@ public class InteractRulesTests {
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 
+    // A start replaces the kept names with the named objects the field has within reach, and a start
+    // then an end of a gathered object pays once.
+    [Test]
+    public void StartKeepsReachable() {
+        var started = new HashSet<string> { "old" };
+        bool? Lookup(string name) => name switch { "near" => true, "far" => false, _ => null };
+        InteractRules.TakeStarts(started, new[] { "near", "far", "gone", "near" }, Lookup);
+        Assert.That(started, Is.EquivalentTo(new[] { "near" }));
+        Assert.That(InteractRules.TakeEnds(started, new[] { "far", "near", "near" }, _ => (true, true)), Is.EqualTo(new[] { "near" }));
+        Assert.That(started, Is.Empty);
+
+        var names = new List<string>();
+        for (int i = 0; i < InteractRules.MaxStarted + 10; i++) {
+            names.Add("n" + i);
+        }
+        InteractRules.TakeStarts(started, names, _ => true);
+        Assert.That(started, Has.Count.EqualTo(InteractRules.MaxStarted));
+    }
+
     [Test]
     public void GatheredEndNeedsStart() {
         var started = new HashSet<string> { "a1" };
