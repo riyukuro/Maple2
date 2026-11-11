@@ -59,4 +59,15 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(77));
         Assert.That(reader.ReadShort(), Is.EqualTo(2));
     }
+
+    // Client: CSceneStateGame::OnAutoRevive (scenestategame.cpp:4332): one int, the countdown in milliseconds.
+    [Test]
+    public void AutoReviveCountdownIsOneInt() {
+        ByteWriter writer = AutoRevivePacket.Countdown(10000);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.AutoRevive));
+        Assert.That(reader.ReadInt(), Is.EqualTo(10000));
+        Assert.That(writer.Length, Is.EqualTo(2 + 4));
+    }
 }

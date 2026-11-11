@@ -60,6 +60,10 @@ public class FieldPlayer : Actor<Player> {
     public ActorSubState SubState { get; set; }
     public PlayerObjectFlag Flag { get; set; }
     private long flagTick;
+    // Fields with autoRevivalType 1 or 2 and an autoRevivalTime: the client opens no revival dialog there
+    // (MyPC::vfunc_137, mypc.cpp:1351), so the server revives the player when the time is over.
+    private int autoReviveDelay;
+    private long autoReviveTick;
 
     private long battleTick;
     private bool inBattle;
@@ -181,6 +185,13 @@ public class FieldPlayer : Actor<Player> {
                 return;
             }
             if (Tombstone.HitsRemaining == 0) {
+                Revive();
+                return;
+            }
+            if (autoReviveDelay > 0) {
+                autoReviveTick = tickCount + autoReviveDelay;
+                autoReviveDelay = 0;
+            } else if (autoReviveTick != 0 && tickCount >= autoReviveTick) {
                 Revive();
             }
             return;
@@ -402,6 +413,24 @@ public class FieldPlayer : Actor<Player> {
         Field.Broadcast(DeadUserPacket.Dead(ObjectId, darkTomb));
 
         Buffs.OnDeath();
+
+        int autoReviveMs = AutoReviveDelayMs(Session.Field.Metadata.Property);
+        if (autoReviveMs > 0) {
+            autoReviveDelay = autoReviveMs;
+            autoReviveTick = 0;
+            if (Session.Field.Metadata.Property.AutoRevivalType == AutoReviveType.Countdown) {
+                Session.Send(AutoRevivePacket.Countdown(autoReviveMs));
+            }
+        }
+    }
+
+    // The client only tests autoRevivalTime > 0 (CFieldData::HasAutoRevivalType1/2, fielddata.cpp:827); the unit of
+    // the field xml value is not visible there. Values under 1000 are taken as seconds, larger ones as milliseconds.
+    public static int AutoReviveDelayMs(MapMetadataProperty property) {
+        if (property.AutoRevivalType == AutoReviveType.None || property.AutoRevivalTime <= 0) {
+            return 0;
+        }
+        return property.AutoRevivalTime < 1000 ? property.AutoRevivalTime * 1000 : property.AutoRevivalTime;
     }
 
     /// <summary>
@@ -413,6 +442,9 @@ public class FieldPlayer : Actor<Player> {
         if (!IsDead || Tombstone == null) {
             return false;
         }
+
+        autoReviveDelay = 0;
+        autoReviveTick = 0;
 
         // Restore health and update state
         RecoverHp((int) Stats.Values[BasicAttribute.Health].Total);
