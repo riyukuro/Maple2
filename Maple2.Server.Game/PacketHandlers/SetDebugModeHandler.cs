@@ -1,0 +1,104 @@
+using System.Numerics;
+using Maple2.Model.Common;
+using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
+using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
+
+namespace Maple2.Server.Game.PacketHandlers;
+
+// The client's debug mode (a GM hotkey) and the windows it opens. GM only.
+// Mode 2: a click on a minimap entity in debug mode, with the entity's position. The sender is moved there.
+// Mode 4: the NPC control window. The health and additional effect buttons are applied; the others are read
+// and logged.
+// The client has no reader for a reply (0x87 DebugMode is in its opcode list, no case reads it).
+public class SetDebugModeHandler : FieldPacketHandler {
+    public override RecvOp OpCode => RecvOp.SetDebugMode;
+
+    private const byte MODE_SWITCH = 0;
+    private const byte MODE_MINIMAP = 2;
+    private const byte MODE_NPC_CONTROL = 4;
+
+    public override void Handle(GameSession session, IByteReader packet) {
+        // The mode byte is read after the check, so a plain account changes nothing.
+        if (!GmCheck.Allow(session, OpCode)) {
+            return;
+        }
+
+        byte mode = packet.ReadByte();
+        switch (mode) {
+            case MODE_SWITCH:
+                Logger.Debug("SetDebugMode: debug mode {Value} from account {AccountId}", packet.ReadByte(), session.AccountId);
+                return;
+            case MODE_MINIMAP:
+                HandleMinimap(session, packet);
+                return;
+            case MODE_NPC_CONTROL:
+                HandleNpcControl(session, packet);
+                return;
+            default:
+                Logger.Debug("SetDebugMode: mode {Mode} from account {AccountId} not handled", mode, session.AccountId);
+                return;
+        }
+    }
+
+    private void HandleMinimap(GameSession session, IByteReader packet) {
+        Vector3 position = packet.Read<Vector3S>();
+        if (session.Field == null || position == default) {
+            return;
+        }
+        if (!session.Field.ValidPosition(position)) {
+            Logger.Debug("SetDebugMode: position {Position} is not in field {MapId}", position, session.Field.MapId);
+            return;
+        }
+
+        session.Send(PortalPacket.MoveByPortal(session.Player, position, session.Player.Rotation));
+    }
+
+    private void HandleNpcControl(GameSession session, IByteReader packet) {
+        GmNpcControlRequest request = GmNpcControlRequest.Read(packet);
+        if (session.Field == null) {
+            return;
+        }
+        if (!session.Field.Mobs.TryGetValue(request.ObjectId, out FieldNpc? npc) && !session.Field.Npcs.TryGetValue(request.ObjectId, out npc)) {
+            return;
+        }
+        if (npc.IsDead) {
+            return;
+        }
+
+        switch (request.Command) {
+            case GmNpcControlRequest.HealthPercent:
+            case GmNpcControlRequest.HealthValue:
+                Stat health = npc.Stats.Values[BasicAttribute.Health];
+                long target = GmNpcControlRequest.HealthTarget(request.Command, request.Value, health.Total);
+                if (target < 0) {
+                    return;
+                }
+                health.Add(target - health.Current);
+                session.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));
+                return;
+            case GmNpcControlRequest.AddEffect:
+                if (request.EffectLevel is < 1 or > short.MaxValue
+                    || !session.SkillMetadata.TryGetEffect(request.EffectId, (short) request.EffectLevel, out AdditionalEffectMetadata? _)) {
+                    Logger.Warning("SetDebugMode: unknown effect {EffectId} level {Level} from account {AccountId}", request.EffectId, request.EffectLevel, session.AccountId);
+                    return;
+                }
+                npc.Buffs.AddBuff(session.Player, npc, request.EffectId, (short) request.EffectLevel, session.Field.FieldTick);
+                return;
+            case GmNpcControlRequest.RemoveEffect:
+                foreach (Buff buff in npc.Buffs.EnumerateBuffs(request.EffectId)) {
+                    npc.Buffs.Remove(buff.Id, buff.Caster.ObjectId);
+                }
+                return;
+            default:
+                Logger.Debug("SetDebugMode: NPC control command {Command} on {ObjectId} from account {AccountId} not handled", request.Command, request.ObjectId, session.AccountId);
+                return;
+        }
+    }
+}
