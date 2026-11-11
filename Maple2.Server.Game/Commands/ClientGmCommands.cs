@@ -8,6 +8,8 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
+using Serilog;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -107,5 +109,67 @@ public class ToggleDeathPowerCommand : GameCommand {
         session.Player.DeathPower = !session.Player.DeathPower;
         ctx.Console.Out.WriteLine($"DeathPower: {(session.Player.DeathPower ? "On" : "Off")}");
         ctx.ExitCode = 0;
+    }
+}
+
+// "/petevolutionpoint <petUid> <point>" from the debug buttons of the pet evolution tab (debug mode only).
+// The value becomes the pet's evolution points. The pet must be this player's own item: in the pet
+// inventory, or the summoned pet. The client updates the item from pet mode 0x12.
+public class PetEvolutionPointCommand : GameCommand {
+    private readonly GameSession session;
+
+    public PetEvolutionPointCommand(GameSession session) : base(AdminPermissions.GameMaster, "petevolutionpoint", "Set a pet's evolution points (the client's debug buttons).") {
+        this.session = session;
+
+        var petUid = new Argument<long>("petUid", "Uid of the pet item.");
+        var point = new Argument<long>("point", "Evolution points to set.");
+
+        AddArgument(petUid);
+        AddArgument(point);
+        this.SetHandler<InvocationContext, long, long>(Handle, petUid, point);
+    }
+
+    private void Handle(InvocationContext ctx, long petUid, long point) {
+        if (!GmCheck.IsGm(session.Player.Value.Account.AdminPermissions)) {
+            return;
+        }
+
+        lock (session.Item) {
+            Item? pet = session.Pet?.Pet.Uid == petUid ? session.Pet.Pet : session.Item.Inventory.Get(petUid, InventoryType.Pets);
+            if (pet?.Pet == null) {
+                ctx.Console.Error.WriteLine($"No pet of yours has uid {petUid}.");
+                return;
+            }
+
+            pet.Pet.EvolvePoints = PetEvolveRules.ClampPoints(point);
+            session.Send(PetPacket.EvolvePoints(session.Player.ObjectId, pet));
+            ctx.Console.Out.WriteLine($"Pet {petUid}: evolution points {pet.Pet.EvolvePoints}.");
+        }
+        ctx.ExitCode = 0;
+    }
+}
+
+// "/ManufacturingMastery <recipeId> [magicscroll]" from the debug button of the mastery window (debug mode
+// only). What it did on the live server is not visible in the client, so it is not implemented: a GM gets a
+// notice and the server logs it. A plain account does not have the command at all.
+public class ManufacturingMasteryCommand : GameCommand {
+    private static readonly ILogger Logger = Log.Logger.ForContext<ManufacturingMasteryCommand>();
+
+    private readonly GameSession session;
+
+    public ManufacturingMasteryCommand(GameSession session) : base(AdminPermissions.GameMaster, "manufacturingmastery", "Not implemented (the client's mastery debug button).") {
+        this.session = session;
+
+        var recipeId = new Argument<int>("recipeId", () => 0, "Id of the recipe.");
+        var kind = new Argument<string>("kind", () => string.Empty, "Empty, or magicscroll.");
+
+        AddArgument(recipeId);
+        AddArgument(kind);
+        this.SetHandler<InvocationContext, int, string>(Handle, recipeId, kind);
+    }
+
+    private void Handle(InvocationContext ctx, int recipeId, string kind) {
+        Logger.Warning("Unknown GM command ManufacturingMastery from account {AccountId}: recipe {RecipeId}, kind '{Kind}'", session.AccountId, recipeId, kind);
+        ctx.Console.Error.WriteLine("ManufacturingMastery is not implemented on this server.");
     }
 }

@@ -184,11 +184,16 @@ public static class PetPacket {
     }
 
     public static ByteWriter EvolvePoints(int ownerId, Item pet) {
+        return EvolvePoints(ownerId, pet.Pet?.EvolvePoints ?? 0, pet.Uid);
+    }
+
+    // Client reader: CPetManager, pet mode 0x12 (int owner object id, int points, long pet item uid).
+    public static ByteWriter EvolvePoints(int ownerId, int points, long petUid) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.EvolvePoints);
+        pWriter.WriteByte((byte) Command.EvolvePoints);
         pWriter.WriteInt(ownerId);
-        pWriter.WriteInt(pet.Pet?.EvolvePoints ?? 0);
-        pWriter.WriteLong(pet.Uid);
+        pWriter.WriteInt(points);
+        pWriter.WriteLong(petUid);
 
         return pWriter;
     }
