@@ -7,8 +7,8 @@ namespace Maple2.Database.Storage;
 
 public partial class GameStorage {
     public partial class Request {
-        // A row whose character was deleted is not part of the list: it is not shown, does not block and
-        // does not count (DeleteCharacter removes such rows; this keeps older rows out as well).
+        // The rows the owner sees: a row names one character of the blocked account (DeleteCharacter moves
+        // the row to another character of the account, or removes it with the account's last character).
         private IQueryable<HomeBlock> LiveHomeBlocks(long ownerId) {
             return from block in Context.HomeBlock
                    where block.OwnerId == ownerId
@@ -34,18 +34,32 @@ public partial class GameStorage {
                 .FirstOrDefault();
         }
 
+        // The block holds for the account, whichever of its characters the row names.
         public bool IsHomeBlocked(long ownerId, long accountId) {
-            return LiveHomeBlocks(ownerId).Any(block => block.AccountId == accountId);
+            return Context.HomeBlock.Any(block => block.OwnerId == ownerId && block.AccountId == accountId);
         }
 
         public int CountHomeBlocks(long ownerId) {
             return LiveHomeBlocks(ownerId).Count();
         }
 
-        // Rows that name a deleted character, and every row of an account without characters, go away
-        // with the character.
-        public void RemoveHomeBlocksOf(long characterId) {
-            Context.HomeBlock.RemoveRange(Context.HomeBlock.Where(block => block.CharacterId == characterId));
+        // A character is being deleted. The block is on its account, so a row that names it moves to another
+        // character of that account (the list then shows that one). Only when the account has no other
+        // character is the row removed.
+        public void MoveHomeBlocksOf(long accountId, long characterId) {
+            long other = Context.Character
+                .Where(character => character.AccountId == accountId && character.Id != characterId)
+                .OrderBy(character => character.Id)
+                .Select(character => character.Id)
+                .FirstOrDefault();
+            foreach (HomeBlock block in Context.HomeBlock.Where(block => block.CharacterId == characterId).ToList()) {
+                if (other == 0) {
+                    Context.HomeBlock.Remove(block);
+                } else {
+                    block.CharacterId = other;
+                    Context.HomeBlock.Update(block);
+                }
+            }
         }
 
         // Null when the character does not exist. The caller checks the account and the existing rows first.

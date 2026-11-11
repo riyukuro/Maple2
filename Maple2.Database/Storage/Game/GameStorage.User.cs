@@ -709,7 +709,7 @@ public partial class GameStorage {
             }
 
             Context.Remove(character);
-            RemoveHomeBlocksOf(characterId);
+            MoveHomeBlocksOf(accountId, characterId);
             return Context.TrySaveChanges();
         }
         #endregion
