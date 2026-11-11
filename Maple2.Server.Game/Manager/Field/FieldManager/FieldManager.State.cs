@@ -121,6 +121,12 @@ public partial class FieldManager {
     }
 
     public FieldNpc? SpawnNpc(NpcMetadata npc, Vector3 position, Vector3 rotation, bool disableAi = false, FieldMobSpawn? owner = null, SpawnPointNPC? spawnPointNpc = null, string spawnAnimation = "") {
+        // The played client creates no NPC it has no data for (PlayedClientNpcs).
+        if (!PlayedClientNpcs.CanSpawn(npc)) {
+            logger.Debug("[SpawnNpc] NPC {NpcId} is not in the played client's NPC data, not spawned", npc.Id);
+            return null;
+        }
+
         // Apply random offset if SpawnRadius is set
         Vector3 spawnPosition = position;
         if (spawnPointNpc?.SpawnRadius > 0) {

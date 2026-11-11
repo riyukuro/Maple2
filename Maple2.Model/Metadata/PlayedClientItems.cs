@@ -13,11 +13,12 @@ public static class PlayedClientItems {
 
     public static bool IsItemFile(string name) => name.StartsWith(ItemFolder, StringComparison.OrdinalIgnoreCase);
 
-    // The ids of the item data files. available is the environment filter (feature and locale).
-    public static HashSet<int> Ids(IEnumerable<XmlDocument> itemFiles, Func<XmlElement, bool> available) {
+    // The ids of the item data files. available is the environment filter (feature and locale); element is the
+    // entry's tag (PlayedClientNpcs reads the NPC data files the same way).
+    public static HashSet<int> Ids(IEnumerable<XmlDocument> itemFiles, Func<XmlElement, bool> available, string element = "item") {
         var ids = new HashSet<int>();
         foreach (XmlDocument file in itemFiles) {
-            XmlNodeList? items = file.SelectNodes("ms2/item");
+            XmlNodeList? items = file.SelectNodes("ms2/" + element);
             if (items == null) {
                 continue;
             }

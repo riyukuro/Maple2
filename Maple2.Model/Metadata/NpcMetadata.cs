@@ -74,7 +74,10 @@ public record NpcMetadataBasic(
     int[]? SummonNpcIds = null,
     // The basic stringID (a boss name shared by its variants, read by npc_is_dead_by_string_id). Null when the
     // row has none or was ingested before the field existed.
-    string? StringId = null) {
+    string? StringId = null,
+    // The played client has no NPC data for this NPC (PlayedClientNpcs): the server does not spawn it. False
+    // without a played client or in rows ingested before the field existed.
+    bool NotInPlayedClient = false) {
     public bool HasPropertyTag(string tag) => PropertyTags != null && PropertyTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
 }
 

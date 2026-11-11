@@ -14,12 +14,14 @@ namespace Maple2.File.Ingest.Mapper;
 public class NpcMapper : TypeMapper<NpcMetadata> {
     private readonly NpcParser parser;
     private readonly M2dReader xmlReader;
+    private readonly M2dReader? playedReader;
 
     public static Dictionary<int, NpcMetadata> NpcMetadataById { get; } = new();
 
-    public NpcMapper(M2dReader xmlReader, string language) {
+    public NpcMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new NpcParser(xmlReader, language);
         this.xmlReader = xmlReader;
+        this.playedReader = playedReader;
     }
 
     // The file parser does not read aiInfo's summonNpcIDs, so it is read from the npc xml here. In the data the
@@ -54,7 +56,24 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
 
     protected override IEnumerable<NpcMetadata> Map() {
         Dictionary<int, int[]> summonNpcIds = SummonNpcIds();
+        // The NPCs the played client has NPC data for (PlayedClientNpcs); null without a played client or when its
+        // pack has no NPC data, and then no NPC is marked.
+        HashSet<int>? known = null;
+        if (playedReader != null) {
+            known = PlayedClientNpcs.Ids(
+                playedReader.Files.Where(file => PlayedClientNpcs.IsNpcFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            if (known.Count == 0) {
+                known = null;
+            }
+        }
+        int notInPlayed = 0, inPlayed = 0;
         foreach ((int id, string name, NpcData data, List<EffectDummy> _) in parser.Parse()) {
+            bool notInPlayedClient = known != null && !known.Contains(id);
+            if (known != null) {
+                if (notInPlayedClient) notInPlayed++;
+                else inPlayed++;
+            }
             Debug.Assert(data.collision.shape == "box" || string.IsNullOrWhiteSpace(data.collision.shape));
 
             var metadata = new NpcMetadata(Id: id,
@@ -123,7 +142,8 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                     CustomExp: data.exp.customExp,
                     PropertyTags: data.basic.propertyTags,
                     SummonNpcIds: summonNpcIds.GetValueOrDefault(id),
-                    StringId: string.IsNullOrEmpty(data.basic.stringID) ? null : data.basic.stringID),
+                    StringId: string.IsNullOrEmpty(data.basic.stringID) ? null : data.basic.stringID,
+                    NotInPlayedClient: notInPlayedClient),
                 Property: new NpcMetadataProperty(
                     Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
                     Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),
@@ -170,6 +190,9 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
             NpcMetadataById[id] = metadata;
 
             yield return metadata;
+        }
+        if (known != null) {
+            Console.WriteLine($"npcs: {notInPlayed} not in the played client's NPC data (the server does not spawn them), {inPlayed} in it");
         }
     }
 

@@ -34,6 +34,10 @@ public class RequestNpcCreateHandler : FieldPacketHandler {
             Logger.Warning("RequestNpcCreate: unknown npc {NpcId} from account {AccountId}", request.NpcId, session.AccountId);
             return;
         }
+        if (!PlayedClientNpcs.CanSpawn(metadata)) {
+            Logger.Information("RequestNpcCreate: npc {NpcId} is not in the played client's NPC data, account {AccountId}", request.NpcId, session.AccountId);
+            return;
+        }
         if (!IsFinite(request.Position) || !IsFinite(request.Rotation)
             || Vector3.Distance(request.Position, session.Player.Position) > MaxDistance) {
             return;

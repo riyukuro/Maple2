@@ -37,6 +37,12 @@ public class NpcCommand : GameCommand {
                 return;
             }
 
+            if (!PlayedClientNpcs.CanSpawn(metadata)) {
+                ctx.Console.Error.WriteLine($"Npc {npcId} is not in the played client's NPC data.");
+                ctx.ExitCode = 1;
+                return;
+            }
+
             if (amount <= 0) {
                 ctx.Console.Error.WriteLine($"Invalid amount: {amount}. It must be 1 or more.");
                 return;
