@@ -45,9 +45,18 @@ public partial class TriggerContext {
         Field.Broadcast(DungeonMissionPacket.SetAbandon(enabled));
     }
 
+    // The room's result is Fail: every player gets the result packet, which the client shows as the
+    // s_room_dungeon_fail banner (result 2). A room that already has a result keeps it.
     public void DungeonFail() {
-        ErrorLog("[DungeonFail]");
+        DebugLog("[DungeonFail]");
+        if (Field is not DungeonFieldManager dungeonField || !CanFailDungeon(dungeonField.DungeonRoomRecord.State)) {
+            return;
+        }
+
+        dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Fail);
     }
+
+    public static bool CanFailDungeon(Maple2.Model.Enum.DungeonState state) => state == Maple2.Model.Enum.DungeonState.None;
 
     public void DungeonMissionComplete(string feature, int missionId) {
         DebugLog("[DungeonMissionComplete] missionId:{MissionId}, feature:{Feature}", missionId, feature);
