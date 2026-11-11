@@ -29,35 +29,39 @@ public class GuildHandler : PacketHandler<GameSession> {
         UpdateMemberRank = 10,
         UpdateMemberMessage = 13,
         CheckIn = 15,
-        UpdateLeader = 61,
-        UpdateNotice = 62,
-        UpdateEmblem = 63,
-        IncreaseCapacity = 64,
-        UpdateRank = 65,
-        UpdateFocus = 66,
-        SendMail = 69,
-        SendApplication = 80,
-        CancelApplication = 81,
-        RespondApplication = 82,
-        Unknown83 = 83,
-        ListApplications = 84,
-        SearchGuilds = 85,
-        SearchGuildName = 86,
-        UseBuff = 88,
-        UsePersonalBuff = 89,
-        UpgradeBuff = 90,
-        StartArcade = 96,
-        EnterArcade = 97,
-        UpgradeHouseRank = 98,
-        UpgradeHouseTheme = 99,
-        EnterHouse = 100,
-        SendGift = 106,
-        UpdateGiftLog = 109,
-        Donate = 110,
-        UpgradeNpc = 111,
-        CreateGuildEvent = 112,
-        StartGuildEvent = 113,
-        JoinGuildEvent = 117,
+        // From here on the numbers are the client's CGuildManager senders; they are 2 (up to UpgradeBuff) and
+        // 3 (from StartArcade) above the older GMS numbering.
+        UpdateLeader = 63,
+        UpdateNotice = 64,
+        UpdateEmblem = 65,
+        IncreaseCapacity = 66, // no client sender found; numbered by the shift of its neighbours
+        UpdateRank = 67,
+        UpdateFocus = 68,
+        SendMail = 71,
+        PvpHistory = 74,
+        PvpSeason = 75,
+        SendApplication = 82,
+        CancelApplication = 83,
+        RespondApplication = 84,
+        Unknown85 = 85,
+        ListApplications = 86,
+        SearchGuilds = 87,
+        SearchGuildName = 88,
+        UseBuff = 90,
+        UsePersonalBuff = 91,
+        UpgradeBuff = 92,
+        StartArcade = 99,
+        EnterArcade = 100,
+        UpgradeHouseRank = 101,
+        UpgradeHouseTheme = 102,
+        EnterHouse = 103,
+        SendGift = 109,
+        UpdateGiftLog = 112,
+        Donate = 113,
+        UpgradeNpc = 114,
+        CreateGuildEvent = 115,
+        StartGuildEvent = 116,
+        JoinGuildEvent = 120,
     }
 
     #region Autofac Autowired
@@ -73,6 +77,7 @@ public class GuildHandler : PacketHandler<GameSession> {
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
 
+        Logger.Debug("Guild command {Command} from {CharacterId} ignored: guild handling is off", command, session.CharacterId);
         return;
         switch (command) {
             case Command.Create:
@@ -119,6 +124,12 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             case Command.SendMail:
                 HandleSendMail(session, packet);
+                return;
+            case Command.PvpHistory:
+                HandlePvpHistory(session, packet);
+                return;
+            case Command.PvpSeason:
+                Logger.Debug("Guild PvP season request from {CharacterId} not implemented", session.CharacterId);
                 return;
             case Command.SendApplication:
                 HandleSendApplication(session, packet);
@@ -594,6 +605,12 @@ public class GuildHandler : PacketHandler<GameSession> {
     private void HandleSendMail(GameSession session, IByteReader packet) {
         string title = packet.ReadUnicodeString();
         string content = packet.ReadUnicodeString();
+    }
+
+    // Client CGuildManager::RequestPvpHistoryAndSeason: the last history id the client holds, then a mode 75 request.
+    private void HandlePvpHistory(GameSession session, IByteReader packet) {
+        long lastHistoryId = packet.ReadLong();
+        Logger.Debug("Guild PvP history after {HistoryId} from {CharacterId} not implemented", lastHistoryId, session.CharacterId);
     }
 
     private void HandleSendApplication(GameSession session, IByteReader packet) {
