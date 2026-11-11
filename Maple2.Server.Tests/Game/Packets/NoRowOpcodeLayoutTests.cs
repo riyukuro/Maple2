@@ -40,4 +40,23 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(5));
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + 4));
     }
+
+    // Client: UIItemExtractionScrollDialog::vfunc_79 (uiitemextractionscrolldialog.cpp:244): byte 0, long source uid,
+    // long result uid, short remaining extraction count of the source item.
+    [Test]
+    public void GlamourAnvilExtractCarriesRemainingCount() {
+        var property = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+        var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
+        var metadata = new ItemMetadata(11300001, "11300001", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, null, [], null, null, null, null);
+        var result = new Item(metadata, 1) { Uid = 77 };
+
+        ByteWriter writer = ItemExtractionPacket.Extract(55, 2, result);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.GlamourAnvil));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadLong(), Is.EqualTo(55));
+        Assert.That(reader.ReadLong(), Is.EqualTo(77));
+        Assert.That(reader.ReadShort(), Is.EqualTo(2));
+    }
 }

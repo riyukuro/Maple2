@@ -60,7 +60,7 @@ public class ItemExtractionHandler : FieldPacketHandler {
             session.Item.Inventory.Add(resultItem, true);
             sourceItem.GlamorForges--;
 
-            session.Send(ItemExtractionPacket.Extract(sourceItem.Uid, resultItem));
+            session.Send(ItemExtractionPacket.Extract(sourceItem.Uid, sourceItem.GlamorForges, resultItem));
         }
     }
 }

@@ -14,12 +14,15 @@ public static class ItemExtractionPacket {
         InsufficientAnvils = 2,
     }
 
-    public static ByteWriter Extract(long sourceUid, Item item) {
+    // Client: UIItemExtractionScrollDialog::vfunc_79 (uiitemextractionscrolldialog.cpp:244): long source uid,
+    // long result uid, short count that becomes the source item's remaining extraction count, then the result
+    // item's colour and transfer blocks.
+    public static ByteWriter Extract(long sourceUid, short remainingCount, Item item) {
         var pWriter = Packet.Of(SendOp.GlamourAnvil);
         pWriter.Write<Command>(Command.Extract);
         pWriter.WriteLong(sourceUid);
         pWriter.WriteLong(item.Uid);
-        pWriter.WriteShort();
+        pWriter.WriteShort(remainingCount);
         pWriter.Write<EquipColor>(item.Appearance?.Color ?? default);
         pWriter.WriteClass<ItemTransfer>(item.Transfer ?? ItemTransfer.Default);
 
