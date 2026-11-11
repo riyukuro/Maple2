@@ -34,9 +34,10 @@ public partial class GameStorage {
                 .FirstOrDefault();
         }
 
-        // The block holds for the account, whichever of its characters the row names.
+        // The block holds for the account, whichever of its characters the row names. Same rows as the list
+        // and the count: a row whose character is gone does not block.
         public bool IsHomeBlocked(long ownerId, long accountId) {
-            return Context.HomeBlock.Any(block => block.OwnerId == ownerId && block.AccountId == accountId);
+            return LiveHomeBlocks(ownerId).Any(block => block.AccountId == accountId);
         }
 
         public int CountHomeBlocks(long ownerId) {

@@ -103,6 +103,20 @@ The client has one GM level byte. The server sends it from the account's permiss
 
 The level only switches client features on (debug keys, filter skip, debug buttons). The client can raise it by itself, so every GM action is still checked on the server.
 
+The GM grade byte in the party, guild and buddy views comes from the account as it was loaded at login; a `perm` change shows there after a relog. The field view and the Admin packet follow at once.
+
+GM chat commands the client's own GM windows and hotkeys send (each needs the permission in brackets):
+
+| Command | What the server does |
+|---|---|
+| `/MoveField <id> [flag]` (Warp) | move to the field |
+| `/AddField <id>` (Warp) | a plain move to the field, the same as `/MoveField` |
+| `/ClearInven` (GameMaster) | empties every inventory tab; worn items and the item of a summoned pet stay |
+| `/ToggleInvisibleFromNpc` (GameMaster) | monsters do not pick the player as a target |
+| `/ToggleDeathPower` (GameMaster) | each hit kills the monster it lands on; friendly NPCs and pets take normal damage |
+
+The two toggles last for the session (they stay on across field changes and go off at a channel change, a relog, or when the account stops being a GM).
+
 ## GM-only packets
 Some packets and packet modes are sent by the client only from a GM command, a debug hotkey or a developer dialog (the client tests its GM level or its debug mode before it writes them). A handler for one of those starts with `GmCheck.Allow(session, OpCode, mode)` (`Maple2.Server.Game/Util/GmCheck.cs`): the account needs the GameMaster or Admin permission, as set with the `perm` command. Any other sender is dropped with one warning (account id, opcode, mode) and gets no reply. A new handler or mode of that kind must start the same way.
 

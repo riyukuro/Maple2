@@ -52,7 +52,8 @@ public class AddFieldCommand : MoveFieldCommand {
     public AddFieldCommand(GameSession session, MapMetadataStorage mapStorage) : base(session, mapStorage, "addfield", "Move to a field (the client's GM map window).") { }
 }
 
-// "/ClearInven" from the GM item window: empties every inventory tab. Worn items stay.
+// "/ClearInven" from the GM item window: empties every inventory tab. Worn items stay, and so does the
+// item of a summoned pet (the live pet holds it).
 public class ClearInvenCommand : GameCommand {
     private readonly GameSession session;
 
@@ -64,7 +65,8 @@ public class ClearInvenCommand : GameCommand {
     private void Handle(InvocationContext ctx) {
         int count = 0;
         lock (session.Item) {
-            foreach (Item item in session.Item.Inventory.Filter(_ => true).ToArray()) {
+            long petUid = session.Pet?.Pet.Uid ?? 0;
+            foreach (Item item in session.Item.Inventory.Filter(item => item.Uid != petUid).ToArray()) {
                 if (session.Item.Inventory.Remove(item.Uid, out Item? removed)) {
                     session.Item.Inventory.Discard(removed);
                     count++;

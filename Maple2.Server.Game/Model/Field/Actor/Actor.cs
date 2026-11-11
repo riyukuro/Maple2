@@ -124,8 +124,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         long damageAmount = 0;
         for (int i = 0; i < attack.Damage.Count; i++) {
             Reflect(caster);
-            if (caster is FieldPlayer { DeathPower: true } && this is FieldNpc) {
-                // GM toggle: the hit takes all the health that is left.
+            if (caster is FieldPlayer { DeathPower: true } && this is FieldNpc { Value.Metadata.Basic.Friendly: 0 } and not FieldPet) {
+                // GM toggle: the hit takes all the health that is left. Monsters only: friendly NPCs and
+                // pets take normal damage.
                 long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
                 targetRecord.AddDamage(DamageType.Normal, health);
                 damageAmount -= health;

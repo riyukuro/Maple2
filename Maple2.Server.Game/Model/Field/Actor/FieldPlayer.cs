@@ -97,8 +97,15 @@ public class FieldPlayer : Actor<Player> {
     private bool debugAi = false;
     public bool DebugSkills = false;
     // GM toggles (chat commands of the client's GM hotkeys); cleared when the account stops being a GM.
-    public bool InvisibleFromNpc = false;
-    public bool DeathPower = false;
+    // Kept on the session: a field entry makes a new FieldPlayer and the toggle has to stay on.
+    public bool InvisibleFromNpc {
+        get => Session.GmInvisibleFromNpc;
+        set => Session.GmInvisibleFromNpc = value;
+    }
+    public bool DeathPower {
+        get => Session.GmDeathPower;
+        set => Session.GmDeathPower = value;
+    }
     #endregion
 
     public int TagId = 1;

@@ -29,6 +29,9 @@ public partial class GameSession {
     public StorageManager? Storage;
 
     public PetManager? Pet;
+    // GM toggles (see FieldPlayer.InvisibleFromNpc / DeathPower); they last as long as the session.
+    public bool GmInvisibleFromNpc;
+    public bool GmDeathPower;
     public FieldInstrument? Instrument;
 
     public FieldGuideObject? GuideObject;
