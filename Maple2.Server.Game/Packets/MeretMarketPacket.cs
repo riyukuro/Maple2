@@ -188,18 +188,19 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter Purchase(int totalQuantity, int itemIndex, long price, int premiumMarketId, long ugcMarketItemId) {
+    public static ByteWriter Purchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.Purchase);
-        pWriter.WriteByte((byte) totalQuantity);
+        // The request's record is sent back: the kind byte comes first, the quantity is the int after the index.
+        pWriter.WriteByte(kind);
         pWriter.WriteInt(premiumMarketId);
         pWriter.WriteLong(ugcMarketItemId);
-        pWriter.WriteInt();
-        pWriter.WriteInt();
-        pWriter.WriteLong();
+        pWriter.WriteInt(flag);
+        pWriter.WriteInt(childMarketItemId);
+        pWriter.WriteLong(bookmarkId);
         pWriter.WriteInt(itemIndex);
         pWriter.WriteInt(totalQuantity);
-        pWriter.WriteInt();
+        pWriter.WriteInt(unknown);
         pWriter.WriteByte(); // true if gift
         pWriter.WriteUnicodeString(); // player name
         pWriter.WriteUnicodeString(); // message

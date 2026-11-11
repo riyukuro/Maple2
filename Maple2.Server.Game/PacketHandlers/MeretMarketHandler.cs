@@ -297,10 +297,10 @@ public class MeretMarketHandler : FieldPacketHandler {
     }
 
     private void HandlePurchase(GameSession session, IByteReader packet) {
-        byte quantity = packet.ReadByte();
+        byte kind = packet.ReadByte();
         int premiumMarketId = packet.ReadInt();
         long ugcItemId = packet.ReadLong();
-        packet.ReadInt();
+        int flag = packet.ReadInt();
         int childMarketItemId = packet.ReadInt();
         long unk1 = packet.ReadLong();
         int itemIndex = packet.ReadInt();
@@ -335,7 +335,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         // Store the paid merets now, not only at the next session save.
         session.SavePurchase();
 
-        session.Send(MeretMarketPacket.Purchase(totalQuantity, itemIndex, price, premiumMarketId, ugcItemId));
+        session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId));
         return;
 
         PlayerInfo? GetGiftedPlayerInfo(GameSession session, string name) {
