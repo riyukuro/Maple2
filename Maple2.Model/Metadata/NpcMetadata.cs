@@ -66,7 +66,11 @@ public record NpcMetadataBasic(
     int Difficulty,
     string[] MainTags,
     string[] SubTags,
-    long CustomExp);
+    long CustomExp,
+    // Names from the npc xml's propertyTags list. Null in rows ingested before the field existed.
+    string[]? PropertyTags = null) {
+    public bool HasPropertyTag(string tag) => PropertyTags != null && PropertyTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
+}
 
 public record NpcMetadataProperty(
     NpcMetadataBuff[] Buffs,

@@ -85,7 +85,8 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                     MainTags: data.basic.mainTags,
                     SubTags: data.basic.subTags,
                     Difficulty: data.basic.difficulty,
-                    CustomExp: data.exp.customExp),
+                    CustomExp: data.exp.customExp,
+                    PropertyTags: data.basic.propertyTags),
                 Property: new NpcMetadataProperty(
                     Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
                     Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),

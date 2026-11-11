@@ -176,7 +176,22 @@ public static class FieldPacket {
             pWriter.WriteInt();
         }
 
+        // Read only for an npc with property tag 5: the damage taken so far, which the top hp bar
+        // divides by the npc's base health to pick the bar stage.
+        if (npc.Value.Metadata.Basic.HasPropertyTag("damaged_hp_upper_hp_bar")) {
+            pWriter.WriteLong(npc.AccumulatedDamage);
+        }
+
         pWriter.WriteBool(false);
+
+        return pWriter;
+    }
+
+    public static ByteWriter NpcAccumulatedDamage(FieldNpc npc) {
+        var pWriter = Packet.Of(SendOp.NpcRide);
+        pWriter.WriteInt(npc.ObjectId);
+        pWriter.WriteByte(0);
+        pWriter.WriteLong(npc.AccumulatedDamage);
 
         return pWriter;
     }

@@ -332,8 +332,15 @@ public class FieldNpc : Actor<Npc> {
         return approachTask;
     }
 
+    // Damage taken since spawn, shown by the top hp bar of an npc with the damaged_hp_upper_hp_bar tag.
+    public long AccumulatedDamage { get; private set; }
+
     protected override void OnDamageReceived(IActor caster, long amount) {
         LastDamageTick = Environment.TickCount64;
+        AccumulatedDamage += amount;
+        if (Value.Metadata.Basic.HasPropertyTag("damaged_hp_upper_hp_bar")) {
+            Field.Broadcast(FieldPacket.NpcAccumulatedDamage(this));
+        }
         if (firstAttackerObjectId == 0 && caster is FieldPlayer) {
             firstAttackerObjectId = caster.ObjectId;
         }

@@ -233,6 +233,7 @@ public enum SendOp : ushort {
     ItemRepackage = 0x00E4,
     Mapleopoly = 0x00E5,
     BypassKey = 0x00E6,
+    NpcRide = 0x00E7,
     NpcNotice = 0x00E8,
     LocalCamera = 0x00E9,
     HomeAction = 0x00EA,
