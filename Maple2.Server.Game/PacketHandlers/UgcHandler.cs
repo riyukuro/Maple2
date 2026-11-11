@@ -35,6 +35,7 @@ public class UgcHandler : FieldPacketHandler {
         Upload = 1,
         Confirmation = 3,
         ProfilePicture = 11,
+        Unknown12 = 12,
         LoadBanners = 18,
         ReserveBanner = 19,
     }
@@ -56,6 +57,10 @@ public class UgcHandler : FieldPacketHandler {
                 return;
             case Command.ReserveBanner:
                 HandleReserveBanner(session, packet);
+                return;
+            case Command.Unknown12:
+                // Not handled: one path string.
+                Logger.Debug("Ugc {Command} from {CharacterId}: {Path}", command, session.CharacterId, packet.ReadUnicodeString());
                 return;
         }
     }
