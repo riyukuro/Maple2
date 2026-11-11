@@ -46,6 +46,7 @@ public class StorageInventoryHandler : FieldPacketHandler {
                 HandleDelete(session, packet);
                 return;
             case Command.Load:
+                packet.ReadLong(); // storage id
                 HandleLoad(session);
                 return;
             case Command.Close:
