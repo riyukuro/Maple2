@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Helpers;
 using Maple2.Server.Core.Constants;
@@ -26,7 +27,7 @@ public abstract class LogSendHandler<T> : PacketHandler<T> where T : Session {
             case Command.Log:
                 var builder = new StringBuilder();
                 string message = packet.ReadUnicodeString();
-                builder.Append(message);
+                builder.Append(LogTextRules.Clean(message));
                 if (message.Contains("exception")) {
                     // Read remaining string
                     string debug = packet.ReadUnicodeString();
@@ -35,16 +36,16 @@ public abstract class LogSendHandler<T> : PacketHandler<T> where T : Session {
                         byte[]? lastPacket = session.GetLastSentPacket(exceptionInfo.SendOp);
 
                         Logger.Error("[{message}] [SendOp: {sendOp}] [Offset: {offset}] [Hint: {hint}] [LastPacket:\n{packetDump}]",
-                            message, exceptionInfo.SendOp, exceptionInfo.Offset, exceptionInfo.Hint, lastPacket?.ToHexString(lastPacket.Length, ' ') ?? "No packet found");
+                            LogTextRules.Clean(message), exceptionInfo.SendOp, exceptionInfo.Offset, exceptionInfo.Hint, lastPacket?.ToHexString(lastPacket.Length, ' ') ?? "No packet found");
                     } catch (ArgumentException) {
-                        Logger.Error("[{Message}] {Debug}", message, debug);
+                        Logger.Error("[{Message}] {Debug}", LogTextRules.Clean(message), LogTextRules.Clean(debug));
                     }
 
                     session.OnError?.Invoke(session, debug);
                     return;
                 } else {
                     message = packet.ReadUnicodeString();
-                    builder.Append(message);
+                    builder.Append(LogTextRules.Clean(message));
                 }
 
                 Logger.Information("Client Log: {Builder}", builder);
