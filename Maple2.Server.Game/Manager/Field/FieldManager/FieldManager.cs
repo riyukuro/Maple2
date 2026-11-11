@@ -357,6 +357,7 @@ public partial class FieldManager : IField {
         foreach (FieldInteract interact in fieldInteracts.Values) interact.Update(FieldTick);
         foreach (FieldFunctionInteract interact in fieldFunctionInteracts.Values) interact.Update(FieldTick);
         foreach (FieldInteract interact in fieldAdBalloons.Values) interact.Update(FieldTick);
+        foreach (HongBao hongBao in hongBaos.Values) hongBao.Update(FieldTick);
         foreach (FieldItem item in fieldItems.Values) item.Update(FieldTick);
         foreach (FieldMobSpawn mobSpawn in fieldMobSpawns.Values) mobSpawn.Update(FieldTick);
         foreach (FieldSpawnPointNpc spawnPointNpc in fieldSpawnPointNpcs.Values) spawnPointNpc.Update(FieldTick);

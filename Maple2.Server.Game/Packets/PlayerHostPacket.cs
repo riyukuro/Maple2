@@ -33,21 +33,27 @@ public static class PlayerHostPacket {
     }
 
     public static ByteWriter GiftHongBao(FieldPlayer player, HongBao hongBao, int amount) {
+        return GiftHongBao(hongBao.SourceItemId, hongBao.ItemId, amount, hongBao.Owner.Value.Character.Name, player.Value.Character.Name);
+    }
+
+    // Mode 2, read at scenestategame.cpp:5106-5125: bool; if set i32 envelope item, i32 reward item,
+    // i32 count, string opener of the envelope, string receiver.
+    public static ByteWriter GiftHongBao(int sourceItemId, int itemId, int amount, string ownerName, string playerName) {
         var pWriter = Packet.Of(SendOp.PlayerHost);
-        pWriter.Write<Command>(Command.GiftHongBao);
+        pWriter.WriteByte((byte) Command.GiftHongBao);
         pWriter.WriteBool(true);
-        pWriter.WriteInt(hongBao.SourceItemId);
-        pWriter.WriteInt(hongBao.ItemId);
+        pWriter.WriteInt(sourceItemId);
+        pWriter.WriteInt(itemId);
         pWriter.WriteInt(amount);
-        pWriter.WriteUnicodeString(hongBao.Owner.Value.Character.Name);
-        pWriter.WriteUnicodeString(player.Value.Character.Name);
+        pWriter.WriteUnicodeString(ownerName);
+        pWriter.WriteUnicodeString(playerName);
 
         return pWriter;
     }
 
     public static ByteWriter InactiveHongBao() {
         var pWriter = Packet.Of(SendOp.PlayerHost);
-        pWriter.Write<Command>(Command.GiftHongBao);
+        pWriter.WriteByte((byte) Command.GiftHongBao);
         pWriter.WriteBool(false);
 
         return pWriter;

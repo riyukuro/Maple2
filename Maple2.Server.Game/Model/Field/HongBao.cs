@@ -1,5 +1,5 @@
-﻿using System.Collections.Concurrent;
-using Maple2.Model.Game;
+﻿using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 
 namespace Maple2.Server.Game.Model;
@@ -9,7 +9,7 @@ public class HongBao : IUpdatable {
     public int ObjectId { get; init; }
     public int SourceItemId { get; init; }
     public FieldPlayer Owner { get; init; }
-    public ConcurrentDictionary<int, FieldPlayer> Players { get; } = new();
+    public HongBaoShares Shares { get; }
     public int[] Distributions { get; } = [];
     public int MaxUserCount { get; init; }
     public long EndTick { get; }
@@ -28,6 +28,7 @@ public class HongBao : IUpdatable {
         ItemCount = itemCount;
         active = true;
         Distributions = CalculateDistributions(ItemCount, MaxUserCount);
+        Shares = new HongBaoShares(Distributions, MaxUserCount);
     }
 
     private int[] CalculateDistributions(int totalAmount, int remainingRecipients) {
@@ -55,28 +56,16 @@ public class HongBao : IUpdatable {
         }.Concat(remaining).ToArray();
     }
 
+    // One share for each character, the opener included; null when there is none for this player.
     public Item? Claim(FieldPlayer player) {
-        if (Players.Count >= MaxUserCount) {
+        if (!Shares.TryTake(player.Value.Character.Id, out int amount)) {
             return null;
         }
-
-        if (Players.ContainsKey(player.ObjectId)) {
-            return null;
-        }
-
-        if (!Players.TryAdd(player.ObjectId, player)) {
-            return null;
-        }
-
-        int distributionIndex = Players.Count - 1;
-        if (distributionIndex < 0 || distributionIndex >= Distributions.Length) {
-            return null;
-        }
-        return player.Session.Field?.ItemDrop.CreateItem(ItemId, amount: Distributions[distributionIndex]);
+        return player.Session.Field?.ItemDrop.CreateItem(ItemId, amount: amount);
     }
 
     public void Update(long tickCount) {
-        if (tickCount < EndTick && Players.Count < MaxUserCount) {
+        if (tickCount < EndTick && Shares.Count < MaxUserCount) {
             return;
         }
         if (!active) {
