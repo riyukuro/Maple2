@@ -10,6 +10,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Core.Packets.Helper;
 using Maple2.Server.Game.Manager.Config;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
@@ -111,7 +112,7 @@ public static class FieldPacket {
 
         pWriter.WriteInt(player.Character.Title);
         pWriter.WriteShort(player.Character.Insignia);
-        pWriter.WriteByte(); // InsigniaValue
+        pWriter.WriteBool(InsigniaRules.Shown(session)); // shown flag (PC reads i16 id, u8 shown)
 
         pWriter.WriteInt();
         pWriter.WriteBool(session.Pet != null);
