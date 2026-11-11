@@ -119,9 +119,11 @@ public class Guild : IByteSerializable {
         }
         // The list is written by the channel's gRPC thread (Guild 56) while a session thread reads it.
         lock (Events) {
-            writer.WriteByte((byte) Events.Count);
-            foreach (GuildEvent @event in Events) {
-                writer.Write<GuildEvent>(@event);
+            // The client reads the count as a byte: no more rows than the count says.
+            int eventCount = Math.Min(Events.Count, byte.MaxValue);
+            writer.WriteByte((byte) eventCount);
+            for (int i = 0; i < eventCount; i++) {
+                writer.Write<GuildEvent>(Events[i]);
             }
         }
 

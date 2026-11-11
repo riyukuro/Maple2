@@ -241,6 +241,25 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // The guild's event list has a byte count: 300 events write 255 rows, not 300 after a count of 44.
+    [Test]
+    public void GuildEvents_WriteNoMoreRowsThanTheByteCount() {
+        int Length(int events) {
+            var guild = new Guild(20, "Guild", 31, 32, "Leader");
+            for (int i = 1; i <= events; i++) {
+                guild.Events.Add(new GuildEvent(i, 0));
+            }
+            var writer = new ByteWriter();
+            guild.WriteTo(writer);
+            return writer.Length;
+        }
+
+        int empty = Length(0);
+        Assert.That(Length(2) - empty, Is.EqualTo(2 * 8));
+        Assert.That(Length(255) - empty, Is.EqualTo(255 * 8));
+        Assert.That(Length(300) - empty, Is.EqualTo(255 * 8));
+    }
+
     // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
     [Test]
     public void StorageHistory_IsMode112WithZeroRows() {
