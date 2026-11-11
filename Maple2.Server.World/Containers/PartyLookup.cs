@@ -23,7 +23,7 @@ public class PartyLookup : IDisposable {
     // runs as a DungeonMatchStep under DungeonMatchLock, so a join and the room made for the group it fills do not
     // interleave. The channel calls a step makes (broadcasts, the room) are collected and made after the lock is
     // released, so a slow channel does not hold up every other step; they are made one at a time in step order.
-    public DungeonMatchQueue DungeonMatch { get; } = new();
+    public DungeonMatchQueue DungeonMatch { get; }
     private readonly LockedSteps steps = new();
     private readonly ILogger logger = Log.ForContext<PartyLookup>();
     // The last id given; Create takes the next one (Interlocked: a party is made both inside and outside a step).
@@ -36,6 +36,7 @@ public class PartyLookup : IDisposable {
         this.serverTableMetadata = serverTableMetadata;
 
         parties = new ConcurrentDictionary<int, PartyManager>();
+        DungeonMatch = new DungeonMatchQueue(partyId => TryGet(partyId, out PartyManager? manager) ? manager.Party.Capacity : 0);
         steps.OnEffectError = ex => logger.Error(ex, "Dungeon match channel call failed");
     }
 
@@ -116,6 +117,9 @@ public class PartyLookup : IDisposable {
         to.AddMoved(movers);
         return PartyError.none;
     });
+
+    // A party that may take or be taken in a dungeon match merge: it exists and has no dungeon room set (rv42 MINOR 8).
+    public bool MayMerge(int partyId) => TryGet(partyId, out PartyManager? manager) && !manager.Party.DungeonSet;
 
     // Runs body under the matchmaker lock; the channel calls it defers (Defer) are made after the lock is released.
     public T DungeonMatchStep<T>(Func<T> body) => steps.Run(body);

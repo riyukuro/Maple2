@@ -283,25 +283,26 @@ public partial class WorldService {
                 if (partyLookup.DungeonMatch.IsSearching(manager.Party.Id)) {
                     return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
                 }
+                if (manager.Party.DungeonSet) {
+                    // A party with a dungeon room set does not search (rv42 MINOR 8); the client has no error of its
+                    // own for it, 43 is the nearest.
+                    return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+                }
                 ids = manager.MemberIds();
             } else {
                 info = requestor;
                 ids = [requestorId];
             }
 
-            DungeonMatchResult? joined = partyLookup.DungeonMatch.Join(kind, rooms, ids);
+            DungeonMatchResult? joined = partyLookup.DungeonMatch.Join(kind, rooms, ids, out DungeonMatchGroup? before, partyLookup.MayMerge);
             if (joined != null) {
                 if (!partyLookup.TryGet(joined.Value.PartyId, out PartyManager? target)) {
                     partyLookup.DungeonMatch.Remove(joined.Value.PartyId);
                 } else {
                     PartyError error = manager != null ? partyLookup.MoveMembers(manager, target) : JoinSolo(target, info!);
                     if (error != PartyError.none) {
-                        DungeonMatchResult left = partyLookup.DungeonMatch.Leave(target.Party.Id, ids);
-                        if (joined.Value.Outcome == DungeonMatchOutcome.Matched) {
-                            partyLookup.CompleteDungeonMatch(target, joined.Value);
-                        } else if (left.Outcome == DungeonMatchOutcome.Stopped) {
-                            partyLookup.CompleteDungeonMatch(target, left);
-                        }
+                        // The group is put back as it was, still searching, and no room is made (rv42 MINOR 5).
+                        partyLookup.CompleteDungeonMatch(target, partyLookup.DungeonMatch.Restore(before!));
                         return new PartyResponse { Error = (int) error };
                     }
 
@@ -340,6 +341,9 @@ public partial class WorldService {
                 // The solo searcher's party of one, loaded before the search is announced.
                 manager.SendLoad(manager.Party.Members.Values);
             }
+            if (own.Outcome == DungeonMatchOutcome.Searching) {
+                own = PullDungeonMatch(manager);
+            }
             if (own.Outcome == DungeonMatchOutcome.Matched) {
                 partyLookup.CompleteDungeonMatch(manager, own);
             } else {
@@ -347,6 +351,27 @@ public partial class WorldService {
             }
             return new PartyResponse { PartyId = manager.Party.Id };
         });
+    }
+
+    // The new group takes in the waiting smaller groups (rv42 MAJOR 2), and their parties move into it as a merge
+    // does. A pulled party that cannot move searches on its own again, and the group keeps the others (MINOR 5).
+    private DungeonMatchResult PullDungeonMatch(PartyManager manager) {
+        DungeonMatchPull pull = partyLookup.DungeonMatch.Pull(manager.Party.Id, partyLookup.MayMerge);
+        var moved = new List<DungeonMatchGroup>();
+        var failed = new List<DungeonMatchGroup>();
+        foreach (DungeonMatchGroup pulled in pull.Pulled) {
+            bool ok = partyLookup.TryGet(pulled.PartyId, out PartyManager? from) && partyLookup.MoveMembers(from, manager) == PartyError.none;
+            (ok ? moved : failed).Add(pulled);
+        }
+        if (failed.Count == 0) {
+            return pull.Result;
+        }
+        foreach (DungeonMatchGroup group in failed) {
+            if (partyLookup.TryGet(group.PartyId, out _)) {
+                partyLookup.DungeonMatch.Restore(group);
+            }
+        }
+        return partyLookup.DungeonMatch.Restore(pull.Before!, moved);
     }
 
     // A player with no party takes the slot the queue gave them in target's group.

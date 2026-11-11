@@ -203,8 +203,8 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.Cancel(1, 1).Outcome, Is.EqualTo(DungeonMatchOutcome.Stopped));
     }
 
-    // The user's merge rule (11-11): a party that starts a search goes into a larger same-kind group sharing a
-    // room, the largest then the earliest, unless the merged size is over that room's maxUserCount.
+    // The merge rule (rv42 MAJOR 2): a party that starts a search goes into a same-kind group of at least its size
+    // sharing a room, the largest then the earliest, unless the merged size is over that room's maxUserCount.
     [Test]
     public void PartyMergesIntoALargerGroup() {
         var queue = new DungeonMatchQueue();
@@ -222,11 +222,9 @@ public class DungeonMatchQueueTests {
     }
 
     [Test]
-    public void PartyDoesNotMergeIntoAGroupNotLarger() {
+    public void PartyDoesNotMergeIntoASmallerGroup() {
         var queue = new DungeonMatchQueue();
         var eight = new DungeonMatchRoom(600, 2, 8, false);
-        queue.Start(1, 1, [eight], [1, 2]);
-        Assert.That(queue.Join(1, [eight], [3, 4]), Is.Null);
         queue.Start(2, 1, [eight], [5]);
         Assert.That(queue.Join(1, [eight], [6, 7]), Is.Null);
         // Of another kind, or sharing no room: no merge either.
@@ -415,5 +413,106 @@ public class DungeonMatchQueueTests {
         // No picked room for a lapenta (4) search: no rooms, not the kind 1 recommendations.
         Assert.That(DungeonMatchRules.SearchRooms(table, [], 4, 40, 150, 6), Is.Empty);
         Assert.That(DungeonMatchRules.SearchRooms(table, [5], 4, 40, 150, 6).Select(room => room.Id), Is.EqualTo(new[] { 5 }));
+    }
+
+    // rv42 MAJOR 2: the smaller goes into the larger, on equal size the later into the earlier, at any start.
+    private static DungeonMatchPull StartAndPull(DungeonMatchQueue queue, int partyId, DungeonMatchRoom room, long[] members) {
+        Assert.That(queue.Join(1, [room], members), Is.Null);
+        Assert.That(queue.Start(partyId, 1, [room], members).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        return queue.Pull(partyId);
+    }
+
+    [Test]
+    public void ASoloThatWaitedGoesIntoALaterPartyOfThree() {
+        var queue = new DungeonMatchQueue();
+        queue.Start(1, 1, [Four], [1]);
+        DungeonMatchPull pull = StartAndPull(queue, 2, Four, [2, 3, 4]);
+        Assert.That(pull.Result, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 100)));
+        Assert.That(pull.Pulled.Select(group => group.PartyId), Is.EqualTo(new[] { 1 }));
+        Assert.That(queue.IsSearching(1), Is.False);
+    }
+
+    [Test]
+    public void TwoAndTwoOnACapOfFourMatch() {
+        var queue = new DungeonMatchQueue();
+        queue.Start(1, 1, [Four], [1, 2]);
+        Assert.That(queue.Join(1, [Four], [3, 4]), Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 1, 1, 100)));
+    }
+
+    [Test]
+    public void TwoThenThreeOnACapOfFiveMatch() {
+        var queue = new DungeonMatchQueue();
+        var five = new DungeonMatchRoom(500, 2, 5, false);
+        queue.Start(1, 1, [five], [1, 2]);
+        DungeonMatchPull pull = StartAndPull(queue, 2, five, [3, 4, 5]);
+        Assert.That(pull.Result, Is.EqualTo(new DungeonMatchResult(DungeonMatchOutcome.Matched, 2, 1, 500)));
+        Assert.That(pull.Before!.Users, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void ThreeAndThreeOnACapOfFourStayApart() {
+        var queue = new DungeonMatchQueue();
+        queue.Start(1, 1, [Four], [1, 2, 3]);
+        DungeonMatchPull pull = StartAndPull(queue, 2, Four, [4, 5, 6]);
+        Assert.That(pull.Result.Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(pull.Pulled, Is.Empty);
+        Assert.That(queue.CountOf(1).Users, Is.EqualTo(3));
+        Assert.That(queue.CountOf(2).Users, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void APullTakesTheLargestThenTheEarliestWhileTheyFit() {
+        var queue = new DungeonMatchQueue();
+        var six = new DungeonMatchRoom(600, 2, 6, false);
+        queue.Start(1, 1, [six], [1]);
+        queue.Start(2, 1, [six], [2, 3]);
+        queue.Start(3, 1, [six], [4]);
+        DungeonMatchPull pull = StartAndPull(queue, 4, six, [5, 6, 7]);
+        // 3 + 2 + 1 = 6: the two, then the solo that started first; the later solo waits.
+        Assert.That(pull.Pulled.Select(group => group.PartyId), Is.EqualTo(new[] { 2, 1 }));
+        Assert.That(pull.Result.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.IsSearching(3), Is.True);
+    }
+
+    [Test]
+    public void AMergeNeverPassesThePartyCapacity() {
+        var queue = new DungeonMatchQueue(_ => 3);
+        var eight = new DungeonMatchRoom(600, 2, 8, false);
+        queue.Start(1, 1, [eight], [1, 2]);
+        Assert.That(queue.Join(1, [eight], [3, 4]), Is.Null);
+        Assert.That(queue.Join(1, [eight], [5])!.Value.PartyId, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void APartyThatMayNotMergeIsSkipped() {
+        var queue = new DungeonMatchQueue();
+        queue.Start(1, 1, [Four], [1]);
+        queue.Start(2, 1, [Four], [2, 3, 4]);
+        Assert.That(queue.Pull(2, partyId => partyId != 1).Pulled, Is.Empty);
+        // A solo goes to the smaller group 1, as group 2 may not take it.
+        Assert.That(queue.Join(1, [Four], [5], out _, partyId => partyId != 2)!.Value.PartyId, Is.EqualTo(1));
+        Assert.That(queue.Join(1, [Four], [6], out _, partyId => false), Is.Null);
+    }
+
+    // rv42 MINOR 5: a join or pull whose party side failed is put back, not matched.
+    [Test]
+    public void RestorePutsTheGroupsBack() {
+        var queue = new DungeonMatchQueue();
+        queue.Start(1, 1, [Four], [1, 2, 3]);
+        Assert.That(queue.Join(1, [Four], [4], out DungeonMatchGroup? before)!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        Assert.That(queue.Restore(before!).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        Assert.That(queue.CountOf(1), Is.EqualTo((3, 0)));
+
+        var six = new DungeonMatchRoom(600, 2, 6, false);
+        queue.Start(2, 1, [six], [5]);
+        queue.Start(3, 1, [six], [6, 7]);
+        DungeonMatchPull pull = StartAndPull(queue, 4, six, [8, 9, 10]);
+        Assert.That(pull.Result.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        // The move of party 2 failed, party 3's went through: 4 searches with five, 2 searches again.
+        DungeonMatchGroup failed = pull.Pulled.Single(group => group.PartyId == 2);
+        Assert.That(queue.Restore(pull.Before!, pull.Pulled.Where(group => group != failed)).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        queue.Restore(failed);
+        Assert.That(queue.CountOf(4), Is.EqualTo((5, 2)));
+        Assert.That(queue.CountOf(2), Is.EqualTo((1, 0)));
     }
 }
