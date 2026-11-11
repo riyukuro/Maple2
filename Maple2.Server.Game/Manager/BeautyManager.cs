@@ -92,6 +92,8 @@ public sealed class BeautyManager : IDisposable {
 
     public void ClearPreviousHair() => previousHair = null;
 
+    public bool HasSavedCosmetic(long uid) => items.Get(uid) != null;
+
     public bool EquipSavedCosmetic(long uid) {
         Item? cosmetic = items.Get(uid);
         if (cosmetic == null) {

@@ -7,6 +7,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -174,9 +175,7 @@ public class BeautyHandler : FieldPacketHandler {
     }
 
     private void HandleCreateBeauty(GameSession session, IByteReader packet) {
-        byte index = packet.ReadByte();
-        bool useVoucher = packet.ReadBool();
-        int itemId = packet.ReadInt();
+        (_, bool useVoucher, int itemId, _) = BeautyRules.ReadCreate(packet);
 
         if (session.BeautyShop == null) {
             return;
@@ -398,16 +397,13 @@ public class BeautyHandler : FieldPacketHandler {
     }
 
     private void HandleDeleteHair(GameSession session, IByteReader packet) {
-        long uid = packet.ReadLong();
-        bool delete = packet.ReadBool();
+        (long uid, _) = BeautyRules.ReadDelete(packet);
 
         if (session.BeautyShop == null) {
             return;
         }
 
-        if (delete) {
-            session.Beauty.RemoveHair(uid);
-        }
+        session.Beauty.RemoveHair(uid);
     }
 
     private void HandleAskAddSlots(GameSession session, IByteReader packet) { }
@@ -417,6 +413,11 @@ public class BeautyHandler : FieldPacketHandler {
         byte index = packet.ReadByte();
 
         if (session.BeautyShop == null) {
+            return;
+        }
+
+        // Nothing is charged for a uid that is not a saved style.
+        if (!session.Beauty.HasSavedCosmetic(uid)) {
             return;
         }
 
@@ -447,7 +448,7 @@ public class BeautyHandler : FieldPacketHandler {
             int itemId = packet.ReadInt();
 
             Item? item = session.Item.Equips.Get(itemUid);
-            if (item == null) {
+            if (item == null || !BeautyRules.DyeItemMatches(item.Id, itemId)) {
                 return;
             }
 
