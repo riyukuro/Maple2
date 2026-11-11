@@ -33,20 +33,22 @@ public static class SkillPacket {
         return pWriter;
     }
 
-    public static ByteWriter Sync(SkillRecord skill) {
+    // Client: CSceneStateGame::OnSkillSync. A cast the client already shows takes the rotation, the input vector and
+    // the two flags from here; a cast it does not show yet is started from the position and direction.
+    public static ByteWriter Sync(SkillRecord skill, in Vector3 position, in Vector3 direction, in Vector3 rotation, in Vector3 input, bool isCharge, bool isRelease, int speedBits) {
         var pWriter = Packet.Of(SendOp.SkillSync);
         pWriter.WriteLong(skill.CastUid);
         pWriter.WriteInt(skill.Caster.ObjectId);
         pWriter.WriteInt(skill.SkillId);
         pWriter.WriteShort(skill.Level);
         pWriter.WriteByte(skill.MotionPoint);
-        pWriter.Write<Vector3>(skill.Position);
-        pWriter.Write<Vector3>(skill.Direction);
-        pWriter.Write<Vector3>(skill.Rotation);
-        pWriter.Write<Vector3>(default);
-        pWriter.WriteByte();
-        pWriter.WriteByte(skill.AttackPoint);
-        pWriter.WriteInt();
+        pWriter.Write<Vector3>(position);
+        pWriter.Write<Vector3>(direction);
+        pWriter.Write<Vector3>(rotation);
+        pWriter.Write<Vector3>(input);
+        pWriter.WriteBool(isCharge);
+        pWriter.WriteBool(isRelease);
+        pWriter.WriteInt(speedBits); // the client reads a float; the 4 bytes are relayed as the caster sent them
 
         return pWriter;
     }

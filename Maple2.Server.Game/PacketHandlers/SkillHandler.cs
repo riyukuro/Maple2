@@ -371,7 +371,7 @@ public class SkillHandler : FieldPacketHandler {
         bool isRelease = packet.ReadBool();
         int unk3 = packet.ReadInt();
 
-        session.Field?.Broadcast(SkillPacket.Sync(record), session);
+        session.Field?.Broadcast(SkillPacket.Sync(record, position, direction, rotation, input, isCharge, isRelease, unk3), session);
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Sync: {skillId},{skillUid}; AttackPoint: {motionPoint}; IsCharge: {isCharge}; IsReleased: {isRelease}; UnkInt: {unk3}; Direction: {direction}"));
