@@ -5,6 +5,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.PacketHandlers;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -190,8 +191,17 @@ public partial class TriggerContext {
 
     public static bool CanForceCompleteQuest(QuestState state) => state == QuestState.Started;
 
+    // The npc of the spawn point starts its talk with each player, as when clicked (the Colosseum's Nagi offers
+    // a new game or the continue; the player's choice sets DungeonPlayType through the npc's script function).
     public void TalkNpc(int spawnId) {
-        ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
+        DebugLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
+        FieldNpc? npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
+        if (npc == null) {
+            return;
+        }
+        foreach (FieldPlayer player in Field.Players.Values) {
+            NpcTalkHandler.BeginTalk(player.Session, npc);
+        }
     }
 
     public void AddUserValue(string key, int value) {

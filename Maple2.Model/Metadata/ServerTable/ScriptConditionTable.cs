@@ -22,7 +22,11 @@ public record ScriptConditionMetadata(
     KeyValuePair<int, bool> Level,
     KeyValuePair<int, bool> AchieveCompleted,
     bool DeathPenalty,
-    bool InGuild) {
+    bool InGuild,
+    // receivedRewardDungeonID and completeRewardDungeonID (npcScriptCondition only): a dungeon room whose
+    // reward was taken in its period, and one whose rewards all were. 0 in data ingested before they were read.
+    int ReceivedRewardDungeonId = 0,
+    int CompleteRewardDungeonId = 0) {
 
     public record MaidData(
         bool Authority,

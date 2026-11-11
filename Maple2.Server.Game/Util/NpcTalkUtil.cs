@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 
@@ -235,6 +236,19 @@ public static class NpcTalkUtil {
 
         if (scriptCondition.InGuild && session.Player.Value.Character.GuildId == 0) {
             return false;
+        }
+
+        if (scriptCondition.ReceivedRewardDungeonId > 0
+            && !DungeonManager.RewardCondition(session.Dungeon.RewardCount(scriptCondition.ReceivedRewardDungeonId), 0, complete: false)) {
+            return false;
+        }
+
+        if (scriptCondition.CompleteRewardDungeonId > 0) {
+            int roomRewardCount = session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(scriptCondition.CompleteRewardDungeonId, out DungeonRoomMetadata? room)
+                ? room.Reward.Count : 0;
+            if (!DungeonManager.RewardCondition(session.Dungeon.RewardCount(scriptCondition.CompleteRewardDungeonId), roomRewardCount, complete: true)) {
+                return false;
+            }
         }
 
         if (scriptCondition.DeathPenalty && session.Config.DeathPenaltyEndTick < session.Field.FieldTick) {

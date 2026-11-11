@@ -625,11 +625,32 @@ public class DungeonManager {
             return unionRecord.UnionClears;
         }
 
-        if (DateTime.Now.ToEpochSeconds() > record.UnionCooldownTimestamp) {
+        return RewardCount(record, DateTime.Now.ToEpochSeconds());
+    }
+
+    /// <summary>
+    /// The rewards a record has taken in its cooldown period (the client's DungeonRecord::GetBonusRewardCount):
+    /// none once the period is over. A Colosseum record keeps its rounds cleared here.
+    /// </summary>
+    public static int RewardCount(DungeonRecord? record, long now) {
+        if (record == null || now > record.UnionCooldownTimestamp) {
             return 0;
         }
-
         return record.UnionClears;
+    }
+
+    /// <summary>The rewards taken from a dungeon room in its period, 0 without a record.</summary>
+    public int RewardCount(int dungeonId) {
+        Records.TryGetValue(dungeonId, out DungeonRecord? record);
+        return RewardCount(record, DateTime.Now.ToEpochSeconds());
+    }
+
+    /// <summary>
+    /// receivedRewardDungeonID: a reward of the room was taken in its period. completeRewardDungeonID: all were
+    /// (no count left by the client's DungeonRecordCli::HasCountLeft, its count against the room's rewardCount).
+    /// </summary>
+    public static bool RewardCondition(int rewardCount, int roomRewardCount, bool complete) {
+        return complete ? rewardCount >= roomRewardCount : rewardCount > 0;
     }
 
     private long GetCooldownTime(DungeonCooldownType type, int cooldownValue, DateTime clearTime) {

@@ -81,6 +81,14 @@ public class NpcTalkHandler : FieldPacketHandler {
             return; // Invalid Npc
         }
 
+        BeginTalk(session, npc);
+    }
+
+    /// <summary>
+    /// Starts the talk with an npc: the player's click, or a trigger's talk_npc (the client opens the talk window
+    /// for a Respond it did not ask for, UITalkManager::OnTalkPacket).
+    /// </summary>
+    public static void BeginTalk(GameSession session, FieldNpc npc) {
         int options = 0;
         var talkType = NpcTalkType.None;
         int shopId = npc.Value.Metadata.Basic.ShopId;
@@ -94,7 +102,7 @@ public class NpcTalkHandler : FieldPacketHandler {
             options++;
         }
 
-        ScriptMetadata.TryGet(npc.Value.Id, out ScriptMetadata? metadata);
+        session.ScriptMetadata.TryGet(npc.Value.Id, out ScriptMetadata? metadata);
         ScriptState? scriptState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Script, metadata, npc.Value.Id);
         ScriptState? selectState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Select, metadata, npc.Value.Id);
         ScriptState? questState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Quest, metadata, npc.Value.Id);
@@ -147,7 +155,7 @@ public class NpcTalkHandler : FieldPacketHandler {
             selectedState = questState;
             talkType = NpcTalkType.Quest;
             // now that quest is selected, change the metadata to the quest's metadata
-            if (!ScriptMetadata.TryGet(session.Quest.GetAvailableQuests(npc.Value.Id).Keys.Min(), out metadata)) {
+            if (!session.ScriptMetadata.TryGet(session.Quest.GetAvailableQuests(npc.Value.Id).Keys.Min(), out metadata)) {
                 session.Send(NpcTalkPacket.Close());
                 npc.StopTalk();
                 return;

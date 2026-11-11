@@ -150,8 +150,12 @@ public partial class TriggerContext {
         DungeonVariables[varId] = value;
     }
 
+    // The Colosseum's continue-play: ClearRound gets the rounds the player has cleared in the week (the room's
+    // record keeps its rounds as its reward count), and the next round starts. The room has one player.
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {
-        ErrorLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
+        DebugLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
+        FieldPlayer? player = Field.Players.Values.FirstOrDefault();
+        Field.UserValues[key] = player?.Session.Dungeon.RewardCount(dungeonRewardId) ?? 0;
     }
 
     public void StartTutorial() {

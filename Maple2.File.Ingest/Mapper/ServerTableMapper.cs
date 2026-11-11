@@ -42,7 +42,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     // The Xml pack of the client that is played, when it is not the data folder's (MS2_PLAYED_CLIENT_XML).
     private readonly M2dReader? playedReader;
 
+    // The server pack, for the attributes the parser does not read.
+    private readonly M2dReader xmlReader;
+
     public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null) {
+        this.xmlReader = xmlReader;
         this.playedReader = playedReader;
         parser = new ServerTableParser(xmlReader);
         this.clientReader = clientReader;
@@ -182,6 +186,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     }
 
     private Dictionary<int, Dictionary<int, ScriptConditionMetadata>> MergeNpcScriptConditions(Dictionary<int, Dictionary<int, ScriptConditionMetadata>> results, IEnumerable<(int NpcId, IDictionary<int, NpcScriptCondition> ScriptConditions)> parser) {
+        Dictionary<(int NpcId, int ScriptId), (int Received, int Complete)> rewardDungeons = NpcScriptRewardDungeons();
         foreach ((int npcId, IDictionary<int, NpcScriptCondition> scripts) in parser) {
             var scriptConditions = new Dictionary<int, ScriptConditionMetadata>();
             foreach ((int scriptId, NpcScriptCondition scriptCondition) in scripts) {
@@ -237,10 +242,35 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     Level: ParseToIntKeyValuePair(scriptCondition.level),
                     AchieveCompleted: ParseToIntKeyValuePair(scriptCondition.achieve_complete),
                     DeathPenalty: scriptCondition.panelty == 1,
-                    InGuild: scriptCondition.guild
+                    InGuild: scriptCondition.guild,
+                    ReceivedRewardDungeonId: rewardDungeons.GetValueOrDefault((npcId, scriptId)).Received,
+                    CompleteRewardDungeonId: rewardDungeons.GetValueOrDefault((npcId, scriptId)).Complete
                 ));
             }
             results.Add(npcId, scriptConditions);
+        }
+        return results;
+    }
+
+    // The parser's NpcScriptCondition has no receivedRewardDungeonID or completeRewardDungeonID; they are
+    // read from the table's rows here (the colosseum npc's continue-play choice).
+    private Dictionary<(int NpcId, int ScriptId), (int Received, int Complete)> NpcScriptRewardDungeons() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/npcScriptCondition_Final.xml", StringComparison.OrdinalIgnoreCase));
+        return entry == null ? [] : NpcScriptRewardDungeons(xmlReader.GetXmlDocument(entry));
+    }
+
+    public static Dictionary<(int NpcId, int ScriptId), (int Received, int Complete)> NpcScriptRewardDungeons(XmlDocument document) {
+        var results = new Dictionary<(int, int), (int, int)>();
+        foreach (XmlNode node in document.SelectNodes("ms2/condition")!) {
+            int.TryParse(node.Attributes?["receivedRewardDungeonID"]?.Value, out int received);
+            int.TryParse(node.Attributes?["completeRewardDungeonID"]?.Value, out int complete);
+            if ((received == 0 && complete == 0)
+                || !int.TryParse(node.Attributes?["npcID"]?.Value, out int npcId)
+                || !int.TryParse(node.Attributes?["scriptID"]?.Value, out int scriptId)) {
+                continue;
+            }
+            results[(npcId, scriptId)] = (received, complete);
         }
         return results;
     }
