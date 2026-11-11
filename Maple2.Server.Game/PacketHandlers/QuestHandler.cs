@@ -43,6 +43,7 @@ public class QuestHandler : FieldPacketHandler {
         FindUser = 28,
         ClaimMentoringQuestReward = 29,
         AllianceQuest = 33,
+        AllianceAcceptAll = 34,
         ClaimWeddingQuestReward = 39,
     }
 
@@ -136,6 +137,13 @@ public class QuestHandler : FieldPacketHandler {
                 // answer is the client's own text for a ticket that could not be used (Quest error 7).
                 packet.ReadInt();
                 session.Send(QuestPacket.Error(QuestError.s_alliance_quest_completion_ticket_error));
+                break;
+            case Command.AllianceAcceptAll:
+                // UIAllianceQuestDialog::SendQuestMode34 (unit_140bf60f0_uialliancequestdialog.cpp:681): no
+                // body; the player confirmed "accept all" in the alliance quest window. The request does not
+                // name the alliance and the server keeps none for a player, so no quest is started; the
+                // answer is the client's text for a quest that could not be accepted (Quest error 3).
+                session.Send(QuestPacket.Error(QuestError.s_quest_error_accept_fail));
                 break;
             case Command.SkyFortressMission:
                 // Not handled: one quest id.

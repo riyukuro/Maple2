@@ -35,6 +35,15 @@ public class QuestSummonPortalTests {
         }));
     }
 
+    // The answer to sub-type 34 (accept all alliance quests): error 3, s_quest_error_accept_fail.
+    [Test]
+    public void Error_AcceptFailIs3() {
+        ByteWriter writer = QuestPacket.Error(Maple2.Model.Error.QuestError.s_quest_error_accept_fail);
+        byte[] body = writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
+
+        Assert.That(body, Is.EqualTo(new byte[] { 0x00, 0x03, 0x00, 0x00, 0x00 }));
+    }
+
     [Test]
     public void OnlyAStartedQuestWithAPortal_InATalk_WithNoPortalUp() {
         Assert.That(QuestRules.CanResummonPortal(QuestState.Started, true, true, false), Is.True);
