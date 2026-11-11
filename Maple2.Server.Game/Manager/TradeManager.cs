@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Packets;
@@ -133,12 +134,21 @@ public class TradeManager : IDisposable {
             lock (caller.Item) {
                 if (self.Items.OpenSlots <= 0) {
                     caller.Send(TradePacket.Error(s_trade_error_itemcount));
-                }
-                if (!caller.Item.Inventory.Remove(itemUid, out Item? item, amount)) {
                     return;
                 }
-                if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true && item.Transfer.RemainTrades < 1) {
-                    caller.Item.Inventory.Add(item);
+                // A negative amount would take the whole stack; the client sends the count it shows.
+                if (!TradeRules.IsOfferAmount(amount)) {
+                    return;
+                }
+                // The client's own check before it sends: no binding, tradeable or limited trades left.
+                Item? offered = caller.Item.Inventory.Get(itemUid);
+                if (offered == null) {
+                    return;
+                }
+                if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
+                    return;
+                }
+                if (!caller.Item.Inventory.Remove(itemUid, out Item? item, amount)) {
                     return;
                 }
 
