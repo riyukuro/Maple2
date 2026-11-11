@@ -230,7 +230,8 @@ public class StatsManager {
                 Values[valueSpecialAttribute].AddTotal((long) value);
             }
             foreach ((SpecialAttribute rateSpecialAttribute, float rate) in buff.Metadata.Status.SpecialRates) {
-                Values[rateSpecialAttribute].AddRate(rate);
+                // Kept in thousandths in the total, as an item's special rate is: Multiplier() reads only that.
+                Values[rateSpecialAttribute].AddTotal((long) MathF.Floor(rate * 1000f));
             }
         }
     }

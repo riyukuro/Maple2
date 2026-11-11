@@ -161,6 +161,9 @@ public class HomeActionHandler : FieldPacketHandler {
                 if (session.Field is null) {
                     return;
                 }
+                if (!float.IsFinite(force.LengthSquared()) || !float.IsFinite(direction.LengthSquared())) {
+                    return;
+                }
 
                 foreach (FieldPlayer fieldPlayer in session.Field.Players.Values) {
                     FieldGuideObject? ball = fieldPlayer.Session.GuideObject;
