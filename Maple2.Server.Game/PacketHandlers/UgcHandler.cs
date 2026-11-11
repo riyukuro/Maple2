@@ -331,7 +331,9 @@ public class UgcHandler : FieldPacketHandler {
         packet.ReadUnicodeString(); // name
         long ugcUid = packet.ReadLong();
         string ugcGuid = packet.ReadUnicodeString();
-        packet.ReadShort(); // -255
+        packet.ReadByte(); // upload type
+        packet.ReadByte(); // upload state
+        packet.ReadUnicodeString(); // path (CUgcUploadProxy::Write)
 
         if (info.AccountId != session.AccountId || info.CharacterId != session.CharacterId || ugcUid == 0) {
             Logger.Warning("Invalid UGC confirmation {AccountId} {CharacterId} {UgcUid}", info.AccountId, info.CharacterId, ugcUid);
