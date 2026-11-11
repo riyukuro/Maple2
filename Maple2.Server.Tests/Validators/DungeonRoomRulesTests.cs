@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
@@ -292,5 +292,14 @@ public class DungeonRoomRulesTests {
         var record = new DungeonRecord(900402) { UnionClears = 2, UnionCooldownTimestamp = Epoch(end) };
         Assert.That(DungeonRoomRules.HealCooldown(record, type, value, DateTime.Parse(now)), Is.False);
         Assert.That(record.UnionCooldownTimestamp, Is.EqualTo(Epoch(end)));
+    }
+
+    // A continued Colosseum run that loses its next round keeps the rounds cleared before (seen in a live
+    // try: the loss wrote 0 over the record's 1).
+    [TestCase(0, 1, 1)]
+    [TestCase(0, 0, 0)]
+    [TestCase(3, 1, 3)]
+    public void ContinuedRound_StartsWithTheRoundsCleared(int round, int cleared, int expected) {
+        Assert.That(DungeonRoomRules.ContinuedRound(round, cleared), Is.EqualTo(expected));
     }
 }

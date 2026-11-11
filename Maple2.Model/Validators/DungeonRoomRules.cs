@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 
@@ -157,6 +157,10 @@ public static class DungeonRoomRules {
     // A room's reward period. The client reads only cooldownValue and takes the type from it
     // (DungeonRoom::GetCooldownType, commonfiles/dungeonroom.cpp:524: 0 is the next day, else a weekday), so a
     // table without cooldownType (the KR one) still has weekly rooms; the ingest maps the type the same way.
+    // A Colosseum run continued in a new room starts with the rounds cleared before (its reward count); a round the
+    // run has already cleared there is kept.
+    public static int ContinuedRound(int round, int cleared) => Math.Max(round, cleared);
+
     public static DungeonCooldownType CooldownType(int cooldownValue) =>
         cooldownValue == 0 ? DungeonCooldownType.nextDay : DungeonCooldownType.dayOfWeeks;
 

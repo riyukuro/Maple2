@@ -3,6 +3,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -159,11 +160,17 @@ public partial class TriggerContext {
     }
 
     // The Colosseum's continue-play: ClearRound gets the rounds the player has cleared in the week (the room's
-    // record keeps its rounds as its reward count), and the next round starts. The room has one player.
+    // record keeps its rounds as its reward count), and the next round starts. The room has one player. The run
+    // goes on from those rounds: a loss in the next round ends the room with DungeonClear None, which writes the
+    // run's rounds to the record, so the new room's run starts with them (else the loss wrote 0 over them).
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {
         DebugLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
         FieldPlayer? player = Field.Players.Values.FirstOrDefault();
-        Field.UserValues.Set(TriggerId, key, player?.Session.Dungeon.RewardCount(dungeonRewardId) ?? 0);
+        int cleared = player?.Session.Dungeon.RewardCount(dungeonRewardId) ?? 0;
+        Field.UserValues.Set(TriggerId, key, cleared);
+        if (player?.Session.Dungeon.UserRecord is { } record) {
+            record.Round = DungeonRoomRules.ContinuedRound(record.Round, cleared);
+        }
     }
 
     public void StartTutorial() {
