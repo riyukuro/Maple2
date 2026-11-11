@@ -95,12 +95,9 @@ public class RideHandler : FieldPacketHandler {
             return;
         }
 
-        var type = packet.Read<RideOffType>();
-
-        int ownerId = session.Ride.Ride.OwnerId;
-        bool forced = packet.ReadBool();
-
-        session.Ride.Dismount(type, forced);
+        // The client sends a typed ride-off action and continues it after the dismount.
+        RideOffAction action = RideOffAction.Read(packet);
+        session.Ride.Dismount(action);
     }
 
     private void HandleChange(GameSession session, IByteReader packet) {

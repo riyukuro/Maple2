@@ -64,12 +64,15 @@ public sealed class RideManager {
 
     }
 
-    public void Dismount(RideOffType type, bool forced = false) {
+    public void Dismount(RideOffType type) {
+        Dismount(RideOffAction.Create(type));
+    }
+
+    public void Dismount(RideOffAction rideOffAction) {
         if (Ride == null) {
             return;
         }
 
-        RideOffAction rideOffAction = GetRideOffAction(type, forced);
         session.Field?.Broadcast(RidePacket.Stop(Ride.OwnerId, rideOffAction));
 
         Ride ride = Ride;
@@ -82,42 +85,5 @@ public sealed class RideManager {
             session.Stats.Refresh();
         }
         session.Config.LoadKeyTable();
-    }
-
-    private RideOffAction GetRideOffAction(RideOffType type, bool forced = false) {
-        if (forced) {
-            return new RideOffAction(forced);
-        }
-
-        return type switch {
-            RideOffType.Default => new RideOffAction(forced),
-            RideOffType.UseSkill => new RideOffActionUseSkill(),
-            RideOffType.Interact => new RideOffActionInteract(),
-            RideOffType.Taxi => new RideOffActionTaxi(),
-            RideOffType.CashCall => new RideOffActionCashCall(),
-            RideOffType.BeautyShop => new RideOffActionBeautyShop(),
-            RideOffType.TakeLr => new RideOffActionTakeLr(),
-            RideOffType.Hold => new RideOffActionHold(),
-            RideOffType.Recall => new RideOffActionRecall(),
-            RideOffType.SummonPetOn => new RideOffActionSummonPetOn(),
-            RideOffType.SummonPetTransfer => new RideOffActionSummonPetTransfer(),
-            RideOffType.HomeConvenient => new RideOffActionHomeConvenient(),
-            RideOffType.DisableField => new RideOffActionDisableField(),
-            RideOffType.Dead => new RideOffActionDead(),
-            RideOffType.AdditionalEffect => new RideOffActionAdditionalEffect(),
-            RideOffType.RidingUi => new RideOffActionRidingUi(),
-            RideOffType.Homemade => new RideOffActionHomemade(),
-            RideOffType.AutoInteraction => new RideOffActionAutoInteraction(),
-            RideOffType.AutoClimb => new RideOffActionAutoClimb(),
-            RideOffType.CoupleEmotion => new RideOffActionCoupleEmotion(),
-            //RideOffType.React => new RideOffActionReact(),
-            RideOffType.UseFunctionItem => new RideOffActionUseFunctionItem(),
-            RideOffType.Nurturing => new RideOffActionNurturing(),
-            RideOffType.Groggy => new RideOffActionGroggy(),
-            RideOffType.UnRideSkill => new RideOffActionUnRideSkill(),
-            RideOffType.UseGlideItem => new RideOffActionUseGlideItem(),
-            RideOffType.HideAndSeek => new RideOffActionHideAndSeek(),
-            _ => new RideOffAction(forced),
-        };
     }
 }
