@@ -92,6 +92,17 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 ## Database migrations
 The servers do not migrate the game database when they start. After an update that adds a migration (`Maple2.Server.World/Migrations`), run `dotnet ef database update` in `Maple2.Server.World` (the ingest runs the same command) before the servers start. Without the `home-block` table of `AddHomeBlockTable` every login fails, because the home block list is read at login.
 
+## GM level
+The client has one GM level byte. The server sends it from the account's permissions (`AdminLevel.Of`), in the Admin packet at field entry and again when `perm` changes the permissions:
+
+| Account permissions | Level |
+|---|---|
+| Admin | 255 |
+| GameMaster (all of its flags; finer flags on top do not matter) | 50 |
+| anything else, also single flags such as Warp or SpawnItem | 1 (the client's own value for a player) |
+
+The level only switches client features on (debug keys, filter skip, debug buttons). The client can raise it by itself, so every GM action is still checked on the server.
+
 ## GM-only packets
 Some packets and packet modes are sent by the client only from a GM command, a debug hotkey or a developer dialog (the client tests its GM level or its debug mode before it writes them). A handler for one of those starts with `GmCheck.Allow(session, OpCode, mode)` (`Maple2.Server.Game/Util/GmCheck.cs`): the account needs the GameMaster or Admin permission, as set with the `perm` command. Any other sender is dropped with one warning (account id, opcode, mode) and gets no reply. A new handler or mode of that kind must start the same way.
 

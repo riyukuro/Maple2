@@ -6,6 +6,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 
@@ -61,6 +62,7 @@ public class AdminPermissionCommand : GameCommand {
 
             player.AdminPermissions |= flag;
             player.Session.CommandHandler.RegisterCommands();
+            player.Session.Send(AdminPacket.Level(AdminLevel.Of(player.AdminPermissions)));
             ctx.Console.Out.WriteLine($"Permission {flag} set on {playerName}.");
             player.Session.Send(NoticePacket.Notice(NoticePacket.Flags.MessageBox | NoticePacket.Flags.Message, new InterfaceText($"<FONT size='18'>Granted admin permission: <FONT color='#73eafd'>{flag.ToString()}</FONT></FONT>", true)));
         }
@@ -114,6 +116,7 @@ public class AdminPermissionCommand : GameCommand {
 
             player.AdminPermissions &= ~flag;
             player.Session.CommandHandler.RegisterCommands();
+            player.Session.Send(AdminPacket.Level(AdminLevel.Of(player.AdminPermissions)));
             ctx.Console.Out.WriteLine($"Permission {flag} removed from {playerName}.");
         }
     }

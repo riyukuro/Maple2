@@ -6,10 +6,11 @@ namespace Maple2.Server.Game.Packets;
 
 public static class AdminPacket {
 
-    public static ByteWriter Enable() {
+    // Mode 0: the account's GM level (AdminLevel). The client keeps 1 for a normal player.
+    public static ByteWriter Level(byte level) {
         ByteWriter pWriter = Packet.Of(SendOp.Admin);
         pWriter.WriteByte();
-        pWriter.WriteByte(255);
+        pWriter.WriteByte(level);
 
         return pWriter;
     }
