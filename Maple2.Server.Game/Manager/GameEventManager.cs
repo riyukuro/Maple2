@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
@@ -16,6 +17,8 @@ public sealed class GameEventManager {
     private readonly GameSession session;
     private readonly Dictionary<int, Dictionary<GameEventUserValueType, GameEventUserValue>> eventValues;
     private long nextUpdateTick;
+
+    public MapleopolyTurn Mapleopoly { get; } = new();
 
     private readonly ILogger logger = Log.Logger.ForContext<GameEventManager>();
 

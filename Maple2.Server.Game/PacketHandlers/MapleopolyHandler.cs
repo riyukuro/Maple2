@@ -6,6 +6,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -96,6 +97,7 @@ public class MapleopolyHandler : FieldPacketHandler {
 
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyFreeRollAmount, freeRollValue);
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalSlotCount, totalSlotValue);
+        session.GameEvent.Mapleopoly.Rolled();
         session.Send(MapleopolyPacket.Roll(totalSlotValue, dice1, dice2, freeRollValue));
     }
 
@@ -111,6 +113,11 @@ public class MapleopolyHandler : FieldPacketHandler {
         int currentSlotPosition = totalSlotValue % blueMarble.Slots.Length;
 
         BlueMarble.Slot slot = blueMarble.Slots[currentSlotPosition];
+        // One result per roll: without this a repeated result request pays the tile again.
+        if (!session.GameEvent.Mapleopoly.TakeResult(slot.Type)) {
+            return;
+        }
+
         switch (slot.Type) {
             case BlueMarbleSlotType.Item:
             case BlueMarbleSlotType.Paradise:
@@ -124,7 +131,7 @@ public class MapleopolyHandler : FieldPacketHandler {
                 }
                 break;
             case BlueMarbleSlotType.Backward:
-                totalSlotValue -= slot.MoveAmount;
+                totalSlotValue = MapleopolyTurn.MoveBackward(totalSlotValue, slot.MoveAmount);
                 break;
             case BlueMarbleSlotType.Forward:
                 totalSlotValue += slot.MoveAmount;

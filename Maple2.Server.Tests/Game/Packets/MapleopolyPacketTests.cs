@@ -4,6 +4,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Packets;
@@ -61,5 +62,34 @@ public class MapleopolyPacketTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(20000027));
         Assert.That(reader.ReadInt(), Is.EqualTo(3));
         Assert.That(result.Length, Is.EqualTo(2 + 1 + 2 + 16));
+    }
+
+    // A roll opens one result. A backward or forward tile keeps it open for the tile the token walks to; any
+    // other tile closes it, so a repeated result request is not paid.
+    [Test]
+    public void MapleopolyResultIsTakenOncePerRoll() {
+        var turn = new MapleopolyTurn();
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Item), Is.False);
+
+        turn.Rolled();
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Item), Is.True);
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Item), Is.False);
+
+        turn.Rolled();
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.WorldTour), Is.True);
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.WorldTour), Is.False);
+
+        turn.Rolled();
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Backward), Is.True);
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Forward), Is.True);
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Paradise), Is.True);
+        Assert.That(turn.TakeResult(BlueMarbleSlotType.Paradise), Is.False);
+    }
+
+    // A backward tile nearer to the start than its move amount, on the first lap: the position stops at 0.
+    [Test]
+    public void MapleopolyBackwardStopsAtStart() {
+        Assert.That(MapleopolyTurn.MoveBackward(2, 3), Is.EqualTo(0));
+        Assert.That(MapleopolyTurn.MoveBackward(30, 3), Is.EqualTo(27));
     }
 }

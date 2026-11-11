@@ -268,13 +268,14 @@ public class DungeonManager {
         Lobby = field;
         LobbyRoomId = field.RoomId;
         Metadata = field.DungeonMetadata;
-        UserRecord = new DungeonUserRecord(field.DungeonId, session.CharacterId);
+        // One record per player and room: a player who leaves and enters the room again keeps the record,
+        // and with it the revivals already used in this run.
+        UserRecord = field.DungeonRoomRecord.UserResults.GetOrAdd(session.CharacterId,
+            _ => new DungeonUserRecord(field.DungeonId, session.CharacterId));
 
         foreach (int missionId in Metadata.UserMissions) {
             //TODO
         }
-
-        field.DungeonRoomRecord.UserResults.TryAdd(session.CharacterId, UserRecord);
     }
 
     public void CreateDungeonRoom(int dungeonId, bool withParty) {
