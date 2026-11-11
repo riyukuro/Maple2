@@ -21,7 +21,15 @@ public partial class GameStorage {
             return Context.TrySaveChanges() ? ToItem(model) : null;
         }
 
+        // The split-off part becomes a new row. The source row's lowered amount is written in the same
+        // save, or after a crash before the next character save the database holds both the whole stack
+        // and the split-off part. The caller lowers the in-memory amount after this returns.
         public Item? SplitItem(long ownerId, Item item, int amount) {
+            Model.Item? source = Context.Item.Find(item.Uid);
+            if (source != null) {
+                source.Amount = item.Amount - amount;
+            }
+
             Model.Item model = item;
             model.Amount = amount;
             model.OwnerId = ownerId;
