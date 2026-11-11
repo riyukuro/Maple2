@@ -35,6 +35,11 @@ public class BonusGameHandler : FieldPacketHandler {
             case Command.Spin:
                 HandleSpin(session);
                 break;
+            case Command.Close:
+                // UIRouletteDialog sends this when the last spin has shown its result. The game already ended at
+                // the spin (BonusGameId is cleared there) and the client then ends the talk itself (NpcTalk 0),
+                // so nothing is left to do.
+                break;
         }
     }
 
