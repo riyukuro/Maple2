@@ -189,8 +189,11 @@ public static class CharacterListPacket {
         writer.WriteBool(false); // read and discarded by client
         writer.WriteLong(); // Birthday (charObj+0x11e8, set by BirthdayCard 0x111)
         writer.WriteInt(); // SuperChatId (charObj+0x11f0, set/cleared by SuperWorldChat 0x112)
-        writer.WriteInt(); // charObj+0x11f4, SuperChat cosmetic/effect ID
-        writer.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds()); // charObj+0x11f8
+        // charObj+0x11f4 and +0x11f8: the daily pet compose count and its time. The character list reads them
+        // into its own copy of the user block (UICharacterListDialog::CCharacterInfo::Read) and never uses
+        // them; only the field's add-user block sets them on the player (CSceneStateGame::OnAddUser), so 0 here.
+        writer.WriteInt(); // charObj+0x11f4, daily pet compose count
+        writer.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds()); // charObj+0x11f8, its time
         writer.WriteInt(account.PrestigeLevel);
         writer.WriteLong(character.LastModified.ToEpochSeconds());
         writer.WriteInt(); // count for long list (charObj+0x1B8 region)
