@@ -58,4 +58,15 @@ public class PetRulesTests {
         Assert.That(PetRules.RenameCost(0, 100), Is.EqualTo(100));
         Assert.That(PetRules.RenameCost(-1, 100), Is.EqualTo(100));
     }
+
+    // Made-up values: a constant 100 at factor 0.05 gives 5 per pet level above the first; the product is cut,
+    // not rounded.
+    [TestCase(100, 0.05f, 1, 0)]
+    [TestCase(100, 0.05f, 2, 5)]
+    [TestCase(100, 0.05f, 50, 245)]
+    [TestCase(19, 0.1f, 3, 2)]
+    [TestCase(0, 0.05f, 50, 0)]
+    public void LevelBonus_ConstantTimesFactorPerLevel(int constant, float factor, int level, int expected) {
+        Assert.That(PetRules.LevelBonus(constant, factor, (short) level), Is.EqualTo(expected));
+    }
 }

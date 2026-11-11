@@ -88,6 +88,8 @@ public class PetHandler : FieldPacketHandler {
         }
 
         session.Pet.Dispose();
+        // The pet's stats leave the owner's totals.
+        session.Player.Stats.Refresh();
     }
 
     private void HandleSwitch(GameSession session, IByteReader packet) {
@@ -192,6 +194,8 @@ public class PetHandler : FieldPacketHandler {
             session.Field.Broadcast(ProxyObjectPacket.AddPet(fieldPet));
             session.Pet = new PetManager(session, fieldPet);
             session.Pet.Load();
+            // The pet's stats join the owner's totals.
+            session.Player.Stats.Refresh();
         }
     }
 }

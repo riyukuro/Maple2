@@ -1,5 +1,5 @@
-using Maple2.Database.Extensions;
-﻿using Maple2.Model;
+﻿using Maple2.Database.Extensions;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -144,6 +144,7 @@ public class StatsManager {
         }
 
         AddEquips(player);
+        AddPet(player);
         AddSetBonuses(setBonuses);
         AddBuffs(player);
         Values.Total();
@@ -318,6 +319,29 @@ public class StatsManager {
         }
         if (item.Stats != null && item.Stats[ItemStats.Type.Constant].Basic.TryGetValue(attribute, out BasicOption constant)) {
             Values[attribute].AddTotal((long) (constant.Value * (option.Value / 1000.0)));
+        }
+    }
+
+    // The summoned pet's item: its stats count as a worn item's do, and its constant values grow with the
+    // pet's level (PetRules.LevelBonus). The client adds the same to its own totals
+    // (CEquipment::FUN_1411e76c0, equipment.cpp:3031-3048).
+    private void AddPet(FieldPlayer player) {
+        Item? pet = player.Session.Pet?.Pet;
+        if (pet?.Stats == null || pet.Pet == null) {
+            return;
+        }
+
+        AddItemStats(pet.Stats);
+        if (!player.Session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? metadata)) {
+            return;
+        }
+
+        ItemStats.Option constant = pet.Stats[ItemStats.Type.Constant];
+        foreach ((BasicAttribute attribute, BasicOption option) in constant.Basic) {
+            Values[attribute].AddTotal(new BasicOption(PetRules.LevelBonus(option.Value, metadata.OptionFactor, pet.Pet.Level)));
+        }
+        foreach ((SpecialAttribute attribute, SpecialOption option) in constant.Special) {
+            Values[attribute].AddTotal(new SpecialOption(PetRules.LevelBonus(option.Value, metadata.OptionFactor, pet.Pet.Level)));
         }
     }
 

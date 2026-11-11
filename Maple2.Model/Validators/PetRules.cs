@@ -1,6 +1,13 @@
 namespace Maple2.Model.Validators;
 
 public static class PetRules {
+    // What a summoned pet adds to its owner's stat on top of the pet item's own values: the item's constant
+    // value times the pet's option factor, cut to an int, for every pet level above the first
+    // (CEquipment::FUN_1411e76c0, equipment.cpp:3037-3040; FUN_1406198a0, itemremakescrolldata.cpp:933).
+    public static int LevelBonus(int constantValue, float optionFactor, short petLevel) {
+        return (int) (constantValue * (double) optionFactor + 1e-06) * (petLevel - 1);
+    }
+
     // RequestPet 4 (rename): the client's name box sends a name that is not empty and is shorter than 32 characters.
     public const int MaxNameLength = 31;
 
