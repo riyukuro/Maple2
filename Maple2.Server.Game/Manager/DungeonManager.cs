@@ -530,8 +530,9 @@ public class DungeonManager {
                 return;
             }
             DungeonRecord unionRecord = GetRecord(Metadata.Reward.UnionRewardId);
-            // Ensure player can get rewards
-            if (GetDailyClearCount(unionRecord) < unionMetadata.Reward.SubRewardCount && GetWeeklyClearCount(unionRecord) < unionMetadata.Reward.Count + DungeonRoomRules.BonusCountNow(unionRecord, DateTime.Now.ToEpochSeconds())) {
+            // A clear counts while the record has a count left, as the client tells (HasCountLeft): a room without a
+            // subRewardCount has no daily limit (the Colosseum and most rooms).
+            if (DungeonRoomRules.HasCountLeft(unionRecord, unionMetadata.Reward.Count, unionMetadata.Reward.SubRewardCount, clearTimeStamp)) {
                 UpdateUnionRecord(unionRecord, unionMetadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
             }
@@ -544,7 +545,7 @@ public class DungeonManager {
             UpdateDungeonRecord(record, Metadata, clearTimeStamp);
 
         } else {
-            if (GetDailyClearCount(record) < Metadata.Reward.SubRewardCount && GetWeeklyClearCount(record) < Metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, DateTime.Now.ToEpochSeconds())) {
+            if (DungeonRoomRules.HasCountLeft(record, Metadata.Reward.Count, Metadata.Reward.SubRewardCount, clearTimeStamp)) {
                 UpdateUnionRecord(record, Metadata, clearTimeStamp);
                 UpdateDungeonRecord(record, Metadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
@@ -752,26 +753,6 @@ public class DungeonManager {
         }
         record.CooldownTimestamp = GetCooldownTime(metadata.CooldownType, metadata.CooldownValue, clearTime);
         session.Send(DungeonRoomPacket.Update(record));
-    }
-
-    private int GetDailyClearCount(DungeonRecord record) {
-        if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(record.DungeonId, out DungeonRoomMetadata? metadata)) {
-            return 0;
-        }
-
-        if (metadata.Reward.UnionRewardId > 0) {
-            DungeonRecord unionRecord = GetRecord(metadata.Reward.UnionRewardId);
-            if (DateTime.Now.ToEpochSeconds() > unionRecord.UnionSubCooldownTimestamp) {
-                return 0;
-            }
-            return unionRecord.UnionSubClears;
-        }
-
-        if (DateTime.Now.ToEpochSeconds() > record.UnionSubCooldownTimestamp) {
-            return 0;
-        }
-
-        return record.UnionSubClears;
     }
 
     private int GetWeeklyClearCount(DungeonRecord record) {

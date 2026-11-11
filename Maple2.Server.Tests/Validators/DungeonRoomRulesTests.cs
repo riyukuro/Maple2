@@ -75,6 +75,16 @@ public class DungeonRoomRulesTests {
         Assert.That(DungeonRoomRules.HasCountLeft(Record((byte) taken, 200), 3, 0, 100), Is.EqualTo(left));
     }
 
+    // A room without a subRewardCount (the Colosseum row has none) has no daily limit: a new record, and one that
+    // has taken a reward today, still count the next clear. The clear's reward step uses this rule.
+    [Test]
+    public void HasCountLeft_NoSubRewardCountIsNoDailyLimit() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.HasCountLeft(new DungeonRecord(1), 10, 0, 100), Is.True);
+            Assert.That(DungeonRoomRules.HasCountLeft(Record(2, 200, subClears: 2, subExpire: 150), 10, 0, 100), Is.True);
+        });
+    }
+
     [Test]
     public void HasCountLeft_AtTheExpireTheCountIsBack() {
         Assert.That(DungeonRoomRules.HasCountLeft(Record(3, 200), 3, 0, 200), Is.True);
