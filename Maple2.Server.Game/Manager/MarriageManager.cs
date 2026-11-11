@@ -121,6 +121,7 @@ public sealed class MarriageManager {
             }
             proposalTo = 0;
             proposalFrom = 0;
+            divorceAskFrom = 0;
         }
     }
 
@@ -135,6 +136,7 @@ public sealed class MarriageManager {
     public void Load() {
         CheckEngagementExpiration();
         CheckMarriageHallExpiration();
+        CheckDivorceExpiration();
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
         session.Send(WeddingPacket.UpdateHall(WeddingHall));
         // The ticket is the client's way into the hall (Wedding 0x1a). The couple gets its own while the
@@ -225,7 +227,7 @@ public sealed class MarriageManager {
 
     // WeddingManager::IsInProgress: the wedding recall works while married, also during a divorce.
     public static bool CanRecall(MaritalStatus status) {
-        return status is MaritalStatus.Married or MaritalStatus.ConsensualDivorce or MaritalStatus.ForceDivorce;
+        return status is MaritalStatus.Married or MaritalStatus.DivorceFiledByGroom or MaritalStatus.DivorceFiledByBride;
     }
 
     // How long the partner's recall notice stays open. The server pack has no keep-time row for it.
@@ -284,6 +286,261 @@ public sealed class MarriageManager {
         (Marriage, WeddingHall) = WeddingCeremony.AfterHallExpiry(Marriage);
     }
 
+    #region Divorce
+    private const int MailFiled = 40000001; // to the filer: the partner's name, the end of the cooling off
+    private const int MailFiledOn = 40000002; // to the other: the filer's name, the end of the cooling off
+    private const int MailAgreedFiler = 40000003; // to the filer: the other agreed, the fee comes back
+    private const int MailAgreed = 40000004; // to the one who agreed
+    private const int MailCoolingOffEnd = 40000005; // to both: the cooling off ended, divorced
+    private const int MailCancelled = 40000007; // to both: the filer's name
+    private const int MailMutual = 40000011; // to both
+
+    // A mutual divorce the partner asked for and this player has not answered: the partner's character id.
+    // Taken under ProposalLock; dropped when this player leaves the field.
+    private long divorceAskFrom;
+
+    private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+    // This player filed the divorce that is in its cooling off.
+    private bool IsFiler => DivorceRules.FilerId(Marriage.Status, Marriage.Partner1.CharacterId, Marriage.Partner2.CharacterId) == session.CharacterId;
+
+    // Reads the stored marriage again and shows it. Used after every change of its state, on both partners.
+    public void Reload() {
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            Marriage = db.GetMarriage(session.CharacterId) ?? Marriage.Default;
+            session.Player.Value.Character.MarriageInfo = db.GetMarriageInfo(session.CharacterId);
+        }
+        Marriage.Exp = GetExp();
+        session.Send(WeddingPacket.UpdateMarriage(Marriage));
+    }
+
+    // The partner reads the marriage again: directly on this channel, through the world server on another.
+    // An offline partner reads it at the next login.
+    private void ReloadPartner(long partnerId) {
+        if (partnerId == 0) {
+            return;
+        }
+        if (session.FindSession(partnerId, out GameSession? partnerSession)) {
+            partnerSession.Marriage.Reload();
+            return;
+        }
+
+        try {
+            session.World.Marriage(new MarriageRequest {
+                ReceiverId = partnerId,
+                Reload = new MarriageRequest.Types.Reload(),
+            });
+        } catch { /* ignored */ }
+    }
+
+    private void SendDivorceMail(GameStorage.Request db, long receiverId, int mailId, long meso = 0, params string[] args) {
+        var mail = new Mail {
+            ReceiverId = receiverId,
+            SenderId = receiverId,
+            Type = MailType.System,
+            Content = mailId.ToString(),
+            ContentArgs = args.Select(arg => ("str", arg)).ToList(),
+            Meso = meso,
+        };
+
+        mail = db.CreateMail(mail);
+        if (mail == null) {
+            logger.Error("Failed to create divorce mail {MailId} for {CharacterId}", mailId, receiverId);
+            return;
+        }
+
+        try {
+            session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = receiverId,
+                MailId = mail.Id,
+            });
+        } catch { /* ignored */ }
+    }
+
+    private static string MailDate(long time) {
+        return DateTimeOffset.FromUnixTimeSeconds(time).LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+    }
+
+    // The two ends that need no request: a filed divorce is complete when its cooling off ends, and a divorced
+    // marriage is gone when the propose cooltime ends. Checked when the marriage is loaded and before anything
+    // that depends on its state.
+    public void CheckDivorceExpiration() {
+        if (Marriage.Id == 0) {
+            return;
+        }
+
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        long now = Now;
+        long marriageId = Marriage.Id;
+        long partnerId = Partner.CharacterId;
+        if (DivorceRules.CoolingOffOver(Marriage.Status, Marriage.DivorceTime, constants.WeddingCoolingOffDay, now)) {
+            // Divorced at the end of the cooling off, whenever that is noticed.
+            long end = DivorceRules.CoolingOffEnd(Marriage.DivorceTime, constants.WeddingCoolingOffDay);
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                if (db.CompleteDivorce(marriageId, filed: true, end.FromEpochSeconds())) {
+                    SendDivorceMail(db, session.CharacterId, MailCoolingOffEnd);
+                    SendDivorceMail(db, partnerId, MailCoolingOffEnd);
+                }
+            }
+            Reload();
+            ReloadPartner(partnerId);
+        }
+
+        if (Marriage.Id == marriageId && DivorceRules.ProposeCooltimeOver(Marriage.Status, Marriage.DivorceTime, constants.WeddingProposeCooltime, now)) {
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                db.DeleteDivorced(marriageId);
+            }
+            Reload();
+            ReloadPartner(partnerId);
+        }
+    }
+
+    // weddingState, marriageDate and coolingOff of an npc script condition.
+    public bool ScriptCondition(MaritalStatus? userState, int marriageDays, string? coolingOff) {
+        CheckDivorceExpiration();
+        return DivorceRules.ScriptCondition(userState, marriageDays, coolingOff, Marriage.Status, IsFiler, Marriage.MarriageTime, Now);
+    }
+
+    // A divorce step of an npc script function. False when it is refused; the client was then sent the reason.
+    public bool DivorceFunction(string function) {
+        if (session.Field == null) {
+            return false;
+        }
+
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        long now = Now;
+        long fee = constants.WeddingDivorceMeso;
+        WeddingError error;
+        switch (function) {
+            case DivorceRules.FunctionFile:
+                error = DivorceRules.CheckFile(Marriage.Status, Marriage.MarriageTime, constants.WeddingDivorceRequireMarriageDay, session.Currency.Meso, fee, now);
+                break;
+            case DivorceRules.FunctionAgree:
+                error = DivorceRules.CheckAgree(Marriage.Status, IsFiler, Marriage.DivorceTime, constants.WeddingCoolingOffDay, now);
+                break;
+            case DivorceRules.FunctionCancel:
+                error = DivorceRules.CheckCancel(Marriage.Status, IsFiler, Marriage.DivorceTime, constants.WeddingCoolingOffDay, now);
+                break;
+            case DivorceRules.FunctionMutual:
+                error = DivorceRules.CheckMutual(Marriage.Status);
+                break;
+            default:
+                logger.Warning("Unknown divorce function {Function} for {CharacterId}", function, session.CharacterId);
+                return false;
+        }
+
+        if (error != WeddingError.none) {
+            session.Send(WeddingPacket.Error(error));
+            CheckDivorceExpiration();
+            return false;
+        }
+
+        long marriageId = Marriage.Id;
+        long partnerId = Partner.CharacterId;
+        string partnerName = Partner.Name;
+        if (function == DivorceRules.FunctionMutual) {
+            // The partner is asked (Wedding 8) and answers with Wedding 9. Both stand at the npc.
+            if (!session.Field.TryGetPlayerById(partnerId, out FieldPlayer? partner)) {
+                session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_err_same_field));
+                return false;
+            }
+
+            lock (ProposalLock) {
+                partner.Session.Marriage.divorceAskFrom = session.CharacterId;
+            }
+            partner.Session.Send(WeddingPacket.DivorceRequest());
+            return true;
+        }
+
+        bool stored;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            switch (function) {
+                case DivorceRules.FunctionFile:
+                    stored = db.FileDivorce(marriageId, session.CharacterId, now.FromEpochSeconds());
+                    if (stored) {
+                        session.Currency.Meso -= fee;
+                        string end = MailDate(DivorceRules.CoolingOffEnd(now, constants.WeddingCoolingOffDay));
+                        SendDivorceMail(db, session.CharacterId, MailFiled, 0, partnerName, end);
+                        SendDivorceMail(db, partnerId, MailFiledOn, 0, session.PlayerName, end);
+                    }
+                    break;
+                case DivorceRules.FunctionAgree:
+                    stored = db.CompleteDivorce(marriageId, filed: true, now.FromEpochSeconds());
+                    if (stored) {
+                        // The filer paid the fee when filing and gets it back with the mail.
+                        SendDivorceMail(db, partnerId, MailAgreedFiler, fee);
+                        SendDivorceMail(db, session.CharacterId, MailAgreed);
+                    }
+                    break;
+                default:
+                    stored = db.CancelDivorce(marriageId, session.CharacterId);
+                    if (stored) {
+                        SendDivorceMail(db, session.CharacterId, MailCancelled, 0, session.PlayerName);
+                        SendDivorceMail(db, partnerId, MailCancelled, 0, session.PlayerName);
+                    }
+                    break;
+            }
+        }
+
+        if (!stored) {
+            // The stored marriage is not what this session held (the partner changed it on another channel).
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_invaild_state_divorce));
+        }
+        Reload();
+        ReloadPartner(partnerId);
+        return stored;
+    }
+
+    // Wedding 9: the answer to the partner's ask for a mutual divorce.
+    public void DivorceAnswer(short answer) {
+        long askerId;
+        lock (ProposalLock) {
+            askerId = divorceAskFrom;
+            divorceAskFrom = 0;
+        }
+
+        if (askerId == 0 || askerId != Partner.CharacterId) {
+            // Nothing was asked: the client's text for a marriage that is in no state to divorce.
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_invaild_state_divorce));
+            return;
+        }
+        if (answer != DivorceRules.AnswerYes) {
+            return;
+        }
+
+        WeddingError error = DivorceRules.CheckMutual(Marriage.Status);
+        if (error == WeddingError.none) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            if (db.CompleteDivorce(Marriage.Id, filed: false, Now.FromEpochSeconds())) {
+                SendDivorceMail(db, session.CharacterId, MailMutual);
+                SendDivorceMail(db, askerId, MailMutual);
+            } else {
+                error = WeddingError.s_wedding_result_only_marriage_user;
+            }
+        }
+
+        if (error != WeddingError.none) {
+            session.Send(WeddingPacket.Error(error));
+        }
+        Reload();
+        ReloadPartner(askerId);
+    }
+
+    // Wedding 7: the partner who did not file goes to the divorce field, where the npc of the agree step is.
+    public void DivorceVisit() {
+        CheckDivorceExpiration();
+        WeddingError error = DivorceRules.CheckVisit(Marriage.Status, IsFiler);
+        if (error != WeddingError.none) {
+            session.Send(WeddingPacket.Error(error));
+            return;
+        }
+
+        session.Send(session.PrepareField(session.ServerTableMetadata.ConstantsTable.WeddingDivorceFieldID)
+            ? FieldEnterPacket.Request(session.Player)
+            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+    }
+    #endregion
+
     public void RemoveMarriage(bool update = true) {
         session.Marriage.Marriage = Marriage.Default;
         session.Player.Value.Character.MarriageInfo = new MarriageInfo();
@@ -311,14 +568,18 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_not_find_propose_item;
         }
 
-        if (session.Marriage.Marriage.Status == MaritalStatus.Engaged) {
-            return WeddingError.s_wedding_result_err_propose_state_to;
+        // Neither side may be engaged, married, in a divorce or in the propose cooltime after one.
+        CheckDivorceExpiration();
+        WeddingError stateError = DivorceRules.ProposeFrom(Marriage.Status);
+        if (stateError != WeddingError.none) {
+            return stateError;
         }
 
-        if (session.Marriage.Marriage.Status == MaritalStatus.Married) {
-            return WeddingError.s_wedding_result_err_marriage_state_to;
+        target.Session.Marriage.CheckDivorceExpiration();
+        stateError = DivorceRules.ProposeTo(target.Session.Marriage.Marriage.Status);
+        if (stateError != WeddingError.none) {
+            return stateError;
         }
-
 
         if (!session.Buddy.IsBuddy(target.Value.Character.Id)) {
             return WeddingError.s_wedding_result_err_not_buddy;

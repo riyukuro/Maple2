@@ -21,6 +21,8 @@ public class Marriage : IByteSerializable {
     public long CreationTime { get; set; }
     // The time the vow was completed in the wedding hall; 0 until then.
     public long MarriageTime { get; set; }
+    // The time a divorce was filed (states 3 and 4) or became complete (state 5); 0 otherwise.
+    public long DivorceTime { get; set; }
 
     public IList<MarriageExp> ExpHistory { get; set; } = [];
 
@@ -31,9 +33,10 @@ public class Marriage : IByteSerializable {
     public void WriteTo(IByteWriter writer) {
         writer.WriteLong(Id);
         writer.WriteByte((byte) Status);
-        writer.WriteLong(CreationTime);
         // Client: WeddingProxy::Read (weddingproxy.cpp:227) reads the state time and then the marriage time, the
-        // one its divorce check counts from.
+        // one its divorce check counts from. The state time is what the client counts the cooling off
+        // (GetDivorceTime, weddingproxy.cpp:658) and the propose cooltime (:697) from in the states 3 to 5.
+        writer.WriteLong(DivorceRules.StateTime(Status, CreationTime, DivorceTime));
         writer.WriteLong(MarriageTime);
         writer.WriteClass<MarriagePartner>(Partner1);
         writer.WriteClass<MarriagePartner>(Partner2);

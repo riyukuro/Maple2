@@ -365,6 +365,12 @@ public sealed class NpcScriptManager {
             return;
         }
 
+        // A divorce step (attribute divorce). When it is refused the client is sent the reason and the rest of
+        // the function is not run.
+        if (!string.IsNullOrEmpty(scriptFunction.Divorce) && !session.Marriage.DivorceFunction(scriptFunction.Divorce)) {
+            return;
+        }
+
         // NpcTalk packets have to be sent first before any movement, items, etc
         if (scriptFunction.PortalId > 0) {
             session.Send(NpcTalkPacket.MovePlayer(scriptFunction.PortalId));

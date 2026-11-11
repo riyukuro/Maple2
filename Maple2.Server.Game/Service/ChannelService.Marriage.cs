@@ -20,6 +20,9 @@ public partial class ChannelService {
             case MarriageRequest.MarriageOneofCase.RemoveWeddingHall:
                 session.Marriage.RemoveWeddingHall();
                 break;
+            case MarriageRequest.MarriageOneofCase.Reload:
+                session.Marriage.Reload();
+                break;
             case MarriageRequest.MarriageOneofCase.Recall:
                 return Task.FromResult(Recall(session, request.Recall));
         }

@@ -18,6 +18,9 @@ internal class Marriage {
     public DateTime CreationTime { get; set; }
     // Set when the vow is completed in the wedding hall.
     public DateTime? MarriageTime { get; set; }
+    // Set when a divorce is filed (the cooling off counts from it) and again when the divorce is complete (the
+    // propose cooltime counts from it); null otherwise.
+    public DateTime? DivorceTime { get; set; }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Marriage?(Maple2.Model.Game.Marriage? other) {
@@ -30,6 +33,7 @@ internal class Marriage {
             Partner2Message = other.Partner2.Message,
             CreationTime = other.CreationTime.FromEpochSeconds(),
             MarriageTime = other.MarriageTime > 0 ? other.MarriageTime.FromEpochSeconds() : null,
+            DivorceTime = other.DivorceTime > 0 ? other.DivorceTime.FromEpochSeconds() : null,
         };
     }
 

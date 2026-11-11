@@ -15,6 +15,7 @@ public static class WeddingPacket {
         Error = 2,
         Proposal = 3,
         Engaged = 6,
+        DivorceRequest = 8,
         Reserve = 13,
         ConfirmReservation = 15,
         RequestCancelReservation = 16,
@@ -54,6 +55,15 @@ public static class WeddingPacket {
         pWriter.Write<Command>(Command.Error);
         // The client reads the result as one byte and nothing after it (WeddingManager::OnResult).
         pWriter.WriteByte((byte) error);
+
+        return pWriter;
+    }
+
+    // The partner asks for a mutual divorce. Client: WeddingManager::OnDivorceRequest (weddingmanager.cpp:317)
+    // reads nothing after the mode and opens a yes/no box with the partner's name; the answer is Wedding 9.
+    public static ByteWriter DivorceRequest() {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.DivorceRequest);
 
         return pWriter;
     }

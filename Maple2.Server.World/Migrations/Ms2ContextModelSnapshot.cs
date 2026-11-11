@@ -1097,6 +1097,9 @@ namespace Maple2.Server.World.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("DivorceTime")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("ExpHistory")
                         .IsRequired()
                         .HasColumnType("json");

@@ -62,6 +62,59 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // One partner files a divorce alone. Only from married; the stored state names the filer by the stored
+        // order of the partners.
+        public bool FileDivorce(long marriageId, long filerId, DateTime time) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || model.Status != MaritalStatus.Married || (model.Partner1Id != filerId && model.Partner2Id != filerId)) {
+                return false;
+            }
+
+            model.Status = DivorceRules.FiledStatus(filerId, model.Partner1Id);
+            model.DivorceTime = time;
+            Context.Marriage.Update(model); // requests do not track what they load
+            return Context.TrySaveChanges();
+        }
+
+        // The filer takes the divorce back: married again, as if it was never filed.
+        public bool CancelDivorce(long marriageId, long filerId) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || !DivorceRules.IsFiled(model.Status) || DivorceRules.FilerId(model.Status, model.Partner1Id, model.Partner2Id) != filerId) {
+                return false;
+            }
+
+            model.Status = MaritalStatus.Married;
+            model.DivorceTime = null;
+            Context.Marriage.Update(model); // requests do not track what they load
+            return Context.TrySaveChanges();
+        }
+
+        // The divorce is complete at the given time: from a filed one (the other partner agreed or the cooling
+        // off ended) or, for a mutual one, from married. Refused from any other state, so that of two requests
+        // that complete the same divorce only one sends its mails.
+        public bool CompleteDivorce(long marriageId, bool filed, DateTime time) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || (filed ? !DivorceRules.IsFiled(model.Status) : model.Status != MaritalStatus.Married)) {
+                return false;
+            }
+
+            model.Status = MaritalStatus.Divorced;
+            model.DivorceTime = time;
+            Context.Marriage.Update(model); // requests do not track what they load
+            return Context.TrySaveChanges();
+        }
+
+        // The propose cooltime after a divorce is over: the marriage is gone.
+        public bool DeleteDivorced(long marriageId) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || model.Status != MaritalStatus.Divorced) {
+                return false;
+            }
+
+            Context.Marriage.Remove(model);
+            return Context.TrySaveChanges();
+        }
+
         public bool DeleteMarriage(long marriageId) {
             Model.Marriage? marriage = Context.Marriage.Find(marriageId);
             if (marriage == null) {
@@ -89,6 +142,7 @@ public partial class GameStorage {
                 Id = marriage.Id,
                 CreationTime = marriage.CreationTime.ToEpochSeconds(),
                 MarriageTime = marriage.MarriageTime?.ToEpochSeconds() ?? 0,
+                DivorceTime = marriage.DivorceTime?.ToEpochSeconds() ?? 0,
                 ExpHistory = marriage.ExpHistory.Select<Model.MarriageExp, MarriageExp>(exp => exp).ToList(),
                 Partner1 = new MarriagePartner {
                     Info = partner1.CharacterId == characterId ? partner2 : partner1,
@@ -98,7 +152,9 @@ public partial class GameStorage {
                     Info = partner1.CharacterId == characterId ? partner1 : partner2,
                     Message = partner1.CharacterId == characterId ? marriage.Partner1Message : marriage.Partner2Message,
                 },
-                Status = marriage.Status,
+                // The stored state names the filer of a divorce by the stored order; the first stored partner
+                // is given the two the other way round.
+                Status = partner1.CharacterId == characterId ? DivorceRules.Swapped(marriage.Status) : marriage.Status,
             };
         }
 

@@ -152,6 +152,12 @@ public static class NpcTalkUtil {
             return false;
         }
 
+        // weddingState, marriageDate and coolingOff: the talker's own marriage.
+        if (scriptCondition.Wedding is { } marriage && (marriage.UserState != null || marriage.MarriageDays > 0 || !string.IsNullOrEmpty(marriage.CoolingOff))
+            && !session.Marriage.ScriptCondition(marriage.UserState, marriage.MarriageDays, marriage.CoolingOff)) {
+            return false;
+        }
+
         foreach ((int questId, bool started) in scriptCondition.QuestStarted) {
             session.Quest.TryGetQuest(questId, out Quest? quest);
             if (started && quest is not { State: QuestState.Started }) {

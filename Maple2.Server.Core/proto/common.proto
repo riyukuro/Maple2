@@ -278,6 +278,8 @@ message ClubInfoResponse {
 message MarriageRequest {
   message RemoveMarriage {}
   message RemoveWeddingHall {}
+  // The stored marriage changed: the receiver reads it again.
+  message Reload {}
   message Recall {
     int64 caller_id = 1;
     string name = 2;
@@ -291,6 +293,7 @@ message MarriageRequest {
     RemoveMarriage remove_marriage = 3;
     RemoveWeddingHall remove_wedding_hall = 4;
     Recall recall = 5;
+    Reload reload = 6;
   }
 }
 

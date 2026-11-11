@@ -22,6 +22,7 @@ public class WeddingHandler : FieldPacketHandler {
         Propose = 3,
         ProposalReply = 4,
         CancelProposal = 5,
+        DivorceVisit = 7,
         DivorceReply = 9,
         ReserveHall = 13,
         ReserveHallReply = 14,
@@ -85,12 +86,14 @@ public class WeddingHandler : FieldPacketHandler {
                 HandleSendInvitation(session, packet);
                 return;
             case Command.DivorceReply:
-                // WeddingManager::OnDivorceAnswer (weddingmanager.cpp:480): the answer to the divorce message box
-                // (13 = yes, 14 = no). The box opens only on Wedding 8 from the server, which is never sent: the
-                // server has no divorce flow (the request, sub-type 7, is not read either). Answered with the
-                // client's text for a marriage that is in no state to divorce (result 0x2d).
-                Logger.Debug("Wedding {Command} from {CharacterId}: {Answer}", command, session.CharacterId, packet.ReadShort());
-                session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_invaild_state_divorce));
+                // WeddingManager::OnDivorceAnswer (weddingmanager.cpp:478): the answer to the box of Wedding 8, one
+                // short (13 = yes, 14 = no).
+                session.Marriage.DivorceAnswer(packet.ReadShort());
+                return;
+            case Command.DivorceVisit:
+                // UIWeddingDialog::SendWedding (uiweddingdialog.cpp:278): the yes of the box the wedding window
+                // shows the partner who did not file a divorce (OnDivorce, :326). Nothing after the mode.
+                session.Marriage.DivorceVisit();
                 return;
             case Command.SetCoupleMessage:
                 session.Marriage.SetCoupleMessage(packet.ReadUnicodeString());

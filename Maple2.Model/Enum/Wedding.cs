@@ -4,9 +4,12 @@ public enum MaritalStatus : short {
     Single = 0,
     Engaged = 1,
     Married = 2,
-    ConsensualDivorce = 3,
-    ForceDivorce = 4,
-    DivorceCoolOff = 5,
+    // A divorce one partner filed alone, in its cooling off. Client WeddingProxy::IsPartner (weddingproxy.cpp:639)
+    // names the filer: the groom (the first partner of the wedding packet) in 3, the bride (the second) in 4.
+    DivorceFiledByGroom = 3,
+    DivorceFiledByBride = 4,
+    // Divorced: the propose cooltime runs (WeddingProxy::IsProposeCooldownOver, weddingproxy.cpp:697).
+    Divorced = 5,
 }
 
 public enum MarriageExpType : short {
