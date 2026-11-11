@@ -70,6 +70,12 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
         MergeId = crystalId;
     }
 
+    // The revert of a merge: no option in the Empowerment group and no crystal id.
+    public void ClearMergeOption() {
+        options[(int) Type.Empowerment] = new Option();
+        MergeId = 0;
+    }
+
     public Option this[Type type] {
         get => options[(int) type];
         set => options[(int) type] = value;

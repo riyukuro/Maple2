@@ -273,6 +273,20 @@ public class LuaTests {
         });
     }
 
+    // The port gives the script's value for every rarity and equip type.
+    [Test]
+    public void CalcItemMergeRevertMeso() {
+        Assert.Multiple(() => {
+            for (int rarity = 0; rarity <= 7; rarity++) {
+                for (int itemType = 0; itemType <= 99; itemType++) {
+                    Assert.That(Server.Game.LuaFunctions.Lua.CalcItemMergeRevertMeso(rarity, itemType),
+                        Is.EqualTo(maple2Lua.CalcItemMergeRevertMeso(rarity, itemType)), $"rarity {rarity} type {itemType}");
+                }
+            }
+        });
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcItemMergeRevertMeso(4, 22), Is.EqualTo(500000));
+    }
+
     [TestCase(1, 0)]
     [TestCase(8, 0)]
     [TestCase(10, 100)]

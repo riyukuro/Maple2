@@ -84,9 +84,15 @@ public class ItemMergeHandler : FieldPacketHandler {
     // Client UIItemMergeRevertDialog: undo the merge options of an item with a revert item.
     // The revert item comes first, then the item to clear (uiitemmergerevertdialog.cpp:156).
     private void HandleRevert(GameSession session, IByteReader packet) {
+        (long revertItemUid, long itemUid) = ReadRevert(packet);
+
+        session.ItemMerge.Revert(revertItemUid, itemUid);
+    }
+
+    public static (long RevertItemUid, long ItemUid) ReadRevert(IByteReader packet) {
         long revertItemUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
-        Logger.Debug("ItemMerge revert of {ItemUid} with {RevertItemUid} not implemented", itemUid, revertItemUid);
+        return (revertItemUid, itemUid);
     }
 
     // Client UIItemMergeOptionDialog::RequestMaterial: the material picked for the item.

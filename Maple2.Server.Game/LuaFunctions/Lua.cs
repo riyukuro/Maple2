@@ -625,6 +625,27 @@ public static class Lua {
     }
     #endregion
 
+    #region ItemMerge
+    // The meso price of removing an item's merge option: by rarity, twice as much for item type 22.
+    public static int CalcItemMergeRevertMeso(int rarity, int itemType) {
+        int price;
+        if (rarity < RankElite) {
+            price = 0;
+        } else if (rarity == RankElite) {
+            price = 100000;
+        } else if (rarity == RankExcellent) {
+            price = 250000;
+        } else {
+            price = 500000;
+        }
+
+        if (itemType == 22) {
+            price *= 2;
+        }
+        return price;
+    }
+    #endregion
+
     #region Gathering
     public static float CalcGatheringObjectSuccessRate(int currentCount, int highPropLimitCount, int normalPropLimit, int someoneElsesHome = 1) {
         if (someoneElsesHome == 0) {

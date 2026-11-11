@@ -3,6 +3,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Formulas;
+using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Serilog;
@@ -220,6 +221,76 @@ public sealed class ItemMergeManager {
         if (session.Item.Equips.Get(item.Uid) != null) {
             session.Stats.Refresh();
         }
+    }
+
+    // Client UIItemMergeRevertDialog: a revert item removes the merge option of an item. The checks and
+    // their codes are the dialog's own (CheckItem, uiitemmergerevertdialog.cpp:283); the price is the
+    // one the dialog shows, by the item's rarity and equip type. The client waits for mode 6.
+    public void Revert(long revertItemUid, long itemUid) {
+        if (pending != null) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown));
+            return;
+        }
+
+        Item? revertItem = session.Item.Inventory.Get(revertItemUid);
+        Item? item = Find(itemUid);
+        ItemMergeError error = CheckRevert(revertItem, item);
+        if (error != ItemMergeError.ok || revertItem == null || item?.Stats == null) {
+            session.Send(ItemMergePacket.Error(error == ItemMergeError.ok ? ItemMergeError.s_item_merge_option_error_unknown : error));
+            return;
+        }
+
+        long price = RevertPrice(item);
+        if (session.Currency.CanAddMeso(-price) != -price) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_meso));
+            return;
+        }
+
+        if (!session.Item.Inventory.Consume(revertItem.Uid, 1)) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
+            return;
+        }
+
+        session.Currency.Meso -= price;
+        item.Stats.ClearMergeOption();
+
+        session.Send(ItemMergePacket.Remove(item));
+        if (session.Item.Equips.Get(item.Uid) != null) {
+            session.Stats.Refresh();
+        }
+    }
+
+    // CItemData::FUN_14053e410 (itemdata.cpp:1348): 2 for the equip types 22, 50 to 56 and 80 to 83,
+    // 1 for the others. The revert item's function parameter names the kind it works on.
+    public static int RevertSlot(ItemType type) {
+        return type is { Group: 1, Type: 22 or >= 50 and <= 56 or >= 80 and <= 83 } ? 2 : 1;
+    }
+
+    public static long RevertPrice(Item item) {
+        // CItemData::GetEquipSubtype: 0 for an item that is not equipment.
+        return Lua.CalcItemMergeRevertMeso(item.Rarity, item.Type.Group == 1 ? item.Type.Type : 0);
+    }
+
+    public static ItemMergeError CheckRevert(Item? revertItem, Item? item) {
+        if (item == null) {
+            return ItemMergeError.s_item_merge_option_error_invalid_mergeitem;
+        }
+        if (revertItem?.Metadata.Function?.Type != ItemFunction.ItemMergeRevert) {
+            return ItemMergeError.s_item_merge_option_error_invalid_merge_scroll;
+        }
+        if (revertItem.Rarity != item.Rarity) {
+            return ItemMergeError.s_item_merge_option_error_invalid_revert_rank;
+        }
+        if (item.Stats is not { HasMergeOption: true }) {
+            return ItemMergeError.s_item_merge_option_error_invalid_revert_option;
+        }
+        if (!int.TryParse(revertItem.Metadata.Function.Parameters, out int slot) || slot == 0) {
+            return ItemMergeError.s_item_merge_option_error_invalid_merge_scroll;
+        }
+        if (slot != RevertSlot(item.Type)) {
+            return ItemMergeError.s_item_merge_option_error_invalid_revert_slot;
+        }
+        return ItemMergeError.ok;
     }
 
     // One option of the slot, each as likely as the others, then one of its steps by weight and a value

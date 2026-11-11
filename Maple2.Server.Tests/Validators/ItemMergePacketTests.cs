@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Validators;
@@ -130,5 +132,85 @@ public class ItemMergePacketTests {
         read.ReadFrom(new ByteReader(bytes));
         Assert.That(read.MergeId, Is.EqualTo(37000002));
         Assert.That(read[ItemStats.Type.Empowerment].Special[SpecialAttribute.Experience].Value, Is.EqualTo(35));
+    }
+
+    private static Item ItemOf(int id, int rarity, long uid, string? revertParameter = null) {
+        var property = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+        var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
+        ItemMetadataFunction? function = revertParameter == null ? null : new ItemMetadataFunction(ItemFunction.ItemMergeRevert, "ItemMergeRevert", revertParameter, false);
+        var metadata = new ItemMetadata(id, $"{id}", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, function, [], null, null, null, null);
+        return new Item(metadata, rarity) { Uid = uid };
+    }
+
+    private static Item Merged(int id, int rarity) {
+        Item item = ItemOf(id, rarity, 5);
+        item.Stats = new ItemStats();
+        item.Stats.SetMergeOption(new MergeRoll(BasicAttribute.Dexterity, SpecialAttribute.None, 12), 37000001);
+        return item;
+    }
+
+    // The client writes the revert item's uid before the item's (uiitemmergerevertdialog.cpp:156).
+    [Test]
+    public void RevertRequestHasTheRevertItemFirst() {
+        var writer = new ByteWriter();
+        writer.WriteLong(111);
+        writer.WriteLong(222);
+        (long revertItemUid, long itemUid) = ItemMergeHandler.ReadRevert(new ByteReader(writer.ToArray()));
+        Assert.That(revertItemUid, Is.EqualTo(111));
+        Assert.That(itemUid, Is.EqualTo(222));
+    }
+
+    // After the revert the Empowerment group is empty and the int after the groups is 0; the answer
+    // (mode 6) is the item's uid and the item.
+    [Test]
+    public void RevertClearsTheGroupAndTheMergeId() {
+        Item item = Merged(11300001, 4);
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000021, 4, 9, "1"), item), Is.EqualTo(ItemMergeError.ok));
+        item.Stats!.ClearMergeOption();
+        Assert.That(item.Stats.HasMergeOption, Is.False);
+        Assert.That(item.Stats[ItemStats.Type.Empowerment].Count, Is.EqualTo(0));
+        Assert.That(item.Stats.MergeId, Is.EqualTo(0));
+
+        var writer = new ByteWriter();
+        item.Stats.WriteTo(writer);
+        byte[] stats = writer.ToArray();
+        Assert.That(stats.Length, Is.EqualTo(5 * 4 + 4));
+        Assert.That(stats, Is.All.EqualTo(0));
+
+        byte[] bytes = ItemMergePacket.Remove(item).ToArray();
+        var packet = new ByteReader(bytes, 2);
+        Assert.That(packet.ReadByte(), Is.EqualTo(6));
+        Assert.That(packet.ReadLong(), Is.EqualTo(5));
+        Assert.That(packet.Available, Is.GreaterThan(0));
+    }
+
+    // The codes of the client's own check (UIItemMergeRevertDialog::CheckItem).
+    [Test]
+    public void RevertErrors() {
+        Item revert = ItemOf(37000021, 4, 9, "1");
+        Assert.That(ItemMergeManager.CheckRevert(revert, null), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_mergeitem));
+        Assert.That(ItemMergeManager.CheckRevert(null, Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(30000001, 4, 9), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
+        Assert.That(ItemMergeManager.CheckRevert(revert, Merged(11300001, 5)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_rank));
+        Assert.That(ItemMergeManager.CheckRevert(revert, ItemOf(11300001, 4, 5)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_option));
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000021, 4, 9, "0"), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000021, 4, 9, ""), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
+        // Type 13 is kind 1, types 22 and 50 are kind 2.
+        Assert.That(ItemMergeManager.CheckRevert(revert, Merged(12200001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_slot));
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000024, 4, 9, "2"), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_slot));
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000024, 4, 9, "2"), Merged(15000001, 4)), Is.EqualTo(ItemMergeError.ok));
+        Assert.That(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_revert_slot).ToArray()[2..], Is.EqualTo(new byte[] { 5, 8, 0 }));
+    }
+
+    [Test]
+    public void RevertSlotAndPriceFollowTheEquipType() {
+        Assert.That(ItemMergeManager.RevertSlot(new ItemType(11300001)), Is.EqualTo(1));
+        Assert.That(ItemMergeManager.RevertSlot(new ItemType(13400001)), Is.EqualTo(1));
+        Assert.That(ItemMergeManager.RevertSlot(new ItemType(12200001)), Is.EqualTo(2));
+        Assert.That(ItemMergeManager.RevertSlot(new ItemType(15600001)), Is.EqualTo(2));
+        Assert.That(ItemMergeManager.RevertSlot(new ItemType(18300001)), Is.EqualTo(2));
+        Assert.That(ItemMergeManager.RevertSlot(new ItemType(22200001)), Is.EqualTo(1));
+        Assert.That(ItemMergeManager.RevertPrice(Merged(11300001, 4)), Is.EqualTo(250000));
+        Assert.That(ItemMergeManager.RevertPrice(Merged(12200001, 4)), Is.EqualTo(500000));
     }
 }
