@@ -88,14 +88,7 @@ public class PartyHandler : FieldPacketHandler {
                 return;
             case Command.Unknown39:
             case Command.DungeonMemberConfirm:
-                // UIMessenger::FUN_141a17bc0 (uimessenger.cpp:2502, join as a dungeon helper) and
-                // UIMessenger::OnDungeonMemberConfirm (uimessenger.cpp:2520, join as a member): party id and
-                // dungeon room id from the confirm box of a recruiting link in the chat. The link comes from the
-                // recruiting notice DungeonHelp 0x0109 (UIMessengerBrowser::FUN_141a23060), which the server
-                // never sends: the client does not settle who gets it. No party is recruiting: answered with
-                // the client's "party not found" text.
-                Logger.Debug("Party {Command} from {CharacterId}: party {PartyId}, room {RoomId}", command, session.CharacterId, packet.ReadInt(), packet.ReadInt());
-                session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
+                HandleJoinDungeonRecruit(session, packet);
                 return;
         }
 
@@ -249,6 +242,37 @@ public class PartyHandler : FieldPacketHandler {
             JoinByPartySearch = new PartyRequest.Types.JoinByPartySearch {
                 PartyId = partyId,
                 PartySearchId = partySearchId,
+            },
+        });
+
+        if (response.Error != (int) PartyError.none) {
+            session.Send(PartyPacket.Error((PartyError) response.Error));
+            return;
+        }
+
+        if (session.Party.SetParty(response.Party)) {
+            session.Send(PartyPacket.Load(session.Party.Party!, true));
+        }
+    }
+
+    // UIMessenger::FUN_141a17bc0 (uimessenger.cpp:2502, join as a dungeon helper) and
+    // UIMessenger::OnDungeonMemberConfirm (uimessenger.cpp:2520, join as a member): party id and dungeon room id from
+    // the confirm box of a recruiting notice's chat link (DungeonHelp 0x0109). Both join as an ordinary member, held
+    // to the room's limits; the party does not keep which link was used (r63, FORK.md).
+    private void HandleJoinDungeonRecruit(GameSession session, IByteReader packet) {
+        int partyId = packet.ReadInt();
+        int roomId = packet.ReadInt();
+
+        if (session.Party.Party != null) {
+            session.Send(PartyPacket.Error(PartyError.s_party_err_already));
+            return;
+        }
+
+        PartyResponse? response = World.Party(new PartyRequest {
+            RequestorId = session.CharacterId,
+            JoinDungeonRecruit = new PartyRequest.Types.JoinDungeonRecruit {
+                PartyId = partyId,
+                RoomId = roomId,
             },
         });
 

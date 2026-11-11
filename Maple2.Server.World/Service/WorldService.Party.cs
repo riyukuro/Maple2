@@ -49,6 +49,10 @@ public partial class WorldService {
                 return Task.FromResult(DungeonMatch(request.RequestorId, request.DungeonMatch));
             case PartyRequest.PartyOneofCase.CancelDungeonMatch:
                 return Task.FromResult(CancelDungeonMatch(request.RequestorId, request.CancelDungeonMatch));
+            case PartyRequest.PartyOneofCase.DungeonRecruit:
+                return Task.FromResult(DungeonRecruit(request.RequestorId, request.DungeonRecruit));
+            case PartyRequest.PartyOneofCase.JoinDungeonRecruit:
+                return Task.FromResult(JoinDungeonRecruit(request.RequestorId, request.JoinDungeonRecruit));
             default:
                 return Task.FromResult(new PartyResponse { Error = (int) PartyError.none });
         }
@@ -290,6 +294,34 @@ public partial class WorldService {
             }
             return new PartyResponse { PartyId = manager.Party.Id };
         });
+    }
+
+    // RoomDungeon 15/16 (r63): Game checked the room; the notice goes out from PartyLookup.StartDungeonRecruit.
+    private PartyResponse DungeonRecruit(long requestorId, PartyRequest.Types.DungeonRecruit recruit) {
+        if (recruit.Kind is not ((int) DungeonRecruitKind.Helper or (int) DungeonRecruitKind.Member)) {
+            return new PartyResponse();
+        }
+        // Fetched before the step, as for DungeonMatch.
+        if (!playerLookup.TryGet(requestorId, out PlayerInfo? requestor)) {
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+        }
+        var room = new DungeonRecruitRoom(recruit.RoomId, recruit.MinLevel, recruit.GearScore, recruit.MaxUsers);
+        return partyLookup.StartDungeonRecruit(requestor, (DungeonRecruitKind) recruit.Kind, room, playerLookup.GetOnlinePlayerInfos());
+    }
+
+    // Party 39/43 (r63): the notice's chat link.
+    private PartyResponse JoinDungeonRecruit(long requestorId, PartyRequest.Types.JoinDungeonRecruit join) {
+        if (!playerLookup.TryGet(requestorId, out PlayerInfo? joiner)) {
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+        }
+        PartyError error = partyLookup.JoinDungeonRecruit(joiner, join.PartyId, join.RoomId);
+        if (error != PartyError.none) {
+            return new PartyResponse { Error = (int) error };
+        }
+        if (!partyLookup.TryGet(join.PartyId, out PartyManager? manager)) {
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+        }
+        return new PartyResponse { Party = ToPartyInfo(manager.Party) };
     }
 
     private PartyInfo ToPartyInfo(Party party) {

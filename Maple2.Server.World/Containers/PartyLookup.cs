@@ -25,6 +25,8 @@ public class PartyLookup : IDisposable {
     // interleave. The channel calls a step makes (broadcasts, the room) are collected and made after the lock is
     // released, so a slow channel does not hold up every other step; they are made one at a time in step order.
     public DungeonMatchQueue DungeonMatch { get; }
+    // The RoomDungeon 15/16 recruits (r63), used inside matchmaker steps as the queue is. Init: the tests' clock.
+    public DungeonRecruitBoard DungeonRecruits { get; protected init; } = new();
     private readonly LockedSteps steps = new();
     private readonly ILogger logger = Log.ForContext<PartyLookup>();
     // The last id given; Create takes the next one (Interlocked: a party is made both inside and outside a step).
@@ -95,6 +97,7 @@ public class PartyLookup : IDisposable {
             return PartyError.s_party_err_not_found;
         }
         DungeonMatchResult removed = DungeonMatch.Remove(partyId);
+        DungeonRecruits.Forget(partyId);
         if (removed.Outcome == DungeonMatchOutcome.Stopped) {
             // The search goes with the party: the members are told it stopped first (0x1e), as for a cancel.
             BroadcastDungeonMatch(manager, removed.Kind, false);
@@ -126,6 +129,7 @@ public class PartyLookup : IDisposable {
             return PartyError.s_party_err_not_found;
         }
         DungeonMatch.Remove(from.Party.Id);
+        DungeonRecruits.Forget(from.Party.Id);
         RemovePartyListing(from.Party.Id);
         to.AddMoved(movers);
         return PartyError.none;
@@ -179,6 +183,8 @@ public class PartyLookup : IDisposable {
                 // does not search; the client has no error of its own for it, 43 is the nearest.
                 return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
             }
+            // A party that starts a search no longer recruits (r63).
+            DungeonRecruits.Close(manager.Party.Id);
             ids = manager.MemberIds();
         } else {
             info = requestor;
@@ -241,6 +247,129 @@ public class PartyLookup : IDisposable {
             BroadcastDungeonMatch(manager, kind, true);
         }
         return new PartyResponse { PartyId = manager.Party.Id };
+    });
+
+    // RoomDungeon 15/16 (r63): the leader, or a player with no party (who gets a party of one), recruits for a room.
+    // The notice goes to the party's members and to the online players at the room's level outside a full or
+    // matching party. A party sends one notice per cooldown; inside it the requester gets the time left.
+    public PartyResponse StartDungeonRecruit(PlayerInfo requestor, DungeonRecruitKind kind, DungeonRecruitRoom room, IReadOnlyCollection<PlayerInfo> online) => DungeonMatchStep(() => {
+        bool made = false;
+        if (TryGetByCharacter(requestor.CharacterId, out PartyManager? manager)) {
+            int partyId = manager.Party.Id;
+            if (manager.Party.LeaderCharacterId != requestor.CharacterId) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_chief };
+            }
+            if (DungeonMatch.IsSearching(partyId) || DungeonMatch.IsMatching(partyId)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_dungeon_match_another };
+            }
+            if (room.MaxUsers > 0 && manager.Party.Members.Count >= room.MaxUsers) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_full_limit_player };
+            }
+            TimeSpan left = DungeonRecruits.CooldownLeft(partyId);
+            if (left > TimeSpan.Zero) {
+                return new PartyResponse { CooldownMilliseconds = Math.Max(1, (int) Math.Ceiling(left.TotalMilliseconds)) };
+            }
+        } else {
+            PartyError createError = Create(requestor.CharacterId, out int partyId, requestor);
+            if (createError != PartyError.none) {
+                return new PartyResponse { Error = (int) createError };
+            }
+            if (!TryGet(partyId, out manager)) {
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+            }
+            made = true;
+        }
+
+        DungeonRecruit recruit = DungeonRecruits.Start(manager.Party.Id, kind, room);
+        if (made) {
+            manager.SendLoad(manager.Party.Members.Values);
+        }
+        SendDungeonRecruit(manager, recruit, DungeonRecruitTargets(manager, room, online));
+        return new PartyResponse { PartyId = manager.Party.Id };
+    });
+
+    // Who gets a party's notice: its members, and the players DungeonRecruitRules.Receives takes.
+    public List<PlayerInfo> DungeonRecruitTargets(PartyManager manager, DungeonRecruitRoom room, IEnumerable<PlayerInfo> online) {
+        var partyOf = new Dictionary<long, PartyManager>();
+        foreach (PartyManager party in parties.Values) {
+            foreach (long characterId in party.Party.Members.Keys) {
+                partyOf[characterId] = party;
+            }
+        }
+        List<PlayerInfo> targets = manager.Party.Members.Values.Select(member => member.Info).ToList();
+        foreach (PlayerInfo player in online) {
+            if (manager.Party.Members.ContainsKey(player.CharacterId)) {
+                continue;
+            }
+            bool full = false, matching = false;
+            if (partyOf.TryGetValue(player.CharacterId, out PartyManager? other)) {
+                full = other.Party.Members.Count >= other.Party.Capacity;
+                // Matching: in the matchmaker, searching or in a found match (the client's own gate, CanAskHelp).
+                matching = DungeonMatch.IsSearching(other.Party.Id) || DungeonMatch.IsMatching(other.Party.Id);
+            }
+            if (DungeonRecruitRules.Receives(player, room, full, matching)) {
+                targets.Add(player);
+            }
+        }
+        return targets;
+    }
+
+    // Virtual: the tests' seam for the notice's channel calls.
+    protected virtual void SendDungeonRecruit(PartyManager manager, DungeonRecruit recruit, List<PlayerInfo> targets) {
+        PlayerInfo? leader = manager.Party.Members.TryGetValue(manager.Party.LeaderCharacterId, out PartyMember? member) ? member.Info : null;
+        int members = manager.Party.Members.Count;
+        manager.SendTo(new Channel.Service.PartyRequest {
+            PartyId = manager.Party.Id,
+            DungeonRecruit = new Channel.Service.PartyRequest.Types.DungeonRecruit {
+                Kind = (int) recruit.Kind,
+                LeaderName = leader?.Name ?? manager.Party.LeaderName,
+                LeaderAccountId = leader?.AccountId ?? manager.Party.LeaderAccountId,
+                LeaderId = manager.Party.LeaderCharacterId,
+                RoomId = recruit.Room.Id,
+                Members = members,
+                NeedHelpers = 0,
+                NeedMembers = DungeonRecruitRules.NeedMembers(recruit.Room, members),
+            },
+        }, targets);
+    }
+
+    // Party 39/43 (r63): a player with no party joins through a notice's chat link, as an ordinary member.
+    public PartyError JoinDungeonRecruit(PlayerInfo joiner, int partyId, int roomId) => DungeonMatchStep(() => {
+        if (TryGetByCharacter(joiner.CharacterId, out _)) {
+            return PartyError.s_party_err_already;
+        }
+        if (!TryGet(partyId, out PartyManager? manager)) {
+            return PartyError.s_party_err_not_found;
+        }
+        DungeonRecruit? recruit = DungeonRecruits.Find(partyId, roomId);
+        if (recruit == null) {
+            return PartyError.s_party_err_not_found;
+        }
+        if (DungeonMatch.IsSearching(partyId) || DungeonMatch.IsMatching(partyId)) {
+            return PartyError.s_party_err_dungeon_match_another;
+        }
+        PartyError refused = DungeonRecruitRules.RefusesJoin(joiner, recruit.Room, manager.Party.Members.Count);
+        return refused != PartyError.none ? refused : manager.Join(joiner);
+    });
+
+    // A join filled the party: its recruit closes.
+    public void CheckDungeonRecruit(PartyManager manager) => DungeonMatchStep(() => {
+        DungeonRecruit? recruit = DungeonRecruits.Get(manager.Party.Id);
+        if (recruit == null) {
+            return;
+        }
+        int members = manager.Party.Members.Count;
+        if (members >= manager.Party.Capacity || (recruit.Room.MaxUsers > 0 && members >= recruit.Room.MaxUsers)) {
+            DungeonRecruits.Close(manager.Party.Id);
+        }
+    });
+
+    // The party's room was unset or set to another room than its recruit's: the recruit closes.
+    public void DungeonRecruitRoomSet(int partyId, bool set, int dungeonId) => DungeonMatchStep(() => {
+        DungeonRecruit? recruit = DungeonRecruits.Get(partyId);
+        if (recruit != null && (!set || dungeonId != recruit.Room.Id)) {
+            DungeonRecruits.Close(partyId);
+        }
     });
 
     // A player with no party takes the slot the queue gave them in target's group.

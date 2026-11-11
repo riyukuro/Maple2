@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -8,6 +9,8 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.World.Service;
+using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -34,6 +37,7 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required TableMetadataStorage TableMetadata { private get; init; }
+    public required WorldClient World { private get; init; }
     // ReSharper restore All
     #endregion
 
@@ -62,10 +66,10 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
                 HandleAddExtraRewardCount(session, packet);
                 break;
             case Command.FindHelper:
-                HandleFindHelper(session, packet);
+                HandleFindRecruit(session, packet, DungeonRecruitKind.Helper);
                 break;
             case Command.FindMember:
-                HandleFindMember(session, packet);
+                HandleFindRecruit(session, packet, DungeonRecruitKind.Member);
                 break;
             case Command.ChaosRaidLobby:
             case Command.ReverseRaidLobby:
@@ -90,20 +94,38 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
         session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_reward_CantUseExtraReward, dungeonId));
     }
 
-    // UIDungeonRoomInfo::RequestFindHelper (uidungeonroomdialog.cpp:1556): the party leader, or a player without a
-    // party, asks for helpers for a dungeon. The helpers come through the recruiting notice and its chat link
-    // (Party 39 and 43), which the server never sends, so the answer is the client's text for the helper search being
-    // off (DungeonRecordManagerCli::OnError case 0x1b, dungeonrecordcli.cpp:323).
-    private static void HandleFindHelper(GameSession session, IByteReader packet) {
+    // UIDungeonRoomInfo::RequestFindHelper and RequestFindMember (uidungeonroomdialog.cpp:1556/1566): the party
+    // leader, or a player without a party, recruits helpers (15) or members (16) for a room. World sends the
+    // recruiting notice (DungeonHelp 0x0109) and keeps the recruit open for the chat link (Party 39/43). The client
+    // shows the buttons only for a room with a HelperRequireClearCount; a room without one, or with the helper search
+    // off, gets the client's text for the search being off (DungeonRecordManagerCli::OnError case 0x1b,
+    // dungeonrecordcli.cpp:323). No reply on success; inside the party's cooldown the requester gets Party 40.
+    private void HandleFindRecruit(GameSession session, IByteReader packet, DungeonRecruitKind kind) {
         int dungeonId = packet.ReadInt();
-        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
-    }
+        if (!TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)
+            || metadata.HelperRequireClearCount == 0 || metadata.DisabledFindHelper) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
+            return;
+        }
 
-    // UIDungeonRoomInfo::RequestFindMember (uidungeonroomdialog.cpp:1566): the same request for party members, with
-    // the same gate (CanAskHelp) and the same missing recruiting notice. The client has one text for both searches.
-    private static void HandleFindMember(GameSession session, IByteReader packet) {
-        int dungeonId = packet.ReadInt();
-        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
+        DungeonRecruitRoom room = DungeonRecruitRoom.Of(metadata);
+        PartyResponse response = World.Party(new PartyRequest {
+            RequestorId = session.CharacterId,
+            DungeonRecruit = new PartyRequest.Types.DungeonRecruit {
+                Kind = (int) kind,
+                RoomId = room.Id,
+                MinLevel = room.MinLevel,
+                GearScore = room.GearScore,
+                MaxUsers = room.MaxUsers,
+            },
+        });
+        if (response.Error != (int) PartyError.none) {
+            session.Send(PartyPacket.Error((PartyError) response.Error));
+            return;
+        }
+        if (response.CooldownMilliseconds > 0) {
+            session.Send(PartyPacket.DungeonHelperCooldown(response.CooldownMilliseconds));
+        }
     }
 
     // UIDungeonSearchUnitedReward::SendRoomDungeon (uidungeonhelper.cpp:291): the confirmed reset of the united

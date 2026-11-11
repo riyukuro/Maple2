@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -21,8 +21,15 @@ public class PartyLookupTests {
         public bool FailSoloJoin;
         public readonly List<int> Made = [];
         public readonly List<int> Destroyed = [];
+        public DateTime Now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        public readonly List<(DungeonRecruit Recruit, List<long> Targets)> Notices = [];
 
-        public TestPartyLookup(PartySearchLookup partySearch) : base(new ChannelClientLookup(), null!, partySearch, null!) { }
+        public TestPartyLookup(PartySearchLookup partySearch) : base(new ChannelClientLookup(), null!, partySearch, null!) {
+            DungeonRecruits = new DungeonRecruitBoard(() => Now);
+        }
+
+        protected override void SendDungeonRecruit(PartyManager manager, DungeonRecruit recruit, List<PlayerInfo> targets) =>
+            Notices.Add((recruit, targets.Select(target => target.CharacterId).ToList()));
 
         protected override int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
             Made.Add(partyId);
@@ -410,5 +417,182 @@ public class PartyLookupTests {
         Start(three, room);
         Assert.That(lookup.PullDungeonMatch(three).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
         Assert.That(lookup.TryGet(solo.Party.Id, out _), Is.True);
+    }
+
+    // RoomDungeon 15/16 and Party 39/43 (r63).
+    private static readonly DungeonRecruitRoom RecruitRoom = new(200, 50, 0, 4);
+
+    private PartyResponse Recruit(PlayerInfo requestor, IReadOnlyCollection<PlayerInfo> online, DungeonRecruitRoom? room = null) =>
+        lookup.StartDungeonRecruit(requestor, DungeonRecruitKind.Member, room ?? RecruitRoom, online);
+
+    [Test]
+    public void TheNoticeGoesToMembersAndToOnlinePlayersWhoCouldJoin() {
+        PartyManager party = Party(2);
+        PlayerInfo free = Player();
+        PlayerInfo low = Player();
+        low.Level = 49;
+        PlayerInfo offline = Player();
+        offline.Channel = -1;
+        PartyManager full = Party(4);
+        full.Party.Capacity = 4;
+        PartyManager matching = Party(2);
+        lookup.DungeonMatch.Start(matching.Party.Id, 1, [new DungeonMatchRoom(100, 1, 4, false)], matching.MemberIds());
+        Assert.That(lookup.PullDungeonMatch(matching).Outcome, Is.EqualTo(DungeonMatchOutcome.Searching));
+        PartyManager open = Party(2);
+        PlayerInfo[] online = [Leader(party), free, low, offline, Leader(full), Leader(matching), Leader(open)];
+
+        PartyResponse response = Recruit(Leader(party), online);
+
+        Assert.That(response.Error, Is.EqualTo(0));
+        Assert.That(response.PartyId, Is.EqualTo(party.Party.Id));
+        Assert.That(lookup.Notices, Has.Count.EqualTo(1));
+        Assert.That(lookup.Notices[0].Targets, Is.EquivalentTo(party.MemberIds().Append(free.CharacterId).Append(Leader(open).CharacterId)));
+        Assert.That(lookup.Notices[0].Recruit.Kind, Is.EqualTo(DungeonRecruitKind.Member));
+        Assert.That(DungeonRecruitRules.NeedMembers(RecruitRoom, party.Party.Members.Count), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void APlayerWithNoPartyRecruitsInAPartyOfOne() {
+        PlayerInfo solo = Player();
+        PartyResponse response = Recruit(solo, [solo]);
+        Assert.That(lookup.TryGetByCharacter(solo.CharacterId, out PartyManager? made), Is.True);
+        Assert.That(response.PartyId, Is.EqualTo(made!.Party.Id));
+        Assert.That(made.Party.LeaderCharacterId, Is.EqualTo(solo.CharacterId));
+        Assert.That(lookup.Notices[0].Targets, Is.EqualTo(new[] { solo.CharacterId }));
+    }
+
+    [Test]
+    public void OnlyTheLeaderRecruits() {
+        PartyManager party = Party(2);
+        PlayerInfo member = party.Party.Members.Values.First(m => m.CharacterId != party.Party.LeaderCharacterId).Info;
+        Assert.That(Recruit(member, []).Error, Is.EqualTo((int) PartyError.s_party_err_not_chief));
+        Assert.That(lookup.Notices, Is.Empty);
+    }
+
+    [Test]
+    public void ASecondNoticeInsideTheCooldownGetsTheTimeLeft() {
+        PartyManager party = Party(1);
+        Recruit(Leader(party), []);
+        lookup.Now += TimeSpan.FromSeconds(4);
+
+        PartyResponse again = Recruit(Leader(party), []);
+
+        Assert.That(again.Error, Is.EqualTo(0));
+        Assert.That(again.CooldownMilliseconds, Is.EqualTo(6000));
+        Assert.That(lookup.Notices, Has.Count.EqualTo(1));
+
+        lookup.Now += TimeSpan.FromSeconds(6);
+        PartyResponse after = Recruit(Leader(party), []);
+        Assert.That(after.CooldownMilliseconds, Is.EqualTo(0));
+        Assert.That(lookup.Notices, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ASearchingPartyDoesNotRecruit() {
+        PartyManager party = Party(1);
+        lookup.DungeonMatch.Start(party.Party.Id, 1, [new DungeonMatchRoom(100, 1, 4, false)], party.MemberIds());
+        Assert.That(Recruit(Leader(party), []).Error, Is.EqualTo((int) PartyError.s_party_err_dungeon_match_another));
+    }
+
+    [Test]
+    public void AFullPartyDoesNotRecruit() {
+        PartyManager party = Party(4);
+        Assert.That(Recruit(Leader(party), []).Error, Is.EqualTo((int) PartyError.s_party_err_full_limit_player));
+    }
+
+    [Test]
+    public void AJoinThroughTheLinkAddsAnOrdinaryMember() {
+        PartyManager party = Party(1);
+        Recruit(Leader(party), []);
+        PlayerInfo joiner = Player();
+        Assert.That(lookup.JoinDungeonRecruit(joiner, party.Party.Id, RecruitRoom.Id), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Members.ContainsKey(joiner.CharacterId), Is.True);
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Not.Null);
+    }
+
+    [Test]
+    public void AJoinerInAPartyIsRefused() {
+        PartyManager party = Party(1);
+        Recruit(Leader(party), []);
+        PartyManager other = Party(1);
+        Assert.That(lookup.JoinDungeonRecruit(Leader(other), party.Party.Id, RecruitRoom.Id), Is.EqualTo(PartyError.s_party_err_already));
+        Assert.That(party.Party.Members, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void AJoinOverTheRoomsCapIsRefused() {
+        PartyManager party = Party(3);
+        Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 0, 4));
+        Assert.That(lookup.JoinDungeonRecruit(Player(), party.Party.Id, 200), Is.EqualTo(PartyError.none));
+        // Full: the recruit closed; a closed recruit refuses.
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Null);
+        Assert.That(lookup.JoinDungeonRecruit(Player(), party.Party.Id, 200), Is.EqualTo(PartyError.s_party_err_not_found));
+        Assert.That(DungeonRecruitRules.RefusesJoin(Player(), new DungeonRecruitRoom(200, 50, 0, 4), 4), Is.EqualTo(PartyError.s_party_err_full_limit_player));
+        Assert.That(party.Party.Members, Has.Count.EqualTo(4));
+    }
+
+    [Test]
+    public void AJoinerBelowTheRoomsLimitsIsRefused() {
+        PartyManager party = Party(1);
+        Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 1000, 4));
+        PlayerInfo weak = Player();
+        weak.GearScore = 999;
+        Assert.That(lookup.JoinDungeonRecruit(weak, party.Party.Id, 200), Is.EqualTo(PartyError.s_party_err_lack_gear_score));
+        PlayerInfo low = Player();
+        low.Level = 49;
+        Assert.That(lookup.JoinDungeonRecruit(low, party.Party.Id, 200), Is.EqualTo(PartyError.s_party_err_lack_level));
+    }
+
+    [Test]
+    public void AJoinToAClosedOrUnknownRecruitIsRefused() {
+        PartyManager party = Party(1);
+        Assert.That(lookup.JoinDungeonRecruit(Player(), party.Party.Id, RecruitRoom.Id), Is.EqualTo(PartyError.s_party_err_not_found));
+        Recruit(Leader(party), []);
+        Assert.That(lookup.JoinDungeonRecruit(Player(), party.Party.Id, RecruitRoom.Id + 1), Is.EqualTo(PartyError.s_party_err_not_found));
+        Assert.That(lookup.JoinDungeonRecruit(Player(), 999999, RecruitRoom.Id), Is.EqualTo(PartyError.s_party_err_not_found));
+    }
+
+    [Test]
+    public void TheRecruitClosesAfterSixtySeconds() {
+        PartyManager party = Party(1);
+        Recruit(Leader(party), []);
+        lookup.Now += TimeSpan.FromSeconds(59);
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Not.Null);
+        lookup.Now += TimeSpan.FromSeconds(1);
+        Assert.That(lookup.JoinDungeonRecruit(Player(), party.Party.Id, RecruitRoom.Id), Is.EqualTo(PartyError.s_party_err_not_found));
+    }
+
+    [Test]
+    public void TheRecruitClosesWhenTheRoomIsUnsetOrChanged() {
+        PartyManager party = Party(1);
+        long leaderId = party.Party.LeaderCharacterId;
+        Recruit(Leader(party), []);
+        Assert.That(party.SetDungeon(leaderId, RecruitRoom.Id, true), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Not.Null);
+        Assert.That(party.SetDungeon(leaderId, RecruitRoom.Id, false), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Null);
+
+        lookup.Now += TimeSpan.FromSeconds(10);
+        Recruit(Leader(party), []);
+        Assert.That(party.SetDungeon(leaderId, RecruitRoom.Id + 1, true), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Null);
+    }
+
+    [Test]
+    public void TheRecruitClosesWhenThePartySearches() {
+        PartyManager party = Party(1);
+        Recruit(Leader(party), []);
+        PartyResponse search = lookup.SearchDungeonMatch(party.Party.LeaderCharacterId, Leader(party), 1, [new DungeonMatchRoom(100, 1, 4, false)]);
+        Assert.That(search.Error, Is.EqualTo(0));
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Null);
+    }
+
+    [Test]
+    public void TheRecruitClosesWhenThePartyFillsUp() {
+        PartyManager party = Party(3);
+        party.Party.Capacity = 4;
+        Recruit(Leader(party), [], new DungeonRecruitRoom(200, 50, 0, 10));
+        Assert.That(party.Join(Player()), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Null);
     }
 }

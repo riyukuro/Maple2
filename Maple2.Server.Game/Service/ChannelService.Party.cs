@@ -3,6 +3,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
 using Maple2.Server.Channel.Service;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -42,9 +43,24 @@ public partial class ChannelService {
                 return Task.FromResult(LoadParty(request.PartyId, request.ReceiverIds));
             case PartyRequest.PartyOneofCase.Recall:
                 return Task.FromResult(Recall(request.PartyId, request.ReceiverIds, request.Recall));
+            case PartyRequest.PartyOneofCase.DungeonRecruit:
+                return Task.FromResult(DungeonRecruit(request.PartyId, request.ReceiverIds, request.DungeonRecruit));
             default:
                 return Task.FromResult(new PartyResponse { Error = (int) PartyError.s_party_err_not_found });
         }
+    }
+
+    // RoomDungeon 15/16 (r63): World picked the receivers; the client drops a notice from a blocked leader.
+    private PartyResponse DungeonRecruit(int partyId, IEnumerable<long> receiverIds, PartyRequest.Types.DungeonRecruit recruit) {
+        ByteWriter notice = recruit.Kind == (int) DungeonRecruitKind.Member
+            ? DungeonHelpPacket.Member(recruit.NeedHelpers, recruit.NeedMembers, partyId, recruit.LeaderName, recruit.LeaderAccountId, recruit.LeaderId, recruit.RoomId, recruit.Members)
+            : DungeonHelpPacket.Helper(partyId, recruit.LeaderName, recruit.LeaderAccountId, recruit.LeaderId, recruit.RoomId, recruit.Members);
+        foreach (long characterId in receiverIds) {
+            if (server.GetSession(characterId, out GameSession? session)) {
+                session.Send(notice);
+            }
+        }
+        return new PartyResponse();
     }
 
     private PartyResponse PartyInvite(int partyId, IEnumerable<long> receiverIds, PartyRequest.Types.Invite invite) {

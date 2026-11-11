@@ -303,10 +303,12 @@ public static class PartyPacket {
         return pWriter;
     }
 
-    public static ByteWriter DungeonHelperCooldown() {
+    // CPartyManager::OnPartyFindDungeonCooldown (partymanager.cpp:1425): the milliseconds left before the party may
+    // recruit again (s_party_find_dungeon_helper_cooldown shows ms/1000+1 seconds).
+    public static ByteWriter DungeonHelperCooldown(int milliseconds) {
         var pWriter = Packet.Of(SendOp.Party);
         pWriter.Write<Command>(Command.DungeonHelperCooldown);
-        pWriter.WriteInt(); // s_party_find_dungeon_helper_cooldown
+        pWriter.WriteInt(milliseconds);
 
         return pWriter;
     }

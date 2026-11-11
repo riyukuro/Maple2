@@ -282,6 +282,17 @@ message PartyRequest {
     int32 map_id = 3;
     int64 end_time = 4;
   }
+  // The recruiting notice (DungeonHelp 0x0109) of party_id.
+  message DungeonRecruit {
+    int32 kind = 1;
+    string leader_name = 2;
+    int64 leader_account_id = 3;
+    int64 leader_id = 4;
+    int32 room_id = 5;
+    int32 members = 6;
+    int32 need_helpers = 7;
+    int32 need_members = 8;
+  }
 
   int32 party_id = 1;
   repeated int64 receiver_ids = 2;
@@ -302,6 +313,7 @@ message PartyRequest {
     Recall recall = 16;
     DungeonMatch dungeon_match = 17;
     LoadParty load_party = 18;
+    DungeonRecruit dungeon_recruit = 19;
   }
 }
 

@@ -86,10 +86,13 @@ public class PartyManager : IDisposable {
 
     // The receivers are taken now; the calls are made when the current matchmaker step releases its lock
     // (PartyLookup.Defer), so a member added or removed by the step after this call is not, or still is, told.
-    private void Send(PartyRequest request, IEnumerable<PartyMember> receivers) {
+    private void Send(PartyRequest request, IEnumerable<PartyMember> receivers) => SendTo(request, receivers.Select(member => member.Info));
+
+    // The same to players outside the party too (the recruiting notice).
+    public void SendTo(PartyRequest request, IEnumerable<PlayerInfo> receivers) {
         (short Channel, long[] Ids)[] targets = receivers
-            .GroupBy(member => member.Info.Channel)
-            .Select(group => (group.Key, group.Select(member => member.Info.CharacterId).ToArray()))
+            .GroupBy(info => info.Channel)
+            .Select(group => (group.Key, group.Select(info => info.CharacterId).ToArray()))
             .ToArray();
         PartyLookup.Defer(() => {
             foreach ((short channel, long[] ids) in targets) {
@@ -219,6 +222,7 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryAdd(info.CharacterId, member) && Party.Search != null) {
             Party.Search.MemberCount++;
         }
+        PartyLookup.CheckDungeonRecruit(this);
         // The matchmaker's own join is placed by its caller; the group is not regrouped under it.
         PartyLookup.DungeonMatchResize(this, regroup: !matchmaker);
         return PartyError.none;
@@ -528,6 +532,7 @@ public class PartyManager : IDisposable {
         }
 
         DungeonMaxUsers = set ? maxUsers : 0;
+        PartyLookup.DungeonRecruitRoomSet(Party.Id, set, dungeonId);
         Party.DungeonSet = set;
         Party.DungeonId = dungeonId;
         Party.DungeonLobbyRoomId = dungeonRoomId;
