@@ -10,6 +10,9 @@ public class TriggerState {
     private readonly TriggerContext triggerContext;
 
     public readonly string Name;
+    // Set when a transition names a state the script does not have: the state then does nothing more, so
+    // the condition's actions do not run again every tick.
+    public bool Stopped { get; private set; }
 
     public TriggerState(Trigger trigger, TriggerContext context) {
         this.trigger = trigger;
@@ -44,7 +47,7 @@ public class TriggerState {
 
     public TriggerState? OnTick() {
         LinkedList<ICondition> conditions = triggerState.Conditions;
-        if (conditions.Count == 0) return null;
+        if (conditions.Count == 0 || Stopped) return null;
 
         foreach (ICondition condition in conditions) {
             if (!CallCondition(condition)) continue;
@@ -72,6 +75,10 @@ public class TriggerState {
 
     private bool GetNextState(string nextStateName, [NotNullWhen(true)] out Trigger.State? nextState) {
         nextState = trigger.States.FirstOrDefault(x => x.Name == nextStateName);
+        if (nextState == null && !Stopped) {
+            Stopped = true;
+            Log.Logger.Error("Trigger state '{State}' moves to '{Next}', which the script does not have: the state stops", Name, nextStateName);
+        }
         return nextState != null;
     }
 
@@ -79,7 +86,7 @@ public class TriggerState {
         try {
             action.Execute(triggerContext);
         } catch (Exception e) {
-            Log.Logger.Error(e, "Error executing action '{ActionName}'", nameof(action));
+            Log.Logger.Error(e, "Error executing action '{ActionName}'", action.GetType().Name);
         }
     }
 
@@ -87,7 +94,7 @@ public class TriggerState {
         try {
             return condition.Evaluate(triggerContext);
         } catch (Exception e) {
-            Log.Logger.Error(e, "Error evaluating condition '{ConditionName}'", nameof(condition));
+            Log.Logger.Error(e, "Error evaluating condition '{ConditionName}'", condition.GetType().Name);
             return false;
         }
     }
