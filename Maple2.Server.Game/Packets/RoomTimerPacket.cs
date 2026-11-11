@@ -26,9 +26,9 @@ public static class RoomTimerPacket {
     public static ByteWriter Modify(RoomTimer timer, int delta) {
         var pWriter = Packet.Of(SendOp.RoomTimer);
         pWriter.Write<Command>(Command.Modify);
-        pWriter.WriteInt();
-        pWriter.WriteInt();
-        pWriter.WriteInt((int) timer.Type);
+        pWriter.WriteInt(timer.StartTick);
+        pWriter.WriteInt(timer.Duration); // the client closes the timer when this is 0 or less
+        pWriter.WriteInt(1); // 1: notice with the added or removed seconds, 2: fixed notice
         pWriter.WriteInt(delta);
 
         return pWriter;
