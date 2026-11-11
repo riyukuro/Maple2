@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Maple2.Model.Error;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -74,8 +75,11 @@ public class BuddyEmoteHandler : FieldPacketHandler {
     }
 
     private void HandleError(GameSession session, IByteReader packet) {
-        long characterId = packet.ReadLong();
-        var error = packet.Read<BuddyEmoteError>();
+        (long characterId, byte reason) = BuddyEmoteRules.ReadError(packet);
+        if (!BuddyEmoteRules.ReasonAllowed(reason)) {
+            return;
+        }
+        var error = (BuddyEmoteError) reason;
         if (session.Field?.TryGetPlayerById(characterId, out FieldPlayer? player) is null or false) {
             return;
         }
@@ -113,13 +117,12 @@ public class BuddyEmoteHandler : FieldPacketHandler {
     }
 
     private void HandleCancel(GameSession session, IByteReader packet) {
-        int emoteId = packet.ReadInt();
-        long characterId = packet.ReadLong();
+        (int emoteId, long characterId) = BuddyEmoteRules.ReadCancel(packet);
 
         if (session.Field?.TryGetPlayerById(characterId, out FieldPlayer? player) is null or false) {
             return;
         }
 
-        player.Session.Send(BuddyEmotePacket.Cancel(emoteId, characterId));
+        player.Session.Send(BuddyEmotePacket.Cancel(emoteId, BuddyEmoteRules.CancelSubject(session.CharacterId, characterId)));
     }
 }
