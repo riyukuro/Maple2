@@ -37,4 +37,21 @@ public class TriggerDungeonRoomConditionTests {
         Assert.That(TriggerContext.DungeonLevelMatches(DungeonGroupType.normal, 3), Is.True);
         Assert.That(TriggerContext.DungeonLevelMatches(null, 3), Is.True);
     }
+
+    [Test]
+    public void DungeonMaxUserCount_IsTheClientRoomMaximum() {
+        Assert.That(Condition("""<condition name="dungeon_max_user_count" value="4" />"""), Is.TypeOf<TriggerConditions.DungeonMaxUserCount>());
+        // A fixed room: the table maximum, whatever the party.
+        Assert.That(TriggerContext.RoomMaxUserCount(false, 4, 1), Is.EqualTo(4));
+        Assert.That(TriggerContext.RoomMaxUserCount(false, 1, 3), Is.EqualTo(1));
+        // isChangeMaxUser: the party size held between 2 and the maximum.
+        Assert.That(TriggerContext.RoomMaxUserCount(true, 4, 3), Is.EqualTo(3));
+        Assert.That(TriggerContext.RoomMaxUserCount(true, 4, 1), Is.EqualTo(2));
+        Assert.That(TriggerContext.RoomMaxUserCount(true, 4, 6), Is.EqualTo(4));
+        Assert.That(TriggerContext.DungeonMaxUserCountMatches(3, 3), Is.True);
+        Assert.That(TriggerContext.DungeonMaxUserCountMatches(3, 1), Is.False);
+        // A 10 user room: no script tests 10, so the old answer (1) keeps checkusercount going.
+        Assert.That(TriggerContext.DungeonMaxUserCountMatches(10, 4), Is.False);
+        Assert.That(TriggerContext.DungeonMaxUserCountMatches(10, 1), Is.True);
+    }
 }

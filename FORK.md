@@ -43,6 +43,7 @@ The four server-to-client warnings are kept on purpose; in each the client reads
 - **Trigger dungeon variables:** a variable never set reads 0; no client code or table gives a start value.
 - **Trigger score board:** score_board_score compares only in a field whose script called score_board_set_score; elsewhere it is the old test (the threshold compared with 0, so GreaterEqual passes). No kill, pickup or packet score reaches the board (the client only shows it), so 02020063/02020065 battle_1 (800 points) and 99999840/99999841 would otherwise never end.
 - **Trigger dungeon level:** dungeon_level compares the room's groupType (2 raid, 3 chaos raid; the scripts' states are named so), not its dungeonLevel, which is a character level. Outside a raid or chaos raid room it keeps the old answer (3), so a script that tests only 2 and 3 still goes on.
+- **Trigger dungeon max user count:** dungeon_max_user_count compares the client's DungeonRoom::GetMaxUserCount for the party size the room was made with (with isChangeMaxUser the size held between 2 and maxUserCount, else maxUserCount). The scripts test 1 to 4 only, so outside a dungeon room and in a 6 or 10 user room it keeps the old answer (1); dungeon_common/checkusercount has no other way on in a room.
 - **Item merge:**
   - Request and response sub-types are renumbered to the client's.
   - The option preview (Select) is written in the client's layout.

@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using BasicAttribute = Maple2.Model.Enum.BasicAttribute;
 using DungeonGroupType = Maple2.Model.Enum.DungeonGroupType;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -168,9 +169,33 @@ public partial class TriggerContext : ITriggerContext {
         return groupType is DungeonGroupType.raid or DungeonGroupType.chaosRaid ? (int) groupType == level : level == 3;
     }
 
+    // The room's maximum as the client's DungeonRoom::GetMaxUserCount gives it for the room's user count
+    // (the party size it was made with). The shipped scripts test 1 to 4 only (dungeon_common/checkusercount
+    // has no other way on in a room), so outside a dungeon room and in a room whose maximum is above 4
+    // (the 6 and 10 user rooms) the old answer (1) stays.
     public bool DungeonMaxUserCount(int value) {
-        ErrorLog("[GetDungeonMaxUserCount]");
-        return value == 1;
+        DebugLog("[DungeonMaxUserCount] value:{Value}", value);
+        if (Field is not DungeonFieldManager dungeonField) {
+            return value == 1;
+        }
+        DungeonRoomLimitMetadata limit = dungeonField.DungeonMetadata.Limit;
+        return DungeonMaxUserCountMatches(RoomMaxUserCount(limit.ChangeMaxUsers, limit.MaxUserCount, dungeonField.Size), value);
+    }
+
+    public static bool DungeonMaxUserCountMatches(int roomMaxUserCount, int value) {
+        return roomMaxUserCount > 4 ? value == 1 : roomMaxUserCount == value;
+    }
+
+    // DungeonRoom::GetMaxUserCount (0x14031e030): the table maximum, or with isChangeMaxUser the user count
+    // held between 2 and that maximum.
+    public static int RoomMaxUserCount(bool changeMaxUsers, int maxUserCount, int userCount) {
+        if (!changeMaxUsers) {
+            return maxUserCount;
+        }
+        if (userCount < 2) {
+            return 2;
+        }
+        return userCount > maxUserCount ? maxUserCount : userCount;
     }
 
     public bool DungeonRound(int round) {
