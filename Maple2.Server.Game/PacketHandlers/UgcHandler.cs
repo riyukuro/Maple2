@@ -67,7 +67,8 @@ public class UgcHandler : FieldPacketHandler {
                 HandleReserveBanner(session, packet);
                 return;
             case Command.Unknown12:
-                // Not handled: one path string.
+                // Not handled: CUgcManager::SendUGCMode12 (ugcmanager_4.cpp:1527), the path of an uploaded wedding
+                // profile picture. The upload itself (kind 10) is not accepted, so this never arrives in play.
                 Logger.Debug("Ugc {Command} from {CharacterId}: {Path}", command, session.CharacterId, packet.ReadUnicodeString());
                 return;
         }
