@@ -29,30 +29,6 @@ public partial class GameStorage {
             return Commit() ? GetMarriage(partner1Id) : null;
         }
 
-        // GetMarriage hands each reader its own view (Partner1 is the other character), so the row is
-        // written by character id: the partner columns keep their order and each message stays with its writer.
-        public bool SaveMarriage(Marriage marriage) {
-            // Don't save marriage if it was disbanded.
-            Model.Marriage? model = Context.Marriage.Find(marriage.Id);
-            if (model == null) {
-                return false;
-            }
-
-            model.Status = marriage.Status;
-            model.Profile = marriage.Profile;
-            model.ExpHistory = marriage.ExpHistory.Select<MarriageExp, Model.MarriageExp>(exp => exp).ToList();
-            foreach (MarriagePartner partner in new[] { marriage.Partner1, marriage.Partner2 }) {
-                if (partner.CharacterId == model.Partner1Id) {
-                    model.Partner1Message = partner.Message;
-                } else if (partner.CharacterId == model.Partner2Id) {
-                    model.Partner2Message = partner.Message;
-                }
-            }
-
-            Context.Marriage.Update(model); // requests do not track what they load
-            return Context.TrySaveChanges();
-        }
-
         // Writes only the message of one partner, so a stale copy of the other partner's text is never written back.
         public bool SaveCoupleMessage(long marriageId, long characterId, string message) {
             Model.Marriage? model = Context.Marriage.Find(marriageId);

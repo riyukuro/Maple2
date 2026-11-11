@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Maple2.Server.Tests.Database;
 
 // The marriage row through GameStorage, on an in-memory database. Each partner loads its own view
-// (Partner1 is the other character); a save from either view must leave the row's columns in place.
+// (Partner1 is the other character); a message saved by either partner must leave the row's columns in place.
 public class MarriageStorageTests {
     private GameStorage storage = null!;
     private long first;
@@ -55,29 +55,30 @@ public class MarriageStorageTests {
     }
 
     [Test]
-    public void SaveFromEitherView_KeepsTheRowAndTheWriters() {
+    public void MessageFromEitherPartner_KeepsOneRowAndTheWriters() {
         foreach (long writer in new[] { first, second, first }) {
-            Marriage view = Load(writer);
-            Assert.That(CoupleMessageRule.Apply(view, writer, "from " + writer), Is.True);
-            view.Status = MaritalStatus.Married;
-            using (GameStorage.Request db = storage.Context()) {
-                Assert.That(db.SaveMarriage(view), Is.True);
-            }
+            using GameStorage.Request db = storage.Context();
+            Assert.That(db.SaveCoupleMessage(marriageId, writer, "from " + writer), Is.True);
         }
 
         foreach (long reader in new[] { first, second }) {
             Marriage view = Load(reader);
             Assert.That(view.Id, Is.EqualTo(marriageId));
-            Assert.That(view.Status, Is.EqualTo(MaritalStatus.Married));
             Assert.That(MessageOf(view, first), Is.EqualTo("from " + first));
             Assert.That(MessageOf(view, second), Is.EqualTo("from " + second));
         }
         using (GameStorage.Request db = storage.Context()) {
-            // the row found by id is the one found by character: no second row was added
-            Assert.That(db.GetMarriage(weddingId: marriageId + 1), Is.Null);
             MarriageInfo info = db.GetMarriageInfo(second);
             Assert.That(info.Partner1Name, Is.EqualTo("first"));
             Assert.That(info.Partner2Name, Is.EqualTo("second"));
+        }
+        // Row count: with the one row deleted, neither partner has a marriage left, so no second row was added.
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.DeleteMarriage(marriageId), Is.True);
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.GetMarriage(first), Is.Null);
+            Assert.That(db.GetMarriage(second), Is.Null);
         }
     }
 
