@@ -460,27 +460,9 @@ public sealed class ShopManager {
         }
 
 
-        if (shopItem.Metadata.RestrictedBuyData != null) {
-            RestrictedBuyData buyData = shopItem.Metadata.RestrictedBuyData;
-            if (DateTime.Now.ToEpochSeconds() < buyData.StartTime || DateTime.Now.ToEpochSeconds() > buyData.EndTime) {
-                session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period));
-                return;
-            }
-
-            if (buyData.TimeRanges.Count > 0) {
-                int totalSeconds = (int) new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute, DateTime.Now.Second).TotalSeconds;
-                if (!buyData.TimeRanges.Any(time => time.StartTimeOfDay > totalSeconds || time.EndTimeOfDay < totalSeconds)) {
-                    session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period));
-                    return;
-                }
-            }
-
-            if (buyData.Days.Count > 0) {
-                if (!buyData.Days.Contains(ToShopBuyDay(DateTime.Now.DayOfWeek))) {
-                    session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period));
-                    return;
-                }
-            }
+        if (shopItem.Metadata.RestrictedBuyData?.CanBuy(DateTime.Now) == false) {
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period));
+            return;
         }
 
         if (shopItem.StockCount != 0 && quantity > shopItem.StockCount - shopItem.StockPurchased) {
@@ -751,16 +733,4 @@ public sealed class ShopManager {
             .ToList());
     }
 
-    private ShopBuyDay ToShopBuyDay(DayOfWeek dayOfWeek) {
-        return dayOfWeek switch {
-            DayOfWeek.Monday => ShopBuyDay.Monday,
-            DayOfWeek.Tuesday => ShopBuyDay.Tuesday,
-            DayOfWeek.Wednesday => ShopBuyDay.Wednesday,
-            DayOfWeek.Thursday => ShopBuyDay.Thursday,
-            DayOfWeek.Friday => ShopBuyDay.Friday,
-            DayOfWeek.Saturday => ShopBuyDay.Saturday,
-            DayOfWeek.Sunday => ShopBuyDay.Sunday,
-            _ => throw new InvalidDataException("Invalid day of week"),
-        };
-    }
 }

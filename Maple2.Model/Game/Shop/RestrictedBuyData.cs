@@ -26,6 +26,36 @@ public class RestrictedBuyData : IByteSerializable {
         };
     }
 
+    // The client's buy-period test (CNpcShopBuyPeriod 0x1406ddc90, with the window it builds in 0x1406dcf10):
+    // - without a schedule the item is refused only outside the dates, and only when an end date is set;
+    // - with a schedule the dates must hold (a start date alone counts too), today must be one of the days
+    //   unless none or all seven are given, and the time of day must fall in the first range that has not
+    //   ended yet, from its start (inclusive) to its end (exclusive).
+    public bool CanBuy(DateTime now) {
+        long time = new DateTimeOffset(now).ToUnixTimeSeconds();
+        bool outsideDates = EndTime > 0 && (time < StartTime || time >= EndTime);
+        if (TimeRanges.Count == 0 && Days.Count == 0) {
+            return !outsideDates;
+        }
+        if (outsideDates || (StartTime > 0 && time < StartTime)) {
+            return false;
+        }
+        if (Days.Count is > 0 and < 7 && !Days.Contains((ShopBuyDay) ((int) now.DayOfWeek + 1))) {
+            return false;
+        }
+        if (TimeRanges.Count == 0) {
+            return true;
+        }
+
+        int seconds = (int) now.TimeOfDay.TotalSeconds;
+        foreach (BuyTimeOfDay range in TimeRanges) {
+            if (seconds < range.EndTimeOfDay) {
+                return seconds >= range.StartTimeOfDay;
+            }
+        }
+        return false;
+    }
+
     // Same layout as the client's own buy-period writer (0x1406dc850) and reader (0x1406dcb40):
     // the dates follow only their flag, and the time ranges and days follow a second flag.
     public void WriteTo(IByteWriter writer) {

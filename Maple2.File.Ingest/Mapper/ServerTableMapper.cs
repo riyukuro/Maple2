@@ -1675,11 +1675,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 }
 
                 RestrictedBuyData? restrictedBuyData = null;
-                if (!string.IsNullOrEmpty(item.startDate) && !string.IsNullOrEmpty(item.endDate)) {
+                // The client keeps a buy period when any of the dates, the part times or the days is given.
+                if (!string.IsNullOrEmpty(item.startDate) || !string.IsNullOrEmpty(item.endDate) || item.partTime.Length > 0 || item.dayOfWeek.Length > 0) {
                     var buyTimeOfDays = new List<BuyTimeOfDay>();
                     foreach (string partTime in item.partTime) {
                         (TimeSpan startPartTime, TimeSpan endPartTime) = ParsePartTime(partTime);
-                        buyTimeOfDays.Add(new BuyTimeOfDay(startPartTime.Seconds, endPartTime.Seconds));
+                        buyTimeOfDays.Add(new BuyTimeOfDay((int) startPartTime.TotalSeconds, (int) endPartTime.TotalSeconds));
                     }
                     restrictedBuyData = new RestrictedBuyData {
                         Days = item.dayOfWeek.Length == 0 ? [] : Array.ConvertAll(item.dayOfWeek, day => (ShopBuyDay) day),
