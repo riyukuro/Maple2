@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Xml;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
@@ -27,6 +28,18 @@ public class WeddingCeremonyTests {
         Assert.That(WeddingCeremony.InEnterWindow(10000, 10000 + 1800), Is.True, "half an hour after");
         Assert.That(WeddingCeremony.InEnterWindow(10000, 10000 - 1801), Is.False);
         Assert.That(WeddingCeremony.InEnterWindow(10000, 10000 + 1801), Is.False);
+    }
+
+    // weddingpackage hall 1 (Tria): one day row and one night row (nightReward 1).
+    [Test]
+    public void CompleteGifts_DayOrNightRow() {
+        WeddingPackage.HallData.Item day = new(20302963, 1, 1, false);
+        WeddingPackage.HallData.Item night = new(20302966, 1, 1, true);
+        WeddingPackage.HallData.Item[] items = [day, night];
+
+        Assert.That(WeddingCeremony.CompleteGifts(items, night: false), Is.EqualTo(new[] { day }));
+        Assert.That(WeddingCeremony.CompleteGifts(items, night: true), Is.EqualTo(new[] { night }));
+        Assert.That(WeddingCeremony.CompleteGifts([], night: true), Is.Empty);
     }
 
     [Test]

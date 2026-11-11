@@ -299,6 +299,7 @@ public class WeddingHandler : FieldPacketHandler {
         // The hour of the ceremony, not of the entry, picks the day or the night map, so that everyone who enters
         // in the window meets in one room.
         int mapId = WeddingCeremony.HallMap(hallData.MapId, hallData.NightMapId, hall.CeremonyTime.FromEpochSeconds().Hour);
+        ceremony.Gifts = WeddingCeremony.CompleteGifts(hallData.CompleteItems, night: mapId != hallData.MapId);
         if (session.Field.MapId == mapId && session.Field.Wedding?.MarriageId == marriageId) {
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_same_place));
             return;

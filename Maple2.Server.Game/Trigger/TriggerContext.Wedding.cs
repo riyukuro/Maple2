@@ -1,6 +1,10 @@
 ﻿using System.Numerics;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 
@@ -80,6 +84,48 @@ public partial class TriggerContext {
                 player.Session.Marriage.SetMarried(marriageTime);
             }
         }
+
+        foreach (long characterId in ceremony.Couple) {
+            MailCompleteGifts(ceremony, characterId);
+        }
+    }
+
+    // System mail 40000010 ("Wedding is complete", the gifts of the hall attached), one to each of the couple.
+    private const int MailWeddingComplete = 40000010;
+
+    private void MailCompleteGifts(WeddingCeremony ceremony, long characterId) {
+        if (!Field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+            return;
+        }
+
+        using GameStorage.Request db = Field.GameStorage.Context();
+        Mail? mail = db.CreateMail(new Mail {
+            ReceiverId = characterId,
+            SenderId = characterId,
+            Type = MailType.System,
+            Content = MailWeddingComplete.ToString(),
+        });
+        if (mail == null) {
+            logger.Error("Wedding vow complete: gift mail for {CharacterId} could not be stored", characterId);
+            return;
+        }
+
+        foreach (WeddingPackage.HallData.Item gift in ceremony.Gifts) {
+            Item? item = Field.ItemDrop.CreateItem(gift.ItemId, gift.Rarity, gift.Amount);
+            item = item == null ? null : db.CreateItem(mail.Id, item);
+            if (item == null) {
+                logger.Error("Wedding vow complete: gift {ItemId} for {CharacterId} could not be stored", gift.ItemId, characterId);
+                continue;
+            }
+            mail.Items.Add(item);
+        }
+
+        try {
+            player.Session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = characterId,
+                MailId = mail.Id,
+            });
+        } catch { /* ignored */ }
     }
 
     #region Conditions

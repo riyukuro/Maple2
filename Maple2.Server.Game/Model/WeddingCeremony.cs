@@ -1,4 +1,5 @@
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Model;
 
@@ -37,6 +38,9 @@ public sealed class WeddingCeremony {
     }
 
     public IReadOnlyList<long> Couple => couple;
+
+    // The hall's completion gifts for this ceremony (CompleteGifts), set when the room is made.
+    public IReadOnlyList<WeddingPackage.HallData.Item> Gifts { get; set; } = [];
 
     public bool IsCouple(long characterId) => characterId != 0 && Array.IndexOf(couple, characterId) >= 0;
 
@@ -178,6 +182,13 @@ public sealed class WeddingCeremony {
     // Who the room takes: the couple, anyone when the hall was reserved as public, else the guest list.
     public static bool CanEnter(bool couple, bool publicHall, bool guest) {
         return couple || publicHall || guest;
+    }
+
+    // The completion gifts of a hall (weddingpackage weddingCompleteItem): each hall lists a day row and a
+    // night row (nightReward 1) as alternatives, so a ceremony in the night map gets the night rows and one in
+    // the day map the others. Each of the couple gets the whole list.
+    public static IReadOnlyList<WeddingPackage.HallData.Item> CompleteGifts(IReadOnlyList<WeddingPackage.HallData.Item> items, bool night) {
+        return items.Where(item => item.NightOnly == night).ToList();
     }
 
     public static int HallMap(int mapId, int nightMapId, int hour) {

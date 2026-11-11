@@ -904,7 +904,9 @@ public sealed class MarriageManager {
             return;
         }
 
-        foreach (WeddingPackage.HallData.Item rewardItem in metadata.CompleteItems) {
+        // The reservation gifts are the hall's weddingItem rows, the ones the client's reservation page lists
+        // (UIWeddingHallReservationPageSelect, m_items); the weddingCompleteItem rows come with the vow.
+        foreach (WeddingPackage.HallData.Item rewardItem in metadata.Items) {
             Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
             if (item == null) {
                 continue;
