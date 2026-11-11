@@ -139,28 +139,31 @@ public class ItemExchangeScroll : FieldPacketHandler {
             return;
         }
 
-        Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
-        if (scrollItem == null) {
-            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
-            return;
-        }
-        if (!int.TryParse(scrollItem.Metadata.Function?.Parameters, out int scrollId) || !TableMetadata.ItemExchangeScrollTable.Entries.TryGetValue(scrollId, out ItemExchangeScrollMetadata? scrollMetadata)) {
-            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
-            return;
-        }
-
-        foreach (ItemComponent component in scrollMetadata.RequiredItems) {
-            if (!ItemMetadata.TryGet(component.ItemId, out ItemMetadata? metadata)) {
-                continue; // an ingredient named only by its tag has no single item to give
+        int scrollId;
+        lock (session.Item) {
+            Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
+            if (scrollItem == null) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
+                return;
+            }
+            if (!int.TryParse(scrollItem.Metadata.Function?.Parameters, out scrollId) || !TableMetadata.ItemExchangeScrollTable.Entries.TryGetValue(scrollId, out ItemExchangeScrollMetadata? scrollMetadata)) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
+                return;
             }
 
-            int amount = count > 0 ? count : Math.Max(1, metadata.Property.SlotMax);
-            Item? item = session.Field.ItemDrop.CreateItem(component.ItemId, component.Rarity, amount);
-            if (item == null) {
-                continue;
-            }
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
+            foreach (ItemComponent component in scrollMetadata.RequiredItems) {
+                if (!ItemMetadata.TryGet(component.ItemId, out ItemMetadata? metadata)) {
+                    continue; // an ingredient named only by its tag has no single item to give
+                }
+
+                int amount = count > 0 ? count : Math.Max(1, metadata.Property.SlotMax);
+                Item? item = session.Field.ItemDrop.CreateItem(component.ItemId, component.Rarity, amount);
+                if (item == null) {
+                    continue;
+                }
+                if (!session.Item.Inventory.Add(item, true)) {
+                    session.Item.MailItem(item);
+                }
             }
         }
 
