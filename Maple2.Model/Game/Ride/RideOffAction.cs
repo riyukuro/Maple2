@@ -11,6 +11,12 @@ namespace Maple2.Model.Game;
 public class RideOffAction : IByteSerializable, IByteDeserializable {
     public readonly RideOffType Type;
     public bool Forced { get; private set; }
+    // False when a string field was longer than the client ever sends; the action is then not echoed.
+    public bool Valid { get; private set; } = true;
+
+    // The strings are object names, entity ids and cube position strings the client takes from the
+    // object it acts on (ActionKeyObject, FunctionCubeObject, MyPC); none comes near this length.
+    public const int MaxStringLength = 128;
 
     public RideOffAction(bool forced) : this(RideOffType.Default) {
         Forced = forced;
@@ -23,7 +29,7 @@ public class RideOffAction : IByteSerializable, IByteDeserializable {
     public static RideOffAction Read(IByteReader reader) {
         RideOffAction action = Create((RideOffType) reader.ReadByte());
         action.ReadFrom(reader);
-        return action;
+        return action.Valid ? action : new RideOffAction(action.Forced);
     }
 
     public static RideOffAction Create(RideOffType type) {
@@ -54,6 +60,15 @@ public class RideOffAction : IByteSerializable, IByteDeserializable {
     public virtual void WriteTo(IByteWriter writer) {
         writer.WriteByte((byte) Type);
         writer.WriteBool(Forced);
+    }
+
+    protected string ReadString(IByteReader reader) {
+        string value = reader.ReadUnicodeString();
+        if (value.Length > MaxStringLength) {
+            Valid = false;
+            return string.Empty;
+        }
+        return value;
     }
 
     // The type byte is read by Read().
@@ -97,7 +112,7 @@ public class RideOffActionInteract() : RideOffAction(RideOffType.Interact) {
     public override void ReadFrom(IByteReader reader) {
         base.ReadFrom(reader);
         objectId = reader.ReadInt();
-        entityId = reader.ReadUnicodeString();
+        entityId = ReadString(reader);
     }
 }
 
@@ -230,7 +245,7 @@ public class RideOffActionHomemade() : RideOffAction(RideOffType.Homemade) {
 
     public override void ReadFrom(IByteReader reader) {
         base.ReadFrom(reader);
-        name = reader.ReadUnicodeString();
+        name = ReadString(reader);
         value1 = reader.ReadInt();
         value2 = reader.ReadShort();
         value3 = reader.ReadInt();
@@ -287,7 +302,7 @@ public class RideOffActionUseFunctionItem() : RideOffAction(RideOffType.UseFunct
     public override void ReadFrom(IByteReader reader) {
         base.ReadFrom(reader);
         itemUid = reader.ReadLong();
-        value = reader.ReadUnicodeString();
+        value = ReadString(reader);
     }
 }
 
@@ -303,7 +318,7 @@ public class RideOffActionNurturing() : RideOffAction(RideOffType.Nurturing) {
 
     public override void ReadFrom(IByteReader reader) {
         base.ReadFrom(reader);
-        name = reader.ReadUnicodeString();
+        name = ReadString(reader);
         value = reader.ReadInt();
     }
 }
