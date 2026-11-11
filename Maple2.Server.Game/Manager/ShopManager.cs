@@ -578,14 +578,20 @@ public sealed class ShopManager {
             return;
         }
 
-        if (!session.Item.Inventory.Remove(item.Uid, out item, quantity)) {
-            logger.Error("Failed to remove item {Uid} from inventory", itemUid);
+        // The price is fixed and checked before the item leaves the inventory.
+        long unitPrice = Core.Formulas.Shop.SellPrice(item.Metadata, item.Type, item.Rarity);
+        if (!ShopRules.TrySellTotal(unitPrice, quantity, item.Amount, out long sellPrice)) {
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
             return;
         }
 
-        long sellPrice = Core.Formulas.Shop.SellPrice(item.Metadata, item.Type, item.Rarity);
         if (session.Currency.CanAddMeso(sellPrice) != sellPrice) {
             logger.Error("Could not add {sellPrice} meso(s) to player {CharacterId}", sellPrice, session.CharacterId);
+            return;
+        }
+
+        if (!session.Item.Inventory.Remove(item.Uid, out item, quantity)) {
+            logger.Error("Failed to remove item {Uid} from inventory", itemUid);
             return;
         }
 

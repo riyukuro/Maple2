@@ -17,4 +17,15 @@ public static class ShopRules {
         total = (int) price;
         return true;
     }
+
+    // The client does not send a sale of less than one item. The shop pays the unit price for each item sold.
+    public static bool TrySellTotal(long unitPrice, int quantity, int owned, out long total) {
+        total = 0;
+        if (quantity <= 0 || quantity > owned || unitPrice < 0) {
+            return false;
+        }
+
+        total = unitPrice * quantity;
+        return true;
+    }
 }

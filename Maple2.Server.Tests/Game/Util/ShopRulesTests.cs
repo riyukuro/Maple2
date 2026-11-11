@@ -39,4 +39,32 @@ public class ShopRulesTests {
         Assert.That(ShopRules.TryTotalPrice(unitPrice, quantity, out int total), Is.True);
         Assert.That(total, Is.EqualTo(expected));
     }
+
+    [Test]
+    public void Sell_ClientBytesWithANegativeQuantityAreRefused() {
+        // Client sender: client/ms2/itemugcmesh.cpp:1097 (item uid, count); it sends nothing for a count below 1.
+        var writer = new ByteWriter();
+        writer.WriteLong(5001);
+        writer.WriteInt(-1);
+        var reader = new ByteReader(writer.Buffer.AsSpan(0, writer.Length).ToArray(), 0);
+        Assert.That(reader.ReadLong(), Is.EqualTo(5001));
+        int quantity = reader.ReadInt();
+        Assert.That(ShopRules.TrySellTotal(10, quantity, 50, out long total), Is.False);
+        Assert.That(total, Is.Zero);
+    }
+
+    [TestCase(10, 0, 50)]
+    [TestCase(10, 51, 50)]
+    [TestCase(-1, 1, 50)]
+    public void TrySellTotal_Refuses(long unitPrice, int quantity, int owned) {
+        Assert.That(ShopRules.TrySellTotal(unitPrice, quantity, owned, out _), Is.False);
+    }
+
+    [TestCase(10, 1, 50, 10)]
+    [TestCase(10, 50, 50, 500)]
+    [TestCase(3000000000, 3, 3, 9000000000)]
+    public void TrySellTotal_PaysForEachItem(long unitPrice, int quantity, int owned, long expected) {
+        Assert.That(ShopRules.TrySellTotal(unitPrice, quantity, owned, out long total), Is.True);
+        Assert.That(total, Is.EqualTo(expected));
+    }
 }
