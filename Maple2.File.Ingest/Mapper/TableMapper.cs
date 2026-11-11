@@ -63,6 +63,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
+        yield return new TableMetadata { Name = TableNames.PET_EVOLUTION, Table = ParsePetEvolution() };
         yield return new TableMetadata { Name = TableNames.REACTOR, Table = ParseReactor() };
         yield return new TableMetadata { Name = TableNames.JOB, Table = ParseJobTable() };
         yield return new TableMetadata { Name = TableNames.MAGIC_PATH, Table = ParseMagicPath() };
@@ -286,6 +287,38 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 AdditionalEffectLevel: int.Parse(node.GetAttribute("additionalEffectLevel").Trim(), CultureInfo.InvariantCulture));
         }
         return results;
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML. The client skips the rows its
+    // feature or locale filter refuses (IsElementAvailable) and keys the rest by requireItemLevel; a later
+    // row with the same level replaces an earlier one (CExpTable::LoadPetEvolution).
+    private PetEvolutionTable ParsePetEvolution() {
+        return new PetEvolutionTable(ReadPetEvolutions(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/petevolution.xml"))));
+    }
+
+    public static Dictionary<int, PetEvolutionTable.Entry> ReadPetEvolutions(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var results = new Dictionary<int, PetEvolutionTable.Entry>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/petEvolution");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!available(node)) {
+                continue;
+            }
+
+            int level = ParseIntOr(node.GetAttribute("requireItemLevel"));
+            int[] grades = new int[4];
+            for (int i = 0; i < grades.Length; i++) {
+                grades[i] = ParseIntOr(node.GetAttribute($"Grade{i + 1}"));
+            }
+            results[level] = new PetEvolutionTable.Entry(level, grades);
+        }
+        return results;
+
+        static int ParseIntOr(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client keeps the rows whose

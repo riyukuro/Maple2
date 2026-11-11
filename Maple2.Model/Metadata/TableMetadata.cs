@@ -30,6 +30,7 @@ public class TableMetadata {
 [JsonDerivedType(typeof(ItemEnchantTransformTable), typeDiscriminator: "itemenchanttransform")]
 [JsonDerivedType(typeof(CharacterAbilityTable), typeDiscriminator: "characterability")]
 [JsonDerivedType(typeof(ClubBuffTable), typeDiscriminator: "clubbuff")]
+[JsonDerivedType(typeof(PetEvolutionTable), typeDiscriminator: "petevolution")]
 [JsonDerivedType(typeof(ReactorTable), typeDiscriminator: "reactor")]
 [JsonDerivedType(typeof(GemstoneUpgradeTable), typeDiscriminator: "gemstoneupgrade")]
 [JsonDerivedType(typeof(MagicPathTable), typeDiscriminator: "magicpath")]

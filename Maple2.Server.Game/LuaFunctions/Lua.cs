@@ -970,6 +970,24 @@ public static class Lua {
         return (ItemRemakeRedcrystalTag, crystalCount, ItemRemakeCrystalChipTag, crystalChipCount, ItemRemakeMetaCellTag, metaCellCount);
     }
 
+    // calc_petEvolutionCost: the meso one evolution fodder of this rarity costs. The script's table has four
+    // entries; any other rarity reads nil, which the client takes as 0.
+    public static long CalcPetEvolutionCost(int rarity) {
+        return rarity switch {
+            1 => 20000,
+            2 => 50000,
+            3 => 200000,
+            4 => 500000,
+            _ => 0,
+        };
+    }
+
+    // calc_petEvolutionResultLevel: the pet level after an evolution to this rarity. The level limit is passed
+    // but not read; ranks 1-5 give 1, any other rank reads nil (0).
+    public static int CalcPetEvolutionResultLevel(int rarity, int levelLimit) {
+        return rarity is >= 1 and <= 5 ? 1 : 0;
+    }
+
     public static int CalcItemSocketMaxCount(int itemType, int grade, int levelLimit, int skinType) {
         if (skinType > 0) {
             return 0;

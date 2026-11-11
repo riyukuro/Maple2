@@ -375,4 +375,24 @@ public class LuaTests {
             Assert.That(luaResult.Item1, Is.EqualTo(expected).Within(0.01f));
         });
     }
+
+    [TestCase(1, 20000)]
+    [TestCase(2, 50000)]
+    [TestCase(3, 200000)]
+    [TestCase(4, 500000)]
+    public void TestCalcPetEvolutionCost(int rarity, long expected) {
+        Assert.Multiple(() => {
+            Assert.That((long) maple2Lua.CalcPetEvolutionCost(rarity), Is.EqualTo(expected));
+            Assert.That(Server.Game.LuaFunctions.Lua.CalcPetEvolutionCost(rarity), Is.EqualTo(expected));
+        });
+    }
+
+    [TestCase(2, 50, 1)]
+    [TestCase(5, 70, 1)]
+    public void TestCalcPetEvolutionResultLevel(int rarity, int levelLimit, int expected) {
+        Assert.Multiple(() => {
+            Assert.That((int) maple2Lua.CalcPetEvolutionResultLevel(rarity, (ushort) levelLimit), Is.EqualTo(expected));
+            Assert.That(Server.Game.LuaFunctions.Lua.CalcPetEvolutionResultLevel(rarity, levelLimit), Is.EqualTo(expected));
+        });
+    }
 }

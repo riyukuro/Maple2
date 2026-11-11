@@ -142,7 +142,9 @@ public class PetEvolutionPointCommand : GameCommand {
                 return;
             }
 
-            pet.Pet.EvolvePoints = PetEvolveRules.ClampPoints(point);
+            // Not above the points table/petevolution.xml asks for this pet's next evolution.
+            int need = PetEvolveRules.Need(session.TableMetadata.PetEvolutionTable, pet.Metadata.Limit.Level, pet.Rarity);
+            pet.Pet.EvolvePoints = PetEvolveRules.ClampPoints(point, need);
             session.Send(PetPacket.EvolvePoints(session.Player.ObjectId, pet));
             ctx.Console.Out.WriteLine($"Pet {petUid}: evolution points {pet.Pet.EvolvePoints}.");
         }

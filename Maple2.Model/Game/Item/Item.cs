@@ -12,7 +12,7 @@ public class Item : IByteSerializable, IByteDeserializable {
     public readonly ItemType Type;
 
     public long Uid { get; init; }
-    public int Rarity { get; init; }
+    public int Rarity { get; set; } // set: a pet evolution raises it in place (PetHandler)
     public short Slot = -1;
     public ItemGroup Group = ItemGroup.Default;
 
