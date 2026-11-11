@@ -26,4 +26,14 @@ public class TriggerLookupTests {
         Assert.That(TriggerContext.FindSpawnPoint(events, plain, 102), Is.SameAs(plainSpawn));
         Assert.That(TriggerContext.FindSpawnPoint(events, plain, 103), Is.Null);
     }
+
+    // '!monster_dead' (02000471 respawn): the ingest writes negate="true", which the condition now reads.
+    [Test]
+    public void MonsterDead_ReadsNegate() {
+        Assert.That(TriggerContext.AllDead([true, true], false), Is.True);
+        Assert.That(TriggerContext.AllDead([true, false], false), Is.False);
+        Assert.That(TriggerContext.AllDead([true, true], true), Is.False);
+        Assert.That(TriggerContext.AllDead([true, false], true), Is.True);
+        Assert.That(TriggerContext.AllDead([], false), Is.True);
+    }
 }

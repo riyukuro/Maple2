@@ -244,7 +244,7 @@ public static class TriggerFunctionMapping {
         { "guild_vs_game_winner_team", attrs => new Trigger.GuildVsGameWinnerTeam(ParseInt(attrs?["team_id"]?.Value)) },
         { "is_dungeon_room", attrs => new Trigger.IsDungeonRoom(ParseBool(attrs?["negate"]?.Value)) },
         { "is_playing_maple_survival", attrs => new Trigger.IsPlayingMapleSurvival(ParseBool(attrs?["negate"]?.Value)) },
-        { "monster_dead", attrs => new Trigger.MonsterDead(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["auto_target"]?.Value)) },
+        { "monster_dead", attrs => new Trigger.MonsterDead(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["auto_target"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "monster_in_combat", attrs => new Trigger.MonsterInCombat(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "npc_detected", attrs => new Trigger.NpcDetected(ParseInt(attrs?["box_id"]?.Value), ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "npc_is_dead_by_string_id", attrs => new Trigger.NpcIsDeadByStringId(attrs?["string_id"]?.Value ?? string.Empty) },

@@ -236,7 +236,7 @@ public interface ITriggerContext {
     public bool GuildVsGameWinnerTeam(int teamId);
     public bool IsDungeonRoom(bool negate);
     public bool IsPlayingMapleSurvival(bool negate);
-    public bool MonsterDead(int[] spawnIds, bool autoTarget);
+    public bool MonsterDead(int[] spawnIds, bool autoTarget, bool negate);
     public bool MonsterInCombat(int[] spawnIds, bool negate);
     public bool NpcDetected(int boxId, int[] spawnIds, bool negate);
     public bool NpcIsDeadByStringId(string stringId);

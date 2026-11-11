@@ -207,19 +207,14 @@ public partial class TriggerContext {
         return negate ? !hasAnyBuff : hasAnyBuff;
     }
 
-    public bool MonsterDead(int[] spawnIds, bool autoTarget) {
-        DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}", string.Join(", ", spawnIds), autoTarget);
+    public bool MonsterDead(int[] spawnIds, bool autoTarget, bool negate) {
+        DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}, negate:{Negate}", string.Join(", ", spawnIds), autoTarget, negate);
         IEnumerable<FieldNpc> matchingMobs = Field.Mobs.Values.Where(x => spawnIds.Contains(x.SpawnPointId));
-
-        foreach (FieldNpc mob in matchingMobs) {
-            if (!mob.IsDead) {
-                return false;
-            }
-        }
-
-        // Either no mobs were found or they are all dead
-        return true;
+        return AllDead(matchingMobs.Select(mob => mob.IsDead), negate);
     }
+
+    // Either no mobs were found or they are all dead; '!monster_dead' (negate) is the opposite.
+    public static bool AllDead(IEnumerable<bool> isDead, bool negate) => isDead.All(dead => dead) != negate;
 
     public bool MonsterInCombat(int[] spawnIds, bool negate) {
         DebugLog("[MonsterInCombat] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));

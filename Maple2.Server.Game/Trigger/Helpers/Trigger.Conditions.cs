@@ -185,11 +185,11 @@ public partial class Trigger {
         public bool Evaluate(TriggerContext context) => context.IsPlayingMapleSurvival(negate);
     }
 
-    public class MonsterDead(int[] spawnIds, bool autoTarget) : ICondition {
+    public class MonsterDead(int[] spawnIds, bool autoTarget, bool negate) : ICondition {
         public string Name => "monster_dead";
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
-        public bool Evaluate(TriggerContext context) => context.MonsterDead(spawnIds, autoTarget);
+        public bool Evaluate(TriggerContext context) => context.MonsterDead(spawnIds, autoTarget, negate);
     }
 
     public class MonsterInCombat(int[] spawnIds, bool negate) : ICondition {
