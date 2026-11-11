@@ -162,9 +162,13 @@ public class ItemDismantleHandler : FieldPacketHandler {
             return;
         }
 
+        // CItemBreakManager::SendItemDismantleMode6(type, rank): the type is the "type" member of the
+        // dialog's m_bundleTypeDropdown row, an inventory tab (UIItemBreakDialog::OnLoadComplete keys
+        // its row map by it). The dialog offers only equip, skin, gem and pet; rank is 1..6, "or below".
         byte tab = packet.ReadByte();
         byte rarity = packet.ReadByte();
-        if (!InventoryTab.TryFromClient(tab, out InventoryType type)) {
+        if (!InventoryTab.TryFromClient(tab, out InventoryType type)
+                || type is not (InventoryType.Gear or InventoryType.Outfit or InventoryType.Gemstone or InventoryType.Pets)) {
             return;
         }
 
@@ -180,7 +184,8 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     continue;
                 }
 
-                if (item.IsLocked) {
+                // The same rule as Stage, for every type (pets had none before).
+                if (item.IsLocked || (!item.Metadata.Limit.EnableBreak && item.GachaDismantleId == 0)) {
                     continue;
                 }
 
