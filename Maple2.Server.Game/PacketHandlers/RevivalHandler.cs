@@ -1,15 +1,26 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
 public class RevivalHandler : FieldPacketHandler {
+    #region Autofac Autowired
+    // ReSharper disable MemberCanBePrivate.Global
+    public required ServerTableMetadataStorage ServerTableMetadata { private get; init; }
+    // ReSharper restore All
+    #endregion
+
     public override RecvOp OpCode => RecvOp.Revival;
 
     private enum Command : byte {
@@ -95,11 +106,55 @@ public class RevivalHandler : FieldPacketHandler {
         }
     }
 
-    // Client UIRevivalDialog::SendRevivalMode1: revive in place, with the coupon value from FUN_141abc9d0.
-    // The meaning of that value is not settled, so nothing is consumed here.
+    // Client UIRevivalDialog::SendRevivalMode1: the meret revive in place. The byte is the "m_coupon" checkbox:
+    // 1 = pay with a free revive coupon (item tag 4), 0 = pay the merets the button shows.
     private void HandleCouponRevive(GameSession session, IByteReader packet) {
-        byte coupon = packet.ReadByte();
-        Logger.Debug("Revival mode 1 (coupon {Coupon}) from {CharacterId} not implemented", coupon, session.CharacterId);
+        bool useCoupon = packet.ReadBool();
+        if (session.Field is null) return;
+        if (!session.Player.IsDead || session.Player.Tombstone == null) {
+            return;
+        }
+        if (session.Field.Metadata.Property.NoRevivalHere) {
+            return;
+        }
+        if (session.Field is DungeonFieldManager { DungeonMetadata.Limit.DisableMeretRevival: true }) {
+            return;
+        }
+
+        ConstantsTable constants = ServerTableMetadata.ConstantsTable;
+        int debuffCode = constants.MeratRevivalDebuffCode;
+        Buff? debuff = debuffCode == 0 ? null : session.Player.Buffs.EnumerateBuffs(debuffCode).FirstOrDefault();
+        int stacks = debuff?.Stacks ?? 0;
+        if (!RevivalRules.DebuffAllows(debuffCode, stacks, debuff?.Metadata.Property.MaxCount ?? 0,
+                session.Field.Metadata.Property.InfiniteMeretRevival)) {
+            return;
+        }
+
+        bool paid = false;
+        if (useCoupon) {
+            // The client sends the ticked box even when no coupon is left, and then expects the merets to go.
+            paid = session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)]);
+            if (paid) {
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
+            }
+        }
+        if (!paid) {
+            float reduceRate = (float) session.Player.Stats.Values[SpecialAttribute.ReduceMeretRevivalFee].Multiplier();
+            long cost = RevivalRules.MeretCost(Lua.CalcRevivalMerat(session.Player.Value.Character.Level, stacks),
+                constants.MeratRevivalFeeReduceLimit, reduceRate);
+            if (session.Currency.Meret < cost) {
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+                return;
+            }
+            session.Currency.Meret -= cost;
+        }
+
+        if (session.Player.Revive(true)) {
+            session.Player.Tombstone = null;
+            if (debuffCode != 0) {
+                session.Player.Buffs.AddBuff(session.Player, session.Player, debuffCode, 1, session.Field.FieldTick);
+            }
+        }
     }
 
     // Client StateSummonRevive: a dead summon owned by the player asks to revive; the fork has no summon revive state.
