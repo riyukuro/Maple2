@@ -53,9 +53,25 @@ public partial class TriggerContext {
         SpawnNpc(spawnId);
     }
 
+    // Turns the npcs of each spawn point back to the rotation the map gives that spawn point: 51000004 turns Pink Bean
+    // with SetNpcRotation (270, 180, 90) and then calls InitNpcRotation on the same spawn to face it forward again.
     public void InitNpcRotation(int[] spawnIds) {
-        ErrorLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        DebugLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        foreach (int spawnId in spawnIds) {
+            Vector3? rotation = SpawnRotation(Field.Entities.EventNpcSpawns, Field.Entities.NpcSpawns, spawnId);
+            if (rotation == null) {
+                continue;
+            }
+            foreach (FieldNpc npc in Field.EnumerateNpcs()) {
+                if (npc.SpawnPointId == spawnId) {
+                    npc.Rotation = rotation.Value;
+                }
+            }
+        }
     }
+
+    public static Vector3? SpawnRotation(IReadOnlyDictionary<int, EventSpawnPointNPC> eventSpawns, IEnumerable<SpawnPointNPC> npcSpawns, int spawnId) =>
+        FindSpawnPoint(eventSpawns, npcSpawns, spawnId)?.Rotation;
 
     public void LimitSpawnNpcCount(int limitCount, string desc) {
         ErrorLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);

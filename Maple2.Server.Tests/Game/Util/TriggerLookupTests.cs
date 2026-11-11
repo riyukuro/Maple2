@@ -6,7 +6,8 @@ using Maple2.Server.Game.Trigger;
 
 namespace Maple2.Server.Tests.Game.Util;
 
-// set_ladder skips a missing id and keeps going; spawn_monster finds plain spawn points too. Made-up ids.
+// set_ladder skips a missing id and keeps going; spawn_monster finds plain spawn points too; init_npc_rotation
+// takes the spawn point's rotation. Made-up ids.
 public class TriggerLookupTests {
     [Test]
     public void SetLadder_SkipsAMissingIdOnly() {
@@ -35,5 +36,18 @@ public class TriggerLookupTests {
         Assert.That(TriggerContext.AllDead([true, true], true), Is.False);
         Assert.That(TriggerContext.AllDead([true, false], true), Is.True);
         Assert.That(TriggerContext.AllDead([], false), Is.True);
+    }
+
+    [Test]
+    public void InitNpcRotation_UsesTheSpawnPointRotation() {
+        var list = new List<SpawnPointNPCListEntry> { new(21000001, 1) };
+        var eventSpawn = new EventSpawnPointNPC("e", 101, Vector3.Zero, new Vector3(0, 0, 45), true, false, 0, 1, list, 0, 0, "");
+        var plainSpawn = new SpawnPointNPC("p", 102, Vector3.Zero, new Vector3(0, 0, -90), true, false, 0, list, 0, null);
+        var events = new Dictionary<int, EventSpawnPointNPC> { [101] = eventSpawn };
+        SpawnPointNPC[] plain = [plainSpawn];
+
+        Assert.That(TriggerContext.SpawnRotation(events, plain, 101), Is.EqualTo(new Vector3(0, 0, 45)));
+        Assert.That(TriggerContext.SpawnRotation(events, plain, 102), Is.EqualTo(new Vector3(0, 0, -90)));
+        Assert.That(TriggerContext.SpawnRotation(events, plain, 103), Is.Null);
     }
 }
