@@ -10,7 +10,8 @@ public class FieldEnterHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.ResponseFieldEnter;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        Debug.Assert(packet.ReadInt() == GameSession.FIELD_KEY);
+        int fieldKey = packet.ReadInt();
+        Debug.Assert(fieldKey == GameSession.FIELD_KEY);
 
         session.EnterField();
     }
