@@ -134,16 +134,16 @@ public class ItemMergePacketTests {
         Assert.That(read[ItemStats.Type.Empowerment].Special[SpecialAttribute.Experience].Value, Is.EqualTo(35));
     }
 
-    private static Item ItemOf(int id, int rarity, long uid, string? revertParameter = null) {
-        var property = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+    private static Item ItemOf(int id, int rarity, long uid, string? revertParameter = null, int type = 1, int subType = 13, EquipSlot[]? slots = null) {
+        var property = new ItemMetadataProperty(false, 0, 100, type, subType, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
         var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
         ItemMetadataFunction? function = revertParameter == null ? null : new ItemMetadataFunction(ItemFunction.ItemMergeRevert, "ItemMergeRevert", revertParameter, false);
-        var metadata = new ItemMetadata(id, $"{id}", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, function, [], null, null, null, null);
+        var metadata = new ItemMetadata(id, $"{id}", slots ?? [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, function, [], null, null, null, null);
         return new Item(metadata, rarity) { Uid = uid };
     }
 
-    private static Item Merged(int id, int rarity) {
-        Item item = ItemOf(id, rarity, 5);
+    private static Item Merged(int id, int rarity, int type = 1, int subType = 13, EquipSlot[]? slots = null) {
+        Item item = ItemOf(id, rarity, 5, null, type, subType, slots);
         item.Stats = new ItemStats();
         item.Stats.SetMergeOption(new MergeRoll(BasicAttribute.Dexterity, SpecialAttribute.None, 12), 37000001);
         return item;
@@ -195,22 +195,64 @@ public class ItemMergePacketTests {
         Assert.That(ItemMergeManager.CheckRevert(revert, ItemOf(11300001, 4, 5)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_option));
         Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000021, 4, 9, "0"), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
         Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000021, 4, 9, ""), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
-        // Type 13 is kind 1, types 22 and 50 are kind 2.
-        Assert.That(ItemMergeManager.CheckRevert(revert, Merged(12200001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_slot));
+        // Subtype 13 is kind 1, subtypes 22 and 50 are kind 2.
+        Assert.That(ItemMergeManager.CheckRevert(revert, Merged(12200001, 4, 1, 22)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_slot));
         Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000024, 4, 9, "2"), Merged(11300001, 4)), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_slot));
-        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000024, 4, 9, "2"), Merged(15000001, 4)), Is.EqualTo(ItemMergeError.ok));
+        Assert.That(ItemMergeManager.CheckRevert(ItemOf(37000024, 4, 9, "2"), Merged(15000001, 4, 1, 50)), Is.EqualTo(ItemMergeError.ok));
         Assert.That(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_revert_slot).ToArray()[2..], Is.EqualTo(new byte[] { 5, 8, 0 }));
     }
 
+    // The kind and the price follow the item xml's property type and subtype (CItemData::GetEquipSubtype,
+    // FUN_14053e410), not the digits of the id.
     [Test]
     public void RevertSlotAndPriceFollowTheEquipType() {
-        Assert.That(ItemMergeManager.RevertSlot(new ItemType(11300001)), Is.EqualTo(1));
-        Assert.That(ItemMergeManager.RevertSlot(new ItemType(13400001)), Is.EqualTo(1));
-        Assert.That(ItemMergeManager.RevertSlot(new ItemType(12200001)), Is.EqualTo(2));
-        Assert.That(ItemMergeManager.RevertSlot(new ItemType(15600001)), Is.EqualTo(2));
-        Assert.That(ItemMergeManager.RevertSlot(new ItemType(18300001)), Is.EqualTo(2));
-        Assert.That(ItemMergeManager.RevertSlot(new ItemType(22200001)), Is.EqualTo(1));
+        static int Slot(int type, int subType, params EquipSlot[] slots) => ItemMergeManager.RevertSlot(ItemOf(11300001, 4, 5, null, type, subType, slots).Metadata);
+
+        Assert.That(Slot(1, 13), Is.EqualTo(1));
+        Assert.That(Slot(1, 34), Is.EqualTo(1));
+        Assert.That(Slot(1, 22), Is.EqualTo(2));
+        Assert.That(Slot(1, 49), Is.EqualTo(1));
+        Assert.That(Slot(1, 50), Is.EqualTo(2));
+        Assert.That(Slot(1, 56), Is.EqualTo(2));
+        Assert.That(Slot(1, 57), Is.EqualTo(1));
+        Assert.That(Slot(1, 80), Is.EqualTo(2));
+        Assert.That(Slot(1, 83), Is.EqualTo(2));
+        Assert.That(Slot(1, 84), Is.EqualTo(1));
+        // The subtype counts only for property type 1.
+        Assert.That(Slot(2, 22), Is.EqualTo(1));
+        Assert.That(Slot(18, 50), Is.EqualTo(1));
+        // An id whose digits say 22 or 50 has no say.
+        Assert.That(ItemMergeManager.RevertSlot(ItemOf(12200001, 4, 5).Metadata), Is.EqualTo(1));
+        Assert.That(ItemMergeManager.RevertSlot(ItemOf(11300001, 4, 5, null, 1, 50).Metadata), Is.EqualTo(2));
+
         Assert.That(ItemMergeManager.RevertPrice(Merged(11300001, 4)), Is.EqualTo(250000));
-        Assert.That(ItemMergeManager.RevertPrice(Merged(12200001, 4)), Is.EqualTo(500000));
+        Assert.That(ItemMergeManager.RevertPrice(Merged(11300001, 4, 1, 22)), Is.EqualTo(500000));
+        Assert.That(ItemMergeManager.RevertPrice(Merged(12200001, 4, 2, 22)), Is.EqualTo(ItemMergeManager.RevertPrice(Merged(11300001, 4, 2, 0))));
+        Assert.That(ItemMergeManager.EquipSubtype(ItemOf(12200001, 4, 5, null, 23, 22).Metadata), Is.EqualTo(0));
+    }
+
+    // Property type 23 is kind 2 only when the item's slots give both RH and LH; the first slot named OH
+    // answers for both (CItemData::FUN_14053d460, ItemModelData::HasGroupType).
+    [Test]
+    public void RevertSlotOfPropertyType23FollowsTheSlots() {
+        static int Slot(int type, params EquipSlot[] slots) => ItemMergeManager.RevertSlot(ItemOf(11300001, 4, 5, null, type, 0, slots).Metadata);
+
+        Assert.That(Slot(23), Is.EqualTo(1));
+        Assert.That(Slot(23, EquipSlot.RH), Is.EqualTo(1));
+        Assert.That(Slot(23, EquipSlot.LH), Is.EqualTo(1));
+        Assert.That(Slot(23, EquipSlot.RH, EquipSlot.LH), Is.EqualTo(2));
+        Assert.That(Slot(23, EquipSlot.LH, EquipSlot.RH), Is.EqualTo(2));
+        Assert.That(Slot(23, EquipSlot.OH), Is.EqualTo(2));
+        // The walk stops at OH: a slot after it is not seen, one before it is.
+        Assert.That(Slot(23, EquipSlot.CP, EquipSlot.OH), Is.EqualTo(2));
+        Assert.That(Slot(23, EquipSlot.RH, EquipSlot.OH), Is.EqualTo(2));
+        Assert.That(Slot(23, EquipSlot.CP, EquipSlot.CL), Is.EqualTo(1));
+        // The slots count for property type 23 only.
+        Assert.That(Slot(1, EquipSlot.RH, EquipSlot.LH), Is.EqualTo(1));
+        Assert.That(Slot(22, EquipSlot.OH), Is.EqualTo(1));
+
+        Item revert2 = ItemOf(37000024, 4, 9, "2");
+        Assert.That(ItemMergeManager.CheckRevert(revert2, Merged(11300001, 4, 23, 0, [EquipSlot.OH])), Is.EqualTo(ItemMergeError.ok));
+        Assert.That(ItemMergeManager.CheckRevert(revert2, Merged(11300001, 4, 23, 0, [EquipSlot.RH])), Is.EqualTo(ItemMergeError.s_item_merge_option_error_invalid_revert_slot));
     }
 }

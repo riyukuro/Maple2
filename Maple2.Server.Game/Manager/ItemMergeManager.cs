@@ -260,15 +260,42 @@ public sealed class ItemMergeManager {
         }
     }
 
-    // CItemData::FUN_14053e410 (itemdata.cpp:1348): 2 for the equip types 22, 50 to 56 and 80 to 83,
-    // 1 for the others. The revert item's function parameter names the kind it works on.
-    public static int RevertSlot(ItemType type) {
-        return type is { Group: 1, Type: 22 or >= 50 and <= 56 or >= 80 and <= 83 } ? 2 : 1;
+    // CItemData::GetEquipSubtype (itemdata.cpp:509): the item xml's property subtype when the property
+    // type is 1, else 0. The client reads both from the item xml (itemdata.cpp:340), not from the id.
+    public static int EquipSubtype(ItemMetadata metadata) {
+        return metadata.Property.Type == 1 ? metadata.Property.SubType : 0;
     }
 
+    // ItemModelData::HasGroupType (itemdatastruct.cpp:2087): the first slot named OH answers for LH and
+    // RH (and for nothing else); a slot before it that has the asked name answers yes.
+    private static bool HasSlot(ItemMetadata metadata, EquipSlot slot) {
+        foreach (EquipSlot name in metadata.SlotNames) {
+            if (name == EquipSlot.OH) {
+                return slot is EquipSlot.RH or EquipSlot.LH;
+            }
+            if (name == slot) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // CItemData::FUN_14053e410 (itemdata.cpp:1348) with FUN_14053d460 (itemdata.cpp:893): 2 for the
+    // equip subtypes 22, 50 to 56 and 80 to 83, and for an item of property type 23 whose slots give
+    // both RH and LH; 1 for the others. The revert item's function parameter names the kind it works on.
+    public static int RevertSlot(ItemMetadata metadata) {
+        if (EquipSubtype(metadata) is 22 or >= 50 and <= 56 or >= 80 and <= 83) {
+            return 2;
+        }
+        if (metadata.Property.Type == 23 && HasSlot(metadata, EquipSlot.RH) && HasSlot(metadata, EquipSlot.LH)) {
+            return 2;
+        }
+        return 1;
+    }
+
+    // uiitemmergerevertdialog.cpp:209: the price by the item's rarity and equip subtype.
     public static long RevertPrice(Item item) {
-        // CItemData::GetEquipSubtype: 0 for an item that is not equipment.
-        return Lua.CalcItemMergeRevertMeso(item.Rarity, item.Type.Group == 1 ? item.Type.Type : 0);
+        return Lua.CalcItemMergeRevertMeso(item.Rarity, EquipSubtype(item.Metadata));
     }
 
     public static ItemMergeError CheckRevert(Item? revertItem, Item? item) {
@@ -287,7 +314,7 @@ public sealed class ItemMergeManager {
         if (!int.TryParse(revertItem.Metadata.Function.Parameters, out int slot) || slot == 0) {
             return ItemMergeError.s_item_merge_option_error_invalid_merge_scroll;
         }
-        if (slot != RevertSlot(item.Type)) {
+        if (slot != RevertSlot(item.Metadata)) {
             return ItemMergeError.s_item_merge_option_error_invalid_revert_slot;
         }
         return ItemMergeError.ok;
