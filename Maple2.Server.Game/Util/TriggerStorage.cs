@@ -104,14 +104,16 @@ public class TriggerCache : LRUCache<(string, string), Trigger.Helpers.Trigger> 
                     }
 
                     ICondition condition = conditionMap(conditionNode.Attributes);
-                    if (condition is GroupAnyOne or GroupAllOf) {
+                    if (condition is IGroupCondition group) {
+                        // <condition name="all_of"><group><condition .../>...</group><transition/><action/></condition>:
+                        // the inner conditions are the group's, the transition and actions stay on the outer node.
                         XmlNode? groupNode = conditionNode.SelectSingleNode("group");
                         if (groupNode is null) {
                             Log.Error("Group condition in trigger state '{StateName}' for trigger '{TriggerName}' must have a <group> element in {MapXBlock}", stateName, triggerName, xBlock);
                             continue;
                         }
 
-                        conditionNode = groupNode;
+                        group.Conditions = ParseGroupConditions(groupNode, stateName, triggerName, xBlock);
                     }
 
                     XmlNode? transitionNode = conditionNode.SelectSingleNode("transition");
@@ -140,6 +142,21 @@ public class TriggerCache : LRUCache<(string, string), Trigger.Helpers.Trigger> 
         }
 
         return new Trigger.Helpers.Trigger(states);
+    }
+
+    // The inner conditions of a group. Shipped groups hold plain conditions only (no transition, no action, no
+    // nested group).
+    private static LinkedList<ICondition> ParseGroupConditions(XmlNode groupNode, string stateName, string triggerName, string xBlock) {
+        LinkedList<ICondition> conditions = [];
+        foreach (XmlNode node in groupNode.SelectNodes("condition")!) {
+            string? name = node.Attributes?["name"]?.Value;
+            if (name is null || !TriggerFunctionMapping.ConditionMap.TryGetValue(name, out Func<XmlAttributeCollection?, ICondition>? map)) {
+                Log.Error("Unknown condition type '{ConditionType}' in a group of trigger state '{StateName}' for trigger '{TriggerName}' in {MapXBlock}", name, stateName, triggerName, xBlock);
+                continue;
+            }
+            conditions.AddLast(map(node.Attributes));
+        }
+        return conditions;
     }
 
     private LinkedList<IAction> ParseActions(XmlNode parentNode, string stateName, string triggerName, string xBlock, string context) {
