@@ -6,7 +6,13 @@ public record GuildTable(
     IReadOnlyDictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>> Buffs,
     IReadOnlyDictionary<int, IReadOnlyDictionary<int, GuildTable.House>> Houses,
     IReadOnlyDictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>> Npcs,
-    IReadOnlyDictionary<short, GuildTable.Property> Properties) : Table {
+    IReadOnlyDictionary<short, GuildTable.Property> Properties,
+    // table/guildevent.xml by id. Null when the data was ingested before the table was read.
+    IReadOnlyDictionary<int, GuildTable.Event>? Events = null) : Table {
+
+    public record Event(
+        int Id,
+        int MapId);
 
     public record Buff(
         int Id,

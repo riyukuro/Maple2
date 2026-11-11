@@ -1031,8 +1031,34 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
+    // CGuildManager::FUN_1413ba080 (guildmanager.cpp:857): the id of the guild event a member with the mini
+    // game right opens. The World server checks and keeps the time; every member gets the event (56), the
+    // sender the answer (99).
     private void HandleStartArcade(GameSession session, IByteReader packet) {
-        int index = packet.ReadInt();
+        int eventId = packet.ReadInt();
+        if (session.Guild.Guild == null) {
+            return; // Not in a guild.
+        }
+
+        try {
+            GuildResponse response = World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                OpenEvent = new GuildRequest.Types.OpenEvent {
+                    GuildId = session.Guild.Id,
+                    EventId = eventId,
+                },
+            });
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Send(GuildPacket.OpenEvent(eventId));
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to open guild event");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleEnterArcade(GameSession session, IByteReader packet) {

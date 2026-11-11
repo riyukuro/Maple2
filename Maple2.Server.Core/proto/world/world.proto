@@ -156,6 +156,10 @@ message GuildInfo {
     int32 level = 2;
     int64 expiry_time = 3;
   }
+  message Event {
+    int32 id = 1;
+    int32 time = 2;
+  }
   message Poster {
     int32 id = 1;
     string picture = 2;
@@ -183,7 +187,8 @@ message GuildInfo {
   repeated Member members = 11;
   repeated Rank ranks = 12;
   repeated Buff buffs = 13;
-  // events
+  // The events opened since World started, with the time of the last opening.
+  repeated Event events = 14;
   repeated Poster posters = 15;
   repeated Npc npcs = 16;
   // bank
@@ -272,6 +277,11 @@ message GuildRequest {
     int64 guild_id = 1;
     int32 buff_id = 2;
   }
+  // Guild 99: a member with the mini game right opens a guild event.
+  message OpenEvent {
+    int64 guild_id = 1;
+    int32 event_id = 2;
+  }
   // Guild 101: the master raises the guild house by one level, with the theme chosen for it.
   message UpgradeHouse {
     int64 guild_id = 1;
@@ -333,6 +343,7 @@ message GuildRequest {
     ChangeHouseTheme change_house_theme = 24;
     TakeMailTurn take_mail_turn = 25;
     UseBuff use_buff = 26;
+    OpenEvent open_event = 27;
   }
 }
 

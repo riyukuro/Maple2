@@ -433,6 +433,55 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Guild 99. The time of opening is kept in memory only: an event is open for 30 seconds
+    // (GuildRules.EventOpenSeconds), so nothing is lost when World stops.
+    public GuildError OpenEvent(long requestorId, int eventId) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        var opened = new GuildEvent(eventId, 0);
+        lock (guildLock) {
+            int index = -1;
+            for (int i = 0; i < Guild.Events.Count; i++) {
+                if (Guild.Events[i].Id == eventId) {
+                    index = i;
+                    break;
+                }
+            }
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            GuildError error = GuildRules.CheckOpenEvent(TableMetadata.GuildTable.Events?.ContainsKey(eventId) == true,
+                Guild.CreationTime, HasPermission(requestorId, GuildPermission.StartMiniGame),
+                index < 0 ? 0 : Guild.Events[index].Value, now);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            opened = new GuildEvent(eventId, (int) now);
+            if (index < 0) {
+                Guild.Events.Add(opened);
+            } else {
+                Guild.Events[index] = opened;
+            }
+        }
+
+        Broadcast(new GuildRequest {
+            OpenEvent = new GuildRequest.Types.OpenEvent {
+                RequestorName = requestor.Name,
+                Id = opened.Id,
+                Time = opened.Value,
+            },
+        });
+
+        return GuildError.none;
+    }
+
+    public GuildEvent[] OpenedEvents() {
+        lock (guildLock) {
+            return Guild.Events.ToArray();
+        }
+    }
+
     // Guild 71. The server's own limit (GuildRules.MailCooldownSeconds), kept here so that it holds on every
     // channel; the mail right is checked here too. The turn is taken before the channel writes the mails.
     public GuildError TakeMailTurn(long requestorId) {

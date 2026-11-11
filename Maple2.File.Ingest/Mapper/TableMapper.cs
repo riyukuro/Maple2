@@ -927,11 +927,17 @@ public class TableMapper : TypeMapper<TableMetadata> {
             guildProperties.Add((short) level, entry);
         }
 
+        var guildEvents = new Dictionary<int, GuildTable.Event>();
+        foreach ((int id, Maple2.File.Parser.Xml.Table.GuildEvent guildEvent) in parser.ParseGuildEvent()) {
+            guildEvents[id] = new GuildTable.Event(Id: id, MapId: guildEvent.mapCode);
+        }
+
         return new GuildTable(
             Buffs: guildBuffs,
             Houses: guildHouses,
             Npcs: guildNpcs,
-            Properties: guildProperties);
+            Properties: guildProperties,
+            Events: guildEvents);
     }
 
     private FishingRodTable ParseFishingRod() {

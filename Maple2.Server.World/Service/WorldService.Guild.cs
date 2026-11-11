@@ -16,7 +16,7 @@ public partial class WorldService {
             return Task.FromResult(new GuildInfoResponse());
         }
 
-        return Task.FromResult(new GuildInfoResponse { Guild = ToGuildInfo(manager.Guild) });
+        return Task.FromResult(new GuildInfoResponse { Guild = ToGuildInfo(manager) });
     }
 
     public override Task<GuildResponse> Guild(GuildRequest request, ServerCallContext context) {
@@ -65,6 +65,8 @@ public partial class WorldService {
                 return Task.FromResult(ChangeGuildHouseTheme(request.RequestorId, request.ChangeHouseTheme));
             case GuildRequest.GuildOneofCase.UseBuff:
                 return Task.FromResult(UseGuildBuff(request.RequestorId, request.UseBuff));
+            case GuildRequest.GuildOneofCase.OpenEvent:
+                return Task.FromResult(OpenGuildEvent(request.RequestorId, request.OpenEvent));
             case GuildRequest.GuildOneofCase.TakeMailTurn:
                 return Task.FromResult(TakeGuildMailTurn(request.RequestorId, request.TakeMailTurn));
             case GuildRequest.GuildOneofCase.Donate:
@@ -105,7 +107,7 @@ public partial class WorldService {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
         }
 
-        return new GuildResponse { Guild = ToGuildInfo(manager.Guild) };
+        return new GuildResponse { Guild = ToGuildInfo(manager) };
     }
 
     // TODO: Send reject mail to any applicants
@@ -161,7 +163,7 @@ public partial class WorldService {
                 },
             });
 
-            return new GuildResponse { Guild = ToGuildInfo(manager.Guild) };
+            return new GuildResponse { Guild = ToGuildInfo(manager) };
         }
 
         manager.Broadcast(new ChannelGuildRequest {
@@ -497,6 +499,19 @@ public partial class WorldService {
         return new GuildResponse { GuildId = use.GuildId };
     }
 
+    private GuildResponse OpenGuildEvent(long requestorId, GuildRequest.Types.OpenEvent open) {
+        if (!guildLookup.TryGet(open.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.OpenEvent(requestorId, open.EventId);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = open.GuildId };
+    }
+
     private GuildResponse TakeGuildMailTurn(long requestorId, GuildRequest.Types.TakeMailTurn take) {
         if (!guildLookup.TryGet(take.GuildId, out GuildManager? manager)) {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
@@ -528,7 +543,8 @@ public partial class WorldService {
         };
     }
 
-    private static GuildInfo ToGuildInfo(Guild guild) {
+    private static GuildInfo ToGuildInfo(GuildManager manager) {
+        Guild guild = manager.Guild;
         return new GuildInfo {
             Id = guild.Id,
             Name = guild.Name,
@@ -565,6 +581,12 @@ public partial class WorldService {
                     Id = buff.Id,
                     Level = buff.Level,
                     ExpiryTime = buff.ExpiryTime,
+                }),
+            },
+            Events = {
+                manager.OpenedEvents().Select(opened => new GuildInfo.Types.Event {
+                    Id = opened.Id,
+                    Time = opened.Value,
                 }),
             },
             Posters = {

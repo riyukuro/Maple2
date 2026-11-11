@@ -54,7 +54,7 @@ public static class GuildPacket {
         GuildContribution = 53,
         NotifyUseBuff = 54,
         UpgradeBuff = 55,
-        // 54
+        NotifyOpenEvent = 56,
         UpgradeHouse = 57,
         UpdatePoster = 58,
         UpgradeNpc = 59,
@@ -81,6 +81,7 @@ public static class GuildPacket {
         UseBuff = 90,
         UsePersonalBuff = 91,
         AddContribution = 97,
+        OpenEvent = 99,
         // 96, 104, 107, 109
         StorageHistory = 112,
         Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
@@ -749,6 +750,27 @@ public static class GuildPacket {
             pWriter.WriteLong(guild.LeaderCharacterId);
             pWriter.WriteUnicodeString(guild.LeaderName);
         }
+
+        return pWriter;
+    }
+
+    // CGuildManager::FUN_1413c3780 (guildmanager.cpp:2533): the member's name, then the event
+    // (CGuildCustomEvent: id, time of opening). s_guild_notify_open_event_user
+    public static ByteWriter NotifyOpenEvent(string playerName, GuildEvent opened) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.NotifyOpenEvent);
+        pWriter.WriteUnicodeString(playerName);
+        pWriter.WriteInt(opened.Id);
+        pWriter.WriteInt(opened.Value);
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketOpenEvent (guildmanager.cpp:1911): the event id. s_guild_open_event
+    public static ByteWriter OpenEvent(int eventId) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.OpenEvent);
+        pWriter.WriteInt(eventId);
 
         return pWriter;
     }

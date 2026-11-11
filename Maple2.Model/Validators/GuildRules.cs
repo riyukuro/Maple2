@@ -265,6 +265,33 @@ public static class GuildRules {
         return GuildError.none;
     }
 
+    // CGuildCustomEvent::IsActive (guilddef_1.cpp:957): an event is open for this long after its time.
+    public const int EventOpenSeconds = 30;
+    // CGuildManager::FUN_1413ba080 (guildmanager.cpp:857): no event on the guild's first day.
+    public const int EventGuildAgeSeconds = 86400;
+
+    public static bool IsEventActive(long openTime, long now) {
+        return openTime > 0 && openTime + EventOpenSeconds > now;
+    }
+
+    // Guild 99 (CGuildManager::FUN_1413ba080, guildmanager.cpp:857), in the client's order: the event has a
+    // row, the guild is a day old, the member's rank has the mini game right, and the event is not open.
+    public static GuildError CheckOpenEvent(bool hasRow, long creationTime, bool hasRight, long openTime, long now) {
+        if (!hasRow) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (creationTime + EventGuildAgeSeconds > now) {
+            return GuildError.s_guild_err_unknown; // the client's own text is s_guild_err_cannot_open_event_create_date
+        }
+        if (!hasRight) {
+            return GuildError.s_guild_err_no_authority;
+        }
+        if (IsEventActive(openTime, now)) {
+            return GuildError.s_guild_err_unknown;
+        }
+        return GuildError.none;
+    }
+
     // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must
     // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
     // member's meso pays its cost, and the member does not have the effect already.

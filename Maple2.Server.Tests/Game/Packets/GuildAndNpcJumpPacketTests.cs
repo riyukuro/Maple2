@@ -148,6 +148,32 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildManager::FUN_1413c3780 (0x38): the name, the event id, the time of opening.
+    [Test]
+    public void NotifyOpenEvent_IsMode56WithNameIdTime() {
+        ByteWriter writer = GuildPacket.NotifyOpenEvent("Opener", new GuildEvent(3, 1700000000));
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(56));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Opener"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1700000000));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // CGuildManager::OnPacketOpenEvent (0x63): the event id.
+    [Test]
+    public void OpenEvent_IsMode99WithId() {
+        ByteWriter writer = GuildPacket.OpenEvent(3);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(99));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
     [Test]
     public void StorageHistory_IsMode112WithZeroRows() {

@@ -47,6 +47,8 @@ public partial class ChannelService {
                 return Task.FromResult(UpdateGuildHouse(request.ReceiverIds, request.UpdateHouse));
             case GuildRequest.GuildOneofCase.UseBuff:
                 return Task.FromResult(UseGuildBuff(request.ReceiverIds, request.UseBuff));
+            case GuildRequest.GuildOneofCase.OpenEvent:
+                return Task.FromResult(OpenGuildEvent(request.ReceiverIds, request.OpenEvent));
             case GuildRequest.GuildOneofCase.UpgradeBuff:
                 return Task.FromResult(UpgradeGuildBuff(request.ReceiverIds, request.UpgradeBuff));
             case GuildRequest.GuildOneofCase.ApplicationResult:
@@ -184,6 +186,18 @@ public partial class ChannelService {
 
             session.Guild.UseBuff(update.RequestorName, new GuildBuff(update.Id, update.Level, update.UseTime),
                 update.EffectId, (short) update.EffectLevel, update.Duration);
+        }
+
+        return new GuildResponse();
+    }
+
+    private GuildResponse OpenGuildEvent(IEnumerable<long> receiverIds, GuildRequest.Types.OpenEvent update) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Guild.OpenEvent(update.RequestorName, new GuildEvent(update.Id, update.Time));
         }
 
         return new GuildResponse();

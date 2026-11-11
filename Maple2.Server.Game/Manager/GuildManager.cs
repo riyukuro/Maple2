@@ -127,6 +127,12 @@ public class GuildManager : IDisposable {
                 Level = npc.Level,
             }).ToList(),
         };
+        // The client only asks to open an event its guild lists (CGuildInfo::FUN_1404d27b0), so every row
+        // of the event table is listed, with the time of its last opening or 0.
+        foreach (int eventId in session.TableMetadata.GuildTable.Events?.Keys.Order() ?? Enumerable.Empty<int>()) {
+            int time = info.Events.FirstOrDefault(opened => opened.Id == eventId)?.Time ?? 0;
+            guild.Events.Add(new GuildEvent(eventId, time));
+        }
         foreach (GuildMember member in members) {
             if (guild.Members.TryAdd(member.CharacterId, member)) {
                 BeginListen(member);
@@ -348,6 +354,23 @@ public class GuildManager : IDisposable {
                     durationMs: (int) Math.Min(remaining * 1000L, int.MaxValue));
             }
         }
+    }
+
+    // Guild 56 (CGuildManager::FUN_1413c3780, guildmanager.cpp:2533): the client copies the event over the
+    // one it holds and prints s_guild_notify_open_event_user.
+    public bool OpenEvent(string requestorName, GuildEvent opened) {
+        if (Guild == null) {
+            return false;
+        }
+
+        for (int i = 0; i < Guild.Events.Count; i++) {
+            if (Guild.Events[i].Id == opened.Id) {
+                Guild.Events[i] = opened;
+                session.Send(GuildPacket.NotifyOpenEvent(requestorName, opened));
+                return true;
+            }
+        }
+        return false;
     }
 
     // Guild 55 (CGuildManager::FUN_1413c3460): the client replaces the skill it holds with the one sent and

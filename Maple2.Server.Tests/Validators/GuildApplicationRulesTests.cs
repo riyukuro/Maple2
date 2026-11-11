@@ -246,4 +246,22 @@ public class GuildApplicationRulesTests {
     public void Donate_Rules(int count, long joinTime, long dayStart, int today, int donateMax, long funds, long add, long fundMax, bool expected) {
         Assert.That(GuildRules.CanDonate(count, joinTime, dayStart, today, donateMax, funds, add, fundMax), Is.EqualTo(expected));
     }
+
+    // has row, creation time, right, time of the last opening, now
+    [TestCase(true, 0, true, 0, 86400, GuildError.none)]
+    [TestCase(false, 0, true, 0, 86400, GuildError.s_guild_err_unknown)]
+    [TestCase(true, 1, true, 0, 86400, GuildError.s_guild_err_unknown)] // a second short of a day old
+    [TestCase(true, 0, false, 0, 86400, GuildError.s_guild_err_no_authority)]
+    [TestCase(true, 0, true, 86371, 86400, GuildError.s_guild_err_unknown)] // opened 29 s ago: still open
+    [TestCase(true, 0, true, 86370, 86400, GuildError.none)] // opened 30 s ago: over
+    public void OpenEvent_Rules(bool hasRow, long creationTime, bool hasRight, long openTime, long now, GuildError expected) {
+        Assert.That(GuildRules.CheckOpenEvent(hasRow, creationTime, hasRight, openTime, now), Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 10, false)] // never opened
+    [TestCase(100, 129, true)]
+    [TestCase(100, 130, false)]
+    public void EventActive_Rules(long openTime, long now, bool expected) {
+        Assert.That(GuildRules.IsEventActive(openTime, now), Is.EqualTo(expected));
+    }
 }
