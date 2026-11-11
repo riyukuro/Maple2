@@ -167,17 +167,13 @@ public class ClubHandler : FieldPacketHandler {
     }
 
     private void HandleRespondInvite(GameSession session, IByteReader packet) {
-        long clubId = packet.ReadLong();
-        string clubName = packet.ReadUnicodeString();
-        string inviterName = packet.ReadUnicodeString();
-        string invitee = packet.ReadUnicodeString();
-        bool accept = packet.ReadBool();
+        (long clubId, string clubName, string inviterName, string invitee, bool accept) = ClubRules.ReadInviteReply(packet);
 
         if (session.PlayerName != invitee) {
             return;
         }
 
-        if (session.Clubs.Count >= Constant.ClubMaxCount) {
+        if (ClubRules.ReplyBlockedByLimit(accept, session.Clubs.Count, Constant.ClubMaxCount)) {
             session.Send(ClubPacket.Error(ClubError.s_club_err_full_club_member));
             return;
         }
