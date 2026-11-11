@@ -48,8 +48,7 @@ public class BuddyEmoteHandler : FieldPacketHandler {
     }
 
     private void HandleInvite(GameSession session, IByteReader packet) {
-        int emoteId = packet.ReadInt();
-        long receiverId = packet.ReadLong();
+        (int emoteId, long receiverId) = BuddyEmoteRules.ReadEmoteAndPlayer(packet);
 
         if (!session.Player.Value.Unlock.Emotes.Contains(emoteId)) {
             session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_request_not_exist_skill));
@@ -60,12 +59,20 @@ public class BuddyEmoteHandler : FieldPacketHandler {
             return;
         }
 
+        if (receiver.Session == session) {
+            return;
+        }
+
+        receiver.Session.BuddyEmoteInvites.Add(session.CharacterId, emoteId);
         receiver.Session.Send(BuddyEmotePacket.Invite(emoteId, session.Player));
     }
 
     private void HandleInviteConfirm(GameSession session, IByteReader packet) {
         long senderId = packet.ReadLong();
 
+        if (!session.BuddyEmoteInvites.Has(senderId)) {
+            return;
+        }
         if (session.Field?.TryGetPlayerById(senderId, out FieldPlayer? sender) is null or false) {
             session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_accept_cannot_find_request_user));
             return;
@@ -80,6 +87,10 @@ public class BuddyEmoteHandler : FieldPacketHandler {
             return;
         }
         var error = (BuddyEmoteError) reason;
+        // An error is the invited player's answer to an invite, and it ends that invite.
+        if (!session.BuddyEmoteInvites.Take(characterId)) {
+            return;
+        }
         if (session.Field?.TryGetPlayerById(characterId, out FieldPlayer? player) is null or false) {
             return;
         }
@@ -94,6 +105,11 @@ public class BuddyEmoteHandler : FieldPacketHandler {
         var receiverPosition = packet.Read<Vector3>();
         float rotationZ = packet.ReadFloat();
 
+        // Only an invite of that player for that emote can be accepted, and only once.
+        if (!session.BuddyEmoteInvites.Take(senderId, emoteId)) {
+            session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_accept_cannot_find_request_user));
+            return;
+        }
         if (session.Field?.TryGetPlayerById(senderId, out FieldPlayer? sender) is null or false) {
             session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_accept_cannot_find_request_user));
             return;
@@ -106,9 +122,11 @@ public class BuddyEmoteHandler : FieldPacketHandler {
     }
 
     private void HandleDecline(GameSession session, IByteReader packet) {
-        int emoteId = packet.ReadInt();
-        long senderId = packet.ReadLong();
+        (int emoteId, long senderId) = BuddyEmoteRules.ReadEmoteAndPlayer(packet);
 
+        if (!session.BuddyEmoteInvites.Take(senderId)) {
+            return;
+        }
         if (session.Field?.TryGetPlayerById(senderId, out FieldPlayer? sender) is null or false) {
             return;
         }

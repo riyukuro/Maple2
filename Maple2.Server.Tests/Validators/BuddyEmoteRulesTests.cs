@@ -5,6 +5,66 @@ namespace Maple2.Server.Tests.Validators;
 
 public class BuddyEmoteRulesTests {
     [Test]
+    public void EmoteAndPlayerBytes() {
+        var writer = new ByteWriter();
+        writer.WriteInt(90200011);
+        writer.WriteLong(0x1122334455667788);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        (int emoteId, long characterId) = BuddyEmoteRules.ReadEmoteAndPlayer(reader);
+        Assert.That(emoteId, Is.EqualTo(90200011));
+        Assert.That(characterId, Is.EqualTo(0x1122334455667788));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void AcceptWithoutInvite() {
+        var invites = new BuddyEmoteInvites();
+        Assert.That(invites.Has(7), Is.False);
+        Assert.That(invites.Take(7, 90200011), Is.False);
+        Assert.That(invites.Take(7), Is.False);
+    }
+
+    [Test]
+    public void AcceptWithInvite() {
+        var invites = new BuddyEmoteInvites();
+        invites.Add(7, 90200011);
+        Assert.That(invites.Has(7), Is.True);
+        Assert.That(invites.Has(8), Is.False);
+        // Another player or another emote is not the invite.
+        Assert.That(invites.Take(8, 90200011), Is.False);
+        Assert.That(invites.Take(7, 90200012), Is.False);
+        Assert.That(invites.Take(7, 90200011), Is.True);
+        // One invite, one accept.
+        Assert.That(invites.Take(7, 90200011), Is.False);
+        Assert.That(invites.Has(7), Is.False);
+    }
+
+    [Test]
+    public void ErrorOrDeclineEndsTheInvite() {
+        var invites = new BuddyEmoteInvites();
+        invites.Add(7, 90200011);
+        Assert.That(invites.Take(7), Is.True);
+        Assert.That(invites.Take(7), Is.False);
+        Assert.That(invites.Take(7, 90200011), Is.False);
+    }
+
+    [Test]
+    public void NewInviteReplacesAndTheListIsBounded() {
+        var invites = new BuddyEmoteInvites();
+        invites.Add(7, 1);
+        invites.Add(7, 2);
+        Assert.That(invites.Take(7, 1), Is.False);
+        Assert.That(invites.Take(7, 2), Is.True);
+
+        for (int i = 0; i <= BuddyEmoteInvites.MaxPending; i++) {
+            invites.Add(100 + i, 1);
+        }
+        Assert.That(invites.Has(100), Is.False);
+        Assert.That(invites.Has(101), Is.True);
+        Assert.That(invites.Has(100 + BuddyEmoteInvites.MaxPending), Is.True);
+    }
+
+    [Test]
     public void ErrorBytes() {
         var writer = new ByteWriter();
         writer.WriteLong(0x1122334455667788);

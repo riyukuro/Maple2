@@ -83,6 +83,7 @@ public sealed partial class GameSession : Core.Network.Session {
     // Home invites this player sent that are waiting for an answer (memory only).
     public HomeInviteTracker HomeInvites { get; } = new();
     public ConfigManager Config { get; set; } = null!;
+    public readonly Maple2.Model.Validators.BuddyEmoteInvites BuddyEmoteInvites = new();
     // 1 once GlobalFactor (0x82) has been answered on this connection.
     public int GlobalFactorSent;
     public MailManager Mail { get; set; } = null!;
