@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.PacketHandlers;
@@ -40,6 +41,28 @@ public class EventFieldRulesTests {
 
         Assert.DoesNotThrow(() => new MoveEventFieldHandler().Handle(session, reader));
         Assert.That(reader.Position, Is.EqualTo(4));
+    }
+
+    // Client: Constants::AreSameGroup. 101-105 and 202 are continent codes of the map data.
+    [TestCase(102, 102, new int[0], true)]
+    [TestCase(102, 104, new int[0], false)]
+    [TestCase(102, 104, new[] { 102, 104 }, true)]
+    [TestCase(102, 104, new[] { 102, 103 }, false)]
+    [TestCase(105, 104, new[] { 102, 104 }, false)]
+    [TestCase(202, 202, new[] { 102, 104 }, true)]
+    public void SameGroup(int from, int to, int[] open, bool expected) {
+        Assert.That(EventFieldRules.SameGroup(from, to, open), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void IsFresh_KeepsAnAnswerForTheCacheTimeOnly() {
+        DateTime asked = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        Assert.That(EventFieldRules.IsFresh(asked, asked), Is.True);
+        Assert.That(EventFieldRules.IsFresh(asked, asked + EventFieldRules.CacheTime - TimeSpan.FromMilliseconds(1)), Is.True);
+        Assert.That(EventFieldRules.IsFresh(asked, asked + EventFieldRules.CacheTime), Is.False);
+        Assert.That(EventFieldRules.IsFresh(asked, asked - TimeSpan.FromSeconds(1)), Is.False);
+        Assert.That(EventFieldRules.IsFresh(default, asked), Is.False);
     }
 
     [Test]

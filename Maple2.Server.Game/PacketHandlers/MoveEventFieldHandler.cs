@@ -18,13 +18,30 @@ public class MoveEventFieldHandler : FieldPacketHandler {
 
     public override void Handle(GameSession session, IByteReader packet) {
         int fieldId = packet.ReadInt();
+        HashSet<int> eventFields;
         if (session.Field == null) {
             return;
         }
 
-        var eventFields = new HashSet<int>();
-        // Only asked for a request the client could have sent.
-        if (EventFieldRules.Decide(true, session.Player.IsDead, session.Field.MapId, fieldId, [fieldId]) == EventFieldRules.Result.Move) {
+        // Only checked and asked for a request the client could have sent.
+        if (EventFieldRules.Decide(true, session.Player.IsDead, session.Field.MapId, fieldId, [fieldId]) != EventFieldRules.Result.Move) {
+            return;
+        }
+
+        // The client refuses a field outside the continent group itself; a changed client gets its notice.
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        int[] openContinents = [constants.WarpOpenContinent0, constants.WarpOpenContinent1, constants.WarpOpenContinent2, constants.WarpOpenContinent3];
+        if (!session.MapMetadata.TryGet(fieldId, out MapMetadata? target)
+            || !EventFieldRules.SameGroup((int) session.Field.Metadata.Property.Continent, (int) target.Property.Continent, openContinents.Where(code => code != 0))) {
+            session.Send(MoveEventFieldPacket.Refuse(MoveEventFieldPacket.OTHER_CONTINENT));
+            return;
+        }
+
+        DateTime now = DateTime.UtcNow;
+        if (EventFieldRules.IsFresh(session.EventFieldsAskedAt, now)) {
+            eventFields = session.EventFields;
+        } else {
+            eventFields = [];
             try {
                 TimeEventResponse response = session.World.TimeEvent(new TimeEventRequest {
                     GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
@@ -40,6 +57,8 @@ public class MoveEventFieldHandler : FieldPacketHandler {
             } catch (RpcException ex) {
                 Logger.Warning(ex, "Event field move: the World server did not answer");
             }
+            session.EventFields = eventFields;
+            session.EventFieldsAskedAt = now;
         }
 
         switch (EventFieldRules.Decide(true, session.Player.IsDead, session.Field.MapId, fieldId, eventFields)) {

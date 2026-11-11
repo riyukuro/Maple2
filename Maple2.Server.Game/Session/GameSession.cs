@@ -63,6 +63,10 @@ public sealed partial class GameSession : Core.Network.Session {
     public required TableMetadataStorage TableMetadata { get; init; }
     public required ServerTableMetadataStorage ServerTableMetadata { get; init; }
     public required MapMetadataStorage MapMetadata { get; init; }
+
+    // MoveEventField: the last answer of the World server about the fields with a running event.
+    public HashSet<int> EventFields = [];
+    public DateTime EventFieldsAskedAt;
     public required NpcMetadataStorage NpcMetadata { get; init; }
     public required AchievementMetadataStorage AchievementMetadata { get; init; }
     public required QuestMetadataStorage QuestMetadata { get; init; }

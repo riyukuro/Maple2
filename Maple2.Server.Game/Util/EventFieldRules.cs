@@ -7,6 +7,7 @@ public static class EventFieldRules {
     public enum Result {
         Ignore, // the client does not send this; nothing is answered
         NoEvent, // answer MoveEventField 0
+        OtherContinent, // answer MoveEventField 1
         Move,
     }
 
@@ -17,5 +18,24 @@ public static class EventFieldRules {
         }
 
         return eventFields.Contains(targetFieldId) ? Result.Move : Result.NoEvent;
+    }
+
+    // Client: Constants::AreSameGroup (unit_1402ab440_constantsblocks.cpp:303) on the continent codes of the two
+    // fields (UIWorldMapDialog::FUN_141b60b40, uiworldmapdialog.cpp:2348): the same continent, or both in the
+    // WarpOpenContinent list of the constants.
+    public static bool SameGroup(int fromContinent, int toContinent, IEnumerable<int> openContinents) {
+        if (fromContinent == toContinent) {
+            return true;
+        }
+
+        return openContinents.Contains(fromContinent) && openContinents.Contains(toContinent);
+    }
+
+    // How long an answer of the World server about the running events is kept for one session, so that a
+    // client that repeats the request does not make one World call each time.
+    public static readonly TimeSpan CacheTime = TimeSpan.FromSeconds(5);
+
+    public static bool IsFresh(DateTime askedAt, DateTime now) {
+        return now >= askedAt && now - askedAt < CacheTime;
     }
 }
