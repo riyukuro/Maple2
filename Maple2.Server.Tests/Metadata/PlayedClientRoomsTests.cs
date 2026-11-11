@@ -98,4 +98,22 @@ public class PlayedClientRoomsTests {
         Assert.That(tickets[11].BaseCount, Is.EqualTo(1));
         Assert.That(tickets[11].BaseRates, Is.EqualTo(new[] { 1, 2, 4 }));
     }
+
+    [Test]
+    public void HelperRewardDropBoxes_ReadEachAvailableRow() {
+        XmlDocument rooms = Table("""
+            <dungeonRoom dungeonRoomID="1" findHelperRewardDropBoxIds="330002188" />
+            <dungeonRoom dungeonRoomID="2" findHelperRewardDropBoxIds="5, 6,,x" />
+            <dungeonRoom dungeonRoomID="3" />
+            <dungeonRoom dungeonRoomID="4" findHelperRewardDropBoxIds="7" feature="Off" />
+            <dungeonRoom dungeonRoomID="3" findHelperRewardDropBoxIds="8" />
+            """);
+
+        Dictionary<int, int[]> boxes = PlayedClientRooms.HelperRewardDropBoxes(rooms, Available);
+
+        Assert.That(boxes.Keys.OrderBy(id => id), Is.EqualTo(new[] { 1, 2, 3 }));
+        Assert.That(boxes[1], Is.EqualTo(new[] { 330002188 }));
+        Assert.That(boxes[2], Is.EqualTo(new[] { 5, 6 }));
+        Assert.That(boxes[3], Is.EqualTo(new[] { 8 }));
+    }
 }

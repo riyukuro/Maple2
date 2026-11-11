@@ -1879,11 +1879,13 @@ public class TableMapper : TypeMapper<TableMetadata> {
         // Its coupon table and room rows give the extra reward tickets.
         HashSet<int> playedLimitEnter = [];
         Dictionary<int, DungeonExtraRewardTicket> playedTickets = [];
+        Dictionary<int, int[]>? playedHelperBoxes = null;
         Maple2.File.IO.Crypto.Common.PackFileEntry? roomEntry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.RoomTable);
         if (playedReader != null && roomEntry != null) {
             Func<System.Xml.XmlElement, bool> available = node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
             System.Xml.XmlDocument roomTable = playedReader.GetXmlDocument(roomEntry);
             playedLimitEnter = PlayedClientRooms.LimitEnter(roomTable, available);
+            playedHelperBoxes = PlayedClientRooms.HelperRewardDropBoxes(roomTable, available);
             Maple2.File.IO.Crypto.Common.PackFileEntry? couponEntry = playedReader.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.CouponTable);
             if (couponEntry != null) {
                 playedTickets = PlayedClientRooms.ExtraRewardTickets(roomTable, PlayedClientRooms.Coupons(playedReader.GetXmlDocument(couponEntry), available), available);
@@ -1943,7 +1945,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 IsExpireTimeOut: dungeon.isExpireTimeOut,
                 BossRanking: dungeon.BossRanking,
                 LimitEnter: playedLimitEnter.Contains(dungeon.dungeonRoomID),
-                ExtraRewardTicket: playedTickets.GetValueOrDefault(dungeon.dungeonRoomID)
+                ExtraRewardTicket: playedTickets.GetValueOrDefault(dungeon.dungeonRoomID),
+                // The played client's row when it has one (the server's NA rows set no box), else the server's.
+                HelperRewardDropBoxIds: playedHelperBoxes?.GetValueOrDefault(dungeon.dungeonRoomID) ?? dungeon.findHelperRewardDropBoxIds ?? []
                 ));
         }
 

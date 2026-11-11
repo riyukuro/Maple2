@@ -494,7 +494,16 @@ public class DungeonManager {
         }
     }
 
-    public void CompleteDungeon(long clearTimestamp) {
+    // The room whose record counts helper rewards: the helper window's count is room 1003's weekly reward count
+    // (UIDungeonHelper::GetHelperRewardCountText, uidungeonhelper.cpp:441, GetWeeklyRewardCountText(0x3eb)).
+    public const int HelperRewardRoomId = 1003;
+
+    // Whether this player's record of the room is a veteran's (RoomDungeon 17 sets it).
+    public bool IsVeteran(int dungeonId) =>
+        Records.TryGetValue(dungeonId, out DungeonRecord? record) && record.Flag.HasFlag(DungeonRecordFlag.Veteran);
+
+    /// <param name="withRookie">Another player of the clear played the room as a rookie.</param>
+    public void CompleteDungeon(long clearTimestamp, bool withRookie = false) {
         if (Lobby == null || Metadata == null || UserRecord == null) {
             return;
         }
@@ -502,16 +511,18 @@ public class DungeonManager {
         UserRecord.IsDungeonSuccess = Lobby.DungeonRoomRecord.State == DungeonState.Clear;
         UserRecord.TotalSeconds = (int) (Lobby.DungeonRoomRecord.EndTick - Lobby.DungeonRoomRecord.StartTick) / 1000;
 
-        CalculateRewards(clearTimestamp);
+        CalculateRewards(clearTimestamp, withRookie);
 
         session.Send(DungeonRewardPacket.Dungeon(UserRecord));
     }
 
-    private void CalculateRewards(long clearTimeStamp) {
+    private void CalculateRewards(long clearTimeStamp, bool withRookie) {
         if (Lobby == null || Metadata == null || UserRecord == null) {
             return;
         }
         DungeonRecord record = GetRecord(Metadata.Id);
+        // Tested on the record the player entered with, before this clear counts.
+        bool helper = withRookie && DungeonRoomRules.CanClaimHelperReward(record, Metadata.HelperRequireClearCount);
         List<int> rewardIds = [];
 
         if (Metadata.Reward.UnionRewardId > 0) {
@@ -540,7 +551,9 @@ public class DungeonManager {
             }
         }
 
-        // TODO: If dungeon was dungeon helper, add clear count on dungeon ID 1003
+        if (helper) {
+            GiveHelperReward(clearTimeStamp);
+        }
 
         if (UserRecord.Flag.HasFlag(DungeonBonusFlag.Clear)) {
             GetClearDungeonRewards();
@@ -580,6 +593,47 @@ public class DungeonManager {
                 }
             }
         }
+    }
+
+    // The helper reward of a veteran who cleared with a rookie: one count of room 1003's record while it has one
+    // left, the result dialog's helper line (DungeonBonusFlag.Helper, s_dungeon_reward_dungeon_helper), the items of
+    // the room's helper boxes, and the reward notice (Modify GiveDungeonHelperReward, RewardNotice kind 2).
+    private void GiveHelperReward(long clearTimeStamp) {
+        if (Lobby == null || Metadata == null || UserRecord == null
+            || !session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(HelperRewardRoomId, out DungeonRoomMetadata? helperRoom)) {
+            return;
+        }
+        Records.TryGetValue(HelperRewardRoomId, out DungeonRecord? existing);
+        if (!DungeonRoomRules.HasCountLeft(existing, helperRoom.Reward.Count, helperRoom.Reward.SubRewardCount, clearTimeStamp)) {
+            return;
+        }
+
+        DungeonRecord record = GetRecord(HelperRewardRoomId);
+        DateTime clearTime = clearTimeStamp.FromEpochSeconds();
+        if (clearTimeStamp >= record.UnionCooldownTimestamp) {
+            record.UnionCooldownTimestamp = GetCooldownTime(helperRoom.CooldownType, helperRoom.CooldownValue, clearTime);
+            record.UnionClears = 0;
+            record.ExtraClears = 0;
+            record.ExtraSubClears = 0;
+        }
+        if (clearTimeStamp >= record.UnionSubCooldownTimestamp) {
+            record.UnionSubCooldownTimestamp = new DateTime(clearTime.Year, clearTime.Month, clearTime.Day).AddDays(1).ToEpochSeconds();
+            record.UnionSubClears = 0;
+        }
+        record.UnionClears++;
+        record.UnionSubClears++;
+        UserRecord.Flag |= DungeonBonusFlag.Helper;
+
+        foreach (int boxId in Metadata.HelperRewardDropBoxIds ?? []) {
+            foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level))) {
+                UserRecord.RewardItems.Add(item);
+                if (!session.Item.Inventory.Add(item, true)) {
+                    session.Item.MailItem(item);
+                }
+            }
+        }
+        session.Send(DungeonRoomPacket.Update(record));
+        session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveDungeonHelperReward, Lobby.DungeonId));
     }
 
     // The room whose record and coupon count the rewards: the unionRewardID room if it is set (DungeonRoom::GetCoupon,

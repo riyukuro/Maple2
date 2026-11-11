@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Serilog;
@@ -104,12 +105,19 @@ public class DungeonFieldManager : FieldManager {
 
         if (DungeonRoomRecord.State == DungeonState.Clear) {
             long clearTimestamp = DateTime.Now.ToEpochSeconds();
+            // Each player's veteran state before any reward counts, for the helper reward.
+            var veterans = new Dictionary<long, bool>();
+            foreach (long characterId in compiledResults.Keys) {
+                if (TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                    veterans[characterId] = player.Session.Dungeon.IsVeteran(DungeonId);
+                }
+            }
             foreach (long characterId in compiledResults.Keys) {
                 if (!TryGetPlayerById(characterId, out FieldPlayer? player)) {
                     continue;
                 }
 
-                player.Session.Dungeon.CompleteDungeon(clearTimestamp);
+                player.Session.Dungeon.CompleteDungeon(clearTimestamp, DungeonRoomRules.WithOtherRookie(characterId, veterans));
                 player.Session.ConditionUpdate(ConditionType.dungeon_clear,
                     codeLong: DungeonId);
 

@@ -87,6 +87,27 @@ public static class PlayedClientRooms {
         return tickets;
     }
 
+    // Each available room row's findHelperRewardDropBoxIds (DungeonRoom::Load, dungeonroom.cpp:433, a comma list of
+    // box ids), empty when the row sets none. A later row of a room replaces an earlier one.
+    public static Dictionary<int, int[]> HelperRewardDropBoxes(XmlDocument roomTable, Func<XmlElement, bool> available) {
+        var boxes = new Dictionary<int, int[]>();
+        XmlNodeList? rows = roomTable.SelectNodes("ms2/dungeonRoom");
+        if (rows == null) {
+            return boxes;
+        }
+        foreach (XmlNode node in rows) {
+            if (node is not XmlElement row || !available(row) || !int.TryParse(row.GetAttribute("dungeonRoomID"), out int id)) {
+                continue;
+            }
+            boxes[id] = row.GetAttribute("findHelperRewardDropBoxIds")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(value => int.TryParse(value, out int box) ? box : 0)
+                .Where(box => box != 0)
+                .ToArray();
+        }
+        return boxes;
+    }
+
     private static int Number(XmlElement row, string name) => int.TryParse(row.GetAttribute(name), out int value) ? value : 0;
 
     private static bool IsOff(string value) => value == "0" || value.Equals("false", StringComparison.OrdinalIgnoreCase);

@@ -34,7 +34,9 @@ public record DungeonRoomMetadata(
     // limitEnter: the room is entered only while its reward record has a count left (DungeonRoomRules.HasCountLeft).
     bool LimitEnter = false,
     // extraRewardTicketTableID with its coupon row: the ticket that buys an extra reward count. null without one.
-    DungeonExtraRewardTicket? ExtraRewardTicket = null
+    DungeonExtraRewardTicket? ExtraRewardTicket = null,
+    // findHelperRewardDropBoxIds: the boxes a veteran's helper reward comes from (DungeonManager.GiveHelperReward).
+    int[]? HelperRewardDropBoxIds = null
 );
 
 // A room's extra reward ticket: the room's extraRewardTicketBaseCount and the Table/DungeonRewardCoupon.xml row of

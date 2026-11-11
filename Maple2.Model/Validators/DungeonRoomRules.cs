@@ -80,6 +80,18 @@ public static class DungeonRoomRules {
         return ExtraRewardVerdict.Ok;
     }
 
+    // Whether a veteran can claim a room's helper reward (DungeonRecordManagerCli::CanClaimHelperReward,
+    // dungeonrecordcli.cpp:509): the room sets dungeonHelperRequireClearCount, and the record is a veteran's
+    // (DungeonRecordFlag.Veteran) with at least that many clears.
+    public static bool CanClaimHelperReward(DungeonRecord? record, int requireCount) =>
+        requireCount > 0 && record != null && record.Flag.HasFlag(DungeonRecordFlag.Veteran) && record.TotalClears >= requireCount;
+
+    // Whether a player other than characterId cleared the room as a rookie: veterans holds, for each player of the
+    // clear, whether their record of the room is a veteran's. The expert notice (s_room_dungeon_record_notify_change_expert)
+    // says a veteran collects helper rewards by clearing with rookies.
+    public static bool WithOtherRookie(long characterId, IReadOnlyDictionary<long, bool> veterans) =>
+        veterans.Any(entry => entry.Key != characterId && !entry.Value);
+
     // A party member's enter state for a room blocks the party's entry at 10 and above, as the client tests it
     // (CPartyManager::CanEnterDungeonRoom, partymanager.cpp:561; a missing room counts as 0). The room window
     // shows each member's state but its party button sends the request anyway (UIDungeonRoomInfo::OnEnterParty).

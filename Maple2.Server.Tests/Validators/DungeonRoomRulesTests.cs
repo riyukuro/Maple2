@@ -175,4 +175,33 @@ public class DungeonRoomRulesTests {
             Assert.That(DungeonRoomRules.PartyBlockingLimit(members, 7), Is.Null);
         });
     }
+
+    private static DungeonRecord HelperRecord(int clears, bool veteran) =>
+        new(1) { TotalClears = clears, Flag = veteran ? DungeonRecordFlag.Veteran : DungeonRecordFlag.None };
+
+    // CanClaimHelperReward: a veteran's record with the room's required clears (DungeonRecordManagerCli::CanClaimHelperReward).
+    [TestCase(5, true, 5, true)]
+    [TestCase(9, true, 5, true)]
+    [TestCase(4, true, 5, false)]
+    [TestCase(9, false, 5, false)]
+    [TestCase(9, true, 0, false)]
+    public void CanClaimHelperReward_NeedsAVeteranWithTheClears(int clears, bool veteran, int requireCount, bool claim) {
+        Assert.That(DungeonRoomRules.CanClaimHelperReward(HelperRecord(clears, veteran), requireCount), Is.EqualTo(claim));
+    }
+
+    [Test]
+    public void CanClaimHelperReward_NotWithoutARecord() {
+        Assert.That(DungeonRoomRules.CanClaimHelperReward(null, 5), Is.False);
+    }
+
+    // WithOtherRookie: another player of the clear is not a veteran; the player's own state does not count.
+    [Test]
+    public void WithOtherRookie_CountsOtherPlayersOnly() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.WithOtherRookie(1, new Dictionary<long, bool> { [1] = true, [2] = false }), Is.True);
+            Assert.That(DungeonRoomRules.WithOtherRookie(1, new Dictionary<long, bool> { [1] = true, [2] = true }), Is.False);
+            Assert.That(DungeonRoomRules.WithOtherRookie(1, new Dictionary<long, bool> { [1] = false }), Is.False);
+            Assert.That(DungeonRoomRules.WithOtherRookie(1, new Dictionary<long, bool>()), Is.False);
+        });
+    }
 }
