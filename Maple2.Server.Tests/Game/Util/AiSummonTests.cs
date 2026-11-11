@@ -185,4 +185,14 @@ public class AiSummonTests {
             Assert.That(opCondition.SlaveCountOp, Is.EqualTo(AiConditionOp.Greater));
         });
     }
+
+    // SetMasterValue / SetSlaveValue: isModify adds to a key the npc has; a missing key, or no isModify, sets it.
+    [TestCase(true, 5, 3, true, 8)]
+    [TestCase(true, 5, -1, true, 4)]
+    [TestCase(false, 0, 3, true, 3)]
+    [TestCase(true, 5, 3, false, 3)]
+    [TestCase(false, 0, 1, false, 1)]
+    public void SetValueModify(bool hasOld, int oldValue, int value, bool isModify, int expected) {
+        Assert.That(AiSummon.ModifiedValue(hasOld, oldValue, value, isModify), Is.EqualTo(expected));
+    }
 }

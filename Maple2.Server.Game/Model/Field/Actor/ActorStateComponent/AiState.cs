@@ -501,7 +501,18 @@ public class AiState {
 
     private void ProcessNode(SetSlaveValueNode node) { }
 
-    private void ProcessNode(SetMasterValueNode node) { }
+    // A slave sets the key on the npc that summoned it (in the summon scans no master="None" summon's AI has this
+    // node); an npc that is no one's slave sets nothing.
+    private void ProcessNode(SetMasterValueNode node) {
+        if (node.IsKeepBattle) {
+            actor.BattleState.KeepBattle = true;
+        }
+        if (actor.Master is not { IsDead: false } master) {
+            return;
+        }
+        bool hasOld = master.AiExtraData.TryGetValue(node.Key, out int oldValue);
+        master.AiExtraData[node.Key] = AiSummon.ModifiedValue(hasOld, oldValue, node.Value, node.IsModify);
+    }
 
     private void ProcessNode(RunawayNode node) {
         if (!actor.Field.TryGetActor(actor.BattleState.TargetId, out IActor? target)) {

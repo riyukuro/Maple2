@@ -73,6 +73,17 @@ public class FieldNpc : Actor<Npc> {
     // Npcs this npc summoned with an AI summon node, by the node's group.
     private readonly List<(int Group, FieldNpc Npc, bool LeavesWithSummoner)> summons = [];
 
+    // The npc that summoned this one as its slave (a summon node without master="None"); null otherwise.
+    public FieldNpc? Master { get; private set; }
+
+    // The live slaves of this npc, in summon order.
+    public List<FieldNpc> Slaves() {
+        lock (summons) {
+            PruneSummons();
+            return summons.Where(summon => summon.LeavesWithSummoner).Select(summon => summon.Npc).ToList();
+        }
+    }
+
     public int SummonCount(int group) {
         lock (summons) {
             PruneSummons();
@@ -109,8 +120,12 @@ public class FieldNpc : Actor<Npc> {
                 continue;
             }
 
+            bool slave = AiSummon.LeavesWithSummoner(node.Master);
+            if (slave) {
+                summon.Master = this;
+            }
             lock (summons) {
-                summons.Add((node.Group, summon, AiSummon.LeavesWithSummoner(node.Master)));
+                summons.Add((node.Group, summon, slave));
             }
             Field.Broadcast(FieldPacket.AddNpc(summon));
             Field.Broadcast(ProxyObjectPacket.AddNpc(summon));

@@ -72,6 +72,11 @@ public static class AiSummon {
     public static bool IsCountedSlave(int summonGroup, bool leavesWithSummoner, int? group) =>
         leavesWithSummoner && (group == null || summonGroup == group);
 
+    // SetSlaveValue and SetMasterValue (setValue's convention): isModify adds the value to a key the npc already has;
+    // otherwise, and for a key it lacks, the value is set.
+    public static int ModifiedValue(bool hasOld, int oldValue, int value, bool isModify) =>
+        isModify && hasOld ? oldValue + value : value;
+
     // SlaveCount count="N" passes when exactly N slaves are alive. The Yeti bosses test 0, 1, 2, 3, 4 in that order in
     // one conditions node (first passing wins), so ">= N" would always take 0; AI_Primadonna tests 2 then 1 with
     // npcCountMax 2, so "<= N" would never reach its count="1" (berserk) branch. Only "== N" fits both.
