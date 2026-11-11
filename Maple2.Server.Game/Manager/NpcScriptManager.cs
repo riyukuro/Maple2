@@ -89,6 +89,25 @@ public sealed class NpcScriptManager {
         return QuestRespond();
     }
 
+    // The start talk of an alliance mission accepted in the alliance window (NpcTalk 8, mode 0): the quest script's
+    // first start state (100 to 199) whatever the quest's held state, as the window offers only quests that can start.
+    // The reply is NpcTalk 8, which the client reads like Continue but shows in the talk scene (ReloadScript); the
+    // talk's accept button sends Quest 2, which starts the quest.
+    public bool BeginAllianceQuest() {
+        TalkType = NpcTalkType.Quest;
+        int stateId = metadata?.States.Keys.Where(id => id is >= 100 and < 200).DefaultIfEmpty().Min() ?? 0;
+        if (stateId == 0 || !metadata!.States.TryGetValue(stateId, out ScriptState? state)) {
+            return false;
+        }
+        State = state;
+        Index = 0;
+        Button = GetButton();
+
+        var dialogue = new NpcDialogue(State.Id, Index, Button);
+        session.Send(NpcTalkPacket.AllianceQuestTalk(TalkType, dialogue, metadata.Id));
+        return true;
+    }
+
     private bool QuestRespond() {
         State = GetQuestScriptState(metadata);
         if (State == null || State.Id == 0) {

@@ -16,6 +16,7 @@ public static class NpcTalkPacket {
         Continue = 2,
         Action = 3,
         Update = 4,
+        AllianceQuestTalk = 8,
         AllianceTalk = 9,
     }
 
@@ -115,6 +116,19 @@ public static class NpcTalkPacket {
         pWriter.WriteUnicodeString(script.Text);
         pWriter.WriteUnicodeString(script.VoiceId);
         pWriter.WriteUnicodeString(script.Illustration);
+
+        return pWriter;
+    }
+
+    // The reply to the alliance window's accept (NpcTalk 8): UITalkManager::OnTalkPacket mode 8 reads the talk type,
+    // the quest id, the script state, the page and the button as mode 2 does, then loads the quest's talk and opens
+    // the talk scene (ReloadScript).
+    public static ByteWriter AllianceQuestTalk(NpcTalkType type, NpcDialogue dialogue, int questId) {
+        var pWriter = Packet.Of(SendOp.NpcTalk);
+        pWriter.Write<Command>(Command.AllianceQuestTalk);
+        pWriter.Write<NpcTalkType>(type);
+        pWriter.WriteInt(questId);
+        pWriter.Write<NpcDialogue>(dialogue);
 
         return pWriter;
     }

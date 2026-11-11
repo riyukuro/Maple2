@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
@@ -34,6 +35,23 @@ public class AllianceMissionPacketTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Quest));
         Assert.That(reader.ReadByte(), Is.EqualTo(command));
         Assert.That(reader.ReadShort(), Is.EqualTo(8));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    // NpcTalk 8, the answer to the window's accept, as UITalkManager::OnTalkPacket mode 8 reads it: the talk type, the
+    // quest id, the script state, the page, the button.
+    [Test]
+    public void AllianceQuestTalkBytes() {
+        ByteWriter packet = NpcTalkPacket.AllianceQuestTalk(NpcTalkType.Quest, new NpcDialogue(100, 0, NpcTalkButton.QuestAccept), 91000101);
+        var reader = new ByteReader(packet.ToArray(), 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.NpcTalk));
+        Assert.That(reader.ReadByte(), Is.EqualTo(8));
+        Assert.That(reader.ReadByte(), Is.EqualTo(4));
+        Assert.That(reader.ReadInt(), Is.EqualTo(91000101));
+        Assert.That(reader.ReadInt(), Is.EqualTo(100));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) NpcTalkButton.QuestAccept));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 }

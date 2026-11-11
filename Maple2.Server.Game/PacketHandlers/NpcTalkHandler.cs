@@ -315,6 +315,15 @@ public class NpcTalkHandler : FieldPacketHandler {
                 if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || metadata.Basic.Type != QuestType.AllianceQuest) {
                     return;
                 }
+                // The quest's start talk, as the client asks for it (see BeginAllianceQuest); a quest without a
+                // start script is started at once.
+                if (session.NpcScript?.Npc is { } npc && session.ScriptMetadata.TryGet(questId, out ScriptMetadata? script)) {
+                    var talk = new NpcScriptManager(session, npc, script, null, NpcTalkType.Quest);
+                    if (talk.BeginAllianceQuest()) {
+                        session.NpcScript = talk;
+                        return;
+                    }
+                }
                 QuestError error = session.Quest.Start(questId);
                 if (error != QuestError.none) {
                     session.Send(QuestPacket.Error(error));
