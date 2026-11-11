@@ -72,9 +72,10 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
             case Command.ColosseumLobby:
             case Command.LapentaLobby:
                 // Not handled: the lobby button of the dungeon search window, one sub-type per dungeon group; no body.
-            case Command.ResetUnitedReward:
-                // Not handled: the confirmed reset of the united (weekly) reward; no body.
                 Logger.Debug("RoomDungeon {Command} from {CharacterId}", command, session.CharacterId);
+                break;
+            case Command.ResetUnitedReward:
+                HandleResetUnitedReward(session);
                 break;
         }
     }
@@ -103,6 +104,15 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     private static void HandleFindMember(GameSession session, IByteReader packet) {
         int dungeonId = packet.ReadInt();
         session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_shutdown_find_dungeon_helper, dungeonId));
+    }
+
+    // UIDungeonSearchUnitedReward::SendRoomDungeon (uidungeonhelper.cpp:291): the confirmed reset of the united
+    // reward's weekly clear count; no body. The client's refusals (DungeonRecordManagerCli::OnError cases 0x1f to
+    // 0x21, dungeonrecordcli.cpp:323) say the reset is once a week for the whole account and only at the weekly
+    // limit. The server keeps no account-wide mark of a used reset, and the client does not show whether the reset
+    // has a price, so no count is reset: the answer is the client's text for the reset being switched off (0x21).
+    private static void HandleResetUnitedReward(GameSession session) {
+        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset));
     }
 
     private void HandleReset(GameSession session) {

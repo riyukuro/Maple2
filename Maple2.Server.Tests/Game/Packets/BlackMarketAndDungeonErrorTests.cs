@@ -65,4 +65,19 @@ public class BlackMarketAndDungeonErrorTests {
             Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 4));
         });
     }
+
+    // RoomDungeon 21 (reset the united reward): OnError case 0x21 shows
+    // s_room_dungeon_error_shutdown_united_reawrd_reset; the argument is not used.
+    [Test]
+    public void DungeonUnitedRewardResetOffIs33() {
+        ByteWriter writer = DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.Multiple(() => {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.RoomDungeon));
+            Assert.That(reader.ReadByte(), Is.EqualTo(18));
+            Assert.That(reader.ReadInt(), Is.EqualTo(0x21));
+            Assert.That(reader.ReadInt(), Is.EqualTo(0));
+            Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 4));
+        });
+    }
 }
