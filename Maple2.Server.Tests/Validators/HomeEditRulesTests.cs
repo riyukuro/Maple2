@@ -10,6 +10,8 @@ public class HomeEditRulesTests {
         Assert.That(HomeEditRules.OwnsPlot(7, 7), Is.True);
         Assert.That(HomeEditRules.OwnsPlot(7, 8), Is.False);
         Assert.That(HomeEditRules.OwnsPlot(0, 0), Is.False);
+        // RequestCube: a visitor (account 8) in the home of account 7 gets no plot to edit.
+        Assert.That(HomeEditRules.OwnsPlot(plotOwnerId: 7, accountId: 8), Is.False);
     }
 
     [Test]

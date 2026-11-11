@@ -294,7 +294,7 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (session.Field == null) return;
         var position = packet.Read<Vector3B>();
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -329,7 +329,7 @@ public class RequestCubeHandler : FieldPacketHandler {
         var position = packet.Read<Vector3B>();
         bool clockwise = packet.ReadBool();
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -374,7 +374,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             packet.ReadByte(); // the side the cube is attached to; the rotation above is the angle of that side
         }
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -454,7 +454,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleClearCubes(GameSession session) {
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -469,7 +469,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleRequestLayout(GameSession session, IByteReader packet) {
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -522,7 +522,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             }
         }
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -573,7 +573,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             }
         }
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -646,7 +646,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -675,7 +675,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleLoadLayout(GameSession session, IByteReader packet) {
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot is null) {
             return;
         }
@@ -712,7 +712,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     private void HandleApplyBlueprint(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot is null) {
             return;
         }
@@ -777,7 +777,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleCreateBlueprint(GameSession session) {
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot is null) {
             return;
         }
@@ -845,7 +845,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
             return;
         }
@@ -879,7 +879,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleLoadBlueprint(GameSession session, IByteReader packet) {
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot is null) {
             return;
         }
@@ -919,7 +919,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     private void HandlePreviewBlueprint(GameSession session, IByteReader packet) {
         long blueprintId = packet.ReadLong();
 
-        Plot? plot = session.Housing.GetFieldPlot();
+        Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot is null) {
             return;
         }
