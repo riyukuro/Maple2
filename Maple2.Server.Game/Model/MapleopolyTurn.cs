@@ -11,6 +11,9 @@ public sealed class MapleopolyTurn {
         resultPending = true;
     }
 
+    // A result that cannot be paid (the tile's item cannot be made) is left open instead of taken.
+    public bool ResultPending => resultPending;
+
     // True when a result may be paid now. A roll opens one result. After a backward or forward tile the client
     // asks for the result of the tile it walked to (UIBlueMarbleGameDialog, uibluemarblegamedialog.cpp:234, :244),
     // so those two keep the result open; every other tile closes it.

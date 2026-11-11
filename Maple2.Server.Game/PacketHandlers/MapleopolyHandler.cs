@@ -117,6 +117,20 @@ public class MapleopolyHandler : FieldPacketHandler {
         int currentSlotPosition = totalSlotValue % blueMarble.Slots.Length;
 
         BlueMarble.Slot slot = blueMarble.Slots[currentSlotPosition];
+        // An item tile whose item cannot be made does not spend the roll's result: the request is dropped
+        // with the result still open.
+        Item? tileItem = null;
+        if (slot.Type is BlueMarbleSlotType.Item or BlueMarbleSlotType.Paradise) {
+            if (!session.GameEvent.Mapleopoly.ResultPending) {
+                return;
+            }
+            tileItem = session.Field?.ItemDrop.CreateItem(slot.Item.ItemId, slot.Item.Rarity, slot.Item.Amount);
+            if (tileItem == null) {
+                Logger.Error("Mapleopoly tile item {ItemId} could not be created", slot.Item.ItemId);
+                return;
+            }
+        }
+
         // One result per roll: without this a repeated result request pays the tile again.
         if (!session.GameEvent.Mapleopoly.TakeResult(slot.Type)) {
             return;
@@ -125,13 +139,8 @@ public class MapleopolyHandler : FieldPacketHandler {
         switch (slot.Type) {
             case BlueMarbleSlotType.Item:
             case BlueMarbleSlotType.Paradise:
-                Item? item = session.Field?.ItemDrop.CreateItem(slot.Item.ItemId, slot.Item.Rarity, slot.Item.Amount);
-                if (item == null) {
-                    // TODO: Error packet?
-                    break;
-                }
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
+                if (tileItem != null && !session.Item.Inventory.Add(tileItem, true)) {
+                    session.Item.MailItem(tileItem);
                 }
                 break;
             case BlueMarbleSlotType.Backward:

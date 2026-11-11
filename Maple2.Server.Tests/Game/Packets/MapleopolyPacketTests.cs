@@ -71,8 +71,13 @@ public class MapleopolyPacketTests {
         var turn = new MapleopolyTurn();
         Assert.That(turn.TakeResult(BlueMarbleSlotType.Item), Is.False);
 
+        // A result that is not taken (the tile's item could not be made) stays open.
+        Assert.That(turn.ResultPending, Is.False);
         turn.Rolled();
+        Assert.That(turn.ResultPending, Is.True);
+        Assert.That(turn.ResultPending, Is.True);
         Assert.That(turn.TakeResult(BlueMarbleSlotType.Item), Is.True);
+        Assert.That(turn.ResultPending, Is.False);
         Assert.That(turn.TakeResult(BlueMarbleSlotType.Item), Is.False);
 
         turn.Rolled();
