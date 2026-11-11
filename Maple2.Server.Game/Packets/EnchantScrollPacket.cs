@@ -59,13 +59,13 @@ public static class EnchantScrollPacket {
                 }
                 break;
             case EnchantScrollType.Random:
-                pWriter.WriteInt(maxOptions.Count);
-                foreach ((BasicAttribute attribute, BasicOption delta) in maxOptions) {
+                pWriter.WriteInt(minOptions.Count);
+                foreach ((BasicAttribute attribute, BasicOption delta) in minOptions) {
                     pWriter.WriteShort((short) attribute);
                     pWriter.WriteInt(delta.Value);
                 }
-                pWriter.WriteInt(minOptions.Count);
-                foreach ((BasicAttribute attribute, BasicOption delta) in minOptions) {
+                pWriter.WriteInt(maxOptions.Count);
+                foreach ((BasicAttribute attribute, BasicOption delta) in maxOptions) {
                     pWriter.WriteShort((short) attribute);
                     pWriter.WriteInt(delta.Value);
                 }
