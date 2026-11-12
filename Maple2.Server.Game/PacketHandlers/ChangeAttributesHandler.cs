@@ -113,7 +113,8 @@ public class ChangeAttributesHandler : FieldPacketHandler {
 
                 lockItem = GetLockConsumeItem(session, item);
                 if (lockItem == null) {
-                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
+                    // The dialog's string for a lock without a lock item (OnRemakeError code 9).
+                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
                     return;
                 }
             }
@@ -133,18 +134,18 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 // Add back the locked attribute.
                 if (isSpecialAttribute) {
                     if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
+                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
                         return;
                     }
                 } else {
                     if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
+                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
                         return;
                     }
                 }
             } else {
                 if (!ItemStatsCalc.UpdateRandomOption(ref changeItem)) {
-                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
+                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
                     return;
                 }
             }

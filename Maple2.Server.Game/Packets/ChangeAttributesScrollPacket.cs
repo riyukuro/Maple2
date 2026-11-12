@@ -44,8 +44,10 @@ public static class ChangeAttributesScrollPacket {
     public static ByteWriter Error(ChangeAttributesScrollError error, bool flag = false) {
         var pWriter = Packet.Of(SendOp.ChangeAttributesScroll);
         pWriter.Write<Command>(Command.Error);
-        pWriter.WriteBool(flag); // no idea
-        pWriter.Write<ChangeAttributesScrollError>(error);
+        // Client UIItemRemakeScrollDialog::OnRemakeError: a byte and an int code; code 0 shows nothing, the byte is
+        // only printed in the default string.
+        pWriter.WriteBool(flag);
+        pWriter.WriteInt((int) error);
 
         return pWriter;
     }

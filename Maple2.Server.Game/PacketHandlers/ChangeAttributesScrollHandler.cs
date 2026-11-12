@@ -112,24 +112,26 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 return;
             }
 
+            // A failed roll answers on the scroll dialog's own packet (code 12, its "failed to modify" string); the
+            // item dialog's error packet is not read by the scroll dialog.
             if (itemRemakeScrollMetadata.RollAttribute) {
                 // Randomize attributes.
                 if (lockItem != null) {
                     // Add back the locked attribute.
                     if (isSpecialAttribute) {
                         if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesPacket.Error(ChangeAttributesError.s_itemremake_error_server_default));
+                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                             return;
                         }
                     } else {
                         if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesPacket.Error(ChangeAttributesError.s_itemremake_error_server_default));
+                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                             return;
                         }
                     }
                 } else {
                     if (!ItemStatsCalc.UpdateRandomOption(ref changeItem)) {
-                        session.Send(ChangeAttributesPacket.Error(ChangeAttributesError.s_itemremake_error_server_default));
+                        session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                         return;
                     }
                 }
@@ -139,18 +141,18 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                     // Restore locked attribute values.
                     if (isSpecialAttribute) {
                         if (!ItemStatsCalc.UpdateFixedOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesPacket.Error(ChangeAttributesError.s_itemremake_error_server_default));
+                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                             return;
                         }
                     } else {
                         if (!ItemStatsCalc.UpdateFixedOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesPacket.Error(ChangeAttributesError.s_itemremake_error_server_default));
+                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                             return;
                         }
                     }
                 } else {
                     if (!ItemStatsCalc.UpdateFixedOption(ref changeItem)) {
-                        session.Send(ChangeAttributesPacket.Error(ChangeAttributesError.s_itemremake_error_server_default));
+                        session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                         return;
                     }
                 }
