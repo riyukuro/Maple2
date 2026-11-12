@@ -80,6 +80,13 @@ public sealed class RideManager {
             ClearPassengers(session.Field, Ride);
         }
         session.Field?.Broadcast(RidePacket.Stop(Ride.OwnerId, rideOffAction));
+        EndRide();
+    }
+
+    private void EndRide() {
+        if (Ride == null) {
+            return;
+        }
 
         Ride ride = Ride;
         Ride = null;
@@ -118,9 +125,14 @@ public sealed class RideManager {
     /// The player entered a field: a mount the field does not allow ends with ride-off type DisableField.
     /// </summary>
     public void EnterField(FieldManager field) {
-        if (RideShare.DismountsOnEnter(Ride != null, field.Metadata.Limit.Ride)) {
-            Dismount(RideOffType.DisableField);
+        if (Ride == null || !RideShare.DismountsOnEnter(true, field.Metadata.Limit.Ride)) {
+            return;
         }
+
+        // The rider is not in the field's players yet, so a broadcast would miss it. In KMS2 the rider itself gets
+        // the Stop just before its own FieldAddUser; the players already there never saw the mount.
+        session.Send(RidePacket.Stop(Ride.OwnerId, RideOffAction.Create(RideOffType.DisableField)));
+        EndRide();
     }
 
     // RideConsumeEp: the owner dashes on its mount.
