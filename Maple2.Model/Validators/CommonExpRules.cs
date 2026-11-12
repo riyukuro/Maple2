@@ -29,6 +29,8 @@ public static class CommonExpRules {
             case ExpType.mapCommon:
             case ExpType.mapHidden:
             case ExpType.telescope:
+            case ExpType.normalChest:
+            case ExpType.rareChest:
             case ExpType.rareChestFirst:
                 return LevelSource.Field;
             default:

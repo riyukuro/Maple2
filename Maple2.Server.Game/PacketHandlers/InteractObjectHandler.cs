@@ -117,16 +117,37 @@ public class InteractObjectHandler : FieldPacketHandler {
             if (interact.State != InteractState.Reactable) {
                 return;
             }
-        } else if (!interact.React()) {
-            return;
+        } else {
+            // A map treasure chest drops its items before its state and result, as KMS2 sends them.
+            if (interact.Chest != MapChestRules.Kind.None) {
+                if (interact.State != InteractState.Reactable) {
+                    return;
+                }
+                DropItems(session, interact);
+            }
+            if (!interact.React()) {
+                return;
+            }
         }
 
-        session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
+        // A golden chest returns with every set under the same id: it counts (the map's golden chest trophy) only
+        // the first time this character opens it.
+        bool firstOpen = interact.Chest == MapChestRules.Kind.Gold
+                         && session.Player.Value.Unlock.InteractedObjects.Add(interact.Object.Id);
+        if (MapChestRules.Counts(interact.Chest, firstOpen)) {
+            session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
+        }
         session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id, targetLong: (long) interact.Value.Type);
         session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnInvestigate);
 
         switch (interact.Value.Type) {
             case InteractType.Mesh:
+                SendAnswer(session, interact);
+                // A map treasure chest: its exp, more for a golden chest this character opens the first time.
+                if (interact.Chest != MapChestRules.Kind.None) {
+                    session.Exp.AddExp(MapChestRules.Exp(interact.Chest, firstOpen));
+                }
+                break;
             case InteractType.Ui:
                 SendAnswer(session, interact);
                 break;
@@ -154,6 +175,28 @@ public class InteractObjectHandler : FieldPacketHandler {
                 break;
         }
 
+        if (interact.Chest == MapChestRules.Kind.None) {
+            DropItems(session, interact);
+        }
+
+        foreach (InteractObjectMetadataEffect.InvokeEffect invokeEffect in interact.Value.AdditionalEffect.Invoke) {
+            if (invokeEffect.Probability < 10000 && invokeEffect.Probability / 100 < Random.Shared.Next(100)) {
+                continue;
+            }
+
+            session.Player.Buffs.AddBuff(session.Player, session.Player, invokeEffect.Id, invokeEffect.Level, session.Field.FieldTick, notifyField: true);
+        }
+
+        if (interact.Value.AdditionalEffect.ModifyCode > 0) {
+            session.Buffs.ModifyDuration(interact.Value.AdditionalEffect.ModifyCode, interact.Value.AdditionalEffect.ModifyTime);
+        }
+    }
+
+    private static void DropItems(GameSession session, FieldInteract interact) {
+        if (session.Field == null) {
+            return;
+        }
+
         // Each box is rolled for the player (groups, drop counts, weights, job and gender), as an opened item box.
         // Drop.Rarity is the object's objectDropRank, not an item grade.
         var items = new List<Item>();
@@ -176,18 +219,6 @@ public class InteractObjectHandler : FieldPacketHandler {
             session.Field.DropItem(interact.Position with {
                 Z = interact.Position.Z + interact.Value.Drop.DropHeight,
             }, interact.Rotation, item, characterId: session.CharacterId, dropKind: ItemDropKind.InteractObject);
-        }
-
-        foreach (InteractObjectMetadataEffect.InvokeEffect invokeEffect in interact.Value.AdditionalEffect.Invoke) {
-            if (invokeEffect.Probability < 10000 && invokeEffect.Probability / 100 < Random.Shared.Next(100)) {
-                continue;
-            }
-
-            session.Player.Buffs.AddBuff(session.Player, session.Player, invokeEffect.Id, invokeEffect.Level, session.Field.FieldTick, notifyField: true);
-        }
-
-        if (interact.Value.AdditionalEffect.ModifyCode > 0) {
-            session.Buffs.ModifyDuration(interact.Value.AdditionalEffect.ModifyCode, interact.Value.AdditionalEffect.ModifyTime);
         }
     }
 }

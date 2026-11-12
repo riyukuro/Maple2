@@ -51,6 +51,7 @@ public partial class FieldManager : IField {
     public TableMetadataStorage TableMetadata { get; init; } = null!;
     public FunctionCubeMetadataStorage FunctionCubeMetadata { get; init; } = null!;
     public ServerTableMetadataStorage ServerTableMetadata { get; init; } = null!;
+    public AchievementMetadataStorage AchievementMetadata { get; init; } = null!;
     public RideMetadataStorage RideMetadata { get; init; } = null!;
     public ItemStatsCalculator ItemStatsCalc { get; init; } = null!;
     public TriggerCache TriggerCache { get; init; } = null!;
@@ -368,6 +369,7 @@ public partial class FieldManager : IField {
         foreach (FieldInteract interact in fieldInteracts.Values) interact.Update(FieldTick);
         foreach (FieldFunctionInteract interact in fieldFunctionInteracts.Values) interact.Update(FieldTick);
         foreach (FieldInteract interact in fieldAdBalloons.Values) interact.Update(FieldTick);
+        UpdateChests(FieldTick);
         foreach (HongBao hongBao in hongBaos.Values) hongBao.Update(FieldTick);
         foreach (FieldItem item in fieldItems.Values) item.Update(FieldTick);
         foreach (FieldMobSpawn mobSpawn in fieldMobSpawns.Values) mobSpawn.Update(FieldTick);

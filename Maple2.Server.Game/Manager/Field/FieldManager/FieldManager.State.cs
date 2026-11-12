@@ -514,6 +514,113 @@ public partial class FieldManager {
         fieldSpawnGroup.ToggleActive(enable);
     }
 
+    #region Map chests
+    private static readonly object GoldChestLock = new();
+    // Map id to the golden chest interact ids of the map's golden chest trophy, in point order.
+    private static IReadOnlyDictionary<int, int[]>? goldChestIds;
+
+    private bool mapChestsRead;
+    private long nextMapChestTick;
+    private List<int> woodChestPoints = [];
+    private Dictionary<int, int> goldChestPoints = new();
+
+    private static IReadOnlyDictionary<int, int[]> GoldChestIds(AchievementMetadataStorage storage) {
+        lock (GoldChestLock) {
+            if (goldChestIds != null) {
+                return goldChestIds;
+            }
+
+            var result = new Dictionary<int, int[]>();
+            foreach (AchievementMetadata achievement in storage.GetAll().OrderBy(achievement => achievement.Id)) {
+                if (!MapChestRules.TryTrophyMap(achievement.Name, out int mapId) || result.ContainsKey(mapId) || achievement.Grades.Count == 0) {
+                    continue;
+                }
+                int[] ids = MapChestRules.TrophyChestIds(achievement.Grades.OrderBy(grade => grade.Key).First().Value.Condition);
+                if (ids.Length > 0) {
+                    result[mapId] = ids;
+                }
+            }
+            goldChestIds = result;
+            return result;
+        }
+    }
+
+    // The map's chest points. A dungeon, a home or a map whose points belong to combine spawn groups has none.
+    private void ReadMapChests() {
+        mapChestsRead = true;
+        if (this is DungeonFieldManager or HomeFieldManager || AchievementMetadata == null
+            || ServerTableMetadata.CombineSpawnTable.Groups.ContainsKey(MapId)) {
+            return;
+        }
+
+        woodChestPoints = Entities.RegionSpawns.Keys.Where(id => MapChestRules.SpawnKind(id) == MapChestRules.Kind.Wood).ToList();
+        if (GoldChestIds(AchievementMetadata).TryGetValue(MapId, out int[]? ids)) {
+            goldChestPoints = MapChestRules.GoldChests(Entities.RegionSpawns.Keys, ids);
+        }
+    }
+
+    // Chests are updated here: an opened one is removed once it hides. Every MapChestRules.Cycle the map
+    // chests left are removed and a new set is added: every golden chest and some of the wooden ones.
+    private void UpdateChests(long tickCount) {
+        // Only the map treasure chests: the objects of combine spawn groups and of AI nodes stay as they were.
+        foreach (FieldInteract chest in fieldChests.Values) {
+            if (chest.Chest == MapChestRules.Kind.None) {
+                continue;
+            }
+            chest.Update(tickCount);
+            if (chest.State == InteractState.Hidden && fieldChests.TryRemove(chest.EntityId, out _)) {
+                Broadcast(InteractObjectPacket.Remove(chest.EntityId));
+            }
+        }
+
+        if (!mapChestsRead) {
+            ReadMapChests();
+        }
+        if ((woodChestPoints.Count == 0 && goldChestPoints.Count == 0) || tickCount < nextMapChestTick) {
+            return;
+        }
+        nextMapChestTick = tickCount + (long) MapChestRules.Cycle.TotalMilliseconds;
+
+        foreach (FieldInteract chest in fieldChests.Values) {
+            if (chest.Chest != MapChestRules.Kind.None && fieldChests.TryRemove(chest.EntityId, out _)) {
+                Broadcast(InteractObjectPacket.Remove(chest.EntityId));
+            }
+        }
+        foreach ((int spawnId, int interactId) in goldChestPoints.OrderBy(entry => entry.Key)) {
+            SpawnMapChest(spawnId, interactId, MapChestRules.Kind.Gold);
+        }
+        foreach (int spawnId in MapChestRules.PickWood(woodChestPoints, Random.Shared)) {
+            SpawnMapChest(spawnId, MapChestRules.WoodInteractId, MapChestRules.Kind.Wood);
+        }
+    }
+
+    private void SpawnMapChest(int spawnId, int interactId, MapChestRules.Kind kind) {
+        if (!Entities.RegionSpawns.TryGetValue(spawnId, out Ms2RegionSpawn? spawn) ||
+            !TableMetadata.InteractObjectTable.Entries.TryGetValue(interactId, out InteractObjectMetadata? metadata)) {
+            return;
+        }
+        string name = MapChestRules.EntityName(spawn.Position.X, spawn.Position.Y, spawn.Position.Z);
+        var interactObject = new InteractMeshObject(name, new Ms2InteractMesh(
+            interactId, spawn.Position, spawn.Rotation)) {
+            Model = MapChestRules.Model,
+            Asset = kind == MapChestRules.Kind.Gold ? MapChestRules.GoldAsset : MapChestRules.WoodAsset,
+            NormalState = MapChestRules.NormalState,
+            Reactable = MapChestRules.ReactableState,
+        };
+        var fieldInteract = new FieldInteract(this, NextLocalId(), interactObject.EntityId, metadata, interactObject) {
+            Transform = new Transform {
+                Position = spawn.Position,
+                RotationAnglesDegrees = spawn.Rotation,
+            },
+            SpawnId = spawn.Id,
+            Chest = kind,
+            InitialState = InteractState.Reactable,
+        };
+        fieldChests[interactObject.EntityId] = fieldInteract;
+        Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
+    }
+    #endregion
+
     public FieldNpc? SpawnWorldBoss(WorldBossMetadata metadata, int eventId) {
         if (metadata.NpcIds.Length == 0 || metadata.SpawnPointIds.Length == 0) {
             logger.Warning("[WorldBoss] Metadata {Id} has no NpcIds or SpawnPointIds", metadata.Id);
@@ -1466,6 +1573,10 @@ public partial class FieldManager {
         }
         foreach (FieldInteract fieldInteract in fieldChests.Values) {
             added.Session.Send(InteractObjectPacket.Add(fieldInteract.Object));
+            // The Add packet says reactable; an opened map treasure chest gets its state after it.
+            if (MapChestRules.NeedsStateAfterAdd(fieldInteract.Chest, fieldInteract.State)) {
+                added.Session.Send(InteractObjectPacket.Update(fieldInteract));
+            }
         }
         foreach (FieldInstrument fieldInstrument in fieldInstruments.Values) {
             if (fieldInstrument.Score != null) {

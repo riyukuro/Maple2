@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
@@ -20,6 +21,10 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     private int reactLimit;
     public InteractState State { get; private set; }
     public int SpawnId { get; init; }
+    // A map treasure chest (MapChestRules): what it gives when opened.
+    public MapChestRules.Kind Chest { get; init; }
+    // A map treasure chest is added with the Add packet, which says reactable: it starts so, with no update sent.
+    public InteractState InitialState { init => State = value; }
 
     public FieldInteract(FieldManager field, int objectId, string entityId, InteractObjectMetadata value, IInteractObject interactObject) : base(field, objectId, value) {
         EntityId = entityId;
@@ -46,6 +51,10 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
 
         reactTick = Environment.TickCount64;
         reactLimit--;
+        // A map treasure chest is opened once: it hides after its hide time, as KMS2 sends it.
+        if (Chest != MapChestRules.Kind.None) {
+            reactLimit = 0;
+        }
         if (reactLimit > 0) {
             SetState(InteractState.Normal);
             nextTick = reactTick + Value.Time.Reset;
@@ -73,7 +82,6 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     }
 
     public override void Update(long tickCount) {
-        // TODO: Include treasure chests
         if (Object is InteractBillBoardObject billboard && DateTime.Now.ToEpochSeconds() > billboard.ExpirationTime) {
             SetState(InteractState.Hidden);
             Field.RemoveInteract(Object);
@@ -84,9 +92,9 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
             return;
         }
 
-        // Checks if we should reset (resetTime > 0)
-        if (State == InteractState.Normal && Value.Time.Reset > 0) {
-            SetState(reactLimit > 0 ? InteractState.Reactable : InteractState.Hidden);
+        // Checks if we should reset (resetTime > 0). An opened map treasure chest hides whatever its resetTime.
+        if (State == InteractState.Normal && MapChestRules.StateAfterWait(Chest, reactLimit, Value.Time.Reset) is { } next) {
+            SetState(next);
         }
 
         nextTick = 0;
