@@ -543,7 +543,7 @@ public class SkillHandler : FieldPacketHandler {
         if (record.CancelTick == 0 && session.Field != null) {
             record.CancelTick = session.Field.FieldTick;
         }
-        session.Field?.Broadcast(SkillPacket.Cancel(record));
+        session.Field?.Broadcast(SkillPacket.Cancel(record), SkillCastRules.CancelGoesToCaster(endedByServer: false) ? null : session);
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Cancel: {skillUid}"));

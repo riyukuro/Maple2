@@ -376,4 +376,18 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.CancelledRefuses(5000, 7000), Is.False, "an attack already on its way");
         Assert.That(SkillCastRules.CancelledRefuses(5000, 7001), Is.True);
     }
+
+    [Test]
+    public void AClientsOwnCancelIsNotSentBackToIt() {
+        Assert.That(SkillCastRules.CancelGoesToCaster(endedByServer: false), Is.False);
+        Assert.That(SkillCastRules.CancelGoesToCaster(endedByServer: true), Is.True, "a state skill the server ends");
+    }
+
+    [Test]
+    public void CancelIsCastUidThenCaster() {
+        // Made-up ids. 12 bytes after the opcode.
+        Maple2.PacketLib.Tools.ByteWriter writer = Maple2.Server.Game.Packets.SkillPacket.Cancel(0x0102030405060708, 0x00112233);
+        byte[] expected = [0x3F, 0x00, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x33, 0x22, 0x11, 0x00];
+        Assert.That(writer.Buffer.Take(writer.Length).ToArray(), Is.EqualTo(expected));
+    }
 }

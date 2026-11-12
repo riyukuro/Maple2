@@ -90,18 +90,32 @@ public static class SkillDamagePacket {
     }
 
     public static ByteWriter Region(DamageRecord record) {
+        return Region(record.SkillUid, record.CasterId, record.OwnerId, record.AttackPoint, record.Targets.Values
+            .Select(target => new RegionTarget(target.ObjectId, target.Position, target.Direction, target.Damage))
+            .ToArray());
+    }
+
+    // One target of a region damage packet. Position is the region's point the target was reached from; KMS2
+    // sends it cut to whole numbers (not rounded). An attack without damage (damage count 0: a region that only
+    // gives a buff or heals) names its targets with no damage entry.
+    public readonly record struct RegionTarget(int ObjectId, Vector3 Position, Vector3 Direction,
+                                               IReadOnlyList<(DamageType Type, long Amount)> Damage);
+
+    public static ByteWriter Region(long skillUid, int casterId, int ownerId, byte attackPoint, IReadOnlyCollection<RegionTarget> targets) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
         pWriter.Write<Command>(Command.Region);
-        pWriter.WriteLong(record.SkillUid);
-        pWriter.WriteInt(record.CasterId);
-        pWriter.WriteInt(record.OwnerId);
-        pWriter.WriteByte(record.AttackPoint);
+        pWriter.WriteLong(skillUid);
+        pWriter.WriteInt(casterId);
+        pWriter.WriteInt(ownerId);
+        pWriter.WriteByte(attackPoint);
 
-        pWriter.WriteByte((byte) record.Targets.Count);
-        foreach (DamageRecordTarget target in record.Targets.Values) {
+        pWriter.WriteByte((byte) targets.Count);
+        foreach (RegionTarget target in targets) {
             pWriter.WriteInt(target.ObjectId);
             pWriter.WriteByte((byte) target.Damage.Count);
-            pWriter.Write<Vector3S>(target.Position); // Of Block
+            pWriter.WriteShort(CutToShort(target.Position.X));
+            pWriter.WriteShort(CutToShort(target.Position.Y));
+            pWriter.WriteShort(CutToShort(target.Position.Z));
             pWriter.Write<Vector3>(target.Direction);
             foreach ((DamageType type, long amount) in target.Damage) {
                 pWriter.Write<DamageType>(type);
@@ -110,6 +124,10 @@ public static class SkillDamagePacket {
         }
 
         return pWriter;
+    }
+
+    private static short CutToShort(float value) {
+        return (short) Math.Clamp(MathF.Truncate(value), short.MinValue, short.MaxValue);
     }
 
     public static ByteWriter Tile(DamageRecord record) {

@@ -205,6 +205,9 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Field.VibrateObjects(damage, Position);
                     foreach (IActor target in targets) {
                         target.ApplyDamage(Caster, damage, attack);
+                        if (Source != SkillSource.Cube && damage.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? fired)) {
+                            fired.Position = SplashTiming.FirePoint(Points, target.Position, Position);
+                        }
                         // TODO: Set PrevUid?
                         targetRecords.Add(new TargetRecord {
                             Uid = (long) ObjectId << 32 | (uint) targetRecords.Count,

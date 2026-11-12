@@ -156,6 +156,11 @@ public static class SkillCastRules {
     // packets only); the 2 s is chosen here, well above it, since the time is taken between two arrivals.
     public const long CancelledAttackWindowMs = 2000;
 
+    // Whether the caster's own client gets the SkillCancel of a cast. KMS2 answers none of the cancels a client
+    // sends (Skill 4) to that client; the players around get it. The cancel of a state skill, which the server
+    // ends itself, goes to everyone, its owner too.
+    public static bool CancelGoesToCaster(bool endedByServer) => endedByServer;
+
     public static bool CancelledRefuses(long cancelTick, long tick) => cancelTick != 0 && tick - cancelTick > CancelledAttackWindowMs;
 
     // The fitted speed of a motion. An attack speed under 100 is counted as 100 (chosen here: no KMS2 cast has one).

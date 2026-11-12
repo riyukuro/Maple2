@@ -53,10 +53,12 @@ public static class SkillPacket {
         return pWriter;
     }
 
-    public static ByteWriter Cancel(SkillRecord skill) {
+    public static ByteWriter Cancel(SkillRecord skill) => Cancel(skill.CastUid, skill.Caster.ObjectId);
+
+    public static ByteWriter Cancel(long castUid, int casterId) {
         var pWriter = Packet.Of(SendOp.SkillCancel);
-        pWriter.WriteLong(skill.CastUid);
-        pWriter.WriteInt(skill.Caster.ObjectId);
+        pWriter.WriteLong(castUid);
+        pWriter.WriteInt(casterId);
 
         return pWriter;
     }

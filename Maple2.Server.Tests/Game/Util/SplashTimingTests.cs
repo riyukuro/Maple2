@@ -1,3 +1,4 @@
+using System.Numerics;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -35,5 +36,14 @@ public class SplashTimingTests {
         Assert.That(SplashTiming.FirePackets(false, 3), Is.EqualTo((false, true)), "no target packet");
         Assert.That(SplashTiming.FirePackets(true, 0), Is.EqualTo((false, false)));
         Assert.That(SplashTiming.FirePackets(true, 1), Is.EqualTo((true, true)));
+    }
+
+    [Test]
+    public void ATargetIsNamedWithTheRegionPoint() {
+        var region = new Vector3(5, 5, 5);
+        Vector3[] points = [new Vector3(0, 0, 0), new Vector3(300, 0, 0)];
+        Assert.That(SplashTiming.FirePoint(points[..1], new Vector3(900, 0, 0), region), Is.EqualTo(points[0]), "not the target's or the caster's position");
+        Assert.That(SplashTiming.FirePoint(points, new Vector3(200, 40, 0), region), Is.EqualTo(points[1]), "the nearest of several");
+        Assert.That(SplashTiming.FirePoint([], new Vector3(200, 40, 0), region), Is.EqualTo(region));
     }
 }
