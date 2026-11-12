@@ -21,4 +21,16 @@ public class RestExpRulesTests {
     public void OtherSource(long gain, long rest, long expectedGain, long expectedRest) {
         Assert.That(RestExpRules.Spend(gain, rest, kill: false, 20000), Is.EqualTo((expectedGain, expectedRest)));
     }
+
+    // A tick adds floor(base x 35001 / 10000000), at least 1, up to NextExp x the max rate / 10000.
+    [TestCase(0, 400000, 1000, 100000, 1400)]
+    [TestCase(0, 100, 1000, 100000, 1)]
+    [TestCase(5, 0, 1000, 100000, 6)]
+    [TestCase(9999, 400000, 1000, 100000, 10000)]
+    [TestCase(10000, 400000, 1000, 100000, 10000)]
+    [TestCase(12000, 400000, 1000, 100000, 12000)]
+    [TestCase(0, 400000, 1000, 0, 0)]
+    public void Tick(long rest, long expBase, long nextExp, int maxRate, long expected) {
+        Assert.That(RestExpRules.Tick(rest, expBase, nextExp, maxRate), Is.EqualTo(expected));
+    }
 }

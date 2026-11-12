@@ -104,6 +104,21 @@ public sealed class ExperienceManager {
         return gain;
     }
 
+    // The home rest exp tick (RestExpRules.Tick), sent as ExpUp 1 (SetRestExp) as the client reads it
+    // (CSceneStateGame::OnExpUp, scenestategame.cpp:4186). Nothing is sent when the rest exp is at its cap.
+    public void TickRestExp() {
+        if (!session.TableMetadata.ExpTable.NextExp.TryGetValue(Level, out long nextExp)
+            || !session.TableMetadata.ExpTable.ExpBase.TryGetValue(RestExpRules.TickTableId, Level, out long expBase)) {
+            return;
+        }
+        long rest = RestExpRules.Tick(RestExp, expBase, nextExp, Constants.RestExpMaxAcquireRate);
+        if (rest == RestExp) {
+            return;
+        }
+        RestExp = rest;
+        session.Send(ExperienceUpPacket.SetRestExp(RestExp));
+    }
+
     public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) => AddExp(expGained, message, kill: false);
 
     private long AddExp(long expGained, ExpMessageCode message, bool kill) {

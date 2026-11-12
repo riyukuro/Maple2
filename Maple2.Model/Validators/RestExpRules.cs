@@ -16,4 +16,18 @@ public static class RestExpRules {
         }
         return (gain, Math.Max(0, rest - gain));
     }
+
+    // KMS2 adds rest exp at home every TickMs: the level's row of exp base table 1 times 35001 / 10000000, rounded
+    // down and at least 1, up to NextExp times RestExpMaxAcquireRate / 10000. Returns the new rest exp.
+    public const int TickMs = 10000;
+    public const int TickTableId = 1;
+
+    public static long Tick(long rest, long expBase, long nextExp, int maxAcquireRate) {
+        long cap = nextExp * maxAcquireRate / 10000;
+        if (rest >= cap) {
+            return rest;
+        }
+        long step = Math.Max(1, expBase * 35001 / 10000000);
+        return Math.Min(cap, rest + step);
+    }
 }

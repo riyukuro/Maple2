@@ -3,6 +3,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
@@ -76,6 +77,8 @@ public class FieldPlayer : Actor<Player> {
     // The party buffs follow the party members in the field; checked once a second.
     private const int PartyBuffIntervalMs = 1000;
     private long partyBuffTick;
+    // At home rest exp grows every RestExpRules.TickMs, the first time one tick after entering.
+    private long restExpTick;
 
     // The emotion skill of the last state sync (0: none), the tick its time was last counted at and the time not
     // counted yet (see TrophyTimeRules).
@@ -226,6 +229,15 @@ public class FieldPlayer : Actor<Player> {
         if (tickCount >= partyBuffTick) {
             partyBuffTick = tickCount + PartyBuffIntervalMs;
             UpdatePartyBuffs();
+        }
+
+        if (Field.MapId == Constant.DefaultHomeMapId) {
+            if (restExpTick == 0) {
+                restExpTick = tickCount + RestExpRules.TickMs;
+            } else if (tickCount >= restExpTick) {
+                restExpTick = tickCount + RestExpRules.TickMs;
+                Session.Exp.TickRestExp();
+            }
         }
 
         if (IsDead) {
