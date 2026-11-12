@@ -144,6 +144,10 @@ public class FurnishingManager {
             }
         }
 
+        long mesos = HomeBuildRules.BuyCubeMesos(furnishingShopMetadata.FurnishingTokenType, furnishingShopMetadata.Price);
+        if (mesos > 0) {
+            session.ConditionUpdate(ConditionType.buy_cube, counter: mesos);
+        }
         return true;
     }
 

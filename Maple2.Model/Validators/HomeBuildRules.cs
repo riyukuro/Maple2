@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 
@@ -86,5 +87,11 @@ public static class HomeBuildRules {
         } else {
             home.BuildMeso += price;
         }
+    }
+
+    // buy_cube (74000028 "Spend 5,000 mesos placing furnishings in your house", value 5000): the mesos a player
+    // pays for a furnishing bought as it is placed. A meret price spends no mesos.
+    public static long BuyCubeMesos(FurnishingCurrencyType currency, long price) {
+        return currency == FurnishingCurrencyType.Meso && price > 0 ? price : 0;
     }
 }

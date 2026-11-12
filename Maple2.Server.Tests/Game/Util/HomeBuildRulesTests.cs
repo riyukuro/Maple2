@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
@@ -187,5 +188,12 @@ public class HomeBuildRulesTests {
     public void OwnsPlot_StaysOwnerOnly() {
         Assert.That(HomeEditRules.OwnsPlot(1, 5), Is.False);
         Assert.That(HomeEditRules.OwnsPlot(1, 1), Is.True);
+    }
+
+    [TestCase(FurnishingCurrencyType.Meso, 1500, 1500)]
+    [TestCase(FurnishingCurrencyType.Meret, 30, 0)]
+    [TestCase(FurnishingCurrencyType.Meso, 0, 0)]
+    public void BuyCubeCountsTheMesosSpent(FurnishingCurrencyType currency, long price, long expected) {
+        Assert.That(HomeBuildRules.BuyCubeMesos(currency, price), Is.EqualTo(expected));
     }
 }
