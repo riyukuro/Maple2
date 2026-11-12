@@ -160,6 +160,9 @@ public sealed class AchievementManager {
             session.ConditionUpdate(ConditionType.revise_achieve_single_grade, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
             session.ConditionUpdate(ConditionType.hero_achieve, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
             session.ConditionUpdate(ConditionType.trophy_point, codeLong: achievement.Id);
+            // hero_achieve_grade (trophies 21240001, 21100019, 23100290): each grade a trophy of the condition's
+            // code gains adds 1. KMS2 sends the update after the trophy_point one.
+            session.ConditionUpdate(ConditionType.hero_achieve_grade, codeLong: achievement.Id);
             if (!achievement.Metadata.Grades.TryGetValue(achievement.CurrentGrade, out grade)) {
                 break;
             }

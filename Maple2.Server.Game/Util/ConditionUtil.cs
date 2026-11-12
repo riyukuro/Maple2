@@ -88,6 +88,7 @@ public static class ConditionUtil {
             case ConditionType.quest_accept:
             case ConditionType.quest_clear_by_chapter:
             case ConditionType.quest_clear:
+            case ConditionType.quest_revise_achieve:
             case ConditionType.quest_daily:
             case ConditionType.field_mission:
             case ConditionType.quest_alliance:

@@ -19,6 +19,17 @@ public static class TrophyReportRules {
         return !metadata.Locked;
     }
 
+    // The decoration exp a home check-in adds to interior_exp_offset: the check-in's decoration score, when the home
+    // took it (a home at the top decoration level takes none).
+    public static long InteriorExpCounted(long decorationScore, bool homeGainedExp) {
+        return homeGainedExp && decorationScore > 0 ? decorationScore : 0;
+    }
+
+    // Whether a check-in counts for interior_level: once when the decoration level rose, by however many levels.
+    public static bool InteriorLevelRaised(long levelBefore, long levelAfter) {
+        return levelAfter > levelBefore;
+    }
+
     // Whether a clear that left the record at totalClears is the dungeon's first. A colosseum record keeps the round
     // in TotalClears, so it never reports.
     public static bool IsFirstClear(DungeonGroupType groupType, int totalClears) {

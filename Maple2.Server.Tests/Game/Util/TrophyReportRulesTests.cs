@@ -28,6 +28,51 @@ public class TrophyReportRulesTests {
         Assert.That(TrophyReportRules.CountsAsGoHome(alreadyInOwnHome: true), Is.False);
     }
 
+    // KMS2: a check-in that left the home at level 3 with 50 exp moved interior_exp_offset to 450, and one that
+    // raised the level from 1 to 3 moved interior_level from 1 to 2.
+    [Test]
+    public void InteriorTrophiesCountTheCheckIn() {
+        Assert.That(TrophyReportRules.InteriorExpCounted(450, homeGainedExp: true), Is.EqualTo(450));
+        Assert.That(TrophyReportRules.InteriorExpCounted(450, homeGainedExp: false), Is.EqualTo(0));
+        Assert.That(TrophyReportRules.InteriorExpCounted(0, homeGainedExp: true), Is.EqualTo(0));
+        Assert.That(TrophyReportRules.InteriorLevelRaised(1, 3), Is.True);
+        Assert.That(TrophyReportRules.InteriorLevelRaised(3, 4), Is.True);
+        Assert.That(TrophyReportRules.InteriorLevelRaised(3, 3), Is.False);
+        Assert.That(AchievementManager.Advances(ConditionType.interior_exp_offset, 900, 450), Is.True);
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 1, 1), Is.True);
+    }
+
+    // hero_achieve_grade: a grade gained by a trophy inside the code range (21240001) or on the code list (21100019)
+    // counts; any other trophy's grade does not.
+    [TestCase(21220032, true)]
+    [TestCase(21230046, true)]
+    [TestCase(21210009, false)]
+    [TestCase(21240001, false)]
+    public void HeroAchieveGradeCountsTrophiesInTheCodeRange(int trophyId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.hero_achieve_grade, 10,
+            new ConditionMetadata.Parameters(Range: new ConditionMetadata.Range<int>(21220001, 21230999)), null);
+        Assert.That(condition.Check(null!, codeLong: trophyId), Is.EqualTo(expected));
+    }
+
+    [TestCase(21100010, true)]
+    [TestCase(21100049, true)]
+    [TestCase(21100019, false)]
+    public void HeroAchieveGradeCountsTrophiesOnTheCodeList(int trophyId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.hero_achieve_grade, 1,
+            new ConditionMetadata.Parameters(Integers: [21100010, 21100011, 21100049]), null);
+        Assert.That(condition.Check(null!, codeLong: trophyId), Is.EqualTo(expected));
+    }
+
+    // quest_revise_achieve: only the quests the trophy lists count (22210017 lists 8 guide quests).
+    [TestCase(90000660, true)]
+    [TestCase(90000762, true)]
+    [TestCase(90000661 + 1, false)]
+    public void QuestReviseAchieveCountsTheListedQuests(int questId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.quest_revise_achieve, 8,
+            new ConditionMetadata.Parameters(Integers: [90000660, 90000661, 90000670, 90000680, 90000690, 90000692, 90000760, 90000762]), null);
+        Assert.That(condition.Check(null!, codeLong: questId), Is.EqualTo(expected));
+    }
+
     // KMS2 sends dungeon_first_clear only with the record update that shows 1 clear.
     [Test]
     public void FirstClearOnlyAtOneClear() {

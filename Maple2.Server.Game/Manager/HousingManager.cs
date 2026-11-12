@@ -18,6 +18,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -373,6 +374,8 @@ public class HousingManager {
 
     public void InitNewHome(string characterName, ExportedUgcMapMetadata? template) {
         Home.NewHomeDefaults(characterName);
+        // A new home is at decoration level 1: the first count of interior_level (see InteriorCheckIn).
+        session.ConditionUpdate(ConditionType.interior_level);
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (template is null) {
@@ -455,9 +458,23 @@ public class HousingManager {
             }
         }
 
+        long levelBefore = Home.DecorationLevel;
+        long expBefore = Home.DecorationExp;
         Home.GainExp(decorationScore, tableMetadata.MasteryUgcHousingTable.Entries);
         Home.DecorationRewardTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         session.Send(CubePacket.DesignRankReward(Home));
+
+        // interior_exp_offset (trophy 23500023) adds the decoration exp of the check-in; interior_level (trophies
+        // 23500020-23500022) adds 1 when the check-in raised the decoration level. KMS2 sends them in this order
+        // after the check-in answer.
+        bool gained = Home.DecorationLevel != levelBefore || Home.DecorationExp != expBefore;
+        long expCounted = TrophyReportRules.InteriorExpCounted(decorationScore, gained);
+        if (expCounted > 0) {
+            session.ConditionUpdate(ConditionType.interior_exp_offset, counter: expCounted);
+        }
+        if (TrophyReportRules.InteriorLevelRaised(levelBefore, Home.DecorationLevel)) {
+            session.ConditionUpdate(ConditionType.interior_level);
+        }
     }
 
     public void InteriorReward(byte rewardId) {

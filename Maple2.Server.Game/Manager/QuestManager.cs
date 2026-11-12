@@ -515,6 +515,9 @@ public sealed class QuestManager {
         session.ConditionUpdate(ConditionType.quest_clear_by_chapter, codeLong: quest.Metadata.Basic.ChapterId);
         session.ConditionUpdate(ConditionType.quest, codeLong: quest.Metadata.Id);
         session.ConditionUpdate(ConditionType.quest_clear, codeLong: quest.Metadata.Id);
+        // quest_revise_achieve (trophies 22210017, 22300102): completing a quest of the condition's code adds 1, as
+        // KMS2 sends right after the quest's complete packet.
+        session.ConditionUpdate(ConditionType.quest_revise_achieve, codeLong: quest.Metadata.Id);
         if (QuestRules.CountsAsDaily(quest.Metadata.Basic)) {
             session.ConditionUpdate(ConditionType.quest_daily, codeLong: quest.Metadata.Id);
         }
