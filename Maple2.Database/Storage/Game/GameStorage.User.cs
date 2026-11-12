@@ -17,6 +17,7 @@ using SkillBook = Maple2.Model.Game.SkillBook;
 using SkillTab = Maple2.Model.Game.SkillTab;
 using SkillPoint = Maple2.Model.Game.SkillPoint;
 using Wardrobe = Maple2.Model.Game.Wardrobe;
+using Mail = Maple2.Model.Game.Mail;
 using GameEventUserValue = Maple2.Model.Game.GameEventUserValue;
 using Home = Maple2.Model.Game.Home;
 using HomeLayout = Maple2.Database.Model.HomeLayout;
@@ -255,7 +256,11 @@ public partial class GameStorage {
         }
 
         // We pass in objectId only for Player initialization.
-        public Player? LoadPlayer(long accountId, long characterId, int objectId, short channel) {
+        // entryMails gets the time of the character's last save (its row version before this entry stamps it, epoch
+        // seconds) and gives the mails the entry sends; they are stored in the same save as the entry's stamp, so a
+        // failed entry stores neither and a stored mail always comes with the stamp that stops it next time.
+        public Player? LoadPlayer(long accountId, long characterId, int objectId, short channel,
+                                  Func<long, IEnumerable<Mail>>? entryMails = null) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
             Model.Account? account = Context.Account.Find(accountId);
@@ -269,11 +274,21 @@ public partial class GameStorage {
                 return null;
             }
 
+            long lastSave = character.LastModified.ToEpochSeconds();
             account.Online = true;
             character.Channel = channel;
 
             Context.Account.Update(account);
             Context.Character.Update(character);
+            if (entryMails != null) {
+                long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                foreach (Mail mail in entryMails(lastSave)) {
+                    mail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, now);
+                    Model.Mail model = mail;
+                    model.Id = 0;
+                    Context.Mail.Add(model);
+                }
+            }
             Context.SaveChanges();
 
             Tuple<long, string> guild = Context.GuildMember

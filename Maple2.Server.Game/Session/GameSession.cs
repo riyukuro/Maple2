@@ -230,7 +230,12 @@ public sealed partial class GameSession : Core.Network.Session {
         Player? player;
         try {
             AcquireLock(AccountId, 5);
-            player = db.LoadPlayer(AccountId, CharacterId, objectId, GameServer.GetChannel());
+            // A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100:
+            // 90), stored with the entry's stamp.
+            IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
+            player = db.LoadPlayer(AccountId, CharacterId, objectId, GameServer.GetChannel(), lastSave =>
+                EventMailRules.ReturnUser(sendMail.Select(gameEvent => gameEvent.Metadata), CharacterId, lastSave,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
             db.Commit();
         } finally {
             ReleaseLock(AccountId);
@@ -526,11 +531,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(MentorPacket.MyList());
         Send(MentorPacket.Unknown12());
         Config.LoadChatStickers();
-        // Mail. A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100: 90).
-        foreach (Mail mail in EventMailRules.ReturnUser(FindEvent(GameEventType.SendMail).Select(gameEvent => gameEvent.Metadata),
-                     CharacterId, Player.Value.Character.LastOnlineTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
-            db.CreateMail(mail);
-        }
+        // Mail (the ReturnUser mails were stored by LoadPlayer)
         Mail.Notify(true);
         // BypassKey
         // AH

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Linq;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -101,5 +103,40 @@ public class EventMailTests {
             Assert.That(EventMailRules.ReturnUser(running, CharacterId, Now - 89 * Day, Now), Is.Empty);
             Assert.That(EventMailRules.ReturnUser(running, CharacterId, 0, Now), Is.Empty);
         });
+    }
+
+    // Through LoadPlayer: the rule gets the character's last save (its row version before the entry), and the mail
+    // is stored with the entry's stamp (the channel) in one save.
+    [TestCase(120, 1)]
+    [TestCase(10, 0)]
+    public void ReturnUser_LoadPlayer(int daysAway, int mails) {
+        var test = new TestGameSession();
+        DateTime lastSave = DateTime.UtcNow.AddDays(-daysAway);
+        using (var context = new Ms2Context(test.Options)) {
+            Maple2.Database.Model.Character row = context.Character.Single(character => character.Id == test.CharacterId);
+            context.Entry(row).Property(character => character.LastModified).CurrentValue = lastSave;
+            context.SaveChanges();
+        }
+        GameEventMetadata[] running = [
+            Row(10100100, GameEventType.SendMail, new SendMailEvent("ReturnUser", 170531002, MailType.Notice, 90)),
+        ];
+        long seen = -1;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Player? player = db.LoadPlayer(test.AccountId, test.CharacterId, 1, 7, last => {
+                seen = last;
+                return EventMailRules.ReturnUser(running, test.CharacterId, last, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            });
+            Assert.That(player, Is.Not.Null);
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.Multiple(() => {
+                Assert.That(seen, Is.EqualTo(new DateTimeOffset(lastSave).ToUnixTimeSeconds()).Within(1));
+                Assert.That(db.GetAllMail(test.CharacterId).Select(mail => (mail.Type, mail.Content)),
+                    Is.EqualTo(Enumerable.Repeat((MailType.Notice, "170531002"), mails)));
+            });
+        }
+        using (var context = new Ms2Context(test.Options)) {
+            Assert.That(context.Character.Single(character => character.Id == test.CharacterId).Channel, Is.EqualTo(7));
+        }
     }
 }
