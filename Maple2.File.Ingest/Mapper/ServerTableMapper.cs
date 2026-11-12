@@ -439,7 +439,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return results;
     }
 
-    private static Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> MergeQuestScriptFunctions(Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> results, IEnumerable<(int NpcId, IDictionary<int, QuestScriptFunction> ScriptFunctions)> parser) {
+    public static Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> MergeQuestScriptFunctions(Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> results, IEnumerable<(int NpcId, IDictionary<int, QuestScriptFunction> ScriptFunctions)> parser) {
         foreach ((int questId, IDictionary<int, QuestScriptFunction> scripts) in parser) {
             var scriptDict = new Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>(); // scriptIds, functionDict
             foreach ((int scriptId, QuestScriptFunction scriptFunction) in scripts) {
