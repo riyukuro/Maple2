@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 
@@ -29,11 +30,23 @@ public class FittingDollRulesTests {
     }
 
     [Test]
-    public void CanWear_RefusesCharacterBoundItem() {
+    public void CanWear_RefusesItemBoundToAnotherCharacter() {
         Assert.Multiple(() => {
-            Assert.That(FittingDollRules.CanWear(EquipDoll, false, Gender.All, boundToCharacter: true), Is.EqualTo(FittingDollRules.Error.InvalidBinding));
-            Assert.That(FittingDollRules.CanWear(OutfitDoll, true, Gender.All, boundToCharacter: true), Is.EqualTo(FittingDollRules.Error.InvalidBinding));
+            Assert.That(FittingDollRules.CanWear(EquipDoll, false, Gender.All, boundToOther: true), Is.EqualTo(FittingDollRules.Error.InvalidBinding));
+            Assert.That(FittingDollRules.CanWear(OutfitDoll, true, Gender.All, boundToOther: true), Is.EqualTo(FittingDollRules.Error.InvalidBinding));
+            Assert.That(FittingDollRules.CanWear(EquipDoll, false, Gender.All, boundToOther: false), Is.EqualTo(FittingDollRules.Error.None));
             Assert.That((int) FittingDollRules.Error.InvalidBinding, Is.EqualTo(0x12));
+        });
+    }
+
+    // A bow bound to the character dressing the doll is its own; only a binding to another character is refused.
+    [Test]
+    public void BoundToOther_ComparesTheBoundCharacter() {
+        Assert.Multiple(() => {
+            Assert.That(FittingDollRules.BoundToOther(null, 1001), Is.False);
+            Assert.That(FittingDollRules.BoundToOther(new ItemBinding(1001, "Tester"), 1001), Is.False);
+            Assert.That(FittingDollRules.BoundToOther(new ItemBinding(1002, "Other"), 1001), Is.True);
+            Assert.That(FittingDollRules.BoundToOther(new ItemBinding(0, ""), 1001), Is.False);
         });
     }
 

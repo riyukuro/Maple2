@@ -75,7 +75,7 @@ public class ItemSocketHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            Item? item = session.Item.GetGear(itemUid);
+            Item? item = session.Item.GetSocketItem(itemUid);
             if (item == null) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
                 return;
@@ -87,7 +87,9 @@ public class ItemSocketHandler : FieldPacketHandler {
             }
 
             foreach (long materialUid in materialUids) {
-                Item? material = session.Item.Inventory.Get(materialUid, InventoryType.Gear);
+                // The client offers ingredients from inventory tabs 0 and 1 (gear and outfit).
+                Item? material = ItemSocketRules.Inventories.Select(type => session.Item.Inventory.Get(materialUid, type))
+                    .FirstOrDefault(found => found != null);
                 if (material == null) {
                     session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
                     return;
@@ -141,8 +143,10 @@ public class ItemSocketHandler : FieldPacketHandler {
 
         long itemUid = packet.ReadLong();
 
-        Item? item = session.Item.GetGear(itemUid);
+        Item? item = session.Item.GetSocketItem(itemUid);
         if (item == null) {
+            // Any reply lifts the page's wait; the client shows this message for an item it cannot find itself.
+            session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
             return;
         }
 
@@ -241,7 +245,7 @@ public class ItemSocketHandler : FieldPacketHandler {
         byte socketSlot = packet.ReadByte();
 
         lock (session.Item) {
-            Item? item = session.Item.GetGear(itemUid);
+            Item? item = session.Item.GetSocketItem(itemUid);
             if (item == null) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
                 return;
@@ -285,7 +289,7 @@ public class ItemSocketHandler : FieldPacketHandler {
         byte socketSlot = packet.ReadByte();
 
         lock (session.Item) {
-            Item? item = session.Item.GetGear(itemUid);
+            Item? item = session.Item.GetSocketItem(itemUid);
             if (item == null) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
                 return;
@@ -352,7 +356,7 @@ public class ItemSocketHandler : FieldPacketHandler {
     }
 
     private (ItemGemstone, GemstoneUpgradeTable.Entry)? CheckUpgradeGemstoneOnItem(GameSession session, long itemUid, sbyte slot) {
-        ItemSocket? itemSocket = session.Item.GetGear(itemUid)?.Socket;
+        ItemSocket? itemSocket = session.Item.GetSocketItem(itemUid)?.Socket;
         if (itemSocket == null) {
             session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
             return null;

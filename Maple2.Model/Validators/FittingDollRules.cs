@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
@@ -23,9 +24,10 @@ public static class FittingDollRules {
     // Whether an item fits the doll, as the client tests it before it sends a put (FittingDollPC::FUN_14121c910,
     // fittingdollslot_1.cpp:490): the item is a skin exactly when the doll is an outfit doll (type not 0), and the
     // item's gender limit allows the doll's gender.
-    // A character-bound item is refused: any character of the owner's account can take items off the doll.
-    public static Error CanWear(FunctionCubeMetadata.FittingDollData doll, bool isSkin, Gender itemGender, bool boundToCharacter = false) {
-        if (boundToCharacter) {
+    // The client tests no binding itself; result 0x12 shows s_fittingdoll_Invalid_binding ("belongs to another
+    // character"), so the server refuses an item bound to another character, not one bound to the one dressing the doll.
+    public static Error CanWear(FunctionCubeMetadata.FittingDollData doll, bool isSkin, Gender itemGender, bool boundToOther = false) {
+        if (boundToOther) {
             return Error.InvalidBinding;
         }
         bool outfitDoll = doll.Type != 0;
@@ -37,6 +39,10 @@ public static class FittingDollRules {
         }
         return Error.None;
     }
+
+    // Whether an item is bound to a character other than characterId (a binding to character 0 binds no one).
+    public static bool BoundToOther(ItemBinding? binding, long characterId) =>
+        binding != null && binding.CharacterId != 0 && binding.CharacterId != characterId;
 
     // Mannequins work only in the indoor home. An outdoor plot can be forfeited or expire without its cubes being
     // removed one by one, which would leave the items on a cube that no longer exists.

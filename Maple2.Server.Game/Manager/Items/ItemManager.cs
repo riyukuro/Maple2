@@ -40,6 +40,12 @@ public class ItemManager {
         return item ?? Equips.Gear.Values.FirstOrDefault(gear => gear.Uid == uid);
     }
 
+    // The item the socket pages of the item socket dialog work on: the client lists inventory tabs 0 and 1 (gear and
+    // outfit) and the equipped gear and outfits (ItemSocketRules.Inventories), so an outfit with sockets is one too.
+    public Item? GetSocketItem(long uid) {
+        return GetGear(uid) ?? GetOutfit(uid);
+    }
+
     /// <summary>
     /// Retrieves an outfit from inventory or equipment.
     /// </summary>

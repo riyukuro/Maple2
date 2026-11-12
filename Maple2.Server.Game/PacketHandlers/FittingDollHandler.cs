@@ -82,7 +82,7 @@ public class FittingDollHandler : FieldPacketHandler {
                     return FittingDollRules.Error.InvalidSlot;
                 }
                 FittingDollRules.Error error = FittingDollRules.CanWear(doll.Data, item.Metadata.Property.IsSkin,
-                    item.Metadata.Limit.Gender, boundToCharacter: item.Transfer?.Binding != null);
+                    item.Metadata.Limit.Gender, FittingDollRules.BoundToOther(item.Transfer?.Binding, session.CharacterId));
                 if (error != FittingDollRules.Error.None) {
                     return error;
                 }
@@ -148,6 +148,10 @@ public class FittingDollHandler : FieldPacketHandler {
                 if (!doll.Items.TryGetValue(slot, out Item? item)) {
                     return FittingDollRules.Error.InvalidItem;
                 }
+                // Another character of the account may not take an item bound to the character that put it on.
+                if (FittingDollRules.BoundToOther(item.Transfer?.Binding, session.CharacterId)) {
+                    return FittingDollRules.Error.InvalidBinding;
+                }
                 // The client refuses a take-off into a full inventory the same way (FittingDollPC::FUN_14121c9d0).
                 if (session.Item.Inventory.FreeSlots(item.Inventory) <= 0) {
                     return FittingDollRules.Error.InventoryFull;
@@ -212,10 +216,18 @@ public class FittingDollHandler : FieldPacketHandler {
     private static bool ToInventoryOrMail(GameSession owner, long cubeUid, Item item) {
         item.Group = ItemGroup.Default;
         item.Slot = -1;
+        // A recall or a removed cube gives an item bound to another character of the account back to that character:
+        // the row becomes its own, in its inventory at its next login (an inventory save never deletes rows it does
+        // not hold).
+        ItemBinding? binding = item.Transfer?.Binding;
+        bool toOther = FittingDollRules.BoundToOther(binding, owner.CharacterId);
         using (GameStorage.Request db = owner.GameStorage.Context()) {
-            if (!db.MoveItem(item, cubeUid, ItemGroup.FittingDoll, owner.CharacterId)) {
+            if (!db.MoveItem(item, cubeUid, ItemGroup.FittingDoll, toOther ? binding!.CharacterId : owner.CharacterId)) {
                 return false;
             }
+        }
+        if (toOther) {
+            return true;
         }
         if (owner.Field != null && owner.Item.Inventory.FreeSlots(item.Inventory) > 0 && owner.Item.Inventory.Add(item, commit: true)) {
             return true;

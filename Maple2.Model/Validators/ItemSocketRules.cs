@@ -3,6 +3,10 @@ using Maple2.Model.Enum;
 namespace Maple2.Model.Validators;
 
 public static class ItemSocketRules {
+    // The inventory tabs the socket pages of the item socket dialog list items from (GetItemsInCategory 0 and 1 in
+    // ItemSocketSystemPageSocketUnlock and the other pages), besides the equipped gear and outfits (layers 0 and 1).
+    public static readonly InventoryType[] Inventories = [InventoryType.Gear, InventoryType.Outfit];
+
     // The client counts no sockets on an item with a skin type (an outfit) while the SkinSocket feature is off
     // (CItemSocketTable::IsSocketFeatureEnabled, commonfiles/itemsocketsystemutil.cpp), so the ingest keeps such an
     // item's socketDataId only when the feature is on for the locale.
