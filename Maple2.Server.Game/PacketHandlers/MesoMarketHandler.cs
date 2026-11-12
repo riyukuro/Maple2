@@ -13,8 +13,10 @@ using static Maple2.Model.Error.MesoMarketError;
 namespace Maple2.Server.Game.PacketHandlers;
 
 public class MesoMarketHandler : FieldPacketHandler {
-    // TODO: Periodically update this by querying `meso-market-sold` table
-    private const int AVERAGE_PRICE = 200;
+    // The average price while nothing has been sold.
+    private const int DEFAULT_AVERAGE_PRICE = 200;
+    // The sales the average price is taken over.
+    private const int AVERAGE_PRICE_SALES = 100;
 
     public override RecvOp OpCode => RecvOp.MesoMarket;
 
@@ -54,8 +56,16 @@ public class MesoMarketHandler : FieldPacketHandler {
         }
     }
 
-    private static void HandleLoad(GameSession session) {
-        session.Send(MesoMarketPacket.Load(AVERAGE_PRICE));
+    // The price of MesoMarketBasePrice meso over the last sales.
+    private long AveragePrice(GameStorage.Request db) {
+        return MesoMarketRules.AveragePrice(db.GetSoldMesoListings(AVERAGE_PRICE_SALES), Constants.MesoMarketBasePrice,
+            DEFAULT_AVERAGE_PRICE, Constant.MesoMarketMinToken, Constant.MesoMarketMaxToken);
+    }
+
+    private void HandleLoad(GameSession session) {
+        using (GameStorage.Request average = session.GameStorage.Context()) {
+            session.Send(MesoMarketPacket.Load(AveragePrice(average)));
+        }
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
 
         // KMS2 sends the character's black market listings here, between the counts and the own list.
@@ -66,18 +76,21 @@ public class MesoMarketHandler : FieldPacketHandler {
         session.Send(MesoMarketPacket.MyListings(myListings));
     }
 
+    // Client: BlackMarketPageMesoRegister::SendMesoMarketMode5 (uiblackmarketpagemeso.cpp:614): the meso amount,
+    // one of the MesoMarketProductUnit amounts, and the whole price, the price per MesoMarketBasePrice times the
+    // amount's count of base prices (GetTotalPrice, :801). The checks and their order are CMesoMarketMan::CanRegister
+    // (mesomarketproductcli.cpp:283).
     private void HandleCreate(GameSession session, IByteReader packet) {
         long amount = packet.ReadLong();
         long price = packet.ReadLong();
 
-        if (amount != Constants.MesoMarketBasePrice) {
+        if (!MesoMarketRules.IsProductUnit(amount, Constants.MesoMarketBasePrice, ProductUnits())) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_invalidSaleMoney));
             return;
         }
 
-        const int delta = (int) (AVERAGE_PRICE * Constant.MesoMarketRangeRate);
-        if (AVERAGE_PRICE + delta < price || price < AVERAGE_PRICE - delta) {
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_invalidBuyMerat));
+        if (session.Currency.Meso < amount) {
+            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_hasNotMeso));
             return;
         }
 
@@ -91,8 +104,10 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Currency.Meso < amount) {
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_hasNotMeso));
+        (long low, long high) = MesoMarketRules.PriceRange(AveragePrice(db), Constant.MesoMarketRangeRate,
+            Constant.MesoMarketMinToken, Constant.MesoMarketMaxToken);
+        if (!MesoMarketRules.IsListingPrice(amount, price, Constants.MesoMarketBasePrice, low, high)) {
+            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_invalidBuyMerat));
             return;
         }
 
@@ -110,9 +125,18 @@ public class MesoMarketHandler : FieldPacketHandler {
         }
 
         session.Player.Value.Account.MesoMarketListed++;
-        session.Currency.Meso -= Constants.MesoMarketBasePrice;
+        session.Currency.Meso -= amount;
         session.Send(MesoMarketPacket.Create(listing, session.Player.Value.Account.MesoMarketListed));
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
+    }
+
+    private long[] ProductUnits() {
+        return [
+            Constants.MesoMarketProductUnit0, Constants.MesoMarketProductUnit1, Constants.MesoMarketProductUnit2,
+            Constants.MesoMarketProductUnit3, Constants.MesoMarketProductUnit4, Constants.MesoMarketProductUnit5,
+            Constants.MesoMarketProductUnit6, Constants.MesoMarketProductUnit7, Constants.MesoMarketProductUnit8,
+            Constants.MesoMarketProductUnit9,
+        ];
     }
 
     private static void HandleCancel(GameSession session, IByteReader packet) {
@@ -169,7 +193,9 @@ public class MesoMarketHandler : FieldPacketHandler {
         using GameStorage.Request db = session.GameStorage.Context();
         MesoListing? listing = db.GetMesoListing(listingId);
         if (listing == null) {
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_notFoundProduct));
+            // A listing leaves the table when it is sold or taken back. Client: CMesoMarketMan::OnBuyResult
+            // (mesomarketproductcli.cpp:401) drops the row from its list on code 0 and on code 17 only.
+            SendSoldOut(session, listingId);
             return;
         }
 
@@ -189,7 +215,7 @@ public class MesoMarketHandler : FieldPacketHandler {
         }
 
         if (!db.DeleteMesoListing(listingId, true)) {
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_alreadySoldProduct));
+            SendSoldOut(session, listingId);
             return;
         }
 
@@ -200,6 +226,10 @@ public class MesoMarketHandler : FieldPacketHandler {
 
         session.Send(MesoMarketPacket.Purchase(listing.Id, session.Player.Value.Account.MesoMarketPurchased));
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
+    }
+
+    private static void SendSoldOut(GameSession session, long listingId) {
+        session.Send(MesoMarketPacket.Purchase(listingId, session.Player.Value.Account.MesoMarketPurchased, s_mesoMarket_error_alreadySoldProduct));
     }
 
     private void SendPurchaseMail(GameSession session, GameStorage.Request db, MesoListing listing) {

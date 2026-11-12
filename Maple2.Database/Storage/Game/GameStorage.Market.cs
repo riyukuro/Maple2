@@ -40,6 +40,17 @@ public partial class GameStorage {
                 .ToList();
         }
 
+        // The amount and price of the last sold listings.
+        public IList<(long Amount, long Price)> GetSoldMesoListings(int count) {
+            return Context.MesoMarketSold.OrderByDescending(listing => listing.SoldTime)
+                .ThenByDescending(listing => listing.Id)
+                .Take(count)
+                .Select(listing => new { listing.Amount, listing.Price })
+                .AsEnumerable()
+                .Select(listing => (listing.Amount, listing.Price))
+                .ToList();
+        }
+
         public MesoListing? GetMesoListing(long listingId) {
             return Context.MesoMarket.Find(listingId);
         }

@@ -1,0 +1,243 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Session;
+
+namespace Maple2.Server.Tests.Game.PacketHandlers;
+
+// MesoMarketHandler: the meso pages of the black market window (register, take back, search, buy).
+public class MesoMarketHandlerTests {
+    private const long BASE = 5000000;
+    private const long OTHER_ACCOUNT = 777;
+    private const long OTHER_CHARACTER = 778;
+
+    private TestGameSession test = null!;
+    private MesoMarketHandler handler = null!;
+
+    private GameSession Login(long meso = 0, long tokens = 0) {
+        test = new TestGameSession();
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
+            MesoMarketBasePrice = (int) BASE,
+            MesoMarketProductUnit0 = (int) BASE,
+            MesoMarketProductUnit1 = (int) (2 * BASE),
+        });
+        handler = new MesoMarketHandler { ServerTableMetadata = test.ServerTableMetadata };
+        GameSession session = test.Start();
+        session.Currency.Meso = meso;
+        session.Currency[CurrencyType.MesoToken] = tokens;
+        test.TakeSent();
+        return session;
+    }
+
+    private void Send(GameSession session, byte mode, params long[] values) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(mode);
+            foreach (long value in values) {
+                writer.WriteLong(value);
+            }
+        }));
+    }
+
+    // The packets' bodies after the opcode, as hex.
+    private List<string> Sent() {
+        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket)
+            .Select(packet => Convert.ToHexString(packet)[4..]).ToList();
+    }
+
+    private static string Long(long value) => Convert.ToHexString(BitConverter.GetBytes(value));
+    private static string Int(int value) => Convert.ToHexString(BitConverter.GetBytes(value));
+
+    private MesoListing OtherListing(long amount, long price, int days = 2) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.CreateMesoListing(new MesoListing(TimeSpan.FromDays(days)) {
+            AccountId = OTHER_ACCOUNT,
+            CharacterId = OTHER_CHARACTER,
+            Amount = amount,
+            Price = price,
+        })!;
+    }
+
+    private ICollection<MesoListing> OwnListings(GameSession session) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetMyMesoListingsByAccountId(session.AccountId);
+    }
+
+    // Mode 5: the listing with the own flag and the day's count, then the counts; the listed meso leave.
+    [TestCase(1, 200)]
+    [TestCase(1, 160)]
+    [TestCase(1, 240)]
+    [TestCase(2, 400)]
+    public void Register_TakesTheListedMeso(int units, long price) {
+        GameSession session = Login(meso: 3 * BASE);
+
+        Send(session, 5, units * BASE, price);
+
+        MesoListing listing = OwnListings(session).Single();
+        Assert.That((listing.Amount, listing.Price), Is.EqualTo((units * BASE, price)));
+        Assert.That(session.Currency.Meso, Is.EqualTo((3 - units) * BASE));
+        List<string> sent = Sent();
+        Assert.That(sent, Has.Count.EqualTo(2));
+        Assert.That(sent[0], Does.StartWith("05" + Long(listing.Id) + Long(units * BASE) + Long(price)));
+        Assert.That(sent[0], Does.EndWith("01" + Int(1)));
+        Assert.That(sent[1], Is.EqualTo("02" + Int(1) + Int(0)));
+    }
+
+    // Mode 5 refused: mode 0 with the code and nothing taken. 15 an amount that is no product unit, 5 too few
+    // meso, 16 a price per base price outside the range or a price that is no whole count of it.
+    [TestCase(7000000L, 200L, 3 * BASE, 15)]
+    [TestCase(3 * BASE, 600L, 3 * BASE, 15)]
+    [TestCase(0L, 200L, 3 * BASE, 15)]
+    [TestCase(BASE, 200L, BASE - 1, 5)]
+    [TestCase(BASE, 241L, 3 * BASE, 16)]
+    [TestCase(BASE, 159L, 3 * BASE, 16)]
+    [TestCase(2 * BASE, 200L, 3 * BASE, 16)]
+    [TestCase(2 * BASE, 401L, 3 * BASE, 16)]
+    public void Register_Refused(long amount, long price, long meso, int code) {
+        GameSession session = Login(meso: meso);
+
+        Send(session, 5, amount, price);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(code) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+        Assert.That(OwnListings(session), Is.Empty);
+    }
+
+    // Five listings at once and five a day: the sixth is refused with 8, and with 13 once one was taken back.
+    [Test]
+    public void Register_Limits() {
+        GameSession session = Login(meso: 10 * BASE);
+        for (int i = 0; i < 5; i++) {
+            Send(session, 5, BASE, 200);
+        }
+        Assert.That(OwnListings(session), Has.Count.EqualTo(5));
+        test.TakeSent();
+
+        Send(session, 5, BASE, 200);
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(8) }));
+
+        long id = OwnListings(session).First().Id;
+        Send(session, 6, id);
+        Assert.That(Sent(), Is.EqualTo(new[] { "06" + Int(0) + Long(id) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(6 * BASE));
+
+        Send(session, 5, BASE, 200);
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(13) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(6 * BASE));
+    }
+
+    // Mode 6 on another account's listing: 9, and the listing stays.
+    [Test]
+    public void TakeBack_OnlyTheOwnListing() {
+        GameSession session = Login();
+        MesoListing other = OtherListing(BASE, 200);
+
+        Send(session, 6, other.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(9) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(0));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(other.Id), Is.Not.Null);
+    }
+
+    // Mode 7: the listings in the amount range, cheapest first, each with its own flag.
+    [Test]
+    public void Search_ListsTheRange() {
+        GameSession session = Login(meso: BASE);
+        MesoListing dear = OtherListing(BASE, 230);
+        MesoListing cheap = OtherListing(BASE, 170);
+        OtherListing(2 * BASE, 400);
+        Send(session, 5, BASE, 200);
+        long own = OwnListings(session).Single().Id;
+        test.TakeSent();
+
+        Send(session, 7, BASE, BASE);
+
+        string list = Sent().Single();
+        Assert.That(list, Does.StartWith("07" + Int(3) + Long(cheap.Id)));
+        Assert.That(list.IndexOf(Long(own) + Long(BASE) + Long(200), StringComparison.Ordinal), Is.EqualTo(2 + 8 + 82));
+        Assert.That(list.Substring(2 + 8 + 80, 2), Is.EqualTo("00"));
+        Assert.That(list.Substring(2 + 8 + 82 + 80, 2), Is.EqualTo("01"));
+        Assert.That(list.Substring(2 + 8 + 164, 16), Is.EqualTo(Long(dear.Id)));
+
+        Send(session, 7, 0, BASE);
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(10) }));
+    }
+
+    // Mode 8: the tokens leave, the buyer's mail holds the meso, the seller's mail the price less the 5% fee, and
+    // the answer is the code, the listing and the month's count, then the counts.
+    [Test]
+    public void Buy_PaysTokensAndMailsBoth() {
+        GameSession session = Login(tokens: 500);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(0) + Long(listing.Id) + Int(1), "02" + Int(0) + Int(1) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(80));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Null);
+        Mail buyer = db.GetAllMail(session.CharacterId).Single();
+        Assert.That((buyer.Type, buyer.Meso, buyer.Meret), Is.EqualTo((MailType.MesoMarket, 2 * BASE, 0L)));
+        Mail seller = db.GetAllMail(OTHER_CHARACTER).Single();
+        Assert.That((seller.Type, seller.Meso, seller.Meret), Is.EqualTo((MailType.MesoMarket, 0L, 399L)));
+        Assert.That(seller.ContentArgs.Select(arg => arg.Value), Is.EqualTo(new[] { "10000000", "420", "21", "5", "399" }));
+        Assert.That(test.World.MailNotifications.Select(request => request.CharacterId),
+            Is.EquivalentTo(new[] { session.CharacterId, OTHER_CHARACTER }));
+    }
+
+    // Mode 8 on a listing that is gone: mode 8 with code 17, on which the client drops the row from its list.
+    [Test]
+    public void Buy_GoneListingAnswersSoldOut() {
+        GameSession session = Login(tokens: 500);
+
+        Send(session, 8, 4242);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(4242) + Int(0) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+    }
+
+    // Mode 8 refused: 7 too few tokens, 12 a listing past its end, 14 the month's count used up.
+    [TestCase(199L, 2, 0, 7)]
+    [TestCase(500L, -1, 0, 12)]
+    [TestCase(500L, 2, 10, 14)]
+    public void Buy_Refused(long tokens, int days, int bought, int code) {
+        GameSession session = Login(tokens: tokens);
+        session.Player.Value.Account.MesoMarketPurchased = bought;
+        MesoListing listing = OtherListing(BASE, 200, days);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(code) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(tokens));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+        Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
+    }
+
+    // The average price of the window's load follows the sales: 200 while nothing is sold, then the price per
+    // base price of what was sold, and the register range moves with it.
+    [Test]
+    public void AveragePrice_FollowsTheSales() {
+        GameSession session = Login(meso: BASE, tokens: 1000);
+        Send(session, 3);
+        Assert.That(Sent()[0].Substring(18, 16), Is.EqualTo(Long(200)));
+
+        Send(session, 8, OtherListing(BASE, 160).Id);
+        Send(session, 8, OtherListing(2 * BASE, 280).Id);
+        test.TakeSent();
+
+        Send(session, 3);
+        Assert.That(Sent()[0].Substring(18, 16), Is.EqualTo(Long(146)));
+
+        Send(session, 5, BASE, 200);
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(16) }));
+        Send(session, 5, BASE, 175);
+        Assert.That(OwnListings(session), Has.Count.EqualTo(1));
+    }
+}
