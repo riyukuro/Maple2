@@ -182,7 +182,12 @@ public partial class TriggerContext {
     public void SetQuestAccept(int questId) {
         DebugLog("[SetQuestAccept] questId:{QuestId}", questId);
         foreach (FieldPlayer player in Field.Players.Values) {
-            player.Session.Quest.Start(questId, bypassRequirements: true); // a quest the player already has is left alone
+            // A quest the player already has is left alone; a full bag does not refuse a forced accept (the quest's
+            // items go by mail), so what is left is a quest the played client does not have.
+            QuestError error = player.Session.Quest.Start(questId, bypassRequirements: true);
+            if (error != QuestError.none && !player.Session.Quest.TryGetQuest(questId, out _)) {
+                logger.Warning("[SetQuestAccept] quest {QuestId} not started for {CharacterId}: {Error}", questId, player.Value.Character.Id, error);
+            }
         }
     }
 

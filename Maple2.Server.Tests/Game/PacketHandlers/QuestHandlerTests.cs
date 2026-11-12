@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -37,8 +38,8 @@ public class QuestHandlerTests {
         };
     }
 
-    private GameSession Login(bool fullBag = false) {
-        test = new TestGameSession();
+    private GameSession Login(bool fullBag = false, TestGameSession? prepared = null) {
+        test = prepared ?? new TestGameSession();
         test.Register(TestGameSession.Metadata(RewardId));
         if (fullBag) {
             test.Store(TestGameSession.Metadata(20000009));
@@ -263,6 +264,80 @@ public class QuestHandlerTests {
             Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_inventory_full) }));
             Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.False);
             Assert.That(Held(session), Is.EqualTo(0));
+        });
+    }
+
+    // A quest scroll whose quest's items do not fit: the full-bag text, and the scroll stays. With room, the quest
+    // starts and the scroll is used.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Scroll_OfAQuestThatDoesNotStartIsKept(bool fullBag) {
+        const int scrollId = 40000001;
+        ItemMetadata scroll = TestGameSession.Metadata(scrollId, type: 2,
+            function: new ItemMetadataFunction(ItemFunction.QuestScroll, "QuestScroll", $"<v questID=\"{QuestId}\" />", false));
+        test = new TestGameSession();
+        test.Register(scroll);
+        Item held = test.Store(scroll);
+        GameSession session = Login(fullBag, test);
+        test.Register(Data(acceptItem: true));
+        Assert.That(session.Item.Inventory.Get(held.Uid), Is.Not.Null);
+
+        new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! }
+            .Handle(session, TestGameSession.Packet(writer => writer.WriteLong(held.Uid)));
+
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(!fullBag));
+            Assert.That(session.Item.Inventory.Get(held.Uid), fullBag ? Is.Not.Null : Is.Null);
+            Assert.That(sent.Contains(Error(QuestError.s_quest_error_inventory_full)), Is.EqualTo(fullBag));
+            Assert.That(sent.Contains(Convert.ToHexString(ItemUsePacket.QuestScroll(scrollId).ToArray())), Is.EqualTo(!fullBag));
+        });
+    }
+
+    // A forced accept (a map script's) is not refused by a full bag: the quest starts and its item is not lost.
+    [Test]
+    public void ForcedStart_WithAFullBagStartsTheQuest() {
+        GameSession session = Login(fullBag: true);
+        test.Register(Data(acceptItem: true));
+
+        QuestError error = session.Quest.Start(QuestId, bypassRequirements: true);
+
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(error, Is.EqualTo(QuestError.none));
+            Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.True);
+            Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(db.GetAllMail(session.CharacterId).SelectMany(mail => mail.Items).Sum(item => item.Id == RewardId ? item.Amount : 0), Is.EqualTo(1));
+        });
+    }
+
+    // The talk itself is the quest's last condition (talk_in): it is counted before the script is picked, so the
+    // same click opens the complete talk (300), not the progress talk.
+    [Test]
+    public void Talk_CountsTheTalkBeforeThePick() {
+        GameSession session = Login();
+        test.Register(new ScriptMetadata(QuestId, ScriptType.Quest, new Dictionary<int, ScriptState> {
+            [200] = State(200), [300] = State(300),
+        }));
+        QuestMetadata data = Data() with {
+            Conditions = [new ConditionMetadata(ConditionType.talk_in, 1, new ConditionMetadata.Parameters(Integers: [Npc]), null)],
+        };
+        Quest quest = test.StartQuest(data);
+        test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
+        test.SetServerTable(new ScriptFunctionTable(new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>()));
+
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 0, false, 0, 0, 0, 0, [], [], 0);
+        var metadata = new NpcMetadata(Npc, "npc", "", null!, null!, basic, null!, null!, null!, null!, null!, null!, null, null!);
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(FieldNpc).GetField(nameof(FieldNpc.SpawnAnimation), any)!.SetValue(npc, "spawn"); // no movement state to play the talk on
+
+        NpcTalkHandler.BeginTalk(session, npc);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+            Assert.That(session.NpcScript?.State?.Id, Is.EqualTo(300));
         });
     }
 

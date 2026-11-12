@@ -807,8 +807,19 @@ public class ItemUseHandler : FieldPacketHandler {
             }
         }
 
+        // A refused quest (its items do not fit the bag) is answered with the quest's own text, and the scroll stays
+        // unless one of its quests did start.
+        bool started = false;
         foreach (int questId in questIds) {
-            session.Quest.Start(questId);
+            QuestError error = session.Quest.Start(questId);
+            if (error != QuestError.none) {
+                session.Send(QuestPacket.Error(error));
+                continue;
+            }
+            started = true;
+        }
+        if (!started) {
+            return;
         }
 
         session.Item.Inventory.Consume(item.Uid, 1);

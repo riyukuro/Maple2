@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
@@ -37,7 +38,9 @@ public class MentoringManager : IDisposable {
         }
 
         foreach (int questId in returnUser.QuestIds) {
-            session.Quest.Start(questId);
+            if (session.Quest.Start(questId) == QuestError.s_quest_error_inventory_full) {
+                session.Send(QuestPacket.Error(QuestError.s_quest_error_inventory_full));
+            }
         }
 
         session.Send(MentorPacket.UpdateRole(role, session.Player.ObjectId));

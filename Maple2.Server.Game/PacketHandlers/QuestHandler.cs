@@ -279,7 +279,10 @@ public class QuestHandler : FieldPacketHandler {
                 continue;
             }
 
-            session.Quest.Start(questId);
+            // The one refusal the player can act on is the full bag; the others are quests the list should not name.
+            if (session.Quest.Start(questId) == QuestError.s_quest_error_inventory_full) {
+                session.Send(QuestPacket.Error(QuestError.s_quest_error_inventory_full));
+            }
         }
     }
 

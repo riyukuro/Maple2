@@ -188,7 +188,8 @@ public sealed class QuestManager {
             return QuestError.s_quest_error_accept_fail;
         }
 
-        // The quest's items must fit the bag: without them the quest could not be done.
+        // The quest's items must fit the bag: without them the quest could not be done. A forced start (a map
+        // script's, a command's) is not refused: the items that do not fit go by mail.
         List<Item> acceptItems = [];
         foreach (QuestMetadataReward.Item acceptReward in metadata.AcceptReward.EssentialItem) {
             Item? reward = session.Field?.ItemDrop.CreateItem(acceptReward.Id, acceptReward.Rarity, acceptReward.Amount);
@@ -198,7 +199,7 @@ public sealed class QuestManager {
             }
             acceptItems.Add(reward);
         }
-        if (acceptItems.Count > 0 && !session.Item.Inventory.CanAdd(acceptItems)) {
+        if (!bypassRequirements && acceptItems.Count > 0 && !session.Item.Inventory.CanAdd(acceptItems)) {
             return QuestError.s_quest_error_inventory_full;
         }
 
@@ -239,8 +240,8 @@ public sealed class QuestManager {
         }
 
         foreach (Item reward in acceptItems) {
-            if (!session.Item.Inventory.Add(reward, true)) {
-                logger.Error("Failed to add quest reward {RewardId} to inventory", reward.Id);
+            if (!session.Item.AddOrMail(reward, true)) {
+                logger.Error("Failed to give quest reward {RewardId}", reward.Id);
             }
         }
 
