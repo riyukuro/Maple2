@@ -99,6 +99,10 @@ public class BuffManager : IUpdatable {
         // Apply invoke values
         (int invokeValue, float invokeRate) = GetInvokeValues(InvokeEffectType.IncreaseEffectDuration, id, additionalEffect.Property.Group);
         durationMs = Math.Max(0, invokeValue + (int) ((1 + invokeRate) * durationMs));
+        if (Actor is FieldPlayer target) {
+            durationMs = Buff.ReducedDuration(additionalEffect.Property, durationMs,
+                target.Stats.Values[SpecialAttribute.ReduceStun].Total, target.Stats.Values[SpecialAttribute.ReduceDebuff].Total);
+        }
 
         stacks = Buff.AddStacks(stacks, additionalEffect.Property.MaxCount);
 

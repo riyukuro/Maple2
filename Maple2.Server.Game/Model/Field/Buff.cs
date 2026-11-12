@@ -104,6 +104,24 @@ public class Buff : IUpdatable, IByteSerializable {
         return (int) Math.Clamp(amount * AmountFactor(stacks), int.MinValue, int.MaxValue);
     }
 
+    // A debuff put on a player lasts shorter by the player's gear options, in KMS2 packets: a status debuff
+    // (sub-type 2) by attribute 36 (debuff duration reduction), a motion debuff (sub-type 8) with stun 0 or 1 by
+    // attribute 34 (stun duration reduction). The totals are per mille and the result is rounded down
+    // (1500 ms at 5 is sent as 1492, 9999000 ms at 28 as 9719028). Motion debuffs with stun 2 or 4 keep their
+    // duration, and so do debuffs on npcs.
+    public static int ReducedDuration(AdditionalEffectMetadataProperty property, int durationMs, long reduceStun, long reduceDebuff) {
+        if (durationMs <= 0 || property.Type != BuffType.Debuff) {
+            return durationMs;
+        }
+        long reduce = property.SubType switch {
+            BuffSubType.Status => reduceDebuff,
+            BuffSubType.Motion when property.Stun <= 1 => reduceStun,
+            _ => 0,
+        };
+        reduce = Math.Clamp(reduce, 0, 1000);
+        return (int) (durationMs * (1000 - reduce) / 1000);
+    }
+
     // Applying a buff its owner already has restarts it when the reset condition is 0 or 2 and it has a duration:
     // KMS2 then sends the update with a new start and a new end. Reset condition 1 keeps its ticks, 3 replaces the
     // buff, and a buff without duration keeps its start.
