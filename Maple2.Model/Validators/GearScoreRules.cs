@@ -11,6 +11,12 @@ public static class GearScoreRules {
     // The client's default for the constant BothHandGearScorePenaltyDiv.
     public const float DEFAULT_PENALTY_DIV = 4f;
 
+    // The equip subtype the client's item data has for a gear item (property subtype): the two digits of the item
+    // id after the first (15100304: 51, a bow), in every gear item of the client's data that has one; the others
+    // (hair, face and the like) have none, and their digits are no subtype with a factor or a pair. The server
+    // data's own subtype is another number (16 for that bow, which is the gloves' factor here).
+    public static int SubType(int itemId) => itemId / 100000 % 100;
+
     // The equip subtypes that are worn as a pair of one-hand weapons: dagger (31) and throwing star (34).
     public static bool IsPaired(int subType) => subType is 31 or 34;
 

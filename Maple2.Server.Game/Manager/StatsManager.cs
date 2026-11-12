@@ -266,8 +266,8 @@ public class StatsManager {
 
             // The gear score, as the client computes it (GearScoreRules).
             int dataRank = item.Metadata.Property.Rank ?? 0;
-            // The subtype is the item data's own, as in the client, not the id's digits.
-            int subType = item.Metadata.Property.SubType;
+            // The client's item data subtype (GearScoreRules.SubType), not the server data's.
+            int subType = GearScoreRules.SubType(item.Id);
             (int level, int enchantLevel) = item.Metadata.Property.Type == 1
                 ? GearScoreRules.ItemLevel(item.Metadata.Property.GearScore, dataRank, item.Rarity, subType, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0)
                 : (0, 0);

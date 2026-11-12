@@ -29,6 +29,28 @@ public class GearScoreRulesTests {
         Assert.That(Level(80, 0, 4, 51), Is.EqualTo(12378));
     }
 
+    // The subtype is the client's item data subtype, which is the id's two digits after the first; the server
+    // data has 16 for the bow 15100304, the gloves' factor (2528 instead of the client window's 42147).
+    [TestCase(15100304, 51)]
+    [TestCase(11200001, 12)]
+    [TestCase(13400010, 34)]
+    [TestCase(10200001, 2)]
+    public void SubType_IsTheIdsDigits(int itemId, int expected) {
+        Assert.That(GearScoreRules.SubType(itemId), Is.EqualTo(expected));
+    }
+
+    // The bow 15100304 (gear score 80, data rank 6, rarity 4) as the client's window shows it: 42147 plain,
+    // 127285 with limit break 1.
+    [Test]
+    public void ItemLevel_OfTheBowByItsId() {
+        int subType = GearScoreRules.SubType(15100304);
+        Assert.Multiple(() => {
+            Assert.That(GearScoreRules.ItemLevel(80, 6, 4, subType, 0, 0).Level, Is.EqualTo(42147));
+            Assert.That(GearScoreRules.ItemLevel(80, 6, 5, subType, 0, 1).Level, Is.EqualTo(127285));
+            Assert.That(GearScoreRules.ItemLevel(80, 6, 4, 16, 0, 0).Level, Is.EqualTo(2528));
+        });
+    }
+
     [Test]
     public void ItemLevel_AddsTheEnchantAndTheLimitBreak() {
         // From gear score 70: +15 doubles the base.
