@@ -199,6 +199,8 @@ public class StatsManager {
         Actor = actor;
     }
 
+    private static int penaltyDivWarned;
+
     private void AddEquips(FieldPlayer player) {
         Values.GearScore = 0;
         long now = DateTime.Now.ToEpochSeconds();
@@ -220,6 +222,7 @@ public class StatsManager {
             }
         }
 
+        var worn = new List<GearScoreRules.Worn>();
         foreach (Item item in player.Session.Item.Equips.Gear.Values) {
             if (!Gives(item, 0)) {
                 continue;
@@ -261,22 +264,26 @@ public class StatsManager {
 
             player.Buffs.AddItemBuffs(item);
 
-            if (item.Type.IsShield || item.Type.IsSpellbook) {
-                // Shields and spellbooks do not contribute to gear score
-                continue;
-            }
-
-            Log.Logger.Debug("Calculating Gearscore. Item ID: {id} - Gearscore: {gearscore} - Rarity: {rarity}, Enchant Level: {enchantLevel}, Limit Break Level: {limitBreakLevel}", item.Metadata.Id, item.Metadata.Property.GearScore, item.Rarity, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0);
-            (int gearScore, int enchantScore) = Lua.CalcItemLevel(item.Metadata.Property.GearScore, item.Rarity, item.Type.Type, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0);
-            int totalGearScore = gearScore + enchantScore;
-            // Stars and daggers have half gear score
-            if (item.Type.IsThrowingStar || item.Type.IsDagger) {
-                totalGearScore /= 2;
-            }
-            // TODO: When dual-wielding weapons, if the difference between the two weapons GS is too great (we don't know the exact value yet), the GS should be penalized (we don't know by how much).
-            Values.GearScore += totalGearScore;
+            // The gear score, as the client computes it (GearScoreRules).
+            int dataRank = item.Metadata.Property.Rank ?? 0;
+            // The subtype is the item data's own, as in the client, not the id's digits.
+            int subType = item.Metadata.Property.SubType;
+            (int level, int enchantLevel) = item.Metadata.Property.Type == 1
+                ? GearScoreRules.ItemLevel(item.Metadata.Property.GearScore, dataRank, item.Rarity, subType, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0)
+                : (0, 0);
+            EquipSlot slot = item.EquipSlot();
+            worn.Add(new GearScoreRules.Worn(slot == EquipSlot.RH ? 1 : slot == EquipSlot.LH ? 2 : 0, GearScoreRules.IsPaired(subType), level, enchantLevel));
         }
 
+        float penaltyDiv = player.Session.ServerTableMetadata.ConstantsTable.BothHandGearScorePenaltyDiv;
+        if (penaltyDiv <= 0) {
+            // No row in the constants: the client's own default.
+            if (Interlocked.Exchange(ref penaltyDivWarned, 1) == 0) {
+                Log.Logger.Warning("The constants have no BothHandGearScorePenaltyDiv; the gear score uses the client's default {Default}", GearScoreRules.DEFAULT_PENALTY_DIV);
+            }
+            penaltyDiv = GearScoreRules.DEFAULT_PENALTY_DIV;
+        }
+        Values.GearScore = GearScoreRules.Total(worn, penaltyDiv);
         Log.Logger.Debug("Final Gearscore for {name} ({id}): {gearscore}", player.Value.Character.Name, player.Value.Character.Id, Values.GearScore);
         player.Session.Dungeon.UpdateDungeonEnterLimit();
         player.Session.ConditionUpdate(ConditionType.item_gear_score, counter: Values.GearScore);
