@@ -172,7 +172,8 @@ public class ClubManager : IDisposable {
             return ClubError.s_club_err_null_member;
         }
 
-        if (characterId == Club.LeaderId) {
+        bool leaderLeft = characterId == Club.LeaderId;
+        if (leaderLeft) {
             FindNewLeader(characterId);
         }
 
@@ -190,6 +191,12 @@ public class ClubManager : IDisposable {
 
         if (!Club.Members.TryRemove(member.CharacterId, out _)) {
             return ClubError.s_club_err_unknown;
+        }
+
+        // The leader left: store the new leader, or the club row names a character who is no member, and loading
+        // the club (GetClub picks the leader among the members) fails after a restart.
+        if (leaderLeft && Club.LeaderId != characterId) {
+            db.SaveClub(Club);
         }
 
         return ClubError.none;
