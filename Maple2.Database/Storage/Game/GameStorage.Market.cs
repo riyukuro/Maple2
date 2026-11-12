@@ -139,10 +139,13 @@ public partial class GameStorage {
             return Context.TrySaveChanges() ? ToMarketEntry(model) : null;
         }
 
+        // A listing is saved from the seller's copy, which is as old as the seller's login. The sales count belongs
+        // to the buyers (AddUgcMarketSale), so a save leaves the stored count as it is.
         public bool SaveUgcMarketItems(ICollection<UgcMarketItem> items) {
             foreach (UgcMarketItem item in items) {
                 Model.UgcMarketItem model = item;
                 Context.UgcMarketItem.Update(model);
+                Context.Entry(model).Property(listing => listing.SalesCount).IsModified = false;
             }
 
             return Context.TrySaveChanges();
@@ -151,7 +154,29 @@ public partial class GameStorage {
         public bool SaveUgcMarketItem(UgcMarketItem item) {
             Model.UgcMarketItem model = item;
             Context.UgcMarketItem.Update(model);
+            Context.Entry(model).Property(listing => listing.SalesCount).IsModified = false;
             return Context.TrySaveChanges();
+        }
+
+        // One more sale of the listing, added to the stored count.
+        public bool AddUgcMarketSale(long id) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.UgcMarketItem? listing = Context.UgcMarketItem.Find(id);
+            if (listing == null) {
+                return false;
+            }
+
+            listing.SalesCount++;
+            return Context.TrySaveChanges();
+        }
+
+        // The stored sales count of each of the account's listings.
+        public IDictionary<long, int> GetUgcSalesCounts(long accountId) {
+            return Context.UgcMarketItem.Where(listing => listing.AccountId == accountId)
+                .Select(listing => new { listing.Id, listing.SalesCount })
+                .AsEnumerable()
+                .ToDictionary(listing => listing.Id, listing => listing.SalesCount);
         }
 
         public bool DeleteUgcMarketItem(long id) {

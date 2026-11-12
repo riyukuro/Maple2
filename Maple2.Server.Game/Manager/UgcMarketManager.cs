@@ -4,6 +4,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Serilog;
@@ -37,6 +38,9 @@ public sealed class UgcMarketManager {
     }
 
     public void Load() {
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            LoadSalesCounts(db);
+        }
         session.Send(MeretMarketPacket.LoadPersonalListings(items.Values, SalesTotal(items.Values)));
     }
 
@@ -50,9 +54,37 @@ public sealed class UgcMarketManager {
         return total;
     }
 
+    // The sales counts as stored: a buyer's sale changes the stored listing, not this session's copy.
+    private void LoadSalesCounts(GameStorage.Request db) {
+        foreach ((long id, int count) in db.GetUgcSalesCounts(session.AccountId)) {
+            if (items.TryGetValue(id, out UgcMarketItem? item)) {
+                item.SalesCount = count;
+            }
+        }
+    }
+
+    // One sale of a listing, stored for its seller: the sale's entry with the seller's share at the sales total
+    // before this sale, and the listing's sales count.
+    public static SoldUgcMarketItem? RecordSale(GameStorage.Request db, UgcMarketItem listing) {
+        long salesTotal = SalesTotal(db.GetUgcListingsByAccountId(listing.SellerAccountId).Values);
+        long profit = UgcMarketRules.Profit(UgcMarketRules.CostRows, salesTotal, listing.Price);
+        if (!db.AddUgcMarketSale(listing.Id)) {
+            return null;
+        }
+        listing.SalesCount++;
+
+        return db.CreateSoldUgcMarketItem(new SoldUgcMarketItem {
+            AccountId = listing.SellerAccountId,
+            Price = listing.Price,
+            Name = listing.Look.Name,
+            Profit = profit,
+        });
+    }
+
     public void RefreshSales() {
         using GameStorage.Request db = session.GameStorage.Context();
         Save(db);
+        LoadSalesCounts(db);
         sales.Clear();
         sales = db.GetMySoldUgcListings(session.AccountId);
         session.Send(MeretMarketPacket.LoadSales(sales.Values));
@@ -75,6 +107,7 @@ public sealed class UgcMarketManager {
             return;
         }
         sales.Remove(id);
+        LoadSalesCounts(db);
 
         session.Currency.Meret += sale.Profit;
         session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));

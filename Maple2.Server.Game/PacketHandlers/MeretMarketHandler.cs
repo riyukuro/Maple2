@@ -447,20 +447,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         // The seller's share by the charge table the client shows, at the seller's sales total before this sale.
-        long salesTotal = UgcMarketManager.SalesTotal(db.GetUgcListingsByAccountId(ugcItem.SellerAccountId).Values);
-        long profit = UgcMarketRules.Profit(UgcMarketRules.CostRows, salesTotal, ugcItem.Price);
-
-        ugcItem.SalesCount++;
-        db.SaveUgcMarketItem(ugcItem);
-
-        var soldEntry = new SoldUgcMarketItem {
-            AccountId = ugcItem.SellerAccountId,
-            Price = ugcItem.Price,
-            Name = ugcItem.Look.Name,
-            Profit = profit,
-        };
-
-        soldEntry = db.CreateSoldUgcMarketItem(soldEntry);
+        SoldUgcMarketItem? soldEntry = UgcMarketManager.RecordSale(db, ugcItem);
         if (soldEntry == null) {
             Logger.Fatal("Unable to create Sold Ugc Market Entry for {itemId}", ugcItem.Id);
             return null;
