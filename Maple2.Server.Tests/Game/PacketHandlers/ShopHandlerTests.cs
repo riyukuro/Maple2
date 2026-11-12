@@ -98,14 +98,14 @@ public class ShopHandlerTests {
         Assert.That(Convert.ToHexString(sent[3]), Does.EndWith("04" + "022D3101" + "03000000" + "5A000000" + "01" + "00"));
     }
 
-    // A running NpcShopShowItem row that names the shop but not its product: the reloaded shop does not hold it,
-    // so a buy pays nothing and adds nothing.
+    // An ended NpcShopShowItem row names the shop's product and no running row does: the reloaded shop does not
+    // hold it, so a buy pays nothing and adds nothing.
     [Test]
     public void Buy_OfAnItemTheEventHidesDoesNothing() {
         GameSession session = Login();
         test.SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata> {
-            [1] = new(1, GameEventType.NpcShopShowItem, DateTime.Now.AddDays(-1), DateTime.Now.AddDays(1), TimeSpan.Zero, TimeSpan.Zero, [],
-                new NpcShopShowItem(ShopId, [ShopItemId]), "", "", "", ""),
+            [1] = new(1, GameEventType.NpcShopShowItem, DateTime.Now.AddDays(-30), DateTime.Now.AddDays(-1), TimeSpan.Zero, TimeSpan.Zero, [],
+                new NpcShopShowItem(ShopId, [ProductItemId]), "", "", "", ""),
         }));
         session.Shop.Load(ShopId);
         test.TakeSent();

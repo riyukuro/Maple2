@@ -216,8 +216,8 @@ public sealed class ShopManager {
         }
 
         // A running NpcShopShowItem event keeps the shop to the items it names.
-        IReadOnlySet<int>? shown = ShopShowItemRules.Shown(session.ServerTableMetadata.GameEventTable.Entries.Values, metadata.Id, DateTime.Now);
-        List<ShopItemMetadata> shopItemMetadatas = ShopShowItemRules.Filter(allShopItems.Values, shown).ToList();
+        IReadOnlySet<int> hidden = ShopShowItemRules.Hidden(session.ServerTableMetadata.GameEventTable.Entries.Values, metadata.Id, DateTime.Now);
+        List<ShopItemMetadata> shopItemMetadatas = ShopShowItemRules.Filter(allShopItems.Values, hidden).ToList();
 
         if (metadata.EnableReset) {
             int minItemCount = metadata.RestockData.MinItemCount;

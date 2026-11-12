@@ -474,7 +474,8 @@ public record MiniGameBonusReward(
 
 // The items an npc shop shows while the event runs: value1 the shop id, value2 the shop's item ids, comma separated.
 // The client has no class for this type (no GameEventNpcShopShowItem), so it is not sent and the shop window shows
-// what the server loads. A shop that a running row names shows only the items its running rows name.
+// what the server loads. An item that a row of its shop names (running or ended) shows only while one of those rows
+// runs; the shop's other items always show. The ingest keeps the ended rows for this.
 public record NpcShopShowItem(
     int ShopId,
     int[] ItemIds) : GameEventData;

@@ -9,7 +9,7 @@ using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
 
-// The NpcShopShowItem game event: a shop a running row names shows only the items its running rows name.
+// The NpcShopShowItem game event: an item a row of its shop names shows only while one of those rows runs.
 public class ShopShowItemTests {
     private static readonly DateTime Now = new(2026, 11, 12, 12, 0, 0);
 
@@ -58,33 +58,35 @@ public class ShopShowItemTests {
         Assert.That(gameEvent.SentToClient, Is.False);
     }
 
-    // The running rows of the shop together; ended and later rows, other shops and other types do not count.
+    // An item some row of the shop names is hidden unless one of its rows runs; ended and later rows hide, other
+    // shops and other types do not count.
     [Test]
-    public void Shown_RunningRowsOfTheShop() {
+    public void Hidden_NamedItemsWithoutARunningRow() {
         GameEventMetadata[] events = [
             Row(13000001, new NpcShopShowItem(254, [20000031, 20000032]), new DateTime(2019, 1, 17), new DateTime(2099, 12, 31)),
             Row(13000003, new NpcShopShowItem(254, [20000302]), new DateTime(2026, 11, 1), new DateTime(2026, 12, 1)),
-            Row(13000002, new NpcShopShowItem(254, [40400112]), new DateTime(2019, 3, 14), new DateTime(2019, 4, 11)),
+            Row(13000002, new NpcShopShowItem(254, [40400112, 20000302]), new DateTime(2019, 3, 14), new DateTime(2019, 4, 11)),
             Row(13000004, new NpcShopShowItem(254, [50600257]), new DateTime(2027, 1, 1), new DateTime(2099, 1, 1)),
             Row(13000005, new NpcShopShowItem(282, [11304817]), new DateTime(2019, 1, 17), new DateTime(2099, 12, 31)),
             Row(1, new SpawnNpcEvent(2000064, 10, 11001003, 254), DateTime.MinValue, DateTime.MaxValue),
         ];
         Assert.Multiple(() => {
-            Assert.That(ShopShowItemRules.Shown(events, 254, Now), Is.EquivalentTo(new[] { 20000031, 20000032, 20000302 }));
-            Assert.That(ShopShowItemRules.Shown(events, 282, Now), Is.EquivalentTo(new[] { 11304817 }));
-            Assert.That(ShopShowItemRules.Shown(events, 316, Now), Is.Null);
-            Assert.That(ShopShowItemRules.Shown(events, 254, new DateTime(2018, 1, 1)), Is.Null);
+            Assert.That(ShopShowItemRules.Hidden(events, 254, Now), Is.EquivalentTo(new[] { 40400112, 50600257 }));
+            Assert.That(ShopShowItemRules.Hidden(events, 282, Now), Is.Empty);
+            Assert.That(ShopShowItemRules.Hidden(events, 316, Now), Is.Empty);
+            Assert.That(ShopShowItemRules.Hidden(events, 254, new DateTime(2018, 1, 1)),
+                Is.EquivalentTo(new[] { 20000031, 20000032, 20000302, 40400112, 50600257 }));
         });
     }
 
-    // Shop 254 holds the 16 coin items of the 2019 rows and the two meso items: only the meso items stay.
+    // Shop 254: the coin items of the ended 2019 rows go, the meso items and an item no row names stay.
     [Test]
-    public void Filter_KeepsTheShownItems() {
-        ShopItemMetadata[] items = [Item(1, 40400112), Item(2, 50600257), Item(17, 20000031), Item(18, 20000032)];
+    public void Filter_DropsTheHiddenItems() {
+        ShopItemMetadata[] items = [Item(1, 40400112), Item(2, 50600257), Item(17, 20000031), Item(18, 20000032), Item(19, 30000001)];
         Assert.Multiple(() => {
-            Assert.That(ShopShowItemRules.Filter(items, new System.Collections.Generic.HashSet<int> { 20000031, 20000032 }).Select(item => item.Id),
-                Is.EqualTo(new[] { 17, 18 }));
-            Assert.That(ShopShowItemRules.Filter(items, null), Is.EqualTo(items));
+            Assert.That(ShopShowItemRules.Filter(items, new System.Collections.Generic.HashSet<int> { 40400112, 50600257 }).Select(item => item.Id),
+                Is.EqualTo(new[] { 17, 18, 19 }));
+            Assert.That(ShopShowItemRules.Filter(items, new System.Collections.Generic.HashSet<int>()), Is.EqualTo(items));
         });
     }
 }
