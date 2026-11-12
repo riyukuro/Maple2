@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -474,8 +475,12 @@ public sealed class QuestManager {
             }
         }
 
-        // TODO: Guild rewards, mission points?
+        // TODO: Guild rewards
 
+        int missionPoints = MissionPointRules.PointsCounted(reward.MissionPoint);
+        if (missionPoints > 0) {
+            session.ConditionUpdate(ConditionType.mission_point, counter: missionPoints);
+        }
         session.ConditionUpdate(ConditionType.quest_clear_by_chapter, codeLong: quest.Metadata.Basic.ChapterId);
         session.ConditionUpdate(ConditionType.quest, codeLong: quest.Metadata.Id);
         session.ConditionUpdate(ConditionType.quest_clear, codeLong: quest.Metadata.Id);
