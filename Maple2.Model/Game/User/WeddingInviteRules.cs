@@ -111,6 +111,17 @@ public static class WeddingInviteRules {
         return sent.Add((marriageId, ceremonyTime));
     }
 
+    // The hall was held: every ticket sent for it goes (any time it had). True when there was one, so the
+    // client is told only about a ticket it holds.
+    public static bool TakeBackTicket(ISet<(long MarriageId, long CeremonyTime)> sent, long marriageId) {
+        int removed = 0;
+        foreach ((long MarriageId, long CeremonyTime) ticket in sent.Where(ticket => ticket.MarriageId == marriageId).ToList()) {
+            sent.Remove(ticket);
+            removed++;
+        }
+        return removed > 0;
+    }
+
     // A ticket is only for a hall whose ceremony has not been held: the couple is still engaged. After the vow
     // (married) and in any divorce state the hall is over, also while its time is still in the window.
     public static bool HallNotHeld(MaritalStatus coupleStatus) => coupleStatus == MaritalStatus.Engaged;

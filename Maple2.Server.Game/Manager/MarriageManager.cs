@@ -170,6 +170,17 @@ public sealed class MarriageManager {
         session.Send(WeddingPacket.Ticket(marriageId, hall));
     }
 
+    // Wedding 25: the hall was held, so a ticket this session sent for it is taken back. The ceremony sends it
+    // at the vow to the ticket holders in the hall; anyone else holding the ticket gets it on the next check.
+    public void TakeBackTicket(long marriageId) {
+        lock (ticketsSent) {
+            if (!WeddingInviteRules.TakeBackTicket(ticketsSent, marriageId)) {
+                return;
+            }
+        }
+        session.Send(WeddingPacket.InvitationRemove(marriageId));
+    }
+
     // The ticket is the client's way into the hall (Wedding 0x1a). The couple gets its own while the
     // ceremony time is inside the client's window.
     private void SendTickets() {
@@ -190,6 +201,8 @@ public sealed class MarriageManager {
         foreach ((WeddingHall hall, MaritalStatus coupleStatus) in halls) {
             if (WeddingInviteRules.GuestTicket(hall.GuestList, session.CharacterId, hall.MarriageId, Marriage.Id, coupleStatus, hall.CeremonyTime, now, WeddingCeremony.EnterWindowSeconds)) {
                 SendTicket(hall.MarriageId, hall);
+            } else if (!WeddingInviteRules.HallNotHeld(coupleStatus)) {
+                TakeBackTicket(hall.MarriageId);
             }
         }
     }
@@ -279,6 +292,7 @@ public sealed class MarriageManager {
         info.Status = MaritalStatus.Married;
         info.MarriageTime = marriageTime;
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
+        TakeBackTicket(Marriage.Id);
     }
 
     private void CheckEngagementExpiration() {

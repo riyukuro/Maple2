@@ -27,6 +27,7 @@ public static class WeddingPacket {
         AcceptReservationChange = 22,
         InvitationClear = 23,
         Ticket = 24,
+        InvitationRemove = 25,
         SearchInvitee = 27,
         SendInvite = 29,
         MutualAgree = 30,
@@ -196,6 +197,17 @@ public static class WeddingPacket {
         pWriter.WriteByte((byte) Command.Ticket);
         pWriter.WriteLong(marriageId);
         pWriter.WriteClass<WeddingHall>(hall);
+
+        return pWriter;
+    }
+
+    // Client: WeddingManager::OnInvitationRemove (weddingmanager.cpp:212): the id of one ticket, which the client
+    // drops from its list (the hall list dialog, when open, is redrawn). KMS2 sends it to the ticket holders
+    // when the vow is done, inside the hall and elsewhere.
+    public static ByteWriter InvitationRemove(long marriageId) {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.InvitationRemove);
+        pWriter.WriteLong(marriageId);
 
         return pWriter;
     }

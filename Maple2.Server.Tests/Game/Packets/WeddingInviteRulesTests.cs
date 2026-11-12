@@ -223,4 +223,26 @@ public class WeddingInviteRulesTests {
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("b"));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+
+    // The hall was held: its tickets (any ceremony time) go once; another hall's stays.
+    [Test]
+    public void TakeBackTicket_OnlyTheHeldHallOnce() {
+        var sent = new HashSet<(long MarriageId, long CeremonyTime)> { (Hall, Time), (Hall, Time + 3600), (Hall + 1, Time) };
+
+        Assert.That(WeddingInviteRules.TakeBackTicket(sent, Hall), Is.True);
+        Assert.That(sent, Is.EquivalentTo(new[] { (Hall + 1, Time) }));
+        Assert.That(WeddingInviteRules.TakeBackTicket(sent, Hall), Is.False);
+    }
+
+    // Wedding 25: the sub-type and the ticket's id.
+    [Test]
+    public void InvitationRemoveBytes() {
+        ByteWriter writer = WeddingPacket.InvitationRemove(0x2416214343cba400);
+
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.ReadShort(), Is.EqualTo((short) Maple2.Server.Core.Constants.SendOp.Wedding));
+        Assert.That(reader.ReadByte(), Is.EqualTo(25));
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x2416214343cba400));
+        Assert.That(writer.Length, Is.EqualTo(11));
+    }
 }

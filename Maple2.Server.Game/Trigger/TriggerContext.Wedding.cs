@@ -150,6 +150,10 @@ public partial class TriggerContext {
         foreach (long characterId in ceremony.Couple) {
             MailCompleteGifts(ceremony, characterId);
         }
+        // The hall was held: its ticket is taken back from the guests in the room (Wedding 25).
+        foreach (FieldPlayer player in Field.Players.Values) {
+            player.Session.Marriage.TakeBackTicket(ceremony.MarriageId);
+        }
     }
 
     // System mail 40000010 ("Wedding is complete", the gifts of the hall attached), one to each of the couple.
