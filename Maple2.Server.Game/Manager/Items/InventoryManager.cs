@@ -615,7 +615,11 @@ public class InventoryManager {
         }
     }
 
-    public bool Expand(InventoryType type, int expandRowCount = Constant.InventoryExpandRowCount) {
+    // The Meret expansion of the bag window (charge: true) costs InventoryExpandPrice1Row and ends with
+    // ExpandComplete, which shows s_msg_expand_inven_complete. An expansion coupon (item function ExpandInven) costs
+    // nothing: the client asks with the plain item-use box, no price in it, and the ItemUse answer shows the same
+    // message, so no ExpandComplete is sent for it.
+    public bool Expand(InventoryType type, int expandRowCount = Constant.InventoryExpandRowCount, bool charge = true) {
         // if expandRowCount is not divisible by 6, return false
         if (expandRowCount % 6 != 0) {
             return false;
@@ -627,14 +631,15 @@ public class InventoryManager {
                 return false;
             }
 
-            short newExpand = (short) (session.Player.Value.Unlock.Expand[type] + expandRowCount);
+            session.Player.Value.Unlock.Expand.TryGetValue(type, out short expanded);
+            short newExpand = (short) (expanded + expandRowCount);
             if (newExpand > MaxExpandSize(type)) {
                 // There is client side validation for this, but if the server side limits mismatch, use this error.
                 session.Send(NoticePacket.MessageBox(StringCode.s_inventory_err_expand_max));
                 return false;
             }
 
-            if (session.Currency.Meret < Constants.InventoryExpandPrice1Row) {
+            if (charge && session.Currency.Meret < Constants.InventoryExpandPrice1Row) {
                 session.Send(ItemInventoryPacket.Error(s_cannot_charge_merat));
                 return false;
             }
@@ -643,15 +648,15 @@ public class InventoryManager {
                 return false;
             }
 
-            session.Currency.Meret -= Constants.InventoryExpandPrice1Row;
-            if (session.Player.Value.Unlock.Expand.ContainsKey(type)) {
-                session.Player.Value.Unlock.Expand[type] = newExpand;
-            } else {
-                session.Player.Value.Unlock.Expand[type] = (short) expandRowCount;
+            if (charge) {
+                session.Currency.Meret -= Constants.InventoryExpandPrice1Row;
             }
+            session.Player.Value.Unlock.Expand[type] = newExpand;
 
             session.Send(ItemInventoryPacket.ExpandCount(type, newExpand));
-            session.Send(ItemInventoryPacket.ExpandComplete());
+            if (charge) {
+                session.Send(ItemInventoryPacket.ExpandComplete());
+            }
             return true;
         }
     }

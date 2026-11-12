@@ -38,8 +38,8 @@ namespace Maple2.Server.Tests.Game;
 //   test.TakeSent()                                         // the packets sent since the last call, in order
 //
 // The session is made without its constructor, so only what Start sets exists: Player, Item (Equips, Inventory,
-// Furnishing), Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Field (a field that only
-// broadcasts to this player) and World (grants every lock). A handler that reaches anything else needs it set first.
+// Furnishing), ItemBox, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Field (a field that only
+// broadcasts to this player and rolls item drops from the tables set here) and World (grants every lock). A handler that reaches anything else needs it set first.
 // Storage is the real GameStorage; pass MySQL options to run the same test against a database.
 public sealed class TestGameSession {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -75,13 +75,15 @@ public sealed class TestGameSession {
             [Constant.DefaultHomeNumber] = new(Constant.DefaultHomeNumber, 0, 0, cost, cost, new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)),
         }));
         typeof(MapMetadataStorage).GetField("UgcCache", Any)!.SetValue(maps, ugcMaps);
-        Storage = new GameStorage(Options, itemMetadata, maps, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
+        Storage = new GameStorage(Options, itemMetadata, maps, null!, null!, TableMetadata, ServerTableMetadata, NullLogger<GameStorage>.Instance, null!);
         SetServerTable(new ConstantsTable(
             bagSlotTabGameCount: [48, 48], bagSlotTabSkinCount: [48, 48], bagSlotTabSummonCount: [48, 48],
             bagSlotTabMaterialCount: [48, 48], bagSlotTabMasteryCount: [48, 48], bagSlotTabLifeCount: [48, 48],
             bagSlotTabQuestCount: [48, 48], bagSlotTabGemCount: [48, 48], bagSlotTabPetCount: [48, 48],
             bagSlotTabActiveSkillCount: [48, 48], bagSlotTabCoinCount: [48, 48], bagSlotTabBadgeCount: [48, 48],
             bagSlotTabMiscCount: [48, 48], bagSlotTabLapenShardCount: [48, 48], bagSlotTabPieceCount: [48, 48]));
+        // Every created item asks for its sockets.
+        SetTable(new ItemSocketTable(new Dictionary<int, IReadOnlyDictionary<int, ItemSocketMetadata>>()));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];
@@ -145,6 +147,19 @@ public sealed class TestGameSession {
     // A client table (TableMetadata) or a server table (ServerTableMetadata) the handler reads.
     public void SetTable<T>(T table) where T : Table => SetLazy(TableMetadata, table);
     public void SetServerTable<T>(T table) where T : ServerTable => SetLazy(ServerTableMetadata, table);
+
+    // An individual drop box whose groups each give all of their rows' items: one group per item id list, every
+    // row certain (so a test knows what the box gives).
+    public static IDictionary<int, IndividualDropItemTable.Entry> DropBox(params (int ItemId, int Amount)[][] groups) {
+        var box = new Dictionary<int, IndividualDropItemTable.Entry>();
+        foreach ((int ItemId, int Amount)[] rows in groups) {
+            int groupId = box.Count + 1;
+            box[groupId] = new IndividualDropItemTable.Entry(groupId, 0, [new IndividualDropItemTable.Entry.DropCount(1, 100)], 0, false, false,
+                rows.Select(row => new IndividualDropItemTable.Item([row.ItemId], false, 0, 0, 100,
+                    new IndividualDropItemTable.Range<int>(row.Amount, row.Amount), [], 0, 0, false, false, false, false, [], 0)).ToList());
+        }
+        return box;
+    }
     #endregion
 
     // The login: the player and the managers read the stored rows, as GameSession.EnterServer does.
@@ -180,6 +195,17 @@ public sealed class TestGameSession {
         players[fieldPlayer.ObjectId] = fieldPlayer;
         typeof(FieldManager).GetField("<Players>k__BackingField", Any)!.SetValue(field, players);
         typeof(FieldManager).GetField("initialized", Any)!.SetValue(field, true);
+        // What an item box roll reads from the field: its map, the tables and the item data.
+        var map = Uninitialized<MapMetadata>();
+        typeof(MapMetadata).GetField("<Id>k__BackingField", Any)!.SetValue(map, player.Character.MapId);
+        typeof(FieldManager).GetField(nameof(FieldManager.Metadata), Any)!.SetValue(field, map);
+        var stats = Uninitialized<ItemStatsCalculator>();
+        typeof(ItemStatsCalculator).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(stats, TableMetadata);
+        typeof(FieldManager).GetField("<ItemMetadata>k__BackingField", Any)!.SetValue(field, itemMetadata);
+        typeof(FieldManager).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(field, TableMetadata);
+        typeof(FieldManager).GetField("<ServerTableMetadata>k__BackingField", Any)!.SetValue(field, ServerTableMetadata);
+        typeof(FieldManager).GetField("<ItemStatsCalc>k__BackingField", Any)!.SetValue(field, stats);
+        typeof(FieldManager).GetField("<ItemDrop>k__BackingField", Any)!.SetValue(field, new ItemDropManager(field));
         session.Field = field;
 
         session.Currency = new CurrencyManager(session);
@@ -194,7 +220,8 @@ public sealed class TestGameSession {
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
         marriage.Marriage = Marriage.Default;
         session.Marriage = marriage;
-        session.Item = new ItemManager(db, session, Uninitialized<ItemStatsCalculator>());
+        session.Item = new ItemManager(db, session, stats);
+        session.ItemBox = new ItemBoxManager(session);
 
         Session = session;
         return session;

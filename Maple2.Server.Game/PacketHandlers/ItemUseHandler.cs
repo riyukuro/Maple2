@@ -512,21 +512,21 @@ public class ItemUseHandler : FieldPacketHandler {
         session.Config.UpdatePremiumTime(hours);
     }
 
+    // KMS2 answers a box used through RequestItemUse with the inventory packets only (and the gacha script for a
+    // gacha box); ItemBox is the answer to RequestItemBox, the multi-open dialog.
     private static void HandleSelectItemBox(GameSession session, IByteReader packet, Item item) {
         session.ItemBox.Open(item, selection: packet.ReadUnicodeString());
         session.ItemBox.Reset();
     }
 
     private static void HandleOpenItemBox(GameSession session, Item item) {
-        ItemBoxError error = session.ItemBox.Open(item);
-        session.Send(ItemBoxPacket.Open(item.Id, session.ItemBox.BoxCount, error));
+        session.ItemBox.Open(item);
         session.ItemBox.Reset();
     }
 
     private static void HandleOpenGacha(GameSession session, IByteReader packet, Item item) {
         string amountString = packet.ReadUnicodeString();
-        ItemBoxError error = session.ItemBox.Open(item, amountString == "multi" ? 10 : 1);
-        session.Send(ItemBoxPacket.Open(item.Id, session.ItemBox.BoxCount, error));
+        session.ItemBox.Open(item, amountString == "multi" ? 10 : 1);
         session.ItemBox.Reset();
     }
 
@@ -724,38 +724,48 @@ public class ItemUseHandler : FieldPacketHandler {
         session.Item.Inventory.Consume(item.Uid, 1);
     }
 
+    // An expansion coupon: "rows,tab", the tab by the client's tab name (CItemTabNameTable). The coupon is the whole
+    // price; a name the client does not know expands nothing.
     private void HandleExpandInventory(GameSession session, Item item) {
         string[] parameters = item.Metadata.Function?.Parameters.Split(',') ?? [];
-        if (parameters.Length < 2) {
+        if (parameters.Length < 2 || !int.TryParse(parameters[0], out int amount)) {
             return;
         }
 
-        int amount = int.Parse(parameters[0]);
-        InventoryType inventoryType = parameters[1] switch {
-            "game" => InventoryType.Gear,
-            "mastery" => InventoryType.LifeSkill,
-            "summon" => InventoryType.Mount,
-            "misc" => InventoryType.Misc,
-            "skin" => InventoryType.Outfit,
-            "gem" => InventoryType.Gemstone,
-            "material" => InventoryType.Catalyst,
-            "quest" => InventoryType.Quest,
-            "life" => InventoryType.FishingMusic,
-            "coin" => InventoryType.Currency,
-            "pet" => InventoryType.Pets,
-            "activeSkill" => InventoryType.Consumable,
-            "badge" => InventoryType.Badge,
-            "piece" => InventoryType.Fragment,
-            _ => InventoryType.Misc,
-        };
+        InventoryType? inventoryType = ExpandInventoryTab(parameters[1]);
+        if (inventoryType == null) {
+            Logger.Warning("ExpandInven item {ItemId} names no inventory tab: {Parameters}", item.Id, item.Metadata.Function?.Parameters);
+            return;
+        }
 
-        if (!session.Item.Inventory.Expand(inventoryType, amount)) {
+        if (!session.Item.Inventory.Expand(inventoryType.Value, amount, charge: false)) {
             session.Send(ItemUsePacket.MaxInventory());
             return;
         }
 
         session.Send(ItemUsePacket.ExpandInventory());
         session.Item.Inventory.Consume(item.Uid, 1);
+    }
+
+    internal static InventoryType? ExpandInventoryTab(string name) {
+        return name.Trim().ToLowerInvariant() switch {
+            "game" or "equip" => InventoryType.Gear,
+            "skin" => InventoryType.Outfit,
+            "summon" => InventoryType.Mount,
+            "material" => InventoryType.Catalyst,
+            "life" => InventoryType.FishingMusic,
+            "quest" => InventoryType.Quest,
+            "gem" or "gemstone" => InventoryType.Gemstone,
+            "misc" or "etc" => InventoryType.Misc,
+            "mastery" => InventoryType.LifeSkill,
+            "pet" => InventoryType.Pets,
+            "activeskill" => InventoryType.Consumable,
+            "coin" => InventoryType.Currency,
+            "badge" => InventoryType.Badge,
+            "lapenshard" => InventoryType.Lapenshard,
+            "piece" => InventoryType.Fragment,
+            _ => null,
+        };
     }
 
     private void HandleQuestScroll(GameSession session, Item item) {

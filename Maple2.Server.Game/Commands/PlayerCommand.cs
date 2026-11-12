@@ -568,7 +568,7 @@ public class PlayerCommand : GameCommand {
                         return;
                     }
 
-                    session.Item.Inventory.Expand(inventoryType);
+                    session.Item.Inventory.Expand(inventoryType, charge: false);
                     ctx.Console.Out.WriteLine($"Expanded {inventoryType} inventory");
                     ctx.ExitCode = 0;
                 } catch (SystemException ex) {
