@@ -385,7 +385,8 @@ public class AiState {
                 return;
             }
 
-            distance = skill.Data.Detect.Distance; // naive impl, might need to revisit
+            // Walk until the target is in the skill's reach, as the client reads it (AiSkillReach).
+            distance = AiSkillReach.Radius(skill.Data);
         }
 
         float speed = 1;
@@ -610,7 +611,7 @@ public class AiState {
                 return;
             }
 
-            skillDistance = skill.Data.Detect.Distance; // naive impl, might need to revisit
+            skillDistance = AiSkillReach.Radius(skill.Data);
         }
 
         // till="1200" is the distance to keep; unbounded (float.MaxValue) made PathAwayFrom aim ~2^31 away.
@@ -791,11 +792,9 @@ public class AiState {
             return false;
         }
 
-        float targetDistance = (actor.BattleState.Target.Position - actor.Position).LengthSquared();
-        // +10 to account for the npc moving to skill range distance & allowing for it to attack slightly outside
-        float detectDistance = skill.Data.Detect.Distance + 10;
-
-        return detectDistance * detectDistance >= targetDistance; // naive, need to implement more sophisticated collision detection
+        // The skill's reach as the client reads it (AiSkillReach), not its detectProperty distance (0 in most npc skills).
+        return AiSkillReach.InReach(actor.Position, actor.BattleState.Target.Position, AiSkillReach.Radius(skill.Data),
+            AiSkillReach.Height(skill.Data));
     }
 
     private bool ProcessCondition(ExtraDataCondition node) {

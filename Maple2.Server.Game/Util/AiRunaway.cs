@@ -5,7 +5,7 @@ public static class AiRunaway {
     public const float MaxRunawayDistance = 5000f;
 
     /// <summary>
-    /// The distance a "runaway" AI node keeps from its target: its till, else the skill's detect distance, else
+    /// The distance a "runaway" AI node keeps from its target: its till, else the skill's reach (AiSkillReach), else
     /// <see cref="DefaultRunawayDistance"/>. Never unbounded: an int cast of float.MaxValue is int.MinValue.
     /// </summary>
 
