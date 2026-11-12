@@ -1808,6 +1808,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new ChangeJobTable(results);
     }
 
+    // A skillPoint reward value is "amount,rank" or "amount" alone (the KR client's chapterbook.xml has both). The
+    // client reads it as an int list (CChapterBookData::Read): the amount is the first value, the rank the second when
+    // there is one (0 or 1), else the first rank, which is rank 0 here.
+    public static ChapterBookTable.Entry.SkillPoint ChapterBookSkillPoint(string[] rewardValue) {
+        return new ChapterBookTable.Entry.SkillPoint(
+            Amount: int.Parse(rewardValue[0]),
+            Rank: rewardValue.Length > 1 ? short.Parse(rewardValue[1]) : (short) 0);
+    }
+
     private ChapterBookTable ParseChapterBookTable() {
         var results = new Dictionary<int, ChapterBookTable.Entry>();
         ChapterBookRoot bookRoot = ClientListedRows.Read<ChapterBookRoot>(xmlReader, playedReader, "chapterbook.xml", "chapterbook", "id", true, out ClientListedRows.Counts? bookCounts);
@@ -1855,11 +1864,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
         return new ChapterBookTable(results);
 
-        ChapterBookTable.Entry.SkillPoint ParseSkillPoint(string[] rewardValue) {
-            return new ChapterBookTable.Entry.SkillPoint(
-                Amount: int.Parse(rewardValue[0]),
-                Rank: short.Parse(rewardValue[1]));
-        }
+        ChapterBookTable.Entry.SkillPoint ParseSkillPoint(string[] rewardValue) => ChapterBookSkillPoint(rewardValue);
 
         ItemComponent ParseItem(string[] rewardValue) {
             return new ItemComponent(
