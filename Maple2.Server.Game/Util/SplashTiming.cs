@@ -44,10 +44,17 @@ public static class SplashTiming {
 
     // The direction a region damage packet gives with a target: in KMS2 packets the unit vector from that point
     // to the target, in all three axes, and zero when the target stands on the point. A tile packet's direction
-    // is of unit length and points up from the block in KMS2 packets; the same rule is used for it, from the
-    // block's position (chosen here).
+    // follows the same rule from its own point (TilePoint) in KMS2 packets.
     public static Vector3 FireDirection(Vector3 point, Vector3 target) {
         Vector3 offset = target - point;
         return offset == Vector3.Zero ? Vector3.Zero : Vector3.Normalize(offset);
     }
+
+    // The point a tile packet gives for a cube skill: in KMS2 packets one block below the map's position of the
+    // cube that holds the skill.
+    public static Vector3 TilePoint(Vector3 cube) {
+        return cube with { Z = cube.Z - BLOCK };
+    }
+
+    private const float BLOCK = 150f;
 }

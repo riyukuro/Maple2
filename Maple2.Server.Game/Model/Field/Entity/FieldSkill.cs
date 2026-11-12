@@ -30,7 +30,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     public long NextTick { get; private set; }
     private readonly ILogger logger = Log.ForContext<FieldSkill>();
 
-    // The block a cube skill belongs to (its own position, not the space above it that the skill reaches).
+    // The point a cube skill's tile packets give: one block below the cube (SplashTiming.TilePoint).
     public Vector3 CubePosition { get; init; }
 
     private void BroadcastDamage(DamageRecord record) {

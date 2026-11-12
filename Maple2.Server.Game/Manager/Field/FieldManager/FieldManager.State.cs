@@ -939,7 +939,7 @@ public partial class FieldManager {
             Position = adjustedPosition,
             Rotation = rotation,
             Source = SkillSource.Cube,
-            CubePosition = position,
+            CubePosition = SplashTiming.TilePoint(position),
         };
         cubeSkills[fieldSkill.ObjectId] = fieldSkill;
     }

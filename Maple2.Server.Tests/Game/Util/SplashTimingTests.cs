@@ -54,4 +54,14 @@ public class SplashTimingTests {
         Assert.That(SplashTiming.FireDirection(point, new Vector3(-50, 100, 100)), Is.EqualTo(new Vector3(-1, 0, 0)));
         Assert.That(SplashTiming.FireDirection(point, point), Is.EqualTo(Vector3.Zero), "no direction on the point itself");
     }
+
+    [Test]
+    public void ATilePacketNamesThePointOneBlockBelowTheCube() {
+        var cube = new Vector3(3900, 900, 1200);
+        Vector3 point = SplashTiming.TilePoint(cube);
+        Assert.That(point, Is.EqualTo(new Vector3(3900, 900, 1050)));
+        // A player standing in the cube, one unit above its floor.
+        Vector3 direction = SplashTiming.FireDirection(point, new Vector3(3900, 900, 1201));
+        Assert.That(direction, Is.EqualTo(new Vector3(0, 0, 1)), "straight up for a target in the middle");
+    }
 }
