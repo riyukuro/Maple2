@@ -127,6 +127,7 @@ public static class ConditionUtil {
             case ConditionType.explore:
             case ConditionType.revise_achieve_multi_grade:
             case ConditionType.revise_achieve_single_grade:
+            case ConditionType.hero_achieve:
             case ConditionType.hero_achieve_grade:
             case ConditionType.stay_map:
             case ConditionType.stay_cube:
@@ -265,6 +266,7 @@ public static class ConditionUtil {
             case ConditionType.music_play_ensemble_in:
             case ConditionType.revise_achieve_multi_grade:
             case ConditionType.revise_achieve_single_grade:
+            case ConditionType.hero_achieve:
             case ConditionType.chat:
             case ConditionType.character_ability_learn:
                 if (target.Range != null && target.Range.Value.Min >= longValue &&

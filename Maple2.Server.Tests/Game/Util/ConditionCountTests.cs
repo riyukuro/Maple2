@@ -79,6 +79,17 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: mapId, codeLong: mapId), Is.EqualTo(expected));
     }
 
+    // An achievement reaching a grade counts for hero_achieve when the achievement is one of the row's codes and the
+    // grade its target (quests 71000003 and 71000004 ask for grades 1 and 2 of one trophy).
+    [TestCase(23100006, 2, true)]
+    [TestCase(23100006, 1, false)]
+    [TestCase(23100007, 2, false)]
+    public void HeroAchieve_CountsTheListedAchievementGrade(int achievementId, int grade, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.hero_achieve, 1,
+            new ConditionMetadata.Parameters(Integers: [23100006]), new ConditionMetadata.Parameters(Integers: [2]));
+        Assert.That(condition.Check(null!, targetLong: grade, codeLong: achievementId), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
