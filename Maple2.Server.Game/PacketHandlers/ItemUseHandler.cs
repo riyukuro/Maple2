@@ -486,18 +486,29 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
+        // The name is written at once: the name's unique index decides between this rename and a create or another
+        // rename with the same name, and the voucher is used up only for a name that was written.
+        string oldName = session.Player.Value.Character.Name;
+        if (!db.RenameCharacter(session.AccountId, session.CharacterId, newName)) {
+            (StringCode code, string[] args) = NameChangeRules.Text(NameChangeRules.Refusal.Taken, newName);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(code, args)));
+            return;
+        }
         if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            db.RenameCharacter(session.AccountId, session.CharacterId, oldName);
             return;
         }
 
+        // KMS2's order: the item, the answer, then the guild's and each club's member name (Guild 12, Club 27, sent
+        // by the world's player update to every member online). It sends nothing for the names kept in mails, market
+        // listings and the like; those keep the name they were written with.
         session.Player.Value.Character.Name = newName;
-        // TODO: Update name on clubs, party(?), group chat(?)
+        session.Send(CharacterListPacket.NameChanged(session.CharacterId, newName));
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,
             CharacterId = session.CharacterId,
             Name = newName,
         });
-        session.Send(CharacterListPacket.NameChanged());
     }
 
     private static void HandlePremiumClubCoupon(GameSession session, Item item) {

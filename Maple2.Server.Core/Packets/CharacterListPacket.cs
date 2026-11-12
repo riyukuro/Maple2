@@ -70,11 +70,14 @@ public static class CharacterListPacket {
         return pWriter;
     }
 
-    // KMS 2525: the client reads only the result; 1 makes it quit to the character list (CSceneStateGame::OnCharacterList)
-    public static ByteWriter NameChanged() {
+    // The answer to the name change item, as KMS2 sends it: the result, the character and its new name. The client
+    // reads only the result; 1 makes it quit to the character list (CSceneStateGame::OnCharacterList).
+    public static ByteWriter NameChanged(long characterId, string name) {
         var pWriter = Packet.Of(SendOp.CharacterList);
         pWriter.Write<Command>(Command.NameChanged);
         pWriter.WriteInt(1); // accepted
+        pWriter.WriteLong(characterId);
+        pWriter.WriteUnicodeString(name);
         return pWriter;
     }
 
@@ -85,10 +88,12 @@ public static class CharacterListPacket {
     }
 
     // This only needs to be sent if char count > 0
-    public static ByteWriter EndList() {
+    // checkNames: the client then tests the name of the character it is about to start with and, for a name that is
+    // too long, opens its name input instead of asking to enter (UICharacterListDialog).
+    public static ByteWriter EndList(bool checkNames = false) {
         var pWriter = Packet.Of(SendOp.CharacterList);
         pWriter.Write<Command>(Command.EndList);
-        pWriter.WriteBool(false);
+        pWriter.WriteBool(checkNames);
         return pWriter;
     }
 

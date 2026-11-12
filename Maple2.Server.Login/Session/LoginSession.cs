@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -8,6 +9,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
@@ -132,7 +134,13 @@ public class LoginSession : Core.Network.Session {
         Send(CharacterListPacket.StartList());
         // Send each character data
         Send(CharacterListPacket.AddEntries(account, entries));
-        Send(CharacterListPacket.EndList());
+        Send(CharacterListPacket.EndList(characters.Any(character => IsRenameDue(character.Name))));
+    }
+
+    // No server path stores a name longer than the limit; a row that has one (written by hand, or kept from another
+    // region's limit) must be renamed before it enters.
+    public static bool IsRenameDue(string name) {
+        return NameChangeRules.IsRenameDue(NameValidator.CharacterNameWidth(name, Target.LOCALE), Constant.CharacterNameLengthMax);
     }
 
     public void CreateCharacter(Character createCharacter, List<Item> createOutfits) {

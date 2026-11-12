@@ -24,6 +24,12 @@ public static class NameChangeRules {
         return taken ? Refusal.Taken : Refusal.None;
     }
 
+    // A character must take a new name before it can enter when its name is longer than the region allows: the
+    // test the client itself makes on the selected character when the character list ends with the flag set.
+    public static bool IsRenameDue(int width, int max) {
+        return width > max;
+    }
+
     // The text of the message box: the client's own texts for a refused rename, each with the name.
     // The system text has a second argument, the error code.
     public static (StringCode Code, string[] Args) Text(Refusal refusal, string name) {

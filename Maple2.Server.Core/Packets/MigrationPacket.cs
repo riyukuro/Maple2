@@ -25,6 +25,17 @@ public static class MigrationPacket {
         return pWriter;
     }
 
+    // The character must take a new name before it can enter: the client reads the code, a text it does not show
+    // and the character, and opens its name input.
+    public static ByteWriter LoginToGameRename(long characterId) {
+        var pWriter = Packet.Of(SendOp.LoginToGame);
+        pWriter.WriteByte((byte) MigrationError.rename_required);
+        pWriter.WriteUnicodeString();
+        pWriter.WriteLong(characterId);
+
+        return pWriter;
+    }
+
     public static ByteWriter GameToLogin(IPEndPoint endpoint, ulong token) {
         var pWriter = Packet.Of(SendOp.GameToLogin);
         pWriter.Write<MigrationError>(MigrationError.ok);

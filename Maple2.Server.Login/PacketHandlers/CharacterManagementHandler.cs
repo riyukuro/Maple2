@@ -71,7 +71,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 HandleDelete(session, packet);
                 break;
             case Command.Rename:
-                Logger.Debug("CharacterManagement Rename: characterId={CharacterId}, name={Name}", packet.ReadLong(), packet.ReadUnicodeString());
+                HandleRename(session, packet);
                 break;
             default:
                 throw new ArgumentException($"Invalid CHARACTER_MANAGEMENT type {command}");
@@ -87,6 +87,11 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             Character? character = db.GetCharacter(characterId, session.AccountId);
             if (character == null) {
                 session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Invalid character"));
+                return;
+            }
+            // A name that is too long: the client opens its name input and asks for the rename.
+            if (LoginSession.IsRenameDue(character.Name)) {
+                session.Send(MigrationPacket.LoginToGameRename(characterId));
                 return;
             }
 
@@ -121,6 +126,52 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             session.Send(MigrationPacket.LoginToGameError(s_move_err_default, ex.Message));
             session.CutAfterSend();
         }
+    }
+
+    // The forced rename of the login scene: the client sends it from the name input it opens for a character whose
+    // name is too long (the character list's end flag, or LoginToGame 49). It sends the character and the name
+    // only, no item, so nothing is used up. The scene reads no rename answer: a name that is accepted shows in the
+    // character list, which is sent again; a refused name is answered with a message box of the client's own name
+    // change text, and the character stays due.
+    private void HandleRename(LoginSession session, IByteReader packet) {
+        long characterId = packet.ReadLong();
+        string name = packet.ReadUnicodeString();
+
+        using GameStorage.Request db = GameStorage.Context();
+        Character? character = db.GetCharacter(characterId, session.AccountId);
+        if (character == null || !LoginSession.IsRenameDue(character.Name)) {
+            session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Invalid character"));
+            return;
+        }
+
+        // The same checks as a create.
+        int width = NameValidator.CharacterNameWidth(name, Target.LOCALE);
+        bool blank = CharacterCreateRules.IsBlankName(name);
+        bool banned = !blank && BanWordStorage.ContainsBannedWord(name);
+        bool taken = !blank && db.GetCharacterId(name) != default;
+        NameChangeRules.Refusal refusal = NameChangeRules.Check(blank, width, Constant.CharacterNameLengthMin, Constant.CharacterNameLengthMax, banned, taken);
+        // The write refuses a name that was taken since the check.
+        if (refusal == NameChangeRules.Refusal.None && !db.RenameCharacter(session.AccountId, characterId, name)) {
+            refusal = NameChangeRules.Refusal.Taken;
+        }
+        if (refusal != NameChangeRules.Refusal.None) {
+            (StringCode code, string[] args) = NameChangeRules.Text(refusal, name);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(code, args)));
+            return;
+        }
+
+        // The world tells the guild and club members that are online (Guild 12, Club 27).
+        try {
+            World.UpdatePlayer(new PlayerUpdateRequest {
+                AccountId = session.AccountId,
+                CharacterId = characterId,
+                Name = name,
+            });
+        } catch (RpcException ex) {
+            Logger.Warning("Rename of character {CharacterId}: the world was not told ({Status})", characterId, ex.StatusCode);
+        }
+
+        session.ListCharacters();
     }
 
     private void HandleCreate(LoginSession session, IByteReader packet) {

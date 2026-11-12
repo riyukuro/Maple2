@@ -715,6 +715,24 @@ public partial class GameStorage {
         }
         #endregion
 
+        // A new name for a character of the account, written at once. False when another character holds the name
+        // (the name's unique index decides between two writers) or the character is not the account's.
+        public bool RenameCharacter(long accountId, long characterId, string name) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Character? model = Context.Character.FirstOrDefault(character =>
+                character.Id == characterId && character.AccountId == accountId);
+            if (model == null) {
+                return false;
+            }
+            if (Context.Character.Any(character => character.Id != characterId && character.Name.ToLower() == name.ToLower())) {
+                return false;
+            }
+
+            model.Name = name;
+            return Context.TrySaveChanges();
+        }
+
         #region Delete
         public bool UpdateDelete(long accountId, long characterId, long time) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
