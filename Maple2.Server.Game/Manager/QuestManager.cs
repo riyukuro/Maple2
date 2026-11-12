@@ -832,6 +832,18 @@ public sealed class QuestManager {
         return characterValues.Remove(quest.Id) && db.DeleteQuest(session.CharacterId, quest.Id);
     }
 
+    // A quest-only global drop (constraintsQuest) is for a player with a started quest that still needs the item on
+    // this map: an item_exist condition naming the item (and the map, when it names maps) below its count. KR has 39
+    // such drop sets, all for item_exist quests (10001270 needs 15 of 30000043 from the monsters of map 2000136).
+    public bool NeedsItem(int itemId, int mapId) {
+        return QuestRules.UpdateCandidates(characterValues.Values.Concat(accountValues.Values), ConditionType.item_exist)
+            .Where(quest => quest.State == QuestState.Started)
+            .SelectMany(quest => quest.Conditions.Values)
+            .Any(condition => condition.Metadata is { Type: ConditionType.item_exist, Codes: not null }
+                              && condition.Counter < condition.Metadata.Value
+                              && condition.Metadata.Check(session, targetLong: mapId, codeLong: itemId));
+    }
+
     public bool TryGetQuest(int questId, [NotNullWhen(true)] out Quest? quest) {
         return characterValues.TryGetValue(questId, out quest) || accountValues.TryGetValue(questId, out quest);
     }

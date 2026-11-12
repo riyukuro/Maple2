@@ -18,7 +18,9 @@ public class ItemDropManager {
 
     // level is the NPC's level. It gates both group-level and item-level min/max level checks within
     // globalDropItemBox/globalDropItemSet (e.g. meso amounts in group 103 scale with NPC level).
-    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0) {
+    // session is the player the drop is rolled for: a quest-only entry (constraintsQuest) is for a player whose quest
+    // still needs the item here (QuestManager.NeedsItem), and never drops when no player is given.
+    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, GameSession? session = null) {
         if (!field.ServerTableMetadata.GlobalDropItemBoxTable.DropGroups.TryGetValue(globalDropBoxId, out Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? dropGroup)) {
             return new List<Item>();
         }
@@ -69,8 +71,7 @@ public class ItemDropManager {
                         continue;
                     }
 
-                    // TODO: find quest ID and see if player has it in progress. if not, skip item. Currently just skipping.
-                    if (itemEntry.QuestConstraint) {
+                    if (itemEntry.QuestConstraint && (session == null || !session.Quest.NeedsItem(itemEntry.Id, field.Metadata.Id))) {
                         continue;
                     }
                     weightedItems.Add(itemEntry, itemEntry.Weight);

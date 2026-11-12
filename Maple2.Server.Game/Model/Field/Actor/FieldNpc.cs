@@ -686,7 +686,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, receiver.Session));
         }
 
         foreach (Item item in globalDrops) {
@@ -701,7 +701,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int globalHitDropId in dropInfo.GlobalHitDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalHitDropId, Value.Metadata.Basic.Level));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalHitDropId, Value.Metadata.Basic.Level, player.Session));
         }
 
         foreach (Item item in globalDrops) {
@@ -745,7 +745,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int deadGlobalDropId in dropInfo.DeadGlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level, player.Session));
         }
 
         foreach (Item item in globalDrops) {

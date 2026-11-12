@@ -209,7 +209,7 @@ public class InteractObjectHandler : FieldPacketHandler {
 
         var globalDropBoxItems = new List<Item>();
         foreach (int globalDropBoxId in interact.Value.Drop.GlobalDropBoxIds) {
-            globalDropBoxItems.AddRange(session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level));
+            globalDropBoxItems.AddRange(session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level, session));
         }
 
         foreach (Item item in globalDropBoxItems) {
