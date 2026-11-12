@@ -432,8 +432,29 @@ public class WorldServer {
         }
     }
 
+    // The events whose user values last until their end (GameEventManager.FollowEventEnd): one that is live again
+    // after the end kept for it starts a new run without the old values and stamp quests.
+    private void BeginEventRuns(IEnumerable<GameEvent> events) {
+        long now = DateTimeOffset.Now.ToUnixTimeSeconds();
+        using GameStorage.Request db = gameStorage.Context();
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Type is not (GameEventType.StampEvent or GameEventType.LongTermAttendGift)) {
+                continue;
+            }
+            int[] quests = gameEvent.Metadata.Data is StampEvent stampEvent ? stampEvent.Stamps.Select(stamp => stamp.QuestId).ToArray() : [];
+            try {
+                if (db.BeginEventRun(gameEvent.Id, gameEvent.EndTime, now, quests)) {
+                    logger.Information("Game event {Id} runs again: its user values and stamp quests were dropped", gameEvent.Id);
+                }
+            } catch (Exception ex) {
+                logger.Error(ex, "Failed to begin the run of game event {Id}", gameEvent.Id);
+            }
+        }
+    }
+
     private void ScheduleGameEvents() {
         IEnumerable<GameEvent> events = serverTableMetadata.GetGameEvents().ToList();
+        BeginEventRuns(events);
         // Add Events
         // Get only events that havent been started. Started events already get loaded on game/login servers on start up
         foreach (GameEvent data in events.Where(gameEvent => gameEvent.StartTime > DateTimeOffset.Now.ToUnixTimeSeconds())) {

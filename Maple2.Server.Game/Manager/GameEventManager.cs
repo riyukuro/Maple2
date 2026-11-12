@@ -44,18 +44,31 @@ public sealed class GameEventManager {
 
     private void GetUserValues() {
         IList<GameEvent> events = session.Events.ToList();
+        long now = DateTime.Now.ToEpochSeconds();
 
         using GameStorage.Request db = session.GameStorage.Context();
-        IList<GameEventUserValue> values = db.GetEventUserValues(session.CharacterId);
-        foreach (GameEventUserValue userValue in values) {
-            // Remove if the event is no longer active or the value has expired
-            if (events.All(gameEvent => gameEvent.Id != userValue.EventId) ||
-                userValue.ExpirationTime < DateTime.Now.ToEpochSeconds()) {
+        foreach (GameEventUserValue userValue in db.GetEventUserValues(session.CharacterId)) {
+            // A stamp card's claims are the account's (below); one stored for the character is not read.
+            GameEventUserValue? loaded = StampValueTypes.Contains(userValue.Type) ? null : LoadValue(userValue, events, now);
+            if (loaded == null) {
                 db.RemoveGameEventUserValue(userValue, session.CharacterId);
                 continue;
             }
+            Add(loaded);
+        }
 
-            GameEventUserValue loaded = FollowEventEnd(userValue, events.First(gameEvent => gameEvent.Id == userValue.EventId));
+        // A stamp card's quests are the account's, so its claims are too: they are stored for the account, whatever
+        // the character that claimed, and stay when that character is deleted.
+        foreach (GameEventUserValue userValue in db.GetAccountEventValues(session.AccountId)) {
+            GameEventUserValue? loaded = LoadValue(userValue, events, now);
+            if (loaded == null) {
+                db.RemoveAccountEventValue(userValue, session.AccountId);
+                continue;
+            }
+            Add(loaded);
+        }
+
+        void Add(GameEventUserValue loaded) {
             if (!eventValues.TryGetValue(loaded.EventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
                 eventValues.Add(loaded.EventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {
                     { loaded.Type, loaded },
@@ -64,25 +77,22 @@ public sealed class GameEventManager {
                 valueDict.TryAdd(loaded.Type, loaded);
             }
         }
-
-        // A stamp card's quests are the account's, so its claims are too: those of the account's other characters
-        // are added to this character's (StampEventRules.MergeClaimed).
-        long nowSeconds = DateTime.Now.ToEpochSeconds();
-        foreach (GameEvent gameEvent in events.Where(gameEvent => gameEvent.Metadata.Data is StampEvent)) {
-            IList<GameEventUserValue> others = db.GetAccountEventUserValues(session.AccountId, session.CharacterId, gameEvent.Id, StampValueTypes)
-                .Where(value => value.ExpirationTime >= nowSeconds).ToList();
-            foreach (GameEventUserValueType type in StampValueTypes) {
-                string?[] texts = others.Where(value => value.Type == type).Select(value => (string?) value.Value).ToArray();
-                if (texts.Length == 0) {
-                    continue;
-                }
-                GameEventUserValue own = GetLocked(type, gameEvent.Id, gameEvent.EndTime);
-                own.SetValue(type == GameEventUserValueType.StampCompleteRewardClaimed
-                    ? (texts.Append(own.Value).Any(StampEventRules.CompleteClaimed) ? "1" : own.Value)
-                    : StampEventRules.MergeClaimed(texts.Prepend(own.Value)));
-            }
-        }
     }
+
+    // A stored value as it is loaded: null (dropped) when its event is not live or it has run out. A value that
+    // lasts as long as its event is first moved to the event's end (FollowEventEnd), then tested: tested at its
+    // stored end, a value of an event whose end was moved while it was live would be dropped after the old end.
+    public static GameEventUserValue? LoadValue(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
+        GameEvent? gameEvent = events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
+        if (gameEvent == null) {
+            return null;
+        }
+        GameEventUserValue loaded = FollowEventEnd(userValue, gameEvent);
+        return loaded.ExpirationTime < now ? null : loaded;
+    }
+
+    // The values stored for the account instead of the character.
+    public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type);
 
     private static readonly GameEventUserValueType[] StampValueTypes = [
         GameEventUserValueType.StampCompleteRewardClaimed,
@@ -93,7 +103,8 @@ public sealed class GameEventManager {
     // A long-term attendance value and a stamp card's claims last as long as their event. When the event's end has
     // moved since the value was stored (a replayed event is moved again by a later ingest), the value follows it:
     // stored at the first end it would run out while the event is still live, and every day or reward row claimed
-    // so far could be claimed again.
+    // so far could be claimed again. An event that is live again after its end is a new run, whose old values the
+    // world server drops at its start (GameStorage BeginEventRun), so none is left here to follow.
     public static GameEventUserValue FollowEventEnd(GameEventUserValue value, GameEvent gameEvent) {
         bool follows = gameEvent.Metadata.Type switch {
             GameEventType.LongTermAttendGift => value.Type is GameEventUserValueType.LongTermAttendClaimedDays or GameEventUserValueType.LongTermAttendPoints
@@ -316,6 +327,7 @@ public sealed class GameEventManager {
                 .Select(value => value.Type == GameEventUserValueType.AttendanceAccumulatedTime ? StoredPlayTime(value, PlayStart, now) : value)
                 .ToList();
         }
-        db.SaveGameEventUserValues(session.CharacterId, values);
+        db.SaveGameEventUserValues(session.CharacterId, values.Where(value => !AccountValue(value.Type)).ToList());
+        db.SaveAccountEventValues(session.AccountId, values.Where(value => AccountValue(value.Type)).ToList());
     }
 }

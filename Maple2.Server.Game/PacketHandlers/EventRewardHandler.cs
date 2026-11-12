@@ -199,6 +199,7 @@ public class EventRewardHandler : FieldPacketHandler {
         if (gameEvent?.Metadata.Data is not StampEvent stampEvent || session.Field == null) {
             return;
         }
+        session.Quest.CompleteStampQuests();
 
         GameEventUserValueType type = special ? GameEventUserValueType.StampSpecialRewardsClaimed : GameEventUserValueType.StampRewardsClaimed;
         GameEventUserValue claimed = session.GameEvent.Get(type, gameEvent.Id, gameEvent.EndTime);
@@ -221,6 +222,7 @@ public class EventRewardHandler : FieldPacketHandler {
         if (gameEvent?.Metadata.Data is not StampEvent stampEvent || session.Field == null) {
             return;
         }
+        session.Quest.CompleteStampQuests();
 
         GameEventUserValue claimed = session.GameEvent.Get(GameEventUserValueType.StampCompleteRewardClaimed, gameEvent.Id, gameEvent.EndTime);
         if (!StampEventRules.CanClaimComplete(stampEvent, claimed.Value, questId => QuestCompleted(session, questId))) {

@@ -30,6 +30,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<CharacterShopData> CharacterShopData { get; set; } = null!;
     internal DbSet<CharacterShopItemData> CharacterShopItemData { get; set; } = null!;
     internal DbSet<GameEventUserValue> GameEventUserValue { get; set; } = null!;
+    internal DbSet<AccountEventValue> AccountEventValue { get; set; } = null!;
     internal DbSet<SystemBanner> SystemBanner { get; set; } = null!;
     internal DbSet<UgcMarketItem> UgcMarketItem { get; set; } = null!;
     internal DbSet<SoldUgcMarketItem> SoldUgcMarketItem { get; set; } = null!;
@@ -99,6 +100,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<BlackMarketListing>(Maple2.Database.Model.BlackMarketListing.Configure);
 
         modelBuilder.Entity<GameEventUserValue>(Maple2.Database.Model.GameEventUserValue.Configure);
+        modelBuilder.Entity<AccountEventValue>(Maple2.Database.Model.AccountEventValue.Configure);
 
         modelBuilder.Entity<ServerInfo>(Maple2.Database.Model.ServerInfo.Configure);
         modelBuilder.Entity<PlayerReport>(PlayerReport.Configure);

@@ -116,6 +116,29 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("account", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.AccountEventValue", b =>
+                {
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<long>("ExpirationTime")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("AccountId", "EventId", "Type");
+
+                    b.ToTable("account-event-value", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Achievement", b =>
                 {
                     b.Property<long>("OwnerId")
@@ -1966,6 +1989,15 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
 
                     b.Navigation("BuddyCharacter");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.AccountEventValue", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.Character", b =>

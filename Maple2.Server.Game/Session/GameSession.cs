@@ -637,6 +637,8 @@ public sealed partial class GameSession : Core.Network.Session {
         if (exploreExp != null) {
             Exp.AddExp(exploreExp.Value);
         }
+        // A stamp quest whose completion failed before (QuestManager.CompleteStampQuests) is tried again.
+        Quest.CompleteStampQuests();
         if (firstVisit) {
             ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
             ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);

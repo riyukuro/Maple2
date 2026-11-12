@@ -8,19 +8,22 @@ namespace Maple2.Model.Validators;
 // EventReward 0 + int count + byte special to claim a reward row and EventReward 1 for the complete reward.
 public static class StampEventRules {
     // Several live cards: the one without a key (the client shows it whatever the player's values), else the first.
+    // Of several cards without a key the last in the order sent: the client keeps one card per key, and a later
+    // card of the same key replaces the earlier one (gamerule.cpp:2175).
     public static T? PickEvent<T>(IEnumerable<T> events, Func<T, StampEvent?> data) where T : class {
         T? first = null;
+        T? keyless = null;
         foreach (T gameEvent in events) {
             StampEvent? stampEvent = data(gameEvent);
             if (stampEvent == null) {
                 continue;
             }
             if (stampEvent.Key == 0) {
-                return gameEvent;
+                keyless = gameEvent;
             }
             first ??= gameEvent;
         }
-        return first;
+        return keyless ?? first;
     }
 
     // The stamps of the kind (special or not) whose quest is completed.
@@ -48,20 +51,6 @@ public static class StampEventRules {
 
     public static bool CompleteClaimed(string? claimed) {
         return int.TryParse(claimed, out int value) && value != 0;
-    }
-
-    // The quests are the account's, the user values a character's: the claims of the account's characters are
-    // put together, so that a reward is given once for the account. Counts keep their first order.
-    public static string MergeClaimed(IEnumerable<string?> claimed) {
-        var counts = new List<int>();
-        foreach (string? text in claimed) {
-            foreach (int count in LongTermAttendRules.ClaimedDays(text)) {
-                if (!counts.Contains(count)) {
-                    counts.Add(count);
-                }
-            }
-        }
-        return string.Join(',', counts);
     }
 
     // The quests of the cards: the server starts them and completes them when their conditions are met.

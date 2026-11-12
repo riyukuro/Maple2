@@ -77,6 +77,20 @@ public sealed class QuestManager {
     }
     private HashSet<int>? stampQuests;
 
+    // A stamp quest is completed on the update that fills its last counter. When that completion fails (a full
+    // inventory), or the quest starts with nothing left to count, no later update comes: every started stamp quest
+    // that can be completed is tried again here, on each field entry and before a claim on the card.
+    public void CompleteStampQuests() {
+        if (StampQuests().Count == 0) {
+            return;
+        }
+        foreach (Quest quest in accountValues.Values.Concat(characterValues.Values).ToList()) {
+            if (quest.State == QuestState.Started && StampQuests().Contains(quest.Id) && CanComplete(quest)) {
+                Complete(quest);
+            }
+        }
+    }
+
     private void Initialize(GameStorage.Request db) {
         IEnumerable<QuestMetadata> quests = session.QuestMetadata.GetQuests();
         IList<QuestTag> events = session.FindEvent(GameEventType.QuestTag)
@@ -84,12 +98,12 @@ public sealed class QuestManager {
             .Select(gameEvent => (QuestTag) gameEvent.Metadata.Data)
             .ToList();
         foreach (QuestMetadata metadata in quests) {
-            if (!metadata.Basic.AutoStart ||
+            // A live card's quest is started whether or not it is an auto start quest (the replayed card's are).
+            bool stampQuest = StampQuests().Contains(metadata.Id);
+            if ((!metadata.Basic.AutoStart && !stampQuest) ||
                 metadata.Basic.Type == QuestType.FieldMission) {
                 continue;
             }
-
-            bool stampQuest = StampQuests().Contains(metadata.Id);
 
             // Event missions should only be started through the event.
             if (metadata.EventMissionType != QuestEventMissionType.none && !stampQuest) {

@@ -139,24 +139,23 @@ public class StampEventRulesTests {
         });
     }
 
-    // The claims of the account's characters are put together.
     [Test]
-    public void MergeClaimed_UnionInFirstOrder() {
+    public void Quests_OfEveryCard() {
         Assert.Multiple(() => {
-            Assert.That(StampEventRules.MergeClaimed(["1,3", null, "", "3,2", "x"]), Is.EqualTo("1,3,2"));
-            Assert.That(StampEventRules.MergeClaimed([]), Is.EqualTo(""));
             Assert.That(StampEventRules.Quests([Card, Card with { Stamps = [new StampEvent.Stamp(880009, false, 0, 0)] }]),
                 Is.EquivalentTo(new[] { 880001, 880002, 880003, 880009 }));
         });
     }
 
-    // Several live cards: the one without a key, else the first.
+    // Several live cards: the one without a key, the last of them as the client keeps it, else the first.
     [Test]
-    public void PickEvent_TheCardWithoutAKeyElseTheFirst() {
+    public void PickEvent_TheLastCardWithoutAKeyElseTheFirst() {
         StampEvent keyed = Card with { Key = 10001 };
         StampEvent other = Card with { Key = 10002 };
+        StampEvent later = Card with { Key = 0 };
         Assert.Multiple(() => {
             Assert.That(StampEventRules.PickEvent<StampEvent>([keyed, Card, other], card => card), Is.SameAs(Card));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([Card, keyed, later, other], card => card), Is.SameAs(later));
             Assert.That(StampEventRules.PickEvent<StampEvent>([keyed, other], card => card), Is.SameAs(keyed));
             Assert.That(StampEventRules.PickEvent<StampEvent>([], card => card), Is.Null);
             Assert.That(StampEventRules.PickEvent<string>(["x"], _ => null), Is.Null);
@@ -228,39 +227,140 @@ public class StampEventRulesTests {
         });
     }
 
-    // The claims of the account's other characters, for the load-time merge: not this character's, not another
-    // account's, not another event's or type's.
+    // A re-ingest while the card is live moves its end. The claims stored at the old end are still loaded after
+    // that old end: they are moved to the new end before the expiry test. A value that does not follow its event
+    // is dropped at its own end, and so is any value of an event that is not live.
     [Test]
-    public void Storage_ReadsTheAccountsOtherCharactersClaims() {
+    public void LoadValue_AfterTheOldEndOfAMovedEvent_KeepsTheClaims() {
+        var first = new GameEvent(Event(990045, "2030-06-15-08-00", "2030-07-15-08-00", Card));
+        var moved = new GameEvent(Event(990045, "2030-06-25-08-00", "2030-07-25-08-00", Card));
+        long afterOldEnd = first.EndTime + 3600;
+        var claimed = new GameEventUserValue(GameEventUserValueType.StampRewardsClaimed, first.EndTime, 990045);
+        claimed.SetValue("1,2");
+        var daily = new GameEventUserValue(GameEventUserValueType.AttendanceAccumulatedTime, first.EndTime, 990045);
+        Assert.Multiple(() => {
+            GameEventUserValue? loaded = GameEventManager.LoadValue(claimed, [moved], afterOldEnd);
+            Assert.That((loaded?.Value, loaded?.ExpirationTime), Is.EqualTo(("1,2", moved.EndTime)));
+            Assert.That(GameEventManager.LoadValue(claimed, [first], afterOldEnd), Is.Null, "the end did not move");
+            Assert.That(GameEventManager.LoadValue(daily, [moved], afterOldEnd), Is.Null, "a value with its own end");
+            Assert.That(GameEventManager.LoadValue(claimed, [], first.EndTime - 10), Is.Null, "no live event");
+            Assert.That(GameEventManager.LoadValue(claimed, [moved], moved.EndTime + 1), Is.Null, "after the new end");
+        });
+    }
+
+    // The run of an event: a moved end while the kept end is not over is the same run and keeps everything; an
+    // event live again after the kept end is a new run that starts without the old values, claims and quests.
+    [Test]
+    public void BeginEventRun_ReplayAfterTheEnd_DropsValuesClaimsAndStampQuests() {
         var test = new TestGameSession();
-        var stranger = new TestGameSession(test.Options);
-        using GameStorage.Request db = test.Storage.Context();
-        Character second = db.CreateCharacter(new Character {
-            AccountId = test.AccountId, Name = Guid.NewGuid().ToString("N")[..12], Gender = Gender.Male, Job = Job.Newbie, Mastery = new Mastery(),
-            MapId = 2000023, ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
-        })!;
-        // The rows are added directly: the storage's save groups in SQL, which the in-memory provider lacks.
-        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
-            void Add(long characterId, GameEventUserValueType type, int eventId, string text) {
-                context.GameEventUserValue.Add(new Maple2.Database.Model.GameEventUserValue {
-                    CharacterId = characterId, Type = type, EventId = eventId, Value = text, ExpirationTime = 2000000000,
-                });
-            }
-            Add(test.CharacterId, GameEventUserValueType.StampRewardsClaimed, 990046, "1");
-            Add(second.Id, GameEventUserValueType.StampRewardsClaimed, 990046, "2");
-            Add(second.Id, GameEventUserValueType.StampCompleteRewardClaimed, 990046, "1");
-            Add(second.Id, GameEventUserValueType.LongTermAttendDays, 990046, "9");
-            Add(second.Id, GameEventUserValueType.StampRewardsClaimed, 990047, "5");
-            Add(stranger.CharacterId, GameEventUserValueType.StampRewardsClaimed, 990046, "3");
+        const int eventId = 990046;
+        const long end1 = 2000000000, end2 = 2000500000, end3 = 2100000000;
+        int[] quests = [880001, 880002];
+        void Fill() {
+            using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+            context.GameEventUserValue.Add(new Maple2.Database.Model.GameEventUserValue {
+                CharacterId = test.CharacterId, Type = GameEventUserValueType.LongTermAttendDays, EventId = eventId, Value = "3", ExpirationTime = end1,
+            });
+            context.GameEventUserValue.Add(new Maple2.Database.Model.GameEventUserValue {
+                CharacterId = test.CharacterId, Type = GameEventUserValueType.LongTermAttendDays, EventId = 990047, Value = "7", ExpirationTime = end1,
+            });
+            context.AccountEventValue.Add(new Maple2.Database.Model.AccountEventValue {
+                AccountId = test.AccountId, Type = GameEventUserValueType.StampRewardsClaimed, EventId = eventId, Value = "1,2", ExpirationTime = end1,
+            });
+            context.Quest.Add(new Maple2.Database.Model.Quest { OwnerId = test.AccountId, Id = 880001, State = QuestState.Completed });
+            context.Quest.Add(new Maple2.Database.Model.Quest { OwnerId = test.AccountId, Id = 880009, State = QuestState.Completed });
             context.SaveChanges();
         }
+        (int Values, int Claims, int[] Quests) Stored() {
+            using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+            return (context.GameEventUserValue.Count(value => value.EventId == eventId), context.AccountEventValue.Count(value => value.EventId == eventId),
+                context.Quest.Where(quest => quest.OwnerId == test.AccountId).Select(quest => quest.Id).OrderBy(id => id).ToArray());
+        }
 
-        GameEventUserValueType[] types = [GameEventUserValueType.StampCompleteRewardClaimed, GameEventUserValueType.StampRewardsClaimed,
-            GameEventUserValueType.StampSpecialRewardsClaimed];
-        IList<GameEventUserValue> others = db.GetAccountEventUserValues(test.AccountId, test.CharacterId, 990046, types);
-        Assert.That(others.Select(value => (value.Type, value.Value)), Is.EquivalentTo(new[] {
-            (GameEventUserValueType.StampRewardsClaimed, "2"), (GameEventUserValueType.StampCompleteRewardClaimed, "1"),
-        }));
+        Fill();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(eventId, end1, end1 - 1000, quests), Is.False, "first run");
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(eventId, end1, end1 - 500, quests), Is.False, "same end");
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(eventId, end2, end1 - 100, quests), Is.False, "moved while live");
+        }
+        Assert.That(Stored(), Is.EqualTo((1, 1, new[] { 880001, 880009 })));
+        // The old end is over, but the kept end is the moved one: still the same run.
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(eventId, end2, end1 + 100, quests), Is.False);
+            Assert.That(db.BeginEventRun(eventId, end2 - 5, end2 + 100, quests), Is.False, "an event that is over is left alone");
+        }
+        Assert.That(Stored(), Is.EqualTo((1, 1, new[] { 880001, 880009 })));
+        // Replayed after its end: a new run.
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(eventId, end3, end2 + 100, quests), Is.True);
+        }
+        Assert.That(Stored(), Is.EqualTo((0, 0, new[] { 880009 })));
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            Assert.That(context.GameEventUserValue.Count(value => value.EventId == 990047), Is.EqualTo(1), "another event's value stays");
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(eventId, end3, end2 + 200, quests), Is.False);
+        }
+    }
+
+    // The claims are stored for the account: another character of the account reads them, another account does
+    // not, and they stay when the character that claimed is deleted.
+    [Test]
+    public void AccountClaims_AreTheAccounts_AndOutliveTheCharacter() {
+        var test = new TestGameSession();
+        var stranger = new TestGameSession(test.Options);
+        var claimed = new GameEventUserValue(GameEventUserValueType.StampRewardsClaimed, 2000000000, 990046);
+        claimed.SetValue("1");
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveAccountEventValues(test.AccountId, [claimed]), Is.True);
+        }
+        claimed.SetValue("1,2");
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveAccountEventValues(test.AccountId, [claimed]), Is.True);
+        }
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            context.Character.Remove(context.Character.Single(character => character.Id == test.CharacterId));
+            context.SaveChanges();
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.Multiple(() => {
+                Assert.That(db.GetAccountEventValues(test.AccountId).Select(value => (value.Type, value.EventId, value.Value)),
+                    Is.EqualTo(new[] { (GameEventUserValueType.StampRewardsClaimed, 990046, "1,2") }));
+                Assert.That(db.GetAccountEventValues(stranger.AccountId), Is.Empty);
+                Assert.That(GameEventManager.AccountValue(GameEventUserValueType.StampCompleteRewardClaimed), Is.True);
+                Assert.That(GameEventManager.AccountValue(GameEventUserValueType.LongTermAttendDays), Is.False);
+            });
+            Assert.That(db.RemoveAccountEventValue(claimed, test.AccountId), Is.True);
+            Assert.That(db.GetAccountEventValues(test.AccountId), Is.Empty);
+        }
+    }
+
+    // A started stamp quest with nothing left to count (its completion failed before, or it had no condition) is
+    // completed by the retry; a quest that is not a live card's is left alone.
+    [Test]
+    public void CompleteStampQuests_CompletesAStartedStampQuestThatIsDue() {
+        var test = new TestGameSession();
+        Maple2.Server.Game.Session.GameSession session = test.Start();
+        var server = typeof(Maple2.Server.Game.Session.GameSession).GetField("server", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
+        var cache = (System.Collections.IDictionary) server.GetType().GetField("eventCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(server)!;
+        cache.Add(990048, new GameEvent(new GameEventMetadata(990048, GameEventType.StampEvent, DateTime.Now.AddDays(-1), DateTime.Now.AddDays(5), TimeSpan.Zero,
+            TimeSpan.Zero, [], Card, "", "", "", "")));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        Quest stamp = test.StartQuest(TestGameSession.QuestData(880001));
+        Quest other = test.StartQuest(TestGameSession.QuestData(880777));
+
+        session.Quest.CompleteStampQuests();
+
+        Assert.Multiple(() => {
+            Assert.That(stamp.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(other.State, Is.EqualTo(QuestState.Started));
+        });
     }
 
     private static GameEventMetadata Event(int id, string start, string end, StampEvent card) {
