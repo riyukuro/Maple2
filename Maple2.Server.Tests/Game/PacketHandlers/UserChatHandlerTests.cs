@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -208,5 +209,152 @@ public class UserChatHandlerTests {
         Say(session, ChatType.GuildNotice, "all here");
 
         Assert.That(test.World.Chats, Is.Empty);
+    }
+
+    private static string[] Lines(TestGameSession test, Maple2.Server.Core.Constants.SendOp op) {
+        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == op).Select(Convert.ToHexString).ToArray();
+    }
+
+    private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+
+    // Kind 22 is the home OX quiz line, which only the server sends (texttohtml.cpp:575): one from a client goes
+    // nowhere.
+    [Test]
+    public void OxQuizLine_FromTheClientSendsNothing() {
+        GameSession session = Login(meret: 0);
+
+        Say(session, ChatType.UgcEvent, "o");
+
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat), Is.Empty);
+        Assert.That(test.World.Chats, Is.Empty);
+    }
+
+    // A line longer than the client's input box takes (MaxChatLength) is dropped.
+    [Test]
+    public void LineLongerThanMaxChatLength_IsDropped() {
+        GameSession session = Login(meret: 100000);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MaxChatLength = 5 });
+
+        Say(session, ChatType.World, "abcdef");
+        Assert.That(test.World.Chats, Is.Empty);
+
+        Say(session, ChatType.World, "abcde");
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+    }
+
+    // The fifth equal line within SameChat_CheckTime goes nowhere; the sender gets s_chat_restrict_samechat with
+    // the seconds.
+    [Test]
+    public void FifthEqualLine_SendsTheRestrictNotice() {
+        GameSession session = Login(meret: 0);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
+            SameChat_CheckTime = 60000, SameChat_CheckCount = 5, SameChat_RestrictTime = 10000,
+        });
+
+        for (int i = 0; i < 5; i++) {
+            Say(session, ChatType.Normal, "hi");
+        }
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Count(packet => TestGameSession.Op(packet) == Maple2.Server.Core.Constants.SendOp.UserChat), Is.EqualTo(4));
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == Maple2.Server.Core.Constants.SendOp.Notice).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Hex(Maple2.Server.Core.Packets.NoticePacket.Message(new InterfaceText(StringCode.s_chat_restrict_samechat, "10"))) }));
+    }
+
+    private const int MegaphoneId = 20800100;
+
+    // A session with one megaphone item of the function, selected as SuperChat Select keeps it.
+    private GameSession LoginWithMegaphone(ItemFunction function) {
+        test = new TestGameSession();
+        test.AddMap(TestGameSession.Map(2000023));
+        test.Store(TestGameSession.Metadata(MegaphoneId, function: new ItemMetadataFunction(function, function.ToString(), "", false)));
+        handler = new UserChatHandler { World = test.World, GameStorage = test.Storage, ServerTableMetadata = test.ServerTableMetadata };
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000023));
+        session.Marriage.WeddingHall = WeddingHall.Default;
+        session.SuperChatId = MegaphoneId;
+        session.SuperChatItemId = MegaphoneId;
+        test.TakeSent();
+        return session;
+    }
+
+    private static void Reserve(GameSession session, long ceremonyTime) {
+        session.Marriage.Marriage = new Marriage {
+            Id = 77,
+            Status = MaritalStatus.Engaged,
+            Partner1 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(1, 1, "groom", "", "", Gender.Male, Job.Newbie, 20), "", new AchievementInfo(), []) },
+            Partner2 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(2, 2, "bride", "", "", Gender.Female, Job.Newbie, 20), "", new AchievementInfo(), []) },
+        };
+        session.Marriage.WeddingHall = new WeddingHall {
+            Id = 9, MarriageId = 77, ReserverAccountId = 1, ReserverCharacterId = 1, ReserverName = "groom", PartnerName = "bride",
+            CeremonyTime = ceremonyTime, PackageId = 3, PackageHallId = 4,
+        };
+    }
+
+    // The wedding megaphone (kind 25) takes the item and hands the reservation to the world with the item id.
+    [Test]
+    public void WeddingLine_CarriesTheReservationAndTakesTheItem() {
+        GameSession session = LoginWithMegaphone(ItemFunction.WeddingChat);
+        long ceremony = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600;
+        Reserve(session, ceremony);
+
+        Say(session, ChatType.Wedding, "come");
+
+        ChatRequest request = test.World.Chats.Single();
+        Assert.That(request.ChatCase, Is.EqualTo(ChatRequest.ChatOneofCase.Wedding));
+        Assert.That(request.Message, Is.EqualTo("come"));
+        Assert.That(request.Channel, Is.EqualTo(Channel));
+        Assert.That(request.Wedding.ItemId, Is.EqualTo(MegaphoneId));
+        Assert.That(request.Wedding.MarriageId, Is.EqualTo(77));
+        Assert.That(request.Wedding.PackageId, Is.EqualTo(3));
+        Assert.That(request.Wedding.HallId, Is.EqualTo(4));
+        Assert.That(request.Wedding.CeremonyTime, Is.EqualTo(ceremony));
+        Assert.That(request.Wedding.Groom, Is.EqualTo("groom"));
+        Assert.That(request.Wedding.Bride, Is.EqualTo("bride"));
+        Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Empty);
+        Assert.That(session.SuperChatId, Is.EqualTo(0));
+    }
+
+    // Without a reservation the line goes nowhere, the item stays and the sender gets the client's text.
+    [Test]
+    public void WeddingLine_WithoutAReservationKeepsTheItem() {
+        GameSession session = LoginWithMegaphone(ItemFunction.WeddingChat);
+
+        Say(session, ChatType.Wedding, "come");
+
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat),
+            Is.EqualTo(new[] { Hex(ChatPacket.Alert(StringCode.s_err_wedding_chat_cannot_use_no_reservation)) }));
+        Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Not.Empty);
+        Assert.That(session.SuperChatId, Is.EqualTo(MegaphoneId));
+    }
+
+    [Test]
+    public void WeddingLine_AfterTheCeremonyKeepsTheItem() {
+        GameSession session = LoginWithMegaphone(ItemFunction.WeddingChat);
+        Reserve(session, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 3600);
+
+        Say(session, ChatType.Wedding, "come");
+
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat),
+            Is.EqualTo(new[] { Hex(ChatPacket.Alert(StringCode.s_err_wedding_chat_cannot_use_complete)) }));
+    }
+
+    // Each megaphone line takes its own item: super chat with a wedding megaphone selected, and the other way
+    // round, is refused and the selection dropped.
+    [TestCase(ItemFunction.WeddingChat, ChatType.Super)]
+    [TestCase(ItemFunction.SuperWorldChat, ChatType.Wedding)]
+    public void MegaphoneLine_WithTheOtherItemIsRefused(ItemFunction function, ChatType type) {
+        GameSession session = LoginWithMegaphone(function);
+        Reserve(session, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600);
+
+        Say(session, type, "come");
+
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat),
+            Is.EqualTo(new[] { Hex(ChatPacket.Alert(StringCode.s_err_invalid_item)) }));
+        Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Not.Empty);
+        Assert.That(session.SuperChatId, Is.EqualTo(0));
     }
 }

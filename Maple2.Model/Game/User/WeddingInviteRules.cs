@@ -115,6 +115,19 @@ public static class WeddingInviteRules {
     // (married) and in any divorce state the hall is over, also while its time is still in the window.
     public static bool HallNotHeld(MaritalStatus coupleStatus) => coupleStatus == MaritalStatus.Engaged;
 
+    // The wedding megaphone (chat kind 25) announces the sender's reserved hall, whose link takes the reader to the
+    // ceremony. The client sends it without a check of its own; the server refuses it with the client's texts:
+    // without a reserved hall, and once the hall is over (held, or its entry window past). Null: the line goes out.
+    public static StringCode? WeddingChatError(long hallId, MaritalStatus coupleStatus, long ceremonyTime, long now, int windowSeconds) {
+        if (hallId == 0) {
+            return StringCode.s_err_wedding_chat_cannot_use_no_reservation;
+        }
+        if (!HallNotHeld(coupleStatus) || now > ceremonyTime + windowSeconds) {
+            return StringCode.s_err_wedding_chat_cannot_use_complete;
+        }
+        return null;
+    }
+
     // The couple gets its own hall's ticket while the hall is not held and its time is in the window.
     public static bool CoupleTicket(MaritalStatus coupleStatus, long ceremonyTime, long now, int windowSeconds) {
         return HallNotHeld(coupleStatus) && Math.Abs(now - ceremonyTime) <= windowSeconds;

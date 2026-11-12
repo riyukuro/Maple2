@@ -64,8 +64,17 @@ message ChatRequest {
     int64 club_id = 1;
     repeated int64 member_ids = 2;
   }
+  // The wedding megaphone (chat kind 25): the line carries the item id, then the reservation the client links to
+  // (moveToWeddingHall: the marriage id, the package and hall of the wedding table, the ceremony time in epoch
+  // seconds, groom and bride).
   message Wedding {
     int32 item_id = 1;
+    int64 marriage_id = 2;
+    int32 package_id = 3;
+    int32 hall_id = 4;
+    int64 ceremony_time = 5;
+    string groom = 6;
+    string bride = 7;
   }
   message SystemNotice {}
 

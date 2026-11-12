@@ -31,8 +31,11 @@ public class SuperChatHandler : FieldPacketHandler {
     private static void HandleSelect(GameSession session, IByteReader packet) {
         int itemId = packet.ReadInt();
 
+        // The selection dialog lists the super chat and the wedding megaphone items (UISelectSuperWorldChatDialog,
+        // GetWeddingChatItems uisidepopuptalk_2.cpp:211) and selects either with this packet; with a wedding item
+        // selected the client sends its line as chat kind 25.
         Item? superChatItem = session.Item.Inventory.Find(itemId).FirstOrDefault();
-        if (superChatItem?.Metadata.Function?.Type != ItemFunction.SuperWorldChat) {
+        if (superChatItem?.Metadata.Function?.Type is not (ItemFunction.SuperWorldChat or ItemFunction.WeddingChat)) {
             return;
         }
 

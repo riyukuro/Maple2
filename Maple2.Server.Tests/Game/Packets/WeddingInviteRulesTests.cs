@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -188,5 +189,38 @@ public class WeddingInviteRulesTests {
         Assert.That(WeddingInviteRules.HasReservation(false, 7), Is.False);
         Assert.That(WeddingInviteRules.HasReservation(null, 0), Is.True);
         Assert.That(WeddingInviteRules.HasReservation(null, 7), Is.True);
+    }
+
+    // The wedding megaphone needs a reserved hall that is not over yet: not held, and its entry window not past.
+    [Test]
+    public void WeddingChatError_NeedsAHallThatIsNotOver() {
+        Assert.That(WeddingInviteRules.WeddingChatError(0, MaritalStatus.Engaged, Time, Now, 1800),
+            Is.EqualTo(StringCode.s_err_wedding_chat_cannot_use_no_reservation));
+        Assert.That(WeddingInviteRules.WeddingChatError(Hall, MaritalStatus.Engaged, Time, Now, 1800), Is.Null);
+        Assert.That(WeddingInviteRules.WeddingChatError(Hall, MaritalStatus.Engaged, Time, Time + 1800, 1800), Is.Null);
+        Assert.That(WeddingInviteRules.WeddingChatError(Hall, MaritalStatus.Engaged, Time, Time + 1801, 1800),
+            Is.EqualTo(StringCode.s_err_wedding_chat_cannot_use_complete));
+        Assert.That(WeddingInviteRules.WeddingChatError(Hall, MaritalStatus.Married, Time, Now, 1800),
+            Is.EqualTo(StringCode.s_err_wedding_chat_cannot_use_complete));
+    }
+
+    // Kind 25: the line with the item id where super chat has it, then the reservation block the client reads after
+    // the end flag.
+    [Test]
+    public void WeddingLine_IsTheLineThenTheReservation() {
+        byte[] line = ChatPacket.Wedding(1, 2, "ab", "hi", 20800001, 77, 3, 4, Time, "g", "b", channel: 5).ToArray();
+        byte[] head = ChatPacket.Message(1, 2, "ab", ChatType.Wedding, "hi", 20800001, channel: 5).ToArray();
+
+        Assert.That(line[..head.Length], Is.EqualTo(head));
+        // op 2, ids 16, name 2 + 4, flag 1, text 2 + 4, type 4, gm 1, channel 4: the item id.
+        Assert.That(BitConverter.ToInt32(head, 40), Is.EqualTo(20800001));
+        var reader = new ByteReader(line, head.Length);
+        Assert.That(reader.ReadLong(), Is.EqualTo(77));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadInt(), Is.EqualTo(4));
+        Assert.That(reader.ReadLong(), Is.EqualTo(Time));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("g"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("b"));
+        Assert.That(reader.Available, Is.EqualTo(0));
     }
 }

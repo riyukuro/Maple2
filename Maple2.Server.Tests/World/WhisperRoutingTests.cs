@@ -116,6 +116,19 @@ public class WhisperRoutingTests {
         Assert.That(second.Chats, Is.Empty);
     }
 
+    // The recipient is online on a channel the world has no client for (down, or not registered yet): NotFound too,
+    // so the sender gets s_err_cannot_find_user instead of nothing.
+    [Test]
+    public void Whisper_ToAChannelWithNoClientIsNotFound() {
+        players[RecipientId].Channel = 3;
+
+        var ex = Assert.Throws<RpcException>(() => Whisper());
+
+        Assert.That(ex!.StatusCode, Is.EqualTo(StatusCode.NotFound));
+        Assert.That(first.Chats, Is.Empty);
+        Assert.That(second.Chats, Is.Empty);
+    }
+
     // The world still lists the recipient on a channel that has no session for it any more.
     [Test]
     public void Whisper_TheRecipientsChannelDoesNotFindIsNotFound() {

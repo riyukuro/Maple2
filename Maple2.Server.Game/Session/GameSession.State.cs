@@ -62,6 +62,9 @@ public partial class GameSession {
     // whisper with chat kind 6 naming the sender, and only such a sender is sent the reject notice.
     public readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> WhisperedBy = new();
 
+    // The chat spam restriction (FastChat and SameChat constants) of this player's lines.
+    public readonly ChatRestriction ChatRestriction = new();
+
     public long ReportCooldown = 0;
 
     public bool CanHold() {

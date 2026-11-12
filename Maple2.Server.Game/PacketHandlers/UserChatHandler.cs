@@ -41,6 +41,17 @@ public class UserChatHandler : FieldPacketHandler {
             return;
         }
 
+        if (type != ChatType.WhisperReject && ChatRestriction.TooLong(Constants, message)) {
+            return;
+        }
+        if (ChatRestriction.Covers(type)) {
+            ChatRestriction.Result result = session.ChatRestriction.Check(Constants, message, Environment.TickCount64);
+            if (!result.Allowed) {
+                session.Send(NoticePacket.Message(new InterfaceText(result.Notice, result.Seconds.ToString())));
+                return;
+            }
+        }
+
         switch (type) {
             case ChatType.Normal:
                 HandleNormal(session, message, itemUids);
@@ -76,6 +87,10 @@ public class UserChatHandler : FieldPacketHandler {
             case ChatType.Wedding:
                 HandleWedding(session, message, itemUids);
                 break;
+            case ChatType.UgcEvent:
+                // The home OX quiz line (kind 22) is the server's announcement of the event (texttohtml.cpp:575,
+                // joinUGCEvent link); the client never sends it, so one from a client goes nowhere.
+                return;
             case ChatType.MicroGame:
                 // KMS2 gives the line back to the field with the same type and channel 0.
                 session.Field.Broadcast(ChatPacket.Message(session.Player.Value, ChatType.MicroGame, message));
@@ -293,17 +308,33 @@ public class UserChatHandler : FieldPacketHandler {
         session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message, gm: AdminLevel.IsGm(session.Player.AdminPermissions), channel: GameServer.GetChannel()));
     }
 
-    private void HandleSuper(GameSession session, string message, ICollection<long> itemUids) {
+    // The megaphone item the player selected (SuperChat Select), if it is still in the inventory with the function
+    // of the line's kind. Otherwise the selection is dropped and the player told so.
+    private static Item? SelectedMegaphone(GameSession session, ItemFunction function) {
         if (session.SuperChatId == 0) {
-            return;
+            return null;
         }
 
-        Item? superChatItem = session.Item.Inventory.Find(session.SuperChatItemId).FirstOrDefault();
+        Item? item = session.Item.Inventory.Find(session.SuperChatItemId).FirstOrDefault();
+        if (item?.Metadata.Function?.Type == function) {
+            return item;
+        }
+        Deselect(session);
+        session.Send(ChatPacket.Alert(item == null ? StringCode.s_err_lack_super_coupon : StringCode.s_err_invalid_item));
+        return null;
+    }
+
+    private static void Deselect(GameSession session) {
+        session.SuperChatId = 0;
+        session.SuperChatItemId = 0;
+        session.Send(SuperChatPacket.Deselect(session.Player.ObjectId));
+    }
+
+    // A super chat line takes the selected SuperWorldChat item; the client sends a selected wedding megaphone as
+    // kind 25, so kind 16 with one is refused.
+    private void HandleSuper(GameSession session, string message, ICollection<long> itemUids) {
+        Item? superChatItem = SelectedMegaphone(session, ItemFunction.SuperWorldChat);
         if (superChatItem == null) {
-            session.SuperChatId = 0;
-            session.SuperChatItemId = 0;
-            session.Send(SuperChatPacket.Deselect(session.Player.ObjectId));
-            session.Send(ChatPacket.Alert(StringCode.s_err_lack_super_coupon));
             return;
         }
 
@@ -320,9 +351,7 @@ public class UserChatHandler : FieldPacketHandler {
 
         if (session.Item.Inventory.Consume(superChatItem.Uid, 1)) {
             try {
-                session.SuperChatId = 0;
-                session.SuperChatItemId = 0;
-                session.Send(SuperChatPacket.Deselect(session.Player.ObjectId));
+                Deselect(session);
                 World.Chat(request);
             } catch (RpcException) { }
         }
@@ -350,7 +379,25 @@ public class UserChatHandler : FieldPacketHandler {
         } catch (RpcException) { }
     }
 
+    // Chat kind 25, the wedding megaphone: the client sends it from the super chat tab with a selected WeddingChat
+    // item (UIMessenger SendChat, uimessenger.cpp:4219). The line goes to every channel like super chat and carries
+    // the sender's reservation, so readers can follow its link to the ceremony. Without a reserved hall, or once the
+    // hall is over, the item stays and the sender gets the client's text.
     private void HandleWedding(GameSession session, string message, ICollection<long> itemUids) {
+        Item? item = SelectedMegaphone(session, ItemFunction.WeddingChat);
+        if (item == null) {
+            return;
+        }
+
+        Marriage marriage = session.Marriage.Marriage;
+        WeddingHall hall = session.Marriage.WeddingHall;
+        StringCode? error = WeddingInviteRules.WeddingChatError(hall.Id, marriage.Status, hall.CeremonyTime,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Model.WeddingCeremony.EnterWindowSeconds);
+        if (error != null) {
+            session.Send(ChatPacket.Alert(error.Value));
+            return;
+        }
+
         var request = new ChatRequest {
             AccountId = session.AccountId,
             CharacterId = session.CharacterId,
@@ -358,12 +405,24 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
-            Wedding = new ChatRequest.Types.Wedding { ItemId = 0 },
+            Channel = GameServer.GetChannel(),
+            Wedding = new ChatRequest.Types.Wedding {
+                ItemId = session.SuperChatId,
+                MarriageId = marriage.Id,
+                PackageId = hall.PackageId,
+                HallId = hall.PackageHallId,
+                CeremonyTime = hall.CeremonyTime,
+                Groom = marriage.Partner1.Name,
+                Bride = marriage.Partner2.Name,
+            },
         };
 
-        try {
-            World.Chat(request);
-        } catch (RpcException) { }
+        if (session.Item.Inventory.Consume(item.Uid, 1)) {
+            try {
+                Deselect(session);
+                World.Chat(request);
+            } catch (RpcException) { }
+        }
     }
 
     private static ICollection<long> LinkedItemUids(GameSession session, string message) {

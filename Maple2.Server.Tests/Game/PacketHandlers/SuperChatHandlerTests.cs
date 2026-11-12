@@ -27,9 +27,11 @@ public class SuperChatHandlerTests {
         writer.WriteInt(ItemId);
     }));
 
-    [Test]
-    public void Select_KeepsTheItemId() {
-        GameSession session = Login(ItemFunction.SuperWorldChat);
+    // The super chat tab lists the wedding megaphones too (GetWeddingChatItems, uisidepopuptalk_2.cpp:211).
+    [TestCase(ItemFunction.SuperWorldChat)]
+    [TestCase(ItemFunction.WeddingChat)]
+    public void Select_KeepsTheItemId(ItemFunction function) {
+        GameSession session = Login(function);
 
         Select(session);
 

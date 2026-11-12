@@ -27,6 +27,7 @@ public static class ChatPacket {
                 pWriter.WriteUnicodeString();
                 break;
             case ChatType.Super:
+            case ChatType.Wedding:
                 pWriter.WriteInt();
                 break;
             case ChatType.Club:
@@ -57,6 +58,8 @@ public static class ChatPacket {
                 pWriter.WriteUnicodeString();
                 break;
             case ChatType.Super:
+            case ChatType.Wedding:
+                // The megaphone item id: the client draws its icon and names it in the sender's own notice.
                 pWriter.WriteInt(superChatId);
                 break;
             case ChatType.Club:
@@ -66,6 +69,21 @@ public static class ChatPacket {
 
         pWriter.WriteBool(false);
 
+        return pWriter;
+    }
+
+    // The wedding megaphone line (kind 25). After the line's end flag the client reads the reservation block
+    // (FUN_1407a5960, uimessenger.cpp:2952): the marriage id its hall link sends back to enter the ceremony, the
+    // package and hall it looks up in the wedding table, the ceremony time (epoch seconds), groom and bride.
+    public static ByteWriter Wedding(long accountId, long characterId, string characterName, string message, int itemId, long marriageId,
+            int packageId, int hallId, long ceremonyTime, string groom, string bride, bool gm = false, int channel = 0) {
+        ByteWriter pWriter = Message(accountId, characterId, characterName, ChatType.Wedding, message, itemId, gm: gm, channel: channel);
+        pWriter.WriteLong(marriageId);
+        pWriter.WriteInt(packageId);
+        pWriter.WriteInt(hallId);
+        pWriter.WriteLong(ceremonyTime);
+        pWriter.WriteUnicodeString(groom);
+        pWriter.WriteUnicodeString(bride);
         return pWriter;
     }
 

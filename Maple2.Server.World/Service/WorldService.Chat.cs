@@ -23,7 +23,8 @@ public partial class WorldService {
             case ChatRequest.ChatOneofCase.Club:
                 return ClubChat(request);
             case ChatRequest.ChatOneofCase.Wedding:
-                return Task.FromResult(new ChatResponse());
+                // The wedding megaphone reaches every channel, as super chat does.
+                return SuperChat(request);
             case ChatRequest.ChatOneofCase.SystemNotice:
                 return SystemNotice(request);
             default:
@@ -32,8 +33,8 @@ public partial class WorldService {
         }
     }
 
-    // The line goes to the recipient's channel. NotFound (offline, or gone from that channel) goes back to the sender's
-    // channel, which answers s_err_cannot_find_user.
+    // The line goes to the recipient's channel. NotFound (offline, gone from that channel, or on a channel with no
+    // client) goes back to the sender's channel, which answers s_err_cannot_find_user.
     private Task<ChatResponse> WhisperChat(ChatRequest request) {
         if (!playerLookup.TryGet(request.Whisper.RecipientId, out PlayerInfo? info) || !info.Online) {
             throw new RpcException(new Status(StatusCode.NotFound,
@@ -42,8 +43,9 @@ public partial class WorldService {
 
         int channel = info.Channel;
         if (!channelClients.TryGetClient(channel, out ChannelClient? channelClient)) {
+            // The channel is down or not registered yet: the sender is told the player is not found, as for offline.
             logger.Error("No registry for channel: {Channel}", channel);
-            throw new RpcException(new Status(StatusCode.InvalidArgument,
+            throw new RpcException(new Status(StatusCode.NotFound,
                 $"Unable to whisper: {request.Whisper.RecipientName} on channel: {channel}"));
         }
 

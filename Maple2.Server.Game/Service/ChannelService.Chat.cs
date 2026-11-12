@@ -38,6 +38,7 @@ public partial class ChannelService {
                 ClubChat(request, items);
                 return Task.FromResult(new ChatResponse());
             case ChatRequest.ChatOneofCase.Wedding:
+                WeddingChat(request, items);
                 return Task.FromResult(new ChatResponse());
             case ChatRequest.ChatOneofCase.SystemNotice:
                 SystemChat(request, items);
@@ -106,6 +107,15 @@ public partial class ChannelService {
             server.Broadcast(MessengerBrowserPacket.Link(items.ToArray()));
         }
         server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Super, request.Message, request.Super.ItemId, gm: request.Gm, channel: request.Channel));
+    }
+
+    private void WeddingChat(ChatRequest request, List<Item> items) {
+        if (items.Count > 0) {
+            server.Broadcast(MessengerBrowserPacket.Link(items.ToArray()));
+        }
+        ChatRequest.Types.Wedding wedding = request.Wedding;
+        server.Broadcast(ChatPacket.Wedding(request.AccountId, request.CharacterId, request.Name, request.Message, wedding.ItemId, wedding.MarriageId,
+            wedding.PackageId, wedding.HallId, wedding.CeremonyTime, wedding.Groom, wedding.Bride, request.Gm, request.Channel));
     }
 
     private void ClubChat(ChatRequest request, List<Item> items) {
