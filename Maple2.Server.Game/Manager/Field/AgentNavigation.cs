@@ -202,6 +202,45 @@ public sealed class AgentNavigation {
         return true;
     }
 
+    // The end of a straight move over the navmesh from one point towards another: the target when nothing is in the
+    // way, else the point where the line meets the first edge without a neighbour (a wall or a ledge). The start
+    // snaps to the mesh first; false when it is off the mesh or a point is not finite.
+    public static bool StraightMove(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f from, RcVec3f to, out RcVec3f end) {
+        end = from;
+        if (!float.IsFinite(to.X) || !float.IsFinite(to.Y) || !float.IsFinite(to.Z) || !SnapToMesh(query, filter, from, out RcVec3f start)) {
+            return false;
+        }
+        DtStatus status = query.FindNearestPoly(start, NearestPolyExtents, filter, out long startRef, out _, out _);
+        if (status.Failed() || startRef == 0) {
+            return false;
+        }
+
+        var path = new List<long>();
+        status = query.Raycast(startRef, start, to, filter, out float t, out _, ref path);
+        if (status.Failed()) {
+            return false;
+        }
+        t = Math.Clamp(t, 0f, 1f); // above 1 (float.MaxValue): the target was reached
+        end = new RcVec3f(start.X + (to.X - start.X) * t, start.Y, start.Z + (to.Z - start.Z) * t);
+        if (path.Count > 0 && query.GetPolyHeight(path[^1], end, out float height).Succeeded()) {
+            end.Y = height;
+        }
+        return true;
+    }
+
+    // Moves the npc in a straight line over the navmesh towards the position and stops it at the first wall or
+    // ledge (StraightMove). False when it could not move at all.
+    public bool MoveStraight(Vector3 position) {
+        if (!StraightMove(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(npc.Position),
+                DotRecastHelper.ToNavMeshSpace(position), out RcVec3f end)) {
+            return false;
+        }
+
+        agent.npos = end;
+        npc.Position = DotRecastHelper.FromNavMeshSpace(end);
+        return true;
+    }
+
     // Puts the npc on the navmesh at its position. Off the mesh it stays where it is.
     public bool UpdatePosition() {
         return UpdatePosition(npc.Position);

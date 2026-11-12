@@ -311,6 +311,7 @@ public class FieldNpc : Actor<Npc> {
             }
         }
 
+        MovementState.ApplyHits();
         bool isSpawning = MovementState.State is ActorState.Spawn or ActorState.Regen;
         bool isStunned = false;
 
@@ -321,7 +322,7 @@ public class FieldNpc : Actor<Npc> {
             }
             BattleState.Update(tickCount);
             MovementState.SetStunned(Buffs.Stunned);
-            isStunned = MovementState.State == ActorState.Stun;
+            isStunned = MovementState.State is ActorState.Stun or ActorState.Hit; // held: no AI, no tasks
             if (!AiOff && !isStunned) {
                 AiState.Update(tickCount);
                 DoIdleBehavior(tickCount);
@@ -356,6 +357,7 @@ public class FieldNpc : Actor<Npc> {
         if (SendControl && !IsDead) {
             SequenceCounter++;
             Field.BroadcastNpcControl(this);
+            MovementState.HitSent();
             SendControl = false;
         }
         lastUpdate = tickCount;
@@ -621,6 +623,9 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
         base.ApplyDamage(caster, damage, attack);
+        if (!IsDead && damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hit) && hit.Damage.Any(entry => entry.Amount != 0)) {
+            MovementState.QueueHit(hit.Position, attack); // applied by the field thread in Update
+        }
     }
 
     // Drop box semantics (confirmed via KMS2 video analysis):

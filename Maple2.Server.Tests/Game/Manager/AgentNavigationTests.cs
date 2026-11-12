@@ -80,4 +80,72 @@ public class AgentNavigationTests {
         Assert.That(offMesh.X, Is.EqualTo(30));
         Assert.That(AgentNavigation.SnapToMesh(query, filter, new RcVec3f(float.NaN, 0, 5), out _), Is.False);
     }
+
+    // Two flat quads, x 0..10 and x 11.5..21.5, with a gap of 1.5 navmesh units (a one-block wall) between them.
+    private static DtNavMesh TwoQuads() {
+        var option = new DtNavMeshCreateParams {
+            verts = [0, 0, 0, 0, 0, 100, 100, 0, 100, 100, 0, 0, 115, 0, 0, 115, 0, 100, 215, 0, 100, 215, 0, 0],
+            vertCount = 8,
+            polys = [
+                0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                4, 5, 6, 7, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+            ],
+            polyAreas = [0, 0],
+            polyFlags = [1, 1],
+            polyCount = 2,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(0, 0, 0),
+            bmax = new RcVec3f(21.5f, 1, 10),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        };
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(option);
+        Assert.That(data, Is.Not.Null);
+        var navMesh = new DtNavMesh();
+        Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
+        return navMesh;
+    }
+
+    // A push of 1.5 units from 0.1 before a one-block wall: snapping the end to the nearest poly would put the
+    // npc on the far side; the straight move stops at the wall.
+    [Test]
+    public void StraightMove_StopsAtAWall() {
+        var query = new DtNavMeshQuery(TwoQuads());
+        var filter = new DtQueryDefaultFilter();
+        var from = new RcVec3f(9.9f, 0, 5);
+        var to = new RcVec3f(11.4f, 0, 5);
+
+        Assert.That(AgentNavigation.SnapToMesh(query, filter, to, out RcVec3f snapped), Is.True);
+        Assert.That(snapped.X, Is.EqualTo(11.5f).Within(0.01)); // the far side
+
+        Assert.That(AgentNavigation.StraightMove(query, filter, from, to, out RcVec3f end), Is.True);
+        Assert.That(end.X, Is.EqualTo(10).Within(0.01));
+        Assert.That(end.Z, Is.EqualTo(5).Within(0.01));
+        Assert.That(end.Y, Is.EqualTo(0).Within(0.01));
+    }
+
+    // With nothing in the way the move ends at the target; a start off the mesh or a NaN target is refused.
+    [Test]
+    public void StraightMove_ReachesAFreeTarget() {
+        var query = new DtNavMeshQuery(TwoQuads());
+        var filter = new DtQueryDefaultFilter();
+
+        Assert.That(AgentNavigation.StraightMove(query, filter, new RcVec3f(2, 0, 5), new RcVec3f(3.5f, 0, 6), out RcVec3f end), Is.True);
+        Assert.That(end.X, Is.EqualTo(3.5f).Within(0.01));
+        Assert.That(end.Z, Is.EqualTo(6).Within(0.01));
+
+        Assert.That(AgentNavigation.StraightMove(query, filter, new RcVec3f(40, 0, 40), new RcVec3f(41, 0, 40), out _), Is.False);
+        Assert.That(AgentNavigation.StraightMove(query, filter, new RcVec3f(2, 0, 5), new RcVec3f(float.NaN, 0, 5), out RcVec3f kept), Is.False);
+        Assert.That(kept.X, Is.EqualTo(2));
+    }
 }

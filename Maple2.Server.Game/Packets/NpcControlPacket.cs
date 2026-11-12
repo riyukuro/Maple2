@@ -72,13 +72,15 @@ public static class NpcControlPacket {
     private static void NpcBuffer(this PoolByteWriter buffer, FieldNpc npc, bool isTalk = false) {
         ActorState state;
         short seqId;
+        NpcControlRules.HitEntry? hit = null;
 
         if (isTalk) {
             state = ActorState.Talk;
             seqId = -1;
         } else {
-            state = NpcControlRules.WireState(npc.MovementState.State);
-            seqId = NpcControlRules.WireSequence(npc.MovementState.State, npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId);
+            hit = npc.MovementState.HitEntry;
+            state = NpcControlRules.WireState(npc.MovementState.State, hit != null);
+            seqId = NpcControlRules.WireSequence(npc.MovementState.State, npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId, hit);
         }
 
         buffer.WriteNpcEntry(npc,
@@ -87,7 +89,8 @@ public static class NpcControlPacket {
             animSpeed: (short) (npc.Animation.SequenceSpeed * 100),
             bossTargetId: npc.BattleState.TargetId,
             state: state,
-            seqId: seqId);
+            seqId: seqId,
+            hit: hit);
 
         // Set -1 to continue previous animation
         npc.SequenceId = -1;
@@ -111,7 +114,8 @@ public static class NpcControlPacket {
 
     private static void WriteNpcEntry(this PoolByteWriter buffer, FieldNpc npc,
             byte flags, Vector3S velocity, short animSpeed, int bossTargetId,
-            ActorState state, short seqId, (Vector3 From, Vector3 To, float Duration, float Scale)? jump = null) {
+            ActorState state, short seqId, (Vector3 From, Vector3 To, float Duration, float Scale)? jump = null,
+            NpcControlRules.HitEntry? hit = null) {
         buffer.WriteInt(npc.ObjectId);
         buffer.WriteByte(flags);
         buffer.Write<Vector3S>(npc.Position);
@@ -139,10 +143,11 @@ public static class NpcControlPacket {
 
         switch (state) {
             case ActorState.Hit:
-                buffer.WriteFloat(0); // UnknownF1
-                buffer.WriteFloat(0); // UnknownF2
-                buffer.WriteFloat(0); // UnknownF3
-                buffer.WriteByte(0);  // UnknownB
+                // Client: StateHitData (see NpcControlRules.HitEntry).
+                buffer.WriteFloat(hit?.Delay ?? 0);
+                buffer.WriteFloat(hit?.PushTime ?? 0);
+                buffer.WriteFloat(hit?.Lift ?? 0);
+                buffer.WriteBool(hit?.Down ?? false);
                 break;
             case ActorState.Spawn:
                 buffer.WriteInt(npc.SpawnPointId);

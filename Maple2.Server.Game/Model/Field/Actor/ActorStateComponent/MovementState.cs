@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
@@ -165,6 +166,66 @@ public partial class MovementState {
         SetState(ActorState.Stun);
     }
 
+    // The fields of the hit entry that has not gone out yet (FieldNpc.Update clears it once sent).
+    public NpcControlRules.HitEntry? HitEntry { get; private set; }
+    private long hitEndTick;
+    private static readonly string[] HitSequences = ["Damg_A", "Damg_B"];
+
+    public void HitSent() => HitEntry = null;
+
+    // Damage lands on the attacker's thread (a session's skill packet), so a hit is only queued there and the
+    // field thread applies it in the npc's next update, where the tasks, the sequence and the position are its own.
+    private readonly NpcControlRules.PendingHits pendingHits = new();
+
+    public void QueueHit(Vector3 source, SkillMetadataAttack attack) => pendingHits.Add(source, attack);
+
+    public void ApplyHits() => pendingHits.Apply(TryHit);
+
+    // A damaging hit on a monster: see NpcControlRules.HitReacts. The npc plays Damg_A or Damg_B (KMS2 sends each
+    // about as often), is moved by the attack's push and holds still for NpcControlRules.HitHold; its cast, walk
+    // and emote end (no cancel packet, as for a stun). Chosen here: pushprob below 1 is rolled per hit, and an
+    // npc in a jump arc or without the sequences is left alone (its cast goes on). The push runs straight over the
+    // navmesh and stops at the first wall or ledge. Field thread only: see QueueHit.
+    private bool TryHit(Vector3 source, SkillMetadataAttack attack) {
+        SkillMetadataPush? push = attack.Damage.Push is { Type: not 0 } p && (p.Probability >= 1 || Random.Shared.NextSingle() < p.Probability) ? p : null;
+        if (actor.IsDead || IsJumping || actor.Value.Metadata.Basic.Friendly != 0 || !NpcControlRules.HitReacts(attack.HitImmuneBreak,
+                actor.Value.Metadata.Basic.HitImmune, actor.Value.Metadata.Basic.Class, push != null, State)) {
+            return false;
+        }
+
+        IReadOnlyDictionary<string, AnimationSequenceMetadata>? sequences = actor.Animation.RigMetadata?.Sequences;
+        string[] names = HitSequences.Where(name => sequences != null && sequences.ContainsKey(name)).ToArray();
+        if (names.Length == 0) {
+            return false;
+        }
+
+        CastTask?.Cancel();
+        walkTask?.Cancel();
+        emoteActionTask?.Cancel();
+        if (!actor.Animation.TryPlaySequence(names[Random.Shared.Next(names.Length)], aniSpeed, AnimationType.Misc)
+            || actor.Animation.PlayingSequence is not { } sequence) {
+            Idle();
+            return false;
+        }
+        stateSequence = sequence;
+
+        bool moved = false;
+        if (push != null) {
+            Vector3 from = actor.Position;
+            Vector3 offset = NpcControlRules.PushOffset(source, from, push.Distance);
+            moved = offset != default && actor.Navigation != null && actor.Navigation.MoveStraight(from + offset)
+                    && Vector2.DistanceSquared(new Vector2(from.X, from.Y), new Vector2(actor.Position.X, actor.Position.Y)) > 1;
+        }
+
+        HitEntry = NpcControlRules.Hit(sequence.Id, attack.Damage.HitDelay, push, moved);
+        float getUp = HitEntry.Value.Down && sequences!.TryGetValue("Damg_C", out AnimationSequenceMetadata? down) ? down.Time : 0;
+        hitEndTick = actor.Field.FieldTick + NpcControlRules.HitHold(sequence.Time, aniSpeed, HitEntry.Value.PushTime, HitEntry.Value.Delay, getUp);
+        Velocity = new Vector3(0, 0, 0);
+        SetState(ActorState.Hit);
+        actor.SendControl = true;
+        return true;
+    }
+
     private void SetState(ActorState state) {
         if (actor.IsDead) {
             return;
@@ -225,7 +286,11 @@ public partial class MovementState {
     }
 
     public void Update(long tickCount) {
-        if (State != ActorState.Stun && actor.Animation.PlayingSequence != stateSequence) {
+        if (State == ActorState.Hit) {
+            if (tickCount >= hitEndTick) {
+                Idle();
+            }
+        } else if (State != ActorState.Stun && actor.Animation.PlayingSequence != stateSequence) {
             Idle();
         }
 
