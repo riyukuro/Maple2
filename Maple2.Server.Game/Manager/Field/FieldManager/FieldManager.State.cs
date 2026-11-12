@@ -1233,6 +1233,19 @@ public partial class FieldManager {
         return false;
     }
 
+    // Reads the stored craft into this field's copy of a placed maid: the copy is loaded with the home and does
+    // not see a craft another channel started since. False when the row is gone or cannot be read; the copy
+    // then stays as it is.
+    public bool ReloadMaidCraft(Maid maid) {
+        using GameStorage.Request db = GameStorage.Context();
+        (int RecipeId, long StartTime, int Duration)? stored = db.GetMaidCraft(maid.Uid);
+        if (stored == null) {
+            return false;
+        }
+        (maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration) = stored.Value;
+        return true;
+    }
+
     private void SendToMaidOwner(long ownerId, ByteWriter packet) {
         foreach (FieldPlayer player in Players.Values) {
             if (player.Session.AccountId == ownerId) {

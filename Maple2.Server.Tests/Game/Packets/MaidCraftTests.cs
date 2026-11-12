@@ -222,6 +222,18 @@ public class MaidCraftTests {
     }
 
     [Test]
+    public void FailedReceive_NeverAnswersReceived() {
+        MaidTable.Recipe recipe = Recipe();
+        Maid maid = NewMaid(mood: 50);
+        Assert.That(MaidRules.FailedReceiveResult(maid, 1000), Is.EqualTo(MaidRules.CraftNoRecord));
+        MaidRules.StartCraft(maid, recipe, 1000);
+        Assert.Multiple(() => {
+            Assert.That(MaidRules.FailedReceiveResult(maid, 1199), Is.EqualTo(MaidRules.CraftNotReady));
+            Assert.That(MaidRules.FailedReceiveResult(maid, 1200), Is.Null);
+        });
+    }
+
+    [Test]
     public void Packet_ListAddRemove_AreTheManufactureRecords() {
         Maid maid = NewMaid();
         MaidRules.StartCraft(maid, Recipe(), 1700000000);

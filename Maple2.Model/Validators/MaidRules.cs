@@ -241,6 +241,14 @@ public static class MaidRules {
         return CraftReadyTime(maid) <= now ? CraftReceived : CraftNotReady;
     }
 
+    // The answer to a receive whose clear of the stored craft failed (another channel changed it first, the row
+    // is gone or the database failed), from the copy as read again: no product was given, so never
+    // CraftReceived; null sends no result, only the craft record.
+    public static int? FailedReceiveResult(Maid maid, long now) {
+        int result = ReceiveResult(maid, now);
+        return result == CraftReceived ? null : result;
+    }
+
     // A received or cancelled craft leaves the maid free.
     public static void ClearCraft(Maid maid) {
         maid.CraftRecipeId = 0;

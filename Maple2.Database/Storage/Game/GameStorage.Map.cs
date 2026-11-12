@@ -399,11 +399,16 @@ public partial class GameStorage {
 
         // The stored craft (recipe, start, lead time) of the maid keyed by uid; null when its row is gone.
         public (int RecipeId, long StartTime, int Duration)? GetMaidCraft(long uid) {
-            var craft = Context.Maid.AsNoTracking()
-                .Where(maid => maid.Id == uid)
-                .Select(maid => new { maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration })
-                .FirstOrDefault();
-            return craft == null ? null : (craft.CraftRecipeId, craft.CraftStartTime, craft.CraftDuration);
+            try {
+                var craft = Context.Maid.AsNoTracking()
+                    .Where(maid => maid.Id == uid)
+                    .Select(maid => new { maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration })
+                    .FirstOrDefault();
+                return craft == null ? null : (craft.CraftRecipeId, craft.CraftStartTime, craft.CraftDuration);
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to read the craft of maid {MaidUid}", uid);
+                return null;
+            }
         }
 
         // The maid of a placed cube; null when the cube row is gone or the save fails.

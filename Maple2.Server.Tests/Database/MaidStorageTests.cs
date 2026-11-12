@@ -255,6 +255,13 @@ public class MaidStorageTests {
     // The general save writes the mood and affinity but not the craft: a copy read before a craft started does not
     // clear it.
     [Test]
+    public void GetCraft_OfAFailedContext_IsNull() {
+        GameStorage.Request db = storage.Context();
+        db.Dispose();
+        Assert.That(db.GetMaidCraft(4242), Is.Null);
+    }
+
+    [Test]
     public void Save_LeavesTheCraft() {
         PlotCube cube = PlaceCube();
         Hire(cube.Id);
