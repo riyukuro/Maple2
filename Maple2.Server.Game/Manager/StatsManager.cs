@@ -105,6 +105,11 @@ public class StatsManager {
     /// <param name="skillId">Source skill ID</param>
     /// <returns>DamageType. If successful crit, returns DamageType.Critical. else returns DamageType.Normal</returns>
     public DamageType GetCriticalRate(long targetCriticalEvasion = 0, int skillId = 0) {
+        return Random.Shared.NextDouble() < CriticalChance(targetCriticalEvasion, skillId) ? DamageType.Critical : DamageType.Normal;
+    }
+
+    // The chance GetCriticalRate rolls against.
+    public double CriticalChance(long targetCriticalEvasion = 0, int skillId = 0) {
         double casterCriticalOverride = 0;
         float criticalChance = 0;
         switch (Actor) {
@@ -119,7 +124,7 @@ public class StatsManager {
                 break;
         }
 
-        return Random.Shared.NextDouble() < Math.Max(criticalChance, casterCriticalOverride) ? DamageType.Critical : DamageType.Normal;
+        return Math.Max(criticalChance, casterCriticalOverride);
     }
 
     /// <param name="levelUp">A level change: KMS2 fills HP and SP on a level up (one Stat packet with both after it).</param>
