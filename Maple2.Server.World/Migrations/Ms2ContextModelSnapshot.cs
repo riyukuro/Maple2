@@ -1552,6 +1552,47 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("quest", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.RankDuelJobRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("JobCode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Losses")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Wins")
+                        .HasColumnType("int");
+
+                    b.HasKey("CharacterId", "JobCode");
+
+                    b.ToTable("rank-duel-job-record", (string)null);
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.RankDuelRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("BestRating")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WeeklyReward")
+                        .HasColumnType("int");
+
+                    b.HasKey("CharacterId");
+
+                    b.ToTable("rank-duel-record", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.ServerInfo", b =>
                 {
                     b.Property<string>("Key")
@@ -1971,6 +2012,15 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("wedding-hall", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.AccountEventValue", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.BossClearMember", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Character", null)
@@ -2001,15 +2051,6 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
 
                     b.Navigation("BuddyCharacter");
-                });
-
-            modelBuilder.Entity("Maple2.Database.Model.AccountEventValue", b =>
-                {
-                    b.HasOne("Maple2.Database.Model.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.Character", b =>
@@ -2252,6 +2293,24 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Item", null)
                         .WithOne()
                         .HasForeignKey("Maple2.Database.Model.PetConfig", "ItemUid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.RankDuelJobRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.RankDuelRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

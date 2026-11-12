@@ -32,22 +32,30 @@ public sealed class RankDuelMatch {
 // The rank duel matchmaker of the World server (Pvp 14 register, 15 unregister, 16 join). Not thread safe: the
 // caller holds one lock around every call. Times are ticks in milliseconds passed in by the caller.
 //
-// Chosen here (the client does not settle them): the queue pairs the two characters that waited longest, at
-// once; every character has the same rating (no rating is kept yet), so the server constants
-// rankDuelPvpMatchingTime and rankDuelPvpMatchingMinGap change nothing. A match that nobody joined within
-// NoShowMs is cancelled; a match whose field never reported the end goes after LifetimeMs.
+// Chosen here (the client does not settle them): the longest waiting character is paired first, with the waiting
+// character of the closest rating (then the longest waiting) inside the gap its wait allows
+// (RankDuelRules.AllowedGap, from the server constants rankDuelPvpMatchingTime and rankDuelPvpMatchingMinGap); the
+// queue is tried again on every register and by the caller's timer (Pair), as the window widens with the wait. A
+// match that nobody joined within NoShowMs is cancelled; a match whose field never reported the end goes after
+// LifetimeMs.
 public sealed class RankDuelQueue {
     // The match-found box counts down 15 s (CPvpRankDuelComponent::OnMessage, SetTimer(0xf, ...)); the
     // rest is the move into the field.
     public const long NoShowMs = 45_000;
     public const long LifetimeMs = 15 * 60_000;
 
-    private readonly LinkedList<long> waiting = [];
+    private sealed record Waiter(long CharacterId, int Rating, long Since);
+
+    private readonly List<Waiter> waiting = [];
     private readonly Dictionary<long, int> matchOf = [];
     private readonly Dictionary<int, RankDuelMatch> matches = [];
     private int nextMatchId = 1;
 
-    public bool IsQueued(long characterId) => waiting.Contains(characterId);
+    // The server constants of the window; 0 allows every gap.
+    public int MatchingTimeSeconds { get; set; }
+    public int MatchingMinGap { get; set; }
+
+    public bool IsQueued(long characterId) => waiting.Any(waiter => waiter.CharacterId == characterId);
 
     public RankDuelMatch? MatchOf(long characterId) {
         return matchOf.TryGetValue(characterId, out int matchId) ? matches.GetValueOrDefault(matchId) : null;
@@ -55,10 +63,17 @@ public sealed class RankDuelQueue {
 
     public RankDuelMatch? Get(int matchId) => matches.GetValueOrDefault(matchId);
 
-    // Queues the character; when a second one waits, the two longest waiting are taken out as a match
-    // (paired), whose field the caller then makes (SetRoom) or gives up (Cancel).
-    public RankDuelError Register(long characterId, long tick, out RankDuelMatch? paired) {
-        paired = null;
+    // Queues the character with its rating, then pairs what the windows allow (paired: the first match made,
+    // with the character or not), whose field the caller then makes (SetRoom) or gives up (End).
+    public RankDuelError Register(long characterId, long tick, out RankDuelMatch? paired, int rating = RankDuelRecord.StartRating) {
+        RankDuelError error = Register(characterId, tick, rating, out List<RankDuelMatch> made);
+        paired = made.FirstOrDefault();
+        return error;
+    }
+
+    // The same with every match made (a widened window can pair others too).
+    public RankDuelError Register(long characterId, long tick, int rating, out List<RankDuelMatch> made) {
+        made = [];
         if (IsQueued(characterId)) {
             return RankDuelError.Queued;
         }
@@ -66,28 +81,47 @@ public sealed class RankDuelQueue {
             return RankDuelError.Busy;
         }
 
-        waiting.AddLast(characterId);
-        if (waiting.Count < 2) {
-            return RankDuelError.none;
-        }
-
-        long first = waiting.First!.Value;
-        waiting.RemoveFirst();
-        long second = waiting.First!.Value;
-        waiting.RemoveFirst();
-        paired = new RankDuelMatch { Id = nextMatchId++, First = first, Second = second, CreatedTick = tick };
-        matches[paired.Id] = paired;
-        matchOf[first] = paired.Id;
-        matchOf[second] = paired.Id;
+        waiting.Add(new Waiter(characterId, rating, tick));
+        made = Pair(tick);
         return RankDuelError.none;
     }
 
+    // The matches the windows allow at this tick, taken out of the queue.
+    public List<RankDuelMatch> Pair(long tick) {
+        var made = new List<RankDuelMatch>();
+        bool found = true;
+        while (found && waiting.Count >= 2) {
+            found = false;
+            foreach (Waiter first in waiting.OrderBy(waiter => waiter.Since)) {
+                long gap = RankDuelRules.AllowedGap(tick - first.Since, MatchingTimeSeconds, MatchingMinGap);
+                Waiter? second = waiting
+                    .Where(waiter => waiter != first && Math.Abs((long) waiter.Rating - first.Rating) <= gap)
+                    .OrderBy(waiter => Math.Abs((long) waiter.Rating - first.Rating))
+                    .ThenBy(waiter => waiter.Since)
+                    .FirstOrDefault();
+                if (second == null) {
+                    continue;
+                }
+                waiting.Remove(first);
+                waiting.Remove(second);
+                var match = new RankDuelMatch { Id = nextMatchId++, First = first.CharacterId, Second = second.CharacterId, CreatedTick = tick };
+                matches[match.Id] = match;
+                matchOf[match.First] = match.Id;
+                matchOf[match.Second] = match.Id;
+                made.Add(match);
+                found = true;
+                break;
+            }
+        }
+        return made;
+    }
+
     public RankDuelError Unregister(long characterId) {
-        return waiting.Remove(characterId) ? RankDuelError.none : RankDuelError.NotQueued;
+        return Remove(characterId) ? RankDuelError.none : RankDuelError.NotQueued;
     }
 
     // A logout: a queued character leaves the queue. A matched one stays: its field counts it as absent.
-    public bool Remove(long characterId) => waiting.Remove(characterId);
+    public bool Remove(long characterId) => waiting.RemoveAll(waiter => waiter.CharacterId == characterId) > 0;
 
     public bool SetRoom(int matchId, int channel, int mapId, int roomId) {
         if (!matches.TryGetValue(matchId, out RankDuelMatch? match) || roomId == 0) {

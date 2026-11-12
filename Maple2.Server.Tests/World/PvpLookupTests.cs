@@ -105,4 +105,21 @@ public class PvpLookupTests {
         Assert.That(lookup.MatchOf(1), Is.Null);
         Assert.That(lookup.Register(2), Is.EqualTo(RankDuelError.none));
     }
+
+    // Far ratings wait; the timer's Pair matches them once the window has grown.
+    [Test]
+    public void Window_PairsLaterByTheTimer() {
+        PvpLookup lookup = Lookup();
+        lookup.SetWindow(2, 100);
+        lookup.Register(1, 1000);
+        lookup.Register(2, 1500);
+        Assert.That(made, Is.Empty);
+        tick = 6000;
+        lookup.Pair();
+        Assert.That(made, Is.Empty);
+        tick = 8000;
+        lookup.Pair();
+        lookup.LastStep.Wait();
+        Assert.That(made.Single().Characters, Is.EquivalentTo(new long[] { 1, 2 }));
+    }
 }

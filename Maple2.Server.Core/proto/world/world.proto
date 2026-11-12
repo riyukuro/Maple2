@@ -800,6 +800,8 @@ message LockResponse {
 // The rank duel queue. requester_id is the character.
 message PvpRequest {
   message Register {
+    // The character's rank duel rating, for the pairing window.
+    int32 rating = 1;
   }
   message Unregister {
   }

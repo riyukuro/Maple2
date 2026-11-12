@@ -7,7 +7,7 @@ public partial class WorldService {
     public override Task<PvpResponse> Pvp(PvpRequest request, ServerCallContext context) {
         switch (request.PvpCase) {
             case PvpRequest.PvpOneofCase.Register:
-                return Task.FromResult(new PvpResponse { Error = (int) pvpLookup.Register(request.RequesterId) });
+                return Task.FromResult(new PvpResponse { Error = (int) pvpLookup.Register(request.RequesterId, request.Register.Rating) });
             case PvpRequest.PvpOneofCase.Unregister:
                 return Task.FromResult(new PvpResponse { Error = (int) pvpLookup.Unregister(request.RequesterId) });
             case PvpRequest.PvpOneofCase.Join: {

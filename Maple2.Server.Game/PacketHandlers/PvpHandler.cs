@@ -78,7 +78,7 @@ public class PvpHandler : FieldPacketHandler {
         session.Send(PvpPacket.RankDuelRegistered());
         // Queued already: the World holds the character queued, as state 1 now says. In a match already, or no
         // answer: state 0 with the failed box.
-        int? error = Request(session, new PvpRequest { RequesterId = session.CharacterId, Register = new PvpRequest.Types.Register() })?.Error;
+        int? error = Request(session, new PvpRequest { RequesterId = session.CharacterId, Register = new PvpRequest.Types.Register { Rating = RankDuelStanding.Rating(session) } })?.Error;
         if (error is not ((int) RankDuelError.none or (int) RankDuelError.Queued)) {
             session.Send(PvpPacket.RankDuelMatchFailed());
         }

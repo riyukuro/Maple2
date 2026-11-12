@@ -110,6 +110,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.REWARD_CONTENT, Table = ParseRewardContentTable() };
         yield return new TableMetadata { Name = TableNames.SEASON_DATA, Table = ParseSeasonDataTable() };
         yield return new TableMetadata { Name = TableNames.SMART_PUSH, Table = ParseSmartPushTable() };
+        yield return new TableMetadata { Name = TableNames.RANK_DUEL_GRADE, Table = ParseRankDuelGradeTable() };
         yield return new TableMetadata { Name = TableNames.AUTO_ACTION, Table = ParseAutoActionTable() };
         yield return new TableMetadata { Name = TableNames.MAID_PROPERTY, Table = ParseMaidTable() };
         yield return new TableMetadata { Name = TableNames.FIELD_METADATA, Table = ParseFieldMetaTable() };
@@ -2361,9 +2362,35 @@ public class TableMapper : TypeMapper<TableMetadata> {
             GuildPvp: ParseSeasonData(parser.ParseSeasonDataGuildPvp()),
             Survival: ParseSeasonData(parser.ParseSeasonDataMapleSurvival()),
             SurvivalSquad: ParseSeasonData(parser.ParseSeasonDataMapleSurvivalSquad()),
-            Pvp: ParseSeasonData(parser.ParseSeasonDataPvp()),
+            // The rank duel's season is the one the played client finds (CSeasonDataTable::Refresh over its own
+            // Table/SeasonData_PvP.xml): the client starts its rating display over when the server names another.
+            Pvp: PlayedSeasons("pvp") ?? ParseSeasonData(parser.ParseSeasonDataPvp()),
             UgcMapCommendation: ParseSeasonData(parser.ParseSeasonDataUgcMapCommendation()),
             WorldChampionship: ParseSeasonData(parser.ParseSeasonDataWorldChampion()));
+
+        // The played client's table/<locale>/seasondata_<type>.xml, when it has one; null otherwise.
+        IReadOnlyDictionary<int, SeasonDataTable.Entry>? PlayedSeasons(string type) {
+            string name = $"table/{FeatureLocaleFilter.Locale.ToLowerInvariant()}/seasondata_{type}.xml";
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file => file.Name == name);
+            if (playedReader == null || entry == null) {
+                return null;
+            }
+            var results = new Dictionary<int, SeasonDataTable.Entry>();
+            foreach (XmlNode node in playedReader.GetXmlDocument(entry).SelectNodes("ms2/Season")!) {
+                if (node is not XmlElement row || !int.TryParse(row.GetAttribute("seasonID"), out int id)) continue;
+                results[id] = new SeasonDataTable.Entry(
+                    Id: id,
+                    StartTime: SeasonTime(row.GetAttribute("eventStart"), DateTime.MinValue),
+                    EndTime: SeasonTime(row.GetAttribute("eventEnd"), DateTime.MaxValue),
+                    Grades: Enumerable.Range(1, 7).Select(grade => int.TryParse(row.GetAttribute($"grade{grade}"), out int value) ? value : 0).ToArray());
+            }
+            Console.WriteLine($"seasondata {type}: {results.Count} seasons from the played client ({name})");
+            return results;
+        }
+
+        static DateTime SeasonTime(string value, DateTime fallback) {
+            return DateTime.TryParseExact(value, "yyyy-MM-dd-HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime time) ? time : fallback;
+        }
 
         IReadOnlyDictionary<int, SeasonDataTable.Entry> ParseSeasonData(IEnumerable<(int, SeasonData)> seasonDataParser) {
             var results = new Dictionary<int, SeasonDataTable.Entry>();
@@ -2385,6 +2412,20 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
             return results;
         }
+    }
+
+    // The rank duel grades as the client keeps them (CRankingArenaDataTable::Load): grade 1 to 7; a row with grade 0
+    // or 8 and up is skipped.
+    private RankDuelGradeTable ParseRankDuelGradeTable() {
+        var results = new Dictionary<int, RankDuelGradeTable.Grade>();
+        foreach ((int id, PvpRankingDuelMode row) in parser.ParsePvpRankingDuelMode()) {
+            if (id is <= 0 or >= 8) {
+                continue;
+            }
+            results[id] = new RankDuelGradeTable.Grade(id, row.gradeRating, row.winnerReward, row.loserReward, row.weeklyRewardMax,
+                row.winnerRating, row.loserRating);
+        }
+        return new RankDuelGradeTable(results);
     }
 
     private SmartPushTable ParseSmartPushTable() {

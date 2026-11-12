@@ -2,6 +2,8 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
+using Maple2.Model.Metadata;
+using Maple2.Database.Storage;
 using Maple2.Server.Channel.Service;
 using Serilog;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
@@ -27,9 +29,37 @@ public sealed class PvpLookup : IDisposable {
     private readonly Func<long> tick;
     private readonly Timer? timer;
 
-    public PvpLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup)
+    public PvpLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup, ServerTableMetadataStorage serverTableMetadata)
         : this(ChannelField(channelClients), ChannelNotify(channelClients, playerLookup), () => Environment.TickCount64, true) {
         channelClients.ChannelInactive += EndChannel;
+        this.serverTableMetadata = serverTableMetadata;
+    }
+
+    private readonly ServerTableMetadataStorage? serverTableMetadata;
+
+    // The window's server constants, read when first needed (the metadata loads lazily).
+    private void LoadConstants() {
+        if (serverTableMetadata == null || constantsLoaded) {
+            return;
+        }
+        try {
+            ConstantsTable constants = serverTableMetadata.ConstantsTable;
+            queue.MatchingTimeSeconds = constants.rankDuelPvpMatchingTime;
+            queue.MatchingMinGap = constants.rankDuelPvpMatchingMinGap;
+        } catch (Exception ex) {
+            logger.Warning(ex, "Rank duel matching constants not read: every gap is allowed");
+        }
+        constantsLoaded = true;
+    }
+    private bool constantsLoaded;
+
+    // The window's constants (tests).
+    public void SetWindow(int matchingTimeSeconds, int minGap) {
+        lock (mutex) {
+            queue.MatchingTimeSeconds = matchingTimeSeconds;
+            queue.MatchingMinGap = minGap;
+            constantsLoaded = true;
+        }
     }
 
     public PvpLookup(MakeField makeField, Notify notify, Func<long> tick, bool expireTimer = false) {
@@ -37,24 +67,41 @@ public sealed class PvpLookup : IDisposable {
         this.notify = notify;
         this.tick = tick;
         if (expireTimer) {
-            timer = new Timer(_ => Expire(), null, ExpireInterval, ExpireInterval);
+            timer = new Timer(_ => {
+                Expire();
+                Pair();
+            }, null, ExpireInterval, ExpireInterval);
         }
     }
 
     // The task of the last match made (tests wait on it).
     public Task LastStep { get; private set; } = Task.CompletedTask;
 
-    public RankDuelError Register(long characterId) {
-        RankDuelMatch? paired;
+    public RankDuelError Register(long characterId, int rating = RankDuelRecord.StartRating) {
+        List<RankDuelMatch> made;
         RankDuelError error;
         lock (mutex) {
-            error = queue.Register(characterId, tick(), out paired);
+            LoadConstants();
+            error = queue.Register(characterId, tick(), rating, out made);
         }
-        if (paired != null) {
-            RankDuelMatch match = paired;
+        Make(made);
+        return error;
+    }
+
+    // Pairs again: the windows widen with the wait (the timer calls this).
+    public void Pair() {
+        List<RankDuelMatch> made;
+        lock (mutex) {
+            LoadConstants();
+            made = queue.Pair(tick());
+        }
+        Make(made);
+    }
+
+    private void Make(List<RankDuelMatch> made) {
+        foreach (RankDuelMatch match in made) {
             LastStep = Task.Run(() => MakeMatch(match));
         }
-        return error;
     }
 
     public RankDuelError Unregister(long characterId) {

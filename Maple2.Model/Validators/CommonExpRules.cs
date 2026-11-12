@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 
 namespace Maple2.Model.Validators;
 
@@ -24,6 +24,10 @@ public static class CommonExpRules {
             // Guild check-in: the member's own level; the guild's attendUserExpFactor (guilddef_2.cpp:349)
             // scales the result.
             case ExpType.guildUserExp:
+            // A rank duel's win or loss: the duelist's own level (the client's commonexptable rows rankDuelWin and
+            // rankDuelLose, on the level curve of their expTableID).
+            case ExpType.rankDuelWin:
+            case ExpType.rankDuelLose:
                 return LevelSource.Character;
             case ExpType.taxi:
             case ExpType.mapCommon:

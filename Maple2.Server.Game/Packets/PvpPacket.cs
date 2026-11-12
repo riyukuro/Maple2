@@ -1,5 +1,6 @@
 ﻿using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Model.Game.Pvp;
 using Maple2.Server.Core.Packets;
 
 namespace Maple2.Server.Game.Packets;
@@ -15,6 +16,8 @@ public static class PvpPacket {
         RankDuelMatch = 16,
         RankDuelInArenaField = 17,
         RankDuelResult = 18,
+        RankDuelOwnRecord = 22,
+        RankDuelRecords = 23,
         RankDuelFight = 26,
         RankDuelRound = 27,
         RankDuelWin = 28,
@@ -115,6 +118,32 @@ public static class PvpPacket {
         var pWriter = Packet.Of(SendOp.Pvp);
         pWriter.WriteByte((byte) command);
         pWriter.WriteInt(0);
+        return pWriter;
+    }
+
+    // 0x16: the season (league), the rating, the season's best rating and the valor tokens won this week. The
+    // client starts the rating over at 1000 when the season is not its own current one (RefreshLeague).
+    public static ByteWriter RankDuelOwnRecord(RankDuelRecord record) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.RankDuelOwnRecord);
+        pWriter.WriteInt(record.Season);
+        pWriter.WriteInt(record.Rating);
+        pWriter.WriteInt(record.BestRating);
+        pWriter.WriteInt(record.WeeklyReward);
+        return pWriter;
+    }
+
+    // 0x17: the season's rows by the opponent's job code, each as CIngredientInfo::Read reads it (the job code, the
+    // wins, the losses); the dialog's statistics page sums them.
+    public static ByteWriter RankDuelRecords(RankDuelRecord record) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.RankDuelRecords);
+        pWriter.WriteInt(record.Jobs.Count);
+        foreach ((int jobCode, RankDuelJobRecord job) in record.Jobs.OrderBy(entry => entry.Key)) {
+            pWriter.WriteInt(jobCode);
+            pWriter.WriteInt(job.Wins);
+            pWriter.WriteInt(job.Losses);
+        }
         return pWriter;
     }
 }

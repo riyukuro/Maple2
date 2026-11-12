@@ -386,6 +386,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(MigrationPacket.MoveResult(MigrationError.ok));
 
         Survival.Load();
+        RankDuelStanding.Send(this);
         // MeretMarket
         // PCBangBonus
         Guild.Load();

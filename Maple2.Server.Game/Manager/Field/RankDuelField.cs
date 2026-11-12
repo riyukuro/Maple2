@@ -1,5 +1,9 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Storage;
+using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.Model.Game.Pvp;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Serilog;
@@ -14,9 +18,8 @@ public sealed class RankDuelField {
     // rows of that feature): the rank duel arenas. One is picked at random among those the server can load.
     public static readonly int[] Maps = Enumerable.Range(65010001, 10).ToArray();
 
-    // The rating the result shows. The client starts every character at 1000 (CPvpRankDuelComponent::Reset) and
-    // the server keeps no rating yet, so it shows 1000 with no change.
-    public const int Rating = 1000;
+    // The rating a side shows when its record could not be read (the client's own start value).
+    public const int Rating = RankDuelRecord.StartRating;
 
     private readonly ILogger logger = Log.Logger.ForContext<RankDuelField>();
     private readonly object mutex = new();
@@ -26,6 +29,7 @@ public sealed class RankDuelField {
     private readonly Dictionary<long, string> names = [];
     // The duelists sent out on arrival after the result (Dismiss): the exit leaves them alone.
     private readonly HashSet<long> dismissed = [];
+    private readonly Dictionary<long, int> jobs = [];
 
     public int MatchId { get; }
     public RankDuelPhase Phase {
@@ -75,6 +79,7 @@ public sealed class RankDuelField {
                 return;
             }
             names[characterId] = player.Value.Character.Name;
+            jobs[characterId] = (int) player.Value.Character.Job.Code();
             Apply(state.Enter(characterId, field.FieldTick));
         }
     }
@@ -128,10 +133,12 @@ public sealed class RankDuelField {
                 logger.Information("Rank duel match {MatchId}: {Winner} won over {Loser}", MatchId, @event.Winner, @event.Loser);
                 Send(@event.Winner, PvpPacket.RankDuelWin());
                 Send(@event.Loser, PvpPacket.RankDuelLose());
-                var left = new PvpPacket.RankDuelSide(Name(state.First), state.First, state.First == @event.Winner ? 1 : 0, Rating, 0, 0);
-                var right = new PvpPacket.RankDuelSide(Name(state.Second), state.Second, state.Second == @event.Winner ? 1 : 0, Rating, 0, 0);
+                Dictionary<long, RankDuelChange> changes = ApplyResult(@event.Winner, @event.Loser);
+                var left = Side(state.First, @event.Winner, changes);
+                var right = Side(state.Second, @event.Winner, changes);
                 Send(state.First, PvpPacket.RankDuelResult(@event.Winner, left, right));
                 Send(state.Second, PvpPacket.RankDuelResult(@event.Winner, left, right));
+                SendStanding();
                 break;
             case RankDuelEnd.Draw:
                 // The result dialog fills nothing without a winner: a draw has its intro only.
@@ -146,6 +153,68 @@ public sealed class RankDuelField {
         // The rank duel state goes back to 0, so the duelists can register again.
         Send(state.First, PvpPacket.RankDuelUnregistered());
         Send(state.Second, PvpPacket.RankDuelUnregistered());
+    }
+
+    private PvpPacket.RankDuelSide Side(long characterId, long winner, Dictionary<long, RankDuelChange> changes) {
+        RankDuelChange change = changes.GetValueOrDefault(characterId, new RankDuelChange(Rating, 0, 0));
+        return new PvpPacket.RankDuelSide(Name(characterId), characterId, characterId == winner ? 1 : 0, change.Rating, change.RatingChange, change.Reward);
+    }
+
+    // Both duelists' records take the result (RankDuelRules.Apply) and are saved; the duelists in the field get
+    // their valor tokens and the exp of rankDuelWin or rankDuelLose. One who left or never came gets neither.
+    private Dictionary<long, RankDuelChange> ApplyResult(long winner, long loser) {
+        var changes = new Dictionary<long, RankDuelChange>();
+        try {
+            int season = RankDuelStanding.CurrentSeason(field.TableMetadata);
+            RankDuelGradeTable grades = field.TableMetadata.RankDuelGradeTable;
+            using GameStorage.Request db = field.GameStorage.Context();
+            foreach ((long characterId, bool won) in new[] { (winner, true), (loser, false) }) {
+                RankDuelRecord record = RankDuelStanding.Load(db, characterId, season);
+                bool here = field.TryGetPlayerById(characterId, out _);
+                changes[characterId] = RankDuelRules.Apply(record, grades, won, JobOf(db, won ? loser : winner), here);
+                if (!db.SaveRankDuelRecord(characterId, record)) {
+                    logger.Warning("Rank duel match {MatchId}: the record of {CharacterId} was not saved", MatchId, characterId);
+                }
+            }
+        } catch (Exception ex) {
+            logger.Error(ex, "Rank duel match {MatchId}: the result was not applied", MatchId);
+        }
+
+        foreach ((long characterId, RankDuelChange change) in changes) {
+            if (!field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                continue;
+            }
+            try {
+                if (change.Reward > 0) {
+                    player.Session.Currency[CurrencyType.ValorToken] += change.Reward;
+                }
+                player.Session.Exp.AddExp(characterId == winner ? ExpType.rankDuelWin : ExpType.rankDuelLose);
+            } catch (Exception ex) {
+                logger.Error(ex, "Rank duel match {MatchId}: the reward of {CharacterId} was not given", MatchId, characterId);
+            }
+        }
+        return changes;
+    }
+
+    // The job code of a duelist: as it came in, else from its character.
+    private int JobOf(GameStorage.Request db, long characterId) {
+        if (jobs.TryGetValue(characterId, out int job)) {
+            return job;
+        }
+        return (int) (db.GetCharacter(characterId)?.Job.Code() ?? JobCode.None);
+    }
+
+    // The new Pvp 22 and 23 for the duelists here, so the rank duel window shows the new standing.
+    private void SendStanding() {
+        foreach (long characterId in new[] { state.First, state.Second }) {
+            if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                try {
+                    RankDuelStanding.Send(player.Session);
+                } catch (Exception ex) {
+                    logger.Warning(ex, "Rank duel standing of {CharacterId} not sent", characterId);
+                }
+            }
+        }
     }
 
     private string Name(long characterId) {

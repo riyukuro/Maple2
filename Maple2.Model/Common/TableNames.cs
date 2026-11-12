@@ -50,6 +50,7 @@ public static class TableNames {
     public const string REWARD_CONTENT = "rewardcontent*.xml";
     public const string SEASON_DATA = "seasondata*.xml";
     public const string SMART_PUSH = "smartpush.xml";
+    public const string RANK_DUEL_GRADE = "pvprankingduelmode.xml";
     public const string AUTO_ACTION = "autoactionpricepackage.xml";
 
     // Prestige / Adventure
