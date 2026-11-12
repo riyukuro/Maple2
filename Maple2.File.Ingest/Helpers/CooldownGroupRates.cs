@@ -47,7 +47,7 @@ public sealed class CooldownGroupRates {
         }
     }
 
-    // The group reductions among a level's special effect properties.
+    // The group reduction among a level's special effect properties: the first one, as the client keeps one.
     public static List<CooldownGroupRate> Read(IEnumerable<(string Type, string Probability, string Values)> properties) {
         var found = new List<CooldownGroupRate>();
         foreach ((string type, string probability, string values) in properties) {
@@ -63,7 +63,9 @@ public sealed class CooldownGroupRates {
             foreach (XmlElement v in fragment.DocumentElement!.ChildNodes.OfType<XmlElement>()) {
                 if (int.TryParse(v.GetAttribute("groupID"), out int group) && group != 0
                     && float.TryParse(v.GetAttribute("reduceRate"), NumberStyles.Float, CultureInfo.InvariantCulture, out float rate) && rate != 0) {
+                    // The client keeps one group and rate per effect.
                     found.Add(new CooldownGroupRate(group, rate));
+                    return found;
                 }
             }
         }

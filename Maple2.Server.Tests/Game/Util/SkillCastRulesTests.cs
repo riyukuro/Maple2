@@ -435,6 +435,9 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.CooldownMs(30f, false, 0.2f, 0.1), Is.EqualTo(21000).Within(1), "the rates add up");
         Assert.That(SkillCastRules.CooldownMs(30f, true, 0.2f, 0.1), Is.EqualTo(24000).Within(1), "the skill ignores the caster's rate only");
         Assert.That(SkillCastRules.CooldownMs(30f, false, 0.8f, 0.5), Is.EqualTo(0));
+        Assert.That(SkillCastRules.CheckedCooldownMs(60f, false, 0f, 0.1), Is.EqualTo(51000).Within(1), "the tolerance comes off the full length");
+        Assert.That(SkillCastRules.CheckedCooldownMs(60f, true, 0.1f, 0.1), Is.EqualTo(54000).Within(1), "none for a skill that ignores the reduction");
+        Assert.That(SkillCastRules.CheckedCooldownMs(1f, false, 0f, 0.99), Is.EqualTo(0));
     }
 
     [Test]
@@ -457,6 +460,10 @@ public class SkillCastRulesTests {
             ("4", "1", values), ("3", "1", values), ("4", "0.5", values), ("4", "1", "<v groupID=\"0\" reduceRate=\"0.2\" />"), ("4", "1", "<v"),
         ]);
         Assert.That(found, Is.EqualTo(new[] { new CooldownGroupRate(90000001, 0.2f) }));
+        found = Maple2.File.Ingest.Helpers.CooldownGroupRates.Read([
+            ("4", "1", values + "<v groupID=\"90000002\" reduceRate=\"0.1\" />"), ("4", "1", "<v groupID=\"90000003\" reduceRate=\"0.1\" />"),
+        ]);
+        Assert.That(found, Is.EqualTo(new[] { new CooldownGroupRate(90000001, 0.2f) }), "one per effect");
     }
 
     [Test]

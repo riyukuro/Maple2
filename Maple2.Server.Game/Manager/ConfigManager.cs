@@ -201,6 +201,8 @@ public class ConfigManager {
             skillCooldowns[cooldown.SkillId] = new SkillCooldown(cooldown.SkillId, (short) cooldown.SkillLevel) {
                 EndTick = currentTick + cooldown.MsRemaining,
                 GroupId = cooldown.GroupId,
+                Charges = cooldown.Charges,
+                RechargeMs = cooldown.RechargeMs,
             };
         }
     }
@@ -273,9 +275,11 @@ public class ConfigManager {
 
     public void SaveCastTime(SkillMetadata skill, SkillMetadataMotionProperty motion, int castTick, long tick) {
         // A cooldown under 1 s is not reduced (SkillCastRules.RequiredGap); one that a reduction brings under 1 s
-        // is not checked.
+        // is not checked. The check allows for reduction sources the server does not count (CheckedCooldownMs).
         long fullMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
-        long cooldownMs = fullMs < 1000 ? fullMs : CooldownMs(skill);
+        long cooldownMs = fullMs < 1000 ? fullMs : SkillCastRules.CheckedCooldownMs(skill.Data.Condition.CooldownTime,
+            skill.State.IgnoreReduceCooldown, session.Player.Buffs.CooldownGroupRate(skill.State.CooldownGroupId),
+            session.Player.Stats.Values[SpecialAttribute.ReduceCooldown].Multiplier());
         if (fullMs >= 1000 && cooldownMs < 1000) {
             cooldownMs = 0;
         }

@@ -92,10 +92,18 @@ public class PlayerConfigLookUp {
 
             if (!skillMetadata.State.UseInGameTime) {
                 long msSurpassed = (long) ((currentTime - skillCooldownInfo.StopTime) * TimeSpan.FromSeconds(1).TotalMilliseconds);
-                if (msSurpassed > skillCooldownInfo.MsRemaining) {
+                // A skill with recharge uses gets one use back each time its cooldown ends; the next one then runs
+                // its length again (the game server's SkillCastRules.SettleRecharge).
+                long remaining = skillCooldownInfo.MsRemaining - msSurpassed;
+                while (remaining < 0 && skillCooldownInfo.Charges > 1 && skillCooldownInfo.RechargeMs > 0) {
+                    skillCooldownInfo.Charges--;
+                    remaining += skillCooldownInfo.RechargeMs;
+                }
+                if (remaining < 0) {
                     removeSkillCooldowns.Add(skillCooldownInfo);
                 } else {
-                    skillCooldownInfo.MsRemaining -= (int) msSurpassed;
+                    skillCooldownInfo.MsRemaining = (int) remaining;
+                    skillCooldownInfo.StopTime = currentTime;
                 }
             }
         }

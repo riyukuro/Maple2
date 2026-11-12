@@ -781,6 +781,7 @@ message SkillCooldownInfo {
   int32 ms_remaining = 4;
   int64 stop_time = 5;
   int32 charges = 6;
+  int64 recharge_ms = 7;
 }
 
 message DeathInfo {

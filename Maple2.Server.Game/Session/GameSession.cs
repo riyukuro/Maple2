@@ -1227,6 +1227,7 @@ public sealed partial class GameSession : Core.Network.Session {
                                     MsRemaining = (cooldown.EndTick - fieldTick).Truncate32(),
                                     StopTime = stopTime,
                                     Charges = cooldown.Charges,
+                                    RechargeMs = cooldown.RechargeMs,
                                 }),
                         },
                         DeathInfo = new DeathInfo {

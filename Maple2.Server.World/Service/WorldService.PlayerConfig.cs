@@ -36,6 +36,7 @@ public partial class WorldService {
                     MsRemaining = c.MsRemaining,
                     StopTime = c.StopTime,
                     Charges = c.Charges,
+                    RechargeMs = c.RechargeMs,
                 }),
             },
             DeathInfo = death,
