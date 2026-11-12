@@ -486,7 +486,7 @@ public sealed class QuestManager {
             session.ConditionUpdate(ConditionType.quest_guide);
         }
         if (quest.Metadata.Basic.Type == QuestType.FieldMission) {
-            session.ConditionUpdate(ConditionType.field_mission);
+            session.ConditionUpdate(ConditionType.field_mission, codeLong: quest.Metadata.Id);
         }
 
         quest.EndTime = DateTime.Now.ToEpochSeconds();

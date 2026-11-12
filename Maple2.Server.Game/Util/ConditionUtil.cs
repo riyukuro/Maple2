@@ -87,6 +87,7 @@ public static class ConditionUtil {
             case ConditionType.quest_clear_by_chapter:
             case ConditionType.quest_clear:
             case ConditionType.quest_daily:
+            case ConditionType.field_mission:
             case ConditionType.openItemBox:
             case ConditionType.dungeon_clear:
             case ConditionType.dungeon_clear_group:

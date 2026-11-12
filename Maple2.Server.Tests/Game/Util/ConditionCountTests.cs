@@ -60,6 +60,16 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: itemId), Is.EqualTo(expected));
     }
 
+    // A completed field mission counts for field_mission when its quest id is one of the row's codes or in its range.
+    [TestCase(72000150, true)]
+    [TestCase(72000740, true)]
+    [TestCase(72000154, false)]
+    public void FieldMission_CountsTheListedMissions(int questId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.field_mission, 1,
+            new ConditionMetadata.Parameters(Integers: [72000149, 72000150], Range: new ConditionMetadata.Range<int>(72000736, 72000806)), null);
+        Assert.That(condition.Check(null!, codeLong: questId), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
