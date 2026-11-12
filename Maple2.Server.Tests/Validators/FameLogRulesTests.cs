@@ -157,6 +157,31 @@ public class FameLogRulesTests {
         });
     }
 
+    // The client keys the fame board's list by the time, so logs gained in one second get rising times, also past a
+    // held time that is ahead of the clock.
+    [Test]
+    public void AddFameLog_NeverRepeatsATime() {
+        var test = new TestGameSession();
+        test.SetTable(Read());
+        GameSession session = test.Start();
+        IDictionary<int, long> logs = session.Player.Value.Unlock.FameLogs;
+        long ahead = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 1000;
+        var random = new Random(5);
+
+        Assert.That(session.Quest.AddFameLog(AllianceType.GreenHoods, 8500, random), Is.True);
+        Assert.That(session.Quest.AddFameLog(AllianceType.GreenHoods, 9000, random), Is.True);
+        long[] first = logs.Values.OrderBy(time => time).ToArray();
+        logs[logs.Keys.First()] = ahead;
+        Assert.That(session.Quest.AddFameLog(AllianceType.GreenHoods, 10000, random), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(first[1], Is.EqualTo(first[0] + 1));
+            Assert.That(first[0], Is.EqualTo(DateTimeOffset.UtcNow.ToUnixTimeSeconds()).Within(5));
+            Assert.That(logs[3], Is.EqualTo(ahead + 1));
+            Assert.That(logs.Values.Distinct().Count(), Is.EqualTo(3));
+        });
+    }
+
     // UserEnv 13: one log id and its time.
     [Test]
     public void FameLogPacket() {

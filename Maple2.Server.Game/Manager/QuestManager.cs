@@ -832,7 +832,11 @@ public sealed class QuestManager {
         if (logId == 0) {
             return false;
         }
+        // The client keys its list by the time (uifamepointboarddialog.cpp), so no two logs share one.
         long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (fameLogs.Count > 0) {
+            time = Math.Max(time, fameLogs.Values.Max() + 1);
+        }
         fameLogs[logId] = time;
         session.Send(UserEnvPacket.FameLog(logId, time));
         return true;
