@@ -7,6 +7,7 @@ using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -121,14 +122,15 @@ public sealed class ExperienceManager {
 
     public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) => AddExp(expGained, message, kill: false);
 
-    private long AddExp(long expGained, ExpMessageCode message, bool kill) {
+    // A kill's ExpUp carries the npc's object id, as KMS2 sends it.
+    private long AddExp(long expGained, ExpMessageCode message, bool kill, int npcObjectId = 0) {
         if (expGained <= 0) {
             return 0;
         }
         expGained = SpendRest(expGained, kill);
         LevelUp();
         AddPrestigeExp(message.Type());
-        session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, message));
+        session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, message, npcObjectId));
         session.ConditionUpdate(ConditionType.exp, counter: expGained);
         return expGained;
     }
@@ -183,17 +185,30 @@ public sealed class ExperienceManager {
 
     // The exp of a kill: the monster exp table's column for the npc's class (elite, boss, dungeon elite or boss, else
     // common) at its level; a level the table lacks falls back to the exp base table 2, its common column.
-    public void AddMobExp(int moblevel, int npcClass = 1, float modifier = 1f, long additionalExp = 0) {
-        long expValue;
-        if (session.ServerTableMetadata.MonsterExpTable.Entries.TryGetValue(moblevel, out MonsterExpMetadata? row)) {
-            expValue = row.ForClass(npcClass);
-        } else if (!session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, out IReadOnlyDictionary<int, long>? expBase)
-                   || !expBase.TryGetValue(moblevel, out expValue)) {
+    public void AddMobExp(int moblevel, int npcClass = 1, float modifier = 1f, long additionalExp = 0, int npcObjectId = 0) {
+        long expValue = MobExp(moblevel, npcClass);
+        if (expValue <= 0) {
             return;
         }
 
+        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message(), kill: true, npcObjectId);
+    }
 
-        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message(), kill: true);
+    // The monster exp table's value for a kill, 0 when neither table has the level.
+    public long MobExp(int moblevel, int npcClass) {
+        if (session.ServerTableMetadata.MonsterExpTable.Entries.TryGetValue(moblevel, out MonsterExpMetadata? row)) {
+            return row.ForClass(npcClass);
+        }
+        if (session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, out IReadOnlyDictionary<int, long>? expBase)
+            && expBase.TryGetValue(moblevel, out long expValue)) {
+            return expValue;
+        }
+        return 0;
+    }
+
+    // The field boss bonus (BossKillRules), sent after the kill exp with the boss's object id.
+    public long AddFieldBossBonusExp(long killExp, int npcObjectId) {
+        return AddExp(BossKillRules.FieldBossBonus(killExp), ExpMessageCode.s_msg_take_assist_bonus_exp, kill: false, npcObjectId);
     }
 
     public bool LevelUp() {

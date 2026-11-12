@@ -724,6 +724,7 @@ public class FieldNpc : Actor<Npc> {
     private void HandleDamageDealers() {
         // Death drops, boss or mob: each damage dealer gets its own, locked to it. KMS2 sends them as type 0 with the
         // dealer's character id; in a party only the members who dealt damage get one.
+        SendKillNotices();
         foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
             if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
                 continue;
@@ -738,6 +739,23 @@ public class FieldNpc : Actor<Npc> {
                 player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
             }
             UpdateSpawner(player);
+        }
+    }
+
+    // KMS2 sends, ahead of the kill exp: AppendMessageAssistBonus to the field boss's dealers, then AppendMessageKillBoss
+    // with the last hitter's name for an elite or boss kill. The notice goes to the field (chosen here: the captures show
+    // other players' kills but not whether they were all in the party).
+    private void SendKillNotices() {
+        int npcClass = Value.Metadata.Basic.Class;
+        if (BossKillRules.FieldBoss(npcClass)) {
+            foreach (int dealerId in DamageDealers.Keys) {
+                if (Field.TryGetPlayer(dealerId, out FieldPlayer? dealer)) {
+                    dealer.Session.Send(AppendMessagePacket.AssistBonus(Value.Id));
+                }
+            }
+        }
+        if (BossKillRules.KillNotice(npcClass) && GetLastAttacker() is FieldPlayer killer) {
+            Field.Broadcast(AppendMessagePacket.KillBoss(killer.Value.Character.Name, Value.Id));
         }
     }
 
@@ -760,13 +778,18 @@ public class FieldNpc : Actor<Npc> {
         double expRate = player.Stats.Values[SpecialAttribute.Experience].Multiplier();
         player.Session.Pet?.AddKillExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class);
 
-        if (Value.Metadata.Basic.CustomExp == -1) {
-            // TODO: this is temporary. We need to know how to split exp between players.
-            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class, modifier: (float) Math.Max(0d, 1d + expRate));
-            return;
+        // KMS2 gives every dealer the full kill exp, nothing is split; the ExpUp carries the npc's object id.
+        long killExp = Value.Metadata.Basic.CustomExp;
+        if (killExp == -1) {
+            killExp = player.Session.Exp.MobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class);
+            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class, modifier: (float) Math.Max(0d, 1d + expRate), npcObjectId: ObjectId);
+        } else {
+            player.Session.Exp.AddExp(KillRate.Apply(killExp, expRate));
         }
 
-        player.Session.Exp.AddExp(KillRate.Apply(Value.Metadata.Basic.CustomExp, expRate));
+        if (BossKillRules.FieldBoss(Value.Metadata.Basic.Class)) {
+            player.Session.Exp.AddFieldBossBonusExp(killExp, ObjectId);
+        }
     }
 
     public void SendDebugAiInfo(GameSession requester) {
