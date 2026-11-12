@@ -62,11 +62,16 @@ public class ExpReasonTests {
         });
     }
 
-    // What an exp gain counts as for the adventure level is unchanged by the new reasons.
+    // What an exp gain counts as for the adventure level: a gather, a craft and a pet capture name their life skill
+    // (the server pack's Exp_Gathering, Exp_Manufacturing and Exp_PetTaming rows); the other reasons are unchanged.
     [TestCase(ExpMessageCode.monster, ExpType.none)]
     [TestCase(ExpMessageCode.quest, ExpType.none)]
     [TestCase(ExpMessageCode.miniGame, ExpType.none)]
-    [TestCase(ExpMessageCode.gathering, ExpType.none)]
+    [TestCase(ExpMessageCode.gathering, ExpType.gathering)]
+    [TestCase(ExpMessageCode.masteryFarming, ExpType.gathering)]
+    [TestCase(ExpMessageCode.manufacturing, ExpType.manufacturing)]
+    [TestCase(ExpMessageCode.masteryCooking, ExpType.manufacturing)]
+    [TestCase(ExpMessageCode.petTaming, ExpType.petTaming)]
     [TestCase(ExpMessageCode.s_msg_take_exp, ExpType.none)]
     [TestCase(ExpMessageCode.s_msg_take_map_exp, ExpType.mapCommon)]
     [TestCase(ExpMessageCode.s_msg_take_hidden_map_exp, ExpType.mapCommon)]

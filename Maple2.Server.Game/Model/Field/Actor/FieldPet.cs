@@ -169,6 +169,8 @@ public sealed class FieldPet : FieldNpc {
             // The pet's collection group (70600035 "Capture $petCollectGroup:2$ pets").
             player.Session.ConditionUpdate(ConditionType.pet_catch_category, codeLong: Metadata.CollectGroup);
             player.Session.Send(FieldPacket.DropItem(fieldItem));
+            // The capture's exp: the common exp table's petTaming curve, named with the pet taming reason (3200).
+            player.Session.Exp.AddExp(ExpType.petTaming);
         } else {
             Field.Broadcast(FieldPacket.DropItem(fieldItem));
         }

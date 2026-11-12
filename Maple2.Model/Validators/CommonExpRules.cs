@@ -28,6 +28,8 @@ public static class CommonExpRules {
             // rankDuelLose, on the level curve of their expTableID).
             case ExpType.rankDuelWin:
             case ExpType.rankDuelLose:
+            // A pet capture: the tamer's own level, as the other life skills.
+            case ExpType.petTaming:
                 return LevelSource.Character;
             case ExpType.taxi:
             case ExpType.mapCommon:

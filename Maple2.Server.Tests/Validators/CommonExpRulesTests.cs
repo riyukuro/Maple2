@@ -8,6 +8,7 @@ public class CommonExpRulesTests {
     [TestCase(ExpType.guildUserExp, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.fishing, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.userMiniGame, CommonExpRules.LevelSource.Character)]
+    [TestCase(ExpType.petTaming, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.taxi, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.rareChestFirst, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.none, CommonExpRules.LevelSource.None)]

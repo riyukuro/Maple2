@@ -292,6 +292,14 @@ public static class ModelExtensions {
             ExpMessageCode.s_msg_take_arcade_exp => ExpType.arcade,
             ExpMessageCode.s_msg_take_fishing_exp => ExpType.fishing,
             ExpMessageCode.dungeonRelative => ExpType.dungeonClear,
+            // A gather and a craft name their mastery type (3100 + type, MasteryRules.ExpReason); a pet capture names
+            // pet taming. Each counts as its exp type for the prestige exp (the server pack's Exp_Gathering,
+            // Exp_Manufacturing and Exp_PetTaming rows).
+            ExpMessageCode.gathering or ExpMessageCode.masteryGathering or ExpMessageCode.masteryBreeding
+                or ExpMessageCode.masteryFarming => ExpType.gathering,
+            ExpMessageCode.manufacturing or ExpMessageCode.masteryEngraving or ExpMessageCode.masteryAlchemist
+                or ExpMessageCode.masteryCooking => ExpType.manufacturing,
+            ExpMessageCode.petTaming => ExpType.petTaming,
             _ => ExpType.none,
         };
     }
