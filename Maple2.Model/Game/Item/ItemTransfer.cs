@@ -13,6 +13,10 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
     public int RepackageCount { get; set; }
 
     public ItemBinding? Binding { get; private set; }
+    // CItemTransfer m_b42: false once the item took the empty sockets of another (socket transfer, ItemSocketSystem
+    // 12). The client lets an item give or take sockets only while this and its own socket table rule (m_b41,
+    // CItemSocketTable::FUN_14062d980) both hold (CItemTransfer::CanTransferSocket).
+    public bool SocketTransfer { get; set; } = true;
 
     public ItemTransfer(TransferFlag flag = 0, int remainTrades = 0, int repackageCount = 0, ItemBinding? binding = null) {
         Flag = flag;
@@ -22,7 +26,7 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
     }
 
     public ItemTransfer Clone() {
-        return new ItemTransfer(Flag, RemainTrades, RepackageCount, Binding?.Clone());
+        return new ItemTransfer(Flag, RemainTrades, RepackageCount, Binding?.Clone()) { SocketTransfer = SocketTransfer };
     }
 
     public bool Bind(Character character) {
@@ -49,7 +53,7 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
         writer.WriteInt(RemainTrades); // CItemTransfer[10]
         writer.WriteInt(RepackageCount); // CItemTransfer[11]
         writer.WriteBool(false); // CItemTransfer[12]
-        writer.WriteBool(true); // CItemTransfer[9] *bit-10* (socketTransfer?)
+        writer.WriteBool(SocketTransfer); // CItemTransfer m_b42
 
         // CharBound means untradable, unsellable, bound to char (ignores TransferFlag)
         writer.WriteBool(Binding != null);
@@ -64,7 +68,7 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
         RemainTrades = reader.ReadInt();
         RepackageCount = reader.ReadInt();
         reader.ReadBool();
-        reader.ReadBool();
+        SocketTransfer = reader.ReadBool();
         bool isBound = reader.ReadBool();
         if (isBound) {
             Binding = reader.ReadClass<ItemBinding>();
@@ -75,10 +79,10 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
         if (ReferenceEquals(this, obj)) return true;
         if (!(obj is ItemTransfer other)) return false;
         return Flag == other.Flag && RemainTrades == other.RemainTrades && RepackageCount == other.RepackageCount
-               && Equals(Binding, other.Binding);
+               && SocketTransfer == other.SocketTransfer && Equals(Binding, other.Binding);
     }
 
     public override int GetHashCode() {
-        return HashCode.Combine((int) Flag, RemainTrades, RepackageCount, Binding);
+        return HashCode.Combine((int) Flag, RemainTrades, RepackageCount, SocketTransfer, Binding);
     }
 }

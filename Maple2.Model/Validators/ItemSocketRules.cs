@@ -29,4 +29,30 @@ public static class ItemSocketRules {
 
     public static ConditionType GemstonePutOffCondition(int skinType) =>
         skinType != 0 ? ConditionType.skin_gemstone_putoff : ConditionType.equip_gemstone_putoff;
+    // CItemData::FUN_14053e940 (itemdata.cpp), for an item of type 1: the equip subtypes (id digits 3-4) the socket
+    // system takes. An outfit: earring, hat, top, bottom, gloves, shoes, cape, ring and overall (12-18, 20, 22); other
+    // equipment: earring, necklace and ring (12, 19, 20).
+    public static bool HasSocketSubtype(int subType, int skinType) {
+        return skinType != 0 ? subType is >= 12 and <= 18 or 20 or 22 : subType is 12 or 19 or 20;
+    }
+
+    // GetSocketTransferCost (itemsocketsystemutil.cpp 0x1406284a0): client tag 0x58, which is the server's
+    // SkinCrystal (ItemTagMap), 200 for each open socket of the source; nothing for an item without a skin type.
+    public const ItemTag TransferCostTag = ItemTag.SkinCrystal;
+
+    public static int TransferCost(int openCount, int skinType) {
+        return skinType != 0 ? openCount * 200 : 0;
+    }
+
+    // CItemSocketTable::FUN_14062d980, CItemTransfer m_b41: an item may give or take sockets when it has no
+    // socketDataId, or when its socket row opens fewer sockets than it can hold. With a socketDataId but no row it may not.
+    public static bool TableAllowsTransfer(int socketDataId, byte? maxCount, byte? openCount) {
+        if (socketDataId == 0) {
+            return true;
+        }
+        if (maxCount == null || openCount == null) {
+            return false;
+        }
+        return maxCount > Math.Min(openCount.Value, maxCount.Value);
+    }
 }

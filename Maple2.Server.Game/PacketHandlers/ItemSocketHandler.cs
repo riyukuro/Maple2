@@ -10,6 +10,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Tools.Extensions;
 using static Maple2.Model.Error.ItemSocketError;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -60,8 +61,10 @@ public class ItemSocketHandler : FieldPacketHandler {
                 HandleUnequipGemstone(session, packet);
                 return;
             case Command.TransferSocket:
+                HandleTransferSocket(session, packet);
+                return;
             case Command.StageTransferSocket:
-                HandleTransferSocket(session, packet, command);
+                HandleDebugTransferSocket(packet);
                 return;
         }
     }
@@ -430,11 +433,86 @@ public class ItemSocketHandler : FieldPacketHandler {
         return itemSocket.Sockets[slot] != null ? SocketState.Used : SocketState.Empty;
     }
 
-    // Client ItemSocketSystemPageSocketTransfer: 17 asks to stage moving the sockets of the source
-    // item to the target item, 12 confirms it. The fork has no socket transfer rule yet.
-    private void HandleTransferSocket(GameSession session, IByteReader packet, Command command) {
+    // Socket transfer (client ItemSocketSystemPageSocketTransfer::RequestTransfer, mode 12 with the source and target
+    // uids): the open, empty sockets of one outfit move to an outfit of the same socket count that has none open
+    // (FUN_140628200). The client lists sources from the outfit tab and the equipped outfits, targets from the outfit
+    // tab only, and pays GetSocketTransferCost. The target is sent back with its socket transfer flag (m_b42) cleared,
+    // so it cannot pass the sockets on again.
+    private void HandleTransferSocket(GameSession session, IByteReader packet) {
         long sourceItemUid = packet.ReadLong();
         long targetItemUid = packet.ReadLong();
-        Logger.Debug("ItemSocket {Command} from {SourceItemUid} to {TargetItemUid} not implemented", command, sourceItemUid, targetItemUid);
+
+        lock (session.Item) {
+            Item? source = session.Item.GetOutfit(sourceItemUid);
+            Item? target = session.Item.Inventory.Get(targetItemUid, InventoryType.Outfit);
+            if (source == null || target == null || source.Uid == target.Uid
+                || !CanTransferSockets(source, target, TableMetadata.ItemSocketTable)) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target));
+                return;
+            }
+
+            int cost = ItemSocketRules.TransferCost(source.Socket!.UnlockSlots, source.Metadata.Property.SkinType);
+            if (cost > 0 && !session.Item.Inventory.Consume([new IngredientInfo(ItemSocketRules.TransferCostTag, cost)])) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_lack_price));
+                return;
+            }
+
+            byte open = source.Socket.UnlockSlots;
+            source.Socket.UnlockSlots = 0;
+            target.Socket!.UnlockSlots = open;
+            if (target.Transfer != null) {
+                target.Transfer.SocketTransfer = false;
+            }
+            session.Send(ItemSocketPacket.TransferSocket(source, target));
+        }
     }
+
+    // 17 is the client's debug transfer (OnDebugTransfer, shown only at GM level 0x32 and up); it is not run.
+    private void HandleDebugTransferSocket(IByteReader packet) {
+        long sourceItemUid = packet.ReadLong();
+        long targetItemUid = packet.ReadLong();
+        Logger.Debug("ItemSocket debug transfer from {SourceItemUid} to {TargetItemUid} not run", sourceItemUid, targetItemUid);
+    }
+
+    // FUN_140628200: the source may give its sockets, the target may take them, and both hold the same number.
+    internal static bool CanTransferSockets(Item source, Item target, ItemSocketTable table) {
+        return CanGiveSockets(source, table) && CanTakeSockets(target, table)
+               && source.Socket!.MaxSlots == target.Socket!.MaxSlots;
+    }
+
+    // FUN_140627e80: some sockets open, none filled, and not an item from a gacha that can be dismantled (CItem m_dc).
+    internal static bool CanGiveSockets(Item item, ItemSocketTable table) {
+        return MaySocketTransfer(item, table) && item.Socket!.UnlockSlots > 0 && FilledSockets(item.Socket) == 0
+               && item.GachaDismantleId <= 0;
+    }
+
+    // FUN_140628050: no socket open (nor filled).
+    internal static bool CanTakeSockets(Item item, ItemSocketTable table) {
+        return MaySocketTransfer(item, table) && item.Socket!.UnlockSlots == 0 && FilledSockets(item.Socket) == 0;
+    }
+
+    // What both sides ask: CItemData::HasSkinType, CItemTransfer::CanTransferSocket (m_b42 and m_b41) and
+    // CItem::FUN_140529560 (an equipment item of a socket subtype; not a timed item without a socketDataId).
+    private static bool MaySocketTransfer(Item item, ItemSocketTable table) {
+        ItemMetadataProperty property = item.Metadata.Property;
+        if (property.Type != 1 || property.SkinType == 0 || item.Socket == null) {
+            return false;
+        }
+        if (item.Transfer?.SocketTransfer != true) {
+            return false;
+        }
+        ItemSocketMetadata? row = null;
+        if (property.SocketId != 0 && !table.Entries.TryGetValue(property.SocketId, item.Rarity, out row)) {
+            table.Entries.TryGetValue(property.SocketId, 0, out row);
+        }
+        if (!ItemSocketRules.TableAllowsTransfer(property.SocketId, row?.MaxCount, row?.OpenCount)) {
+            return false;
+        }
+        if (!ItemSocketRules.HasSocketSubtype(property.SubType, property.SkinType)) {
+            return false;
+        }
+        return item.ExpiryTime <= 0 || property.SocketId != 0;
+    }
+
+    private static int FilledSockets(ItemSocket socket) => socket.Sockets.Count(gem => gem != null);
 }
