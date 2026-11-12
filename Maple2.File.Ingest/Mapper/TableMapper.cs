@@ -1810,7 +1810,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
     private ChapterBookTable ParseChapterBookTable() {
         var results = new Dictionary<int, ChapterBookTable.Entry>();
-        foreach ((int id, ChapterBook book) in parser.ParseChapterBook()) {
+        ChapterBookRoot bookRoot = ClientListedRows.Read<ChapterBookRoot>(xmlReader, playedReader, "chapterbook.xml", "chapterbook", "id", true, out ClientListedRows.Counts? bookCounts);
+        ReportClientListed("chapterbook.xml", bookCounts);
+        foreach (ChapterBook book in bookRoot.chapterbook) {
+            int id = book.id;
             var items = new List<ItemComponent>();
             var skillpoints = new List<ChapterBookTable.Entry.SkillPoint>();
             int statPoints = 0;
@@ -2026,6 +2029,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new WeddingTable(rewardsResults, packageResults, skillResults, gradeResults);
     }
 
+    // The ingest log line for a table whose ids the played client lists (ClientListedRows).
+    private static void ReportClientListed(string name, ClientListedRows.Counts? counts) {
+        if (counts == null) {
+            return;
+        }
+        Console.WriteLine($"{name}: {counts.Ids} ids; {counts.Kept} kept for {FeatureLocaleFilter.Locale}, {counts.Added} added from the {PackTables.Locale} rows the played client lists, {counts.Dropped} dropped" +
+                          (counts.PackValues.Count == 0 ? "" : $"; {PackTables.Locale} value kept where the client's does not read: {string.Join(", ", counts.PackValues)}"));
+    }
+
     private DungeonRoomTable ParseDungeonRoom() {
         // The played client's own room table says which rooms limit entry (PlayedClientRooms).
         // Its coupon table and room rows give the extra reward tickets.
@@ -2044,7 +2056,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
         }
         var dungeons = new Dictionary<int, DungeonRoomMetadata>();
-        foreach ((int id, DungeonRoom dungeon) in parser.ParseDungeonRoom()) {
+        DungeonRoomRoot roomRoot = ClientListedRows.Read<DungeonRoomRoot>(xmlReader, playedReader, "dungeonroom.xml", "dungeonRoom", "dungeonRoomID", false, out ClientListedRows.Counts? roomCounts);
+        ReportClientListed("dungeonroom.xml", roomCounts);
+        foreach (DungeonRoom dungeon in roomRoot.dungeonRoom) {
+            int id = dungeon.dungeonRoomID;
             dungeons.Add(id, new DungeonRoomMetadata(
                 Id: dungeon.dungeonRoomID,
                 Level: dungeon.dungeonLevel,
