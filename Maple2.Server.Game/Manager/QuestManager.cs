@@ -502,10 +502,10 @@ public sealed class QuestManager {
         }
 
         if (guildFactor != null) {
-            session.Guild.AddQuestReward(GuildRules.QuestRewardBonus(reward.GuildExp, guildFactor.GuildExp),
+            session.Guild.AddExpFund(GuildRules.QuestRewardBonus(reward.GuildExp, guildFactor.GuildExp),
                 GuildRules.QuestRewardBonus(reward.GuildFund, guildFactor.GuildFund));
         } else {
-            session.Guild.AddQuestReward(reward.GuildExp, reward.GuildFund);
+            session.Guild.AddExpFund(reward.GuildExp, reward.GuildFund);
         }
 
         int missionPoints = MissionPointRules.PointsCounted(reward.MissionPoint);

@@ -353,7 +353,9 @@ public class InventoryManager {
             // case 90000012: // Unknown (BookIcon)
             // case 90000018: // ShadowFragment
             // case 90000019: // DistinctPaul
-            case 90000021: // GuildFunds
+            case 90000021: // GuildFunds: the guild's fund, added by the World (none without a guild)
+                session.Guild.AddExpFund(0, add.Amount);
+                break;
             case 90000022: // ReverseCoin
                 session.Currency[CurrencyType.ReverseCoin] += add.Amount;
                 break;

@@ -181,6 +181,8 @@ public class FieldNpc : Actor<Npc> {
     public readonly SkillMetadata?[] Skills;
 
     public int SpawnPointId = 0;
+    // The score of the spawn_npc_range that spawned it, added to the open score board when it dies.
+    public int TriggerScore;
 
     // Set by the field when it spawns this npc: the npc's own additionalEffect list is added on its first update,
     // after the spawn was announced.
@@ -529,6 +531,7 @@ public class FieldNpc : Actor<Npc> {
         HandleDamageDealers();
         DarkStreamSpawnCleared();
         Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
+        Field.AddScoreBoardScore(TriggerScore);
         if (GetLastAttacker() is FieldPlayer lastHitter) {
             // The killing blow counts for npc_lasthit, with the NPC id as the code (field boss achievements).
             lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit, codeLong: Value.Id, targetLong: Field.MapId);

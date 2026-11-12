@@ -37,6 +37,11 @@ public class ItemPickupHandler : FieldPacketHandler {
                 return;
             }
 
+            // A score orb is no item: its amount goes to the open score board.
+            if (session.Field.TakeScoreOrb(item)) {
+                return;
+            }
+
             session.Item.Inventory.Add(item);
             return;
         }

@@ -480,7 +480,8 @@ public class GuildManager : IDisposable {
         }
     }
 
-    public void AddQuestReward(long exp, long fund) {
+    // Exp and fund for the guild, added by the World: a quest's guild reward, a picked-up guild fund item.
+    public void AddExpFund(long exp, long fund) {
         if (Guild == null || (exp <= 0 && fund <= 0)) {
             return;
         }
@@ -495,7 +496,7 @@ public class GuildManager : IDisposable {
                 },
             });
         } catch (Grpc.Core.RpcException ex) {
-            logger.Error(ex, "Guild quest reward of {CharacterId} failed", session.CharacterId);
+            logger.Error(ex, "Guild exp and fund of {CharacterId} failed", session.CharacterId);
         }
     }
 

@@ -205,8 +205,9 @@ public partial class TriggerContext {
         DebugLog("[SpawnNpcRange] spawnIds:{SpawnIds}, isAutoTargeting:{AutoTarget}, randomPickCount:{RandomCount}, score:{Score}",
             string.Join(", ", spawnIds), isAutoTargeting, randomPickCount, score);
 
+        // Each npc carries the score: its death adds it to the open board (FieldManager.AddScoreBoardScore).
         foreach (int spawnId in TriggerRandomPick.Pick(spawnIds, randomPickCount, Random.Shared)) {
-            SpawnNpc(spawnId);
+            SpawnNpc(spawnId, score: score);
         }
     }
 
@@ -307,7 +308,7 @@ public partial class TriggerContext {
         return npcSpawns.FirstOrDefault(spawn => spawn.SpawnPointId == spawnId);
     }
 
-    private void SpawnNpc(int spawnId, bool useSpawnAnimation = false) {
+    private void SpawnNpc(int spawnId, bool useSpawnAnimation = false, int score = 0) {
         SpawnPointNPC? spawn = FindSpawnPoint(Field.Entities.EventNpcSpawns, Field.Entities.NpcSpawns, spawnId);
         if (spawn == null) {
             logger.Error("[SpawnNpc] Invalid spawnId:{SpawnId}", spawnId);
@@ -354,6 +355,7 @@ public partial class TriggerContext {
             }
 
             fieldNpc.SpawnPointId = spawnId;
+            fieldNpc.TriggerScore = score;
 
             Field.Broadcast(FieldPacket.AddNpc(fieldNpc));
             Field.Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
