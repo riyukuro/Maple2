@@ -245,9 +245,22 @@ public static class ModelExtensions {
         };
     }
 
+    // The reason an ExpUp carries. KMS2 names one on every gain; the client picks the text by it, opens the
+    // reward notice for a mini game (3007) and adds the PC room suffix on a quest or a kill.
     public static ExpMessageCode Message(this ExpType type) {
         return type switch {
-            ExpType.mapCommon or ExpType.mapHidden => ExpMessageCode.s_msg_take_map_exp,
+            ExpType.mapCommon => ExpMessageCode.s_msg_take_map_exp,
+            ExpType.mapHidden => ExpMessageCode.s_msg_take_hidden_map_exp,
+            ExpType.quest => ExpMessageCode.quest,
+            ExpType.mission => ExpMessageCode.mission,
+            ExpType.expDrop => ExpMessageCode.expDrop,
+            ExpType.dungeonRelative => ExpMessageCode.dungeonRelative,
+            ExpType.miniGame => ExpMessageCode.miniGame,
+            ExpType.gathering => ExpMessageCode.gathering,
+            ExpType.manufacturing => ExpMessageCode.manufacturing,
+            ExpType.petTaming => ExpMessageCode.petTaming,
+            ExpType.guildUserExp => ExpMessageCode.guildUserExp,
+            ExpType.monster => ExpMessageCode.monster,
             ExpType.taxi => ExpMessageCode.s_msg_take_taxi_exp,
             ExpType.telescope => ExpMessageCode.s_msg_take_telescope_exp,
             ExpType.rareChestFirst => ExpMessageCode.s_msg_take_normal_rare_first_exp,
@@ -262,7 +275,8 @@ public static class ModelExtensions {
 
     public static ExpType Type(this ExpMessageCode code) {
         return code switch {
-            ExpMessageCode.s_msg_take_map_exp => ExpType.mapCommon,
+            // Both map reasons count as a common map, and the reasons with the plain text as none, as before.
+            ExpMessageCode.s_msg_take_map_exp or ExpMessageCode.s_msg_take_hidden_map_exp => ExpType.mapCommon,
             ExpMessageCode.s_msg_take_taxi_exp => ExpType.taxi,
             ExpMessageCode.s_msg_take_telescope_exp => ExpType.telescope,
             ExpMessageCode.s_msg_take_normal_rare_first_exp => ExpType.rareChestFirst,

@@ -108,6 +108,9 @@ public sealed class ExperienceManager {
 
     public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) => AddExp(expGained, message, kill: false);
 
+    // A kill whose exp is the npc's own (customExp): the kill reason and the npc's object id, no rest exp bonus.
+    public long AddCustomKillExp(long expGained, int npcObjectId) => AddExp(expGained, ExpType.monster.Message(), kill: false, npcObjectId);
+
     // A kill's ExpUp carries the npc's object id, as KMS2 sends it.
     private long AddExp(long expGained, ExpMessageCode message, bool kill, int npcObjectId = 0) {
         if (expGained <= 0) {

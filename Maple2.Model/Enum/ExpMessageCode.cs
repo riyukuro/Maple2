@@ -7,19 +7,28 @@ namespace Maple2.Model.Enum;
 public enum ExpMessageCode : ushort {
     [Description("You got {0} experience.")]
     s_msg_take_exp = 0,
-    /* These all use the same string but different values
-     * quest = 1010
-     * mission = 1053
-     * expDrop = 1062
-     * miniGame = 3007
-     * gathering = 3103
-     * manufacturing = 3107
-     * petTaming = 3200
-     * guildUserExp = 3301
-     * monster = 60001
-     */
+    // The reasons below show the same string as 0. The client still tells them apart: 3007 also opens
+    // the reward notice, and 1010 and 60001 take the PC room suffix (see ExpType.Message).
+    [Description("You got {0} experience.")]
+    quest = 1010,
+    [Description("You got {0} experience.")]
+    mission = 1053,
+    [Description("You got {0} experience.")]
+    expDrop = 1062,
     [Description("You got {0} experience.")]
     dungeonRelative = 1085,
+    [Description("You got {0} experience.")]
+    miniGame = 3007,
+    [Description("You got {0} experience.")]
+    gathering = 3103,
+    [Description("You got {0} experience.")]
+    manufacturing = 3107,
+    [Description("You got {0} experience.")]
+    petTaming = 3200,
+    [Description("You got {0} experience.")]
+    guildUserExp = 3301,
+    [Description("You got {0} experience.")]
+    monster = 60001,
     [Description("You got {0} experience from fishing.")]
     s_msg_take_fishing_exp = 1059,
     [Description("You got {0} experience for playing an instrument.")]
@@ -35,7 +44,9 @@ public enum ExpMessageCode : ushort {
     [Description("You got {1} experience for discovering the {0} taxi stop.")]
     s_msg_take_taxi_exp = 3000,
     [Description("You got {1} experience for discovering {0}.")]
-    s_msg_take_map_exp = 3001, // 3002 for hidden maps
+    s_msg_take_map_exp = 3001,
+    [Description("You got {1} experience for discovering {0}.")]
+    s_msg_take_hidden_map_exp = 3002,
     [Description("You got {1} experience for discovering a new area, {0}.")]
     s_msg_take_telescope_exp = 3003,
     [Description("You got {0} bonus experience.")]

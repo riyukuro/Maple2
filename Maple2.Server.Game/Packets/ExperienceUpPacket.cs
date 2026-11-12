@@ -15,7 +15,7 @@ public static class ExperienceUpPacket {
         var pWriter = Packet.Of(SendOp.ExpUp);
         pWriter.Write<Command>(Command.Add);
         pWriter.WriteLong(gainedExp);
-        pWriter.Write<ExpMessageCode>(message);
+        pWriter.WriteShort((short) message);
         pWriter.WriteLong(totalExp);
         pWriter.WriteLong(restExp);
         pWriter.WriteInt(parameter);
