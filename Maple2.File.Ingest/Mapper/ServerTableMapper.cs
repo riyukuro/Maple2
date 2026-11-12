@@ -1069,6 +1069,28 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return (startTime, endTime);
     }
 
+    // The special attributes whose value is a rate: valueType 2 in the client's
+    // table/specialabilitystringtable.xml (LoadSpecialAbilityStringTable, commonfiles/specialability.cpp:170).
+    // The played client's pack first, else the data folder's; empty without either.
+    private HashSet<int>? specialRates;
+    private HashSet<int> ClientSpecialRates() {
+        var rates = new HashSet<int>();
+        foreach (M2dReader? reader in new[] { playedReader, clientReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file =>
+                string.Equals(file.Name, "table/specialabilitystringtable.xml", StringComparison.OrdinalIgnoreCase));
+            if (reader == null || entry == null) {
+                continue;
+            }
+            foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/key")!) {
+                if (node is XmlElement row && int.TryParse(row.GetAttribute("id"), out int id) && row.GetAttribute("valueType") == "2") {
+                    rates.Add(id);
+                }
+            }
+            break;
+        }
+        return rates;
+    }
+
     private GameEventData? ParseGameEventData(GameEventType type, string value1, string value2, string value3, string value4) {
         var value1Xml = new XmlDocument();
         var value2Xml = new XmlDocument();
@@ -1613,6 +1635,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.Remake(value1, value2);
             case GameEventType.SaleBeautyShop:
                 return EventSaleReader.BeautyShop(value1, value2, value3);
+            case GameEventType.SAHotTime:
+                specialRates ??= ClientSpecialRates();
+                // Without a client pack every attribute counts as a rate: the 12 the KR rows name are rates.
+                return EventSaleReader.HotTime(value1, value2, id => specialRates.Count == 0 || specialRates.Contains(id));
             case GameEventType.SaleAutoPlayInstrument:
                 if (!int.TryParse(value1, out int performanceDiscount) && string.IsNullOrEmpty(value2)) {
                     return null;

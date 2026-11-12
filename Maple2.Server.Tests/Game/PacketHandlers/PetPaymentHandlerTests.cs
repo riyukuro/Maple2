@@ -85,6 +85,29 @@ public class PetPaymentHandlerTests {
         Assert.That(Owned(session, ItemTag.MetaCell), Is.EqualTo(cellsLeft));
     }
 
+    // The pet fee attribute (173) in thousandths is a rate like the sale's; the higher of the two counts, and the
+    // item fee attribute (169) is not a pet's.
+    [TestCase(0, 300, 0, 2, 80, 30)] // 30% by the attribute alone
+    [TestCase(3000, 400, 0, 2, 90, 40)] // the attribute above the sale: 5 * 0.6 = 3
+    [TestCase(5000, 300, 0, 3, 100, 50)] // the sale above the attribute
+    [TestCase(0, 900, 0, 3, 100, 50)] // held to the half
+    [TestCase(0, 0, 500, 0, 50, 0)] // the item attribute: nothing off a pet
+    public void PetChange_TakesTheHigherOfTheSaleAndTheFeeAttribute(int rate, int petFee, int itemFee, int stonesLeft, int fragmentsLeft, int cellsLeft) {
+        if (rate > 0) {
+            sales.Add((7001, new SaleRemake(rate, 0), false));
+        }
+        GameSession session = Login(meso: 50000, fragments: 150);
+        session.Stats.Values[SpecialAttribute.ReducePetRemakeOptionFee].AddTotal(petFee);
+        session.Stats.Values[SpecialAttribute.ReduceRemakeOptionFee].AddTotal(itemFee);
+
+        Assert.That(PayOnSale(session), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(stonesLeft));
+        Assert.That(Owned(session, ItemTag.CrystalPiece), Is.EqualTo(fragmentsLeft));
+        Assert.That(Owned(session, ItemTag.MetaCell), Is.EqualTo(cellsLeft));
+    }
+
     [Test]
     public void PetChange_TakesTheFullCounts_WhenTheSaleIsOverOrOfAnotherClass() {
         sales.Add((7001, new SaleRemake(5000, 0), true));

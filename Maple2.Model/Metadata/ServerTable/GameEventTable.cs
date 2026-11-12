@@ -417,6 +417,17 @@ public record SaleBeautyShop(
     int Rate,
     bool Flag) : GameEventData;
 
+// The special attribute bonus (GameEventSAHotTime, commonfiles/gameevent.cpp:664): value1 is a comma list of
+// special attribute ids, value2 the list of their values, value4 the text of the event icon's tooltip. While the
+// event runs the client adds each value to the character's total of the attribute (CEquipment::GetAbilityTotal,
+// equipment.cpp:740). Value is what is added: a rate in thousandths, a plain value as it is.
+public record SAHotTime(
+    SAHotTimeBonus[] Bonus) : GameEventData;
+
+public record SAHotTimeBonus(
+    SpecialAttribute Attribute,
+    int Value);
+
 // Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
 public record DungeonEnterTime(
     int DungeonId,
@@ -470,4 +481,5 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(FindDungeonHelperBonus), "FindDungeonHelperBonus")]
 [JsonDerivedType(typeof(SaleRemake), "SaleRemake")]
 [JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
+[JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
 public abstract record GameEventData;

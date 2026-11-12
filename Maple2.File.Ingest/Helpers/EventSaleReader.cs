@@ -1,8 +1,10 @@
+using System.Globalization;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.File.Ingest.Helpers;
 
-// The values of the SaleUgcDesign, SaleHousing, FindDungeonHelperBonus, SaleRemake and SaleBeautyShop rows. A row that changes nothing (no
+// The values of the SaleUgcDesign, SaleHousing, FindDungeonHelperBonus, SaleRemake, SaleBeautyShop and SAHotTime rows. A row that changes nothing (no
 // rate, no cube row, no bonus) is not stored.
 public static class EventSaleReader {
     // value1: the rate (GameEventSale, commonfiles/gameevent.cpp:1952).
@@ -46,6 +48,31 @@ public static class EventSaleReader {
             return null;
         }
         return new SaleRemake(rate, type);
+    }
+
+    // value1 the special attribute ids, value2 their values, comma lists (GameEventSAHotTime,
+    // commonfiles/gameevent.cpp:664). The client keeps a value of an attribute whose value type is a rate
+    // (specialAbilityStringTable.xml valueType 2, isRate) as (int) (value * 1000) and any other as (int) value,
+    // and drops both lists when their lengths differ. A row that adds nothing is not stored.
+    public static SAHotTime? HotTime(string? value1, string? value2, Func<int, bool> isRate) {
+        string[] ids = Split(value1);
+        string[] values = Split(value2);
+        if (ids.Length == 0 || ids.Length != values.Length) {
+            return null;
+        }
+
+        var bonus = new List<SAHotTimeBonus>();
+        for (int i = 0; i < ids.Length; i++) {
+            if (!int.TryParse(ids[i], out int id) || id is < 0 or > byte.MaxValue || !Enum.IsDefined((SpecialAttribute) id)
+                || !float.TryParse(values[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float value)) {
+                return null;
+            }
+            int amount = isRate(id) ? (int) (value * 1000f) : (int) value;
+            if (amount != 0) {
+                bonus.Add(new SAHotTimeBonus((SpecialAttribute) id, amount));
+            }
+        }
+        return bonus.Count == 0 ? null : new SAHotTime(bonus.ToArray());
     }
 
     // value1: the beauty shop, value2: the rate, value3: the flag, 0 when empty (GameEventSaleBeautyShop,

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
@@ -226,6 +227,81 @@ public class EventSaleTypesTests {
             ShopSale(7002, 2, new SaleBeautyShop(500, 5000, true)),
         ], 500), Is.EqualTo(2000));
     }
+
+    [TestCase(3000, 0, 3000)]
+    [TestCase(0, 300, 3000)] // thousandths: 0.3 of the count
+    [TestCase(3000, 400, 4000)]
+    [TestCase(5000, 400, 5000)]
+    [TestCase(0, 0, 0)]
+    [TestCase(3000, -200, 3000)]
+    public void RemakeDiscount_IsTheHigherOfTheSaleAndTheFeeAttribute(int saleRate, long feeTotal, int expected) {
+        Assert.That(EventSaleRules.RemakeDiscount(saleRate, feeTotal), Is.EqualTo(expected));
+    }
+
+    #region SAHotTime
+    [Test]
+    public void SAHotTime_WritesTheFourValuesAsTheyAre() {
+        var gameEvent = new GameEvent(new GameEventMetadata(EventId, GameEventType.SAHotTime, DateTime.Now.AddDays(-3), DateTime.Now.AddDays(30),
+            TimeSpan.Zero, TimeSpan.Zero, [], new SAHotTime([new SAHotTimeBonus((SpecialAttribute) 59, 1000)]), "1,59", "1,1", "", "tip"));
+        var writer = new ByteWriter();
+        gameEvent.WriteTo(writer);
+        Assert.That(Convert.ToHexString(writer.ToArray()),
+            Is.EqualTo(Name("SAHotTime") + "591B0000" + Name("1,59") + Name("1,1") + Name("") + Name("tip")));
+    }
+
+    [Test]
+    public void HotTimeReader_KeepsARateInThousandthsAndAnyOtherWhole() {
+        SAHotTime? read = EventSaleReader.HotTime("1, 59,61", "2,1,0.1", id => id != 1);
+        Assert.That(read, Is.Not.Null);
+        Assert.That(read!.Bonus, Is.EqualTo(new[] {
+            new SAHotTimeBonus((SpecialAttribute) 1, 2),
+            new SAHotTimeBonus((SpecialAttribute) 59, 1000),
+            new SAHotTimeBonus((SpecialAttribute) 61, 100),
+        }));
+    }
+
+    [TestCase("1,59", "1")] // the lists differ in length: the client drops both
+    [TestCase("", "")]
+    [TestCase(null, null)]
+    [TestCase("59", "0")] // nothing added
+    [TestCase("59", "x")]
+    [TestCase("30000", "1")] // no such attribute
+    public void HotTimeReader_DropsARowThatAddsNothing(string? value1, string? value2) {
+        Assert.That(EventSaleReader.HotTime(value1, value2, _ => true), Is.Null);
+    }
+
+    [Test]
+    public void HotTimeReader_CutsAWholeValueBelowOne() {
+        Assert.That(EventSaleReader.HotTime("59", "0.1", _ => false), Is.Null);
+    }
+
+    [Test]
+    public void HotTimeBonus_AddsTheRunningEventsUp() {
+        Dictionary<SpecialAttribute, long> sum = EventSaleRules.HotTimeBonus([
+            new SAHotTime([new SAHotTimeBonus((SpecialAttribute) 59, 1000), new SAHotTimeBonus((SpecialAttribute) 61, 100)]),
+            new SAHotTime([new SAHotTimeBonus((SpecialAttribute) 59, 2000)]),
+        ]);
+        Assert.That(sum, Has.Count.EqualTo(2));
+        Assert.That(sum[(SpecialAttribute) 59], Is.EqualTo(3000));
+        Assert.That(sum[(SpecialAttribute) 61], Is.EqualTo(100));
+    }
+
+    [Test]
+    public void HotTime_RaisesThePlayersTotals_WhileItRuns() {
+        var test = new TestGameSession();
+        test.AddEvent(7001, GameEventType.SAHotTime, new SAHotTime([new SAHotTimeBonus((SpecialAttribute) 59, 1000)]));
+        test.AddEvent(7002, GameEventType.SAHotTime, new SAHotTime([new SAHotTimeBonus((SpecialAttribute) 59, 500), new SAHotTimeBonus((SpecialAttribute) 61, 100)]));
+        test.AddEvent(7003, GameEventType.SAHotTime, new SAHotTime([new SAHotTimeBonus((SpecialAttribute) 59, 9000)]),
+            DateTime.Now.AddDays(-9), DateTime.Now.AddDays(-2));
+        var session = test.Start();
+
+        session.Stats.AddHotTime(session);
+
+        Assert.That(session.Stats.Values[(SpecialAttribute) 59].Total, Is.EqualTo(1500));
+        Assert.That(session.Stats.Values[(SpecialAttribute) 61].Total, Is.EqualTo(100));
+        Assert.That(session.Stats.Values[(SpecialAttribute) 60].Total, Is.EqualTo(0));
+    }
+    #endregion
 
     [Test]
     public void IngredientFeeReduceLimit_IsTheClientsHalf_WhenTheConstantsLackIt() {

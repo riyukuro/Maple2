@@ -63,6 +63,15 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The discount of a change of attributes: the higher of the sale rate and the character's fee attribute
+    // (ReduceRemakeOptionFee 169 for an item, uiitemremakeoptiondialog CanPayRemakePrice; ReducePetRemakeOptionFee
+    // 173 for a pet, tabcontentspetremakeoption.cpp:625), which the client turns into a rate out of 10000 as
+    // (unsigned) (total / 1000 * 10000) in single floats (itemremakescrolldata.cpp:361 and :379).
+    public static int RemakeDiscount(int saleRate, long feeTotal) {
+        int feeRate = feeTotal <= 0 ? 0 : (int) Math.Min((float) feeTotal / 1000f * 10000f, int.MaxValue / 2);
+        return Math.Max(saleRate, feeRate);
+    }
+
     // The count of one ingredient of a change of attributes under a discount, as the dialog shows it
     // (GetDiscountedIngredientCount, itemremakescrolldata.cpp:397): no discount, the count; else the discount is
     // held to 10000 x IngredientFeeReduceLimit and the count is (count * (1 - discount / 10000) + 0.000001) in
@@ -75,6 +84,18 @@ public static class EventSaleRules {
         discount = Math.Min(discount, Math.Max(limit, 0));
         int result = (int) (count * (1.0 - discount / 10000.0) + 1e-06);
         return result < 1 ? 1 : result;
+    }
+
+    // What the running SAHotTime events add to each special attribute's total: the sum over the events
+    // (CGameRule, gamerule.cpp:2896).
+    public static Dictionary<SpecialAttribute, long> HotTimeBonus(IEnumerable<SAHotTime> events) {
+        var sum = new Dictionary<SpecialAttribute, long>();
+        foreach (SAHotTime hotTime in events) {
+            foreach (SAHotTimeBonus bonus in hotTime.Bonus) {
+                sum[bonus.Attribute] = sum.GetValueOrDefault(bonus.Attribute) + bonus.Value;
+            }
+        }
+        return sum;
     }
 
     // The rate a shop's beauty fees are lowered by. The client keeps one rate per shop in each of two slots, picked

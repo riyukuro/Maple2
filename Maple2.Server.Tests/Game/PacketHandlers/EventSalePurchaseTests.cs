@@ -5,6 +5,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
+using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.PacketHandlers;
@@ -135,6 +136,100 @@ public class EventSalePurchaseTests {
 
         Assert.That(plot.Cubes, Is.Empty);
         Assert.That(session.Currency.Meso, Is.EqualTo(199));
+    }
+    #endregion
+
+    #region SaleBeautyShop
+    private const int Shop = 500;
+
+    // In beauty shop 500, whose style fee is 1000 of the currency.
+    private GameSession StartInShop(ShopCurrencyType currency) {
+        GameSession session = test.Start();
+        var fee = new BeautyShopCostMetadata(currency, 1000, string.Empty, 0);
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(Shop, default, 0, fee, fee, false, false, 0, 0, ItemTag.None, [], []), []);
+        session.Currency.Meso = 5000;
+        session.Currency.Meret = 5000;
+        test.TakeSent();
+        return session;
+    }
+
+    // Beauty 6: the skin's index, its two colors, no voucher.
+    private void ChangeSkin(GameSession session) {
+        new BeautyHandler {
+            ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+            ServerTableMetadata = test.ServerTableMetadata,
+        }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(6);
+            writer.WriteByte(0);
+            writer.WriteInt(0x00112233);
+            writer.WriteInt(0x00112233);
+            writer.WriteBool(false);
+        }));
+    }
+
+    [Test]
+    public void SkinChange_CostsTheSaleFeeInMeso_Once() {
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 3000, false));
+        GameSession session = StartInShop(ShopCurrencyType.Meso);
+
+        ChangeSkin(session);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 700));
+        Assert.That(session.Currency.Meret, Is.EqualTo(5000));
+
+        ChangeSkin(session);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 1400));
+    }
+
+    [Test]
+    public void SkinChange_CostsTheSaleFeeInMerets() {
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 5000, false));
+        GameSession session = StartInShop(ShopCurrencyType.Meret);
+
+        ChangeSkin(session);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Currency.Meret, Is.EqualTo(5000 - 500));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+    }
+
+    [Test]
+    public void SkinChange_CostsTheFeeOfTheLastStartedSale() {
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 5000, false), DateTime.Now.AddDays(-5));
+        test.AddEvent(7002, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 2000, false), DateTime.Now.AddDays(-1));
+        GameSession session = StartInShop(ShopCurrencyType.Meso);
+
+        ChangeSkin(session);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 800));
+    }
+
+    [Test]
+    public void SkinChange_CostsTheFullFee_WhenTheSaleIsOfAnotherShopAPcRoomRowOrOver() {
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(501, 5000, false));
+        test.AddEvent(7002, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 5000, true));
+        test.AddEvent(7003, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 5000, false),
+            DateTime.Now.AddDays(-9), DateTime.Now.AddDays(-2));
+        GameSession session = StartInShop(ShopCurrencyType.Meso);
+
+        ChangeSkin(session);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 1000));
+    }
+
+    [Test]
+    public void SkinChange_IsRefused_WhenTheSaleFeeIsNotOwned() {
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(Shop, 3000, false));
+        GameSession session = StartInShop(ShopCurrencyType.Meso);
+        session.Currency.Meso = 699;
+        SkinColor before = session.Player.Value.Character.SkinColor;
+
+        ChangeSkin(session);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(699));
+        Assert.That(session.Player.Value.Character.SkinColor, Is.EqualTo(before));
     }
     #endregion
 

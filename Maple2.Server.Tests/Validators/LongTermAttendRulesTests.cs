@@ -172,7 +172,7 @@ public class LongTermAttendRulesTests {
         Assert.That(AttendGiftReplay.Types, Is.EqualTo(new[] {
             GameEventType.AttendGift, GameEventType.LongTermAttendGift, GameEventType.StampEvent,
             GameEventType.SaleUgcDesign, GameEventType.SaleHousing, GameEventType.FindDungeonHelperBonus,
-            GameEventType.SaleRemake, GameEventType.SaleBeautyShop,
+            GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
         }));
 
         var now = new DateTime(2030, 6, 15, 9, 30, 0);

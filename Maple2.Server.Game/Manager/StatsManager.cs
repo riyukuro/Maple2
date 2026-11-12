@@ -156,6 +156,7 @@ public class StatsManager {
         AddPet(player);
         AddSetBonuses(setBonuses);
         AddBuffs(player);
+        AddHotTime(player.Session);
         Values.AddDerivedTotal(character.Job.Code());
         Values.Total();
         StatConversion(player);
@@ -338,6 +339,35 @@ public class StatsManager {
     }
 
     // A buff's status values and rates count once per stack, as the client sums them (Buff.StackFactor).
+    // The running SAHotTime events' bonus, for every player: the client adds the same sums to its own special
+    // attribute totals (CEquipment::GetAbilityTotal, equipment.cpp:740).
+    internal void AddHotTime(GameSession session) {
+        Dictionary<SpecialAttribute, long> bonus = HotTimeBonus(session);
+        foreach ((SpecialAttribute attribute, long value) in bonus) {
+            Values[attribute].AddTotal(value);
+        }
+        hotTime = bonus;
+    }
+
+    private Dictionary<SpecialAttribute, long> hotTime = new();
+
+    private static Dictionary<SpecialAttribute, long> HotTimeBonus(GameSession session) {
+        return EventSaleRules.HotTimeBonus(session.FindEvent(GameEventType.SAHotTime)
+            .Select(gameEvent => gameEvent.Metadata.Data).OfType<SAHotTime>());
+    }
+
+    // An event that starts or stops (its dates, its days of the week, its part of the day) changes the bonus
+    // without anything else rebuilding the stats: rebuild when the sums are not the ones the totals hold.
+    public void RefreshHotTime() {
+        if (Actor is not FieldPlayer player) {
+            return;
+        }
+        Dictionary<SpecialAttribute, long> bonus = HotTimeBonus(player.Session);
+        if (bonus.Count != hotTime.Count || bonus.Any(entry => hotTime.GetValueOrDefault(entry.Key) != entry.Value)) {
+            Refresh();
+        }
+    }
+
     private void AddBuffs(FieldPlayer player) {
         foreach (Buff buff in player.Buffs.EnumerateBuffs()) {
             int stacks = buff.Stacks;

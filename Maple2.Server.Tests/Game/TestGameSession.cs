@@ -376,8 +376,9 @@ public sealed class TestGameSession {
         session.ItemMerge = new ItemMergeManager(session);
         typeof(GameSession).GetField(nameof(GameSession.DismantleStaging), Any)!.SetValue(session, new (long Uid, int Amount)[100]);
         session.ItemEnchant = new ItemEnchantManager(session);
-        // Stats without an actor: Refresh does nothing.
+        // Stats without an actor: Refresh does nothing. The values start empty.
         session.Stats = Uninitialized<StatsManager>();
+        typeof(StatsManager).GetField("<Values>k__BackingField", Any)!.SetValue(session.Stats, new Stats(new Dictionary<BasicAttribute, long>(), 0));
         session.GameEvent = new GameEventManager(session);
 
         Session = session;

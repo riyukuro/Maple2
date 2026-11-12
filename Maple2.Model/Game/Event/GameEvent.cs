@@ -397,6 +397,14 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(saleBeautyShop.Rate);
                 writer.WriteBool(saleBeautyShop.Flag);
                 break;
+            case SAHotTime:
+                // The client reads the two lists and the tooltip text itself; value3 is read and not used.
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(Metadata.Value1);
+                writer.WriteUnicodeString(Metadata.Value2);
+                writer.WriteUnicodeString(Metadata.Value3);
+                writer.WriteUnicodeString(Metadata.Value4);
+                break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);
                 writer.WriteInt();

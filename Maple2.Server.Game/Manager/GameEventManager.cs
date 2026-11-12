@@ -40,6 +40,8 @@ public sealed class GameEventManager {
         nextUpdateTick = tickCount + 1000;
 
         UpdateDtReward();
+        // Chosen here: the SAHotTime bonus follows its events within this one second step.
+        session.Stats.RefreshHotTime();
     }
 
     private void GetUserValues() {

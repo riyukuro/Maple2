@@ -220,12 +220,15 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         return ingredients;
     }
 
-    // The ingredient counts a running SaleRemake event leaves. The staged item's reply carries the full counts:
-    // the client lowers them itself (EventSaleRules.RemakeIngredientCount).
+    // The ingredient counts a running SaleRemake event or the character's fee attribute leaves, the higher of the
+    // two (EventSaleRules.RemakeDiscount). The staged item's reply carries the full counts: the client lowers
+    // them itself (EventSaleRules.RemakeIngredientCount).
     internal static List<IngredientInfo> SaleIngredients(GameSession session, Item item, List<IngredientInfo> ingredients) {
-        int rate = EventSaleRules.RemakeSaleRate(session.FindEvent(GameEventType.SaleRemake)
+        int saleRate = EventSaleRules.RemakeSaleRate(session.FindEvent(GameEventType.SaleRemake)
                 .Select(gameEvent => gameEvent.Metadata.Data).OfType<SaleRemake>(),
             EventSaleRules.RemakeSaleType(item.Type.Group, item.Type.Type, item.Type.IsPet));
+        SpecialAttribute fee = item.Type.IsPet ? SpecialAttribute.ReducePetRemakeOptionFee : SpecialAttribute.ReduceRemakeOptionFee;
+        int rate = EventSaleRules.RemakeDiscount(saleRate, session.Player.Stats.Values[fee].Total);
         if (rate <= 0) {
             return ingredients;
         }
