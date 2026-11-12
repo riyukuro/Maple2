@@ -92,4 +92,18 @@ public class PetRulesTests {
     public void Pacified_CountsTheFeedingThatFillsTheGauge(int before, int after, int max, bool expected) {
         Assert.That(PetRules.Pacified(before, after, max), Is.EqualTo(expected));
     }
+
+    // FieldAddPet: a summoned pet's entry carries the pet item's level, a wild pet's its npc level.
+    [TestCase(true, (short) 29, (short) 1, (short) 29)]
+    [TestCase(true, (short) 1, (short) 50, (short) 1)]
+    [TestCase(false, (short) 29, (short) 12, (short) 12)]
+    [TestCase(true, (short) 0, (short) 12, (short) 12)]
+    public void FieldLevel_IsThePetsOwnLevelWhenSummoned(bool summoned, short petLevel, short npcLevel, short expected) {
+        Assert.That(PetRules.FieldLevel(summoned, petLevel, npcLevel), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void FieldLevel_WithoutPetData_IsTheNpcLevel() {
+        Assert.That(PetRules.FieldLevel(true, null, 7), Is.EqualTo(7));
+    }
 }

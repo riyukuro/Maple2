@@ -15,6 +15,12 @@ public static class PetRules {
         return (int) (constantValue * (double) optionFactor + 1e-06) * (petLevel - 1);
     }
 
+    // FieldAddPet's level: a summoned pet shows the level of its pet item (KMS2 sends 1 to 50 for the same
+    // pet as it levels), a wild pet the level of its npc row.
+    public static short FieldLevel(bool summoned, short? petLevel, short npcLevel) {
+        return summoned && petLevel is > 0 ? petLevel.Value : npcLevel;
+    }
+
     // RequestPet 16 (another player's pet): the popup names the pet the owner has summoned; a pet that was put
     // away or switched since then is not shown.
     public static bool IsShownPet(long? summonedUid, long requestedUid) {

@@ -137,6 +137,8 @@ public sealed class FieldPet : FieldNpc {
             Position = position;
         }
         SendControl = true;
+        // KMS2 sends the owner ResponsePet 2 with the warp; the client plays the pet summon sound.
+        owner?.Session.Send(PetPacket.WarpSound(OwnerId));
     }
 
     protected override void Remove(TimeSpan delay) => Field.RemovePet(ObjectId, delay);

@@ -12,7 +12,7 @@ public static class PetPacket {
     private enum Command : byte {
         Summon = 0,
         UnSummon = 1,
-        Unknown2 = 2,
+        WarpSound = 2,
         Rename = 4,
         PotionConfig = 5,
         LootConfig = 6,
@@ -53,9 +53,12 @@ public static class PetPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown2(int ownerId) {
+    // Client reader: CPetManager::OnPetSummonSound (mode 2: int owner object id): the owner's client plays the
+    // pet summon sound. KMS2 sends it to the owner when the pet is put next to them (the pet's control entry
+    // of the same moment has the new position), not at the summon itself, where the field entry plays it.
+    public static ByteWriter WarpSound(int ownerId) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.Unknown2);
+        pWriter.Write<Command>(Command.WarpSound);
         pWriter.WriteInt(ownerId);
 
         return pWriter;

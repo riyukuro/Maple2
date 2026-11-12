@@ -5,6 +5,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -290,7 +291,8 @@ public static class FieldPacket {
         pWriter.WriteNpcStats(pet.Stats.Values);
         pWriter.WriteLong(pet.Pet.Uid);
         pWriter.WriteByte();
-        pWriter.WriteShort(pet.Value.Metadata.Basic.Level);
+        // The level on the name tag (CSceneStateGame::OnFieldAddPet): KMS2 sends a summoned pet's own level.
+        pWriter.WriteShort(PetRules.FieldLevel(pet.OwnerId != 0, pet.Pet.Pet?.Level, pet.Value.Metadata.Basic.Level));
         pWriter.WriteShort(pet.TamingRank);
         pWriter.WriteInt();
         pWriter.WriteUnicodeString(pet.Pet.Pet?.Name ?? "");
