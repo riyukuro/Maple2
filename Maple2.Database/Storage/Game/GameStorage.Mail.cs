@@ -135,6 +135,12 @@ public partial class GameStorage {
 
         public Mail? UpdateMail(Mail mail) {
             Model.Mail model = mail;
+            // MarkMailRead in the same request leaves its row tracked (collecting an unread mail reads it first);
+            // a second instance with the same key cannot be attached beside it.
+            Model.Mail? tracked = Context.Mail.Local.FirstOrDefault(row => row.Id == model.Id && row.ReceiverId == model.ReceiverId);
+            if (tracked != null) {
+                Context.Entry(tracked).State = EntityState.Detached;
+            }
             Context.Mail.Update(model);
             return SaveChanges() ? model : null;
         }

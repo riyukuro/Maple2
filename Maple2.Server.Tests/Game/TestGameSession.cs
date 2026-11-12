@@ -355,6 +355,8 @@ public sealed class TestGameSession {
         session.Housing = new HousingManager(session, TableMetadata);
         session.Item = new ItemManager(db, session, stats);
         session.ItemBox = new ItemBoxManager(session);
+        session.Mail = new MailManager(session);
+        session.BlackMarket = new BlackMarketManager(session);
         session.Shop = new ShopManager(session);
         session.ItemMerge = new ItemMergeManager(session);
         typeof(GameSession).GetField(nameof(GameSession.DismantleStaging), Any)!.SetValue(session, new (long Uid, int Amount)[100]);
@@ -499,6 +501,26 @@ public sealed class TestGameSession {
         public override LockResponse ReleaseLock(LockRequest request, CallOptions options) {
             Released++;
             return new LockResponse();
+        }
+
+        // The black market's world side: every listing change is accepted.
+        public readonly List<BlackMarketRequest> BlackMarketRequests = [];
+
+        public override BlackMarketResponse BlackMarket(BlackMarketRequest request, CallOptions options) {
+            BlackMarketRequests.Add(request);
+            return new BlackMarketResponse();
+        }
+
+        // No other player is known to the world.
+        public override PlayerInfoResponse PlayerInfo(PlayerInfoRequest request, CallOptions options) {
+            throw new RpcException(new Status(StatusCode.NotFound, "no such character"));
+        }
+
+        public readonly List<MailNotificationRequest> MailNotifications = [];
+
+        public override MailNotificationResponse MailNotification(MailNotificationRequest request, CallOptions options) {
+            MailNotifications.Add(request);
+            return new MailNotificationResponse();
         }
 
         // What PlayerInfo.SendUpdate sent to the world.

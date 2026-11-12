@@ -19,6 +19,7 @@ public class ShopHandlerTests {
     private const int ShopId = 109;
     private const int ProductId = 11;
     private const int StockProductId = 12;
+    private const int PackProductId = 13;
     private const int ShopItemId = 20000001;
     private const int ProductItemId = 20000002;
 
@@ -45,6 +46,7 @@ public class ShopHandlerTests {
             [ShopId] = new() {
                 [ProductId] = Product(ProductId, price: 30, stock: 0),
                 [StockProductId] = Product(StockProductId, price: 20, stock: 50),
+                [PackProductId] = Product(PackProductId, price: 40, stock: 50, sellUnit: 10),
             },
         }));
         ItemMetadata sold = TestGameSession.Metadata(20000003);
@@ -109,6 +111,26 @@ public class ShopHandlerTests {
         Assert.That(Convert.ToHexString(sent[3]), Is.EqualTo(Hex(ShopPacket.Update(StockProductId, 2))));
         Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 40));
         Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(2));
+    }
+
+    // A product sold in packs of 10: the client sends a number of packs and shows the price per pack
+    // (CNpcShopProductCli, npcshopproductbase.cpp:163-222). Two packs cost two prices, use two of the stock, put
+    // 20 items in the bag, and Shop 2 and Shop 4 carry 20 (the client divides the bought count by the pack size,
+    // SetBuyItemCount).
+    [Test]
+    public void Buy_OfAPackGivesThePackSizePerQuantity() {
+        GameSession session = Login();
+
+        Buy(session, PackProductId, 2);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(packet => (TestGameSession.Op(packet), Sub(packet))), Is.EqualTo(new[] {
+            (SendOp.Meso, sent[0][2]), (SendOp.ItemInventory, (byte) 0), (SendOp.ItemInventory, (byte) 7), (SendOp.Shop, (byte) 2), (SendOp.Shop, (byte) 4),
+        }));
+        Assert.That(Convert.ToHexString(sent[3]), Is.EqualTo(Hex(ShopPacket.Update(PackProductId, 20))));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 80));
+        Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(20));
+        Assert.That(Convert.ToHexString(sent[4]), Does.EndWith("04" + "022D3101" + "14000000" + "50000000" + "01" + "00"));
     }
 
     // The client sends its window's shop id with a buy (UIShopDialog::SendPurchase).

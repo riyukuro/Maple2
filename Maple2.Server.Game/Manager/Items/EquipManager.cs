@@ -324,12 +324,12 @@ public class EquipManager {
             unequipBadge.Group = ItemGroup.Default;
             unequipBadge.Slot = inventorySlot;
 
+            // KMS2 order: the badge leaves its slot (BadgeEquip 1), then the bag add.
+            session.Field?.Broadcast(EquipPacket.UnequipBadge(session.Player, unequipBadge.Badge.Type));
             bool success = session.Item.Inventory.Add(unequipBadge);
             if (!success) {
                 throw new InvalidOperationException($"Failed to unequip badge: {unequipBadge.Uid}");
             }
-
-            session.Field?.Broadcast(EquipPacket.UnequipBadge(session.Player, unequipBadge.Badge.Type));
             session.Stats.Refresh();
 
             if (unequipBadge.Badge.Type == BadgeType.PetSkin) {

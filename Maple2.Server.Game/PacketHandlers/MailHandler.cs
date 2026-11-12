@@ -65,19 +65,19 @@ public class MailHandler : FieldPacketHandler {
         string content = packet.ReadUnicodeString();
 
         if (!MailRules.CanSend(title, content)) {
-            session.Send(MailPacket.Error(MailError.s_mail_error_sendmail));
+            session.Send(MailPacket.Error(MailError.s_mail_error_sendmail, (byte) Command.Send));
             return;
         }
 
         if (receiverName == session.PlayerName) {
-            session.Send(MailPacket.Error(MailError.s_mail_error_recipient_equal_sender));
+            session.Send(MailPacket.Error(MailError.s_mail_error_recipient_equal_sender, (byte) Command.Send));
             return;
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
         long receiverId = db.GetCharacterId(receiverName);
         if (receiverId == default) {
-            session.Send(MailPacket.Error(MailError.s_mail_error_username));
+            session.Send(MailPacket.Error(MailError.s_mail_error_username, (byte) Command.Send));
             return;
         }
 
@@ -92,7 +92,7 @@ public class MailHandler : FieldPacketHandler {
 
         mail = db.CreateMail(mail);
         if (mail == null) {
-            session.Send(MailPacket.Error(MailError.s_mail_error_createmail));
+            session.Send(MailPacket.Error(MailError.s_mail_error_createmail, (byte) Command.Send));
             return;
         }
 
@@ -111,7 +111,7 @@ public class MailHandler : FieldPacketHandler {
 
         MailError error = session.Mail.Read(mailId);
         if (error != MailError.none) {
-            session.Send(MailPacket.Error(error));
+            session.Send(MailPacket.Error(error, (byte) Command.Read));
         }
     }
 
@@ -120,7 +120,7 @@ public class MailHandler : FieldPacketHandler {
 
         MailError error = session.Mail.Collect(mailId);
         if (error != MailError.none) {
-            session.Send(MailPacket.Error(error));
+            session.Send(MailPacket.Error(error, (byte) Command.Collect));
         }
     }
 
@@ -146,7 +146,7 @@ public class MailHandler : FieldPacketHandler {
 
             MailError error = session.Mail.Read(mailId);
             if (error != MailError.none && !MailRules.BulkSkips(error)) {
-                session.Send(MailPacket.Error(error));
+                session.Send(MailPacket.Error(error, (byte) Command.BulkRead));
                 return;
             }
         }
@@ -160,7 +160,7 @@ public class MailHandler : FieldPacketHandler {
 
             MailError error = session.Mail.Collect(mailId);
             if (error != MailError.none && !MailRules.BulkSkips(error)) {
-                session.Send(MailPacket.Error(error));
+                session.Send(MailPacket.Error(error, (byte) Command.BulkCollect));
                 return;
             }
         }

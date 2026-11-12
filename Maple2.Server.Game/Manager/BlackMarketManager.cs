@@ -74,10 +74,12 @@ public sealed class BlackMarketManager {
             return;
         }
 
+        // KMS2 order: Meso (the deposit), the item leaving the bag, then the listing.
+        session.Currency.Meso -= depositFee;
         if (!session.Item.Inventory.Remove(itemUid, out item, quantity)) {
+            session.Currency.Meso += depositFee;
             return;
         }
-        session.Currency.Meso -= depositFee;
 
         var listing = new BlackMarketListing(item) {
             AccountId = session.AccountId,
@@ -246,12 +248,14 @@ public sealed class BlackMarketManager {
             return;
         }
 
+        // KMS2 order: Meso, the purchase answer, then the mail notice. The buyer's side is done here, so a
+        // seller mail that fails below is logged and no longer answered with an error after the success.
+        session.Send(BlackMarketPacket.Purchase(listingId, quantity));
         session.Mail.Notify(true);
 
         // Seller Mail
         Mail? sellerMail = CreateSellerMail(listing, quantity);
         if (sellerMail == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 5, listingId));
             logger.Error("Failed to create black market sale mail for {CharacterId}", listing.CharacterId);
             return;
         }
@@ -262,8 +266,6 @@ public sealed class BlackMarketManager {
                 MailId = sellerMail.Id,
             });
         } catch { /*ignored*/ }
-
-        session.Send(BlackMarketPacket.Purchase(listingId, quantity));
     }
 
     private Mail? CreateBuyerMail(BlackMarketListing listing, int quantity) {

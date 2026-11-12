@@ -498,8 +498,17 @@ public sealed class ShopManager {
 
         // TODO: Championship, Alliance
 
+        // The client buys packs: its product item holds the pack size (CNpcShopProductCli::Read sets the item's
+        // count to it, npcshopproductbase.cpp:188) and the quantity it sends is a number of packs (the most it
+        // offers is the item count divided by the pack size, :453). So the bag gets quantity x pack size.
+        long itemCount = (long) quantity * shopItem.SellUnit;
+        if (itemCount > int.MaxValue) {
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+            return;
+        }
+
         Item item = shopItem.Item.Clone();
-        item.Amount = quantity;
+        item.Amount = (int) itemCount;
         if (!session.Item.Inventory.CanAdd(item)) {
             session.Send(ShopPacket.Error(ShopError.s_err_inventory));
             return;
