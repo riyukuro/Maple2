@@ -115,6 +115,9 @@ public class ConfigManager {
         GuideRecords = load.GuideRecords ?? new Dictionary<int, int>();
         skillPoints = load.SkillPoint ?? new SkillPoint();
         ExplorationProgress = load.ExplorationProgress;
+        // The day's paid revives, kept per character in character-config and cleared by the daily reset. The client
+        // learns the count only from RevivalCount (CSceneStateGame::OnRevivalCount), so a login sends the stored one.
+        InstantReviveCount = load.InstantReviveCount;
 
         statLimits = new Dictionary<string, int>() {
             { "StatPointLimit_str", Constants.StatPointLimit_str },
