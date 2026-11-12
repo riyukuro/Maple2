@@ -385,7 +385,8 @@ public static class MapperExtensions {
                 .Zip(target.requireMasteryValues, (type, value) => (Type: type, Value: value))
                 .ToDictionary(pair => pair.Type, pair => pair.Value),
             NpcIds: target.NpcIDs,
-            HasNotBuffIds: target.hasNotBuffID);
+            HasNotBuffIds: target.hasNotBuffID,
+            InRange: ParseInRange(target));
 
         return DefaultBeginConditionTarget.Equals(result) ? null : result;
 
@@ -405,6 +406,20 @@ public static class MapperExtensions {
             }
 
             return hasBuff;
+        }
+
+        // The client keeps the range check only when both a range and a sign are given
+        // (Unk_SkillOverlapCondition::Load); a count of 0 is valid ("no enemy within 4 m").
+        BeginConditionTarget.TargetCheck? ParseInRange(SubConditionTarget data) {
+            if (data.targetCheckRange == 0 || !Enum.TryParse(data.targetCountSign, false, out CompareType compare)) {
+                return null;
+            }
+            return new BeginConditionTarget.TargetCheck(
+                RangeDistance: (int) data.targetCheckRange,
+                MinRangeDistance: (int) data.targetCheckMinRange,
+                RangeCount: (int) data.targetInRangeCount,
+                Friendly: (int) data.targetFriendly,
+                Compare: compare);
         }
 
         // Seems to only be used for test skills.

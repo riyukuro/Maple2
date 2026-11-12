@@ -849,6 +849,16 @@ public partial class FieldManager {
 
     private bool IsOnlooker(FieldPlayer player) => RankDuel?.IsOnlooker(player.Value.Character.Id) == true;
 
+    // The living actors on the center's hostile or friendly side (as its skills pick them, GetTargetPool) whose
+    // position lies between minRange and maxRange of its own; the center itself is not counted (chosen here).
+    public int CountAround(IActor center, float minRange, float maxRange, bool hostile) {
+        Vector3 origin = center.Position;
+        var prism = new Prism(new Circle(new Vector2(origin.X, origin.Y), maxRange), origin.Z - maxRange, maxRange * 2);
+        return GetTargetPool(center, [prism], hostile ? ApplyTargetType.Hostile : ApplyTargetType.Friendly, int.MaxValue, [center])
+            .Count(actor => !actor.IsDead && actor.ObjectId != center.ObjectId &&
+                            Vector3.Distance(origin, actor.Position) is var distance && distance >= minRange && distance <= maxRange);
+    }
+
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {
         // A rank duel's onlookers take no part: their skills reach no one, and no one's reach them.
         if (caster is FieldPlayer onlooker && IsOnlooker(onlooker)) {

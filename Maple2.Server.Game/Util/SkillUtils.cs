@@ -237,6 +237,10 @@ public static class SkillUtils {
             return false;
         }
 
+        if (condition.InRange is { } inRange && !InRangeHolds(inRange, target)) {
+            return false;
+        }
+
         // Verify if these conditions are only for player.
         if (target is FieldPlayer player) {
             if (condition.States.Length > 0 && !condition.States.Contains(player.State)) {
@@ -265,6 +269,27 @@ public static class SkillUtils {
 
         return true;
     }
+
+    // targetCheckRange / targetInRangeCount / targetFriendly / targetCountSign: the count of the checked actor's
+    // enemies (friendly 1) or allies (2) within the range, compared with the count. The client loads the check
+    // (Unk_SkillOverlapCondition) and never evaluates it, so the server does. Tooltips give the meaning: 90050886
+    // (900, 4, enemies, GreaterEquals) is "4 or more hostile targets within 9 m, combat power +520", 90051222 (1000,
+    // 1, Equals) "active when one hostile target is within 10 m", 10500111 (400, 0, Equals) spirit regen with no
+    // enemy within 4 m. A held buff re-checks it on each update (Buff.UpdateEnabled), so it turns on and off as
+    // actors come and go. Chosen here: distance between positions, dead actors and the checked actor not counted.
+    internal static bool InRangeHolds(BeginConditionTarget.TargetCheck inRange, IActor target) {
+        int count = target.Field.CountAround(target, inRange.MinRangeDistance, inRange.RangeDistance, inRange.Friendly != 2);
+        return CountHolds(inRange.Compare, count, inRange.RangeCount);
+    }
+
+    internal static bool CountHolds(CompareType compare, int count, int wanted) => compare switch {
+        CompareType.Equals => count == wanted,
+        CompareType.Less => count < wanted,
+        CompareType.LessEquals => count <= wanted,
+        CompareType.Greater => count > wanted,
+        CompareType.GreaterEquals => count >= wanted,
+        _ => false,
+    };
 
     private static bool Check(this BeginConditionWeapon weapon, FieldPlayer player) {
         return IsValid(weapon.LeftHand, EquipSlot.LH) && IsValid(weapon.RightHand, EquipSlot.RH);

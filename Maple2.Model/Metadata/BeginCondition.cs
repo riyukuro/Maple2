@@ -44,14 +44,18 @@ public record BeginConditionTarget(
     IReadOnlyDictionary<MasteryType, int> Masteries,
     //string[] NpcTags // not used?
     int[] NpcIds,
-    int[] HasNotBuffIds
+    int[] HasNotBuffIds,
+    // The count of actors around the checked one (targetCheckRange, targetInRangeCount, targetFriendly,
+    // targetCountSign); null when the condition has no range or no sign, as the client sets it.
+    BeginConditionTarget.TargetCheck? InRange = null
 ) {
     public record HasBuff(int Id, short Level, bool Owned, int Count, CompareType Compare);
 
     public record EventCondition(EventConditionType Type, bool IgnoreOwner, int[] SkillIds, int[] BuffIds);
     public record BeginConditionStat(BasicAttribute Attribute, float Value, CompareType Compare, CompareStatValueType ValueType);
 
-    public record TargetCheck(int RangeDistance, int RangeCount, int Friendly, CompareType Compare);
+    // Friendly 1 counts the checked actor's enemies, 2 its allies; distances are in field units (600 is 6 m).
+    public record TargetCheck(int RangeDistance, int MinRangeDistance, int RangeCount, int Friendly, CompareType Compare);
 }
 
 
