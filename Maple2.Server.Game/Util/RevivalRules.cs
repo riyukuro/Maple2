@@ -5,17 +5,72 @@ public enum MesoReviveRefusal {
     NotDead,
     NoRevivalHere,
     Buff,
+    DebuffMax,
     NoVoucher,
     DailyMax,
     LackMeso,
 }
 
+public enum MeretReviveRefusal {
+    None,
+    NotDead,
+    NoRevivalHere,
+    Dungeon,
+    Buff,
+    Locale,
+    DebuffMax,
+    NoCoupon,
+    LackMeret,
+}
+
 public static class RevivalRules {
+    // The revive in place for merets or a coupon (Revival mode 1). Every test comes before anything is taken.
+    // localeClosed is the constant LimitMeratRevival; debuffAllows is DebuffAllows of the meret revival debuff.
+    public static MeretReviveRefusal MeretRevive(bool dead, bool noRevivalHere, bool dungeonDisables, bool buffBlocks,
+            bool localeClosed, bool debuffAllows, bool useCoupon, bool hasCoupon, long meret, long cost) {
+        if (!dead) {
+            return MeretReviveRefusal.NotDead;
+        }
+        if (noRevivalHere) {
+            return MeretReviveRefusal.NoRevivalHere;
+        }
+        if (dungeonDisables) {
+            return MeretReviveRefusal.Dungeon;
+        }
+        if (buffBlocks) {
+            return MeretReviveRefusal.Buff;
+        }
+        if (localeClosed) {
+            return MeretReviveRefusal.Locale;
+        }
+        if (!debuffAllows) {
+            return MeretReviveRefusal.DebuffMax;
+        }
+        if (useCoupon) {
+            return hasCoupon ? MeretReviveRefusal.None : MeretReviveRefusal.NoCoupon;
+        }
+        return meret < cost || cost < 0 ? MeretReviveRefusal.LackMeret : MeretReviveRefusal.None;
+    }
+
+    // Client UIRevivalDialog::RefreshMesoButton: the Lua price scaled by 1 - min(fee reduce limit, the
+    // character's meso fee reduce rate), never below 0, and 0 in a home field (map type 3).
+    // A limit row of 0 means no reduction; only a missing row counts as 0.5 (the ConstantsTable default).
+    public static long MesoCost(long luaCost, float reduceLimit, float reduceRate, bool homeField) {
+        if (homeField) {
+            return 0;
+        }
+        return MeretCost(luaCost, reduceLimit, reduceRate);
+    }
+
     // The revive in place for mesos or a voucher (Revival mode 2). Every test comes before anything is
     // taken: a request from a living player used to take the mesos or the voucher and raise the daily count.
-    // A voucher is not held to the daily count; mesos are.
+    // A voucher is not held to the daily count; mesos are, except in a home field: there the client shows the
+    // free meso button before it looks at the count left (UIRevivalDialog::FUN_141abcb90). The client's meso
+    // button also refuses while the meret revival debuff is on the player (UIRevivalDialog::FUN_141abc080), as
+    // the meret button does.
     public static MesoReviveRefusal MesoRevive(bool dead, bool noRevivalHere, bool buffBlocks, bool useVoucher,
-            bool hasVoucher, int usedToday, int dailyMax, long meso, long cost) {
+            bool hasVoucher, int usedToday, int dailyMax, long meso, long cost, bool debuffAllows = true,
+            bool homeField = false) {
         if (!dead) {
             return MesoReviveRefusal.NotDead;
         }
@@ -25,10 +80,13 @@ public static class RevivalRules {
         if (buffBlocks) {
             return MesoReviveRefusal.Buff;
         }
+        if (!debuffAllows) {
+            return MesoReviveRefusal.DebuffMax;
+        }
         if (useVoucher) {
             return hasVoucher ? MesoReviveRefusal.None : MesoReviveRefusal.NoVoucher;
         }
-        if (usedToday >= dailyMax) {
+        if (!homeField && usedToday >= dailyMax) {
             return MesoReviveRefusal.DailyMax;
         }
         return meso < cost || cost < 0 ? MesoReviveRefusal.LackMeso : MesoReviveRefusal.None;
@@ -64,12 +122,17 @@ public static class RevivalRules {
         return cost < 0 ? 0 : cost;
     }
 
-    // The meret revive is closed once the debuff it leaves is at its top stack count, unless the field
-    // has infinityMeratRevival. A debuff code of 0 (no row in the constants) never closes it.
-    public static bool DebuffAllows(int debuffCode, int stacks, int maxStacks, bool infiniteField) {
+    // The meret and meso revive buttons are closed while the debuff the meret revive leaves is on the player
+    // and enabled, at any stack count (the client asks AdditionalCliList::FUN_140970020(code, 0, 0, 1), whose
+    // count of 0 skips the stack compare), unless the field has infinityMeratRevival. A debuff code of 0 (no
+    // row in the constants) never closes them.
+    public static bool DebuffAllows(int debuffCode, bool debuffEnabled, bool infiniteField) {
         if (infiniteField || debuffCode == 0) {
             return true;
         }
-        return maxStacks <= 0 || stacks < maxStacks;
+        return !debuffEnabled;
     }
+
+    // The daily meso revive count rises for a meso or voucher revive, not for the free one of a home field.
+    public static bool CountsTowardDailyMax(bool homeField) => !homeField;
 }

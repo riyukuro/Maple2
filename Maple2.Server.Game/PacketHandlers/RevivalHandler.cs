@@ -87,7 +87,14 @@ public class RevivalHandler : FieldPacketHandler {
         // (UIRevivalDialog::RefreshMesoButton); CalcRevivalPrice is a different, much smaller fee.
         int totalMaxCount = Lua.GetMesoRevivalDailyMaxCount();
         int remaining = Math.Max(totalMaxCount - session.Config.InstantReviveCount, 0);
-        int cost = useVoucher ? 0 : Lua.CalcRevivalMeso(session.Player.Value.Character.Level, remaining, 0);
+        // The third argument is the client's meso revival event flag; this server runs no such event.
+        ConstantsTable constants = ServerTableMetadata.ConstantsTable;
+        bool homeField = session.Field.Metadata.Property.Type == MapType.Home;
+        long cost = useVoucher ? 0 : RevivalRules.MesoCost(Lua.CalcRevivalMeso(session.Player.Value.Character.Level, remaining, 0),
+            constants.MesoRevivalFeeReduceLimit, (float) session.Player.Stats.Values[SpecialAttribute.ReduceMesoRevivalFee].Multiplier(),
+            homeField);
+        int debuffCode = constants.MeratRevivalDebuffCode;
+        bool debuffEnabled = debuffCode != 0 && session.Player.Buffs.EnumerateBuffs(debuffCode).Any(buff => buff.Enabled);
         MesoReviveRefusal refusal = RevivalRules.MesoRevive(
             dead: session.Player.IsDead && session.Player.Tombstone != null,
             noRevivalHere: session.Field.Metadata.Property.NoRevivalHere,
@@ -97,16 +104,24 @@ public class RevivalHandler : FieldPacketHandler {
             usedToday: session.Config.InstantReviveCount,
             dailyMax: totalMaxCount,
             meso: session.Currency.Meso,
-            cost: cost);
+            cost: cost,
+            debuffAllows: RevivalRules.DebuffAllows(debuffCode, debuffEnabled, session.Field.Metadata.Property.InfiniteMeretRevival),
+            homeField: homeField);
         if (refusal != MesoReviveRefusal.None) {
             Logger.Debug("Instant revive refused for {CharacterId}: {Refusal}", session.CharacterId, refusal);
             return;
         }
 
-        // The count goes up first: the revive sends it. Paid only once the revive has happened.
-        session.Config.InstantReviveCount++;
+        // The count goes up first: the revive sends it. Paid only once the revive has happened. The free
+        // revive of a home field leaves the count alone.
+        bool counts = RevivalRules.CountsTowardDailyMax(homeField && !useVoucher);
+        if (counts) {
+            session.Config.InstantReviveCount++;
+        }
         if (!session.Player.Revive(true)) {
-            session.Config.InstantReviveCount--;
+            if (counts) {
+                session.Config.InstantReviveCount--;
+            }
             return;
         }
         session.Player.Tombstone = null;
@@ -124,51 +139,37 @@ public class RevivalHandler : FieldPacketHandler {
     private void HandleCouponRevive(GameSession session, IByteReader packet) {
         bool useCoupon = packet.ReadBool();
         if (session.Field is null) return;
-        if (!session.Player.IsDead || session.Player.Tombstone == null) {
-            return;
-        }
-        if (session.Field.Metadata.Property.NoRevivalHere) {
-            return;
-        }
-        if (session.Field is DungeonFieldManager { DungeonMetadata.Limit.DisableMeretRevival: true }) {
-            return;
-        }
-        if (HasNoRevivalBuff(session)) {
-            return;
-        }
 
         ConstantsTable constants = ServerTableMetadata.ConstantsTable;
-        // The constant LimitMeratRevival closes the meret revive for a whole locale (1 for NA in the client's
-        // table; UIRevivalDialog::FUN_141abc930 hides the button). Ingest takes the client's row for it.
-        if (constants.LimitMeratRevival != 0) {
-            return;
-        }
-        // "Can pay" on the client is CClientPlatformBase::vfunc_40 (ms2clientplatformbase.cpp:316): the meret
-        // balance alone. The red meret balance (vfunc_41) counts only with feature 0x43, which is off here.
         int debuffCode = constants.MeratRevivalDebuffCode;
         Buff? debuff = debuffCode == 0 ? null : session.Player.Buffs.EnumerateBuffs(debuffCode).FirstOrDefault();
         int stacks = debuff?.Stacks ?? 0;
-        if (!RevivalRules.DebuffAllows(debuffCode, stacks, debuff?.Metadata.Property.MaxCount ?? 0,
-                session.Field.Metadata.Property.InfiniteMeretRevival)) {
-            return;
-        }
-
+        // "Can pay" on the client is CClientPlatformBase::vfunc_40 (ms2clientplatformbase.cpp:316): the meret
+        // balance alone. The red meret balance (vfunc_41) counts only with feature 0x43, which is off here.
+        long cost = RevivalRules.MeretCost(Lua.CalcRevivalMerat(session.Player.Value.Character.Level, stacks),
+            constants.MeratRevivalFeeReduceLimit, (float) session.Player.Stats.Values[SpecialAttribute.ReduceMeretRevivalFee].Multiplier());
         // The payment is tested first and taken only once the revive has happened.
-        long cost = 0;
-        if (useCoupon) {
+        MeretReviveRefusal refusal = RevivalRules.MeretRevive(
+            dead: session.Player.IsDead && session.Player.Tombstone != null,
+            noRevivalHere: session.Field.Metadata.Property.NoRevivalHere,
+            dungeonDisables: session.Field is DungeonFieldManager { DungeonMetadata.Limit.DisableMeretRevival: true },
+            buffBlocks: HasNoRevivalBuff(session),
+            // The constant LimitMeratRevival closes the meret revive for a whole locale (1 for NA in the client's
+            // table; UIRevivalDialog::FUN_141abc930 hides the button). Ingest takes the client's row for it.
+            localeClosed: constants.LimitMeratRevival != 0,
+            debuffAllows: RevivalRules.DebuffAllows(debuffCode, debuff is { Enabled: true }, session.Field.Metadata.Property.InfiniteMeretRevival),
             // The client sends the ticked box without a coupon only through its meret confirm box, which this
             // mode does not carry; a ticked box with no coupon held is refused and no merets are taken.
-            if (!session.Item.Inventory.Find(ItemTag.FreeReviveCoupon).Any()) {
-                return;
-            }
-        } else {
-            float reduceRate = (float) session.Player.Stats.Values[SpecialAttribute.ReduceMeretRevivalFee].Multiplier();
-            cost = RevivalRules.MeretCost(Lua.CalcRevivalMerat(session.Player.Value.Character.Level, stacks),
-                constants.MeratRevivalFeeReduceLimit, reduceRate);
-            if (session.Currency.Meret < cost) {
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
-                return;
-            }
+            useCoupon: useCoupon,
+            hasCoupon: session.Item.Inventory.Find(ItemTag.FreeReviveCoupon).Any(),
+            meret: session.Currency.Meret,
+            cost: cost);
+        if (refusal == MeretReviveRefusal.LackMeret) {
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+        }
+        if (refusal != MeretReviveRefusal.None) {
+            Logger.Debug("Meret revive refused for {CharacterId}: {Refusal}", session.CharacterId, refusal);
+            return;
         }
 
         if (!session.Player.Revive(true)) {

@@ -751,7 +751,7 @@ public record ConstantsTable(
     int AdventureLevelLvUpRewardItem = 30001133,
     int NameColorDeadDuration = 0,
     int ConstructExpMaxCount = 0,
-    float MesoRevivalFeeReduceLimit = 0f,
+    float MesoRevivalFeeReduceLimit = 0.5f, // the client's default for a missing row
     float IngredientFeeReduceLimit = 0.5f, // the client's value when its table lacks the key
     int StatPointLimit_str = 0,
     int StatPointLimit_dex = 0,

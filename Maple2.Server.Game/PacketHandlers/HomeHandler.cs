@@ -99,7 +99,7 @@ public class HomeHandler : PacketHandler<GameSession> {
 
         session.HomeInvites.Add(characterId, Environment.TickCount64);
         targetSession.Send(HomeInvitePacket.Invite(session.Player.Value.Character));
-        session.Send(HomeInvitePacket.Result(HomeInvitePacket.InviteResult.Waiting, playerName));
+        // KMS2 sends the inviter nothing for a delivered invite; the next packet is the accept or decline result.
     }
 
     private void HandleWarp(GameSession session, IByteReader packet) {

@@ -12,6 +12,14 @@ public static class TombstoneRules {
         return hitsRemaining > 0;
     }
 
+    // timeResetDead when the constants have no row for it. Chosen here: the value of the KMS data.
+    public const int DEFAULT_RESET_SECONDS = 180;
+
+    // A row no later death can add to.
+    public static bool RowExpired(long lastDeathMs, long nowMs, int resetSeconds) {
+        return nowMs - lastDeathMs >= resetSeconds * 1000L;
+    }
+
     // Deaths in a row: a death within timeResetDead seconds of the one before adds to the row, a later one
     // starts a new row. The time runs from death to death, a revive in between does not move it.
     public static int DeathStreak(int previousStreak, long previousDeathMs, long nowMs, int resetSeconds) {

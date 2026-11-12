@@ -14,6 +14,8 @@ public static class DungeonRoomRules {
     // the closing photo of the room's players with their records, which opens the reward window when it
     // closes. The reward packet opens that window by itself, and KMS2 sends no mode 10 on a clear by a player
     // alone. Chosen here: a clear with more than one player, and a fail, keep it (KMS2 unknown for both).
+    // players is the number of the room's players present at the end (the ones the photo lists), not the
+    // party size: the client and KMS2 give no rule for a party of which one player is left.
     public static bool SendsClosingPhoto(DungeonState state, int players) {
         return state == DungeonState.Fail || (state == DungeonState.Clear && players > 1);
     }
