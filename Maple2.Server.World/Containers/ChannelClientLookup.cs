@@ -61,7 +61,7 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
                 }
                 // A channel that was marked inactive lost its players here: it is reported again as well.
                 if (existing.Status == ChannelStatus.Inactive) {
-                    existing.Status = ChannelStatus.Pending;
+                    existing.Pending();
                     return (existing.GamePort, existing.GrpcPort, existing.Id, false);
                 }
                 return (existing.GamePort, existing.GrpcPort, existing.Id, true);
@@ -75,20 +75,20 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
     private readonly object registerLock = new();
 
     public (ushort gamePort, int grpcPort, int channel) FindOrCreateChannelByIp(string gameIp, string grpcGameIp, bool instancedContent, string instance = "") {
-        // find the first channel that matches the ip, status and instanced content, but only if not Pending
-        Channel? activeChannel = channels.Values.FirstOrDefault(channel =>
-            channel.Endpoint.Address.ToString() == gameIp &&
-            channel.Status is ChannelStatus.Inactive &&
-            channel.InstancedContent == instancedContent);
-
-        if (activeChannel is not null) {
-            // Mark as pending before returning
-            activeChannel.Status = ChannelStatus.Pending;
-            activeChannel.Instance = instance;
-            return (activeChannel.GamePort, activeChannel.GrpcPort, activeChannel.Id);
-        }
-
+        // An inactive channel on the same address is given to the new Game server. Looked up and taken under the
+        // lock: two Game servers that start together do not both get it.
         lock (registerLock) {
+            Channel? activeChannel = channels.Values.FirstOrDefault(channel =>
+                channel.Endpoint.Address.ToString() == gameIp &&
+                channel.Status is ChannelStatus.Inactive &&
+                channel.InstancedContent == instancedContent);
+
+            if (activeChannel is not null) {
+                activeChannel.Pending();
+                activeChannel.Instance = instance;
+                return (activeChannel.GamePort, activeChannel.GrpcPort, activeChannel.Id);
+            }
+
             return AddChannel(gameIp, grpcGameIp, instancedContent, instance, null);
         }
     }
@@ -197,7 +197,7 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
                         }
                         break;
                     default:
-                        if (channel.Status is ChannelStatus.Active || channel.Status is ChannelStatus.Pending) {
+                        if (channel.Status is ChannelStatus.Active || channel.Status is ChannelStatus.Pending && channel.StartOver) {
                             Inactive(channel);
                             logger.Information("Channel {Channel} has become inactive due to {Status}", channel.Id, response.Status);
 #if !DEBUG
@@ -218,7 +218,11 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
                     await cancellationTokenSource.CancelAsync();
 #endif
                 }
-                channel.Status = ChannelStatus.Inactive;
+                // A Game server that is still starting does not answer yet: its channel stays pending (its id is
+                // not given to another Game server) until the start grace is over.
+                if (channel.Status is not ChannelStatus.Pending || channel.StartOver) {
+                    channel.Status = ChannelStatus.Inactive;
+                }
             }
 
             try {
@@ -315,6 +319,15 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
 
     private class Channel {
         public ChannelStatus Status { get; set; }
+        // When the channel became pending (Environment.TickCount64).
+        private long pendingSince = Environment.TickCount64;
+        // Whether a pending channel's start grace is over (ChannelRegisterRules.StartGraceMs).
+        public bool StartOver => ChannelRegisterRules.UnansweredCheckEndsChannel(false, Environment.TickCount64 - pendingSince);
+
+        public void Pending() {
+            Status = ChannelStatus.Pending;
+            pendingSince = Environment.TickCount64;
+        }
         // Names the Game server process that holds this channel.
         public string Instance { get; set; } = string.Empty;
 

@@ -28,6 +28,18 @@ public static class ChannelRegisterRules {
         return channel;
     }
 
+    // A channel whose Game server has not answered a health check yet is still starting (it loads its data
+    // before it listens): it keeps its id this long. Chosen here: two minutes.
+    public const long StartGraceMs = 120_000;
+
+    // Whether a health check that got no answer takes the channel out (marks it inactive, which frees its id for
+    // the next Game server on the same address). A channel that served is out at once; a starting one only after
+    // the start grace, else a second Game server started at the same time would be given the first one's id and
+    // ports.
+    public static bool UnansweredCheckEndsChannel(bool served, long pendingMs) {
+        return served || pendingMs >= StartGraceMs;
+    }
+
     // Whether a registered channel belongs to the Game server that names it: the same process (its instance
     // name), not only the same address. A second Game server on the same address does not take the id over.
     public static bool SameServer(string registeredInstance, string askingInstance) {
