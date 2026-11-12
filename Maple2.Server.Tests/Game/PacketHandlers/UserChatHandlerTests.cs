@@ -119,6 +119,23 @@ public class UserChatHandlerTests {
             Is.EqualTo(ChatPacket.Whisper(0, 2, "ab", "hi").ToArray()));
     }
 
+    // A rock-paper-scissors line (type 23) goes back to the field as type 23 with channel 0 and nothing to the world.
+    [Test]
+    public void MicroGameLine_GoesToTheFieldWithItsType() {
+        GameSession session = Login(meret: 0);
+
+        Say(session, (ChatType) 23, "hi");
+
+        byte[][] lines = test.TakeSent().Where(packet => TestGameSession.Op(packet) == Maple2.Server.Core.Constants.SendOp.UserChat).ToArray();
+        Assert.That(lines, Has.Length.EqualTo(1));
+        Assert.That(lines[0], Is.EqualTo(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.MicroGame, "hi").ToArray()));
+        // op 2, ids 16, name 2 + 2n, flag 1, text 2 + 4: the type, then gm 1 and the channel.
+        int type = 2 + 16 + 2 + 2 * session.PlayerName.Length + 1 + 2 + 4;
+        Assert.That(BitConverter.ToInt32(lines[0], type), Is.EqualTo(23));
+        Assert.That(BitConverter.ToInt32(lines[0], type + 5), Is.EqualTo(0));
+        Assert.That(test.World.Chats, Is.Empty);
+    }
+
     // Party, guild and system notice lines carry the channel the request names.
     [Test]
     public void Message_WritesTheChannelOfTheRequest() {

@@ -177,12 +177,14 @@ public static class PartyPacket {
         return pWriter;
     }
 
-    public static ByteWriter Tombstone() {
+    // CPartyManager::FUN_14162e3d0 (partymanager.cpp:1255): the member's character id and a byte; the client prints
+    // s_party_member_dead_tomb for 0 and s_party_member_dead_dark_tomb for the rest, and nothing about itself.
+    public static ByteWriter Tombstone(long characterId, bool metal) {
         var pWriter = Packet.Of(SendOp.Party);
-        pWriter.Write<Command>(Command.Tombstone);
+        pWriter.WriteByte((byte) Command.Tombstone);
 
-        pWriter.WriteLong();
-        pWriter.WriteBool(true); // Dark tombstone vs light tombstone
+        pWriter.WriteLong(characterId);
+        pWriter.WriteBool(metal);
 
         return pWriter;
     }

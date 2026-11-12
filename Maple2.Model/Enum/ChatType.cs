@@ -40,6 +40,8 @@ public enum ChatType {
     Club = 20,
     [Description("s_html_chat_ugc_event: It's party time. Click on this message to come to my home and join in the {4} event!")]
     UgcEvent = 22,
+    // The lines a player says in a rock-paper-scissors game (the client picks one of the game's texts).
+    MicroGame = 23,
     Wedding = 25,
 }
 

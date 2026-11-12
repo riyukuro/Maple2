@@ -7,6 +7,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Sync;
 using Maple2.Server.Game;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
@@ -171,6 +172,48 @@ public class PartyTwoSessionTests {
         Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
             Hex(PartyPacket.Joined(inviter.Party.Party.Members[guest.CharacterId])),
         }));
+    }
+
+    // A member who dies is named to the party once, in Party 18 after the stats: byte 0 on a first death, 1 under a
+    // metal tombstone. Staying dead, more hp updates and the revive send no second one.
+    [TestCase(DeathState.FirstDeath, "00")]
+    [TestCase(DeathState.Metal, "01")]
+    public void MemberDeath_SendsTheTombstoneNoticeOnce(DeathState state, string flag) {
+        Invite(guest.PlayerName);
+        Reply(PartyInviteResponse.Accept);
+        Party(inviterTest);
+        Maple2.Model.Game.Party.PartyMember member = inviter.Party.Party!.Members[guest.CharacterId];
+        MethodInfo sync = typeof(PartyManager).GetMethod("SyncUpdate", Any)!;
+        void Update(UpdateField type, DeathState death) {
+            Maple2.Model.Game.PlayerInfo info = member.Info.Clone();
+            info.DeathState = death;
+            sync.Invoke(inviter.Party, [System.Threading.CancellationToken.None, guest.CharacterId, type, info]);
+        }
+
+        Update(UpdateField.Death, state);
+        string notice = "5300" + "12" + Convert.ToHexString(BitConverter.GetBytes(guest.CharacterId)) + flag;
+        // The dungeon info line (Party 14) that follows every update is left out.
+        Assert.That(Party(inviterTest).Where(packet => packet[2] != 14).Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] {
+            Hex(PartyPacket.UpdateStats(member)),
+            notice,
+        }));
+
+        Update(UpdateField.Health, state);
+        Update(UpdateField.Death, state);
+        Update(UpdateField.Death, DeathState.Alive);
+        Assert.That(Party(inviterTest).Select(packet => packet[2]), Has.None.EqualTo((byte) 18));
+
+        Update(UpdateField.Health | UpdateField.Death, state);
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Does.Contain(notice));
+    }
+
+    [TestCase(DeathState.Alive, DeathState.FirstDeath, true)]
+    [TestCase(DeathState.Alive, DeathState.Metal, true)]
+    [TestCase(DeathState.FirstDeath, DeathState.Metal, false)]
+    [TestCase(DeathState.Metal, DeathState.Alive, false)]
+    [TestCase(DeathState.Alive, DeathState.Alive, false)]
+    public void DiedNow_IsTheStepFromAliveToDead(DeathState before, DeathState after, bool expected) {
+        Assert.That(PartyManager.DiedNow(before, after), Is.EqualTo(expected));
     }
 
     [Test]

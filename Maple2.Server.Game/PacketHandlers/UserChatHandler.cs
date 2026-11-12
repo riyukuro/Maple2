@@ -69,6 +69,10 @@ public class UserChatHandler : FieldPacketHandler {
             case ChatType.Wedding:
                 HandleWedding(session, message, itemUids);
                 break;
+            case ChatType.MicroGame:
+                // KMS2 gives the line back to the field with the same type and channel 0.
+                session.Field.Broadcast(ChatPacket.Message(session.Player.Value, ChatType.MicroGame, message));
+                break;
         }
 
         session.ConditionUpdate(ConditionType.chat, targetLong: session.Field.MapId);

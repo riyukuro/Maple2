@@ -432,6 +432,11 @@ public class PartyManager : IDisposable {
         member.TokenSource = null;
     }
 
+    // The party is told once that a member is under a tombstone: when the member goes from alive to dead.
+    internal static bool DiedNow(DeathState before, DeathState after) {
+        return before == DeathState.Alive && after != DeathState.Alive;
+    }
+
     private bool SyncUpdate(CancellationToken cancel, long id, UpdateField type, IPlayerInfo info) {
         if (cancel.IsCancellationRequested || Party == null || !Party.Members.TryGetValue(id, out PartyMember? member)) {
             return true;
@@ -439,6 +444,7 @@ public class PartyManager : IDisposable {
 
         bool wasOnline = member.Info.Online;
         var previousDungeonLimits = new Dictionary<int, DungeonEnterLimit>(member.Info.DungeonEnterLimits);
+        DeathState previousDeathState = member.Info.DeathState;
 
         member.Info.Update(type, info);
 
@@ -446,6 +452,10 @@ public class PartyManager : IDisposable {
             session.Send(PartyPacket.UpdateStats(member));
         } else {
             session.Send(PartyPacket.Update(member));
+        }
+
+        if (DiedNow(previousDeathState, member.Info.DeathState)) {
+            session.Send(PartyPacket.Tombstone(member.CharacterId, member.Info.DeathState == DeathState.Metal));
         }
 
         if (previousDungeonLimits != member.Info.DungeonEnterLimits) {
