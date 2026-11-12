@@ -44,14 +44,20 @@ public class Stats {
     /// Clears and sets static stats.
     /// </summary>
     public void SetStaticStats(IReadOnlyDictionary<BasicAttribute, long> statsDictionary) {
+        HoldCurrent();
         ClearStats();
         foreach (BasicAttribute attribute in statsDictionary.Keys) {
             this[attribute].AddBase(statsDictionary[attribute]);
         }
+        EndReset(false);
         // Does not add PhysicalAtk or MagicalAtk due to it not using jobCode
     }
 
+    /// <summary>
+    /// Starts a rebuild: every Current keeps its value until <see cref="EndReset"/>.
+    /// </summary>
     public void Reset(IReadOnlyDictionary<BasicAttribute, long> metadata, JobCode jobCode) {
+        HoldCurrent();
         ClearStats();
 
         foreach (BasicAttribute attribute in metadata.Keys) {
@@ -70,6 +76,7 @@ public class Stats {
 
     [Obsolete("Use Reset(UserStatMetadata, JobCode) instead.")]
     public void Reset(JobCode jobCode, short level) {
+        HoldCurrent();
         ClearStats();
 
         this[BasicAttribute.Strength].AddBase(BaseStat.Strength(jobCode, level));
@@ -147,6 +154,32 @@ public class Stats {
         set => specialValues[attribute] = value;
     }
 
+    // Another thread (the field's Actor.Update death check) reads Health.Current while a rebuild runs, and the rebuild
+    // passes through 0 (ClearStats) on its way to the new totals. A held stat keeps its Current through the rebuild.
+    private void HoldCurrent() {
+        foreach (Stat stat in basicValues.Values) {
+            stat.Held = true;
+        }
+        foreach (Stat stat in specialValues.Values) {
+            stat.Held = true;
+        }
+    }
+
+    /// <summary>
+    /// Ends a rebuild: each Current goes straight from its held value to the new Total, as the rebuild gave before;
+    /// Health goes to 0 instead when <paramref name="dead"/>.
+    /// </summary>
+    public void EndReset(bool dead) {
+        foreach ((BasicAttribute attribute, Stat stat) in basicValues) {
+            stat.Current = dead && attribute == BasicAttribute.Health ? 0 : stat.Total;
+            stat.Held = false;
+        }
+        foreach (Stat stat in specialValues.Values) {
+            stat.Current = stat.Total;
+            stat.Held = false;
+        }
+    }
+
     /// <summary>
     /// Safely clear stats.
     /// </summary>
@@ -171,6 +204,8 @@ public sealed class Stat {
     public long Base { get; set; }
     public long Current { get; set; }
     public float Rate { get; set; }
+    // Set during a Stats rebuild: Base and Total change, Current waits for Stats.EndReset.
+    internal bool Held;
 
     public Stat(long value) : this(value, value, value) { }
 
@@ -183,12 +218,16 @@ public sealed class Stat {
     public void AddBase(long amount) {
         Total = Math.Max(0, Total + amount);
         Base = Math.Max(0, Base + amount);
-        Current = Math.Max(0, Current + amount);
+        if (!Held) {
+            Current = Math.Max(0, Current + amount);
+        }
     }
 
     public void AddTotal(long amount) {
         Total = Math.Max(0, Total + amount);
-        Current = Math.Max(0, Current + amount);
+        if (!Held) {
+            Current = Math.Max(0, Current + amount);
+        }
     }
 
     public void AddTotal(BasicOption option) {
@@ -206,7 +245,8 @@ public sealed class Stat {
     }
 
     public void Add(long amount) {
-        Current = Math.Clamp(Current + amount, 0, Total);
+        // During a rebuild Total is not final yet, so it is no cap.
+        Current = Held ? Math.Max(0, Current + amount) : Math.Clamp(Current + amount, 0, Total);
     }
 
     public long this[int i] {
