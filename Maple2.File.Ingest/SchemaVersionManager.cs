@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using Force.Crc32;
+using Maple2.Database.Context;
 using Maple2.Database.Model.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -20,6 +21,14 @@ public static class SchemaVersionManager {
 
             if (schemaVersion.SchemaHash != currentSchemaHash) {
                 Console.WriteLine("Schema has changed, database will be recreated.");
+                return true;
+            }
+
+            // The hash is of the model only. A database that lost a table or a column since it was written (a
+            // restored dump, a hand edit) keeps its hash, and the servers refuse it at start; it is recreated too.
+            List<string> stale = MetadataSchemaCheck.StaleTables(context);
+            if (stale.Count > 0) {
+                Console.WriteLine($"Metadata database lacks tables or columns ({string.Join(", ", stale)}), database will be recreated.");
                 return true;
             }
 
