@@ -981,6 +981,13 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             GameEventMetadata metadata = MapGameEvent(id, data, eventType, eventData);
             DateTime endTime = metadata.EndTime;
 
+            // An NpcShopShowItem row without a readable end (DateTime.MinValue) is dropped: kept as ended it would hide
+            // the items it names for good.
+            if (eventType == GameEventType.NpcShopShowItem && endTime == DateTime.MinValue) {
+                Console.WriteLine($"NpcShopShowItem {id}: no readable eventEnd \"{data.eventEnd}\", row dropped");
+                continue;
+            }
+
             // Only add events that are not expired. An ended NpcShopShowItem row stays: the items it names are hidden
             // while none of their rows runs (an ended row is never active, so nothing else reads it).
             if (endTime < now && eventType != GameEventType.NpcShopShowItem) {

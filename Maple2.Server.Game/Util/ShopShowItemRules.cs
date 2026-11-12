@@ -8,12 +8,14 @@ namespace Maple2.Server.Game.Util;
 // stay hidden, the two meso items of the running 13000001 show). The client has no class for the type and shows
 // the items the server loads.
 public static class ShopShowItemRules {
-    // The item ids of the shop that no running row names but some row does, at localNow.
+    // The item ids of the shop that no running row names but some row does, at localNow. A row without a readable
+    // end (DateTime.MinValue; the ingest drops and logs these, a table ingested before may still hold one) does not
+    // count: it would hide its items for good.
     public static IReadOnlySet<int> Hidden(IEnumerable<GameEventMetadata> events, int shopId, DateTime localNow) {
         var named = new HashSet<int>();
         var shown = new HashSet<int>();
         foreach (GameEventMetadata meta in events) {
-            if (meta.Data is not NpcShopShowItem row || row.ShopId != shopId) {
+            if (meta.Data is not NpcShopShowItem row || row.ShopId != shopId || meta.EndTime == DateTime.MinValue) {
                 continue;
             }
 

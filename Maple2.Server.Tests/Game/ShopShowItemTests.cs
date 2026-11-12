@@ -79,6 +79,16 @@ public class ShopShowItemTests {
         });
     }
 
+    // A row without a readable end (MinValue) does not hide its items; another row naming the same item still does.
+    [Test]
+    public void Hidden_RowWithoutEndDoesNotCount() {
+        GameEventMetadata[] events = [
+            Row(13000010, new NpcShopShowItem(254, [40400112, 50600257]), new DateTime(2019, 1, 17), DateTime.MinValue),
+            Row(13000002, new NpcShopShowItem(254, [40400112]), new DateTime(2019, 3, 14), new DateTime(2019, 4, 11)),
+        ];
+        Assert.That(ShopShowItemRules.Hidden(events, 254, Now), Is.EquivalentTo(new[] { 40400112 }));
+    }
+
     // Shop 254: the coin items of the ended 2019 rows go, the meso items and an item no row names stay.
     [Test]
     public void Filter_DropsTheHiddenItems() {
