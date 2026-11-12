@@ -836,7 +836,7 @@ public partial class FieldManager {
     private static bool FightsNpc(FieldNpc attacker, FieldNpc target) {
         NpcMetadataBasic own = attacker.Value.Metadata.Basic;
         NpcMetadataBasic other = target.Value.Metadata.Basic;
-        return NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
+        return !target.IsScriptMarker && NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
     }
 
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {

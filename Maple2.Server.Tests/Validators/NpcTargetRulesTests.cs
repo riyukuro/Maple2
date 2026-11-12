@@ -27,6 +27,24 @@ public class NpcTargetRulesTests {
         Assert.That(NpcTargetRules.FightsNpc(attackerFriendly, attackGroup, targetFriendly, defenseGroup), Is.EqualTo(expected));
     }
 
+    // A no_die npc is held at 1 health by damage; healing and npcs without the tag are unchanged.
+    [TestCase(100, -500, true, -99)]
+    [TestCase(100, -20, true, -20)]
+    [TestCase(1, -5, true, 0)]
+    [TestCase(100, -500, false, -500)]
+    [TestCase(100, 50, true, 50)]
+    public void HealthChange_NoDieHoldsHealthAtOne(long current, long change, bool noDie, long expected) {
+        Assert.That(NpcTargetRules.HealthChange(current, change, noDie), Is.EqualTo(expected));
+    }
+
+    // A Dummy model without a shown bar is a script marker; a Dummy with a bar is an object to guard.
+    [TestCase("Dummy", false, true)]
+    [TestCase("Dummy", true, false)]
+    [TestCase("02010018_Helena", false, false)]
+    public void IsScriptMarker_DummyWithoutABar(string model, bool showsHpBar, bool expected) {
+        Assert.That(NpcTargetRules.IsScriptMarker(model, showsHpBar), Is.EqualTo(expected));
+    }
+
     // isKeepBattle holds a target that is out of sight, never one that is gone (dead or off the field).
     [TestCase(false, false, false, false)]
     [TestCase(false, false, true, false)]

@@ -203,6 +203,11 @@ public class FieldNpc : Actor<Npc> {
     }
 
     public bool IsCorpse { get; private set; }
+    // A story ally that damage does not kill (npc propertyTags no_die, NpcTargetRules.HealthChange). A pet never is.
+    // A marker a script waits on, which no monster fights (NpcTargetRules.IsScriptMarker).
+    public bool IsScriptMarker => NpcTargetRules.IsScriptMarker(Value.Metadata.Model.Name,
+        Value.Metadata.Basic.HasPropertyTag("big_hp_bar") || Value.Metadata.Basic.HasPropertyTag("always_display_hp_bar"));
+    public bool NoDie => this is not FieldPet && Value.Metadata.Basic.HasPropertyTag("no_die");
     private long lastCorpseBroadcastTick;
     private byte lastControlFlags;
     // The flags byte of this npc's NpcControl entries.

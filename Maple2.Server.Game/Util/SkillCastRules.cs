@@ -58,17 +58,6 @@ public static class SkillCastRules {
         return (long) Math.Max(0, (cooldownSeconds - cooldownSeconds * rate) * 1000);
     }
 
-    // The client's cooldown reduction rate also counts the game rule's share (CEquipment::GetAbilityTotal with
-    // CGameRule::FUN_1404774a0), which the server does not know. Chosen here: the cooldown check of a skill that
-    // does not ignore the reduction takes this share of its full length off as well.
-    public const double ReduceRateTolerance = 0.05;
-
-    // The cooldown the job skill cooldown check holds a cast to, in ms: the client's length (CooldownMs) less
-    // ReduceRateTolerance of the full length, unless the skill ignores cooldown reduction; never under 0.
-    public static long CheckedCooldownMs(float cooldownSeconds, bool ignoreReduce, float groupRate, double reduceRate) {
-        return CooldownMs(cooldownSeconds, ignoreReduce, groupRate, reduceRate + (ignoreReduce ? 0 : ReduceRateTolerance));
-    }
-
     // The recharge uses a cooldown record stands at by this tick, as the client counts them (CSkillSystem::Update
     // with FUN_1417687e0): each ended cooldown gives one use back, and starts again from its end while uses are
     // still out. Returns the end tick and uses left out.

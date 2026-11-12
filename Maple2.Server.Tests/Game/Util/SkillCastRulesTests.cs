@@ -435,9 +435,8 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.CooldownMs(30f, false, 0.2f, 0.1), Is.EqualTo(21000).Within(1), "the rates add up");
         Assert.That(SkillCastRules.CooldownMs(30f, true, 0.2f, 0.1), Is.EqualTo(24000).Within(1), "the skill ignores the caster's rate only");
         Assert.That(SkillCastRules.CooldownMs(30f, false, 0.8f, 0.5), Is.EqualTo(0));
-        Assert.That(SkillCastRules.CheckedCooldownMs(60f, false, 0f, 0.1), Is.EqualTo(51000).Within(1), "the tolerance comes off the full length");
-        Assert.That(SkillCastRules.CheckedCooldownMs(60f, true, 0.1f, 0.1), Is.EqualTo(54000).Within(1), "none for a skill that ignores the reduction");
-        Assert.That(SkillCastRules.CheckedCooldownMs(1f, false, 0f, 0.99), Is.EqualTo(0));
+        Assert.That(SkillCastRules.CooldownMs(60f, false, 0f, 0), Is.EqualTo(60000), "no rate: the full length, nothing off");
+        Assert.That(SkillCastRules.CooldownMs(1f, false, 0f, 0.99), Is.EqualTo(10).Within(1));
     }
 
     [Test]

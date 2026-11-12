@@ -248,7 +248,7 @@ public class BattleState {
     private bool FightsNpc(FieldNpc target) {
         NpcMetadataBasic own = actor.Value.Metadata.Basic;
         NpcMetadataBasic other = target.Value.Metadata.Basic;
-        return NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
+        return !target.IsScriptMarker && NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
     }
 
     private void FindNewTarget() {

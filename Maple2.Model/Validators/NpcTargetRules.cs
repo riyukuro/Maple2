@@ -17,6 +17,23 @@ public static class NpcTargetRules {
         return otherSide && (attackGroup & defenseGroup) != 0;
     }
 
+    // A script marker: an npc of the Dummy model (nothing is drawn) whose bar the client does not show either
+    // (npc propertyTags big_hp_bar, always_display_hp_bar). Scripts spawn it to wait on (a wave runs until a
+    // marker of 22 health is destroyed), so a monster that hit it would end the script early; a monster does not
+    // fight it. A Dummy with a bar is an object to guard, which monsters do hit. Chosen here, the fight between
+    // npcs being the server's.
+    public static bool IsScriptMarker(string model, bool showsHpBar) => model == "Dummy" && !showsHpBar;
+
+    // The health change an npc takes: an npc tagged no_die (npc propertyTags) is not brought below 1 health by damage,
+    // so a story ally a script waits on stays on the field however long monsters hit it. The client has no rule
+    // of its own for the tag (the fight between npcs is the server's); chosen here: its health is held at 1.
+    public static long HealthChange(long current, long change, bool noDie) {
+        if (!noDie || change >= 0) {
+            return change;
+        }
+        return Math.Max(change, Math.Min(0, 1 - current));
+    }
+
     // An AI node with isKeepBattle keeps the npc in battle, and its target, when the target is only out of sight
     // or the npc may not battle. A target that is gone (dead or off the field) is let go of always.
     public static bool LosesTarget(bool targetGone, bool outOfSightOrNoBattle, bool keepBattle) {

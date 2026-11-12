@@ -94,11 +94,8 @@ public class PlayerConfigLookUp {
                 long msSurpassed = (long) ((currentTime - skillCooldownInfo.StopTime) * TimeSpan.FromSeconds(1).TotalMilliseconds);
                 // A skill with recharge uses gets one use back each time its cooldown ends; the next one then runs
                 // its length again (the game server's SkillCastRules.SettleRecharge).
-                long remaining = skillCooldownInfo.MsRemaining - msSurpassed;
-                while (remaining < 0 && skillCooldownInfo.Charges > 1 && skillCooldownInfo.RechargeMs > 0) {
-                    skillCooldownInfo.Charges--;
-                    remaining += skillCooldownInfo.RechargeMs;
-                }
+                (long remaining, int charges) = SettleRecharge(skillCooldownInfo.MsRemaining - msSurpassed, skillCooldownInfo.Charges, skillCooldownInfo.RechargeMs);
+                skillCooldownInfo.Charges = charges;
                 if (remaining < 0) {
                     removeSkillCooldowns.Add(skillCooldownInfo);
                 } else {
@@ -113,6 +110,16 @@ public class PlayerConfigLookUp {
         }
 
         return list.Values.ToList();
+    }
+
+    // The cooldown left of a skill with recharge uses after the time away (remaining under 0 once its cooldown has
+    // ended): each ended cooldown gives one use back and the next runs its length again, down to the last use.
+    public static (long Remaining, int Charges) SettleRecharge(long remaining, int charges, long rechargeMs) {
+        while (remaining < 0 && charges > 1 && rechargeMs > 0) {
+            charges--;
+            remaining += rechargeMs;
+        }
+        return (remaining, charges);
     }
 
     private DeathInfo RetrieveDeath(long characterId) {

@@ -275,9 +275,10 @@ public class ConfigManager {
 
     public void SaveCastTime(SkillMetadata skill, SkillMetadataMotionProperty motion, int castTick, long tick) {
         // A cooldown under 1 s is not reduced (SkillCastRules.RequiredGap); one that a reduction brings under 1 s
-        // is not checked. The check allows for reduction sources the server does not count (CheckedCooldownMs).
+        // is not checked. The check holds the cast to the length the client starts (CooldownMs); a share of the
+        // caster's rate the server does not count (the game rule's, CEquipment::GetAbilityTotal) is not allowed for.
         long fullMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
-        long cooldownMs = fullMs < 1000 ? fullMs : SkillCastRules.CheckedCooldownMs(skill.Data.Condition.CooldownTime,
+        long cooldownMs = fullMs < 1000 ? fullMs : SkillCastRules.CooldownMs(skill.Data.Condition.CooldownTime,
             skill.State.IgnoreReduceCooldown, session.Player.Buffs.CooldownGroupRate(skill.State.CooldownGroupId),
             session.Player.Stats.Values[SpecialAttribute.ReduceCooldown].Multiplier());
         if (fullMs >= 1000 && cooldownMs < 1000) {

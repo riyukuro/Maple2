@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Tools.VectorMath;
@@ -160,7 +161,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 DamageDealers.TryAdd(caster.ObjectId, record);
             }
             record.AddDamage(DamageType.Normal, positiveDamage);
-            Stats.Values[BasicAttribute.Health].Add(damageAmount);
+            Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true }));
             Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
             OnDamageReceived(caster, positiveDamage);
         }

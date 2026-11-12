@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
@@ -322,7 +323,7 @@ public class Buff : IUpdatable, IByteSerializable {
         };
         var targetUpdated = new List<BasicAttribute>(3);
         if (record.HpAmount != 0) {
-            Owner.Stats.Values[BasicAttribute.Health].Add(record.HpAmount);
+            Owner.Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Owner.Stats.Values[BasicAttribute.Health].Current, record.HpAmount, Owner is FieldNpc { NoDie: true }));
             targetUpdated.Add(BasicAttribute.Health);
             if (record.HpAmount < 0 && Owner is FieldPlayer player) {
                 player.DelayHpRegen();
