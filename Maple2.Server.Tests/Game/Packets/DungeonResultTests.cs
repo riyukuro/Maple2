@@ -20,6 +20,8 @@ public class DungeonResultTests {
     private const string Head = "1B00" + "00" + "01" + "484B5D05" + "00" + "7B000000";
     private const string NoItems = "00000000";
 
+    private static string Long(long value) => Convert.ToHexString(BitConverter.GetBytes(value));
+
     private static string Hex(DungeonUserRecord record) => Convert.ToHexString(DungeonRewardPacket.Dungeon(record).ToArray());
 
     private static DungeonUserRecord Cleared(DungeonBonusFlag flag) {
@@ -112,8 +114,16 @@ public class DungeonResultTests {
         List<byte[]> sent = test.TakeSent();
         byte[] expUp = sent.Single(packet => TestGameSession.Op(packet) == SendOp.ExpUp);
         Assert.That(Convert.ToHexString(expUp, 3, 10), Is.EqualTo("E803000000000000" + "3D04"));
-        Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(record)));
-        Assert.That(Convert.ToHexString(sent[^1], 21, 4), Is.EqualTo("02000000"));
+        byte[] result = sent.Single(packet => TestGameSession.Op(packet) == SendOp.DungeonReward);
+        Assert.That(Convert.ToHexString(result), Is.EqualTo(Hex(record)));
+        Assert.That(Convert.ToHexString(result, 21, 4), Is.EqualTo("02000000"));
+        // KMS2's order: the two record updates and the reward notice, the result, then the meso and the exp it names,
+        // both with the dungeon message code, and the prestige exp.
+        Assert.That(sent.Select(TestGameSession.Op).SkipWhile(op => op != SendOp.RoomDungeon).Where(op =>
+                op is SendOp.RoomDungeon or SendOp.DungeonReward or SendOp.Meso or SendOp.ExpUp or SendOp.Prestige),
+            Is.EqualTo(new[] { SendOp.RoomDungeon, SendOp.RoomDungeon, SendOp.RoomDungeon, SendOp.DungeonReward, SendOp.Meso, SendOp.ExpUp, SendOp.Prestige }));
+        byte[] meso = sent.Single(packet => TestGameSession.Op(packet) == SendOp.Meso);
+        Assert.That(Convert.ToHexString(meso, 2, 12), Is.EqualTo(Long(session.Currency.Meso) + "3D040000"));
         Assert.That(test.Errors, Is.Empty);
     }
 
@@ -128,8 +138,50 @@ public class DungeonResultTests {
         List<byte[]> sent = test.TakeSent();
         Assert.That(sent.Any(packet => TestGameSession.Op(packet) == SendOp.ExpUp), Is.False);
         Assert.That(session.Exp.PrestigeCurrentExp, Is.EqualTo(prestigeBefore));
+        Assert.That(TestGameSession.Op(sent[^1]), Is.EqualTo(SendOp.DungeonReward));
         Assert.That(Convert.ToHexString(sent[^1], 21, 4), Is.EqualTo("00000000"));
+        Assert.That(sent.Any(packet => TestGameSession.Op(packet) == SendOp.Meso), Is.False);
         Assert.That(session.Dungeon.UserRecord!.Rewards[DungeonRewardType.Prestige], Is.EqualTo(0));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A clear that reaches a weekly step: the step's exp and meso come after the result and the clear's own, with
+    // the weekly message code (1146), and the result names them in its bonus list with bit 9.
+    [Test]
+    public void WeeklyStep_IsGivenAfterTheResultWithTheWeeklyCode() {
+        const int union = 1006, rewardId = 5001;
+        var test = new TestGameSession();
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 90000201);
+        room = room with { Reward = room.Reward with { Exp = 1000, Meso = 500, UnionRewardId = union } };
+        test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> {
+            [Room] = room, [union] = TestGameSession.DungeonRoom(union, 90000201),
+        }));
+        test.SetTable(new DungeonConfigTable(new Dictionary<int, int> { [1] = rewardId }, new Dictionary<int, DungeonMissionRankMetadata>()));
+        test.SetTable(new RewardContentTable(
+            new Dictionary<int, RewardContentTable.Base> { [rewardId] = new(rewardId, 100001, 100002, 0f, 0f, 0, 0) },
+            new Dictionary<int, RewardContentTable.Item>(), new Dictionary<int, long> { [100001] = 700 },
+            new Dictionary<int, Dictionary<int, long>>(), new Dictionary<int, long> { [100002] = 900 }));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long> { [ExpType.dungeonClear] = 75000 }));
+        GameSession session = test.Start();
+        test.EnterDungeon(room).State = DungeonState.Clear;
+        test.TakeSent();
+        long mesoBefore = session.Currency.Meso;
+
+        session.Dungeon.CompleteDungeon(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        DungeonUserRecord record = session.Dungeon.UserRecord!;
+        Assert.That(record.Flag & ~DungeonBonusFlag.None, Is.EqualTo(DungeonBonusFlag.Clear | DungeonBonusFlag.UnitedWeekly));
+        Assert.That(record.BonusRewards[DungeonRewardType.Meso], Is.EqualTo(700));
+        Assert.That(record.BonusRewards[DungeonRewardType.Exp], Is.EqualTo(900));
+        List<byte[]> sent = test.TakeSent();
+        int resultAt = sent.FindIndex(packet => TestGameSession.Op(packet) == SendOp.DungeonReward);
+        Assert.That(Convert.ToHexString(sent[resultAt], 21, 4), Is.EqualTo("02020000"));
+        List<byte[]> after = sent.Skip(resultAt + 1).Where(packet => TestGameSession.Op(packet) is SendOp.Meso or SendOp.ExpUp).ToList();
+        Assert.That(after.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Meso, SendOp.ExpUp, SendOp.Meso, SendOp.ExpUp }));
+        Assert.That(sent.Take(resultAt).Select(TestGameSession.Op), Has.None.EqualTo(SendOp.Meso).And.None.EqualTo(SendOp.ExpUp));
+        Assert.That(Convert.ToHexString(after[0], 2, 12), Is.EqualTo(Long(mesoBefore + 500) + "3D040000"));
+        Assert.That(Convert.ToHexString(after[2], 2, 12), Is.EqualTo(Long(mesoBefore + 1200) + "7A040000"));
+        Assert.That(Convert.ToHexString(after[3], 3, 10), Is.EqualTo("8403000000000000" + "7A04"));
         Assert.That(test.Errors, Is.Empty);
     }
 }

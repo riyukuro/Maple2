@@ -76,6 +76,15 @@ public class CurrencyManager {
         }
     }
 
+    // A meso gain sent with the code of its kind (see CurrencyPacket.UpdateMeso).
+    public void AddMeso(long amount, ExpMessageCode code) {
+        if (amount <= 0) {
+            return;
+        }
+        Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
+        session.Send(CurrencyPacket.UpdateMeso(Currency, (int) code));
+    }
+
     public long CanAddMeso(long amount) {
         return amount >= 0
             ? Math.Min(amount, Constant.MaxMeso - Currency.Meso)

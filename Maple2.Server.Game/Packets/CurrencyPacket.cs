@@ -7,10 +7,13 @@ using Maple2.Server.Core.Packets;
 namespace Maple2.Server.Game.Packets;
 
 public static class CurrencyPacket {
-    public static ByteWriter UpdateMeso(Currency currency) {
+    // code: the kind of the gain. The client passes it to the gain text (CSceneStateGame::OnMeso,
+    // scenestategame.cpp:7006), which tests it for 0x15 and 0xea61 only (the PC cafe bonus text). KMS2 sends a
+    // dungeon clear's meso with the code of its exp (1085, and 1146 for the weekly reward).
+    public static ByteWriter UpdateMeso(Currency currency, int code = 0) {
         var pWriter = Packet.Of(SendOp.Meso);
         pWriter.WriteLong(currency.Meso);
-        pWriter.WriteInt(); // PCBang related
+        pWriter.WriteInt(code);
 
         return pWriter;
     }

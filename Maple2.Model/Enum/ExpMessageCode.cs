@@ -17,6 +17,9 @@ public enum ExpMessageCode : ushort {
     expDrop = 1062,
     [Description("You got {0} experience.")]
     dungeonRelative = 1085,
+    // The weekly step reward of a counted dungeon clear (DungeonBonusFlag.UnitedWeekly).
+    [Description("You got {0} experience.")]
+    dungeonUnitedWeekly = 1146,
     [Description("You got {0} experience.")]
     miniGame = 3007,
     [Description("You got {0} experience.")]

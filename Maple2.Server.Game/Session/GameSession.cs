@@ -788,8 +788,19 @@ public sealed partial class GameSession : Core.Network.Session {
     public PremiumMarketItem? GetPremiumMarketItem(int id, int subId = 0) => server.GetPremiumMarketItem(id, subId);
 
     public RewardRecord GetRewardContent(int id) {
+        (RewardRecord record, Action give) = PrepareRewardContent(id);
+        give();
+        return record;
+    }
+
+    /// <summary>
+    /// The amounts and items of a reward content row, and the action that gives them (meso, exp, items, the order
+    /// KMS2 sends a dungeon's weekly reward in), for a caller that reports the reward before it is given.
+    /// </summary>
+    /// <param name="message">The message code of the exp and the meso.</param>
+    public (RewardRecord Record, Action Give) PrepareRewardContent(int id, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) {
         if (!TableMetadata.RewardContentTable.BaseEntries.TryGetValue(id, out RewardContentTable.Base? baseMetadata)) {
-            return new RewardRecord();
+            return (new RewardRecord(), () => { });
         }
 
         long exp = 0;
@@ -802,7 +813,6 @@ public sealed partial class GameSession : Core.Network.Session {
             if (baseMetadata.ExpFactor > 0f) {
                 exp = (long) (exp * baseMetadata.ExpFactor);
             }
-            Exp.AddExp(exp);
         }
 
         long meso = 0;
@@ -817,7 +827,6 @@ public sealed partial class GameSession : Core.Network.Session {
             if (baseMetadata.MesoFactor > 0f) {
                 meso = (long) (meso * baseMetadata.MesoFactor);
             }
-            Currency.Meso += meso;
         }
 
         long prestigeExp = 0;
@@ -839,13 +848,24 @@ public sealed partial class GameSession : Core.Network.Session {
                     }
                 }
             }
+        }
+        return (new RewardRecord(items, exp, prestigeExp, meso), Give);
+
+        void Give() {
+            if (meso > 0) {
+                if (message == ExpMessageCode.s_msg_take_exp) {
+                    Currency.Meso += meso;
+                } else {
+                    Currency.AddMeso(meso, message);
+                }
+            }
+            Exp.AddExp(exp, message);
             foreach (Item item in items) {
                 if (!Item.Inventory.Add(item, true)) {
                     Item.MailItem(item);
                 }
             }
         }
-        return new RewardRecord(items, exp, prestigeExp, meso);
     }
 
     public void ChannelBroadcast(ByteWriter packet) {

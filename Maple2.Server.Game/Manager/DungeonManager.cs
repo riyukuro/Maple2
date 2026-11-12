@@ -599,12 +599,22 @@ public class DungeonManager {
         UserRecord.IsDungeonSuccess = Lobby.DungeonRoomRecord.State == DungeonState.Clear;
         UserRecord.TotalSeconds = (int) (Lobby.DungeonRoomRecord.EndTick - Lobby.DungeonRoomRecord.StartTick) / 1000;
 
-        CalculateRewards(clearTimestamp, withRookie);
+        // The order KMS2 sends a clear in: the room records, the reward notice, the result, and only then what the
+        // result names (meso, exp with its prestige exp, items, then the weekly reward's meso, exp and items). The
+        // client's reader (OnRewardPacket) only stores the result, so either order works; this one is KMS2's.
+        List<Action> grants = [];
+        CalculateRewards(clearTimestamp, withRookie, grants);
         if (UserRecord.IsDungeonSuccess) {
             UpdateRankScore(clearTimestamp);
         }
+        if (UserRecord.Flag.HasFlag(DungeonBonusFlag.Clear)) {
+            session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
+        }
 
         session.Send(DungeonRewardPacket.Dungeon(UserRecord));
+        foreach (Action grant in grants) {
+            grant();
+        }
     }
 
     // A failed run's result: the reward window with the fail title, its time under the fail-time label and no
@@ -661,7 +671,8 @@ public class DungeonManager {
         session.Send(DungeonRoomPacket.Update(record));
     }
 
-    private void CalculateRewards(long clearTimeStamp, bool withRookie) {
+    // grants: what gives the rewards the record names, run after the result is sent.
+    private void CalculateRewards(long clearTimeStamp, bool withRookie, List<Action> grants) {
         if (Lobby == null || Metadata == null || UserRecord == null) {
             return;
         }
@@ -702,7 +713,7 @@ public class DungeonManager {
         }
 
         if (helper) {
-            GiveHelperReward(clearTimeStamp);
+            GiveHelperReward(clearTimeStamp, grants);
         }
 
         if (UserRecord.Flag.HasFlag(DungeonBonusFlag.Clear)) {
@@ -713,8 +724,10 @@ public class DungeonManager {
         }
 
         foreach (int rewardId in rewardIds) {
-            RewardRecord rewardRecord = session.GetRewardContent(rewardId);
+            // The weekly step reward: its exp and meso carry the weekly message code (1146), as in KMS2.
+            (RewardRecord rewardRecord, Action give) = session.PrepareRewardContent(rewardId, ExpMessageCode.dungeonUnitedWeekly);
             UserRecord.Add(rewardRecord);
+            grants.Add(give);
         }
 
         return;
@@ -740,12 +753,14 @@ public class DungeonManager {
             UserRecord.Rewards[DungeonRewardType.Meso] = meso;
             // The clear's prestige exp: the dialog names the table's amount, as KMS2 sends it whatever the character
             // gets (less past the daily amount, none below the prestige start level). It is given with the exp,
-            // which carries the dungeon message code (1085) and so the dungeonClear prestige type.
+            // which carries the dungeon message code (1085) and so the dungeonClear prestige type. KMS2 sends the
+            // meso first, with the same code.
             session.ServerTableMetadata.PrestigeExpTable.Entries.TryGetValue(ExpType.dungeonClear, out long prestige);
             UserRecord.Rewards[DungeonRewardType.Prestige] = (int) Math.Min(prestige, int.MaxValue);
-            session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp], ExpMessageCode.dungeonRelative);
-            session.Currency.Meso += UserRecord.Rewards[DungeonRewardType.Meso];
-            session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
+            grants.Add(() => {
+                session.Currency.AddMeso(meso, ExpMessageCode.dungeonRelative);
+                session.Exp.AddExp(exp, ExpMessageCode.dungeonRelative);
+            });
 
             ICollection<Item> items = [];
             // Each box is rolled for the player as an opened item box is (drop count, smart drop by job, gender, level):
@@ -762,17 +777,21 @@ public class DungeonManager {
 
             foreach (Item item in items) {
                 UserRecord.RewardItems.Add(item);
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
-                }
+                grants.Add(() => GiveItem(item));
             }
+        }
+    }
+
+    private void GiveItem(Item item) {
+        if (!session.Item.Inventory.Add(item, true)) {
+            session.Item.MailItem(item);
         }
     }
 
     // The helper reward of a veteran who cleared with a rookie: one count of room 1003's record while it has one
     // left, the result dialog's helper line (DungeonBonusFlag.Helper, s_dungeon_reward_dungeon_helper), the items of
     // the room's helper boxes, and the reward notice (Modify GiveDungeonHelperReward, RewardNotice kind 2).
-    private void GiveHelperReward(long clearTimeStamp) {
+    private void GiveHelperReward(long clearTimeStamp, List<Action> grants) {
         if (Lobby == null || Metadata == null || UserRecord == null
             || !session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(HelperRewardRoomId, out DungeonRoomMetadata? helperRoom)) {
             return;
@@ -803,9 +822,7 @@ public class DungeonManager {
         foreach (int boxId in Enumerable.Repeat(Metadata.HelperRewardDropBoxIds ?? [], times).SelectMany(ids => ids)) {
             foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level))) {
                 UserRecord.RewardItems.Add(item);
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
-                }
+                grants.Add(() => GiveItem(item));
             }
         }
         session.Send(DungeonRoomPacket.Update(record));

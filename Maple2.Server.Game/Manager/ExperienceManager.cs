@@ -118,8 +118,9 @@ public sealed class ExperienceManager {
         }
         expGained = SpendRest(expGained, kill);
         LevelUp();
-        AddPrestigeExp(message.Type());
+        // KMS2 sends the exp first, then the prestige exp it brings.
         session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, message, npcObjectId));
+        AddPrestigeExp(message.Type());
         session.ConditionUpdate(ConditionType.exp, counter: expGained);
         return expGained;
     }
