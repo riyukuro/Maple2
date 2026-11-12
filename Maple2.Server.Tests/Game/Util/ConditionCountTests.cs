@@ -261,6 +261,13 @@ public class ConditionCountTests {
         Assert.That(FieldEntryRules.VisitsOtherHome(1001, HomeMapId, 1002, fromMapId, fromOwnerId), Is.EqualTo(expected));
     }
 
+    // The played quests of these types list no code or target, so every event counts.
+    [TestCase(ConditionType.item_break)] // 74000011 "Dismantle 1 item"
+    public void CodelessQuestRow_CountsEveryEvent(ConditionType type) {
+        var condition = new ConditionMetadata(type, 1, null, null);
+        Assert.That(condition.Check(null!), Is.True);
+    }
+
     [Test]
     public void EnterOtherHouse_ConditionWithoutCodesCounts() {
         var condition = new ConditionMetadata(ConditionType.enter_otherhouse, 3, null, null);

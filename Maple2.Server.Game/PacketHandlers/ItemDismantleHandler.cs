@@ -164,6 +164,8 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     session.DismantleStaging[slot] = default;
                     continue;
                 }
+                // Each item broken counts for item_break (74000011 "Dismantle 1 item", 10002700 dismantles 10).
+                session.ConditionUpdate(ConditionType.item_break, counter: amount);
 
                 foreach ((int id, int min, int max) in GetReward(item, amount)) {
                     (int Min, int Max) prev = rewards.GetValueOrDefault(id, (0, 0));
