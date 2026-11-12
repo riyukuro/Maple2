@@ -43,7 +43,8 @@ public record ShopItemMetadata(
         GuildNpcType Type,
         short Level);
 
+    // The alliance whose fame grade the product needs, in the client's fame alliance numbering (0 any alliance).
     public record QuestAlliance(
-        ReputationType Type,
+        AllianceType Type,
         int Grade);
 }

@@ -1,6 +1,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Game.Util;
 
@@ -42,6 +43,27 @@ public static class ShopRules {
 
         total = unitPrice * quantity;
         return true;
+    }
+
+    // The client's fame grade of an alliance (FUN_140931250, unit_14092f420_accountsessionstate.cpp:952): the grade
+    // of the alliance's fame points by the fame table. For no alliance (0) it is the best grade of alliances 1 to 9
+    // (GetGeneralFameGrade, :958).
+    public static int FameGrade(FameTable table, IDictionary<AllianceType, int> famePoints, AllianceType alliance) {
+        if (alliance != AllianceType.AnyFaction) {
+            return FameLogRules.Grade(table, alliance, famePoints.TryGetValue(alliance, out int points) ? points : 0);
+        }
+        int best = 0;
+        for (int i = 1; i < 10; i++) {
+            best = Math.Max(best, FameGrade(table, famePoints, (AllianceType) i));
+        }
+        return best;
+    }
+
+    // The client's fame product check (FUN_141b04af0, client/ms2/uishopdialog.cpp:3612): a product with a grade of
+    // 0 needs nothing, else the alliance's fame grade must be at least the product's. The client shows
+    // s_err_lack_fame_alliance itself, so no shop code carries the refusal.
+    public static bool CheckFameProduct(ShopItemMetadata.QuestAlliance requirement, FameTable table, IDictionary<AllianceType, int> famePoints) {
+        return requirement.Grade == 0 || FameGrade(table, famePoints, requirement.Type) >= requirement.Grade;
     }
 
     public const long GuildTrophyJoinSeconds = 604800;

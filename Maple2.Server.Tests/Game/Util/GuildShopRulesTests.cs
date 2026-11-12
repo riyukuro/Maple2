@@ -13,7 +13,7 @@ public class GuildShopRulesTests {
     private static ShopItemMetadata.Requirement Requirement(int trophy = 0, GuildNpcType npc = GuildNpcType.Unknown, short npcLevel = 0) {
         return new ShopItemMetadata.Requirement(trophy, new ShopItemMetadata.Achievement(0, 0),
             new ShopItemMetadata.Championship(0, 0), new ShopItemMetadata.GuildNpc(npc, npcLevel),
-            new ShopItemMetadata.QuestAlliance(ReputationType.None, 0));
+            new ShopItemMetadata.QuestAlliance(AllianceType.AnyFaction, 0));
     }
 
     [Test]

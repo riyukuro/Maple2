@@ -52,7 +52,7 @@ public class ShopItem : IByteSerializable {
         writer.WriteByte();
         writer.Write<ShopItemLabel>(Metadata.Label);
         writer.WriteString(Metadata.IconTag);
-        writer.Write<ReputationType>(Metadata.Requirements.QuestAlliance.Type);
+        writer.WriteShort((short) Metadata.Requirements.QuestAlliance.Type);
         writer.WriteInt(Metadata.Requirements.QuestAlliance.Grade);
         writer.WriteBool(Metadata.WearForPreview);
         writer.WriteBool(Metadata.RestrictedBuyData != null);

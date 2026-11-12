@@ -2172,18 +2172,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                             Type: npcType,
                             Level: guildNpcLevel),
                         QuestAlliance: new ShopItemMetadata.QuestAlliance(
-                            Type: item.requireAlliance switch {
-                                "MapleUnion" => ReputationType.MapleAlliance,
-                                "TriaRoyalGuard" => ReputationType.RoyalGuard,
-                                "DarkWind" => ReputationType.DarkWind,
-                                "GreenHood" => ReputationType.GreenHood,
-                                "LumiKnight" => ReputationType.Lumiknight,
-                                "MapleUnion_KritiasExped" => ReputationType.KritiasMapleAlliance,
-                                "GreenHood_KritiasExped" => ReputationType.KritiasGreenHood,
-                                "Lumiknight_KritiasExped" => ReputationType.KritiasLumiknight,
-                                "Georg" => ReputationType.Humanitas,
-                                _ => ReputationType.None,
-                            },
+                            // The client's fame alliance names (Parse_14021a330), as the fame table reads them.
+                            Type: TableMapper.ParseAlliance(item.requireAlliance ?? string.Empty),
                             Grade: item.requireAllianceGrade)),
                     RestrictedBuyData: restrictedBuyData,
                     SellUnit: (short) item.sellUnit,

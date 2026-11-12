@@ -21,6 +21,8 @@ public class ShopHandlerTests {
     private const int ProductId = 11;
     private const int StockProductId = 12;
     private const int PackProductId = 13;
+    private const int FameProductId = 14;
+    private const int AnyFameProductId = 15;
     private const int ShopItemId = 20000001;
     private const int ProductItemId = 20000002;
 
@@ -30,9 +32,9 @@ public class ShopHandlerTests {
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
-    private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1) {
+    private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1, ShopItemMetadata.QuestAlliance? fame = null) {
         var requirements = new ShopItemMetadata.Requirement(0, new ShopItemMetadata.Achievement(0, 0), new ShopItemMetadata.Championship(0, 0),
-            new ShopItemMetadata.GuildNpc(default, 0), new ShopItemMetadata.QuestAlliance(default, 0));
+            new ShopItemMetadata.GuildNpc(default, 0), fame ?? new ShopItemMetadata.QuestAlliance(default, 0));
         return new ShopItemMetadata(id, ShopId, ProductItemId, 1, new ShopCost { Type = ShopCurrencyType.Meso, Amount = price }, stock, "", requirements,
             null, sellUnit, default, "", false, false, 10000, false);
     }
@@ -48,8 +50,20 @@ public class ShopHandlerTests {
                 [ProductId] = Product(ProductId, price: 30, stock: 0),
                 [StockProductId] = Product(StockProductId, price: 20, stock: 50),
                 [PackProductId] = Product(PackProductId, price: 40, stock: 50, sellUnit: 10),
+                [FameProductId] = Product(FameProductId, price: 10, stock: 0, fame: new ShopItemMetadata.QuestAlliance(AllianceType.MapleAlliance, 3)),
+                [AnyFameProductId] = Product(AnyFameProductId, price: 10, stock: 0, fame: new ShopItemMetadata.QuestAlliance(AllianceType.AnyFaction, 4)),
             },
         }));
+        // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
+        var grades = new List<FameTable.Grade>();
+        foreach (AllianceType alliance in new[] { AllianceType.MapleAlliance, AllianceType.RoyalGuard }) {
+            grades.Add(new FameTable.Grade(alliance, 1, 0));
+            grades.Add(new FameTable.Grade(alliance, 2, 10000));
+            grades.Add(new FameTable.Grade(alliance, 3, 30000));
+            grades.Add(new FameTable.Grade(alliance, 4, 60000));
+            grades.Add(new FameTable.Grade(alliance, 5, 120000));
+        }
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>(), grades));
         ItemMetadata sold = TestGameSession.Metadata(20000003);
         bagItem = test.Store(sold with { Property = sold.Property with { SellPrices = [70, 0, 0, 0, 0, 0] } }, amount: 5);
         ItemMetadata opener = TestGameSession.Metadata(ShopItemId);
@@ -326,5 +340,40 @@ public class ShopHandlerTests {
 
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemInventoryPacket.Remove(bagItem.Uid)) }));
         Assert.That(session.Item.Inventory.Get(bagItem.Uid), Is.Null);
+    }
+
+    // The client's fame product check (FUN_141b04af0, uishopdialog.cpp:3612): below the alliance's grade the buy
+    // is dropped with no answer (the client shows its own notice); at the grade it is sold.
+    [Test]
+    public void Buy_OfAFameProductNeedsTheAlliancesGrade() {
+        GameSession session = Login();
+        session.Player.Value.Unlock.FamePoints[AllianceType.MapleAlliance] = 29999;
+        session.Player.Value.Unlock.FamePoints[AllianceType.GreenHoods] = 500000;
+
+        Buy(session, FameProductId, 1);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+
+        session.Player.Value.Unlock.FamePoints[AllianceType.MapleAlliance] = 30000;
+        Buy(session, FameProductId, 1);
+        Assert.That(test.TakeSent().Select(TestGameSession.Op), Does.Contain(SendOp.Shop));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 10));
+        Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(1));
+    }
+
+    // A fame product of no alliance (0) takes the best grade of the alliances (GetGeneralFameGrade).
+    [Test]
+    public void Buy_OfAFameProductOfNoAllianceTakesTheBestGrade() {
+        GameSession session = Login();
+        session.Player.Value.Unlock.FamePoints[AllianceType.MapleAlliance] = 30000;
+
+        Buy(session, AnyFameProductId, 1);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+
+        session.Player.Value.Unlock.FamePoints[AllianceType.RoyalGuard] = 60000;
+        Buy(session, AnyFameProductId, 1);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 10));
+        Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(1));
     }
 }

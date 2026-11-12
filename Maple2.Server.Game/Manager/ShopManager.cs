@@ -500,7 +500,13 @@ public sealed class ShopManager {
             return;
         }
 
-        // TODO: Championship, Alliance
+        // The fame table is read only for a product with a grade.
+        ShopItemMetadata.QuestAlliance fame = shopItem.Metadata.Requirements.QuestAlliance;
+        if (fame.Grade > 0 && !ShopRules.CheckFameProduct(fame, session.TableMetadata.FameTable, session.Player.Value.Unlock.FamePoints)) {
+            return;
+        }
+
+        // TODO: Championship (no KR product has one)
 
         // The client buys packs: its product item holds the pack size (CNpcShopProductCli::Read sets the item's
         // count to it, npcshopproductbase.cpp:188) and the quantity it sends is a number of packs (the most it
