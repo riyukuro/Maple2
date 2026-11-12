@@ -320,7 +320,9 @@ public class Buff : IUpdatable, IByteSerializable {
             return;
         }
 
-        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage, Stacks) {
+        // The caster's dot damage invokes on this effect (type 5) raise its rate (DotDamageRecord.DotRate).
+        (_, float invokeRate) = Caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseDotDamage, Id, Metadata.Property.InvokeGroupId);
+        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage, Stacks, invokeRate) {
             BuffObjectId = ObjectId,
         };
         var targetUpdated = new List<BasicAttribute>(3);

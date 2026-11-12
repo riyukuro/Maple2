@@ -666,9 +666,7 @@ public class BuffManager : IUpdatable {
 
             buffsToRemove.Add(buff);
             if (HasStatus(buff.Metadata)) {
-                if (Actor is FieldPlayer player) {
-                    refreshStats = true;
-                }
+                refreshStats = true;
             }
         }
 

@@ -180,7 +180,7 @@ public partial class FieldManager {
             NpcStatFactorMetadata? factor = NpcStatFactorRules.Find(ServerTableMetadata.NpcStatFactorTable, factorId, npc.Basic.Class,
                 NpcStatFactorRules.PlayerCount(Size, Players.Count));
             if (factor != null) {
-                fieldNpc.Stats.Values.SetStaticStats(NpcStatFactorRules.Apply(npc.Stat.Stats, factor));
+                fieldNpc.Stats.SetNpcStats(NpcStatFactorRules.Apply(npc.Stat.Stats, factor));
             }
         }
 

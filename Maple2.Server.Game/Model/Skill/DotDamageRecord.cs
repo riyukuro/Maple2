@@ -20,14 +20,15 @@ public class DotDamageRecord {
     // The tick's damage was taken away by an invincible buff of the target; the 0 is still sent.
     public readonly bool Invincible;
 
-    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1) {
+    /// <param name="invokeRate">The caster's dot damage invokes (type 5) on the effect: they raise its rate (DotRate).</param>
+    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1, float invokeRate = 0f) {
         Caster = caster;
         Target = target;
         Properties = new DamagePropertyRecord {
             CanCrit = dotDamage.UseGrade,
             Element = dotDamage.Element,
             AttackType = dotDamage.Type,
-            Rate = dotDamage.Rate,
+            Rate = DotRate(dotDamage.Rate, invokeRate),
         };
         Type = DamageType.Normal;
 
@@ -62,4 +63,10 @@ public class DotDamageRecord {
         EpAmount = -Buff.AmountByStacks(dotDamage.EpValue, stacks);
         RecoverHp = (int) (dotDamage.RecoverHpByDamage * HpAmount);
     }
+
+    // Invoke type 5 (IncreaseDotDamage): the invokes keyed on a dot's effect or its effect group raise the dot's
+    // damage rate by their summed rate, as the client's DPS meter counts the caster's own dot tick (rate + rate *
+    // the invoke rate, in float: CDPSMeterSystem::OnDotDamage, dpsmetersystem.cpp:1145). The client has no other
+    // reader of the type; the played data's 161 rows all have a rate and no value (90050003: 0.35 on 90050002).
+    public static float DotRate(float rate, float invokeRate) => rate + rate * invokeRate;
 }

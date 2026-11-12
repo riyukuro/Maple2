@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml;
 using Maple2.Model.Enum;
 
@@ -23,7 +23,9 @@ public static class PlayedClientAdditionalEffects {
 
     public static bool IsAdditionalFile(string name) => name.StartsWith(AdditionalFolder, StringComparison.OrdinalIgnoreCase);
 
-    public static Dictionary<int, Entry> Read(IEnumerable<XmlDocument> files) {
+    // available: whether a <level> row is on (AdditionalData::Load, additionalactionadditional.cpp:714, skips a level
+    // whose feature or locale is off before it reads the level, so the first level is the first one on).
+    public static Dictionary<int, Entry> Read(IEnumerable<XmlDocument> files, Func<XmlElement, bool> available) {
         var entries = new Dictionary<int, Entry>();
         foreach (XmlDocument file in files) {
             XmlNodeList? effects = file.SelectNodes("ms2/additional");
@@ -38,7 +40,7 @@ public static class PlayedClientAdditionalEffects {
                 var levels = new Dictionary<short, AdditionalEffectMetadataInvokeEffect?>();
                 int groupId = 0;
                 bool first = true;
-                foreach (XmlElement level in effect.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
+                foreach (XmlElement level in effect.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level" && available(child))) {
                     if (!short.TryParse(level.GetAttribute("level"), out short levelId)) {
                         continue;
                     }

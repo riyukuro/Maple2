@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using Maple2.Model.Enum;
@@ -26,6 +26,10 @@ public class InvokeEffectTests {
           <additional id="90050806">
             <level level="1"><Basic /><InvokeEffect effectID="90050805" types="38" values="20" /></level>
           </additional>
+          <additional id="10300281">
+            <level level="1" feature="Off"><Basic groupIDs="7" /><InvokeEffect effectID="10300283" types="3" rates="0.5" /></level>
+            <level level="2"><Basic groupIDs="9" /></level>
+          </additional>
           <additional id="11000102">
             <level level="1"><InvokeEffect skillID="11000001" types="1001,1002,1003" values="0,4" rates="0.05" /></level>
           </additional>
@@ -35,7 +39,7 @@ public class InvokeEffectTests {
     private static Dictionary<int, PlayedClientAdditionalEffects.Entry> Read() {
         var document = new XmlDocument();
         document.LoadXml(Played);
-        return PlayedClientAdditionalEffects.Read([document]);
+        return PlayedClientAdditionalEffects.Read([document], row => row.GetAttribute("feature") != "Off");
     }
 
     private static AdditionalEffectMetadataInvokeEffect Invoke(InvokeEffectType type, float value, float rate,
@@ -68,6 +72,11 @@ public class InvokeEffectTests {
         Assert.That(played[90050806].Levels[1]!.Values[0], Is.EqualTo(20f));
         Assert.That(played[90050806].Levels[1]!.Rates, Is.EqualTo(new[] { 0f }));
 
+        // A level whose feature is off is not read, and the first level read gives the group.
+        Assert.That(played[10300281].Levels.Keys, Is.EqualTo(new short[] { 2 }));
+        Assert.That(played[10300281].Levels[2], Is.Null);
+        Assert.That(played[10300281].GroupId, Is.EqualTo(9));
+
         // Short value and rate lists are padded with 0 to the type count.
         AdditionalEffectMetadataInvokeEffect cooldown = played[11000102].Levels[1]!;
         Assert.That(cooldown.Types, Is.EqualTo(new[] { InvokeEffectType.ReduceCooldown, InvokeEffectType.ReduceCooldown, InvokeEffectType.ReduceSpiritCost }));
@@ -95,6 +104,8 @@ public class InvokeEffectTests {
             (Invoke(InvokeEffectType.IncreaseHealing, 0f, 0.04f, effectGroupId: 10400301), 1),
             // Keyed on a skill: an effect's sums never count it, whatever effect id it also carries.
             (Invoke(InvokeEffectType.IncreaseEffectDuration, 500f, 0f, effectId: 10400182, skillId: 10400182), 1),
+            // Keyed on an effect before a skill group: no skill group sum counts it.
+            (Invoke(InvokeEffectType.IncreaseEffectDuration, 70f, 0f, effectId: 10400190, skillGroupId: 10400290), 1),
             (null, 1),
         ];
         (int value, float rate) = BuffManager.SumEffectInvokes(held, InvokeEffectType.IncreaseEffectDuration, 10400182, 0);
@@ -107,6 +118,8 @@ public class InvokeEffectTests {
 
         // The skill sums count the skill-keyed row only, not an effect's row of the same number.
         Assert.That(BuffManager.SumInvokes(held, InvokeEffectType.IncreaseEffectDuration, 10400182), Is.EqualTo((500, 0f)));
+        Assert.That(BuffManager.SumInvokes(held, InvokeEffectType.IncreaseEffectDuration, 10400291, 10400290), Is.EqualTo((0, 0f)));
+        Assert.That(BuffManager.SumEffectInvokes(held, InvokeEffectType.IncreaseEffectDuration, 10400190, 0), Is.EqualTo((70, 0f)));
     }
 
     [Test]
@@ -138,6 +151,13 @@ public class InvokeEffectTests {
         Assert.That(StatsManager.InvokeDamageBonus([(Invoke(InvokeEffectType.IncreaseOffensivePhysicalDamage, 0f, 1f, effectId: 90050805), 1)], [(90050805, 0)]), Is.Empty);
         // Other types add no stat.
         Assert.That(StatsManager.InvokeDamageBonus([(Invoke(InvokeEffectType.IncreaseHealing, 20f, 0f, effectId: 90050805), 1)], [(90050805, 0)]), Is.Empty);
+    }
+
+    [Test]
+    public void DotRateRaisedByTheInvokeRate() {
+        Assert.That(DotDamageRecord.DotRate(3.1f, 0f), Is.EqualTo(3.1f));
+        Assert.That(DotDamageRecord.DotRate(3.1f, 0.35f), Is.EqualTo(3.1f + 3.1f * 0.35f));
+        Assert.That(DotDamageRecord.DotRate(2f, 0.7f), Is.EqualTo(3.4f).Within(1e-6f));
     }
 
     [Test]

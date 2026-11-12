@@ -44,12 +44,25 @@ public class StatsManager {
         Values.SetStaticStats(stats);
     }
 
+    // An npc's own stats (its data's, or the room's player count factor of them): what a rebuild starts from.
+    private IReadOnlyDictionary<BasicAttribute, long>? npcStats;
+
+    /// <summary>
+    /// Sets an npc's own stats (the room's player count factor) and rebuilds its totals on them.
+    /// </summary>
+    public void SetNpcStats(IReadOnlyDictionary<BasicAttribute, long> stats) {
+        npcStats = stats;
+        Values.SetStaticStats(stats);
+        Refresh();
+    }
+
     public StatsManager(IActor actor) {
         Actor = actor;
         levelStats = new Dictionary<short, IReadOnlyDictionary<BasicAttribute, long>>();
 
         if (actor is FieldNpc npc) {
             Values = new Stats(npc.Value.Metadata.Stat);
+            npcStats = npc.Value.Metadata.Stat.Stats;
             return;
         }
 
@@ -130,6 +143,10 @@ public class StatsManager {
 
     /// <param name="levelUp">A level change: KMS2 fills HP and SP on a level up (one Stat packet with both after it).</param>
     public void Refresh(bool levelUp = false) {
+        if (Actor is FieldNpc npc) {
+            RefreshNpc(npc);
+            return;
+        }
         if (Actor is not FieldPlayer player) {
             return;
         }
@@ -402,29 +419,51 @@ public class StatsManager {
         }
     }
 
-    private void AddBuffs(FieldPlayer player) {
-        foreach (Buff buff in player.Buffs.EnumerateBuffs()) {
-            int stacks = buff.Stacks;
-            foreach ((BasicAttribute valueBasicAttribute, long value) in buff.Metadata.Status.Values) {
-                Values[valueBasicAttribute].AddTotal(Buff.ByStacks(value, stacks));
-            }
-            foreach ((BasicAttribute rateBasicAttribute, float rate) in buff.Metadata.Status.Rates) {
-                // ensure regen intervals do not drop below 0.1
-                Values[rateBasicAttribute].AddRate(Buff.ByStacks(rate, stacks));
-            }
-            foreach ((SpecialAttribute valueSpecialAttribute, float value) in buff.Metadata.Status.SpecialValues) {
-                Values[valueSpecialAttribute].AddTotal((long) Buff.ByStacks(value, stacks));
-            }
-            foreach ((SpecialAttribute rateSpecialAttribute, float rate) in buff.Metadata.Status.SpecialRates) {
-                // Kept in thousandths in the total, as an item's special rate is: Multiplier() reads only that.
-                Values[rateSpecialAttribute].AddTotal(new SpecialOption(Buff.ByStacks(rate, stacks)));
-            }
+    // An npc's totals are its own stats with the status of the buffs it holds, counted as a player's are (values,
+    // rates and special values times the stack count): a job skill's debuff on a monster (10100181 defense -30 %,
+    // 10200061 attack -9 %, 11100242 evasion -3 and critical evasion -20) changes the stats the damage of a hit reads.
+    // The client keeps no stats of an npc but its health (StatsPacket), so the server chooses this; before, an npc's
+    // stats never took a buff. A change of its maximum health goes to the field, with the health kept at its share.
+    private void RefreshNpc(FieldNpc npc) {
+        if (npcStats == null) {
+            return;
         }
-        List<Buff> held = player.Buffs.EnumerateBuffs().ToList();
+        long health = Values[BasicAttribute.Health].Total;
+        Values.Reset(npcStats);
+        AddBuffs(npc);
+        Values.Total();
+        Values.EndReset(npc.IsDead);
+        if (Values[BasicAttribute.Health].Total != health) {
+            npc.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));
+        }
+    }
+
+    private void AddBuffs(IActor actor) {
+        foreach (Buff buff in actor.Buffs.EnumerateBuffs()) {
+            AddStatus(Values, buff.Metadata.Status, buff.Stacks);
+        }
+        List<Buff> held = actor.Buffs.EnumerateBuffs().ToList();
         foreach ((SpecialAttribute attribute, float rate) in InvokeDamageBonus(
                      held.Select(buff => (buff.Metadata.InvokeEffect, buff.Stacks)),
                      held.Select(buff => (buff.Id, buff.Metadata.Property.InvokeGroupId)))) {
             Values[attribute].AddTotal(new SpecialOption(rate));
+        }
+    }
+
+    // A buff's status in a rebuild, once per stack: its values and special values to the totals, its rates to the
+    // rates Stats.Total applies, its special rates in thousandths (an item's special rate is kept so).
+    public static void AddStatus(Stats values, AdditionalEffectMetadataStatus status, int stacks) {
+        foreach ((BasicAttribute attribute, long value) in status.Values) {
+            values[attribute].AddTotal(Buff.ByStacks(value, stacks));
+        }
+        foreach ((BasicAttribute attribute, float rate) in status.Rates) {
+            values[attribute].AddRate(Buff.ByStacks(rate, stacks));
+        }
+        foreach ((SpecialAttribute attribute, float value) in status.SpecialValues) {
+            values[attribute].AddTotal((long) Buff.ByStacks(value, stacks));
+        }
+        foreach ((SpecialAttribute attribute, float rate) in status.SpecialRates) {
+            values[attribute].AddTotal(new SpecialOption(Buff.ByStacks(rate, stacks)));
         }
     }
 

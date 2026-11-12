@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Xml;
+using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -233,6 +235,79 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.WeaponRefuses(bowOrKnifeDagger, 0, 0), Is.True);
         Assert.That(SkillCastRules.WeaponRefuses([(41, 0)], 41, 0), Is.False);
         Assert.That(SkillCastRules.WeaponRefuses([(41, 0)], 0, 30), Is.True);
+    }
+
+    // Rows of the client's table/weaponaction.xml.
+    private const string WeaponActions = """
+        <ms2>
+          <allowWeapon rh="30" lh="0" />
+          <allowWeapon rh="32" lh="41" />
+          <allowWeapon rh="32" lh="31" />
+          <weapon rh="0" lh="0" normalAttack="00000001" actionprefix="" />
+          <weapon rh="30" lh="0" normalAttack="00100001" actionprefix="Blunt_" />
+          <weapon rh="30" lh="41" normalAttack="00100001" actionprefix="Blunt_" />
+          <weapon rh="32" lh="0" normalAttack="00200001" actionprefix="Sword_" />
+          <weapon rh="32" lh="41" normalAttack="00200001" actionprefix="Sword_" />
+          <weapon rh="51" lh="0" normalAttack="00600001" actionprefix="Bow_" />
+        </ms2>
+        """;
+
+    private static WeaponActionTable ReadWeaponActions() {
+        var document = new XmlDocument();
+        document.LoadXml(WeaponActions);
+        return TableMapper.ReadWeaponAction(document);
+    }
+
+    [Test]
+    public void WeaponActionTableReadsTheClientRows() {
+        WeaponActionTable table = ReadWeaponActions();
+        Assert.That(table.Actions, Has.Count.EqualTo(6));
+        Assert.That(table.Actions[1], Is.EqualTo(new WeaponActionTable.Action(30, 0, 100001)));
+        // A later row of the same right hand replaces the earlier one.
+        Assert.That(table.Allows[32], Is.EqualTo(new[] { 31 }));
+        Assert.That(table.Allows[30], Is.EqualTo(new[] { 0 }));
+    }
+
+    // PC::UpdateWeaponAction: a left hand the table does not allow with the right is dropped, a right hand with
+    // no allow row takes any left hand, and a pair with no action row holds no action.
+    [Test]
+    public void WeaponActionHeldDropsTheLeftHand() {
+        WeaponActionTable table = ReadWeaponActions();
+        Assert.That(table.IsAllowed(30, 41), Is.False);
+        Assert.That(table.IsAllowed(30, 0), Is.True);
+        Assert.That(table.IsAllowed(51, 41), Is.True);
+        Assert.That(table.Held(30, 41), Is.EqualTo(new WeaponActionTable.Action(30, 0, 100001)));
+        // 32 allows only 31 (the later row), so 41 is dropped; 31 is allowed but has no action row.
+        Assert.That(table.Held(32, 41)?.LeftHand, Is.EqualTo(0));
+        Assert.That(table.Held(32, 31), Is.Null);
+        Assert.That(table.Held(51, 41), Is.Null);
+        Assert.That(table.Held(51, 0)?.RightHand, Is.EqualTo(51));
+        Assert.That(table.Held(0, 0), Is.Not.Null);
+    }
+
+    // A skill with weapon rows is refused when no action is held; otherwise the rows are matched on the action's hands.
+    [Test]
+    public void WeaponConditionOnTheHeldAction() {
+        WeaponActionTable table = ReadWeaponActions();
+        (int, int)[] maceAndShield = [(41, 30)];
+        (int, int)[] anyMace = [(0, 30)];
+        Assert.That(SkillCastRules.WeaponRefuses(anyMace, table.Held(30, 41)), Is.False);
+        // The table drops the mace's left hand, so a row that needs it does not fit.
+        Assert.That(SkillCastRules.WeaponRefuses(maceAndShield, table.Held(30, 41)), Is.True);
+        Assert.That(SkillCastRules.WeaponRefuses([(0, 51)], table.Held(51, 41)), Is.True);
+        Assert.That(SkillCastRules.WeaponRefuses([(0, 51)], table.Held(51, 0)), Is.False);
+        // No weapon rows: no check, even with no action.
+        Assert.That(SkillCastRules.WeaponRefuses([], null), Is.False);
+    }
+
+    // An item the character cannot use counts as none; a two-handed weapon in both hands leaves the left empty.
+    [Test]
+    public void HandTypesOfUnusableAndTwoHandedItems() {
+        Assert.That(SkillCastRules.HandTypes(30, 1, true, 41, 2, true), Is.EqualTo((30, 41)));
+        Assert.That(SkillCastRules.HandTypes(30, 1, false, 41, 2, true), Is.EqualTo((0, 41)));
+        Assert.That(SkillCastRules.HandTypes(30, 1, true, 41, 2, false), Is.EqualTo((30, 0)));
+        Assert.That(SkillCastRules.HandTypes(51, 1, true, 51, 1, true), Is.EqualTo((51, 0)));
+        Assert.That(SkillCastRules.HandTypes(0, 0, true, 0, 0, true), Is.EqualTo((0, 0)));
     }
 
     // The threshold, after the spirit cost reductions, is met with that much spirit; 0 is no threshold.

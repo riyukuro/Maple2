@@ -23,7 +23,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         Console.WriteLine($"Additional effects with a cooldown group reduction: {groupRates.Count}");
         if (playedReader != null) {
             played = PlayedClientAdditionalEffects.Read(playedReader.Files.Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name))
-                .Select(file => playedReader.GetXmlDocument(file)));
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available);
             Console.WriteLine($"Additional effects in the played client's data: {played.Count} ({played.Values.Count(entry => entry.GroupId != 0)} in an effect group, " +
                               $"{played.Values.Sum(entry => entry.Levels.Values.Count(invoke => invoke != null))} levels with an invoke effect)");
         }

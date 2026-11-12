@@ -1,8 +1,10 @@
 ﻿using System.Numerics;
+using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -212,10 +214,12 @@ public class SkillHandler : FieldPacketHandler {
         if (condition.Weapon is { Length: > 0 } weapons) {
             Item? right = session.Item.Equips.Get(EquipSlot.RH);
             Item? left = session.Item.Equips.Get(EquipSlot.LH);
-            int heldRight = right?.Type.Type ?? 0;
-            int heldLeft = left == null || left.Uid == right?.Uid ? 0 : left.Type.Type;
-            if (SkillCastRules.WeaponRefuses(weapons.Select(weapon => ((int) weapon.LeftHand.Type, (int) weapon.RightHand.Type)).ToArray(), heldLeft, heldRight)) {
-                Logger.Debug("Cast refused, skill {SkillId} needs another weapon than {Left}/{Right}", record.SkillId, heldLeft, heldRight);
+            (int heldRight, int heldLeft) = SkillCastRules.HandTypes(right?.Type.Type ?? 0, right?.Uid ?? 0, right == null || CanUseItem(session, right),
+                left?.Type.Type ?? 0, left?.Uid ?? 0, left == null || CanUseItem(session, left));
+            WeaponActionTable.Action? held = session.TableMetadata.WeaponActionTable.Held(heldRight, heldLeft);
+            if (SkillCastRules.WeaponRefuses(weapons.Select(weapon => ((int) weapon.LeftHand.Type, (int) weapon.RightHand.Type)).ToArray(), held)) {
+                Logger.Debug("Cast refused, skill {SkillId} needs another weapon than {Left}/{Right} (action {Action})", record.SkillId,
+                    held?.LeftHand ?? heldLeft, held?.RightHand ?? heldRight, held == null ? "none" : "held");
                 return false;
             }
         }
@@ -229,6 +233,13 @@ public class SkillHandler : FieldPacketHandler {
             }
         }
         return true;
+    }
+
+    // PC::CanUseItem (pc.cpp:4683) as far as the server keeps it: not expired (pets excepted), a premium-club item
+    // only with premium club, not bound to another character (ItemRemakeRules.LockItemUsable).
+    private static bool CanUseItem(GameSession session, Item item) {
+        return ItemRemakeRules.LockItemUsable(SetItemRules.Expired(item.ExpiryTime, DateTime.Now.ToEpochSeconds(), item.Pet != null),
+            item.Metadata.Limit.RequireVip, session.Config.IsPremiumClubActive(), item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId);
     }
 
     private void HandlePoint(GameSession session, IByteReader packet) {

@@ -102,7 +102,7 @@ public static class DamageCalculator {
         damageBonus *= damageType == DamageType.Critical ? caster.Stats.GetCriticalDamage(target.Buffs.GetResistance(BasicAttribute.CriticalDamage)) : 1;
 
         // Get invoked buff values
-        // TODO: Need to make this flexible to get invoke values from skills or buffs. If buff -> InvokeEffectType.IncreaseDotDamage
+        // A dot's own invokes (type 5) are in its rate already (DotDamageRecord.DotRate).
         (int invokeValue, float invokeRate) = caster.Buffs.GetInvokeValues(InvokeEffectType.IncreaseSkillDamage, property.SkillId, property.SkillGroup);
 
         double damageMultiplier = damageBonus * (1 + invokeRate) * (property.Rate + invokeValue);

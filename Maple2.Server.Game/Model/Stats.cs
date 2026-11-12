@@ -53,6 +53,17 @@ public class Stats {
     }
 
     /// <summary>
+    /// Starts an npc's rebuild on its own stats: every Current keeps its value until <see cref="EndReset"/>.
+    /// </summary>
+    public void Reset(IReadOnlyDictionary<BasicAttribute, long> npcStats) {
+        HoldCurrent();
+        ClearStats();
+        foreach ((BasicAttribute attribute, long value) in npcStats) {
+            this[attribute].AddBase(value);
+        }
+    }
+
+    /// <summary>
     /// Starts a rebuild: every Current keeps its value until <see cref="EndReset"/>.
     /// </summary>
     public void Reset(IReadOnlyDictionary<BasicAttribute, long> metadata, JobCode jobCode) {

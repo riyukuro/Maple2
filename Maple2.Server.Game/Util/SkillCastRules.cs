@@ -295,6 +295,26 @@ public static class SkillCastRules {
             (weapon.RightHand == 0 || weapon.RightHand == heldRight) && (weapon.LeftHand == 0 || weapon.LeftHand == heldLeft));
     }
 
+    // The same check on the weapon action the client holds (PC::UpdateWeaponAction, pc.cpp:2839): each hand is
+    // the subtype of the item worn there, 0 when the character cannot use that item (PC::CanUseItem) or the left
+    // hand holds the right hand's item; the left hand is dropped when the weapon action table does not allow it
+    // with the right hand; and the action is the table's row of exactly those hands. With no such row the client
+    // holds no action, and a skill with weapon rows is not cast at all (cast check 0x14176a8c0, answer 0x1c).
+    public static bool WeaponRefuses(IReadOnlyCollection<(int LeftHand, int RightHand)> weapons, WeaponActionTable.Action? held) {
+        if (weapons.Count == 0) {
+            return false;
+        }
+        return held == null || WeaponRefuses(weapons, held.LeftHand, held.RightHand);
+    }
+
+    // The subtypes PC::UpdateWeaponAction gives the two hands before the table is asked: an item the character
+    // cannot use counts as none, and a left hand that holds the right hand's item (a two-handed weapon) as empty.
+    public static (int Right, int Left) HandTypes(int rightType, long rightUid, bool rightUsable, int leftType, long leftUid, bool leftUsable) {
+        int right = rightUsable ? rightType : 0;
+        int left = !leftUsable || (leftUid != 0 && leftUid == rightUid) ? 0 : leftType;
+        return (right, left);
+    }
+
     // A skill with a spirit threshold in its condition (skill basic condition sp) is cast only with at least that
     // much spirit, the threshold being cut by the spirit cost reductions as the cost is (SpiritCost); the
     // client sends no cast otherwise (the same check, answer 0xb).

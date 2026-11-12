@@ -97,6 +97,7 @@ public static class TableNames {
 
     // Field
     public const string FIELD_METADATA = "fieldmetadata.xml";
+    public const string WEAPON_ACTION = "weaponaction.xml";
 
     public static readonly Dictionary<string, string> ItemOptionVariationTableNames = new Dictionary<string, string> {
         { "acc", ITEM_OPTION_VARIATION_ACC },

@@ -116,6 +116,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.AUTO_ACTION, Table = ParseAutoActionTable() };
         yield return new TableMetadata { Name = TableNames.MAID_PROPERTY, Table = ParseMaidTable() };
         yield return new TableMetadata { Name = TableNames.FIELD_METADATA, Table = ParseFieldMetaTable() };
+        yield return new TableMetadata { Name = TableNames.WEAPON_ACTION, Table = ParseWeaponAction() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -316,6 +317,32 @@ public class TableMapper : TypeMapper<TableMetadata> {
             xmlReader.GetXmlDocument(xmlReader.GetEntry("table/fame.xml")),
             xmlReader.GetXmlDocument(xmlReader.GetEntry("table/famelog.xml")),
             FeatureLocaleFilter.HasLocale);
+    }
+
+    // The parser does not read it. The played client's copy when there is one (the KR pack's is the same).
+    private WeaponActionTable ParseWeaponAction() {
+        const string path = "table/weaponaction.xml";
+        M2dReader reader = playedReader?.Files.Any(file => file.Name.Equals(path, StringComparison.OrdinalIgnoreCase)) == true ? playedReader : xmlReader;
+        return ReadWeaponAction(reader.GetXmlDocument(reader.GetEntry(path)));
+    }
+
+    // CWeaponActionTable::Load (weaponactiontable.cpp:76): every <weapon> row in order, and each <allowWeapon> row's
+    // comma list of left hands under its right hand (a later row of the same right hand replaces the earlier one).
+    public static WeaponActionTable ReadWeaponAction(XmlDocument document) {
+        var actions = new List<WeaponActionTable.Action>();
+        foreach (XmlElement node in document.SelectNodes("ms2/weapon")!.OfType<XmlElement>()) {
+            actions.Add(new WeaponActionTable.Action(ParseIntOrZero(node.GetAttribute("rh")), ParseIntOrZero(node.GetAttribute("lh")),
+                ParseIntOrZero(node.GetAttribute("normalAttack"))));
+        }
+        var allows = new Dictionary<int, int[]>();
+        foreach (XmlElement node in document.SelectNodes("ms2/allowWeapon")!.OfType<XmlElement>()) {
+            allows[ParseIntOrZero(node.GetAttribute("rh"))] = node.GetAttribute("lh")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(ParseIntOrZero).ToArray();
+        }
+        return new WeaponActionTable(actions, allows);
+
+        static int ParseIntOrZero(string value) => int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) ? number : 0;
     }
 
     // The client's alliance names (Parse_14021a330, commonenum.cpp:728), any case.
