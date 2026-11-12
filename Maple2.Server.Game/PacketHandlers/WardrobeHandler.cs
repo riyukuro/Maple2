@@ -122,7 +122,7 @@ public class WardrobeHandler : FieldPacketHandler {
                     missing = true;
                     continue;
                 }
-                session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, (byte) layer);
+                session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, (byte) layer, closet: true);
             }
         }
         session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert,

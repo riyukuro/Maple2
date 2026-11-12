@@ -22,6 +22,22 @@ public static class LimitBreakRules {
         return stagedUid == itemUid && stagedLevel == level + 1;
     }
 
+    // The meso price of one crystal fragment the player lacks (the client's fee text,
+    // uiunlimitedenchantdialog.cpp:263: (needed - owned) * 1000 for the ingredient with tag 0x60).
+    public const long FragmentPrice = 1000;
+
+    // The fee as the newest KMS2 build names it: crystal fragments, mesoCost / 1000 of them.
+    public static int Fragments(long mesoCost) {
+        return (int) Math.Clamp(mesoCost / FragmentPrice, 0, int.MaxValue);
+    }
+
+    // What is taken for the fee: the fragments the player owns, and meso for each one that lacks.
+    public static (int Fragments, long Meso) Fee(long mesoCost, long ownedFragments) {
+        int needed = Fragments(mesoCost);
+        int fragments = (int) Math.Clamp(ownedFragments, 0, needed);
+        return (fragments, (needed - fragments) * FragmentPrice);
+    }
+
     // Nothing is taken unless everything can be: the meso is looked at before the materials are consumed.
     public static bool CanPay(long meso, long mesoCost) {
         return mesoCost >= 0 && meso >= mesoCost;

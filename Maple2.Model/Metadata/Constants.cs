@@ -37,15 +37,16 @@ public static class Constant {
     public static readonly TimeSpan MaxPerformanceDuration = TimeSpan.FromMinutes(10);
     public const int BaseStorageCount = 36;
     public const int CodiTabMaxDay = 999; // the client's built-in value; constants.xml has no row for it
-    public const float MesoMarketTaxRate = 0.1f;
+    // The meso market limits as KMS2 sends them (the average price there is the live one).
+    public const float MesoMarketTaxRate = 0.05f;
     public const float MesoMarketRangeRate = 0.2f;
     public const int MesoMarketSellEndDay = 2;
     public const int MesoMarketListLimit = 5;
     public const int MesoMarketListLimitDay = 5;
-    public const int MesoMarketPurchaseLimitMonth = 30;
-    public const int MesoMarketPageSize = 50;
-    public const int MesoMarketMinToken = 100;
-    public const int MesoMarketMaxToken = 1000;
+    public const int MesoMarketPurchaseLimitMonth = 10;
+    public const int MesoMarketPageSize = 100;
+    public const int MesoMarketMinToken = 50;
+    public const int MesoMarketMaxToken = 3000;
     public const int FishingMasteryMax = 2990;
     public const int PerformanceMasteryMax = 10800;
     public const int MiningMasteryMax = 81440;

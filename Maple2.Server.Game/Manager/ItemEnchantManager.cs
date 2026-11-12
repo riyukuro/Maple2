@@ -575,7 +575,10 @@ public class ItemEnchantManager {
         if (limitBreakItemUpgrade.Enchant != null) {
             limitBreakItemUpgrade.Enchant.Enchants = 0;
         }
-        session.Send(LimitBreakPacket.StageItem(item, limitBreakItemUpgrade, catalysts));
+        // The newest KMS2 build has no meso field: the fee is a fifth ingredient, crystal fragments (the fee in
+        // thousands), and the client shows 1000 meso for each fragment the player lacks.
+        session.Send(LimitBreakPacket.StageItem(item, limitBreakItemUpgrade,
+            [.. catalysts, new IngredientInfo(ItemTag.CrystalPiece, LimitBreakRules.Fragments(mesoCost))]));
 
         return true;
     }
@@ -619,17 +622,31 @@ public class ItemEnchantManager {
         }
 
         lock (session.Item) {
-            // The meso first: the materials were consumed and kept when the meso then fell short.
-            if (!LimitBreakRules.CanPay(session.Currency.Meso, mesoCost) || session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
+            // The fee is paid in the crystal fragments the player owns, and in meso for the rest (the client's
+            // fee text). Nothing is taken unless everything can be; KMS2 takes the meso before the materials.
+            long owned = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(item => (long) item.Amount);
+            (int fragments, long meso) = LimitBreakRules.Fee(mesoCost, owned);
+            if (!LimitBreakRules.CanPay(session.Currency.Meso, meso) || session.Currency.CanAddMeso(-meso) != -meso) {
                 session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
                 return false;
             }
-
-            if (!session.Item.Inventory.Consume(catalysts)) {
-                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
-                return false;
+            foreach (IngredientInfo catalyst in catalysts) {
+                if (session.Item.Inventory.Find(catalyst.Tag).Sum(item => (long) item.Amount) < catalyst.Amount) {
+                    session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
+                    return false;
+                }
             }
-            session.Currency.Meso -= mesoCost;
+
+            if (meso > 0) {
+                session.Currency.Meso -= meso;
+            }
+            List<IngredientInfo> materials = [.. catalysts];
+            if (fragments > 0) {
+                materials.Add(new IngredientInfo(ItemTag.CrystalPiece, fragments));
+            }
+            if (!session.Item.Inventory.Consume(materials)) {
+                throw new InvalidOperationException("Failed to consume limit break materials after validating");
+            }
             return true;
         }
     }

@@ -58,6 +58,9 @@ public class MesoMarketHandler : FieldPacketHandler {
         session.Send(MesoMarketPacket.Load(AVERAGE_PRICE));
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
 
+        // KMS2 sends the character's black market listings here, between the counts and the own list.
+        session.BlackMarket.LoadMyListings();
+
         using GameStorage.Request db = session.GameStorage.Context();
         ICollection<MesoListing> myListings = db.GetMyMesoListingsByAccountId(session.AccountId);
         session.Send(MesoMarketPacket.MyListings(myListings));

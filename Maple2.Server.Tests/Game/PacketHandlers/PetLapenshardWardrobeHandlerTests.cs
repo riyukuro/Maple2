@@ -125,6 +125,7 @@ public class PetLapenshardWardrobeHandlerTests {
     // Notice 4 with flags 5 (chat line and alert) and the closet's success string.
     private const string Success = "0405000101000000250D000000000000";
 
+    // KMS2 sends ItemPutOn before the bag remove for a closet item.
     [Test]
     public void ClosetEquip_EndsWithTheSuccessNotice() {
         var test = new TestGameSession();
@@ -136,9 +137,30 @@ public class PetLapenshardWardrobeHandlerTests {
         ClosetRequest(session, 1, layer: true);
 
         List<byte[]> sent = test.TakeSent();
-        Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ItemInventory, SendOp.ItemPutOn, SendOp.Notice }));
+        Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ItemPutOn, SendOp.ItemInventory, SendOp.Notice }));
+        Assert.That(Convert.ToHexString(sent[1]), Is.EqualTo(Hex(ItemInventoryPacket.Remove(cap.Uid))));
         Assert.That(Convert.ToHexString(sent[^1])[4..], Is.EqualTo(Success));
         Assert.That(session.Item.Equips.Get(cap.Uid), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Get(cap.Uid), Is.Null);
+    }
+
+    // A closet item that takes a worn item's place keeps the plain equip's order: its bag slot is freed first.
+    [Test]
+    public void ClosetEquip_OverAWornItemRemovesFirst() {
+        var test = new TestGameSession();
+        Item worn = test.Store(TestGameSession.Metadata(11300002, EquipSlot.CP, slotMax: 1), group: ItemGroup.Gear, slot: EquipSlot.CP);
+        Item cap = test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1));
+        GameSession session = test.Start();
+        Closet(session, 0, (cap, EquipSlot.CP));
+        test.TakeSent();
+
+        ClosetRequest(session, 1, layer: true);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(Convert.ToHexString(sent[0]), Is.EqualTo(Hex(ItemInventoryPacket.Remove(cap.Uid))));
+        Assert.That(TestGameSession.Op(sent[^2]), Is.EqualTo(SendOp.ItemPutOn));
+        Assert.That(session.Item.Equips.Get(cap.Uid), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Get(worn.Uid), Is.Not.Null);
     }
 
     // Every item already worn: the notice alone, no "do not have" box.

@@ -98,7 +98,10 @@ public class EquipManager {
     /// Equips an item to a slot. The client's kind (0 gear, 1 outfit, 2 the second outfit tab) is a wish:
     /// the item's own type and the second tab's period pick the tab (EquipKind.Resolve).
     /// </summary>
-    public bool Equip(long itemUid, EquipSlot slot, byte kind) {
+    /// <param name="closet">A closet equip: KMS2 sends ItemPutOn before the bag remove there (the plain
+    /// equip sends the remove first). Kept to an item that displaces nothing, the only case KMS2 shows; a
+    /// displaced item needs the bag slot freed first.</param>
+    public bool Equip(long itemUid, EquipSlot slot, byte kind, bool closet = false) {
         if (!Enum.IsDefined<EquipSlot>(slot)) {
             return false;
         }
@@ -144,8 +147,9 @@ public class EquipManager {
                 }
             }
 
+            bool wornFirst = closet && !equips.ContainsKey(slot) && !item.Metadata.SlotNames.Any(equips.ContainsKey);
             // Remove item being equipped from inventory so unequipped items and be moved there.
-            if (!session.Item.Inventory.Remove(itemUid, out item)) {
+            if (!session.Item.Inventory.Remove(itemUid, out item, notify: !wornFirst)) {
                 return false;
             }
 
@@ -173,6 +177,9 @@ public class EquipManager {
             equips[slot] = item;
             // The client puts an item of type 2 into the second outfit tab; any other item goes by its own kind.
             session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, item, kind == EquipKind.Outfit2 ? EquipKind.Outfit2 : EquipKind.Gear));
+            if (wornFirst) {
+                session.Send(ItemInventoryPacket.Remove(itemUid));
+            }
             if (item.Template != null) {
                 session.ConditionUpdate(ConditionType.change_ugc_equip);
             }

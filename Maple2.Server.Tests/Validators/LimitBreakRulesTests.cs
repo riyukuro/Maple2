@@ -49,4 +49,15 @@ public class LimitBreakRulesTests {
     public void Pay(long meso, long cost, bool expected) {
         Assert.That(LimitBreakRules.CanPay(meso, cost), Is.EqualTo(expected));
     }
+
+    // The fee in crystal fragments (meso / 1000), paid in owned fragments first and 1000 meso for each one lacking.
+    [TestCase(6228500, 0, 6228, 0, 6228000)]
+    [TestCase(6228500, 228, 6228, 228, 6000000)]
+    [TestCase(6228500, 9000, 6228, 6228, 0)]
+    [TestCase(1171000, -5, 1171, 0, 1171000)]
+    [TestCase(0, 10, 0, 0, 0)]
+    public void Fee(long mesoCost, long owned, int needed, int fragments, long meso) {
+        Assert.That(LimitBreakRules.Fragments(mesoCost), Is.EqualTo(needed));
+        Assert.That(LimitBreakRules.Fee(mesoCost, owned), Is.EqualTo((fragments, meso)));
+    }
 }

@@ -449,9 +449,10 @@ public class InventoryManager {
         }
     }
 
-    public bool Remove(long uid, [NotNullWhen(true)] out Item? removed, int amount = -1) {
+    // notify false: a full remove without its ItemInventory packet; the caller sends it.
+    public bool Remove(long uid, [NotNullWhen(true)] out Item? removed, int amount = -1, bool notify = true) {
         lock (session.Item) {
-            return RemoveInternal(uid, amount, out removed);
+            return RemoveInternal(uid, amount, out removed, notify);
         }
     }
 
@@ -748,7 +749,7 @@ public class InventoryManager {
     }
 
     #region Internal (No Locks)
-    private bool RemoveInternal(long uid, int amount, [NotNullWhen(true)] out Item? removed) {
+    private bool RemoveInternal(long uid, int amount, [NotNullWhen(true)] out Item? removed, bool notify = true) {
         ItemCollection? items = tabs.Values.FirstOrDefault(collection => collection.Contains(uid));
         if (items == null || amount == 0) {
             removed = null;
@@ -779,7 +780,9 @@ public class InventoryManager {
 
         // Full remove of item
         if (items.Remove(uid, out removed)) {
-            session.Send(ItemInventoryPacket.Remove(uid));
+            if (notify) {
+                session.Send(ItemInventoryPacket.Remove(uid));
+            }
             return true;
         }
 
