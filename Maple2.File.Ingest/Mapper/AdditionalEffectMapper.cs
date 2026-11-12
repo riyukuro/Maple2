@@ -49,7 +49,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         ResetCondition: (BuffResetCondition) data.BasicProperty.resetCondition,
                         DotCondition: (BuffDotCondition) data.BasicProperty.dotCondition,
                         ClearOnDistanceFromCaster: int.TryParse(data.BasicProperty.clearDistanceFromCaster, out int distance) ? distance : 0,
-                        DisableRevivalHere: data.BasicProperty.disableRevivalHere),
+                        DisableRevivalHere: data.BasicProperty.disableRevivalHere,
+                        SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),

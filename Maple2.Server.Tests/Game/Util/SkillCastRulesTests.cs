@@ -208,6 +208,45 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void SpiritCostTakesInvokesAndBuffRates() {
+        Assert.That(SkillCastRules.SpiritCost(40, 0, 0f, 0f), Is.EqualTo(40));
+        // Cost invokes: a flat value and a rate of the full cost.
+        Assert.That(SkillCastRules.SpiritCost(40, 5, 0.25f, 0f), Is.EqualTo(25));
+        // A buff's consume rate: -1 makes the cast free, -0.5 halves it, 0.5 adds half.
+        Assert.That(SkillCastRules.SpiritCost(40, 0, 0f, -1f), Is.EqualTo(0));
+        Assert.That(SkillCastRules.SpiritCost(40, 0, 0f, -0.5f), Is.EqualTo(20));
+        Assert.That(SkillCastRules.SpiritCost(40, 0, 0f, 0.5f), Is.EqualTo(60));
+        Assert.That(SkillCastRules.SpiritCost(15, 0, 0f, -0.7f), Is.EqualTo(4));
+        Assert.That(SkillCastRules.SpiritCost(40, 0, 0.5f, -1f), Is.EqualTo(0));
+        Assert.That(SkillCastRules.SpiritCost(10, 30, 0f, 0f), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void BuffListDisablesOnlyItsSkills() {
+        int[]?[] held = [null, [11000101, 11000121], []];
+        Assert.That(SkillCastRules.DisabledByBuff(held, 11000121), Is.True);
+        Assert.That(SkillCastRules.DisabledByBuff(held, 11000122), Is.False);
+        Assert.That(SkillCastRules.DisabledByBuff([], 11000121), Is.False);
+    }
+
+    [Test]
+    public void SkillOfNamedFieldsIsCastOnlyThere() {
+        Assert.That(SkillCastRules.MapRefuses([], 2000001), Is.False);
+        Assert.That(SkillCastRules.MapRefuses([0], 2000001), Is.False);
+        Assert.That(SkillCastRules.MapRefuses([2000001, 2000002], 2000002), Is.False);
+        Assert.That(SkillCastRules.MapRefuses([0, 2000001], 2000003), Is.True);
+    }
+
+    [Test]
+    public void ItemOfACastMustBeThereBeforePaying() {
+        Assert.That(SkillCastRules.ItemMissing(false, 0, false, false), Is.False);
+        Assert.That(SkillCastRules.ItemMissing(true, 0, true, true), Is.True);
+        Assert.That(SkillCastRules.ItemMissing(true, 7, false, false), Is.True);
+        Assert.That(SkillCastRules.ItemMissing(true, 7, true, false), Is.False);
+        Assert.That(SkillCastRules.ItemMissing(true, 7, false, true), Is.False);
+    }
+
+    [Test]
     public void HealthCostMustLeaveHealth() {
         Assert.That(SkillCastRules.HpCost(1000, -0.01f), Is.EqualTo(10));
         Assert.That(SkillCastRules.HpCost(50, -0.01f), Is.EqualTo(0));

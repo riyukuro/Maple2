@@ -346,6 +346,14 @@ public class BuffManager : IUpdatable {
         return current;
     }
 
+    // The consume spirit rates of the enabled buffs held, each times its stack count: -1 makes casts free.
+    public float ConsumeSpRate => EnumerateBuffs().Where(buff => buff.Enabled).Sum(buff => buff.Metadata.Consume.SpRate * buff.Stacks);
+
+    // An enabled buff held lists the skill among the ones its holder cannot cast.
+    public bool SkillUseDisabled(int skillId) {
+        return Util.SkillCastRules.DisabledByBuff(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
+    }
+
     // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
     public float GetResistance(BasicAttribute attribute) => Sums().Resistance(attribute);
 

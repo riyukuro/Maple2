@@ -150,7 +150,8 @@ public class SkillHandler : FieldPacketHandler {
         session.Config.SaveCastMotion(record.Motion.MotionProperty, record.SkillId, serverTick, startTick);
     }
 
-    // Checked before any cost is paid. A dead player casts only a skill that allows it. A skill of a job's tree
+    // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
+    // that a buff held disables or that names other fields. A skill of a job's tree
     // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
     // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast.
     // No cast comes before the motion of the last cast lets the next one in. The two timing checks
@@ -159,6 +160,14 @@ public class SkillHandler : FieldPacketHandler {
         blocking = null;
         BeginCondition condition = record.Metadata.Data.Condition;
         if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
+            return false;
+        }
+        if (session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
+            Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);
+            return false;
+        }
+        if (SkillCastRules.MapRefuses(condition.Maps, session.Field.MapId)) {
+            Logger.Debug("Cast refused, skill {SkillId} is not for field {MapId}", record.SkillId, session.Field.MapId);
             return false;
         }
         SkillInfo skillInfo = session.Config.Skill.SkillInfo;

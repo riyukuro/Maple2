@@ -45,7 +45,8 @@ public record AdditionalEffectMetadataProperty(
     BuffResetCondition ResetCondition,
     BuffDotCondition DotCondition,
     int ClearOnDistanceFromCaster,
-    bool DisableRevivalHere = false); // BasicProperty disableRevivalHere: no revive in place while the buff is on
+    bool DisableRevivalHere = false, // BasicProperty disableRevivalHere: no revive in place while the buff is on
+    int[]? SkillUseDisableIds = null); // MotionProperty skillUseDisableIDs: the skills the holder cannot cast
 
 public record AdditionalEffectMetadataConsume(
     float HpRate,

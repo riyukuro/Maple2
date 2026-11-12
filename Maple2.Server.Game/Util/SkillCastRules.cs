@@ -216,6 +216,38 @@ public static class SkillCastRules {
     // while held, as KMS2 does; no other skill and no other cost is paid twice.
     public static bool SyncPays(bool continueSkill) => continueSkill;
 
+    // The spirit a cast costs, as the client works it out before it sends the cast (CSkillSystem, 0x14176b960):
+    // the skill's cost less the flat value of the cost invokes, less the cost times (the invokes' rate minus the
+    // summed consume spirit rate of the buffs held), in float, cut to a whole number, never below 0.
+    public static int SpiritCost(long cost, int invokeValue, float invokeRate, float buffRate) {
+        float rate = -1.0f * buffRate + invokeRate;
+        long result = (long) ((float) (cost - invokeValue) - (float) cost * rate);
+        return (int) Math.Clamp(result, 0, int.MaxValue);
+    }
+
+    // A held, enabled buff that lists the skill among the ones it disables stops the cast: the client does not
+    // send it (CSkillSystem cast check, answer 0x1f).
+    public static bool DisabledByBuff(IEnumerable<int[]?> heldLists, int skillId) {
+        foreach (int[]? list in heldLists) {
+            if (list != null && Array.IndexOf(list, skillId) >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // A skill that names fields is cast only in one of them: the client does not send it elsewhere (cast check
+    // answer 0x17). A code of 0 names no field.
+    public static bool MapRefuses(int[] maps, int mapId) {
+        return maps.Any(code => code != 0) && Array.IndexOf(maps, mapId) < 0;
+    }
+
+    // The item a cast uses up must be there before any other cost is paid: named, and in the pet's bag or the
+    // caster's own.
+    public static bool ItemMissing(bool consumesItem, long itemUid, bool inPetBag, bool inInventory) {
+        return consumesItem && (itemUid == 0 || (!inPetBag && !inInventory));
+    }
+
     // The health a cast costs: the skill's rate (negative in the data) of the current health.
     public static int HpCost(long currentHp, float hpRate) => (int) (currentHp * Math.Abs(hpRate));
 

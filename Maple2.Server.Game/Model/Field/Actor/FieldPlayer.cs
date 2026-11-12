@@ -866,6 +866,13 @@ public class FieldPlayer : Actor<Player> {
             return false;
         }
 
+        bool consumesItem = SkillCastRules.ConsumesItem(metadata.Data.Consume.UseItem, record.ItemConsumed);
+        if (SkillCastRules.ItemMissing(consumesItem, record.ItemUid, Session.Pet != null && Session.Pet.Contains(record.ItemUid),
+                Session.Item.Inventory.Get(record.ItemUid) != null)) {
+            Logger.Error("Invalid item uid for skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+            return false;
+        }
+
         if (metadata.Data.Consume.Meso > 0) {
             Session.Currency.Meso -= metadata.Data.Consume.Meso;
         }
@@ -875,12 +882,7 @@ public class FieldPlayer : Actor<Player> {
         }
 
         // One item per cast: a tick sync of the same cast pays the other costs again, not the item.
-        if (SkillCastRules.ConsumesItem(metadata.Data.Consume.UseItem, record.ItemConsumed)) {
-            if (record.ItemUid == 0) {
-                Logger.Error("Invalid item uid for skill: {SkillId},{Level}", metadata.Id, metadata.Level);
-                return false;
-            }
-
+        if (consumesItem) {
             // The uid may name an item in the summoned pet's bag: the client looks there first.
             if (Session.Pet != null && Session.Pet.Contains(record.ItemUid)) {
                 if (!Session.Pet.Consume(record.ItemUid, 1)) {
@@ -921,7 +923,7 @@ public class FieldPlayer : Actor<Player> {
         staminaCost = 0;
         if (metadata.Data.Consume.Stat.TryGetValue(BasicAttribute.Spirit, out long spirit)) {
             (int invokeValue, float invokeRate) = Buffs.GetInvokeValues(InvokeEffectType.ReduceSpiritCost, metadata.Id, metadata.Property.SkillGroup);
-            spiritCost = Math.Max(0, (int) (-invokeValue + (1 - invokeRate) * spirit));
+            spiritCost = SkillCastRules.SpiritCost(spirit, invokeValue, invokeRate, Buffs.ConsumeSpRate);
             if (Stats.Values[BasicAttribute.Spirit].Current < spiritCost) {
                 Logger.Error("Not enough spirit to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
                 return false;
