@@ -154,8 +154,7 @@ public class QuestHandlerTests {
         });
     }
 
-    // A remote completion that names a field is taken on that field only (the popup talk lists the quests of the
-    // field the player is in).
+    // A remote completion that names a field is taken on that field only (the client offers it only there).
     [TestCase(0, true)]
     [TestCase(1, false)]
     public void Complete_RemoteOnItsField(int mapOffset, bool expected) {

@@ -62,7 +62,8 @@ public static class QuestRules {
     // Quest 4 (Complete) names the talk's npc, or none from the popup talk. With an npc: it is on the field and is the
     // quest's complete npc. Without one: the quest is completed remotely or has no complete npc (KMS2: 8 remote
     // quests and 2 without an npc among the 10 requests with none). A remote completion that names a field
-    // (remoteComplete requireField, 22 quests) is taken on that field only, as the remote accept is.
+    // (remoteComplete requireField, 22 quests) is taken on that field only: the client offers it only in exactly that
+    // field (CStoryQuest::FUN_14180fc80, client/ms2/stringtable.cpp:334-338).
     public static bool CanCompleteAt(QuestMetadata metadata, bool named, int npcId, int mapId) {
         if (named) {
             return npcId != 0 && (metadata.Basic.CompleteNpc == 0 || metadata.Basic.CompleteNpc == npcId);
