@@ -156,15 +156,26 @@ public class CashCallItemHandlerTests {
         Assert.That(session.Item.Inventory.Get(pass.Uid)!.Amount, Is.EqualTo(2));
     }
 
-    // No penalty (none, or run out), a field with the medic flag off, or a dead player: nothing is cured or used.
+    // The penalty time ran out but the count stays (it is cleared at the next death or revival): the client asks only
+    // the count, casts the call, and the cure clears it.
+    [Test]
+    public void CallMedic_RunOutPenalty_IsCured() {
+        GameSession session = StartMedic(msRemaining: -1000);
+
+        Use(session);
+
+        Assert.That(session.Config.DeathCount, Is.EqualTo(0));
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.RevivalConfirm), Is.EqualTo(1));
+        Assert.That(session.Item.Inventory.Get(pass.Uid)!.Amount, Is.EqualTo(2));
+    }
+
+    // No penalty count, a field with the medic flag off, or a dead player: nothing is cured or used.
     [TestCase("none")]
-    [TestCase("expired")]
     [TestCase("field")]
     [TestCase("dead")]
     public void CallMedic_Refused(string why) {
         GameSession session = why switch {
             "none" => StartMedic(deaths: 0, msRemaining: 0),
-            "expired" => StartMedic(msRemaining: -1000),
             "field" => StartMedic(medicAllowed: false),
             _ => StartMedic(),
         };

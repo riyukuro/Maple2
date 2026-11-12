@@ -877,7 +877,9 @@ public class ItemUseHandler : FieldPacketHandler {
         if (session.Field is null) {
             return;
         }
-        bool penalty = session.Config.DeathCount > 0 && session.Config.DeathPenaltyEndTick >= session.Field.FieldTick;
+        // Only the count, as the client asks: a run-out penalty keeps its count until the next death or revival, and
+        // the client still casts the call then; the cure clears that count.
+        bool penalty = session.Config.DeathCount > 0;
         if (!CashCallRules.CanCallMedic(session.Player.IsDead, penalty, session.Field.Metadata.CashCall?.Medic == true)) {
             return;
         }

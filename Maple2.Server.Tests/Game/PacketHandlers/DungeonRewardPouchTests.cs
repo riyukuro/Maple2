@@ -75,6 +75,20 @@ public class DungeonRewardPouchTests {
         Assert.That(test.TakeSentOps(), Does.Contain(SendOp.RoomDungeon));
     }
 
+    // The client asks only the period count: the daily count, which gives a real clear its daily clear bonus, stays.
+    [Test]
+    public void Opens_LeavesTheDailyCount() {
+        GameSession session = Start();
+        session.Dungeon.Records[Union] = new DungeonRecord(Union) { UnionSubClears = 0, UnionSubCooldownTimestamp = Now + 3600 };
+
+        Use(session);
+
+        DungeonRecord record = session.Dungeon.Records[Union];
+        Assert.That(record.UnionClears, Is.EqualTo(1));
+        Assert.That(record.UnionSubClears, Is.EqualTo(0));
+        Assert.That(record.UnionSubCooldownTimestamp, Is.EqualTo(Now + 3600).Within(5));
+    }
+
     // GetBonusRewardCountNow >= GetMaxCount: the client shows s_msg_dungeon_item_open_dungeon_count and sends nothing.
     [Test]
     public void CountUsedUp_IsRefused() {

@@ -835,7 +835,8 @@ public class DungeonManager {
     /// Opens the pouch of a room RewardPouchRoom gave: one reward count of its reward room is used (the confirm
     /// text s_msg_item_open_dungeon_item_box: one dungeon reward is used up, the items go to the mailbox when the
     /// bag is full) and the room's clear boxes are rolled for the player as a clear rolls them. Chosen here: the
-    /// count is taken as a clear takes it (the period starts anew once over, the daily count goes up with it), and
+    /// count is taken as a clear takes it (the period starts anew once over); the daily count (UnionSubClears, which
+    /// decides a real clear's daily clear bonus) is left alone, as the client asks only the period count; and
     /// the pouch gives the boxes only, not the clear's exp and meso; the record goes out as after a clear.
     /// </summary>
     public ICollection<Item> OpenRewardPouch(DungeonRoomMetadata metadata, FieldManager field) {
@@ -848,12 +849,7 @@ public class DungeonManager {
             record.UnionClears = 0;
             record.ExtraSubClears = 0;
         }
-        if (nowSeconds >= record.UnionSubCooldownTimestamp) {
-            record.UnionSubCooldownTimestamp = new DateTime(now.Year, now.Month, now.Day).AddDays(1).ToEpochSeconds();
-            record.UnionSubClears = 0;
-        }
         record.UnionClears++;
-        record.UnionSubClears++;
         session.Send(DungeonRoomPacket.Update(record));
 
         List<Item> items = [];
