@@ -21,6 +21,10 @@ public sealed class BuffSums {
     // The damage taken rates of the buffs held (DefensiveProperty papDamageR, mapDamageR), each times its stack count.
     public float PhysicalDamageTaken { get; }
     public float MagicalDamageTaken { get; }
+    // The recovery rates of the buffs held (StatusProperty itemRecoveryHPRate, healRecoveryHPRate), each times its
+    // stack count.
+    public float ItemRecovery { get; }
+    public float HealRecovery { get; }
 
     public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held) {
         List<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> withInvoke = [];
@@ -34,6 +38,8 @@ public sealed class BuffSums {
             InvincibleReflect |= metadata.Status.Invincible && metadata.Status.InvincibleReflect;
             PhysicalDamageTaken += Model.Buff.ByStacks(metadata.Status.PhysicalDamageTakenRate, stacks);
             MagicalDamageTaken += Model.Buff.ByStacks(metadata.Status.MagicalDamageTakenRate, stacks);
+            ItemRecovery += Model.Buff.ByStacks(metadata.Status.ItemRecoveryRate, stacks);
+            HealRecovery += Model.Buff.ByStacks(metadata.Status.HealRecoveryRate, stacks);
             if (metadata.InvokeEffect != null) {
                 withInvoke.Add((metadata.InvokeEffect, stacks));
             }

@@ -235,7 +235,9 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             Invincible: defensive.invincible != 0,
             InvincibleReflect: defensive.invincible == 2,
             PhysicalDamageTakenRate: defensive.papDamageR,
-            MagicalDamageTakenRate: defensive.mapDamageR);
+            MagicalDamageTakenRate: defensive.mapDamageR,
+            ItemRecoveryRate: status.itemRecoveryHPRate,
+            HealRecoveryRate: status.healRecoveryHPRate);
     }
 
     private static AdditionalEffectMetadataRecovery? Convert(RecoveryProperty recovery) {

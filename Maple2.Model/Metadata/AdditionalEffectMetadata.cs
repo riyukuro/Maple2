@@ -95,7 +95,11 @@ public record AdditionalEffectMetadataStatus(
     // DefensiveProperty papDamageR and mapDamageR: the share of physical and magical hits on the holder taken away
     // (0.99 is "damage taken from enemies -99 %"; a negative one adds to the hit).
     float PhysicalDamageTakenRate = 0,
-    float MagicalDamageTakenRate = 0) {
+    float MagicalDamageTakenRate = 0,
+    // StatusProperty itemRecoveryHPRate and healRecoveryHPRate: the share added to the health the holder gets from
+    // potion heals and from other heals (-0.5 is "recovery -50 %").
+    float ItemRecoveryRate = 0,
+    float HealRecoveryRate = 0) {
 
     public record CompulsionEvent(BuffCompulsionEventType Type, float Rate, int[] SkillIds);
 

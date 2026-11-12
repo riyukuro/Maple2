@@ -15,7 +15,7 @@ public class HealDamageRecord : IByteSerializable {
 
     public const float CritMultiplier = 1.5f;
 
-    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1, float healingRate = 0f) {
+    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1, float healingRate = 0f, float recoveryRate = 0f) {
         Caster = caster;
         Target = target;
         OwnerId = ownerId;
@@ -35,7 +35,7 @@ public class HealDamageRecord : IByteSerializable {
             caster.Stats.Values[SpecialAttribute.RecoveryBonus].Total, multiplier > 1f);
         long health = HealingRaised((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total + casterPart), healingRate);
         long receivedBonus = caster == target ? 0 : target.Stats.Values[SpecialAttribute.BonusRecoveryFromAlly].Total;
-        HpAmount = Buff.AmountByStacks(ReceivedRaised(health, receivedBonus), stacks);
+        HpAmount = Buff.AmountByStacks(RecoveryCut(ReceivedRaised(health, receivedBonus), recoveryRate), stacks);
         SpAmount = Buff.AmountByStacks((long) (recovery.SpValue + recovery.SpRate * target.Stats.Values[BasicAttribute.Spirit].Total * multiplier), stacks);
         EpAmount = Buff.AmountByStacks((long) (recovery.EpValue + recovery.EpRate * target.Stats.Values[BasicAttribute.Stamina].Total * multiplier), stacks);
     }
@@ -71,6 +71,20 @@ public class HealDamageRecord : IByteSerializable {
             return amount;
         }
         return Math.Max(0, amount + amount * bonus / 1000);
+    }
+
+    // The holder's recovery rates (StatusProperty itemRecoveryHPRate for a potion's heal, an effect of sub-type
+    // Consumable, and healRecoveryHPRate for any other heal; the enabled buffs' rates added up times their stacks)
+    // change the health a heal gives it: amount x (1 + rate), rounded down, nothing below 0. The effect tooltips give
+    // the meaning: 70000071 (both -0.1 to -0.95) is "item and skill recovery -10 %" and on, 50004800 (item -0.8 to
+    // -0.95) "recovery by HP potions -80 %". The client reads both rates and never sums them (AdditionalCliList's
+    // status sum leaves them out), so the server applies them. Chosen here: after the target's received bonus and
+    // before the stack count; spirit and stamina heals, health regen and kill restores are unchanged.
+    public static long RecoveryCut(long amount, float rate) {
+        if (rate == 0f || amount <= 0) {
+            return amount;
+        }
+        return Math.Max(0, (long) (amount * (1m + (decimal) rate)));
     }
 
     public void WriteTo(IByteWriter writer) {

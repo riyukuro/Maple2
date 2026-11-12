@@ -401,6 +401,9 @@ public class BuffManager : IUpdatable {
     // The damage taken rate of the buffs held for physical (true) or magical (false) hits.
     public float DamageTakenRate(bool physical) => physical ? Sums().PhysicalDamageTaken : Sums().MagicalDamageTaken;
 
+    // The recovery rate of the buffs held for potion heals (true) or other heals (false).
+    public float RecoveryRate(bool item) => item ? Sums().ItemRecovery : Sums().HealRecovery;
+
     public (int, float) GetInvokeValues(InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
         return Sums().Invokes(invokeType, skillId, skillGroup);
     }

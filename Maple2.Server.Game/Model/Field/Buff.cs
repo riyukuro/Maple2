@@ -93,6 +93,10 @@ public class Buff : IUpdatable, IByteSerializable {
     public static int StackFactor(int stacks) => Math.Max(0, stacks);
 
     public static long ByStacks(long value, int stacks) => value * StackFactor(stacks);
+
+    // A heal of an effect of sub-type Consumable is an item's (itemRecoveryHPRate applies): in the KR data 146 of the
+    // 150 health heals the consumable skills (skill type 3, potions and food) cast are of it, and no job skill heal is.
+    public static bool IsItemHeal(BuffSubType subType) => subType.HasFlag(BuffSubType.Consumable);
     public static float ByStacks(float rate, int stacks) => rate * StackFactor(stacks);
 
     // What a dot or recovery amount is multiplied by: the stack count, 1 for a buff without one. KMS2 dot damage
@@ -311,7 +315,9 @@ public class Buff : IUpdatable, IByteSerializable {
 
         // The caster's healing invokes on this effect (type 58) raise its heal (HealDamageRecord.HealingRate).
         (_, float healingRate) = Caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseHealing, Id, Metadata.Property.InvokeGroupId);
-        var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery, Stacks, healingRate);
+        // The holder's recovery rate for a potion's heal (sub-type Consumable) or any other heal.
+        float recoveryRate = Owner.Buffs.RecoveryRate(IsItemHeal(Metadata.Property.SubType));
+        var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery, Stacks, healingRate, recoveryRate);
         var updated = new List<BasicAttribute>(3);
         if (record.HpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Health].Add(record.HpAmount);
