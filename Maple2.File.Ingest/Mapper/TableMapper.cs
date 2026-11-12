@@ -2138,7 +2138,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     DisableMesoRevival: dungeon.limitMesoRevival,
                     MaxRevivalCount: dungeon.defaultRevivalLimitCount,
                     IsLimitTime: dungeon.isLimitTime,
-                    OpenPeriodTag: dungeon.openPeriodTag ?? "",
+                    OpenPeriodTag: dungeon.openPeriodTag?.Trim() ?? "",
                     OpenPeriodDate: DungeonRoomRules.ParseOpenPeriodDate(dungeon.openPeriodDate)),
                 PlayerCountFactorId: dungeon.playerCountFactorID,
                 CustomMonsterLevel: dungeon.customMonsterLevel,

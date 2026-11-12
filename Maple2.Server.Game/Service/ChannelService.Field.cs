@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
@@ -27,6 +28,14 @@ public partial class ChannelService {
         if (!tableMetadata.DungeonRoomTable.Entries.TryGetValue(create.DungeonId, out DungeonRoomMetadata? dungeonRoom)) {
             return new FieldResponse {
                 Error = (int) MigrationError.s_move_err_dungeon_not_exist,
+            };
+        }
+
+        // A room that has closed since it was asked for (a match found later) is not made; the requester's own
+        // session tells, when it is on this channel.
+        if (server.GetSession(requestorId, out GameSession? requester) && requester.Dungeon.ClosedError(dungeonRoom) != null) {
+            return new FieldResponse {
+                Error = (int) MigrationError.s_move_err_FailCreateDungeon,
             };
         }
 

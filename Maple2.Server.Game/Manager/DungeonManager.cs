@@ -40,6 +40,9 @@ public class DungeonManager {
 
     private readonly ILogger logger = Log.Logger.ForContext<DungeonManager>();
 
+    // When this session began: the client's kept open periods are the events it has seen since.
+    private readonly DateTime loginTime = DateTime.Now;
+
     public DungeonManager(GameSession session) {
         this.session = session;
         Records = new Dictionary<int, DungeonRecord>();
@@ -375,6 +378,22 @@ public class DungeonManager {
             .SelectMany(gameEvent => gameEvent.Metadata.Data is DungeonEnterTimeLimit limit ? limit.Times : []);
     }
 
+    // Why the room is closed now, null when it is open: its days of the week, its hours and its open period. Every
+    // way into a new room asks this: the room request, the dungeon match and party search (the rooms searched and
+    // the room the match makes).
+    public DungeonRoomError? ClosedError(DungeonRoomMetadata metadata) {
+        DateTime now = DateTime.Now;
+        // The server's local day, as the cooldowns use it.
+        if (!DungeonRoomRules.OpenOnDay(metadata.Limit.DayOfWeeks, now.DayOfWeek)) {
+            return DungeonRoomError.s_room_dungeon_canEnterDayOfWeeks;
+        }
+        if (!DungeonRoomRules.OpenAtTime(metadata.Limit.IsLimitTime, metadata.Id, EnterTimes(), now.TimeOfDay)) {
+            return DungeonRoomError.s_room_dungeon_NotAllowTime;
+        }
+        return DungeonRoomRules.OpenPeriodError(metadata.Limit.OpenPeriodDate, metadata.Limit.OpenPeriodTag,
+            DungeonRoomRules.OpenPeriodTags(session.OpenPeriods, loginTime, now), now);
+    }
+
     public void CreateDungeonRoom(int dungeonId, bool withParty, bool useTicket = false) {
         int size = 1;
         if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)) {
@@ -387,22 +406,9 @@ public class DungeonManager {
             return;
         }
 
-        // The server's local day, as the cooldowns use it.
-        if (!DungeonRoomRules.OpenOnDay(metadata.Limit.DayOfWeeks, DateTime.Now.DayOfWeek)) {
-            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_canEnterDayOfWeeks));
-            return;
-        }
-
-        if (!DungeonRoomRules.OpenAtTime(metadata.Limit.IsLimitTime, dungeonId, EnterTimes(), DateTime.Now.TimeOfDay)) {
-            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_NotAllowTime));
-            return;
-        }
-
-        DungeonRoomError? periodError = DungeonRoomRules.OpenPeriodError(metadata.Limit.OpenPeriodDate, metadata.Limit.OpenPeriodTag,
-            session.FindEvent(GameEventType.DungeonOpenPeriod).Select(gameEvent => gameEvent.Metadata.Data is DungeonOpenPeriod period ? period.Tag : ""),
-            DateTime.Now);
-        if (periodError != null) {
-            session.Send(DungeonRoomPacket.Error(periodError.Value));
+        DungeonRoomError? closedError = ClosedError(metadata);
+        if (closedError != null) {
+            session.Send(DungeonRoomPacket.Error(closedError.Value));
             return;
         }
 
@@ -608,8 +614,8 @@ public class DungeonManager {
         UserRecord.TotalSeconds = (int) (Lobby.DungeonRoomRecord.EndTick - Lobby.DungeonRoomRecord.StartTick) / 1000;
 
         // The order KMS2 sends a clear in: the room records, the reward notice, the result, and only then what the
-        // result names (meso, exp with its prestige exp, items, then the weekly reward's meso, exp and items). The
-        // client's reader (OnRewardPacket) only stores the result, so either order works; this one is KMS2's.
+        // result names (meso, exp with its prestige exp, items, a helper's items, then the weekly reward's meso, exp
+        // and items). The client's reader (OnRewardPacket) only stores the result, so either order works; this one is KMS2's.
         List<Action> grants = [];
         CalculateRewards(clearTimestamp, withRookie, grants);
         if (UserRecord.IsDungeonSuccess) {
@@ -720,8 +726,9 @@ public class DungeonManager {
             }
         }
 
+        List<Action> helperGrants = [];
         if (helper) {
-            GiveHelperReward(clearTimeStamp, grants);
+            GiveHelperReward(clearTimeStamp, helperGrants);
         }
 
         if (UserRecord.Flag.HasFlag(DungeonBonusFlag.Clear)) {
@@ -730,6 +737,9 @@ public class DungeonManager {
             // goes along as the code; the achievement rows that name a dungeon have no code case yet and stay uncounted.
             session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: Lobby.DungeonId);
         }
+
+        // Chosen here: the helper boxes' items after the room's and before the weekly reward.
+        grants.AddRange(helperGrants);
 
         foreach (int rewardId in rewardIds) {
             // The weekly step reward: its exp and meso carry the weekly message code (1146), as in KMS2.

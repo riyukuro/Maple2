@@ -9,6 +9,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.PacketLib.Tools;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
@@ -23,6 +24,7 @@ public class GameServer : Server<GameSession> {
     private readonly FieldManager.Factory fieldFactory;
     private readonly HashSet<GameSession> connectingSessions;
     private readonly ConcurrentDictionary<long, GameSession> sessions;
+    private readonly List<GameEvent> endedOpenPeriods = [];
     private readonly ImmutableList<SystemBanner> bannerCache;
     private readonly ConcurrentDictionary<int, PremiumMarketItem> premiumMarketCache;
     private readonly GameStorage gameStorage;
@@ -157,10 +159,32 @@ public class GameServer : Server<GameSession> {
         if (!eventCache.Remove(eventId, out GameEvent? gameEvent)) {
             return;
         }
+        if (gameEvent.Metadata.Data is DungeonOpenPeriod) {
+            lock (endedOpenPeriods) {
+                endedOpenPeriods.Add(gameEvent);
+            }
+        }
 
         foreach (GameSession session in sessions.Values) {
             session.Send(GameEventPacket.Remove(gameEvent.Id));
         }
+    }
+
+    // Every DungeonOpenPeriod event this server has held, the ended ones first: a client that was in the game while
+    // one ran still goes by it (DungeonRoomRules.OpenPeriodTags).
+    public List<DungeonRoomRules.OpenPeriod> GetOpenPeriods() {
+        List<GameEvent> events;
+        lock (endedOpenPeriods) {
+            events = endedOpenPeriods.ToList();
+        }
+        events.AddRange(eventCache.Values);
+        var periods = new List<DungeonRoomRules.OpenPeriod>();
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is DungeonOpenPeriod period) {
+                periods.Add(new DungeonRoomRules.OpenPeriod(gameEvent.Id, period.Tag, gameEvent.Metadata.StartTime, gameEvent.Metadata.EndTime));
+            }
+        }
+        return periods;
     }
 
     public IEnumerable<GameEvent> GetEvents() => eventCache.Values.Where(gameEvent => gameEvent.IsActive());

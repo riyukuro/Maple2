@@ -779,6 +779,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
     public GameEvent? FindEvent(int id) => server.FindEvent(id);
     public IEnumerable<GameEvent> Events => server.GetEvents();
+    public List<DungeonRoomRules.OpenPeriod> OpenPeriods => server.GetOpenPeriods();
 
     // See ReactorRules.SendsEvent: a Reactor event no reactor row names is kept from the client.
     public bool SendsEvent(GameEvent gameEvent) => ReactorRules.SendsEvent(gameEvent.Metadata.Type, gameEvent.Id, TableMetadata.ReactorTable);

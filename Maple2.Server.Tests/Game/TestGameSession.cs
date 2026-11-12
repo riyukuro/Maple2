@@ -320,6 +320,7 @@ public sealed class TestGameSession {
             cache[id] = gameEvent;
         }
         eventCache.SetValue(server, cache);
+        typeof(Maple2.Server.Game.GameServer).GetField("endedOpenPeriods", Any)!.SetValue(server, new List<GameEvent>());
         typeof(GameSession).GetField("server", Any)!.SetValue(session, server);
         var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         Set(session, nameof(GameSession.QuestMetadata), new QuestMetadataStorage(new MetadataContext(metadataOptions)));

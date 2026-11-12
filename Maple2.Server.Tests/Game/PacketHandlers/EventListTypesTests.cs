@@ -135,8 +135,52 @@ public class EventListTypesTests {
         Assert.That(DungeonRoomRules.OpenPeriodError(null, "tag_a", ["tag_b"], now), Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period));
         Assert.That(DungeonRoomRules.OpenPeriodError(null, "tag_a", ["tag_b", "tag_a"], now), Is.Null);
         Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(1), "tag_a", ["tag_a"], now), Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period_date));
-        // with a date that has passed the tag is not looked at
-        Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(-1), "tag_a", [], now), Is.Null);
+        // from the date on the tag decides, as with no date
+        Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(-1), "tag_a", [], now), Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period));
+        Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(-1), "tag_a", ["tag_a"], now), Is.Null);
+        Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(-1), "", [], now), Is.Null);
+    }
+
+    [Test]
+    public void OpenPeriodTags_OnePeriodPerTag_TheSecondEventIsDropped() {
+        var login = new DateTime(2020, 1, 10);
+        DateTime Day(int day) => login.AddDays(day);
+        DungeonRoomRules.OpenPeriod Period(int id, string tag, int start, int end) => new(id, tag, Day(start), Day(end));
+
+        // one event: open from its start to its end
+        Assert.That(DungeonRoomRules.OpenPeriodTags([Period(1, "tag_a", -1, 2)], login, Day(1)), Is.EquivalentTo(new[] { "tag_a" }));
+        Assert.That(DungeonRoomRules.OpenPeriodTags([Period(1, "tag_a", 1, 2)], login, login), Is.Empty);
+        Assert.That(DungeonRoomRules.OpenPeriodTags([Period(1, "tag_a", -1, 2)], login, Day(3)), Is.Empty);
+        // two events of one tag running at login: the first of the list is kept, and the tag closes at its end
+        // though the second still runs
+        DungeonRoomRules.OpenPeriod[] both = [Period(1, "tag_a", -1, 2), Period(2, "tag_a", -2, 5)];
+        Assert.That(DungeonRoomRules.OpenPeriodTags(both, login, Day(1)), Is.EquivalentTo(new[] { "tag_a" }));
+        Assert.That(DungeonRoomRules.OpenPeriodTags(both, login, Day(3)), Is.Empty);
+        // the second starts while the first is kept: dropped as well
+        Assert.That(DungeonRoomRules.OpenPeriodTags([Period(1, "tag_a", -1, 2), Period(2, "tag_a", 1, 5)], login, Day(3)), Is.Empty);
+        // the second starts after the first has ended: kept
+        Assert.That(DungeonRoomRules.OpenPeriodTags([Period(1, "tag_a", -1, 2), Period(2, "tag_a", 3, 5)], login, Day(4)), Is.EquivalentTo(new[] { "tag_a" }));
+        // a login after the first has ended sees only the second
+        Assert.That(DungeonRoomRules.OpenPeriodTags(both, Day(3), Day(4)), Is.EquivalentTo(new[] { "tag_a" }));
+        // other tags are apart; an event with no tag opens nothing
+        Assert.That(DungeonRoomRules.OpenPeriodTags([Period(1, "tag_a", -1, 2), Period(2, "tag_b", -1, 2), Period(3, "", -1, 2)], login, Day(1)),
+            Is.EquivalentTo(new[] { "tag_a", "tag_b" }));
+    }
+
+    // The check the dungeon match and party search share with the room request.
+    [Test]
+    public void ClosedError_DayHoursAndPeriod() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(RoomId, LobbyId);
+        Assert.That(session.Dungeon.ClosedError(room), Is.Null);
+        Assert.That(session.Dungeon.ClosedError(room with { Limit = room.Limit with { OpenPeriodTag = "tag_a" } }),
+            Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period));
+        Assert.That(session.Dungeon.ClosedError(room with { Limit = room.Limit with { OpenPeriodDate = DateTime.Now.AddDays(1) } }),
+            Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period_date));
+        DayOfWeek otherDay = DateTime.Now.AddDays(3).DayOfWeek;
+        Assert.That(session.Dungeon.ClosedError(room with { Limit = room.Limit with { DayOfWeeks = [otherDay] } }),
+            Is.EqualTo(DungeonRoomError.s_room_dungeon_canEnterDayOfWeeks));
     }
 
     [Test]
@@ -171,6 +215,9 @@ public class EventListTypesTests {
         Assert.That(EnterTagged("tag_a", null, "tag_b"), Is.EqualTo(new[] { NotOpenPeriod }));
         Assert.That(EnterTagged("tag_a", null, "tag_a", running: false), Is.EqualTo(new[] { NotOpenPeriod }));
         Assert.That(EnterTagged("", DateTime.Now.AddDays(1), null), Is.EqualTo(new[] { NotOpenDate }));
+        Assert.That(EnterTagged("tag_a", DateTime.Now.AddDays(1), "tag_a"), Is.EqualTo(new[] { NotOpenDate }));
+        // the date has passed and no event of the tag runs
+        Assert.That(EnterTagged("tag_a", DateTime.Now.AddDays(-1), null), Is.EqualTo(new[] { NotOpenPeriod }));
     }
 
     [Test]
@@ -178,5 +225,6 @@ public class EventListTypesTests {
         Assert.That(EnterTagged("tag_a", null, "tag_a"), Has.None.EqualTo(NotOpenPeriod));
         Assert.That(EnterTagged("", null, null), Has.None.EqualTo(NotOpenPeriod).And.None.EqualTo(NotOpenDate));
         Assert.That(EnterTagged("", DateTime.Now.AddDays(-1), null), Has.None.EqualTo(NotOpenDate));
+        Assert.That(EnterTagged("tag_a", DateTime.Now.AddDays(-1), "tag_a"), Has.None.EqualTo(NotOpenPeriod).And.None.EqualTo(NotOpenDate));
     }
 }

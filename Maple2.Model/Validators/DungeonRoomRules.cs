@@ -173,18 +173,44 @@ public static class DungeonRoomRules {
         return times.Any(time => time.DungeonId == dungeonId && time.StartSeconds <= seconds && seconds <= time.EndSeconds);
     }
 
-    // openPeriodDate and openPeriodTag (DungeonRoom, commonfiles/dungeonroom.cpp:422). A room with a date is closed
-    // before it, and the tag is then not looked at; else a room with a tag is open only while a DungeonOpenPeriod
-    // event of that tag runs, as the client's room page tells it (uidungeonroomdialog.cpp:752). The refusals are
-    // OnError 0x1c and 0x1d (dungeonrecordcli.cpp:419). Null when the room is open.
+    // openPeriodDate and openPeriodTag (DungeonRoom, commonfiles/dungeonroom.cpp:422). A room with a date still
+    // ahead is closed, and only then the tag is not looked at; from the date on, and with no date, a room with a
+    // tag is open only while the tag is open (OpenPeriodTags), as the client's room page tells it
+    // (uidungeonroomdialog.cpp:752). The refusals are OnError 0x1c and 0x1d (dungeonrecordcli.cpp:419). Null when
+    // the room is open.
     public static DungeonRoomError? OpenPeriodError(DateTime? openDate, string openTag, IEnumerable<string> runningTags, DateTime now) {
-        if (openDate != null) {
-            return now < openDate ? DungeonRoomError.s_room_dungeon_is_not_open_period_date : null;
+        if (openDate != null && now < openDate) {
+            return DungeonRoomError.s_room_dungeon_is_not_open_period_date;
         }
         if (!string.IsNullOrEmpty(openTag) && !runningTags.Contains(openTag)) {
             return DungeonRoomError.s_room_dungeon_is_not_open_period;
         }
         return null;
+    }
+
+    // A DungeonOpenPeriod event: its id, tag and time span.
+    public readonly record struct OpenPeriod(int Id, string Tag, DateTime Start, DateTime End);
+
+    // The tags open at now for a client that has been in the game since `since`. The client keeps one period per
+    // tag: an event that starts while another of its tag is kept is dropped for good ("TagID Duplicated",
+    // GameEventDungeonOpenPeriod::OnStart, gameevent.cpp:1781), and the tag goes when the kept event ends, so the
+    // dropped one never opens the room. periods: every event known since then, in event list order; those running
+    // at `since` reach the client in that order, the later ones as they start.
+    public static HashSet<string> OpenPeriodTags(IEnumerable<OpenPeriod> periods, DateTime since, DateTime now) {
+        var kept = new Dictionary<string, OpenPeriod>();
+        IEnumerable<OpenPeriod> ordered = periods
+            .Where(period => period.Tag.Length > 0 && period.End >= since && period.Start <= now)
+            .Select((period, index) => (period, index))
+            .OrderBy(entry => entry.period.Start <= since ? since : entry.period.Start)
+            .ThenBy(entry => entry.index)
+            .Select(entry => entry.period);
+        foreach (OpenPeriod period in ordered) {
+            if (kept.TryGetValue(period.Tag, out OpenPeriod keeper) && period.Start <= keeper.End) {
+                continue;
+            }
+            kept[period.Tag] = period;
+        }
+        return kept.Values.Where(period => period.End >= now).Select(period => period.Tag).ToHashSet();
     }
 
     // The table's openPeriodDate, written as the event times are ("yyyy-MM-dd-HH-mm", seconds optional); null for

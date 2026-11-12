@@ -320,6 +320,8 @@ public class PartyHandler : FieldPacketHandler {
         IReadOnlyDictionary<int, DungeonRoomMetadata> table = session.TableMetadata.DungeonRoomTable.Entries;
         List<DungeonRoomMetadata> rooms = DungeonMatchRules.SearchRooms(table, request.Value.RoomIds, request.Value.Kind,
             level, gearScore, Constants.DungeonMatchRecommendPickCount);
+        // A room closed now (day, hours, open period) is not searched, as it is not created on request.
+        rooms.RemoveAll(room => session.Dungeon.ClosedError(room) != null);
         RequestDungeonMatch(session, request.Value.Kind, rooms);
     }
 
@@ -332,7 +334,9 @@ public class PartyHandler : FieldPacketHandler {
         }
         byte kind = DungeonMatchRules.KindOf(room.GroupType);
         (short level, _) = LowestMember(session);
-        RequestDungeonMatch(session, kind, DungeonMatchRules.PickedRooms(session.TableMetadata.DungeonRoomTable.Entries, [room.Id], kind, level));
+        List<DungeonRoomMetadata> rooms = DungeonMatchRules.PickedRooms(session.TableMetadata.DungeonRoomTable.Entries, [room.Id], kind, level);
+        rooms.RemoveAll(picked => session.Dungeon.ClosedError(picked) != null);
+        RequestDungeonMatch(session, kind, rooms);
     }
 
     // Party 34: cancel the search; the byte is the match kind. Any member can send it; World takes the leader's
