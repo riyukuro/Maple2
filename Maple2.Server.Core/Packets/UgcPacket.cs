@@ -23,7 +23,13 @@ public static class UgcPacket {
         SetEndpoint = 17,
         LoadBanner = 18,
         ReserveBanners = 20,
+        CostTable = 21,
     }
+
+    // The design market's charge table as KMS2 sends it at every login: a step and a value per row.
+    public static readonly (long Step, int Value)[] CostRows = [
+        (0, 70), (5000, 60), (10000, 50), (100000, 40), (200000, 20),
+    ];
 
     public static ByteWriter Upload(UgcResource ugc) {
         var pWriter = Packet.Of(SendOp.Ugc);
@@ -196,6 +202,21 @@ public static class UgcPacket {
         pWriter.WriteInt(bannerSlots.Count);
         foreach (BannerSlot slot in bannerSlots) {
             pWriter.WriteClass<BannerSlot>(slot);
+        }
+
+        return pWriter;
+    }
+
+    // CUgcManager::OnUgc mode 0x15 (CUgcGetCostTable::Read): a count, then a long step and an int value per row.
+    // The client lists the rows (step + 1, 100 - value) in the tooltips of the design market's register and
+    // settle windows, which show no tooltip without the table.
+    public static ByteWriter CostTable(IReadOnlyList<(long Step, int Value)> rows) {
+        var pWriter = Packet.Of(SendOp.Ugc);
+        pWriter.Write<Command>(Command.CostTable);
+        pWriter.WriteInt(rows.Count);
+        foreach ((long step, int value) in rows) {
+            pWriter.WriteLong(step);
+            pWriter.WriteInt(value);
         }
 
         return pWriter;

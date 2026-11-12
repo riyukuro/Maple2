@@ -475,6 +475,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // The pet auto flag, on as the client starts with it; it is not stored here.
         Send(PetPacket.AutoChanged(true));
         Send(FieldEnterPacket.Request(Player));
+        // The design market's charge table, where KMS2 sends it.
+        Send(UgcPacket.CostTable(UgcPacket.CostRows));
         Party = new PartyManager(World, this);
         Send(HomeCommandPacket.LoadHome(AccountId, db.GetLastHomeCommend(AccountId)));
         // ResponseCube
