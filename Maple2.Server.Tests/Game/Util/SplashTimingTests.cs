@@ -35,7 +35,7 @@ public class SplashTimingTests {
         Assert.That(SplashTiming.FirePackets(false, 0), Is.EqualTo((false, true)), "the hit effect plays");
         Assert.That(SplashTiming.FirePackets(false, 3), Is.EqualTo((false, true)), "no target packet");
         Assert.That(SplashTiming.FirePackets(true, 0), Is.EqualTo((false, false)));
-        Assert.That(SplashTiming.FirePackets(true, 1), Is.EqualTo((true, true)));
+        Assert.That(SplashTiming.FirePackets(true, 1), Is.EqualTo((false, true)), "a cube skill has no target packet either");
     }
 
     [Test]

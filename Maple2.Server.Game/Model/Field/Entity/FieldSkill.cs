@@ -30,10 +30,20 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     public long NextTick { get; private set; }
     private readonly ILogger logger = Log.ForContext<FieldSkill>();
 
-    private ByteWriter GetDamagePacket(DamageRecord record) => Source switch {
-        SkillSource.Cube => SkillDamagePacket.Tile(record),
-        _ => SkillDamagePacket.Region(record),
-    };
+    // The block a cube skill belongs to (its own position, not the space above it that the skill reaches).
+    public Vector3 CubePosition { get; init; }
+
+    private void BroadcastDamage(DamageRecord record) {
+        if (Source != SkillSource.Cube) {
+            Field.Broadcast(SkillDamagePacket.Region(record));
+            return;
+        }
+
+        foreach (DamageRecordTarget target in record.Targets.Values) {
+            Field.Broadcast(SkillDamagePacket.Tile(record.SkillId, record.Level,
+                new SkillDamagePacket.RegionTarget(target.ObjectId, target.Position, target.Direction, target.Damage)));
+        }
+    }
 
     public FieldSkill(FieldManager field, int objectId, IActor caster,
                       SkillMetadata value, int interval, params Vector3[] points) : base(field, objectId, value) {
@@ -168,7 +178,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     }
 
                     Field.Broadcast(SkillDamagePacket.Target(record, targetRecords));
-                    Field.Broadcast(GetDamagePacket(damage));
+                    BroadcastDamage(damage);
                     for (int t = 0; t < bounceTargets.Count; t++) {
                         IActor target = bounceTargets[t];
                         record.TargetUid = targetRecords[t].Uid;
@@ -205,8 +215,8 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Field.VibrateObjects(damage, Position);
                     foreach (IActor target in targets) {
                         target.ApplyDamage(Caster, damage, attack);
-                        if (Source != SkillSource.Cube && damage.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? fired)) {
-                            fired.Position = SplashTiming.FirePoint(Points, target.Position, Position);
+                        if (damage.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? fired)) {
+                            fired.Position = Source == SkillSource.Cube ? CubePosition : SplashTiming.FirePoint(Points, target.Position, Position);
                             fired.Direction = SplashTiming.FireDirection(fired.Position, target.Position);
                         }
                         // TODO: Set PrevUid?
@@ -221,7 +231,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                         Field.Broadcast(SkillDamagePacket.Target(record, targetRecords));
                     }
                     if (sendDamage) {
-                        Field.Broadcast(GetDamagePacket(damage));
+                        BroadcastDamage(damage);
                     }
 
                     Caster.ApplyEffects(attack.SkillsOnDamage, Caster, damage, targets: targets);

@@ -130,23 +130,27 @@ public static class SkillDamagePacket {
         return (short) Math.Clamp(MathF.Truncate(value), short.MinValue, short.MaxValue);
     }
 
-    public static ByteWriter Tile(DamageRecord record) {
+    // The damage of a cube skill (a map block that hurts or gives a buff), one packet for each target.
+    // Client: CSceneStateGame::OnSplashDamage reads long skill uid, int skill id, short level, byte count; per
+    // target int id, byte entries, 3 shorts, 3 floats, then per entry byte type, long amount.
+    // Every KMS2 packet names one target and has a skill uid of 0; the position is the block's.
+    public static ByteWriter Tile(int skillId, short level, RegionTarget target) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
         pWriter.Write<Command>(Command.Tile);
-        pWriter.WriteLong(record.SkillUid);
-        pWriter.WriteInt(record.SkillId);
-        pWriter.WriteShort(record.Level);
+        pWriter.WriteLong(0);
+        pWriter.WriteInt(skillId);
+        pWriter.WriteShort(level);
 
-        pWriter.WriteByte((byte) record.Targets.Count);
-        foreach (DamageRecordTarget target in record.Targets.Values) {
-            pWriter.WriteInt(target.ObjectId);
-            pWriter.WriteByte((byte) target.Damage.Count);
-            pWriter.Write<Vector3S>(target.Position); // Of Block
-            pWriter.Write<Vector3>(target.Direction);
-            foreach ((DamageType type, long amount) in target.Damage) {
-                pWriter.Write<DamageType>(type);
-                pWriter.WriteLong(amount);
-            }
+        pWriter.WriteByte(1);
+        pWriter.WriteInt(target.ObjectId);
+        pWriter.WriteByte((byte) target.Damage.Count);
+        pWriter.WriteShort(CutToShort(target.Position.X));
+        pWriter.WriteShort(CutToShort(target.Position.Y));
+        pWriter.WriteShort(CutToShort(target.Position.Z));
+        pWriter.Write<Vector3>(target.Direction);
+        foreach ((DamageType type, long amount) in target.Damage) {
+            pWriter.Write<DamageType>(type);
+            pWriter.WriteLong(amount);
         }
 
         return pWriter;
