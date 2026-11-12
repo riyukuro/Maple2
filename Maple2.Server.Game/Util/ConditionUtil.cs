@@ -181,6 +181,7 @@ public static class ConditionUtil {
             case ConditionType.send_mail:
             case ConditionType.change_ugc_equip:
             case ConditionType.unlimited_enchant:
+            case ConditionType.quest_guide:
             case ConditionType.enter_otherhouse:
                 return true;
         }
@@ -344,6 +345,7 @@ public static class ConditionUtil {
             case ConditionType.change_ugc_equip:
             case ConditionType.unlimited_enchant:
             case ConditionType.quest_daily:
+            case ConditionType.quest_guide:
             case ConditionType.enter_otherhouse:
                 return true;
         }

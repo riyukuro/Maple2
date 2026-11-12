@@ -57,6 +57,16 @@ public class ConditionCountTests {
         Assert.That(QuestRules.CountsAsDaily(Basic(QuestType.WorldQuest, repeat)), Is.EqualTo(expected));
     }
 
+    // A completed daily mission counts for quest_guide, whatever the mission; other quests do not.
+    [TestCase(QuestType.DailyMission, true)]
+    [TestCase(QuestType.EpicQuest, false)]
+    [TestCase(QuestType.FieldMission, false)]
+    public void QuestGuide_OnlyDailyMissions(QuestType type, bool expected) {
+        Assert.That(QuestRules.CountsAsGuide(Basic(type, 1)), Is.EqualTo(expected));
+        var condition = new ConditionMetadata(ConditionType.quest_guide, 1, null, null);
+        Assert.That(condition.Check(null!), Is.True);
+    }
+
     private static QuestMetadataBasic Basic(QuestType type, int repeat) {
         return new QuestMetadataBasic(ChapterId: 0, Type: type, Account: 0, StandardLevel: 1, Forfeitable: false,
             EventTag: string.Empty, AutoStart: false, Disabled: false, UsePostbox: false, StartNpc: 0, CompleteNpc: 0,

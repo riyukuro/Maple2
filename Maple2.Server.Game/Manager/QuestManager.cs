@@ -482,6 +482,9 @@ public sealed class QuestManager {
         if (QuestRules.CountsAsDaily(quest.Metadata.Basic)) {
             session.ConditionUpdate(ConditionType.quest_daily, codeLong: quest.Metadata.Id);
         }
+        if (QuestRules.CountsAsGuide(quest.Metadata.Basic)) {
+            session.ConditionUpdate(ConditionType.quest_guide);
+        }
         if (quest.Metadata.Basic.Type == QuestType.FieldMission) {
             session.ConditionUpdate(ConditionType.field_mission);
         }
