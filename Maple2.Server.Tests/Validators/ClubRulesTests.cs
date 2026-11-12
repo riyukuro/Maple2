@@ -1,9 +1,17 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Server.Tests.Validators;
 
 public class ClubRulesTests {
+    // club_join: a member of an established club has joined one; a staged club is not a club yet.
+    [TestCase(ClubState.Established, true)]
+    [TestCase(ClubState.Staged, false)]
+    public void ClubJoin_CountsAnEstablishedClub(ClubState state, bool expected) {
+        Assert.That(ClubRules.CountsAsJoin(state), Is.EqualTo(expected));
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void InviteReplyBytes(bool accept) {

@@ -4,6 +4,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Club;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Channel.Service;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
@@ -101,6 +102,9 @@ public partial class ChannelService {
 
             manager.Club.State = ClubState.Established;
             manager.Load();
+            if (ClubRules.CountsAsJoin(manager.Club.State)) {
+                session.ConditionUpdate(ConditionType.club_join);
+            }
 
             if (receiverId == manager.Club.Leader.CharacterId) {
                 session.Send(ClubPacket.Join(manager.Club.Leader, manager.Club.Name));

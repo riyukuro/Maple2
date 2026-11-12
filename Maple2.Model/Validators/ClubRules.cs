@@ -1,9 +1,15 @@
+using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Model.Validators;
 
 // Club: what a request may ask before the world server is called.
 public static class ClubRules {
+    // club_join: the rows read "join a club" (89050036, 89050066, 89050096) with no code. A character has joined
+    // once it is a member of an established club: by accepting an invite to one, or when the staged club it agreed
+    // to found is established. A staged club is not a club yet and is dropped when a member declines.
+    public static bool CountsAsJoin(ClubState state) => state == ClubState.Established;
+
     // Mode 8: the invite as it was received (i64 club id, club name, inviter name, invitee name), then
     // u8 accept (clubcli.cpp:966-975).
     public static (long ClubId, string ClubName, string Inviter, string Invitee, bool Accept) ReadInviteReply(IByteReader packet) {

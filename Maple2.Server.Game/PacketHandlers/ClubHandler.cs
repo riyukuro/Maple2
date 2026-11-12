@@ -1,5 +1,6 @@
 ﻿using Grpc.Core;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Club;
 using Maple2.Model.Game.Party;
@@ -211,6 +212,9 @@ public class ClubHandler : FieldPacketHandler {
             if (session.Clubs.TryAdd(response.Club.Id, club)) {
                 session.Send(ClubPacket.Join(club.Club.Members[session.CharacterId], club.Club.Name));
                 club.Load();
+                if (ClubRules.CountsAsJoin(club.Club.State)) {
+                    session.ConditionUpdate(ConditionType.club_join);
+                }
             }
         }
     }
