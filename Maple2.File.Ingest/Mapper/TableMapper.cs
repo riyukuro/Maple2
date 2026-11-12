@@ -1251,12 +1251,43 @@ public class TableMapper : TypeMapper<TableMetadata> {
             guildEvents[id] = MapGuildEvent(id, guildEvent);
         }
 
+        Maple2.File.IO.Crypto.Common.PackFileEntry? factorEntry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/guildquestrewardfactor.xml", StringComparison.OrdinalIgnoreCase));
+        Dictionary<short, GuildTable.QuestRewardFactor> questRewardFactors =
+            factorEntry == null ? [] : GuildQuestRewardFactors(xmlReader.GetXmlDocument(factorEntry));
+
         return new GuildTable(
             Buffs: guildBuffs,
             Houses: guildHouses,
             Npcs: guildNpcs,
             Properties: guildProperties,
-            Events: guildEvents);
+            Events: guildEvents,
+            QuestRewardFactors: questRewardFactors);
+    }
+
+    // The parser has no guildquestrewardfactor.xml; its rows are read here as CGuildXmlData::LoadGuildQuestRewardFactor
+    // reads them (guilddef_2.cpp:581): one guildNpc row per level below 300, of the enabled features and locale.
+    public static Dictionary<short, GuildTable.QuestRewardFactor> GuildQuestRewardFactors(XmlDocument document) {
+        var results = new Dictionary<short, GuildTable.QuestRewardFactor>();
+        foreach (XmlElement node in document.SelectNodes("ms2/guildNpc")?.OfType<XmlElement>() ?? []) {
+            if (!FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"))) {
+                continue;
+            }
+            if (!short.TryParse(node.GetAttribute("level"), out short level) || level < 0 || level >= 300) {
+                continue;
+            }
+            results[level] = new GuildTable.QuestRewardFactor(
+                GuildExp: Factor(node, "guildExpFactor"),
+                UserExp: Factor(node, "userExpFactor"),
+                GuildFund: Factor(node, "guildFundFactor"),
+                UserMeso: Factor(node, "userMesoFactor"),
+                GuildCoin: Factor(node, "GuildCoinFactor"));
+        }
+        return results;
+
+        static float Factor(XmlElement node, string name) {
+            return float.TryParse(node.GetAttribute(name), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ? value : 0f;
+        }
     }
 
     private FishingRodTable ParseFishingRod() {

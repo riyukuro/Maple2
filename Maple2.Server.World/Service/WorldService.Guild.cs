@@ -71,6 +71,8 @@ public partial class WorldService {
                 return Task.FromResult(RecallGuild(request.RequestorId, request.Recall));
             case GuildRequest.GuildOneofCase.AddExpFund:
                 return Task.FromResult(AddGuildExpFund(request.RequestorId, request.AddExpFund));
+            case GuildRequest.GuildOneofCase.SpendFund:
+                return Task.FromResult(SpendGuildFund(request.RequestorId, request.SpendFund));
             case GuildRequest.GuildOneofCase.TakeMailTurn:
                 return Task.FromResult(TakeGuildMailTurn(request.RequestorId, request.TakeMailTurn));
             case GuildRequest.GuildOneofCase.Donate:
@@ -540,6 +542,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = add.GuildId };
+    }
+
+    private GuildResponse SpendGuildFund(long requestorId, GuildRequest.Types.SpendFund spend) {
+        if (!guildLookup.TryGet(spend.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.SpendFund(requestorId, spend.Amount);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = spend.GuildId };
     }
 
     private GuildResponse TakeGuildMailTurn(long requestorId, GuildRequest.Types.TakeMailTurn take) {

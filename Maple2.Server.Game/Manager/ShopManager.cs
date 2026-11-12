@@ -485,13 +485,17 @@ public sealed class ShopManager {
             return;
         }
 
-        if (shopItem.Metadata.Requirements.GuildTrophy > 0 &&
-            (session.Guild.Guild == null || session.Guild.Guild.AchievementInfo.Total < shopItem.Metadata.Requirements.GuildTrophy)) {
-            session.Send(ShopPacket.Error(ShopError.s_err_lack_guild_trophy));
+        if (!ShopRules.CheckGuildProduct(shopItem.Metadata.Requirements, shopItem.Metadata.Cost.Type,
+                session.Guild.GetMember(session.CharacterId)?.JoinTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                session.Guild.Guild?.AchievementInfo.Total ?? 0, session.Guild.NpcLevel(shopItem.Metadata.Requirements.GuildNpc.Type),
+                session.Guild.Guild?.LeaderCharacterId == session.CharacterId, out ShopError? guildError)) {
+            if (guildError != null) {
+                session.Send(ShopPacket.Error(guildError.Value));
+            }
             return;
         }
 
-        // TODO: Guild Merchant Type/Level, Championship, Alliance
+        // TODO: Championship, Alliance
 
         Item item = shopItem.Item.Clone();
         item.Amount = quantity;
@@ -652,6 +656,14 @@ public sealed class ShopManager {
                 }
 
                 session.Currency.GameMeret -= price;
+                break;
+            case ShopCurrencyType.GuildFund:
+                GuildError fundError = session.Guild.SpendFund(price);
+                if (fundError != GuildError.none) {
+                    session.Send(ShopPacket.Error(fundError == GuildError.s_guild_err_not_enough_guild_fund
+                        ? ShopError.s_guild_err_not_enough_guild_fund : ShopError.s_guild_err_buy_no_master));
+                    return false;
+                }
                 break;
             case ShopCurrencyType.Item:
                 var ingredient = new ItemComponent(cost.ItemId, -1, price, ItemTag.None);

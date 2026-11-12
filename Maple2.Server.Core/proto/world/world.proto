@@ -299,6 +299,11 @@ message GuildRequest {
     int32 exp = 2;
     int32 fund = 3;
   }
+  // A guild shop buy paid from the guild fund: only the master may spend it.
+  message SpendFund {
+    int64 guild_id = 1;
+    int32 amount = 2;
+  }
   // Guild 101: the master raises the guild house by one level, with the theme chosen for it.
   message UpgradeHouse {
     int64 guild_id = 1;
@@ -363,6 +368,7 @@ message GuildRequest {
     OpenEvent open_event = 27;
     Recall recall = 28;
     AddExpFund add_exp_fund = 29;
+    SpendFund spend_fund = 30;
   }
 }
 

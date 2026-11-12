@@ -8,7 +8,18 @@ public record GuildTable(
     IReadOnlyDictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>> Npcs,
     IReadOnlyDictionary<short, GuildTable.Property> Properties,
     // table/guildevent.xml by id. Null when the data was ingested before the table was read.
-    IReadOnlyDictionary<int, GuildTable.Event>? Events = null) : Table {
+    IReadOnlyDictionary<int, GuildTable.Event>? Events = null,
+    // table/guildquestrewardfactor.xml by the guild's quest npc level. Null when the data was ingested before the
+    // table was read.
+    IReadOnlyDictionary<short, GuildTable.QuestRewardFactor>? QuestRewardFactors = null) : Table {
+
+    // The factors a guild quest's complete reward is scaled by at one quest npc level.
+    public record QuestRewardFactor(
+        float GuildExp,
+        float UserExp,
+        float GuildFund,
+        float UserMeso,
+        float GuildCoin);
 
     public record Event(
         int Id,

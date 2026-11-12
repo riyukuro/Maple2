@@ -450,9 +450,13 @@ public sealed class QuestManager {
             rewards.Add(item);
         }
 
+        // A guild quest's reward gets the bonus of the guild's quest npc level, as the reward line shows it.
+        GuildTable.QuestRewardFactor? guildFactor = quest.Metadata.Basic.Type == QuestType.GuildQuest ? session.Guild.QuestRewardFactor() : null;
+
         // completeReward guildCoin: the guild coin item, as the check-in gives it.
-        if (reward.GuildCoin > 0) {
-            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, reward.GuildCoin);
+        int guildCoinCount = guildFactor == null ? reward.GuildCoin : (int) GuildRules.QuestRewardBonus(reward.GuildCoin, guildFactor.GuildCoin);
+        if (guildCoinCount > 0) {
+            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, guildCoinCount);
             if (guildCoin != null) {
                 rewards.Add(guildCoin);
             }
@@ -467,6 +471,9 @@ public sealed class QuestManager {
         // larger, with the rank factor of field and alliance quests.
         QuestMetadataBasic basic = quest.Metadata.Basic;
         long exp = QuestExpRules.Exp(reward.Exp, session.Exp.TypeValue(reward.RelativeExp), basic.Type, basic.Rank, (int) basic.Alliance);
+        if (guildFactor != null) {
+            exp = GuildRules.QuestRewardBonus(exp, guildFactor.UserExp);
+        }
         if (exp > 0) {
             session.Exp.AddExp(exp);
         }
@@ -494,7 +501,12 @@ public sealed class QuestManager {
             }
         }
 
-        session.Guild.AddQuestReward(reward.GuildExp, reward.GuildFund);
+        if (guildFactor != null) {
+            session.Guild.AddQuestReward(GuildRules.QuestRewardBonus(reward.GuildExp, guildFactor.GuildExp),
+                GuildRules.QuestRewardBonus(reward.GuildFund, guildFactor.GuildFund));
+        } else {
+            session.Guild.AddQuestReward(reward.GuildExp, reward.GuildFund);
+        }
 
         int missionPoints = MissionPointRules.PointsCounted(reward.MissionPoint);
         if (missionPoints > 0) {

@@ -180,6 +180,17 @@ public static class GuildRules {
         return (int) Math.Min((long) funds + addFunds, ceiling);
     }
 
+    // A guild shop buy from the guild fund: the master only (shop error 26), and the fund must cover the price (27).
+    public static GuildError CheckSpendFund(bool isMaster, int funds, int amount) {
+        if (!isMaster) {
+            return GuildError.s_guild_err_no_master;
+        }
+        if (amount < 0 || amount > funds) {
+            return GuildError.s_guild_err_not_enough_guild_fund;
+        }
+        return GuildError.none;
+    }
+
     // Guild 92 (CGuildManager::FUN_1413b9ac0): the master raises a guild skill by one level. The client asks
     // for the row of the current level and of the next one (none: s_guild_err_max_level, which has no code in
     // the error packet), the guild level of the next row, and the upgrade cost of the next row in the fund.
@@ -441,5 +452,14 @@ public static class GuildRules {
     // member gets the new total; only the contributor counts the rise, and a total that did not rise counts nothing.
     public static long ContributedExp(long characterId, long contributorId, int oldExp, int newExp) {
         return characterId == contributorId && newExp > oldExp ? newExp - oldExp : 0;
+    }
+
+    // The guild bonus of a guild quest's reward (FUN_140762500 and its siblings, questmasktable.cpp:915): the factor of
+    // the guild's quest npc level for the reward kind (guildquestrewardfactor.xml); a factor below 1 (no quest npc, a
+    // level the table lacks) gives no bonus. The reward line shows, and the server gives, value * (1 + (factor - 1))
+    // in float (FUN_140761ba0).
+    public static long QuestRewardBonus(long value, float factor) {
+        float bonus = factor >= 1.0f ? factor - 1.0f : 0f;
+        return (long) ((float) value * (1.0f + bonus));
     }
 }

@@ -1,3 +1,7 @@
+using Maple2.Model.Enum;
+using Maple2.Model.Error;
+using Maple2.Model.Metadata;
+
 namespace Maple2.Server.Game.Util;
 
 public static class ShopRules {
@@ -37,6 +41,41 @@ public static class ShopRules {
         }
 
         total = unitPrice * quantity;
+        return true;
+    }
+
+    public const long GuildTrophyJoinSeconds = 604800;
+
+    // The client's guild product checks (client/ms2/uishopdialog.cpp:3562-3711). False refuses the buy; error is the
+    // shop code to answer with, or null where the client shows a notice no shop code carries (the npc level).
+    // - Guild trophy products: a member for 7 days (20, s_err_lack_guild_require_date), then enough trophies (16).
+    // - Guild npc products: the guild's npc of that type at the product's level (s_err_lack_guild_npc_level).
+    // - Guild fund products (currency 7): the guild master only (26, s_guild_err_buy_no_master).
+    public static bool CheckGuildProduct(ShopItemMetadata.Requirement requirement, ShopCurrencyType currency, long? joinTime,
+                                         long now, int trophies, int npcLevel, bool isMaster, out ShopError? error) {
+        error = null;
+        if (requirement.GuildTrophy > 0) {
+            if (joinTime == null) {
+                return false;
+            }
+            if (joinTime.Value + GuildTrophyJoinSeconds > now) {
+                error = ShopError.s_err_lack_guild_require_date;
+                return false;
+            }
+            if (requirement.GuildTrophy > trophies) {
+                error = ShopError.s_err_lack_guild_trophy;
+                return false;
+            }
+        }
+        if (requirement.GuildNpc.Type != GuildNpcType.Unknown) {
+            if (joinTime == null || requirement.GuildNpc.Level > npcLevel) {
+                return false;
+            }
+        }
+        if (currency == ShopCurrencyType.GuildFund && (joinTime == null || !isMaster)) {
+            error = ShopError.s_guild_err_buy_no_master;
+            return false;
+        }
         return true;
     }
 }

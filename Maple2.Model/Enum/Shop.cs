@@ -8,7 +8,7 @@ public enum ShopCurrencyType : byte {
     Meret = 4,
     Rue = 5,
     HaviFruit = 6,
-    GuildCoin = 7,
+    GuildFund = 7, // the guild's fund (the client's currency 11), spent by the master
     ReverseCoin = 8,
     EventMeret = 9,
     GameMeret = 10, // RedMeret

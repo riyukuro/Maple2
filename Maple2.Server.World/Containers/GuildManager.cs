@@ -472,6 +472,41 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // A guild shop buy paid from the guild fund (shop currency 7). The client offers it to the master only and the
+    // fund must cover the price; the fund is saved before the answer and a failed save undoes it.
+    public GuildError SpendFund(long requestorId, int amount) {
+        if (!Guild.Members.ContainsKey(requestorId)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        int guildExp;
+        int guildFund;
+        lock (guildLock) {
+            GuildError error = GuildRules.CheckSpendFund(requestorId == Guild.LeaderCharacterId, Guild.Funds, amount);
+            if (error != GuildError.none) {
+                return error;
+            }
+
+            int oldFunds = Guild.Funds;
+            Guild.Funds -= amount;
+            if (!TrySave()) {
+                Guild.Funds = oldFunds;
+                return GuildError.s_guild_err_unknown;
+            }
+            guildExp = Guild.Experience;
+            guildFund = Guild.Funds;
+        }
+
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = 0,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
+            },
+        });
+        return GuildError.none;
+    }
+
     // A guild recall scroll: every member's channel offers the recall to its members but the requestor.
     public GuildError Recall(long requestorId, int mapId, long endTime) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {

@@ -436,7 +436,51 @@ public class GuildManager : IDisposable {
     /// for the guild; the World adds it and every member gets the new values (Guild 53), the player also the
     /// contribution notice (97). Nothing without a guild.
     /// </summary>
-    public void AddQuestReward(int exp, int fund) {
+    // The guildquestrewardfactor.xml row of the guild's quest npc level (CGuildManager::GetNpcLevel(6) in
+    // Unk_QuestRewardCalc), or null without a guild, a quest npc or a row for its level.
+    public GuildTable.QuestRewardFactor? QuestRewardFactor() {
+        if (Guild == null || session.TableMetadata.GuildTable.QuestRewardFactors == null) {
+            return null;
+        }
+        int level = NpcLevel(GuildNpcType.Quest);
+        return session.TableMetadata.GuildTable.QuestRewardFactors.TryGetValue((short) level, out GuildTable.QuestRewardFactor? factor) ? factor : null;
+    }
+
+    // CGuildManager::GetNpcLevel: the level of the guild's npc of that type, 0 without a guild or that npc.
+    public int NpcLevel(GuildNpcType type) {
+        if (Guild == null) {
+            return 0;
+        }
+        foreach (GuildNpc npc in Guild.Npcs) {
+            if (npc.Type == type) {
+                return npc.Level;
+            }
+        }
+        return 0;
+    }
+
+    // A guild shop buy paid from the guild fund: the world checks the master and the fund under the guild's lock.
+    public GuildError SpendFund(int amount) {
+        if (Guild == null) {
+            return GuildError.s_guild_err_null_guild;
+        }
+
+        try {
+            GuildResponse response = session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                SpendFund = new GuildRequest.Types.SpendFund {
+                    GuildId = Guild.Id,
+                    Amount = amount,
+                },
+            });
+            return (GuildError) response.Error;
+        } catch (Grpc.Core.RpcException ex) {
+            logger.Error(ex, "Guild fund spend of {CharacterId} failed", session.CharacterId);
+            return GuildError.s_guild_err_unknown;
+        }
+    }
+
+    public void AddQuestReward(long exp, long fund) {
         if (Guild == null || (exp <= 0 && fund <= 0)) {
             return;
         }
@@ -446,8 +490,8 @@ public class GuildManager : IDisposable {
                 RequestorId = session.CharacterId,
                 AddExpFund = new GuildRequest.Types.AddExpFund {
                     GuildId = Guild.Id,
-                    Exp = Math.Max(exp, 0),
-                    Fund = Math.Max(fund, 0),
+                    Exp = (int) Math.Clamp(exp, 0, int.MaxValue),
+                    Fund = (int) Math.Clamp(fund, 0, int.MaxValue),
                 },
             });
         } catch (Grpc.Core.RpcException ex) {
