@@ -113,6 +113,10 @@ public static class ConditionUtil {
             case ConditionType.dungeon_rank:
             case ConditionType.item_design:
             case ConditionType.skill_damage_npc:
+            // skill_die: the skill of the hit that took the last health (21233011 names 50100394, 50100405, 50100406).
+            case ConditionType.skill_die:
+            // npc_assist_bonus: the field boss whose assist bonus was given (21230013 names 23000001).
+            case ConditionType.npc_assist_bonus:
             case ConditionType.buff:
             case ConditionType.enchant_result:
             case ConditionType.dialogue:

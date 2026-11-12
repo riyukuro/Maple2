@@ -488,14 +488,23 @@ public class FieldPlayer : Actor<Player> {
         if (!TakesDamage(IsDead, Field.FieldTick, revivalInvincibleUntil)) {
             return;
         }
+        long healthBefore = Stats.Values[BasicAttribute.Health].Current;
         base.ApplyDamage(caster, damage, attack);
         if (caster is not FieldPlayer) {
             // A hit by a monster's or the map's skill counts for skill_damage_npc with the skill id as the code
             // (70400009 "Get attacked by a seedling at the Maple Arcade" 49230005, 21233002 "Get trapped in the
             // $npc:23000018$'s water prison" 99999981).
             Session.ConditionUpdate(ConditionType.skill_damage_npc, codeLong: damage.SkillMetadata.Id);
+            // The hit that takes the last health also counts for skill_die with the same code (21233007 "Deadly
+            // Whirlwind" 70000500, 21233011 "Spinning Laser" 50100394/50100405/50100406).
+            if (KilledByHit(healthBefore, Stats.Values[BasicAttribute.Health].Current)) {
+                Session.ConditionUpdate(ConditionType.skill_die, codeLong: damage.SkillMetadata.Id);
+            }
         }
     }
+
+    // A hit kills when it takes a living player's health to 0; a later hit in the same tick finds no health left.
+    public static bool KilledByHit(long healthBefore, long healthAfter) => healthBefore > 0 && healthAfter <= 0;
 
     protected override void OnDeath() {
         if (Session.Field is null) return;

@@ -749,12 +749,18 @@ public class FieldNpc : Actor<Npc> {
     // KMS2 sends, ahead of the kill exp: AppendMessageAssistBonus to the field boss's dealers, then AppendMessageKillBoss
     // with the last hitter's name for an elite or boss kill. The notice goes to the field (chosen here: the captures show
     // other players' kills but not whether they were all in the party).
+    // The dealer told of the assist bonus counts for npc_assist_bonus with the boss as the code.
+    internal static void ReportAssistBonus(GameSession session, int npcId) {
+        session.ConditionUpdate(ConditionType.npc_assist_bonus, codeLong: npcId);
+    }
+
     private void SendKillNotices() {
         int npcClass = Value.Metadata.Basic.Class;
         if (BossKillRules.FieldBoss(npcClass)) {
             foreach (int dealerId in DamageDealers.Keys) {
                 if (Field.TryGetPlayer(dealerId, out FieldPlayer? dealer) && BossKillRules.DealerGetsExp(dealer.IsDead)) {
                     dealer.Session.Send(AppendMessagePacket.AssistBonus(Value.Id));
+                    ReportAssistBonus(dealer.Session, Value.Id);
                 }
             }
         }

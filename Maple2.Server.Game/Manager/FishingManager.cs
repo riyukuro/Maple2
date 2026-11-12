@@ -307,6 +307,13 @@ public class FishingManager {
         return FishingError.none;
     }
 
+    // A catch made while auto fishing is on (the catch packet's auto flag) counts for auto_fishing (23100181, no code).
+    internal static void ReportAutoCatch(GameSession session, bool hasAutoFish) {
+        if (hasAutoFish) {
+            session.ConditionUpdate(ConditionType.auto_fishing);
+        }
+    }
+
     private void AddFish(int fishSize, bool hasAutoFish) {
         if (selectedFish == null || session.Field is null) {
             return;
@@ -352,6 +359,7 @@ public class FishingManager {
             session.Field.Broadcast(FishingPacket.PrizeFish(session.PlayerName, selectedFish.Id));
         }
         session.ConditionUpdate(ConditionType.fish, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
+        ReportAutoCatch(session, hasAutoFish);
         // Every catch gives the common exp table's fishing award for the character's level.
         session.Exp.AddExp(ExpType.fishing);
 

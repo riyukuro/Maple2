@@ -516,4 +516,59 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.Empty);
     }
     #endregion
+
+    #region npc_assist_bonus, skill_die, auto_fishing
+    [Test]
+    public void AssistBonus_CountsForTheTrophyOfItsBoss() {
+        GameSession session = Start(
+            TestGameSession.Trophy(Trophy, ConditionType.npc_assist_bonus, [Goal], codes: [23000013]),
+            TestGameSession.Trophy(OtherTrophy, ConditionType.npc_assist_bonus, [Goal], codes: [23000018]));
+
+        Maple2.Server.Game.Model.FieldNpc.ReportAssistBonus(session, 23000013);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null.Or.EqualTo(0));
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve }));
+
+        // A boss no trophy names counts for none.
+        Maple2.Server.Game.Model.FieldNpc.ReportAssistBonus(session, 29000142);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Sent(), Is.Empty);
+    }
+
+    [Test]
+    public void SkillDie_CountsForTheTrophyThatNamesTheSkill() {
+        GameSession session = Start(
+            TestGameSession.Trophy(Trophy, ConditionType.skill_die, [Goal], codes: [50100394, 50100405, 50100406]),
+            TestGameSession.Trophy(OtherTrophy, ConditionType.skill_die, [Goal], codes: [70000500]));
+
+        session.ConditionUpdate(ConditionType.skill_die, codeLong: 50100405);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null.Or.EqualTo(0));
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve }));
+
+        session.ConditionUpdate(ConditionType.skill_die, codeLong: 50100365);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Sent(), Is.Empty);
+    }
+
+    [TestCase(500, 0, true)]
+    [TestCase(500, 1, false)]
+    [TestCase(0, 0, false)] // a second hit in the tick of the death
+    public void KilledByHit_OnlyTheHitThatTakesTheLastHealth(long before, long after, bool expected) {
+        Assert.That(Maple2.Server.Game.Model.FieldPlayer.KilledByHit(before, after), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void AutoCatch_CountsForTheAutoFishingTrophy() {
+        GameSession session = Start(TestGameSession.Trophy(Trophy, ConditionType.auto_fishing, [Goal]));
+
+        Maple2.Server.Game.Manager.FishingManager.ReportAutoCatch(session, hasAutoFish: false);
+        Assert.That(test.TrophyCounter(Trophy), Is.Null.Or.EqualTo(0));
+        Assert.That(Sent(), Is.Empty);
+
+        Maple2.Server.Game.Manager.FishingManager.ReportAutoCatch(session, hasAutoFish: true);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve }));
+    }
+    #endregion
 }
