@@ -24,6 +24,8 @@ public sealed class PetManager : IDisposable {
 
     public Item Pet => pet.Pet;
     private readonly PetConfig config;
+    // The collection entry this summon made (pet id, rarity), sent once after the first load.
+    private (int Id, short Rarity)? newCollection;
 
     private ItemPet ItemPet => Pet.Pet!;
     public int OwnerId => session.Player.ObjectId;
@@ -42,7 +44,7 @@ public sealed class PetManager : IDisposable {
         // AddOrUpdate Pet Collection
         if (!session.Player.Value.Unlock.Pets.TryGetValue(pet.Value.Id, out short rarity) || rarity < Pet.Rarity) {
             session.Player.Value.Unlock.Pets[pet.Value.Id] = (short) Pet.Rarity;
-            session.Send(PetPacket.AddCollection(pet.Value.Id, (short) Pet.Rarity));
+            newCollection = (pet.Value.Id, (short) Pet.Rarity);
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
@@ -77,8 +79,26 @@ public sealed class PetManager : IDisposable {
         }
     }
 
-    public void Load() {
-        session.Send(PetPacket.Load(OwnerId, ItemPet, config));
+    // summoned: the owner just called the pet (not a field change). KMS2 then sends, after the pet's state,
+    // the new collection entry when the summon made one and the "pet summoned" notice; the client prints the
+    // dismissal line itself (CPetManager::OnPetUnsummoned) but not this one.
+    public void Load(bool summoned = false) {
+        foreach (ByteWriter packet in LoadPackets(OwnerId, ItemPet, config, summoned ? newCollection : null, summoned)) {
+            session.Send(packet);
+        }
+        if (summoned) {
+            newCollection = null;
+        }
+    }
+
+    public static IEnumerable<ByteWriter> LoadPackets(int ownerId, ItemPet pet, PetConfig config, (int Id, short Rarity)? collection, bool summoned) {
+        yield return PetPacket.Load(ownerId, pet, config);
+        if (collection != null) {
+            yield return PetPacket.AddCollection(collection.Value.Id, collection.Value.Rarity);
+        }
+        if (summoned) {
+            yield return NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, StringCode.s_pet_summon_on);
+        }
     }
 
     public void LoadInventory() {

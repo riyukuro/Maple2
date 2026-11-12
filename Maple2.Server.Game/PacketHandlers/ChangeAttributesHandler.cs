@@ -149,7 +149,33 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 }
             }
 
-            // Consume required materials.
+            // Consume required materials. A pet's lacking crystal fragments are paid in meso; nothing is taken
+            // unless everything can be, and KMS2 takes the meso before the materials.
+            long meso = 0;
+            if (item.Type.IsPet) {
+                int index = ingredients.FindIndex(info => info.Tag == ItemTag.CrystalPiece);
+                if (index >= 0) {
+                    long owned = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(fragment => (long) fragment.Amount);
+                    (int fragments, meso) = ItemRemakeRules.PetFragmentFee(ingredients[index].Amount, owned);
+                    if (fragments > 0) {
+                        ingredients[index] = new IngredientInfo(ItemTag.CrystalPiece, fragments);
+                    } else {
+                        ingredients.RemoveAt(index);
+                    }
+                }
+            }
+            bool owns = ingredients.All(info => session.Item.Inventory.Find(info.Tag).Sum(material => (long) material.Amount) >= info.Amount);
+            if (!owns || session.Currency.Meso < meso) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
+                return;
+            }
+            if (lockItem != null && lockItem.Amount < 1) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
+                return;
+            }
+            if (meso > 0) {
+                session.Currency.Meso -= meso;
+            }
             if (!session.Item.Inventory.Consume(ingredients)) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
                 return;

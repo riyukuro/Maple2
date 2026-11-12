@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
@@ -56,4 +57,14 @@ public static class ItemRemakeRules {
     // Ophelia" (70600029) counts each paid change of gear.
     public static ConditionType RemakeCondition(bool isPet) =>
         isPet ? ConditionType.pet_remake_option : ConditionType.item_remake_option;
+
+    public const long PetFragmentMeso = 1000;
+
+    // A pet attribute change is paid in the crystal fragments the player owns and in 1000 meso for each one
+    // lacking (PetRemakeOptionBoard::FillIngredientList, tabcontentspetremakeoption.cpp:646); its other two
+    // materials must be owned. A gear change has no such fee.
+    public static (int Fragments, long Meso) PetFragmentFee(int need, long owned) {
+        int fragments = (int) Math.Clamp(owned, 0, Math.Max(need, 0));
+        return (fragments, (Math.Max(need, 0) - fragments) * PetFragmentMeso);
+    }
 }

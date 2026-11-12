@@ -1040,7 +1040,7 @@ public static class Lua {
         timesChanged = Math.Min(timesChanged, 14);
 
         int crystalCount = 5;
-        int crystalChipCount = (int) Math.Floor(100 * Math.Pow(1.15, timesChanged));
+        int crystalChipCount = (int) (100 * Math.Pow(1.15, timesChanged) + 1e-5); // the client adds 1e-5 before the cast
         int metaCellCount = 100 + 20 * timesChanged;
 
         if (RankExcellent <= grade) {

@@ -225,12 +225,13 @@ public class PetHandler : FieldPacketHandler {
                 return;
             }
 
+            // KMS2 order: the meso, then the fodders.
+            session.Currency.Meso -= cost;
             foreach ((Item fodder, PetFusionRules.FodderKind kind, int amount) in taken) {
                 if (!session.Item.Inventory.Consume(fodder.Uid, kind == PetFusionRules.FodderKind.Pet ? -1 : amount)) {
                     throw new InvalidOperationException($"Failed to consume fusion fodder: {fodder.Uid} after validating");
                 }
             }
-            session.Currency.Meso -= cost;
             session.Item.Bind(pet);
 
             int oldLevel = pet.Pet.Level;
@@ -373,12 +374,13 @@ public class PetHandler : FieldPacketHandler {
                 return;
             }
 
+            // KMS2 order: the meso, then the fodders.
+            session.Currency.Meso -= cost;
             foreach (Item fodder in fodders) {
                 if (!session.Item.Inventory.Consume(fodder.Uid)) {
                     throw new InvalidOperationException($"Failed to consume evolution fodder: {fodder.Uid} after validating");
                 }
             }
-            session.Currency.Meso -= cost;
             pet.Pet.EvolvePoints = (int) Math.Min(total, int.MaxValue);
             session.Send(PetPacket.EvolvePoints(session.Player.ObjectId, pet));
         }
@@ -415,16 +417,16 @@ public class PetHandler : FieldPacketHandler {
                 return;
             }
 
-            // A pet binds to the character that first summons it; KMS2 sends BindItem just before the pet appears.
+            session.Field.Broadcast(FieldPacket.AddPet(fieldPet));
+            // A pet binds to the character that first summons it; KMS2 sends BindItem after the field pet and
+            // before the summon answer.
             if (pet.Metadata.Limit.TransferType == TransferType.BindPet
                 && pet.Transfer?.Bind(session.Player.Value.Character) == true) {
                 session.Send(ItemBindPacket.Bind(pet));
             }
-
-            session.Field.Broadcast(FieldPacket.AddPet(fieldPet));
             session.Field.Broadcast(ProxyObjectPacket.AddPet(fieldPet));
             session.Pet = new PetManager(session, fieldPet);
-            session.Pet.Load();
+            session.Pet.Load(summoned: true);
             // The pet's stats join the owner's totals.
             session.Player.Stats.Refresh();
         }

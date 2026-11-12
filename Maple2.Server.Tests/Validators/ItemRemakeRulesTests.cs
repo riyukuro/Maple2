@@ -101,4 +101,13 @@ public class ItemRemakeRulesTests {
         Assert.That(ItemRemakeRules.RemakeCondition(false), Is.EqualTo(ConditionType.item_remake_option));
         Assert.That(ItemRemakeRules.RemakeCondition(true), Is.EqualTo(ConditionType.pet_remake_option));
     }
+
+    // Owned fragments first, 1000 meso for each one lacking (KMS2 charges whole thousands).
+    [TestCase(396, 500, 396, 0)]
+    [TestCase(396, 396, 396, 0)]
+    [TestCase(396, 69, 69, 327000)]
+    [TestCase(300, 0, 0, 300000)]
+    public void PetFragmentFee(int need, long owned, int fragments, long meso) {
+        Assert.That(ItemRemakeRules.PetFragmentFee(need, owned), Is.EqualTo((fragments, meso)));
+    }
 }
