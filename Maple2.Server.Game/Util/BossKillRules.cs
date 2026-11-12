@@ -12,6 +12,10 @@ public static class BossKillRules {
 
     public static bool FieldBoss(int npcClass) => npcClass == 4;
 
+    // In KMS2 a party member who had hit an elite and died 1.5 s before its death got no kill ExpUp, and still got its
+    // own meso drop. Chosen here: the field boss bonus exp and its notice follow the kill exp (no sample of one).
+    public static bool DealerGetsExp(bool dead) => !dead;
+
     // The bonus is taken from the kill exp before the exp rate (the party buff, gear options).
     public static long FieldBossBonus(long killExp) => killExp <= 0 ? 0 : (long) (killExp * FieldBossBonusRate);
 }

@@ -732,7 +732,10 @@ public class FieldNpc : Actor<Npc> {
 
             DropGlobalLoot(player);
             DropIndividualLoot(player);
-            GiveExp(player);
+            // KMS2: a dealer who is dead when the npc dies still gets its drop box, but no kill exp.
+            if (BossKillRules.DealerGetsExp(player.IsDead)) {
+                GiveExp(player);
+            }
 
             player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
             foreach (string tag in Value.Metadata.Basic.MainTags) {
@@ -749,7 +752,7 @@ public class FieldNpc : Actor<Npc> {
         int npcClass = Value.Metadata.Basic.Class;
         if (BossKillRules.FieldBoss(npcClass)) {
             foreach (int dealerId in DamageDealers.Keys) {
-                if (Field.TryGetPlayer(dealerId, out FieldPlayer? dealer)) {
+                if (Field.TryGetPlayer(dealerId, out FieldPlayer? dealer) && BossKillRules.DealerGetsExp(dealer.IsDead)) {
                     dealer.Session.Send(AppendMessagePacket.AssistBonus(Value.Id));
                 }
             }

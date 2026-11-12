@@ -69,4 +69,12 @@ public class BossKillNoticeTests {
     public void FieldBossBonusIsThirtyPercentRoundedDown(long killExp, long bonus) {
         Assert.That(BossKillRules.FieldBossBonus(killExp), Is.EqualTo(bonus));
     }
+
+    [Test]
+    public void DeadDealerGetsNoKillExp() {
+        Assert.Multiple(() => {
+            Assert.That(BossKillRules.DealerGetsExp(dead: false), Is.True);
+            Assert.That(BossKillRules.DealerGetsExp(dead: true), Is.False);
+        });
+    }
 }
