@@ -560,8 +560,7 @@ public class BeautyHandler : FieldPacketHandler {
     // The fee a running SaleBeautyShop event of the shop leaves, the fee the shop's window shows
     // (EventSaleRules.BeautyShopPrice).
     private static BeautyShopCostMetadata SaleCost(GameSession session, BeautyShop shop, BeautyShopCostMetadata cost) {
-        int rate = EventSaleRules.BeautyShopRate(session.FindEvent(GameEventType.SaleBeautyShop)
-            .Select(gameEvent => gameEvent.Metadata.Data).OfType<SaleBeautyShop>(), shop.Id);
+        int rate = EventSaleRules.BeautyShopRate(session.FindEvent(GameEventType.SaleBeautyShop), shop.Id);
         int price = EventSaleRules.BeautyShopPrice(cost.Price, rate);
         return price == cost.Price ? cost : cost with { Price = price };
     }

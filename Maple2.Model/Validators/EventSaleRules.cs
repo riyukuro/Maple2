@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
@@ -50,7 +51,8 @@ public static class EventSaleRules {
     }
 
     // The rate of the running SaleRemake events for an item class: the higher of the class's rate and the rate of
-    // class 0 (CGameRule::GetRemakeSaleRate). Chosen here: of several events of one class the highest rate.
+    // class 0 (CGameRule::GetRemakeSaleRate). Of several events of one class the client keeps the highest rate
+    // (Unk_GameRuleRateMap::Recompute, gamerule.h:85), so this does too.
     public static int RemakeSaleRate(IEnumerable<SaleRemake> sales, byte saleType) {
         int rate = 0;
         foreach (SaleRemake sale in sales) {
@@ -75,13 +77,22 @@ public static class EventSaleRules {
         return result < 1 ? 1 : result;
     }
 
-    // The rate a shop's beauty fees are lowered by: the highest rate of the running SaleBeautyShop events of the
-    // shop (CGameRule, gamerule.cpp:656: the client keeps two rates per shop, by the row's value3, and takes the
-    // higher; the first only for a level above 0, which every character has).
-    public static int BeautyShopRate(IEnumerable<SaleBeautyShop> sales, int shopId) {
+    // The rate a shop's beauty fees are lowered by. The client keeps one rate per shop in each of two slots, picked
+    // by the row's value3 (gameevent.cpp:799), and a later event of the list overwrites the slot's rate
+    // (CGameRule::SetBeautyShopSaleEvent, gamerule.cpp:638); the flagged slot counts only for a PC room player
+    // (PC::FUN_141658f30, pc.cpp:1823), and the server has none, so a flagged row lowers nothing. Of the running
+    // unflagged events of the shop this is the rate of the last one by start, then by id: the order the event list
+    // is sent in at login.
+    public static int BeautyShopRate(IEnumerable<GameEvent> events, int shopId) {
+        GameEvent? last = null;
         int rate = 0;
-        foreach (SaleBeautyShop sale in sales) {
-            if (sale.ShopId == shopId && sale.Rate > rate) {
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is not SaleBeautyShop sale || sale.Flag || sale.ShopId != shopId) {
+                continue;
+            }
+            if (last == null || gameEvent.StartTime > last.StartTime
+                || gameEvent.StartTime == last.StartTime && gameEvent.Id > last.Id) {
+                last = gameEvent;
                 rate = sale.Rate;
             }
         }

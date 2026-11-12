@@ -27,8 +27,15 @@ public class PetPaymentHandlerTests {
         return metadata with { Property = metadata.Property with { PetId = PetId } };
     }
 
+    // The events the next Login gives the server: the session takes them as it starts.
+    private readonly List<(int Id, SaleRemake Sale, bool Over)> sales = [];
+
     private GameSession Login(long meso, int fragments = 0, int stones = 5, int cells = 100, int pets = 1) {
         test = new TestGameSession();
+        foreach ((int id, SaleRemake sale, bool over) in sales) {
+            test.AddEvent(id, GameEventType.SaleRemake, sale, over ? DateTime.Now.AddDays(-9) : null, over ? DateTime.Now.AddDays(-2) : null);
+        }
+        sales.Clear();
         test.RegisterPet(PetId);
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { PetMaxLevel = 50 });
         test.SetTable(new PetEvolutionTable(new Dictionary<int, PetEvolutionTable.Entry> { [0] = new(0, [10, 10, 10, 10]) }));
@@ -56,6 +63,40 @@ public class PetPaymentHandlerTests {
     private static long Owned(GameSession session, ItemTag tag) => session.Item.Inventory.Find(tag).Sum(item => (long) item.Amount);
 
     private bool Pay(GameSession session) => ChangeAttributesHandler.PayChange(session, pet, ChangeAttributesHandler.GetIngredients(pet), null);
+
+    private bool PayOnSale(GameSession session) => ChangeAttributesHandler.PayChange(session, pet,
+        ChangeAttributesHandler.SaleIngredients(session, pet, ChangeAttributesHandler.GetIngredients(pet)), null);
+
+    // Under a running change of attributes sale the change takes the lowered counts; the constants name no limit,
+    // so the client's 0.5 holds the rate.
+    [TestCase(5000, 3, 100, 50)] // 5 stones: 2.5 cut to 2
+    [TestCase(3000, 2, 80, 30)] // 3.5 cut to 3
+    [TestCase(9000, 3, 100, 50)] // held to the half
+    public void PetChange_UnderASale_TakesTheLoweredCounts(int rate, int stonesLeft, int fragmentsLeft, int cellsLeft) {
+        sales.Add((7001, new SaleRemake(rate, 0), false));
+        GameSession session = Login(meso: 50000, fragments: 150);
+
+        Assert.That(PayOnSale(session), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(50000));
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(stonesLeft));
+        Assert.That(Owned(session, ItemTag.CrystalPiece), Is.EqualTo(fragmentsLeft));
+        Assert.That(Owned(session, ItemTag.MetaCell), Is.EqualTo(cellsLeft));
+    }
+
+    [Test]
+    public void PetChange_TakesTheFullCounts_WhenTheSaleIsOverOrOfAnotherClass() {
+        sales.Add((7001, new SaleRemake(5000, 0), true));
+        sales.Add((7002, new SaleRemake(5000, 1), false));
+        GameSession session = Login(meso: 50000, fragments: 150);
+
+        Assert.That(PayOnSale(session), Is.True);
+
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(0));
+        Assert.That(Owned(session, ItemTag.CrystalPiece), Is.EqualTo(50));
+        Assert.That(Owned(session, ItemTag.MetaCell), Is.EqualTo(0));
+    }
 
     // A rarity 1 pet's first change: 5 stones, 100 fragments, 100 cells.
     [Test]

@@ -462,7 +462,10 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(AttendancePacket.StartedEvents([]));
         // DailyWonder*
         GameEvent.Load();
-        Send(GameEventPacket.Load(server.GetEvents().Where(SendsEvent).ToArray()));
+        // By start, then id: where the client keeps one value per key (a beauty shop's sale rate), the last of the
+        // list stays, and EventSaleRules.BeautyShopRate picks the same one.
+        Send(GameEventPacket.Load(server.GetEvents().Where(SendsEvent)
+            .OrderBy(gameEvent => gameEvent.StartTime).ThenBy(gameEvent => gameEvent.Id).ToArray()));
         Send(BannerListPacket.Load(server.GetSystemBanners()));
         Dungeon.Load();
         Send(InGameRankPacket.Load());

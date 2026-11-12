@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Event;
@@ -183,19 +184,52 @@ public class EventSaleTypesTests {
     [TestCase(10, 8000, 0.5f, 5)] // held to the limit
     [TestCase(3, 3000, 0.5f, 2)] // 2.1 cut
     [TestCase(1, 5000, 0.5f, 1)] // at least 1
-    [TestCase(10, 3000, 0f, 10)] // no limit set: nothing off
+    [TestCase(10, 3000, 0f, 10)] // a limit of 0: nothing off
     [TestCase(10, 0, 0.5f, 10)]
     [TestCase(0, 3000, 0.5f, 0)]
     public void RemakeIngredientCount_TakesTheRateOffUpToTheLimit(int count, int rate, float limit, int expected) {
         Assert.That(EventSaleRules.RemakeIngredientCount(count, rate, limit), Is.EqualTo(expected));
     }
 
+    private static GameEvent ShopSale(int id, int daysAgo, SaleBeautyShop sale) => new(new GameEventMetadata(id,
+        GameEventType.SaleBeautyShop, DateTime.Now.AddDays(-daysAgo), DateTime.Now.AddDays(30), TimeSpan.Zero, TimeSpan.Zero, [],
+        sale, string.Empty, string.Empty, string.Empty, string.Empty));
+
     [Test]
-    public void BeautyShopRate_IsTheHighestOfTheShop() {
-        SaleBeautyShop[] sales = [new(500, 3000, false), new(500, 5000, true), new(501, 10000, false)];
-        Assert.That(EventSaleRules.BeautyShopRate(sales, 500), Is.EqualTo(5000));
-        Assert.That(EventSaleRules.BeautyShopRate(sales, 501), Is.EqualTo(10000));
-        Assert.That(EventSaleRules.BeautyShopRate(sales, 504), Is.EqualTo(0));
+    public void BeautyShopRate_IsTheLastStartedOfTheShop_NotTheHighest() {
+        GameEvent[] events = [
+            ShopSale(7003, 2, new SaleBeautyShop(500, 3000, false)),
+            ShopSale(7001, 5, new SaleBeautyShop(500, 5000, false)),
+            ShopSale(7002, 1, new SaleBeautyShop(501, 10000, false)),
+        ];
+        Assert.That(EventSaleRules.BeautyShopRate(events, 500), Is.EqualTo(3000));
+        Assert.That(EventSaleRules.BeautyShopRate(Enumerable.Reverse(events), 500), Is.EqualTo(3000));
+        Assert.That(EventSaleRules.BeautyShopRate(events, 501), Is.EqualTo(10000));
+        Assert.That(EventSaleRules.BeautyShopRate(events, 504), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void BeautyShopRate_OfOneStart_IsTheHigherId() {
+        DateTime start = DateTime.Now.AddDays(-2);
+        GameEvent At(int id, int rate) => new(new GameEventMetadata(id, GameEventType.SaleBeautyShop, start, DateTime.Now.AddDays(30),
+            TimeSpan.Zero, TimeSpan.Zero, [], new SaleBeautyShop(500, rate, false), string.Empty, string.Empty, string.Empty, string.Empty));
+        Assert.That(EventSaleRules.BeautyShopRate([At(7002, 2000), At(7001, 5000)], 500), Is.EqualTo(2000));
+        Assert.That(EventSaleRules.BeautyShopRate([At(7001, 5000), At(7002, 2000)], 500), Is.EqualTo(2000));
+    }
+
+    [Test]
+    public void BeautyShopRate_LeavesOutAPcRoomRow() {
+        // The flagged slot counts only for a PC room player; there is none.
+        Assert.That(EventSaleRules.BeautyShopRate([ShopSale(7001, 2, new SaleBeautyShop(500, 5000, true))], 500), Is.EqualTo(0));
+        Assert.That(EventSaleRules.BeautyShopRate([
+            ShopSale(7001, 5, new SaleBeautyShop(500, 2000, false)),
+            ShopSale(7002, 2, new SaleBeautyShop(500, 5000, true)),
+        ], 500), Is.EqualTo(2000));
+    }
+
+    [Test]
+    public void IngredientFeeReduceLimit_IsTheClientsHalf_WhenTheConstantsLackIt() {
+        Assert.That(new ConstantsTable().IngredientFeeReduceLimit, Is.EqualTo(0.5f));
     }
 
     [TestCase(1000, 3000, 700)]

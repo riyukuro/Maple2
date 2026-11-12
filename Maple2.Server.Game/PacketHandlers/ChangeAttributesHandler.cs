@@ -223,7 +223,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
 
     // The ingredient counts a running SaleRemake event leaves. The staged item's reply carries the full counts:
     // the client lowers them itself (EventSaleRules.RemakeIngredientCount).
-    private static List<IngredientInfo> SaleIngredients(GameSession session, Item item, List<IngredientInfo> ingredients) {
+    internal static List<IngredientInfo> SaleIngredients(GameSession session, Item item, List<IngredientInfo> ingredients) {
         int rate = EventSaleRules.RemakeSaleRate(session.FindEvent(GameEventType.SaleRemake)
                 .Select(gameEvent => gameEvent.Metadata.Data).OfType<SaleRemake>(),
             EventSaleRules.RemakeSaleType(item.Type.Group, item.Type.Type, item.Type.IsPet));

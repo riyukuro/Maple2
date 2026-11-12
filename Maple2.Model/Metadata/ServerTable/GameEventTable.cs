@@ -410,7 +410,7 @@ public record SaleRemake(
     byte ItemType) : GameEventData;
 
 // The beauty fee sale (GameEventSaleBeautyShop, commonfiles/gameevent.cpp:760): value1 is the beauty shop's id,
-// value2 the rate out of 10000 taken off its fees, value3 the flag that picks the client's first rate slot
+// value2 the rate out of 10000 taken off its fees, value3 the flag of a PC room row, which lowers nothing here
 // (EventSaleRules.BeautyShopRate).
 public record SaleBeautyShop(
     int ShopId,

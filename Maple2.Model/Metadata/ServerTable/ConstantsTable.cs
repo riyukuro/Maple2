@@ -752,7 +752,7 @@ public record ConstantsTable(
     int NameColorDeadDuration = 0,
     int ConstructExpMaxCount = 0,
     float MesoRevivalFeeReduceLimit = 0f,
-    float IngredientFeeReduceLimit = 0f,
+    float IngredientFeeReduceLimit = 0.5f, // the client's value when its table lacks the key
     int StatPointLimit_str = 0,
     int StatPointLimit_dex = 0,
     int StatPointLimit_int = 0,
