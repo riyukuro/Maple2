@@ -2,6 +2,7 @@
 using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
@@ -132,19 +133,23 @@ public class EquipManager {
             }
 
             ConcurrentDictionary<EquipSlot, Item> equips = Tab(kind);
-            if (item.Metadata.SlotNames.Length > 1) { // Two-Handed Weapon, Overall Armor
-                int requiredFreeSlots = 0;
+            // The worn items that come off: the one in the slot and, for a two-handed weapon or an overall, those
+            // in its other slots. The new item's bag slot is free for the first of them, each further one needs a
+            // free slot; without it the bag is full (the client checks no bag space before it asks).
+            var displaced = new HashSet<long>();
+            if (equips.TryGetValue(slot, out Item? worn)) {
+                displaced.Add(worn.Uid);
+            }
+            if (item.Metadata.SlotNames.Length > 1) {
                 foreach (EquipSlot removeSlot in item.Metadata.SlotNames) {
-                    if (equips.ContainsKey(removeSlot)) {
-                        requiredFreeSlots++;
+                    if (equips.TryGetValue(removeSlot, out worn)) {
+                        displaced.Add(worn.Uid);
                     }
                 }
-
-                // +1 because we will have a free slot from the item being equipped.
-                int freeSlots = session.Item.Inventory.FreeSlots(isSkin ? InventoryType.Outfit : InventoryType.Gear) + 1;
-                if (freeSlots <= requiredFreeSlots) {
-                    return false;
-                }
+            }
+            if (displaced.Count > session.Item.Inventory.FreeSlots(isSkin ? InventoryType.Outfit : InventoryType.Gear) + 1) {
+                session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
+                return false;
             }
 
             bool wornFirst = closet && !equips.ContainsKey(slot) && !item.Metadata.SlotNames.Any(equips.ContainsKey);
