@@ -508,12 +508,16 @@ public class AiState {
     private void ProcessNode(SelectNode node) {
         var weightedEntries = new WeightedSet<(Entry, int)>();
 
-        for (int i = 0; i < node.Prob.Length; ++i) {
-            if (!CanEvaluateNode(node.Entries[i])) {
+        int[] npcProbs = actor.Value.Metadata.Skill.Entries.Select(skill => skill.Prob).ToArray();
+        int[] weights = AiSelect.Weights(node.Prob, node.useNpcProb, npcProbs, node.Entries.Length);
+        int count = node.useNpcProb ? weights.Length : Math.Min(node.Prob.Length, weights.Length);
+        for (int i = 0; i < count; ++i) {
+            // Under useNpcProb a weight of 0 is a branch for a skill the npc does not have (or does not use).
+            if ((node.useNpcProb && weights[i] <= 0) || !CanEvaluateNode(node.Entries[i])) {
                 continue;
             }
 
-            weightedEntries.Add((node.Entries[i], i), node.Prob[i]);
+            weightedEntries.Add((node.Entries[i], i), weights[i]);
         }
 
         if (weightedEntries.Count == 0) {

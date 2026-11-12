@@ -102,7 +102,7 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                 ),
                 Skill: new NpcMetadataSkill(
                     Entries: data.skill.ids.Select((skillId, i) =>
-                        new NpcMetadataSkill.Entry(skillId, data.skill.levels[i])).ToArray(),
+                        new NpcMetadataSkill.Entry(skillId, data.skill.levels[i], i < data.skill.probs.Length ? data.skill.probs[i] : 0)).ToArray(),
                     Cooldown: data.skill.coolDown
                 ),
                 Stat: new NpcMetadataStat(Stats: MapStats(data.stat, playedStats.GetValueOrDefault(id)),

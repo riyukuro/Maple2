@@ -45,9 +45,11 @@ public record NpcMetadataSkill(
     NpcMetadataSkill.Entry[] Entries,
     int Cooldown) {
 
+    /// Prob is the npc's own weight for the skill (npc xml skill probs), used by AI select nodes with useNpcProb="1".
     public record Entry(
         int Id,
-        short Level);
+        short Level,
+        int Prob = 0);
 }
 
 public record NpcMetadataBasic(
