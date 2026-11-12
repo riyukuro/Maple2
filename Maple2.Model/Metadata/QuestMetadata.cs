@@ -34,8 +34,8 @@ public record QuestMetadataBasic(
     int[]? CompleteMaps,
     int[]? ProgressMaps,
     bool UseReEntryHiddenMap = false, // the quest's hidden field can be entered again (Quest sub-type 19)
-    // With a played client: its quest table has no such quest (PlayedClientQuests), so the server neither starts,
-    // offers nor sends it.
+                                      // With a played client: its quest table has no such quest (PlayedClientQuests), so the server neither starts,
+                                      // offers nor sends it.
     bool NotInPlayedClient = false,
     // basic repeatable: 0 the quest is done once, 2 again on another day, 3 again from the week's reset day; any
     // other value again at once (CQuestManagerCommon::vfunc_o10_21, questdata.cpp:376).
@@ -49,9 +49,10 @@ public record QuestMetadataBasic(
     // S 0, A 1, B 2, C 3, D 4, anything else 5). The alliance window lists the alliance quests (type 9) of its alliance.
     AllianceType Alliance = AllianceType.AnyFaction,
     int Rank = 5,
-    // basic property holds AvailableCompletionTicket (ParseProperty, questdata.cpp:2801, bit 2) and the feature
-    // FameCompletionTicket is on: the quest in progress may be completed with completion tickets (Quest sub-type 33,
-    // UIAllianceQuestDialog::CanUseCompletionTicket).
+    // basic property holds AvailableCompletionTicket (ParseProperty, questdata.cpp:2801, bit 2): the quest in progress
+    // may be completed with completion tickets (Quest sub-type 33). The client also asks its feature
+    // FameCompletionTicket (UIAllianceQuestDialog::CanUseCompletionTicket), in its own region's column, which need not
+    // be the server's LOCALE; the server leaves that test to the client.
     bool CompletionTicket = false);
 
 public record QuestMetadataRequire(
