@@ -35,11 +35,13 @@ public class RankDuelQueueTests {
         Assert.That(second.Id, Is.Not.EqualTo(first.Id));
     }
 
+    // Queued already: Queued (the client's state 1 is right); in a match: Busy.
     [Test]
     public void QueuedOrMatched_IsBusy() {
         var queue = new RankDuelQueue();
         queue.Register(1, 0, out _);
-        Assert.That(queue.Register(1, 0, out _), Is.EqualTo(RankDuelError.Busy));
+        Assert.That(queue.Register(1, 0, out _), Is.EqualTo(RankDuelError.Queued));
+        Assert.That(queue.IsQueued(1), Is.True);
         queue.Register(2, 0, out _);
         Assert.That(queue.Register(2, 0, out _), Is.EqualTo(RankDuelError.Busy));
         Assert.That(queue.Unregister(2), Is.EqualTo(RankDuelError.NotQueued));
@@ -98,5 +100,22 @@ public class RankDuelQueueTests {
         Assert.That(queue.MatchOf(1), Is.Null);
         Assert.That(queue.Expire(RankDuelQueue.LifetimeMs).Select(match => match.Id), Is.EqualTo(new[] { joined.Id }));
         Assert.That(queue.MatchOf(3), Is.Null);
+    }
+
+    // A channel that went down ends the matches whose field it held, and only those.
+    [Test]
+    public void EndChannel_EndsItsMatches() {
+        var queue = new RankDuelQueue();
+        queue.Register(1, 0, out _);
+        queue.Register(2, 0, out RankDuelMatch? onOne);
+        queue.SetRoom(onOne!.Id, 1, 65010001, 10);
+        queue.Register(3, 0, out _);
+        queue.Register(4, 0, out RankDuelMatch? onTwo);
+        queue.SetRoom(onTwo!.Id, 2, 65010001, 11);
+
+        Assert.That(queue.EndChannel(1).Select(match => match.Id), Is.EqualTo(new[] { onOne.Id }));
+        Assert.That(queue.MatchOf(1), Is.Null);
+        Assert.That(queue.MatchOf(3), Is.SameAs(onTwo));
+        Assert.That(queue.Register(1, 0, out _), Is.EqualTo(RankDuelError.none));
     }
 }

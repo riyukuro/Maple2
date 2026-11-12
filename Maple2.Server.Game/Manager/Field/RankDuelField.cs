@@ -40,6 +40,17 @@ public sealed class RankDuelField {
 
     public bool IsDuelist(long characterId) => state.IsDuelist(characterId);
 
+    // Whether the match field still takes its duelists: not once it has sent them out.
+    public bool Runs => IsRunning(Phase);
+    public static bool IsRunning(RankDuelPhase phase) => phase != RankDuelPhase.Closed;
+
+    // Whether a character may leave its field for the rank duel (register or join). Chosen here (the client only
+    // checks death itself): not while dead, not from a dungeon or another instanced room (a home is allowed), not
+    // from a rank duel field.
+    public static bool CanLeaveFor(bool dead, bool dungeon, bool instanced, bool rankDuel) {
+        return !dead && !dungeon && !instanced && !rankDuel;
+    }
+
     public bool Hostile(FieldPlayer caster, FieldPlayer target) {
         lock (mutex) {
             return state.Hostile(caster.Value.Character.Id, target.Value.Character.Id);
@@ -93,6 +104,9 @@ public sealed class RankDuelField {
                 case RankDuelEventType.Exit:
                     SendOut();
                     break;
+                case RankDuelEventType.Dismiss:
+                    Dismiss(@event.Character);
+                    break;
             }
         }
     }
@@ -137,6 +151,17 @@ public sealed class RankDuelField {
                 onEnd(matchId);
             } catch (Exception ex) {
                 logger.Warning(ex, "Rank duel match {MatchId}: the end was not sent to the world", matchId);
+            }
+        });
+    }
+
+    // A duelist that came after the result: its client goes back to the idle state (Pvp 15) and it goes back to its
+    // return field once its entry is done.
+    private void Dismiss(long characterId) {
+        Send(characterId, PvpPacket.RankDuelUnregistered());
+        field.Scheduler.Schedule(() => {
+            if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                player.Session.ReturnField();
             }
         });
     }

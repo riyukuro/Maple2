@@ -28,7 +28,9 @@ public sealed class PvpLookup : IDisposable {
     private readonly Timer? timer;
 
     public PvpLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup)
-        : this(ChannelField(channelClients), ChannelNotify(channelClients, playerLookup), () => Environment.TickCount64, true) { }
+        : this(ChannelField(channelClients), ChannelNotify(channelClients, playerLookup), () => Environment.TickCount64, true) {
+        channelClients.ChannelInactive += EndChannel;
+    }
 
     public PvpLookup(MakeField makeField, Notify notify, Func<long> tick, bool expireTimer = false) {
         this.makeField = makeField;
@@ -98,6 +100,19 @@ public sealed class PvpLookup : IDisposable {
     public RankDuelMatch? MatchOf(long characterId) {
         lock (mutex) {
             return queue.MatchOf(characterId);
+        }
+    }
+
+    // A channel went down: its match fields are gone, so their matches end now (else both duelists stay busy until
+    // the lifetime runs out). The duelists that had not joined are told.
+    public void EndChannel(int channel) {
+        List<RankDuelMatch> ended;
+        lock (mutex) {
+            ended = queue.EndChannel(channel);
+        }
+        foreach (RankDuelMatch match in ended) {
+            logger.Information("Rank duel match {MatchId} ended: channel {Channel} went down", match.Id, channel);
+            TellAbsent(match);
         }
     }
 

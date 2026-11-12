@@ -108,6 +108,12 @@ public static class FieldEntryRules {
         return type is MigrationType.Dungeon or MigrationType.PvpMatch && !roomRuns;
     }
 
+    // Whether a room asked for by id that does not run is made new: not on a rank duel map, whose rooms are made
+    // only for a match.
+    public static bool MakesMissingRoom(int mapId, IReadOnlyCollection<int> rankDuelMaps) {
+        return !rankDuelMaps.Contains(mapId);
+    }
+
     // A rank duel map entered without a match room (a login on the map saved when the character logged out in
     // its match): the character goes to its return field.
     public static bool RankDuelMapWithoutMatch(int mapId, IReadOnlyCollection<int> rankDuelMaps) {

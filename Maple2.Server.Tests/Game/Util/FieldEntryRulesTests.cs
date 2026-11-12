@@ -120,6 +120,29 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(2000062, RankDuelField.Maps), Is.False);
     }
 
+    // A rank duel room that is gone is not made again as a plain field; another map's room is.
+    [Test]
+    public void MissingRoom_NotMadeOnARankDuelMap() {
+        Assert.That(FieldEntryRules.MakesMissingRoom(65010004, RankDuelField.Maps), Is.False);
+        Assert.That(FieldEntryRules.MakesMissingRoom(2000062, RankDuelField.Maps), Is.True);
+    }
+
+    // A rank duel field takes its duelists until it has sent them out.
+    [Test]
+    public void RankDuelField_RunsUntilClosed() {
+        Assert.That(RankDuelField.IsRunning(Maple2.Model.Game.Pvp.RankDuelPhase.Ended), Is.True);
+        Assert.That(RankDuelField.IsRunning(Maple2.Model.Game.Pvp.RankDuelPhase.Closed), Is.False);
+    }
+
+    [Test]
+    public void RankDuel_LeavesOnlyFromAPlainField() {
+        Assert.That(RankDuelField.CanLeaveFor(dead: false, dungeon: false, instanced: false, rankDuel: false), Is.True);
+        Assert.That(RankDuelField.CanLeaveFor(dead: true, dungeon: false, instanced: false, rankDuel: false), Is.False);
+        Assert.That(RankDuelField.CanLeaveFor(dead: false, dungeon: true, instanced: false, rankDuel: false), Is.False);
+        Assert.That(RankDuelField.CanLeaveFor(dead: false, dungeon: false, instanced: true, rankDuel: false), Is.False);
+        Assert.That(RankDuelField.CanLeaveFor(dead: false, dungeon: false, instanced: false, rankDuel: true), Is.False);
+    }
+
     // A session whose character was never loaded (an arrival with a used token) has an empty log name
     // instead of a null reference.
     [Test]

@@ -1,10 +1,13 @@
 ﻿using System.Net;
 using Grpc.Core;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Pvp;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -67,11 +70,26 @@ public class PvpHandler : FieldPacketHandler {
             session.Send(PvpPacket.RankDuelInArenaField());
             return;
         }
+        if (!CanLeave(session)) {
+            session.Send(PvpPacket.RankDuelMatchFailed());
+            return;
+        }
 
         session.Send(PvpPacket.RankDuelRegistered());
-        if (Request(session, new PvpRequest { RequesterId = session.CharacterId, Register = new PvpRequest.Types.Register() })?.Error is not (int) RankDuelError.none) {
+        // Queued already: the World holds the character queued, as state 1 now says. In a match already, or no
+        // answer: state 0 with the failed box.
+        int? error = Request(session, new PvpRequest { RequesterId = session.CharacterId, Register = new PvpRequest.Types.Register() })?.Error;
+        if (error is not ((int) RankDuelError.none or (int) RankDuelError.Queued)) {
             session.Send(PvpPacket.RankDuelMatchFailed());
         }
+    }
+
+    // RankDuelField.CanLeaveFor for the session's player and field.
+    private static bool CanLeave(GameSession session) {
+        InstanceFieldMetadata? instance = session.Field?.FieldInstance;
+        return RankDuelField.CanLeaveFor(session.Player.IsDead, session.Field is DungeonFieldManager,
+            instance?.Type is not (null or InstanceType.none or InstanceType.ugcMap),
+            session.Field?.RankDuel != null);
     }
 
     private static void HandleRankDuelUnregister(GameSession session) {
@@ -82,6 +100,12 @@ public class PvpHandler : FieldPacketHandler {
     // The match-found box's button: the character moves into the match field, on the channel that holds it.
     private static void HandleRankDuelJoin(GameSession session) {
         if (session.Field?.RankDuel != null) {
+            return;
+        }
+        // A join the server refuses: the client leaves its state 2 with the failed box; the match counts the
+        // character as not come.
+        if (!CanLeave(session)) {
+            session.Send(PvpPacket.RankDuelMatchFailed());
             return;
         }
         PvpResponse? response = Request(session, new PvpRequest { RequesterId = session.CharacterId, Join = new PvpRequest.Types.Join() });
@@ -111,12 +135,16 @@ public class PvpHandler : FieldPacketHandler {
             });
             if (!PlayerWarpUtil.TryEndpoint(migrate.IpAddress, migrate.Port, out IPEndPoint? endpoint)) {
                 session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                session.Send(PvpPacket.RankDuelMatchFailed());
                 return;
             }
             session.Send(MigrationPacket.GameToGame(endpoint, migrate.Token, response.MapId));
             session.State = Maple2.Model.Enum.SessionState.ChangeMap;
         } catch (RpcException) {
+            // The World counts the character as joined (it is not told again at the end): its client goes back to
+            // state 0 here.
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+            session.Send(PvpPacket.RankDuelMatchFailed());
             return;
         }
         session.Disconnect();

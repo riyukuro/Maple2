@@ -114,13 +114,32 @@ public class RankDuelMatchStateTests {
             Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.Result, RankDuelEnd.Void) }));
     }
 
-    // The first one in leaves before the other comes: the other wins when it comes too late to fight.
+    // The first one in leaves before the other comes: the other wins, and when it comes it is sent out.
     [Test]
     public void LeavingWhileWaiting_Loses() {
         var state = new RankDuelMatchState(A, B, 0);
         state.Enter(A, 0);
         Assert.That(state.Leave(A, 10), Is.EqualTo(new List<RankDuelEvent> { Won(B, A) }));
-        Assert.That(state.Enter(B, 20), Is.Empty);
+        Assert.That(state.Enter(B, 20), Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.Dismiss, Character: B) }));
         Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Ended));
+    }
+
+    // A duelist that comes after the result (a late join, a slow load) is sent out at once: after the result and
+    // after the exit.
+    [Test]
+    public void ArrivalAfterTheResult_IsDismissed() {
+        var state = new RankDuelMatchState(A, B, 0);
+        state.Enter(B, 0);
+        state.Update(RankDuelMatchState.JoinMs);
+        Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Ended));
+        Assert.That(state.Enter(A, RankDuelMatchState.JoinMs + 1),
+            Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.Dismiss, Character: A) }));
+        Assert.That(state.IsPresent(A), Is.False);
+
+        state.Update(RankDuelMatchState.JoinMs + RankDuelMatchState.ResultMs);
+        Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Closed));
+        Assert.That(state.Enter(A, RankDuelMatchState.JoinMs + RankDuelMatchState.ResultMs + 2000),
+            Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.Dismiss, Character: A) }));
+        Assert.That(state.Update(RankDuelMatchState.JoinMs + 10 * RankDuelMatchState.ResultMs), Is.Empty);
     }
 }

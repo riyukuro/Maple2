@@ -3,12 +3,14 @@
 // The World's answer to a rank duel request (PvpResponse.error).
 public enum RankDuelError {
     none = 0,
-    // The character is queued or in a match already.
+    // The character is in a match already.
     Busy = 1,
     // An unregister from a character that is not queued.
     NotQueued = 2,
     // A join with no match, or with a match whose field is not made yet.
     NoMatch = 3,
+    // A register from a character that is queued already: it stays queued.
+    Queued = 4,
 }
 
 // One match of two characters. MapId and RoomId are set once the match field is made; Joined holds the
@@ -57,7 +59,10 @@ public sealed class RankDuelQueue {
     // (paired), whose field the caller then makes (SetRoom) or gives up (Cancel).
     public RankDuelError Register(long characterId, long tick, out RankDuelMatch? paired) {
         paired = null;
-        if (IsQueued(characterId) || matchOf.ContainsKey(characterId)) {
+        if (IsQueued(characterId)) {
+            return RankDuelError.Queued;
+        }
+        if (matchOf.ContainsKey(characterId)) {
             return RankDuelError.Busy;
         }
 
@@ -113,6 +118,15 @@ public sealed class RankDuelQueue {
         matchOf.Remove(match.First);
         matchOf.Remove(match.Second);
         return match;
+    }
+
+    // Ends the matches whose field is on a channel that went down: their End never comes.
+    public List<RankDuelMatch> EndChannel(int channel) {
+        List<RankDuelMatch> ended = matches.Values.Where(match => match.Ready && match.Channel == channel).ToList();
+        foreach (RankDuelMatch match in ended) {
+            End(match.Id);
+        }
+        return ended;
     }
 
     // The matches to end at this tick: a made match that nobody joined within NoShowMs, or any match older

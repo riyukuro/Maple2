@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Game.Pvp;
@@ -34,7 +34,41 @@ public class PvpHandlerTests {
         Assert.That(test.World.PvpRequests.Single().RequesterId, Is.EqualTo(test.CharacterId));
     }
 
-    // A refused register (queued or in a match already) takes the state back to 0 with the matching failed box.
+    // Queued already: the World keeps the character queued, so state 1 stays (no failed box).
+    [Test]
+    public void RankDuelRegister_QueuedAlready_StaysQueued() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.Register] = new PvpResponse { Error = (int) RankDuelError.Queued };
+        Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "0E" }));
+    }
+
+    // A dead player is refused before the World is asked: the failed box, state 0.
+    [TestCase("0E")]
+    [TestCase("10")]
+    public void RankDuel_Dead_IsRefused(string request) {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        typeof(Maple2.Server.Game.Model.FieldPlayer)
+            .GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session.Player, true);
+        Assert.That(Send(test, session, request), Is.EqualTo(new[] { "B600" + "10" + "00" }));
+        Assert.That(test.World.PvpRequests, Is.Empty);
+        Assert.That(test.World.Moves, Is.Empty);
+    }
+
+    // The move into the match field fails after the World's join: the client leaves state 2 (failed box).
+    [Test]
+    public void RankDuelJoin_MoveFails_GetsTheFailedMatch() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
+        test.World.MoveAddress = "";
+        List<string> sent = Send(test, session, "10");
+        Assert.That(sent.Last(), Is.EqualTo("B600" + "10" + "00"));
+    }
+
+    // A refused register (in a match already) takes the state back to 0 with the matching failed box.
     [Test]
     public void RankDuelRegister_Refused_GetsTheFailedMatch() {
         var test = new TestGameSession();

@@ -265,7 +265,7 @@ public partial class FieldManager {
 
         // Whether the rank duel field of this room still runs on this channel. Never creates a field.
         public bool HasRankDuel(int roomId) {
-            return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && field.RankDuel != null && !field.Disposed);
+            return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && field.RankDuel is { Runs: true } && !field.Disposed);
         }
 
         public bool HasDungeon(int roomId) {
@@ -467,6 +467,11 @@ public partial class FieldManager {
                 FieldManager? foundField = FindRoom();
                 if (foundField != null) {
                     return foundField;
+                }
+                // A rank duel room that is gone (disposed since the arrival checked it) is not made again as a
+                // plain field: the arrival fails and takes its fallback field.
+                if (!FieldEntryRules.MakesMissingRoom(mapId, RankDuelField.Maps)) {
+                    return null;
                 }
             }
 

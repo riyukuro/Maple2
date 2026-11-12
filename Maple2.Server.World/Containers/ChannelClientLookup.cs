@@ -242,8 +242,16 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         return GetEnumerator();
     }
 
+    // A channel that became inactive (its game server is gone).
+    public event Action<int>? ChannelInactive;
+
     private void Inactive(Channel channel) {
         channel.Status = ChannelStatus.Inactive;
+        try {
+            ChannelInactive?.Invoke(channel.Id);
+        } catch (Exception ex) {
+            logger.Warning(ex, "Channel {Channel} inactive handler failed", channel.Id);
+        }
         UpdateAllPlayersToOffline(channel.Id);
         UpdateChannels(channel.Id);
     }

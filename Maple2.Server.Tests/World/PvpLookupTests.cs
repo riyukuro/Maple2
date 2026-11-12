@@ -90,4 +90,19 @@ public class PvpLookupTests {
         lookup.Register(2);
         Assert.That(made, Is.Empty);
     }
+
+    // The match channel went down: the match ends at once, and who never joined is told.
+    [Test]
+    public void ChannelDown_EndsTheMatch() {
+        PvpLookup lookup = Lookup();
+        lookup.Register(1);
+        lookup.Register(2);
+        lookup.LastStep.Wait();
+        notices.Clear();
+        lookup.Join(1, out _, out _, out _);
+        lookup.EndChannel(1);
+        Assert.That(notices, Is.EqualTo(new[] { (2L, false) }));
+        Assert.That(lookup.MatchOf(1), Is.Null);
+        Assert.That(lookup.Register(2), Is.EqualTo(RankDuelError.none));
+    }
 }

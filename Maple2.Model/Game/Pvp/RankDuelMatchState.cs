@@ -27,11 +27,13 @@ public enum RankDuelEventType {
     Fight,
     Result,
     Exit,
+    // One duelist came after the result: it is told the duel is over and sent out at once.
+    Dismiss,
 }
 
-// What the field must do after a call: send the round intro or the fight start, send the result, or send the
-// duelists out. Winner and Loser are set for a Result of RankDuelEnd.Win.
-public readonly record struct RankDuelEvent(RankDuelEventType Type, RankDuelEnd End = RankDuelEnd.Win, long Winner = 0, long Loser = 0);
+// What the field must do after a call: send the round intro or the fight start, send the result, send the
+// duelists out, or send one late duelist out (Character). Winner and Loser are set for a Result of RankDuelEnd.Win.
+public readonly record struct RankDuelEvent(RankDuelEventType Type, RankDuelEnd End = RankDuelEnd.Win, long Winner = 0, long Loser = 0, long Character = 0);
 
 // The state of one rank duel match field: one round between two characters. Not thread safe; times are
 // ticks in milliseconds passed in by the caller.
@@ -78,6 +80,11 @@ public sealed class RankDuelMatchState {
     public List<RankDuelEvent> Enter(long characterId, long tick) {
         var events = new List<RankDuelEvent>();
         if (!IsDuelist(characterId)) {
+            return events;
+        }
+        // After the result (a late join, a slow load) there is nothing left to play: the field sends it out.
+        if (Phase is RankDuelPhase.Ended or RankDuelPhase.Closed) {
+            events.Add(new RankDuelEvent(RankDuelEventType.Dismiss, Character: characterId));
             return events;
         }
         present.Add(characterId);
