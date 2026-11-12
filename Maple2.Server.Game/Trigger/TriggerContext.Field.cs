@@ -381,8 +381,13 @@ public partial class TriggerContext {
     public void AddBuff(int[] boxIds, int buffId, int level, bool ignorePlayer, bool isSkillSet, string feature) {
         DebugLog("[AddBuff] boxIds:{Ids}, buffId:{BuffId}, level:{Level}, ignorePlayer:{ignorePlayer}, isSkillSet:{Arg5}, feature:{Feature}",
             string.Join(", ", boxIds), buffId, level, ignorePlayer, isSkillSet, feature);
+        // The skill-set flag (arg5) is not applied. The KR client takes a skill set only from an additional effect's
+        // own level data (its skill set id: AddSkillSet / ApplySkillSet, additionalcli_2.cpp), and the ids the scripts
+        // pass with the flag are mostly no skill set of table/skillset.xml: 70000040 (12 uses, the rank duel and Red
+        // Arena floors every second) would block the job skills (its skillUseDisable mask 62) of everyone fighting
+        // there. Kept quiet (Debug) since the arenas run it once a second.
         if (isSkillSet) {
-            logger.Error("[AddBuff] SkillSets not implemented...");
+            logger.Debug("[AddBuff] skill set {BuffId} on boxes {Ids} not applied", buffId, string.Join(", ", boxIds));
             return;
         }
 

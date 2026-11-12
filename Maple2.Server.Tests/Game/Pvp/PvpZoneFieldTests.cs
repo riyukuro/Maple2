@@ -187,6 +187,20 @@ public class PvpZoneFieldTests {
         Assert.That(arena.Tests[2].Session.Item.Inventory.Find(ArenaItem).Any(), Is.False);
     }
 
+    // The Red Arena's script (65000001 enter.xml) sets the zone on box 102, the stage, while everyone waits on the entry
+    // grate (box 101): the participants are the field's players (box 0), so two players get a face-off; before, the
+    // empty stage ended the zone at once with no champion.
+    [Test]
+    public void RedArena_ParticipantsFromTheField_NotTheStage() {
+        Arena arena = Start(field => field.StartPvpZone(1, 102, 0, 120, 0, [],
+            box => box == 0 ? field.Players.Values.Take(2) : Enumerable.Empty<FieldPlayer>()));
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        Assert.That(arena.Field.PvpZone.Ended, Is.False);
+        arena.Field.PvpZone.Update(now + 10 + Maple2.Model.Game.Pvp.RedArenaState.PrepareMs);
+        Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(1)), Is.True);
+    }
+
     // An arena field whose match characters all left before its zone ended tells the world the match is over.
     [Test]
     public void Arena_AllLeftBeforeTheEnd_EndsTheMatch() {

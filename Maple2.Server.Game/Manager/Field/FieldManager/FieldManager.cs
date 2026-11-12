@@ -115,7 +115,11 @@ public partial class FieldManager : IField {
         Action<IReadOnlyList<long>, int> onEnd = (ranking, winners) => arena?.ZoneEnded(ranking, winners);
         long tick = Environment.TickCount64;
         IPvpZoneField? zone = type switch {
-            1 => new RedArenaZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick),
+            // The Red Arena's box is its stage (65000001: box 102 around portal 1), empty when the zone starts: the
+            // participants wait on the entry grate (box 101). They are every player in the field, and each face-off's
+            // fighters are moved onto the stage.
+            1 => new RedArenaZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(0), onEnd, tick,
+                stage: StagePosition(boxId)),
             2 => new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick),
             3 => new TeamZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, boxIds, playersInBox, onEnd, tick),
             _ => null,
@@ -125,6 +129,17 @@ public partial class FieldManager : IField {
         }
         PvpZone = zone;
         return true;
+    }
+
+    // A zone box's stage: the map's portal inside the box (its position and rotation), else the box's center; null
+    // without the box.
+    private (Vector3 Position, Vector3 Rotation)? StagePosition(int boxId) {
+        if (TriggerObjects?.Boxes.TryGetValue(boxId, out TriggerBox? box) != true || box == null) {
+            return null;
+        }
+        FieldPortal? portal = fieldPortals?.Values.Where(entry => box.Contains(entry.Value.Position))
+            .OrderBy(entry => entry.Value.Id).FirstOrDefault();
+        return portal != null ? (portal.Value.Position, portal.Value.Rotation) : (box.Metadata.Position, Vector3.Zero);
     }
 
     // Whether a player's hostile skills reach another player here: the rank duel's fight or the PvP zone's.

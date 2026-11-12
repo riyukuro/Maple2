@@ -1,3 +1,4 @@
+using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
@@ -25,6 +26,9 @@ public sealed class RedArenaZoneField : IPvpZoneField {
     private readonly int additionalEffectId;
     private readonly Func<IEnumerable<FieldPlayer>> playersInBox;
     private readonly Action<IReadOnlyList<long>, int>? onEnd;
+    private readonly (Vector3 Position, Vector3 Rotation)? stage;
+    // Chosen here: the two fighters stand StageOffset either side of the stage's spot.
+    private const float StageOffset = 150f;
 
     public int BoxId => state.BoxId;
     public bool Ended {
@@ -34,8 +38,10 @@ public sealed class RedArenaZoneField : IPvpZoneField {
     }
 
     public RedArenaZoneField(FieldManager field, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId,
-                             Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick, Random? random = null) {
+                             Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick, Random? random = null,
+                             (Vector3 Position, Vector3 Rotation)? stage = null) {
         this.field = field;
+        this.stage = stage;
         this.additionalEffectId = additionalEffectId;
         this.playersInBox = playersInBox;
         this.onEnd = onEnd;
@@ -77,6 +83,8 @@ public sealed class RedArenaZoneField : IPvpZoneField {
             switch (@event.Type) {
                 case RedArenaEventType.Prepare:
                     field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(PrepareText), TextDurationMs));
+                    ToStage(@event.First, -StageOffset);
+                    ToStage(@event.Second, StageOffset);
                     break;
                 case RedArenaEventType.Start:
                     field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(StartText), TextDurationMs));
@@ -100,6 +108,14 @@ public sealed class RedArenaZoneField : IPvpZoneField {
                             field.Broadcast(PvpPacket.Point(fighter.ObjectId, 0, 0, 0));
                         }
                     }
+                    // A face-off the time ended (no winner): both fighters leave the stage for a player spawn. A fighter
+                    // that fell revives there anyway; one that left is gone.
+                    foreach (long characterId in @event.Winner == 0 ? new[] { @event.First, @event.Second } : []) {
+                        if (field.TryGetPlayerById(characterId, out FieldPlayer? loser) && !loser.IsDead
+                            && field.TryGetPlayerSpawn(-1, out FieldPlayerSpawnPoint? spawn)) {
+                            loser.MoveToPosition(spawn.Position, spawn.Rotation);
+                        }
+                    }
                     if (@event.Winner != 0 && field.TryGetPlayerById(@event.Winner, out FieldPlayer? winner)) {
                         // s_dualwin1 to 8 by the win count; 9 is kept for the end with no challenger left.
                         field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(Math.Min(@event.Wins, 8), winner.Value.Character.Name), TextDurationMs));
@@ -110,6 +126,15 @@ public sealed class RedArenaZoneField : IPvpZoneField {
                     break;
             }
         }
+    }
+
+    // A picked fighter goes onto the stage (MoveByPortal), offset along X; the champion is moved too, so it faces the
+    // challenger from its own side.
+    private void ToStage(long characterId, float offset) {
+        if (stage is not { } spot || !field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
+            return;
+        }
+        fighter.MoveToPosition(spot.Position + new Vector3(offset, 0, 0), spot.Rotation);
     }
 
     // The observer dialog (Trigger dialog kind 2) for the field's other players: both fighters' health and wins (the
