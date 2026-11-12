@@ -27,4 +27,5 @@ public static class ServerTableNames {
     public const string CONSTANTS = "constants.xml";
     public const string ROOM_RANDOM = "room_random.xml";
     public const string NPC_STAT_FACTOR = "npcStatFactorByPlayerCount.xml";
+    public const string MONSTER_EXP = "monsterExpTable.xml";
 }

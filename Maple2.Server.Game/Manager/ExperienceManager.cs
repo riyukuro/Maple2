@@ -151,12 +151,14 @@ public sealed class ExperienceManager {
         LevelUp();
     }
 
-    public void AddMobExp(int moblevel, float modifier = 1f, long additionalExp = 0) {
-        if (!session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, out IReadOnlyDictionary<int, long>? expBase)) {
-            return;
-        }
-
-        if (!expBase.TryGetValue(moblevel, out long expValue)) {
+    // The exp of a kill: the monster exp table's column for the npc's class (elite, boss, dungeon elite or boss, else
+    // common) at its level; a level the table lacks falls back to the exp base table 2, its common column.
+    public void AddMobExp(int moblevel, int npcClass = 1, float modifier = 1f, long additionalExp = 0) {
+        long expValue;
+        if (session.ServerTableMetadata.MonsterExpTable.Entries.TryGetValue(moblevel, out MonsterExpMetadata? row)) {
+            expValue = row.ForClass(npcClass);
+        } else if (!session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, out IReadOnlyDictionary<int, long>? expBase)
+                   || !expBase.TryGetValue(moblevel, out expValue)) {
             return;
         }
 

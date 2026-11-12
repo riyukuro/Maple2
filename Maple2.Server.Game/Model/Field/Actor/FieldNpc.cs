@@ -759,7 +759,7 @@ public class FieldNpc : Actor<Npc> {
 
         if (Value.Metadata.Basic.CustomExp == -1) {
             // TODO: this is temporary. We need to know how to split exp between players.
-            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, modifier: (float) Math.Max(0d, 1d + expRate));
+            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class, modifier: (float) Math.Max(0d, 1d + expRate));
             return;
         }
 

@@ -162,6 +162,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.NPC_STAT_FACTOR,
             Table = ParseNpcStatFactor(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.MONSTER_EXP,
+            Table = ParseMonsterExp(),
+        };
 
     }
 
@@ -2515,6 +2519,31 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
         Console.WriteLine($"npcStatFactorByPlayerCount: {table.Entries.Values.Sum(classes => classes.Values.Sum(counts => counts.Count))} rows after the feature filter");
         return table;
+    }
+
+    private MonsterExpTable ParseMonsterExp() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/monsterExpTable.xml", StringComparison.OrdinalIgnoreCase));
+        MonsterExpTable table = entry == null ? new MonsterExpTable(new Dictionary<int, MonsterExpMetadata>())
+            : MapMonsterExp(xmlReader.GetXmlDocument(entry));
+        Console.WriteLine($"monsterExpTable: {table.Entries.Count} levels");
+        return table;
+    }
+
+    // A row without a level is skipped, an empty column is 0; a later row for the same level replaces an earlier one.
+    public static MonsterExpTable MapMonsterExp(XmlDocument document) {
+        var results = new Dictionary<int, MonsterExpMetadata>();
+        foreach (XmlNode node in document.SelectNodes("ms2/exp")!) {
+            if (node is not XmlElement row || !int.TryParse(row.GetAttribute("level"), out int level)) continue;
+            long Column(string name) => long.TryParse(row.GetAttribute(name), out long value) ? value : 0;
+            results[level] = new MonsterExpMetadata(
+                Common: Column("common"),
+                Elite: Column("elite"),
+                Boss: Column("boss"),
+                DungeonElite: Column("dungeonElite"),
+                DungeonBoss: Column("dungeonBoss"));
+        }
+        return new MonsterExpTable(results);
     }
 
     // Rows with an empty factorID, class or playerCount (the file ends with a few) are skipped; keep says whether a
