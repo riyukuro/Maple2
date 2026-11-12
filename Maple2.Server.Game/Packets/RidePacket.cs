@@ -74,10 +74,11 @@ public static class RidePacket {
         return pWriter;
     }
 
-    public static ByteWriter ChangeShared() {
+    // The client clears the owner's passengers (and resets a local passenger's camera).
+    public static ByteWriter ChangeShared(int ownerId) {
         var pWriter = Packet.Of(SendOp.ResponseRide);
         pWriter.Write<Command>(Command.ChangeShared);
-        pWriter.WriteInt();
+        pWriter.WriteInt(ownerId);
 
         return pWriter;
     }

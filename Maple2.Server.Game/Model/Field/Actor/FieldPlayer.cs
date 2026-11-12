@@ -501,6 +501,9 @@ public class FieldPlayer : Actor<Player> {
         Session.HeldCube = null;
         InBattle = false;
         Tombstone = new Tombstone(this, Session.Config.DeathCount + 1);
+        if (RideShare.DismountsOnDeath(Session.Ride.RideType)) {
+            Session.Ride.Dismount(RideOffType.Dead);
+        }
         bool darkTomb = Session.Field.Metadata.Property.OnlyDarkTomb || Session.Config.DeathCount > 0;
         Field.Broadcast(DeadUserPacket.Dead(ObjectId, darkTomb));
 

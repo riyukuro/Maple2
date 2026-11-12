@@ -3,8 +3,10 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -74,6 +76,9 @@ public sealed class RideManager {
             return;
         }
 
+        if (session.Field != null && Ride.OwnerId == session.Player.ObjectId) {
+            ClearPassengers(session.Field, Ride);
+        }
         session.Field?.Broadcast(RidePacket.Stop(Ride.OwnerId, rideOffAction));
 
         Ride ride = Ride;
@@ -86,5 +91,57 @@ public sealed class RideManager {
             session.Stats.Refresh();
         }
         session.Config.LoadKeyTable();
+    }
+
+    /// <summary>
+    /// The player left the field. An owner keeps the mount but its passengers stay behind; a passenger gets off.
+    /// </summary>
+    public void LeaveField(FieldManager field) {
+        if (Ride == null) {
+            return;
+        }
+
+        if (Ride.OwnerId == session.Player.ObjectId) {
+            ClearPassengers(field, Ride);
+            return;
+        }
+
+        int seat = Array.IndexOf(Ride.Passengers, session.Player.ObjectId);
+        if (seat >= 0) {
+            Ride.Passengers[seat] = 0;
+            field.Broadcast(RidePacket.Leave(Ride.OwnerId, session.Player.ObjectId));
+        }
+        Ride = null;
+    }
+
+    /// <summary>
+    /// The player entered a field: a mount the field does not allow ends with ride-off type DisableField.
+    /// </summary>
+    public void EnterField(FieldManager field) {
+        if (RideShare.DismountsOnEnter(Ride != null, field.Metadata.Limit.Ride)) {
+            Dismount(RideOffType.DisableField);
+        }
+    }
+
+    // RideConsumeEp: the owner dashes on its mount.
+    public void ConsumeDashStamina() {
+        if (Ride == null || session.Field == null) {
+            return;
+        }
+        int amount = RideShare.DashStamina(Ride.OwnerId == session.Player.ObjectId, Ride.Metadata.Basic.RunXStamina);
+        session.Player.ConsumeStamina(amount);
+    }
+
+    private static void ClearPassengers(FieldManager field, Ride ride) {
+        if (ride.Passengers.All(objectId => objectId == 0)) {
+            return;
+        }
+
+        field.Broadcast(RidePacket.ChangeShared(ride.OwnerId));
+        foreach (int objectId in RideShare.ClearSeats(ride.Passengers)) {
+            if (field.TryGetPlayer(objectId, out FieldPlayer? passenger) && passenger.Session.Ride.Ride == ride) {
+                passenger.Session.Ride.Ride = null;
+            }
+        }
     }
 }

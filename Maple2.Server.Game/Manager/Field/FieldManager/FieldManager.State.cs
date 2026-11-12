@@ -1292,6 +1292,7 @@ public partial class FieldManager {
     public virtual bool RemovePlayer(int objectId, [NotNullWhen(true)] out FieldPlayer? fieldPlayer) {
         if (Players.TryRemove(objectId, out fieldPlayer)) {
             CommitPlot(fieldPlayer.Session);
+            fieldPlayer.Session.Ride.LeaveField(this);
             foreach (FieldReactor reactor in fieldReactors.Values) {
                 reactor.Leave(fieldPlayer.Session.CharacterId);
             }
@@ -1442,6 +1443,7 @@ public partial class FieldManager {
 
     #region Events
     public void OnAddPlayer(FieldPlayer added) {
+        added.Session.Ride.EnterField(this);
         Players[added.ObjectId] = added;
         // A dungeon room's timer starts with its first player; later players get the running one.
         if (RoomTimer == null && this is DungeonFieldManager dungeonField) {
