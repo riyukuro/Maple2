@@ -715,4 +715,25 @@ public class TrophyWiringTests {
         Assert.That(BitConverter.ToInt16(complete, 15), Is.EqualTo(3));
     }
     #endregion
+
+    #region claim
+    // The claim of a title grade is answered with the title and the trophy; a claim with nothing due gets no answer.
+    [Test]
+    public void Claim_AnswersOnlyWhenARewardIsDue() {
+        AchievementMetadata trophy = TestGameSession.Trophy(Trophy, ConditionType.use_merat, [10, Goal]);
+        var grades = new Dictionary<int, AchievementMetadataGrade>(trophy.Grades);
+        grades[1] = grades[1] with { Reward = new AchievementMetadataReward(AchievementRewardType.title, 10000001, 1, 1) };
+        GameSession session = Start(trophy with { Grades = grades });
+        session.Currency.Meret = 100;
+        session.Currency.Meret -= 10;
+        test.TakeSent();
+
+        session.Achievement.ClaimReward(Trophy);
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.UserEnv, SendOp.Achieve }));
+        Assert.That(session.Player.Value.Unlock.HasTitle(10000001), Is.True);
+
+        session.Achievement.ClaimReward(Trophy);
+        Assert.That(Sent(), Is.Empty);
+    }
+    #endregion
 }

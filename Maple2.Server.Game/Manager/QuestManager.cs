@@ -826,6 +826,11 @@ public sealed class QuestManager {
         session.Config.Skill.SkillInfo.SetJob(changeJobMetadata.ChangeJob);
         session.Stats.Refresh();
         session.Field?.Broadcast(JobPacket.Advance(session.Player, session.Config.Skill.SkillInfo));
+        // As the job script's confirm does: the job trophies count the new job and the other players' copy of the
+        // character follows it. The row was the old job's.
+        session.ConditionUpdate(ConditionType.job, codeLong: (int) changeJobMetadata.ChangeJob.Code());
+        session.Player.Flag |= PlayerObjectFlag.Job;
+        changeJobMetadata = null;
     }
 
     // The alliance's fame points, sent to the client (the alliance mission window's reputation).

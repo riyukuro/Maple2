@@ -215,11 +215,13 @@ public sealed class ExperienceManager {
         if (Level > startLevel) {
             session.Player.Flag |= PlayerObjectFlag.Level;
             session.Dungeon.UpdateDungeonEnterLimit();
-            // KMS2 order: the death penalty cleared, the level up, the skill tree (Job 1), the stat block, then the trophies.
+            // KMS2 order: the death penalty cleared, the level up, the skill tree (Job 1), the stat block, the hot bars
+            // (KeyTable 7), then the trophies.
             session.Config.UpdateDeathPenalty(0);
             session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
             session.Field?.Broadcast(JobPacket.Basic(session.Player, session.Config.Skill.SkillInfo));
             session.Stats.Refresh(levelUp: true);
+            session.Config.LoadHotBars();
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
             session.ConditionUpdate(ConditionType.level, targetLong: Level);
 

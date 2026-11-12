@@ -305,6 +305,32 @@ public class QuestHandlerTests {
         });
     }
 
+    // The quest that ends a job change row (the awakening): the job, the skill tree to the field (Job 2) after the
+    // quest's packet, the job trophies' count and the flag that updates the other players' copy.
+    [Test]
+    public void Complete_OfTheJobChangeQuestChangesTheJob() {
+        GameSession session = Login();
+        ProgressionOrderTests.LoadConfig(test, session);
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata> {
+            [Job.Newbie] = new(Job.Newbie, Job.Knight, 0, QuestId),
+        }));
+        Started();
+        session.Player.Flag = PlayerObjectFlag.None;
+        test.TakeSent();
+
+        Complete(session);
+
+        List<byte[]> sent = test.TakeSent();
+        List<SendOp> ops = sent.Select(TestGameSession.Op).ToList();
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Character.Job, Is.EqualTo(Job.Knight));
+            Assert.That(ops.IndexOf(SendOp.Job), Is.GreaterThan(ops.IndexOf(SendOp.Quest)));
+            Assert.That(sent.First(packet => TestGameSession.Op(packet) == SendOp.Job)[6], Is.EqualTo(2));
+            Assert.That(session.Player.Flag.HasFlag(PlayerObjectFlag.Job), Is.True);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // The same request again: the refusal text, and the reward is given once.
     [Test]
     public void Complete_TwiceGivesTheRewardOnce() {

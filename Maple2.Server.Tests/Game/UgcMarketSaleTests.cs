@@ -108,6 +108,18 @@ public class UgcMarketSaleTests {
         Assert.That(writer.Length, Is.EqualTo(8 + 12 + 8 + 4 + 16 + 2));
     }
 
+    // The seller's save writes the listing from the game's copy: a row loaded with the column default is stored
+    // with the empty name after it, not as `{}` again.
+    [Test]
+    public void Blueprint_OfTheColumnDefaultIsNotStoredBackAsIs() {
+        Maple2.Database.Model.ItemBlueprint stored =
+            System.Text.Json.JsonSerializer.Deserialize<Maple2.Database.Model.ItemBlueprint>("{}")!;
+        ItemBlueprint game = stored;
+        Maple2.Database.Model.ItemBlueprint saved = game;
+
+        Assert.That(saved.CharacterName, Is.EqualTo(string.Empty));
+    }
+
     // The sales tab (which saves) and taking the listing off the market leave the count, and the seller's own copy
     // follows the stored count.
     [Test]

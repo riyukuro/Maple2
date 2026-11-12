@@ -462,8 +462,8 @@ public class ConfigManager {
     /// </summary>
     /// <param name="endTick">The tick when the penalty ends, or 0 to reset</param>
     public void UpdateDeathPenalty(long endTick) {
-        // Skip penalty for low level players
-        if (session.Player.Value.Character.Level < Constants.UserRevivalPaneltyMinLevel) {
+        // No penalty for low level players; the clear of a level up is sent at every level, as KMS2 sends it.
+        if (endTick != 0 && session.Player.Value.Character.Level < Constants.UserRevivalPaneltyMinLevel) {
             return;
         }
 

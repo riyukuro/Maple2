@@ -58,9 +58,15 @@ public class CharacterRenameTests {
         }));
     }
 
-    private static string RefusalBox(NameChangeRules.Refusal refusal, string name) {
-        (StringCode code, string[] args) = NameChangeRules.Text(refusal, name);
-        return Convert.ToHexString(NoticePacket.MessageBox(new InterfaceText(code, args)).ToArray());
+    // CharacterList 7 with the client's code for the refusal, the character and the name.
+    private static string RefusalAnswer(int code, long characterId, string name) {
+        var writer = new Maple2.PacketLib.Tools.ByteWriter();
+        writer.WriteShort(0x0C);
+        writer.WriteByte(7);
+        writer.WriteInt(code);
+        writer.WriteLong(characterId);
+        writer.WriteUnicodeString(name);
+        return Convert.ToHexString(writer.ToArray());
     }
 
     [Test]
@@ -159,23 +165,24 @@ public class CharacterRenameTests {
         Assert.That(test.World.Moves.Select(move => move.CharacterId), Is.EqualTo(new[] { due }));
     }
 
-    // Each refused name: the client's own text in a message box, the name unchanged, the world not told.
-    [TestCase("", NameChangeRules.Refusal.Invalid)]
-    [TestCase("   ", NameChangeRules.Refusal.Invalid)]
-    [TestCase("A", NameChangeRules.Refusal.Invalid)]
-    [TestCase("Abcdefghijklmn", NameChangeRules.Refusal.Invalid)]
-    [TestCase("Par_ry", NameChangeRules.Refusal.Invalid)]
-    [TestCase("xBadWordx", NameChangeRules.Refusal.Banned)]
-    [TestCase("Taken", NameChangeRules.Refusal.Taken)]
-    [TestCase("taKEN", NameChangeRules.Refusal.Taken)]
-    public void ARefusedNameChangesNothing(string name, NameChangeRules.Refusal refusal) {
+    // Each refused name: CharacterList 7, which gives the list its input back, with the code of the client's own
+    // text (2 taken, 6 bad word, another for the system text), the name unchanged, the world not told.
+    [TestCase("", 0)]
+    [TestCase("   ", 0)]
+    [TestCase("A", 0)]
+    [TestCase("Abcdefghijklmn", 0)]
+    [TestCase("Par_ry", 0)]
+    [TestCase("xBadWordx", 6)]
+    [TestCase("Taken", 2)]
+    [TestCase("taKEN", 2)]
+    public void ARefusedNameChangesNothing(string name, int code) {
         long due = test.AddCharacter(LONG_NAME);
         test.AddCharacter("Taken", accountId: 2000);
 
         Rename(due, name);
 
         Assert.Multiple(() => {
-            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { RefusalBox(refusal, name) }));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { RefusalAnswer(code, due, name) }));
             Assert.That(test.Name(due), Is.EqualTo(LONG_NAME));
             Assert.That(test.World.PlayerUpdates, Is.Empty);
         });
@@ -184,7 +191,7 @@ public class CharacterRenameTests {
         Assert.That(test.World.Moves, Is.Empty);
     }
 
-    // A character that is not due, or not the account's: the move error, and nothing changes.
+    // A character that is not due, or not the account's: the system refusal, and nothing changes.
     [Test]
     public void OnlyADueCharacterOfTheAccountIsRenamed() {
         long others = test.AddCharacter(LONG_NAME, accountId: 2000);
@@ -194,9 +201,10 @@ public class CharacterRenameTests {
         Rename(others, "Parry");
         Rename(987654321, "Parry");
 
-        string error = Convert.ToHexString(MigrationPacket.LoginToGameError(Maple2.Model.Error.MigrationError.s_move_err_default, "Invalid character").ToArray());
         Assert.Multiple(() => {
-            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { error, error, error }));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                RefusalAnswer(0, test.CharacterId, "Parry"), RefusalAnswer(0, others, "Parry"), RefusalAnswer(0, 987654321, "Parry"),
+            }));
             Assert.That(test.Name(test.CharacterId), Is.EqualTo(own));
             Assert.That(test.Name(others), Is.EqualTo(LONG_NAME));
             Assert.That(test.World.PlayerUpdates, Is.Empty);
@@ -212,7 +220,7 @@ public class CharacterRenameTests {
 
         test.AddCharacter("Parry", accountId: 2000); // the create
         Rename(first, "Parry");
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { RefusalBox(NameChangeRules.Refusal.Taken, "Parry") }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { RefusalAnswer(2, first, "Parry") }));
         Assert.That(test.Name(first), Is.EqualTo(LONG_NAME));
 
         Rename(second, "Garry");

@@ -5,6 +5,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets.Helper;
@@ -76,6 +77,22 @@ public static class CharacterListPacket {
         var pWriter = Packet.Of(SendOp.CharacterList);
         pWriter.Write<Command>(Command.NameChanged);
         pWriter.WriteInt(1); // accepted
+        pWriter.WriteLong(characterId);
+        pWriter.WriteUnicodeString(name);
+        return pWriter;
+    }
+
+    // The answer to a refused rename on the character list (UICharacterListDialog::vfunc_79, opcode 0xc type 7):
+    // the list takes input again, and the client shows its own text with the name: 2 the taken text, 6 the bad
+    // word text, any other code but 1 the system text with the code.
+    public static ByteWriter NameRefused(NameChangeRules.Refusal refusal, long characterId, string name) {
+        var pWriter = Packet.Of(SendOp.CharacterList);
+        pWriter.Write<Command>(Command.NameChanged);
+        pWriter.WriteInt(refusal switch {
+            NameChangeRules.Refusal.Taken => 2,
+            NameChangeRules.Refusal.Banned => 6,
+            _ => 0,
+        });
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(name);
         return pWriter;

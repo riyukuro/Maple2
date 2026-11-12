@@ -24,10 +24,13 @@ public class ProgressionOrderTests {
 
     // The config manager of a test session is not loaded: its session, an empty stat point book and the skill
     // tree of a job table whose beginner row has no skill.
-    private static void LoadConfig(TestGameSession test, GameSession session) {
+    internal static void LoadConfig(TestGameSession test, GameSession session) {
         const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
             [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+            }, []),
+            [JobCode.Knight] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
                 [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
             }, []),
         }));
@@ -38,6 +41,7 @@ public class ProgressionOrderTests {
         };
         typeof(ConfigManager).GetField("statLimits", any)!.SetValue(session.Config, limits);
         typeof(ConfigManager).GetField("statAttributes", any)!.SetValue(session.Config, new StatAttributes(limits));
+        typeof(ConfigManager).GetField("hotBars", any)!.SetValue(session.Config, new List<HotBar>());
         typeof(ConfigManager).GetField(nameof(ConfigManager.Skill), any)!.SetValue(session.Config, new SkillManager(session, new SkillBook()));
     }
 
@@ -80,7 +84,7 @@ public class ProgressionOrderTests {
             [1] = 100,
             [2] = 100000,
         }));
-        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { characterMaxLevel = 70 });
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { characterMaxLevel = 70, UserRevivalPaneltyMinLevel = 10 });
         GameSession session = test.Start();
         LoadConfig(test, session);
         test.TakeSent();
@@ -89,8 +93,16 @@ public class ProgressionOrderTests {
 
         Assert.That(session.Player.Value.Character.Level, Is.EqualTo(2));
         List<byte[]> sent = test.TakeSent();
-        Assert.That(Only(sent.Select(TestGameSession.Op), SendOp.ExpUp, SendOp.LevelUp, SendOp.Job, SendOp.Stat).Take(3).ToList(),
-            Is.EqualTo(new[] { SendOp.ExpUp, SendOp.LevelUp, SendOp.Job }));
+        // The penalty clear comes first even under the penalty's min level, the hot bars after the skill tree (the
+        // test session's stats send no block between them), the trophies after those.
+        List<SendOp> ops = Only(sent.Select(TestGameSession.Op), SendOp.ExpUp, SendOp.RevivalConfirm, SendOp.LevelUp, SendOp.Job, SendOp.KeyTable);
+        Assert.That(ops, Is.EqualTo(new[] { SendOp.ExpUp, SendOp.RevivalConfirm, SendOp.LevelUp, SendOp.Job, SendOp.KeyTable }));
+        List<SendOp> all = sent.Select(TestGameSession.Op).ToList();
+        if (all.Contains(SendOp.Achieve)) {
+            Assert.That(all.IndexOf(SendOp.Achieve), Is.GreaterThan(all.IndexOf(SendOp.KeyTable)));
+        }
+        byte[] keys = sent.First(packet => TestGameSession.Op(packet) == SendOp.KeyTable);
+        Assert.That(keys[2], Is.EqualTo(7));
         // Job: the player's object id, then mode 1.
         byte[] job = sent.First(packet => TestGameSession.Op(packet) == SendOp.Job);
         Assert.That(BitConverter.ToInt32(job, 2), Is.EqualTo(session.Player.ObjectId));

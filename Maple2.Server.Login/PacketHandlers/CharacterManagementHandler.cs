@@ -130,9 +130,10 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
     // The forced rename of the login scene: the client sends it from the name input it opens for a character whose
     // name is too long (the character list's end flag, or LoginToGame 49). It sends the character and the name
-    // only, no item, so nothing is used up. The scene reads no rename answer: a name that is accepted shows in the
-    // character list, which is sent again; a refused name is answered with a message box of the client's own name
-    // change text, and the character stays due.
+    // only, no item, so nothing is used up. The list takes no input from the moment the name input opens until
+    // CharacterList 7 arrives (UICharacterListDialog::vfunc_79) or the list is sent again: a name that is accepted
+    // shows in the character list, which is sent again; a refused name is answered with CharacterList 7 and its
+    // code, for which the client shows its own name change text, and the character stays due.
     private void HandleRename(LoginSession session, IByteReader packet) {
         long characterId = packet.ReadLong();
         string name = packet.ReadUnicodeString();
@@ -140,7 +141,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
         if (character == null || !LoginSession.IsRenameDue(character.Name)) {
-            session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Invalid character"));
+            session.Send(CharacterListPacket.NameRefused(NameChangeRules.Refusal.Invalid, characterId, name));
             return;
         }
 
@@ -156,8 +157,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             refusal = db.RenameCharacter(session.AccountId, characterId, name);
         }
         if (refusal != NameChangeRules.Refusal.None) {
-            (StringCode code, string[] args) = NameChangeRules.Text(refusal, name);
-            session.Send(NoticePacket.MessageBox(new InterfaceText(code, args)));
+            session.Send(CharacterListPacket.NameRefused(refusal, characterId, name));
             return;
         }
 

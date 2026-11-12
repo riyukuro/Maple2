@@ -321,13 +321,17 @@ public sealed class AchievementManager {
             return;
         }
 
-        int rewardGrade = achievement.RewardGrade;
+        int claimedFrom = achievement.RewardGrade;
+        int rewardGrade = claimedFrom;
         GiveReward(achievement, true);
         while (achievement.RewardGrade != rewardGrade) {
             rewardGrade = achievement.RewardGrade;
             GiveReward(achievement);
         }
-        session.Send(AchievementPacket.Update(achievement));
+        // A claim with nothing due gets no answer, as in KMS2.
+        if (achievement.RewardGrade != claimedFrom) {
+            session.Send(AchievementPacket.Update(achievement));
+        }
     }
 
     public bool HasAchievement(int achievementId, int grade = -1) {
