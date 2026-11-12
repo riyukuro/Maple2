@@ -13,6 +13,18 @@ using Maple2.Tools.Extensions;
 namespace Maple2.Server.Tests.Validators;
 
 public class DungeonScoreRulesTests {
+    // The fameChallenge rank table (group 5): C at 500, B 1000, A 1500, S 2000, S+ 2500; below 500 is F.
+    [TestCase(0, DungeonMissionRank.F)]
+    [TestCase(499, DungeonMissionRank.F)]
+    [TestCase(500, DungeonMissionRank.C)]
+    [TestCase(1600, DungeonMissionRank.A)]
+    [TestCase(2500, DungeonMissionRank.SPlus)]
+    public void Rank_IsTheHighestScoreReached(int score, DungeonMissionRank expected) {
+        DungeonMissionRankMetadata.Score[] scores = [new(DungeonMissionRank.C, 500), new(DungeonMissionRank.B, 1000),
+            new(DungeonMissionRank.A, 1500), new(DungeonMissionRank.S, 2000), new(DungeonMissionRank.SPlus, 2500)];
+        Assert.That(DungeonScoreRules.Rank(scores, (short) score), Is.EqualTo(expected));
+    }
+
     [TestCase(0, DungeonGroupType.normal, 1)]
     [TestCase(0, DungeonGroupType.raid, 2)]
     [TestCase(0, DungeonGroupType.chaosRaid, 3)]

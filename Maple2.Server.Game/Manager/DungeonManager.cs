@@ -629,6 +629,10 @@ public class DungeonManager {
         DungeonRecord record = GetRecord(Metadata.Id);
         short score = DungeonScoreRules.RunScore(UserRecord.Missions.Values.Select(mission => mission.Score), rankTable.MaxScore);
         DungeonScoreRules.ApplyLifetime(record, score);
+        // The clear's rank counts for dungeon_rank: the room is the code and the rank (0 F to 5 S+) must reach the
+        // target (22210001 "Earn S+ Rank" 5, 22210045 "Earn A rank" 3, 93000173 "Spar with" the captain 0).
+        session.ConditionUpdate(ConditionType.dungeon_rank, targetLong: (long) DungeonScoreRules.Rank(rankTable.Scores, score),
+            codeLong: Metadata.Id);
 
         if (DungeonScoreRules.IsSeasonRankRoom(Metadata.GroupType, Metadata.Limit.MinLevel, session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel)) {
             DateTime clearTime = clearTimeStamp.FromEpochSeconds();

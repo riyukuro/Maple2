@@ -39,6 +39,17 @@ public static class DungeonScoreRules {
         return (short) Math.Clamp(Math.Min(sum, maxScore), 0, short.MaxValue);
     }
 
+    // DungeonRankRequire::GetRank (dungeonroom.cpp): the highest rank whose score the run reaches; below the
+    // first one the rank is F. The table's ranks are C, B, A, S and S+ in order.
+    public static DungeonMissionRank Rank(IReadOnlyList<DungeonMissionRankMetadata.Score> scores, short score) {
+        for (int i = scores.Count - 1; i >= 0; i--) {
+            if (score >= scores[i].Value) {
+                return (DungeonMissionRank) (i + 1);
+            }
+        }
+        return DungeonMissionRank.F;
+    }
+
     // DungeonRoomData::IsSeasonRankRoom: a chaos raid whose limitPlayerLevel is at least DungeonSeasonRankMinLevel.
     public static bool IsSeasonRankRoom(DungeonGroupType groupType, int limitPlayerLevel, int seasonRankMinLevel) {
         return groupType == DungeonGroupType.chaosRaid && limitPlayerLevel >= seasonRankMinLevel;

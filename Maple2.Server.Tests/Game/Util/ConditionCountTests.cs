@@ -203,6 +203,18 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: dungeonId), Is.EqualTo(expected));
     }
 
+    // A ranked clear counts for dungeon_rank in the row's room when its rank (0 F to 5 S+) reaches the target
+    // (22210045 "Earn A rank" 3; 93000173 "Spar with" the captain 0, any rank).
+    [TestCase(24091005, DungeonMissionRank.A, true)]
+    [TestCase(24091005, DungeonMissionRank.SPlus, true)]
+    [TestCase(24091005, DungeonMissionRank.B, false)]
+    [TestCase(24092005, DungeonMissionRank.SPlus, false)]
+    public void DungeonRank_CountsTheRankReached(int dungeonId, DungeonMissionRank rank, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.dungeon_rank, 1,
+            new ConditionMetadata.Parameters(Integers: [24091005]), new ConditionMetadata.Parameters(Integers: [3]));
+        Assert.That(condition.Check(null!, targetLong: (long) rank, codeLong: dungeonId), Is.EqualTo(expected));
+    }
+
     // A completed daily quest counts for quest_daily when its id is one of the row's codes.
     [TestCase(30000359, true)]
     [TestCase(30000360, false)]
