@@ -30,6 +30,6 @@ public class StateHandler : FieldPacketHandler {
     }
 
     private static void HandleJump(GameSession session) {
-        session.ConditionUpdate(ConditionType.jump);
+        session.ConditionUpdate(ConditionType.jump, codeLong: session.Field?.MapId ?? 0);
     }
 }

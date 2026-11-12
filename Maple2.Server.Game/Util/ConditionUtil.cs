@@ -157,6 +157,8 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve_grade:
             case ConditionType.stay_map:
             case ConditionType.stay_cube:
+            // jump: the map of the jump (quests 70400081 and 70400103 name one map each).
+            case ConditionType.jump:
             case ConditionType.spawner:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
@@ -173,7 +175,6 @@ public static class ConditionUtil {
                     return !session.Player.Value.Unlock.FishAlbum.ContainsKey((int) longValue);
                 }
                 break;
-            case ConditionType.jump:
             case ConditionType.meso:
             case ConditionType.taxifind:
             case ConditionType.fall_damage:
@@ -261,8 +262,6 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
-            case ConditionType.fish:
-            case ConditionType.fish_big:
             case ConditionType.fall_damage:
                 if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
                     return true;
@@ -314,6 +313,9 @@ public static class ConditionUtil {
             case ConditionType.holdtime:
             case ConditionType.riding:
             case ConditionType.skill:
+            // fish, fish_big: the map of the catch; every quest and trophy target of the two is a map id.
+            case ConditionType.fish:
+            case ConditionType.fish_big:
             case ConditionType.music_play_instrument_time:
             case ConditionType.music_play_score:
             case ConditionType.music_play_ensemble_in:

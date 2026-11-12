@@ -571,4 +571,54 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve }));
     }
     #endregion
+
+    #region quest conditions: jump, fish
+    private static QuestMetadata QuestWith(int id, ConditionType type, int[]? codes = null, int[]? targets = null) {
+        var condition = new ConditionMetadata(type, 50,
+            codes == null ? null : new ConditionMetadata.Parameters(Integers: codes),
+            targets == null ? null : new ConditionMetadata.Parameters(Integers: targets));
+        return TestGameSession.QuestData(id) with { Conditions = [condition] };
+    }
+
+    private static Maple2.PacketLib.Tools.ByteReader Jump() => TestGameSession.Packet(writer => {
+        writer.WriteByte(0); // Jump
+        writer.WriteByte(0);
+        writer.WriteInt(0);
+        writer.WriteBytes(new byte[12]); // position
+    });
+
+    [Test]
+    public void Jump_CountsForTheQuestOfItsMapOnly() {
+        GameSession session = Start();
+        Quest anywhere = test.StartQuest(QuestWith(QuestId, ConditionType.jump));
+        Quest here = test.StartQuest(QuestWith(QuestId + 1, ConditionType.jump, codes: [Town]));
+        Quest elsewhere = test.StartQuest(QuestWith(QuestId + 2, ConditionType.jump, codes: [Town + 1]));
+        test.EnterMap(TestGameSession.Map(Town));
+
+        new StateHandler().Handle(session, Jump());
+        Assert.That(anywhere.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(here.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(elsewhere.Conditions[0].Counter, Is.Zero);
+    }
+
+    [TestCase(ConditionType.fish)]
+    [TestCase(ConditionType.fish_big)]
+    public void Fish_CountsForTheQuestOfItsMapOnly(ConditionType type) {
+        const int fish = 10000001;
+        GameSession session = Start();
+        Quest anywhere = test.StartQuest(QuestWith(QuestId, type));
+        Quest here = test.StartQuest(QuestWith(QuestId + 1, type, targets: [Town + 1]));
+        // A map with a lower id than the map of the catch: it counted while the target was read as a minimum.
+        Quest lower = test.StartQuest(QuestWith(QuestId + 2, type, targets: [Town]));
+        Quest higher = test.StartQuest(QuestWith(QuestId + 3, type, targets: [Town + 2]));
+        test.EnterMap(TestGameSession.Map(Town + 1));
+
+        // As FishingManager.AddFish reports a catch.
+        session.ConditionUpdate(type, codeLong: fish, targetLong: session.Field!.MapId);
+        Assert.That(anywhere.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(here.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(lower.Conditions[0].Counter, Is.Zero);
+        Assert.That(higher.Conditions[0].Counter, Is.Zero);
+    }
+    #endregion
 }

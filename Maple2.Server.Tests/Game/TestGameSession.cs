@@ -315,6 +315,8 @@ public sealed class TestGameSession {
         typeof(QuestManager).GetField("dailyMissions", Any)!.SetValue(quest, new HashSet<int>());
         typeof(QuestManager).GetField("weeklyMissions", Any)!.SetValue(quest, new HashSet<int>());
         typeof(QuestManager).GetField("missionMetadata", Any)!.SetValue(quest, new List<QuestMetadata>());
+        // No condition type is throttled here: every counted update is sent.
+        typeof(QuestManager).GetField("throttleStates", Any)!.SetValue(quest, new HashSet<ConditionType>());
         session.Config = Uninitialized<ConfigManager>();
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
@@ -412,6 +414,9 @@ public sealed class TestGameSession {
     // A quest the character has in progress (no row is stored).
     public Quest StartQuest(QuestMetadata metadata) {
         var quest = new Quest(metadata) { State = QuestState.Started };
+        for (int i = 0; i < metadata.Conditions.Length; i++) {
+            quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
+        }
         string values = metadata.Basic.Account > 0 ? "accountValues" : "characterValues";
         ((IDictionary<int, Quest>) typeof(QuestManager).GetField(values, Any)!.GetValue(Session.Quest)!).Add(metadata.Id, quest);
         return quest;
