@@ -93,4 +93,78 @@ public static class MicrogamePacket {
         }
         return pWriter;
     }
+
+    // The couple dance (CoupleDanceRules): the mode, the event id, then the fields of the mode.
+    private static ByteWriter CoupleDance(short mode, int eventId) {
+        var pWriter = Packet.Of(SendOp.Microgame);
+        pWriter.WriteShort(mode);
+        pWriter.WriteInt(eventId);
+        return pWriter;
+    }
+
+    // Opens the couple dance banner.
+    public static ByteWriter CoupleDanceBanner(int eventId) => CoupleDance(CoupleDanceRules.SBanner, eventId);
+
+    // To the invitee: the request box from the inviter.
+    public static ByteWriter CoupleDanceInvite(int eventId, long inviterId) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SInvite, eventId);
+        pWriter.WriteLong(inviterId);
+        return pWriter;
+    }
+
+    // To the inviter: the invitee shows the request box; the inviter enters the dance state and waits.
+    public static ByteWriter CoupleDanceInviteSent(int eventId, long inviteeId) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SInviteSent, eventId);
+        pWriter.WriteLong(inviteeId);
+        return pWriter;
+    }
+
+    // To the inviter: the invitee accepted.
+    public static ByteWriter CoupleDanceAccepted(int eventId, long inviteeId) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SAccepted, eventId);
+        pWriter.WriteLong(inviteeId);
+        return pWriter;
+    }
+
+    // To the inviter: the invitee declined.
+    public static ByteWriter CoupleDanceDeclined(int eventId, long inviteeId) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SDeclined, eventId);
+        pWriter.WriteLong(inviteeId);
+        return pWriter;
+    }
+
+    // To both players: the dance starts; one stage per round, as many as the event's maxRound (no count).
+    public static ByteWriter CoupleDanceStart(int eventId, short[] stages) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SStart, eventId);
+        foreach (short stage in stages) {
+            pWriter.WriteShort(stage);
+        }
+        return pWriter;
+    }
+
+    // To the invitee: the inviter withdrew the invite.
+    public static ByteWriter CoupleDanceCancelled(int eventId, long inviterId) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SCancelled, eventId);
+        pWriter.WriteLong(inviterId);
+        return pWriter;
+    }
+
+    // A failure notice by reason; the client leaves the dance state only when actorId is its partner.
+    public static ByteWriter CoupleDanceFailed(int eventId, long actorId, byte reason) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SFailed, eventId);
+        pWriter.WriteLong(actorId);
+        pWriter.WriteByte(reason);
+        return pWriter;
+    }
+
+    // The end of a round for one player: the round, whether both chose the same dance, the player's dance (played)
+    // and the partner's.
+    public static ByteWriter CoupleDanceResult(int eventId, int round, bool good, int dance, int partnerDance) {
+        ByteWriter pWriter = CoupleDance(CoupleDanceRules.SResult, eventId);
+        pWriter.WriteByte((byte) round);
+        pWriter.WriteBool(good);
+        pWriter.WriteShort((short) dance);
+        pWriter.WriteShort((short) partnerDance);
+        return pWriter;
+    }
 }

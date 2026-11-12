@@ -1317,6 +1317,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     GameTicketId: ticketId,
                     Rewards: rpsRewards.ToArray(),
                     ActionsHtml: value2);
+            case GameEventType.CoupleDance:
+                return ReadCoupleDance(value1, value2);
             case GameEventType.LoginNotice:
                 return new LoginNotice();
             case GameEventType.FieldEffect:
@@ -1549,6 +1551,104 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 Answer: quiz.answerStr));
         }
         return new OxQuizTable(results);
+    }
+
+    // The step nodes of value2 in the client's step order: each has an optional <action anim=""/> and
+    // <message value=""/>.
+    private static readonly string[] CoupleDanceStepPaths = [
+        "start", "play/ready", "play/select", "play/waitResult", "play/result/success", "play/result/fail", "end/normal", "end/good",
+    ];
+
+    // value1 <rewards> (the <daily> rewards by "order", then <goodEndBonus count="">) and value2 <gameData> (<dances>,
+    // <start fieldID="">, <play maxRound="">, the steps), as CoupleDanceContext::LoadReward and LoadDance read them
+    // (gameeventcontext.cpp). Null where those fail: a missing node, a daily or bonus without <items>, a step without
+    // action and message; also when there is no dance or round, as the client then cannot play.
+    public static CoupleDance? ReadCoupleDance(string value1, string value2) {
+        XmlElement? rewards = LoadElement(value1, "rewards");
+        XmlElement? gameData = LoadElement(value2, "gameData");
+        if (rewards == null || gameData == null) {
+            return null;
+        }
+
+        // By order; the first <daily> of an order wins (std::map insert).
+        var daily = new SortedDictionary<int, RewardItem[]>();
+        foreach (XmlElement node in rewards.SelectNodes("daily")?.OfType<XmlElement>() ?? []) {
+            int order = int.TryParse(node.GetAttribute("order"), out int parsedOrder) ? parsedOrder : 0;
+            RewardItem[]? items = ReadCoupleDanceItems(node);
+            if (items == null) {
+                return null;
+            }
+            daily.TryAdd(order, items);
+        }
+        if (rewards.SelectSingleNode("goodEndBonus") is not XmlElement goodEnd || ReadCoupleDanceItems(goodEnd) is not { } goodEndItems) {
+            return null;
+        }
+        int goodEndCount = int.TryParse(goodEnd.GetAttribute("count"), out int parsedCount) ? parsedCount : 0;
+
+        if (gameData.SelectSingleNode("dances") is not XmlElement dancesNode
+            || gameData.SelectSingleNode("play") is not XmlElement play
+            || gameData.SelectSingleNode("start") is not XmlElement start) {
+            return null;
+        }
+        // Every child element of <dances> is a dance.
+        string[] dances = dancesNode.ChildNodes.OfType<XmlElement>().Select(node => node.GetAttribute("anim")).ToArray();
+        int maxRound = int.TryParse(play.GetAttribute("maxRound"), out int parsedRound) ? parsedRound : 0;
+        int fieldId = int.TryParse(start.GetAttribute("fieldID"), out int parsedField) ? parsedField : 0;
+        if (dances.Length == 0 || maxRound <= 0) {
+            return null;
+        }
+
+        var steps = new List<CoupleDance.Step>();
+        foreach (string path in CoupleDanceStepPaths) {
+            if (gameData.SelectSingleNode(path) is not { } node) {
+                return null;
+            }
+            string action = (node.SelectSingleNode("action") as XmlElement)?.GetAttribute("anim") ?? string.Empty;
+            string message = (node.SelectSingleNode("message") as XmlElement)?.GetAttribute("value") ?? string.Empty;
+            if (action.Length == 0 && message.Length == 0) {
+                return null;
+            }
+            steps.Add(new CoupleDance.Step(action, message));
+        }
+
+        return new CoupleDance(
+            DailyRewards: daily.Values.ToArray(),
+            GoodEndCount: goodEndCount,
+            GoodEndRewards: goodEndItems,
+            Dances: dances,
+            MaxRound: maxRound,
+            FieldId: fieldId,
+            Steps: steps.ToArray());
+    }
+
+    private static XmlElement? LoadElement(string value, string name) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        var document = new XmlDocument();
+        try {
+            document.LoadXml(value);
+        } catch (XmlException) {
+            return null;
+        }
+        return document.DocumentElement is { } root && root.Name == name ? root : null;
+    }
+
+    // <items><v itemID="" grade="" count=""/></items> under the node; null without <items>.
+    private static RewardItem[]? ReadCoupleDanceItems(XmlNode node) {
+        if (node.SelectSingleNode("items") == null) {
+            return null;
+        }
+        var items = new List<RewardItem>();
+        foreach (XmlElement value in node.SelectNodes("items/v")?.OfType<XmlElement>() ?? []) {
+            if (!int.TryParse(value.GetAttribute("itemID"), out int itemId) || itemId == 0) {
+                continue;
+            }
+            short grade = short.TryParse(value.GetAttribute("grade"), out short parsedGrade) ? parsedGrade : (short) 1;
+            int count = int.TryParse(value.GetAttribute("count"), out int parsedAmount) ? parsedAmount : 1;
+            items.Add(new RewardItem(itemId, grade, count));
+        }
+        return items.ToArray();
     }
 
     // The old hand copies: materials 37000056..63 taken to use table 37000055. A material with a table id from

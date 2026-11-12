@@ -1247,6 +1247,12 @@ public partial class FieldManager {
             if (rpsPartner != 0 && TryGetPlayerById(rpsPartner, out FieldPlayer? rpsPlayer)) {
                 rpsPlayer.Session.Send(MicrogamePacket.Failed(leaverId, RpsRules.ReasonFailed));
             }
+            // The same for a couple dance invite or dance, with mode 0x14 (microgamemanagercli.cpp).
+            long dancePartner = CoupleDance.Remove(leaverId);
+            if (dancePartner != 0 && TryGetPlayerById(dancePartner, out FieldPlayer? dancePlayer)) {
+                int danceEventId = dancePlayer.Session.FindEvent(GameEventType.CoupleDance).FirstOrDefault(gameEvent => gameEvent.IsActive())?.Id ?? 0;
+                dancePlayer.Session.Send(MicrogamePacket.CoupleDanceFailed(danceEventId, leaverId, CoupleDanceRules.ReasonFailed));
+            }
             Broadcast(FieldPacket.RemovePlayer(objectId));
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
 

@@ -69,6 +69,8 @@ public partial class FieldManager : IField {
     public AiVibrate Vibrate { get; private set; } = new([]);
     // Microgame 0x0114 (rock-paper-scissors): the pending invites and running games of this field.
     public Maple2.Model.Validators.RpsMatchTable Rps { get; } = new();
+    // Microgame 0x0114 (couple dance): the pending invites and running dances of this field.
+    public Maple2.Model.Validators.CoupleDanceMatchTable CoupleDance { get; } = new();
     private readonly UgcMapMetadata ugcMetadata;
 
     internal readonly EventQueue Scheduler;

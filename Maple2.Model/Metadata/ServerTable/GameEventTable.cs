@@ -54,6 +54,23 @@ public record Rps(
         RewardItem[] Rewards);
 }
 
+// value1 and value2 of a CoupleDance row, as CoupleDanceContext::LoadReward and LoadDance (gameeventcontext.cpp) read
+// them: the daily rewards in "order", the good-end bonus, the dances, the round count, the start field and the eight
+// steps (start, play.ready, play.select, play.waitResult, play.result.success, play.result.fail, end.normal, end.good).
+public record CoupleDance(
+    RewardItem[][] DailyRewards,
+    int GoodEndCount,
+    RewardItem[] GoodEndRewards,
+    string[] Dances,
+    int MaxRound,
+    int FieldId,
+    CoupleDance.Step[] Steps) : GameEventData {
+
+    public record Step(
+        string Action,
+        string Message);
+}
+
 public record SaleChat(
     int WorldChatDiscount,
     int ChannelChatDiscount) : GameEventData;
@@ -311,6 +328,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(LobbyMap), "LobbyMap")]
 [JsonDerivedType(typeof(EventFieldPopup), "EventFieldPopup")]
 [JsonDerivedType(typeof(Rps), "Rps")]
+[JsonDerivedType(typeof(CoupleDance), "CoupleDance")]
 [JsonDerivedType(typeof(SaleChat), "SaleChat")]
 [JsonDerivedType(typeof(AttendGift), "AttendGift")]
 [JsonDerivedType(typeof(BlueMarble), "BlueMarble")]

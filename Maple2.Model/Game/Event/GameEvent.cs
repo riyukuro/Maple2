@@ -134,6 +134,30 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteLong(EndTime);
                 break;
+            case CoupleDance coupleDance:
+                // GameEvent::vfunc_4 reads the id, then CoupleDanceContext::Read (gameeventcontext.cpp) the context.
+                writer.WriteInt(Id);
+                writer.WriteInt(Id);
+                writer.WriteLong(StartTime);
+                writer.WriteLong(EndTime);
+                writer.WriteInt(coupleDance.DailyRewards.Length);
+                foreach (RewardItem[] items in coupleDance.DailyRewards) {
+                    WriteItemEntities(writer, items);
+                }
+                writer.WriteShort((short) coupleDance.GoodEndCount);
+                WriteItemEntities(writer, coupleDance.GoodEndRewards);
+                writer.WriteByte((byte) coupleDance.MaxRound);
+                writer.WriteInt(coupleDance.Dances.Length);
+                foreach (string dance in coupleDance.Dances) {
+                    writer.WriteUnicodeString(dance);
+                }
+                writer.WriteInt(coupleDance.Steps.Length);
+                foreach (CoupleDance.Step step in coupleDance.Steps) {
+                    writer.WriteUnicodeString(step.Action);
+                    writer.WriteUnicodeString(step.Message);
+                }
+                writer.WriteInt(coupleDance.FieldId);
+                break;
             case LobbyMap lobbyMap:
                 writer.WriteInt(Id);
                 writer.WriteInt(lobbyMap.MapId);
@@ -283,6 +307,20 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt();
                 writer.WriteUnicodeString(instrument.ContentType);
                 break;
+        }
+    }
+
+    // A count, then ItemEntity::Read (commonstruct_wa.cpp) per item: id, rank, count and four flags.
+    private static void WriteItemEntities(IByteWriter writer, RewardItem[] items) {
+        writer.WriteInt(items.Length);
+        foreach (RewardItem item in items) {
+            writer.WriteInt(item.ItemId);
+            writer.WriteShort(item.Rarity);
+            writer.WriteInt(item.Amount);
+            writer.WriteBool(false);
+            writer.WriteBool(false);
+            writer.WriteBool(false);
+            writer.WriteBool(false);
         }
     }
 }
