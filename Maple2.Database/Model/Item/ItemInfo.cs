@@ -4,11 +4,13 @@ using Maple2.Model.Enum;
 namespace Maple2.Database.Model;
 
 // NoSocketTransfer is stored inverted so a row saved before it was kept reads as the old default (sockets may move).
-internal record ItemTransfer(TransferFlag Flag, int RemainTrades, int RepackageCount, ItemBinding? Binding, bool NoSocketTransfer = false) {
+internal record ItemTransfer(TransferFlag Flag, int RemainTrades, int RepackageCount, ItemBinding? Binding, bool NoSocketTransfer = false,
+    bool DisableBreak = false) {
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator ItemTransfer?(Maple2.Model.Game.ItemTransfer? other) {
         return other == null ? null :
-            new ItemTransfer(other.Flag, other.RemainTrades, other.RepackageCount, other.Binding, !other.SocketTransfer);
+            new ItemTransfer(other.Flag, other.RemainTrades, other.RepackageCount, other.Binding, !other.SocketTransfer,
+                other.DisableBreak);
     }
 
     [return: NotNullIfNotNull(nameof(other))]
@@ -16,6 +18,7 @@ internal record ItemTransfer(TransferFlag Flag, int RemainTrades, int RepackageC
         return other == null ? null :
             new Maple2.Model.Game.ItemTransfer(other.Flag, other.RemainTrades, other.RepackageCount, other.Binding) {
                 SocketTransfer = !other.NoSocketTransfer,
+                DisableBreak = other.DisableBreak,
             };
     }
 }

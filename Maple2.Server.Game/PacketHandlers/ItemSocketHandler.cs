@@ -476,6 +476,10 @@ public class ItemSocketHandler : FieldPacketHandler {
 
     // FUN_140628200: the source may give its sockets, the target may take them, and both hold the same number.
     internal static bool CanTransferSockets(Item source, Item target, ItemSocketTable table) {
+        // The client has no transfer page without feature 0xa7 (ItemSocketTransfer01).
+        if (!table.SocketTransfer) {
+            return false;
+        }
         return CanGiveSockets(source, table) && CanTakeSockets(target, table)
                && source.Socket!.MaxSlots == target.Socket!.MaxSlots;
     }
@@ -494,6 +498,10 @@ public class ItemSocketHandler : FieldPacketHandler {
     // What both sides ask: CItemData::HasSkinType, CItemTransfer::CanTransferSocket (m_b42 and m_b41) and
     // CItem::FUN_140529560 (an equipment item of a socket subtype; not a timed item without a socketDataId).
     private static bool MaySocketTransfer(Item item, ItemSocketTable table) {
+        // FUN_140529560 first asks feature 0x2e (ItemSocketSystem).
+        if (!table.SocketSystem) {
+            return false;
+        }
         ItemMetadataProperty property = item.Metadata.Property;
         if (property.Type != 1 || property.SkinType == 0 || item.Socket == null) {
             return false;
@@ -505,7 +513,7 @@ public class ItemSocketHandler : FieldPacketHandler {
         if (property.SocketId != 0 && !table.Entries.TryGetValue(property.SocketId, item.Rarity, out row)) {
             table.Entries.TryGetValue(property.SocketId, 0, out row);
         }
-        if (!ItemSocketRules.TableAllowsTransfer(property.SocketId, row?.MaxCount, row?.OpenCount)) {
+        if (!ItemSocketRules.TableAllowsTransfer(property.SocketId, row?.MaxCount, row?.InitialCount)) {
             return false;
         }
         if (!ItemSocketRules.HasSocketSubtype(property.SubType, property.SkinType)) {

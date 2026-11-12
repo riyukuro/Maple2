@@ -76,7 +76,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         int amount = packet.ReadInt();
         Item? item = session.Item.Inventory.Get(itemUid);
-        if (item == null || (!item.Metadata.Limit.EnableBreak && item.GachaDismantleId == 0)) {
+        if (item == null || !DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId)) {
             return;
         }
         if (!DismantleRules.CanStage(amount, item.Amount, item.IsLocked, itemUid, session.Pet?.Pet.Uid ?? 0)) {
@@ -234,13 +234,13 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
 
                 // The same rule as Stage, for every type (pets had none before).
-                if (item.IsLocked || (!item.Metadata.Limit.EnableBreak && item.GachaDismantleId == 0)) {
+                if (item.IsLocked || !DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId)) {
                     continue;
                 }
 
                 switch (type) {
                     case InventoryType.Gear or InventoryType.Gemstone:
-                        if (!item.Metadata.Limit.EnableBreak) {
+                        if (!item.Metadata.Limit.EnableBreak || item.Transfer?.DisableBreak == true) {
                             continue;
                         }
                         break;

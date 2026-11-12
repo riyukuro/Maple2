@@ -14,6 +14,13 @@ public static class DismantleRules {
         return summonedPetUid == 0 || itemUid != summonedPetUid;
     }
 
+    // CItemBreakManager::CanBreakItem: an item from a gacha that can be dismantled (FUN_140531510) passes first;
+    // any other needs CItemTransfer::CanBreak, which refuses an item whose data has no enableBreak (m_b3E) and one
+    // given with the no-dismantle flag (m_b3F).
+    public static bool Breakable(bool enableBreak, bool disableBreak, int gachaDismantleId) {
+        return gachaDismantleId != 0 || enableBreak && !disableBreak;
+    }
+
     // The socket part of an outfit's dismantle reward (ItemBreakCommon 0x140530c90): each opened socket returns
     // percent of the unlock ingredient's count, at least 1, and nothing at 0 percent.
     public static int SkinSocketRefund(int unlockCount, int percent, int openSockets) {

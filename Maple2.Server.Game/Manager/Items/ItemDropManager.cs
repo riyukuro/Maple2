@@ -316,10 +316,19 @@ public class ItemDropManager {
             // The row's socketDataID replaces the item's own socket row (23 of today's 49 rows differ from the item's,
             // e.g. accessories without one get 1003-1005).
             if (selectedItem.SocketDataId != 0) {
-                createdItem.Socket = field.ItemStatsCalc.GetSockets(createdItem, selectedItem.SocketDataId) ?? createdItem.Socket;
+                ItemSocket? sockets = field.ItemStatsCalc.GetSockets(createdItem, selectedItem.SocketDataId);
+                if (sockets != null) {
+                    createdItem.Socket = sockets;
+                    if (createdItem.Transfer != null) {
+                        createdItem.Transfer.SocketTransfer = field.ItemStatsCalc.SocketTransferAtCreation(createdItem, selectedItem.SocketDataId);
+                    }
+                }
             }
 
-            // TODO: DisableBreak
+            // KMS2 sends m_b3F (no dismantle) on the items of drop rows with disableBreak.
+            if (selectedItem.DisableBreak && createdItem.Transfer != null) {
+                createdItem.Transfer.DisableBreak = true;
+            }
 
             yield return createdItem;
         }
@@ -407,6 +416,9 @@ public class ItemDropManager {
         var item = new Item(itemMetadata, rarity, amount);
         item.Stats = field.ItemStatsCalc.GetStats(item, rollMax);
         item.Socket = field.ItemStatsCalc.GetSockets(item);
+        if (item.Transfer != null) {
+            item.Transfer.SocketTransfer = field.ItemStatsCalc.SocketTransferAtCreation(item);
+        }
 
         if (item.Appearance != null) {
             item.Appearance.Color = GetColor(item.Metadata.Customize);

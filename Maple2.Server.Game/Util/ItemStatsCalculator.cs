@@ -150,8 +150,9 @@ public sealed class ItemStatsCalculator {
     // The sockets of a new item, as the client counts them (CItemSocketTable::GetMaxSocketCount and
     // GetInitialSocketCount, commonfiles/itemsocketsystemutil.cpp; CItem::FUN_14052b420 only fills sockets of item type 1).
     // An equipment item with its own socketDataId (mostly outfits, e.g. 1002 or 9001-9008) takes the itemsocket row's
-    // max and fixed open count, whatever its slot. Without one, calcItemSocketMaxCount decides from the item's slot,
-    // rank, level limit and skin type (only earrings, necklaces and rings of level 50 and up get sockets).
+    // max and initial open count (fixOpenCount for openType 0, none for 1), whatever its slot. Without one,
+    // calcItemSocketMaxCount decides from the item's slot, rank, level limit and skin type (only earrings, necklaces
+    // and rings of level 50 and up get sockets).
     // A non-zero socketId (a drop row's socketDataID, ItemDropResult::Set) is used in place of the item's own.
     public static ItemSocket? CreateSockets(ItemMetadata metadata, ItemType type, int rarity, ItemSocketTable table, int socketId = 0) {
         if (metadata.Property.Type != 1) {
@@ -169,7 +170,7 @@ public sealed class ItemStatsCalculator {
                 }
             }
 
-            return new ItemSocket(socket.MaxCount, Math.Min(socket.OpenCount, socket.MaxCount));
+            return new ItemSocket(socket.MaxCount, Math.Min(socket.InitialCount, socket.MaxCount));
         }
 
         // Only Earring, Necklace, and Ring have sockets without a socket id.
@@ -180,6 +181,29 @@ public sealed class ItemStatsCalculator {
         int maxSockets = Lua.CalcItemSocketMaxCount(type.Type, rarity, metadata.Limit.Level, metadata.Property.SkinType);
         byte openSocketCount = ItemSocketSlots.OpenSocketCount(maxSockets);
         return new ItemSocket((byte) maxSockets, openSocketCount);
+    }
+
+    public bool SocketTransferAtCreation(Item item, int socketId = 0) {
+        return SocketTransferAtCreation(item.Metadata, item.Rarity, TableMetadata.ItemSocketTable, socketId);
+    }
+
+    // The socket transfer flag a new item starts with (CItemTransfer::InitFromItem: m_b42 = m_b41, the socket row's
+    // rule CItemSocketTable::FUN_14062d980), worked out from the row its sockets come from: the item's own, or the drop
+    // row's socketDataID when CreateSockets takes it. A skin dropped with 1002 or 1006 (max = open) has its sockets
+    // open and may not give or take them; KMS2 sends every such skin (2/2, 4/4) with the flag at 0 and every skin made
+    // from its own 9001-9008 row (2/0, 4/0) with 1. The row is looked up as CItemSocketDataContainer::Find does: the
+    // item's rarity, else rarity 0.
+    public static bool SocketTransferAtCreation(ItemMetadata metadata, int rarity, ItemSocketTable table, int socketId = 0) {
+        if (socketId == 0 || !ItemSocketRules.KeepsDropSocketId(metadata.Property.SkinType, metadata.Property.SocketId)) {
+            socketId = metadata.Property.SocketId;
+        }
+        if (socketId == 0) {
+            return true;
+        }
+        if (!table.Entries.TryGetValue(socketId, rarity, out ItemSocketMetadata? row)) {
+            table.Entries.TryGetValue(socketId, 0, out row);
+        }
+        return ItemSocketRules.TableAllowsTransfer(socketId, row?.MaxCount, row?.InitialCount);
     }
 
     public bool UpdateRandomOption(ref Item item, params LockOption[] presets) {

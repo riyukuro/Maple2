@@ -39,6 +39,7 @@ public class ItemExtractionHandler : FieldPacketHandler {
             if (resultItem == null) {
                 return;
             }
+            MarkExtracted(resultItem);
 
             // The result goes to its own tab (an outfit for a skin), not always to gear.
             if (!session.Item.Inventory.CanAdd(resultItem, resultItem.Amount)) {
@@ -63,5 +64,16 @@ public class ItemExtractionHandler : FieldPacketHandler {
 
             session.Send(ItemExtractionPacket.Extract(sourceItem.Uid, sourceItem.GlamorForges, resultItem));
         }
+    }
+
+    // The client shows the result as it will be (UIItemExtractionScrollDialog, the preview of the selected item): its
+    // CItemTransfer gets SetSocketTransferFlag(false) (m_b42, the sockets may not move) and FUN_140635300 (m_b3F, it
+    // may not be dismantled).
+    internal static void MarkExtracted(Item item) {
+        if (item.Transfer == null) {
+            return;
+        }
+        item.Transfer.SocketTransfer = false;
+        item.Transfer.DisableBreak = true;
     }
 }

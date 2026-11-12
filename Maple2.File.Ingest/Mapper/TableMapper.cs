@@ -1102,12 +1102,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
             foreach (ItemSocket socket in group) {
                 idResults.Add(socket.grade, new ItemSocketMetadata(
                     MaxCount: socket.maxCount,
-                    OpenCount: socket.fixOpenCount));
+                    OpenCount: socket.fixOpenCount,
+                    OpenType: socket.openType));
             }
             results.Add(group.Key, idResults);
         }
 
-        return new ItemSocketTable(results);
+        return new ItemSocketTable(results,
+            SocketSystem: FeatureLocaleFilter.FeatureEnabled("ItemSocketSystem"),
+            SocketTransfer: FeatureLocaleFilter.FeatureEnabled("ItemSocketTransfer01"));
     }
 
     private MasteryRecipeTable ParseMasteryRecipe() {
