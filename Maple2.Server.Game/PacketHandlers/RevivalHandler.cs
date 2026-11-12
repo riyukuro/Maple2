@@ -157,7 +157,8 @@ public class RevivalHandler : FieldPacketHandler {
             // The constant LimitMeratRevival closes the meret revive for a whole locale (1 for NA in the client's
             // table; UIRevivalDialog::FUN_141abc930 hides the button). Ingest takes the client's row for it.
             localeClosed: constants.LimitMeratRevival != 0,
-            debuffAllows: RevivalRules.DebuffAllows(debuffCode, debuff is { Enabled: true }, session.Field.Metadata.Property.InfiniteMeretRevival),
+            debuffAllows: RevivalRules.DebuffAllows(debuffCode, debuffCode != 0 && session.Player.Buffs.EnumerateBuffs(debuffCode).Any(buff => buff.Enabled),
+                session.Field.Metadata.Property.InfiniteMeretRevival),
             // The client sends the ticked box without a coupon only through its meret confirm box, which this
             // mode does not carry; a ticked box with no coupon held is refused and no merets are taken.
             useCoupon: useCoupon,

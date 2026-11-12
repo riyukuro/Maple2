@@ -57,7 +57,7 @@ public class RideHandler : FieldPacketHandler {
 
     private void HandleStart(GameSession session, IByteReader packet) {
         Logger.Information("RequestRide Start: map={Map} limitRide={Limit} alreadyRiding={Riding}", session.Field?.MapId, session.Field?.Metadata.Limit.Ride, session.Ride.Ride != null);
-        if (session.Field == null || !session.Field.Metadata.Limit.Ride || session.Ride.Ride != null) {
+        if (session.Field == null || !RideShare.CanStart(session.Player.IsDead, session.Field.Metadata.Limit.Ride, session.Ride.Ride != null)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
             return;
         }
@@ -132,8 +132,7 @@ public class RideHandler : FieldPacketHandler {
             return;
         }
 
-        session.Ride.Ride = null;
-        session.Field.Broadcast(RidePacket.Change(session.Player.ObjectId, rideId, itemUid));
+        session.Ride.Change(rideId, itemUid);
     }
 
     private void HandleJoin(GameSession session, IByteReader packet) {

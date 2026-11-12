@@ -23,6 +23,8 @@ internal class CharacterUnlock {
     public IDictionary<AllianceType, int>? FamePoints { get; set; }
     // Null in rows from before the column (AddFameLogs).
     public IDictionary<int, long>? FameLogs { get; set; }
+    // Null in rows from before the column (AddEmoteStates).
+    public IDictionary<int, Maple2.Model.Game.EmoteState>? EmoteStates { get; set; }
     public required InventoryExpand Expand { get; set; }
     public short HairSlotExpand { get; set; }
     public DateTime LastModified { get; set; }
@@ -42,6 +44,7 @@ internal class CharacterUnlock {
             CollectedItems = new Dictionary<int, byte>(),
             FamePoints = new Dictionary<AllianceType, int>(),
             FameLogs = new Dictionary<int, long>(),
+            EmoteStates = new Dictionary<int, Maple2.Model.Game.EmoteState>(),
             DungeonRankRewards = new Dictionary<int, DungeonRankReward>(),
         } : new CharacterUnlock {
             LastModified = other.LastModified,
@@ -76,6 +79,7 @@ internal class CharacterUnlock {
             CollectedItems = other.CollectedItems,
             FamePoints = other.FamePoints,
             FameLogs = other.FameLogs,
+            EmoteStates = other.EmoteStates,
         };
     }
 
@@ -134,6 +138,11 @@ internal class CharacterUnlock {
                 unlock.FamePoints[alliance] = points;
             }
         }
+        if (other.EmoteStates != null) {
+            foreach ((int emoteId, Maple2.Model.Game.EmoteState state) in other.EmoteStates) {
+                unlock.EmoteStates[emoteId] = state;
+            }
+        }
         if (other.FameLogs != null) {
             foreach ((int logId, long time) in other.FameLogs) {
                 unlock.FameLogs[logId] = time;
@@ -162,6 +171,7 @@ internal class CharacterUnlock {
         builder.Property(unlock => unlock.DungeonRankRewards).HasJsonConversion().IsRequired();
         builder.Property(unlock => unlock.FamePoints).HasJsonConversion();
         builder.Property(unlock => unlock.FameLogs).HasJsonConversion();
+        builder.Property(unlock => unlock.EmoteStates).HasJsonConversion();
 
         builder.Property(unlock => unlock.LastModified).IsRowVersion();
     }

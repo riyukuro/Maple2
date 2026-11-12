@@ -219,21 +219,9 @@ public class ItemUseHandler : FieldPacketHandler {
             int.TryParse(durationString, out duration);
         }
 
-        long existingTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (session.Player.Value.Unlock.StickerSets.TryGetValue(stickerSetId, out long set)) {
-            existingTime = set;
-            if (existingTime == long.MaxValue) {
-                session.Send(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_add_failed_already_exist));
-                return;
-            }
-        }
-
-        long newTime = existingTime + duration;
-        if (duration == 0) {
-            newTime = long.MaxValue;
-        }
-
-        if (newTime <= existingTime) {
+        long? held = session.Player.Value.Unlock.StickerSets.TryGetValue(stickerSetId, out long set) ? set : null;
+        long? newTime = ChatStickerRules.NewExpiry(held, duration, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        if (newTime == null) {
             session.Send(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_add_failed_already_exist));
             return;
         }
@@ -242,7 +230,7 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        session.Player.Value.Unlock.StickerSets[stickerSetId] = newTime;
+        session.Player.Value.Unlock.StickerSets[stickerSetId] = newTime.Value;
 
         session.Send(ChatStickerPacket.Add(item, new ChatSticker(stickerSetId, session.Player.Value.Unlock.StickerSets[stickerSetId])));
     }

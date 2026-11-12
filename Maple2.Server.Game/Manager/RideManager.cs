@@ -83,6 +83,21 @@ public sealed class RideManager {
         EndRide();
     }
 
+    // RequestRide mode 2: the owner swaps its mount item for another. The client's reader of the answer gets off
+    // and summons the new item, which arrives as a new Start; so the old ride ends here like a dismount (the
+    // passengers get off, a ride's stats and keys go back).
+    public bool Change(int rideId, long itemUid) {
+        if (Ride == null || session.Field == null
+            || !RideShare.CanChange(Ride.OwnerId == session.Player.ObjectId, Ride.Action.Type)) {
+            return false;
+        }
+
+        ClearPassengers(session.Field, Ride);
+        session.Field.Broadcast(RidePacket.Change(session.Player.ObjectId, rideId, itemUid));
+        EndRide();
+        return true;
+    }
+
     private void EndRide() {
         if (Ride == null) {
             return;

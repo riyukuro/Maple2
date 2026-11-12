@@ -18,7 +18,12 @@ public static class EmotePacket {
         pWriter.Write<Command>(Command.Load);
         pWriter.WriteInt(emotes.Count);
         foreach (Emote emote in emotes) {
-            pWriter.Write<Emote>(emote);
+            pWriter.WriteInt(emote.Id);
+            pWriter.WriteInt(emote.Level);
+            pWriter.WriteBool(emote.Permanent);
+            pWriter.WriteLong(emote.ExpiryTime);
+            pWriter.WriteLong(emote.LearnTime);
+            pWriter.WriteBool(emote.Favorite);
         }
 
         return pWriter;
@@ -30,7 +35,7 @@ public static class EmotePacket {
         pWriter.WriteInt(emote.Id);
         pWriter.WriteInt(emote.Level);
         pWriter.WriteLong(emote.ExpiryTime);
-        pWriter.WriteLong();
+        pWriter.WriteLong(emote.LearnTime);
 
         return pWriter;
     }

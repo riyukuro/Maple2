@@ -29,7 +29,7 @@ public class EmoteHandler : FieldPacketHandler {
                 HandleUse(session, packet);
                 return;
             case Command.Favorite:
-                HandleFavorite(packet);
+                HandleFavorite(session, packet);
                 return;
         }
     }
@@ -55,16 +55,19 @@ public class EmoteHandler : FieldPacketHandler {
             return;
         }
 
-        session.Player.Value.Unlock.Emotes.Add(emoteId);
-        session.Send(EmotePacket.Learn(new Emote(emoteId)));
+        Unlock unlock = session.Player.Value.Unlock;
+        unlock.LearnEmote(emoteId, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        session.Send(EmotePacket.Learn(unlock.GetEmote(emoteId)));
     }
 
     // Client 2525: uidynamicactiondialog.cpp:356-371 / uicoupleactiondialog.cpp:320-336 ("onFavorite")
-    // write u8=4, i32 emote id, i32 level, bool favorite. The flag is not stored yet.
-    private static void HandleFavorite(IByteReader packet) {
-        packet.ReadInt(); // emote id
+    // write u8=4, i32 emote id, i32 level, bool favorite. The client marks its own entry before it sends and
+    // reads no answer; the mark is kept so the next emote list carries it. An emote not held takes no mark.
+    private static void HandleFavorite(GameSession session, IByteReader packet) {
+        int emoteId = packet.ReadInt();
         packet.ReadInt(); // level
-        packet.ReadBool(); // favorite
+        bool favorite = packet.ReadBool();
+        session.Player.Value.Unlock.SetEmoteFavorite(emoteId, favorite);
     }
 
     private void HandleUse(GameSession session, IByteReader packet) {

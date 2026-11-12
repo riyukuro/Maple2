@@ -21,6 +21,14 @@ public static class RideShare {
         return -1;
     }
 
+    // RequestRide mode 0: a mount item is summoned by a living player who is not on a ride, in a field that
+    // allows rides.
+    public static bool CanStart(bool dead, bool fieldAllowsRide, bool riding) => !dead && fieldAllowsRide && !riding;
+
+    // RequestRide mode 2 (swap the mount item): only the owner of a mount item ride. A passenger's request would
+    // drop its ride while it still holds a seat, and a battle or object mount is not an item to swap.
+    public static bool CanChange(bool owner, RideOnType type) => owner && type == RideOnType.Default;
+
     // The passengers on a mount's seats; the seats are emptied. The owner's dismount or field leave takes everyone
     // off: KMS2 sends ResponseRide mode 5 (the client's ClearPassengers) before the owner's Stop.
     public static int[] ClearSeats(int[] passengers) {

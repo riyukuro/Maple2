@@ -65,4 +65,40 @@ public class RideShareTests {
     public void DashStamina(bool owner, long runXStamina, int expected) {
         Assert.That(RideShare.DashStamina(owner, runXStamina), Is.EqualTo(expected));
     }
+
+    [Test]
+    public void Start_Allowed() {
+        Assert.That(RideShare.CanStart(dead: false, fieldAllowsRide: true, riding: false), Is.True);
+    }
+
+    [Test]
+    public void Start_DeadPlayer_IsRefused() {
+        Assert.That(RideShare.CanStart(dead: true, fieldAllowsRide: true, riding: false), Is.False);
+    }
+
+    [Test]
+    public void Start_FieldWithoutRides_IsRefused() {
+        Assert.That(RideShare.CanStart(dead: false, fieldAllowsRide: false, riding: false), Is.False);
+    }
+
+    [Test]
+    public void Start_AlreadyRiding_IsRefused() {
+        Assert.That(RideShare.CanStart(dead: false, fieldAllowsRide: true, riding: true), Is.False);
+    }
+
+    [Test]
+    public void Change_OwnerOfAMountItemRide() {
+        Assert.That(RideShare.CanChange(owner: true, RideOnType.Default), Is.True);
+    }
+
+    [Test]
+    public void Change_Passenger_IsRefused() {
+        Assert.That(RideShare.CanChange(owner: false, RideOnType.Default), Is.False);
+    }
+
+    [Test]
+    public void Change_BattleOrObjectMount_IsRefused() {
+        Assert.That(RideShare.CanChange(owner: true, RideOnType.Battle), Is.False);
+        Assert.That(RideShare.CanChange(owner: true, RideOnType.Object), Is.False);
+    }
 }

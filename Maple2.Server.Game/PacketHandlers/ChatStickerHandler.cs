@@ -6,6 +6,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Model.Error;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -85,6 +86,8 @@ public class ChatStickerHandler : FieldPacketHandler {
         byte chatType = packet.ReadByte();
 
         if (!TryUseSticker(session.Player.Value.Unlock, stickerId)) {
+            // The client tests this itself before it sends; its notice for result 0 is the print failure.
+            session.Send(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_print_failed));
             return;
         }
 
@@ -96,6 +99,7 @@ public class ChatStickerHandler : FieldPacketHandler {
         string groupChatName = packet.ReadUnicodeString();
 
         if (!TryUseSticker(session.Player.Value.Unlock, stickerId)) {
+            session.Send(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_print_failed));
             return;
         }
 
@@ -104,7 +108,11 @@ public class ChatStickerHandler : FieldPacketHandler {
 
     private void HandleFavorite(GameSession session, IByteReader packet) {
         int stickerId = packet.ReadInt();
-
+        // The client marks only a sticker it may use (IsEmoticonUsable); the result codes have no notice for
+        // this, so a request for another sticker gets no answer.
+        if (!TryUseSticker(session.Player.Value.Unlock, stickerId)) {
+            return;
+        }
         if (!session.Config.TryFavoriteChatSticker(stickerId)) {
             return;
         }
@@ -123,10 +131,7 @@ public class ChatStickerHandler : FieldPacketHandler {
     }
 
     private bool TryUseSticker(Unlock unlock, int stickerId) {
-        if (!TableMetadata.ChatStickerTable.Entries.TryGetValue(stickerId, out ChatStickerMetadata? metadata)) {
-            return false;
-        }
-
-        return unlock.StickerSets.ContainsKey(metadata.GroupId) && unlock.StickerSets[metadata.GroupId] >= DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        int? groupId = TableMetadata.ChatStickerTable.Entries.TryGetValue(stickerId, out ChatStickerMetadata? metadata) ? metadata.GroupId : null;
+        return ChatStickerRules.Usable(unlock.StickerSets, groupId, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     }
 }

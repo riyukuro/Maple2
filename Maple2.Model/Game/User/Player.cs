@@ -46,6 +46,35 @@ public class Unlock {
         }
     }
     public readonly IList<int> Emotes = new List<int>();
+    // Learn time and favourite mark of the emotes above, by emote id. An emote without a row has neither.
+    public readonly IDictionary<int, EmoteState> EmoteStates = new SortedDictionary<int, EmoteState>();
+
+    public Emote GetEmote(int emoteId) {
+        return Emote.Of(emoteId, EmoteStates.TryGetValue(emoteId, out EmoteState? state) ? state : null);
+    }
+
+    // Adds an emote with its learn time; false when it is already held.
+    public bool LearnEmote(int emoteId, long nowSeconds) {
+        if (Emotes.Contains(emoteId)) {
+            return false;
+        }
+        Emotes.Add(emoteId);
+        EmoteStates[emoteId] = new EmoteState { LearnTime = nowSeconds };
+        return true;
+    }
+
+    // Emote mode 4: the favourite mark of an emote. Only a held emote takes one.
+    public bool SetEmoteFavorite(int emoteId, bool favorite) {
+        if (!Emotes.Contains(emoteId)) {
+            return false;
+        }
+        if (EmoteStates.TryGetValue(emoteId, out EmoteState? state)) {
+            state.Favorite = favorite;
+        } else if (favorite) {
+            EmoteStates[emoteId] = new EmoteState { Favorite = true };
+        }
+        return true;
+    }
     public readonly IDictionary<int, long> StickerSets = new Dictionary<int, long>();
     public readonly IDictionary<int, bool> MasteryRewardsClaimed = new Dictionary<int, bool>();
     public readonly IDictionary<int, DungeonRankReward> DungeonRankRewards = new Dictionary<int, DungeonRankReward>();

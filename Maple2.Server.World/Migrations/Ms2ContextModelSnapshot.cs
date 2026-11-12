@@ -511,6 +511,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<string>("EmoteStates")
+                        .HasColumnType("json");
+
                     b.Property<string>("Emotes")
                         .IsRequired()
                         .HasColumnType("json");

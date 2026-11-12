@@ -283,11 +283,10 @@ public sealed class AchievementManager {
                 session.Player.Value.Unlock.AddTitle(grade.Reward.Code);
                 break;
             case AchievementRewardType.dynamicaction:
-                if (session.Player.Value.Unlock.Emotes.Contains(grade.Reward.Code)) {
+                if (!session.Player.Value.Unlock.LearnEmote(grade.Reward.Code, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
                     break;
                 }
-                session.Player.Value.Unlock.Emotes.Add(grade.Reward.Code);
-                session.Send(EmotePacket.Learn(new Emote(grade.Reward.Code)));
+                session.Send(EmotePacket.Learn(session.Player.Value.Unlock.GetEmote(grade.Reward.Code)));
                 break;
             case AchievementRewardType.skillpoint:
                 session.Config.AddSkillPoint(SkillPointSource.Trophy, grade.Reward.Value, (short) (grade.Reward.Rank - 1));

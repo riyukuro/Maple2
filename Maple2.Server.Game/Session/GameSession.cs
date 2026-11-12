@@ -663,7 +663,7 @@ public sealed partial class GameSession : Core.Network.Session {
         pWriter.Write<ActorState>(ActorState.Fall);
         Send(pWriter);
 
-        Send(EmotePacket.Load(Player.Value.Unlock.Emotes.Select(id => new Emote(id)).ToList()));
+        Send(EmotePacket.Load(Player.Value.Unlock.Emotes.Select(Player.Value.Unlock.GetEmote).ToList()));
         Config.InitMacros();
         Config.LoadSkillCooldowns();
         Dungeon.LoadField();
