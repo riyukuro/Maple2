@@ -94,6 +94,26 @@ public class BuffStackTests {
         Assert.That(Buff.AmountByStacks(150, stacks), Is.EqualTo(expected));
     }
 
+    // A buff held once per caster is found for its own caster only; any other buff for every caster.
+    [TestCase(false, 100, 100, true)]
+    [TestCase(false, 100, 200, true)]
+    [TestCase(true, 100, 100, true)]
+    [TestCase(true, 100, 200, false)]
+    public void RemovalNamesTheBuffsCaster(bool casterIndividual, int buffCaster, int namedCaster, bool expected) {
+        Assert.That(BuffManager.RemoveMatches(casterIndividual, buffCaster, namedCaster), Is.EqualTo(expected));
+    }
+
+    // A shield takes the hit up to its value; a larger hit breaks it and the rest goes on.
+    [TestCase(1000, 400.0, 600, 0.0, false)]
+    [TestCase(1000, 1000.0, 0, 0.0, false)]
+    [TestCase(1000, 1500.5, 0, 500.5, true)]
+    public void ShieldTakesTheHit(long shield, double damage, long shieldLeft, double damageLeft, bool broken) {
+        (long left, double rest, bool broke) = Maple2.Server.Game.Util.DamageCalculator.AbsorbShield(shield, damage);
+        Assert.That(left, Is.EqualTo(shieldLeft));
+        Assert.That(rest, Is.EqualTo(damageLeft));
+        Assert.That(broke, Is.EqualTo(broken));
+    }
+
     [Test]
     public void AmountStaysInsideTheInt() {
         Assert.That(Buff.AmountByStacks(2_000_000_000, 3), Is.EqualTo(int.MaxValue));

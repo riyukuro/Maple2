@@ -14,6 +14,15 @@ public static class DamageCalculator {
     // The part of its full hit an npc (not a pet) deals, for a roll in [0, 1): even between 0.96 and 1.
     internal static double NpcAttackRoll(double roll) => 1 - Constant.NpcAttackDamageSpread * roll;
 
+    // A shield takes a hit up to its value: what is left of the shield, what is left of the hit, and whether the
+    // shield broke (the hit was larger than the shield).
+    public static (long ShieldLeft, double DamageLeft, bool Broken) AbsorbShield(long shield, double damage) {
+        if (shield >= damage) {
+            return (shield - (long) damage, 0, false);
+        }
+        return (0, damage - shield, true);
+    }
+
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
@@ -138,15 +147,16 @@ public static class DamageCalculator {
 
         // Apply any shields
         foreach (Buff buff in target.Buffs.EnumerateBuffs().Where(buff => buff.Metadata.Shield != null)) {
-            if (buff.ShieldHealth >= attackDamage) {
-                buff.ShieldHealth -= (long) attackDamage;
-                attackDamage = 0;
-                target.Field.Broadcast(BuffPacket.Update(buff, BuffFlag.UpdateBuff));
-                return (DamageType.Block, (long) attackDamage);
+            (long shieldLeft, double damageLeft, bool broken) = AbsorbShield(buff.ShieldHealth, attackDamage);
+            if (!broken) {
+                buff.ShieldHealth = shieldLeft;
+                // The client reads the shield value only with the shield flag set.
+                target.Field.Broadcast(BuffPacket.Update(buff, BuffFlag.UpdateBuff | BuffFlag.UpdateShield));
+                return (DamageType.Block, 0);
             }
 
-            attackDamage -= buff.ShieldHealth;
-            target.Buffs.Remove(buff.Id, target.ObjectId);
+            attackDamage = damageLeft;
+            target.Buffs.Remove(buff.Id, buff.Caster.ObjectId);
         }
 
         return (damageType, (long) Math.Max(1, attackDamage));

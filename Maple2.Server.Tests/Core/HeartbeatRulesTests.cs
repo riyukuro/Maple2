@@ -91,4 +91,25 @@ public class HeartbeatRulesTests {
         Assert.That(tracker.IsLeaving(7, 1, Start), Is.False);
         Assert.That(tracker.IsLeaving(8, 1, Start), Is.True);
     }
+
+    // The cut is decided when a heartbeat is due, so it comes 90 to 120 s after the client's last packet: a client
+    // that stands still for 100 s is cut only when a round falls into seconds 90 to 100 of that time.
+    [TestCase(5_000, 100_000, false)] // rounds at 25, 55, 85 and 115 s of the stall: back before the fourth
+    [TestCase(25_000, 100_000, true)] // rounds at 5, 35, 65 and 95 s: the fourth finds 95 s of silence
+    [TestCase(5_000, 180_000, true)]
+    [TestCase(29_000, 180_000, true)]
+    public void AStallIsCutAtTheFirstRoundAfterTheLimit(long lastPacketAfterRoundMs, long stallMs, bool cut) {
+        long lastReceived = lastPacketAfterRoundMs;
+        int unanswered = 0;
+        bool wasCut = false;
+        for (long round = HeartbeatRules.IntervalMs; round <= lastReceived + stallMs; round += HeartbeatRules.IntervalMs) {
+            if (HeartbeatRules.IsSilent(lastReceived, unanswered, round)) {
+                wasCut = true;
+                break;
+            }
+            unanswered++;
+        }
+
+        Assert.That(wasCut, Is.EqualTo(cut));
+    }
 }

@@ -446,13 +446,13 @@ public class BuffManager : IUpdatable {
                         continue;
                     }
                 }
-                buffsToRemove.Add((buffResult.Id, Actor.ObjectId));
+                buffsToRemove.Add((buffResult.Id, buffResult.Caster.ObjectId));
             }
         }
 
         foreach (BuffCategory category in cancel.Categories) {
             foreach (Buff cancelCategoryBuff in EnumerateBuffs().Where(b => b.Metadata.Property.Category == category)) {
-                buffsToRemove.Add((cancelCategoryBuff.Id, Actor.ObjectId));
+                buffsToRemove.Add((cancelCategoryBuff.Id, cancelCategoryBuff.Caster.ObjectId));
             }
         }
         Remove(buffsToRemove.ToArray());
@@ -479,7 +479,7 @@ public class BuffManager : IUpdatable {
             buffsToRemove.Add((buff.Id, Actor.ObjectId));
         }
         foreach (Buff buff in EnumerateBuffs().Where(b => b.Metadata.Property.RemoveOnLeaveField)) {
-            buffsToRemove.Add((buff.Id, Actor.ObjectId));
+            buffsToRemove.Add((buff.Id, buff.Caster.ObjectId));
         }
         Remove(buffsToRemove.ToArray());
     }
@@ -493,11 +493,11 @@ public class BuffManager : IUpdatable {
             List<(int id, int casterId)> buffsToRemove = [];
             foreach (Buff buff in EnumerateBuffs()) {
                 if (buff.Metadata.Property.RemoveOnPvpZone) {
-                    buffsToRemove.Add((buff.Id, Actor.ObjectId));
+                    buffsToRemove.Add((buff.Id, buff.Caster.ObjectId));
                 }
 
                 if (!buff.Metadata.Property.KeepOnEnterPvpZone) {
-                    buffsToRemove.Add((buff.Id, Actor.ObjectId));
+                    buffsToRemove.Add((buff.Id, buff.Caster.ObjectId));
                 }
             }
             Remove(buffsToRemove.ToArray());
@@ -593,6 +593,12 @@ public class BuffManager : IUpdatable {
         }
     }
 
+    // A buff held once per caster (casterIndividualBuff) is removed only for the caster named, so a removal that
+    // means "this buff" (death, leaving the field, a cancel, a broken shield) names the buff's own caster.
+    public static bool RemoveMatches(bool casterIndividual, int buffCasterId, int casterId) {
+        return !casterIndividual || buffCasterId == casterId;
+    }
+
     public bool Remove(int id, int casterId) {
         //TODO: Check if buff is removable/should be removed
         bool refreshStats = false;
@@ -602,7 +608,7 @@ public class BuffManager : IUpdatable {
             if (buff.Id != id) {
                 continue;
             }
-            if (buff.Metadata.Property.CasterIndividualBuff && buff.Caster.ObjectId != casterId) {
+            if (!RemoveMatches(buff.Metadata.Property.CasterIndividualBuff, buff.Caster.ObjectId, casterId)) {
                 continue;
             }
 
@@ -658,7 +664,7 @@ public class BuffManager : IUpdatable {
     public void OnDeath() {
         foreach (Buff buff in EnumerateBuffs()) {
             if (!buff.Metadata.Property.KeepOnDeath) {
-                Remove(buff.Id, Actor.ObjectId);
+                Remove(buff.Id, buff.Caster.ObjectId);
                 continue;
             }
             buff.UpdateEnabled();
