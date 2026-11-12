@@ -168,20 +168,24 @@ public static class CubePacket {
         return pWriter;
     }
 
-    // Client: CSceneStateGame::OnResponseCube case 7 (scenestategame.cpp:9959): short reason (0x75 picks the other
-    // notice text), byte flag, int, int.
-    // Client: ResponseCube case 7 (scenestategame.cpp:9959) shows the "already expired" notice for reason 0x75 and
-    // the forfeit notice for any other; KMS2 sends 0x72 to an owner who gave the plot up.
+    // The client shows its "already expired" notice for reason 0x75 and the forfeit notice for any other; KMS2 sends
+    // 0x72 to an owner who gave the plot up.
     public const short ForfeitByOwner = 0x72;
     public const short ForfeitExpired = 0x75;
 
+    // Client: CSceneStateGame::OnResponseCube case 7 (scenestategame.cpp:9959): short reason, byte flag, int map,
+    // int plot number.
     public static ByteWriter ConfirmForfeitPlot(PlotInfo plot, short reason, bool flag = false) {
+        return ConfirmForfeitPlot(plot.MapId, plot.Number, reason, flag);
+    }
+
+    public static ByteWriter ConfirmForfeitPlot(int mapId, int plotNumber, short reason, bool flag = false) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ConfirmForfeitPlot);
         pWriter.WriteShort(reason);
         pWriter.WriteBool(flag);
-        pWriter.WriteInt(plot.MapId);
-        pWriter.WriteInt(plot.Number);
+        pWriter.WriteInt(mapId);
+        pWriter.WriteInt(plotNumber);
 
         return pWriter;
     }

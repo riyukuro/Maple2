@@ -7,6 +7,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Service;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -52,5 +53,17 @@ public class LiftupRulesTests {
 
         Assert.That(Convert.ToHexString(owner[2..]), Is.EqualTo("07720000B3841E000A000000"));
         Assert.That(Convert.ToHexString(expired[2..]), Is.EqualTo("07750000B3841E000A000000"));
+    }
+
+    // The World's expiry job names the owner's account with Forfeit set; a channel answers that owner with 0x75.
+    // A plot that only opens for sale again (no owner) and a plain plot update send no notice.
+    [Test]
+    public void ExpiredNoticeFollowsTheExpiryRequest() {
+        byte[]? expired = ChannelService.ExpiredNotice(2000051, 10, new FieldPlotRequest.Types.UpdatePlot { AccountId = 7, Forfeit = true })?.ToArray();
+
+        Assert.That(expired, Is.Not.Null);
+        Assert.That(Convert.ToHexString(expired![2..]), Is.EqualTo("07750000B3841E000A000000"));
+        Assert.That(ChannelService.ExpiredNotice(2000051, 10, new FieldPlotRequest.Types.UpdatePlot { AccountId = 0, Forfeit = false }), Is.Null);
+        Assert.That(ChannelService.ExpiredNotice(2000051, 10, new FieldPlotRequest.Types.UpdatePlot { AccountId = 7, Forfeit = false }), Is.Null);
     }
 }

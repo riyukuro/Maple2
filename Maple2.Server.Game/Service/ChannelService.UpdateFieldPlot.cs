@@ -2,6 +2,7 @@
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Game;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -49,6 +50,11 @@ public partial class ChannelService {
                 session.Item.ReInstantiateFurnishing();
                 // set their outside plot to null
                 session.Housing.SetPlot(null);
+                // The owner may be on a channel that has not loaded the plot's map, so the notice does not wait for it.
+                ByteWriter? notice = ExpiredNotice(mapId, plotNumber, request);
+                if (notice != null) {
+                    session.Send(notice);
+                }
             }
         }
 
@@ -70,9 +76,18 @@ public partial class ChannelService {
         if (request.Forfeit) {
             if (fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
                 fieldManager.Broadcast(CubePacket.ForfeitPlot(plot));
-                session?.Send(CubePacket.ConfirmForfeitPlot(plot, CubePacket.ForfeitExpired));
             }
         }
+    }
+
+    // The World's plot expiry job (WorldServer.FieldPlotExpiryCheck) sends every channel the owner's account with
+    // Forfeit set when a plot runs out. The owner's own forfeit comes with the owner's channel left out, and the owner
+    // was answered there.
+    internal static ByteWriter? ExpiredNotice(int mapId, int plotNumber, FieldPlotRequest.Types.UpdatePlot request) {
+        if (!request.Forfeit || request.AccountId <= 0) {
+            return null;
+        }
+        return CubePacket.ConfirmForfeitPlot(mapId, plotNumber, CubePacket.ForfeitExpired);
     }
 
     private void HandleUpdateBlock(int mapId, int plotNumber, FieldPlotRequest.Types.UpdateBlock request) {
