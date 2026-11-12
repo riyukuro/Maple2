@@ -132,8 +132,9 @@ public class ItemEnchantManager {
                 rates.Success = MaxRate;
                 break;
         }
-        NpcTalkEvent(ScriptEventType.EnchantSelect);
+        // KMS2 order: the staged item, then the smith's line.
         session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder));
+        NpcTalkEvent(ScriptEventType.EnchantSelect);
         return true;
     }
 

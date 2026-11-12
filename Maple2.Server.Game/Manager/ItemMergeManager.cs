@@ -75,6 +75,32 @@ public sealed class ItemMergeManager {
 
         IList<Item> inventory = session.Item.Inventory.Filter(candidate => candidate.Metadata.Property.Type == 19);
         session.Send(ItemMergePacket.Stage(Materials(session.ServerTableMetadata.ItemMergeTable, item, inventory)));
+        SmithTalk(StagedTalk);
+    }
+
+    // The smith's lines: KMS2 sends the script's first event after the staged item's material list and
+    // the second after each result (mode 5), without a request from the client.
+    public const int StagedTalk = 0;
+    public const int ResultTalk = 1;
+
+    private void SmithTalk(int index) {
+        if (!session.ScriptMetadata.TryGet(Constant.EmpowermentNpc, out ScriptMetadata? script) ||
+            !script.States.TryGetValue(Constants.MergeSmithScriptID, out ScriptState? state)) {
+            return;
+        }
+
+        ScriptContent? line = SmithLine(state, index, Random.Shared);
+        if (line != null) {
+            session.Send(NpcTalkPacket.Update(line));
+        }
+    }
+
+    public static ScriptContent? SmithLine(ScriptState state, int index, Random random) {
+        CinematicEventScript[]? events = state.Contents.FirstOrDefault()?.Events;
+        if (events == null || index < 0 || index >= events.Length || events[index].Contents.Length == 0) {
+            return null;
+        }
+        return events[index].Contents[random.Next(events[index].Contents.Length)];
     }
 
     // The materials offered for an item. The client shows the uids of mode 1 as they come
@@ -110,14 +136,6 @@ public sealed class ItemMergeManager {
         }
 
         session.Send(ItemMergePacket.Select(mergeSlot, ItemMerge.CostMultiplier(upgradeItem.Rarity)));
-
-        if (!session.ScriptMetadata.TryGet(Constant.EmpowermentNpc, out ScriptMetadata? script) ||
-            !script.States.TryGetValue(Constants.MergeSmithScriptID, out ScriptState? state)) {
-            return;
-        }
-
-        CinematicEventScript[] eventScripts = state.Contents.First().Events;
-        session.NpcScript = new NpcScriptManager(session, eventScripts);
     }
 
     public void Empower(long itemUid, long catalystUid) {
@@ -168,17 +186,19 @@ public sealed class ItemMergeManager {
         session.Currency.Meso += -(mergeSlot.MesoCost * multiplier);
 
         MergeRoll roll = Roll(mergeSlot, Random.Shared);
-        session.ConditionUpdate(ConditionType.item_merge_success);
 
         // An item that already has a merge option keeps it until the player has seen the new one and
         // picked (the client dialog waits in its choice phase after mode 4).
         if (upgradeItem.Stats is { HasMergeOption: true }) {
             pending = new PendingMerge(upgradeItem.Uid, upgradeItem.Id, crystalId, roll);
             session.Send(ItemMergePacket.Choice(roll));
+            session.ConditionUpdate(ConditionType.item_merge_success);
             return;
         }
 
+        // KMS2 order: the result, the smith's line, then the trophy update.
         Apply(upgradeItem, roll, crystalId);
+        session.ConditionUpdate(ConditionType.item_merge_success);
     }
 
     // The player's pick between the old option and the pending one. Either way the client waits for the
@@ -203,7 +223,7 @@ public sealed class ItemMergeManager {
         }
 
         session.Send(ItemMergePacket.Empower(item));
-        session.NpcScript?.EmpowerEvent();
+        SmithTalk(ResultTalk);
     }
 
     private void Apply(Item item, MergeRoll roll, int crystalId) {
@@ -211,7 +231,7 @@ public sealed class ItemMergeManager {
         item.Stats.SetMergeOption(roll, crystalId);
 
         session.Send(ItemMergePacket.Empower(item));
-        session.NpcScript?.EmpowerEvent();
+        SmithTalk(ResultTalk);
         if (session.Item.Equips.Get(item.Uid) != null) {
             session.Stats.Refresh();
         }

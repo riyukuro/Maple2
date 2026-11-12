@@ -69,4 +69,39 @@ public class DismantleRulesTests {
     public void SkinSocketRefund(int unlockCount, int percent, int openSockets, int expected) {
         Assert.That(DismantleRules.SkinSocketRefund(unlockCount, percent, openSockets), Is.EqualTo(expected));
     }
+
+    // Gear without a break row, as KMS2 pays it: onyx by the item's rarity 3 sell price.
+    [TestCase(7139L, 3, false, 142)]
+    [TestCase(7139L, 3, true, 71)] // one-handed: half
+    [TestCase(1200L, 1, false, 2)]
+    [TestCase(1200L, 2, false, 4)]
+    [TestCase(1200L, 4, false, 32)]
+    [TestCase(1200L, 4, true, 16)]
+    [TestCase(1L, 4, false, 1)] // never below 1
+    [TestCase(0L, 3, false, 1)]
+    [TestCase(1200L, 5, false, 32)] // above rarity 4: not known, paid as rarity 4
+    public void Onyx(long price, int rarity, bool oneHanded, int expected) {
+        Assert.That(DismantleRules.Onyx(price, rarity, oneHanded), Is.EqualTo(expected));
+    }
+
+    [TestCase(1, false, 0, 0)]
+    [TestCase(3, false, 0, 0)]
+    [TestCase(4, false, 3, 3)]
+    [TestCase(4, true, 1, 2)]
+    public void ChaosOnyx(int rarity, bool oneHanded, int min, int max) {
+        Assert.That(DismantleRules.ChaosOnyx(rarity, oneHanded), Is.EqualTo((min, max)));
+    }
+
+    // The result is min to max, max included.
+    [Test]
+    public void RollReachesBothEnds() {
+        var random = new System.Random(3);
+        var seen = new HashSet<int>();
+        for (int i = 0; i < 200; i++) {
+            seen.Add(DismantleRules.Roll(1, 2, random));
+        }
+        Assert.That(seen, Is.EquivalentTo(new[] { 1, 2 }));
+        Assert.That(DismantleRules.Roll(0, 0, random), Is.EqualTo(0));
+        Assert.That(DismantleRules.Roll(5, 5, random), Is.EqualTo(5));
+    }
 }

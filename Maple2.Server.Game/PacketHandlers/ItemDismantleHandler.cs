@@ -24,10 +24,8 @@ public class ItemDismantleHandler : FieldPacketHandler {
         AutoAdd = 6,
     }
 
-    // TODO: Simple calculation now of 10k onyx per item
     private const int ONYX_ID = 40100023;
-    private const int MIN_ONYX = 700;
-    private const int MAX_ONYX = 1000;
+    private const int CHAOS_ONYX_ID = 40100024;
 
     // The item a tag pays out as, from the tag rows of the client's table/itemdata.xml (CItemDataTable::LoadTagItemIds).
     private static readonly Dictionary<string, int> TagItemIds = new() {
@@ -177,7 +175,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
 
             var result = new Dictionary<int, int>();
             foreach ((int id, (int min, int max)) in rewards) {
-                int total = Random.Shared.Next(min, max);
+                int total = DismantleRules.Roll(min, max, Random.Shared);
                 result[id] = total;
                 // An unknown reward id gives nothing (the loop used to spin on it forever).
                 if (!ItemMetadata.TryGet(id, out ItemMetadata? rewardMetadata)) {
@@ -325,10 +323,15 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
             }
         } else {
-            // TODO: Calculate onyx to reward from item rarity/enchant
-            int minAdd = MIN_ONYX * item.Rarity * amount;
-            int maxAdd = MAX_ONYX * item.Rarity * amount;
-            yield return (ONYX_ID, minAdd, maxAdd);
+            // Gear: onyx by the sell price, and the chaos onyx row, which KMS2 lists at 0 too
+            // (DismantleRules.Onyx). The enchant level's part is not known.
+            long[] prices = item.Metadata.Property.SellPrices;
+            long price = prices.Length > 2 ? prices[2] : 0;
+            bool oneHanded = item.Metadata.SlotNames.Contains(EquipSlot.OH);
+            int onyx = DismantleRules.Onyx(price, item.Rarity, oneHanded) * amount;
+            (int chaosMin, int chaosMax) = DismantleRules.ChaosOnyx(item.Rarity, oneHanded);
+            yield return (ONYX_ID, onyx, onyx);
+            yield return (CHAOS_ONYX_ID, chaosMin * amount, chaosMax * amount);
         }
     }
 }

@@ -23,6 +23,38 @@ public static class DismantleRules {
         return Math.Max(1, unlockCount * percent / 100) * openSockets;
     }
 
+    // The onyx crystals a piece of gear without a break table row gives, as KMS2 lists them (gear of level
+    // 20 to 50, rarity 1 to 4): the item's sell price at rarity 3, divided by 600, 280, 50 or 37.5 for rarity
+    // 1 to 4, rounded down, at least 1. A one-handed weapon (slot name OH) gives half. KMS2 lists the same
+    // number as min and max. Nothing is known above rarity 4: those use the rarity 4 divisor.
+    public static int Onyx(long sellPriceRarity3, int rarity, bool oneHanded) {
+        (long multiplier, long divisor) = rarity switch {
+            <= 1 => (1L, 600L),
+            2 => (1L, 280L),
+            3 => (1L, 50L),
+            _ => (2L, 75L),
+        };
+        if (oneHanded) {
+            divisor *= 2;
+        }
+        long onyx = Math.Max(0, sellPriceRarity3) * multiplier / divisor;
+        return (int) Math.Clamp(onyx, 1, int.MaxValue);
+    }
+
+    // The chaos onyx crystals of the same gear: 3 at rarity 4, 1 to 2 for a one-handed weapon, none below
+    // rarity 4. KMS2 lists the row for every such item, with 0 to 0 too. Above rarity 4: as rarity 4.
+    public static (int Min, int Max) ChaosOnyx(int rarity, bool oneHanded) {
+        if (rarity < 4) {
+            return (0, 0);
+        }
+        return oneHanded ? (1, 2) : (3, 3);
+    }
+
+    // The amount paid for a reward listed as min to max: both ends can come out (KMS2 pays the max too).
+    public static int Roll(int min, int max, Random random) {
+        return max <= min ? min : random.Next(min, max + 1);
+    }
+
     // The stacks a reward of <paramref name="total"/> pieces is given in. Each stack is one item:
     // giving the whole remainder on every pass paid a reward above the stack size more than once.
     public static IEnumerable<int> Stacks(int total, int slotMax) {

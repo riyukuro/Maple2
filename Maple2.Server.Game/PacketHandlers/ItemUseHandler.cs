@@ -656,6 +656,11 @@ public class ItemUseHandler : FieldPacketHandler {
             lastClearEpicQuestId = 0;
         }
 
+        // KMS2 takes the potion out of the bag first, then sends the level up.
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            return;
+        }
+
         int currentLevel = session.Player.Value.Character.Level;
         session.Player.Value.Character.Level = level;
         session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
@@ -673,8 +678,6 @@ public class ItemUseHandler : FieldPacketHandler {
             Level = level,
             Async = true,
         });
-
-        session.Item.Inventory.Consume(item.Uid, 1);
     }
 
     // The client checks all of this before it sends the use (CanCreateReactor); the server repeats the event,

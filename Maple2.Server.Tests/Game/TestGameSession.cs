@@ -20,6 +20,7 @@ using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.World.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -39,7 +40,7 @@ namespace Maple2.Server.Tests.Game;
 //   test.TakeSent()                                         // the packets sent since the last call, in order
 //
 // The session is made without its constructor, so only what Start sets exists: Player, Item (Equips, Inventory,
-// Furnishing), ItemBox, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Exp, Dungeon (no room),
+// Furnishing), ItemBox, ItemMerge, ItemEnchant, Stats (no actor: Refresh does nothing), PlayerInfo, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Exp, Dungeon (no room),
 // Housing, Guild (no guild), Field (a field that only broadcasts to this player and rolls item drops from the tables
 // set here) and World (grants every lock, answers a move with MoveAddress). A handler that reaches anything else
 // needs it set first.
@@ -64,6 +65,7 @@ public sealed class TestGameSession {
     public readonly List<string> Errors = [];
 
     private readonly LRUCache<int, ItemMetadata> items = new(1024, 1);
+    private readonly ScriptMetadataStorage scripts = new(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
     private readonly ItemMetadataStorage itemMetadata = Uninitialized<ItemMetadataStorage>();
     private BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
     private GameSession? started;
@@ -146,6 +148,12 @@ public sealed class TestGameSession {
         var property = new ItemMetadataProperty(false, 0, slotMax, type, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
         var limit = new ItemMetadataLimit(gender, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
         return new ItemMetadata(id, $"{id}", slot is null ? [] : [slot.Value], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, function, [], null, null, null, null);
+    }
+
+    // An npc script the session's ScriptMetadata finds.
+    public void Register(ScriptMetadata script) {
+        var cache = (LRUCache<int, ScriptMetadata>) typeof(MetadataStorage<int, ScriptMetadata>).GetField("Cache", Any)!.GetValue(scripts)!;
+        cache.AddReplace(script.Id, script);
     }
 
     // Item data the storage and the session's ItemMetadata find. Store registers its item by itself.
@@ -273,6 +281,10 @@ public sealed class TestGameSession {
         FieldInfo eventCache = typeof(Maple2.Server.Game.GameServer).GetField("eventCache", Any)!;
         eventCache.SetValue(server, Activator.CreateInstance(eventCache.FieldType));
         typeof(GameSession).GetField("server", Any)!.SetValue(session, server);
+        var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        Set(session, nameof(GameSession.QuestMetadata), new QuestMetadataStorage(new MetadataContext(metadataOptions)));
+        Set(session, nameof(GameSession.ScriptMetadata), scripts);
+        Set(session, nameof(GameSession.PlayerInfo), new PlayerInfoStorage(World));
 
         using GameStorage.Request db = Storage.Context();
         Player player = db.LoadPlayer(AccountId, CharacterId, 1, 1) ?? throw new InvalidOperationException("player not loaded");
@@ -297,6 +309,11 @@ public sealed class TestGameSession {
         typeof(QuestManager).GetField("session", Any)!.SetValue(quest, session);
         typeof(QuestManager).GetField("accountValues", Any)!.SetValue(quest, new Dictionary<int, Quest>());
         typeof(QuestManager).GetField("characterValues", Any)!.SetValue(quest, new Dictionary<int, Quest>());
+        // What QuestManager.Load reads: the mission lists (none) and the exploration progress (0).
+        typeof(QuestManager).GetField("dailyMissions", Any)!.SetValue(quest, new HashSet<int>());
+        typeof(QuestManager).GetField("weeklyMissions", Any)!.SetValue(quest, new HashSet<int>());
+        typeof(QuestManager).GetField("missionMetadata", Any)!.SetValue(quest, new List<QuestMetadata>());
+        session.Config = Uninitialized<ConfigManager>();
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
@@ -308,6 +325,11 @@ public sealed class TestGameSession {
         session.Housing = new HousingManager(session, TableMetadata);
         session.Item = new ItemManager(db, session, stats);
         session.ItemBox = new ItemBoxManager(session);
+        session.ItemMerge = new ItemMergeManager(session);
+        typeof(GameSession).GetField(nameof(GameSession.DismantleStaging), Any)!.SetValue(session, new (long Uid, int Amount)[100]);
+        session.ItemEnchant = new ItemEnchantManager(session);
+        // Stats without an actor: Refresh does nothing.
+        session.Stats = Uninitialized<StatsManager>();
 
         Session = session;
         return session;
@@ -426,6 +448,14 @@ public sealed class TestGameSession {
         public override LockResponse ReleaseLock(LockRequest request, CallOptions options) {
             Released++;
             return new LockResponse();
+        }
+
+        // What PlayerInfo.SendUpdate sent to the world.
+        public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
+
+        public override PlayerUpdateResponse UpdatePlayer(PlayerUpdateRequest request, CallOptions options) {
+            PlayerUpdates.Add(request);
+            return new PlayerUpdateResponse();
         }
     }
 
