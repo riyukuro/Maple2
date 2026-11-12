@@ -29,6 +29,9 @@ public readonly struct SkinColor {
 
 [StructLayout(LayoutKind.Sequential, Size = 20)]
 public readonly struct EquipColor {
+    // An item without a colour: KMS2 sends colour index -1 (a zeroed struct would say index 0).
+    public static readonly EquipColor None = new EquipColor(default(Color));
+
     public Color Primary { get; }
     public Color Secondary { get; }
     public Color Tertiary { get; }

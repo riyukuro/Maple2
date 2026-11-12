@@ -41,7 +41,9 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
 
     public void WriteTo(IByteWriter writer) {
         // CItemTransfer is CItem[66]
-        writer.Write<TransferFlag>(Flag); // CItemTransfer[5]
+        // The client's own rule (CItemTransfer::ComputeRule) only knows Trade (4), Bind (8) and LimitTrade (16), and
+        // KMS2 sends a tradable item as 4: Split is a server-side rule and goes out as 0.
+        writer.WriteInt((int) (Flag & ~TransferFlag.Split)); // CItemTransfer[5]
         writer.WriteBool(false); // CItemTransfer[9] *bit-1*
         writer.WriteInt(RemainTrades); // CItemTransfer[10]
         writer.WriteInt(RepackageCount); // CItemTransfer[11]

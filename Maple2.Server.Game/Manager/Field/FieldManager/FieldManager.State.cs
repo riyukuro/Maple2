@@ -335,31 +335,34 @@ public partial class FieldManager {
         return fieldPortal;
     }
 
-    public FieldItem SpawnItem(IActor owner, Item item) {
+    public FieldItem SpawnItem(IActor owner, Item item, short dropKind = ItemDropKind.PlayerDrop, long msDuration = FieldItem.PlayerDropDurationMs) {
         lock (item) {
             using GameStorage.Request db = GameStorage.Context();
             db.SaveItems(0, item);
         }
 
-        var fieldItem = new FieldItem(this, NextLocalId(), item) {
+        var fieldItem = new FieldItem(this, NextLocalId(), item, msDuration) {
             Owner = owner,
             Position = owner.Position,
             Rotation = owner.Rotation,
             Type = DropType.Player,
+            DropKind = dropKind,
         };
         fieldItems[fieldItem.ObjectId] = fieldItem;
 
         return fieldItem;
     }
 
-    public FieldItem SpawnItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner, long characterId = 0, bool fixedPosition = false) {
-        var fieldItem = new FieldItem(this, NextLocalId(), item) {
+    public FieldItem SpawnItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner, long characterId = 0, bool fixedPosition = false,
+                               short dropKind = ItemDropKind.None, long msDuration = 0) {
+        var fieldItem = new FieldItem(this, NextLocalId(), item, msDuration) {
             Owner = owner,
             Position = position,
             Rotation = rotation,
             FixedPosition = fixedPosition,
             ReceiverId = characterId,
             Type = characterId > 0 ? DropType.Default : DropType.Player,
+            DropKind = dropKind,
         };
         fieldItems[fieldItem.ObjectId] = fieldItem;
 
@@ -371,8 +374,9 @@ public partial class FieldManager {
         Broadcast(FieldPacket.DropItem(fieldItem));
     }
 
-    public void DropItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner = null, long characterId = 0, bool fixedPosition = false) {
-        FieldItem fieldItem = SpawnItem(position, rotation, item, owner, characterId, fixedPosition);
+    public void DropItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner = null, long characterId = 0, bool fixedPosition = false,
+                         short dropKind = ItemDropKind.None, long msDuration = 0) {
+        FieldItem fieldItem = SpawnItem(position, rotation, item, owner, characterId, fixedPosition, dropKind, msDuration);
         Broadcast(FieldPacket.DropItem(fieldItem));
     }
 

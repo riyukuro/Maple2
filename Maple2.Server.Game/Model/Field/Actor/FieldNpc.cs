@@ -204,10 +204,6 @@ public class FieldNpc : Actor<Npc> {
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
     public long LastDamageTick { get; private set; }
     private int lastAttackerObjectId;
-    // The first player to attack this mob; used to assign drop ownership for regular mobs.
-    // TODO: If the mob loses aggro on all players it should heal to full and clear firstAttackerObjectId and DamageDealers,
-    //       resetting the tag so the next attacker becomes the new owner.
-    private int firstAttackerObjectId;
 
     public MS2PatrolData? Patrol { get; private set; }
     private int currentWaypointIndex;
@@ -491,9 +487,6 @@ public class FieldNpc : Actor<Npc> {
         if (Value.Metadata.Basic.HasPropertyTag("damaged_hp_upper_hp_bar")) {
             Field.Broadcast(FieldPacket.NpcAccumulatedDamage(this));
         }
-        if (firstAttackerObjectId == 0 && caster is FieldPlayer) {
-            firstAttackerObjectId = caster.ObjectId;
-        }
         lastAttackerObjectId = caster.ObjectId;
         if (caster is FieldPlayer hitPlayer) {
             DropHitLoot(hitPlayer);
@@ -606,8 +599,9 @@ public class FieldNpc : Actor<Npc> {
     }
 
     // Drop box semantics (confirmed via KMS2 video analysis):
-    // - GlobalDropBoxIds       : drops spawned on death, shared (no per-player lock unless receiverCharacterId is set).
-    // - GlobalHitDropBoxIds    : drops spawned each time the NPC is hit while alive (triggered in OnDamageReceived).
+    // - GlobalDropBoxIds       : drops spawned on death, rolled once per damage dealer and locked to it.
+    // - GlobalHitDropBoxIds    : drops spawned each time the NPC is hit while alive (triggered in OnDamageReceived),
+    //                            locked to the player who hit.
     // - DeadGlobalDropBoxIds   : drops spawned when a player hits the NPC corpse (IsCorpse == true).
     // - IndividualDropBoxIds   : per-player drops on death (each damage dealer gets their own).
     // - IndividualHitDropBoxIds: per-player drops each time the NPC is hit while alive.
@@ -619,7 +613,7 @@ public class FieldNpc : Actor<Npc> {
     // CN-locale items, while item GROUP 4 ("boss equipment drop") is a completely different entity
     // only reachable via drop BOX 10, which no NPC uses. Equipment drops for bosses come from
     // IndividualDropBoxIds instead (keyed to the NPC id, e.g. individualDropBoxId="23000013" for Doondun).
-    private void DropGlobalLoot(long receiverCharacterId = 0) {
+    private void DropGlobalLoot(long receiverCharacterId) {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
@@ -629,7 +623,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (Item item in globalDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
-            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: receiverCharacterId);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: receiverCharacterId, dropKind: ItemDropKind.NpcDeath);
         }
     }
 
@@ -643,14 +637,14 @@ public class FieldNpc : Actor<Npc> {
         foreach (Item item in globalDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
-            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcHit);
         }
 
         foreach (int individualHitDropId in dropInfo.IndividualHitDropBoxIds) {
             foreach (Item item in Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualHitDropId)) {
                 float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
                 float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
-                Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id);
+                Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcHit);
             }
         }
     }
@@ -665,7 +659,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (Item item in individualDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
-            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcDeath);
         }
     }
 
@@ -679,7 +673,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (Item item in globalDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
-            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcHit);
         }
     }
 
@@ -705,46 +699,22 @@ public class FieldNpc : Actor<Npc> {
 
     // mob drops, exp, etc.
     private void HandleDamageDealers() {
-        if (Value.IsBoss) {
-            // Boss drops: global items once (no receiver lock), individual items per dealer.
-            DropGlobalLoot();
-            foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
-                if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
-                    continue;
-                }
-
-                DropIndividualLoot(player);
-                GiveExp(player);
-
-                player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
-                foreach (string tag in Value.Metadata.Basic.MainTags) {
-                    player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
-                }
-                UpdateSpawner(player);
-            }
-        } else {
-            // Regular mob: first attacker is tagged and receives all drops.
-            if (!Field.TryGetPlayer(firstAttackerObjectId, out FieldPlayer? taggedPlayer) &&
-                !Field.TryGetPlayer(DamageDealers.FirstOrDefault().Key, out taggedPlayer)) {
-                return;
+        // Death drops, boss or mob: each damage dealer gets its own, locked to it. KMS2 sends them as type 0 with the
+        // dealer's character id; in a party only the members who dealt damage get one.
+        foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
+            if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
+                continue;
             }
 
-            DropGlobalLoot(taggedPlayer!.Value.Character.Id);
-            DropIndividualLoot(taggedPlayer);
+            DropGlobalLoot(player.Value.Character.Id);
+            DropIndividualLoot(player);
+            GiveExp(player);
 
-            foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
-                if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
-                    continue;
-                }
-
-                GiveExp(player);
-
-                player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
-                foreach (string tag in Value.Metadata.Basic.MainTags) {
-                    player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
-                }
-                UpdateSpawner(player);
+            player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
+            foreach (string tag in Value.Metadata.Basic.MainTags) {
+                player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
             }
+            UpdateSpawner(player);
         }
     }
 

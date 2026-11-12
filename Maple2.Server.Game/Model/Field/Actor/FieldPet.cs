@@ -158,7 +158,7 @@ public sealed class FieldPet : FieldNpc {
             return;
         }
 
-        FieldItem fieldItem = Field.SpawnItem(this, pet);
+        FieldItem fieldItem = Field.SpawnItem(this, pet, ItemDropKind.Pet, FieldItem.DefaultDurationMs);
         if (capturer is FieldPlayer player) {
             // The capture counts for the pet catch conditions: the pet's item id (94000006 "Capture $item:61000153$").
             player.Session.ConditionUpdate(ConditionType.pet_catch_id, codeLong: pet.Id);

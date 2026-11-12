@@ -67,8 +67,10 @@ public class NoRowOpcodeLayoutTests {
         Assert.That(reader.ReadShort(), Is.EqualTo(2));
 
         // Tail: the result item's colour block (three colours of 4 bytes, int index, int palette), then its
-        // transfer block, and nothing after it.
-        Assert.That(reader.ReadBytes(20), Is.EqualTo(new byte[20]));
+        // transfer block, and nothing after it. An item without a colour has index -1.
+        Assert.That(reader.ReadBytes(12), Is.EqualTo(new byte[12]));
+        Assert.That(reader.ReadInt(), Is.EqualTo(-1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
         var transfer = new ByteWriter();
         transfer.WriteClass<ItemTransfer>(result.Transfer ?? ItemTransfer.Default);
         byte[] transferBytes = transfer.Buffer.AsSpan(0, transfer.Length).ToArray();

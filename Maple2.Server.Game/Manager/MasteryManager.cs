@@ -204,7 +204,8 @@ public class MasteryManager {
             if (item == null || session.Field is null) {
                 continue;
             }
-            session.Field.DropItem(position, rotation, item, characterId: session.CharacterId);
+            session.Field.DropItem(position, rotation, item, characterId: session.CharacterId,
+                dropKind: (short) (ItemDropKind.Mastery + (int) recipeMetadata.Type));
         }
 
         AfterGather(recipeMetadata, 1);

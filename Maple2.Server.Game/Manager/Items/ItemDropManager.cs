@@ -332,7 +332,7 @@ public class ItemDropManager {
         // Item has no color
         if (metadata.ColorPalette == 0 ||
             !field.TableMetadata.ColorPaletteTable.Entries.TryGetValue(metadata.ColorPalette, out IReadOnlyDictionary<int, ColorPaletteTable.Entry>? palette)) {
-            return default;
+            return EquipColor.None;
         }
 
         // Item has random color
@@ -348,6 +348,6 @@ public class ItemDropManager {
             return new EquipColor(entry.Primary, entry.Secondary, entry.Tertiary, metadata.ColorPalette, metadata.DefaultColorIndex);
         }
 
-        return default;
+        return EquipColor.None;
     }
 }

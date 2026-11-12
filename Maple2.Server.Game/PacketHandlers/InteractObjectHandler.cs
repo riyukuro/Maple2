@@ -156,13 +156,13 @@ public class InteractObjectHandler : FieldPacketHandler {
         foreach (Item item in globalDropBoxItems) {
             session.Field.DropItem(interact.Position with {
                 Z = interact.Position.Z + interact.Value.Drop.DropHeight,
-            }, interact.Rotation, item, owner: interact, characterId: session.CharacterId);
+            }, interact.Rotation, item, characterId: session.CharacterId, dropKind: ItemDropKind.InteractObject);
         }
 
         foreach (Item item in items) {
             session.Field.DropItem(interact.Position with {
                 Z = interact.Position.Z + interact.Value.Drop.DropHeight,
-            }, interact.Rotation, item, owner: interact, characterId: session.CharacterId);
+            }, interact.Rotation, item, characterId: session.CharacterId, dropKind: ItemDropKind.InteractObject);
         }
 
         foreach (InteractObjectMetadataEffect.InvokeEffect invokeEffect in interact.Value.AdditionalEffect.Invoke) {

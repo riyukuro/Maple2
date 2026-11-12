@@ -229,7 +229,7 @@ public static class FieldPacket {
         pWriter.WriteInt(fieldItem.Owner?.ObjectId ?? 0);
         pWriter.WriteByte((byte) fieldItem.Type);
         pWriter.WriteInt(item.Rarity);
-        pWriter.WriteShort();
+        pWriter.WriteShort(fieldItem.DropKind);
         pWriter.WriteBool(fieldItem.FixedPosition);
         pWriter.WriteBool(false);
 

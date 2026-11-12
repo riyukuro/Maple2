@@ -6,7 +6,7 @@ using Maple2.Tools;
 namespace Maple2.Model.Game;
 
 public class ItemAppearance : IByteSerializable, IByteDeserializable {
-    public static readonly ItemAppearance Default = new ItemAppearance(default);
+    public static readonly ItemAppearance Default = new ItemAppearance(EquipColor.None);
 
     public EquipColor Color;
 

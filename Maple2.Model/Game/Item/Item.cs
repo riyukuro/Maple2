@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Model.Common;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Tools;
@@ -63,10 +64,10 @@ public class Item : IByteSerializable, IByteDeserializable {
 
         GlamorForges = (short) Metadata.Limit.GlamorForgeCount;
         Appearance = Metadata.SlotNames.FirstOrDefault(EquipSlot.Unknown) switch {
-            EquipSlot.HR => new HairAppearance(default),
-            EquipSlot.FD => new DecalAppearance(default),
-            EquipSlot.CP => new CapAppearance(default),
-            _ => new ItemAppearance(default),
+            EquipSlot.HR => new HairAppearance(EquipColor.None),
+            EquipSlot.FD => new DecalAppearance(EquipColor.None),
+            EquipSlot.CP => new CapAppearance(EquipColor.None),
+            _ => new ItemAppearance(EquipColor.None),
         };
 
         Transfer = new ItemTransfer(GetTransferFlag(), Metadata.Property.TradableCount);
