@@ -118,4 +118,95 @@ public class EventSaleTypesTests {
         Assert.That(new GameEvent(part).IsActive(now.AddMinutes(-11)), Is.False);
         Assert.That(new GameEvent(metadata with { ActiveDays = [] }).IsActive(now.AddDays(2)), Is.False); // ended
     }
+
+    [TestCase(12000, 0)] // held to 10000
+    [TestCase(-5000, 500)] // held to 0
+    public void HousingPrice_HoldsTheRate(int rate, int expected) {
+        var sale = new SaleHousing([new SaleHousingCube(100, 1, rate)]);
+        Assert.That(EventSaleRules.HousingPrice(sale, 100, FurnishingCurrencyType.Meso, 500), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void SaleRemake_WritesTheRateAndTheClass() {
+        Assert.That(Written(GameEventType.SaleRemake, new SaleRemake(3000, 2)),
+            Is.EqualTo(Name("SaleRemake") + "591B0000" + "B80B0000" + "02"));
+    }
+
+    [Test]
+    public void SaleBeautyShop_WritesTheShopTheRateAndTheFlag() {
+        Assert.That(Written(GameEventType.SaleBeautyShop, new SaleBeautyShop(500, 5000, false)),
+            Is.EqualTo(Name("SaleBeautyShop") + "591B0000" + "F4010000" + "88130000" + "00"));
+        Assert.That(Written(GameEventType.SaleBeautyShop, new SaleBeautyShop(508, 3000, true)),
+            Is.EqualTo(Name("SaleBeautyShop") + "591B0000" + "FC010000" + "B80B0000" + "01"));
+    }
+
+    [Test]
+    public void RemakeAndBeautyRows_AreRead() {
+        Assert.That(EventSaleReader.Remake("3000", "0"), Is.EqualTo(new SaleRemake(3000, 0)));
+        Assert.That(EventSaleReader.Remake(" 5000 ", null), Is.EqualTo(new SaleRemake(5000, 0)));
+        Assert.That(EventSaleReader.Remake("5000", "3"), Is.EqualTo(new SaleRemake(5000, 3)));
+        Assert.That(EventSaleReader.Remake("0", "0"), Is.Null);
+        Assert.That(EventSaleReader.Remake("", "0"), Is.Null);
+        Assert.That(EventSaleReader.Remake("3000", "x"), Is.Null);
+
+        Assert.That(EventSaleReader.BeautyShop("500", "5000", null), Is.EqualTo(new SaleBeautyShop(500, 5000, false)));
+        Assert.That(EventSaleReader.BeautyShop("508", "3000", "1"), Is.EqualTo(new SaleBeautyShop(508, 3000, true)));
+        Assert.That(EventSaleReader.BeautyShop("500", "0", null), Is.Null);
+        Assert.That(EventSaleReader.BeautyShop(null, "5000", null), Is.Null);
+        Assert.That(EventSaleReader.BeautyShop("500", "5000", "x"), Is.Null);
+    }
+
+    [TestCase(1, 13, false, 1)]
+    [TestCase(1, 17, false, 1)]
+    [TestCase(1, 12, false, 2)]
+    [TestCase(1, 18, false, 2)]
+    [TestCase(1, 21, false, 2)]
+    [TestCase(1, 22, false, 0)]
+    [TestCase(3, 0, false, 0)] // a weapon
+    [TestCase(6, 0, true, 3)]
+    public void RemakeSaleType_NamesTheItemClass(int group, int type, bool isPet, int expected) {
+        Assert.That(EventSaleRules.RemakeSaleType(group, type, isPet), Is.EqualTo((byte) expected));
+    }
+
+    [Test]
+    public void RemakeSaleRate_IsTheHigherOfTheClassAndAll() {
+        SaleRemake[] sales = [new(3000, 0), new(5000, 1), new(2000, 2), new(4000, 1)];
+        Assert.That(EventSaleRules.RemakeSaleRate(sales, 1), Is.EqualTo(5000));
+        Assert.That(EventSaleRules.RemakeSaleRate(sales, 2), Is.EqualTo(3000));
+        Assert.That(EventSaleRules.RemakeSaleRate(sales, 3), Is.EqualTo(3000));
+        Assert.That(EventSaleRules.RemakeSaleRate(sales, 0), Is.EqualTo(3000));
+        Assert.That(EventSaleRules.RemakeSaleRate([], 1), Is.EqualTo(0));
+    }
+
+    [TestCase(10, 3000, 0.5f, 7)]
+    [TestCase(10, 5000, 0.5f, 5)]
+    [TestCase(10, 8000, 0.5f, 5)] // held to the limit
+    [TestCase(3, 3000, 0.5f, 2)] // 2.1 cut
+    [TestCase(1, 5000, 0.5f, 1)] // at least 1
+    [TestCase(10, 3000, 0f, 10)] // no limit set: nothing off
+    [TestCase(10, 0, 0.5f, 10)]
+    [TestCase(0, 3000, 0.5f, 0)]
+    public void RemakeIngredientCount_TakesTheRateOffUpToTheLimit(int count, int rate, float limit, int expected) {
+        Assert.That(EventSaleRules.RemakeIngredientCount(count, rate, limit), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void BeautyShopRate_IsTheHighestOfTheShop() {
+        SaleBeautyShop[] sales = [new(500, 3000, false), new(500, 5000, true), new(501, 10000, false)];
+        Assert.That(EventSaleRules.BeautyShopRate(sales, 500), Is.EqualTo(5000));
+        Assert.That(EventSaleRules.BeautyShopRate(sales, 501), Is.EqualTo(10000));
+        Assert.That(EventSaleRules.BeautyShopRate(sales, 504), Is.EqualTo(0));
+    }
+
+    [TestCase(1000, 3000, 700)]
+    [TestCase(999, 3000, 700)] // 299 off, whole numbers
+    [TestCase(5, 5000, 3)]
+    [TestCase(1000, 10000, 0)]
+    [TestCase(1000, 20000, 0)]
+    [TestCase(1000, 0, 1000)]
+    [TestCase(1000, -5, 1000)]
+    [TestCase(0, 5000, 0)]
+    public void BeautyShopPrice_TakesTheRateOff(int price, int rate, int expected) {
+        Assert.That(EventSaleRules.BeautyShopPrice(price, rate), Is.EqualTo(expected));
+    }
 }

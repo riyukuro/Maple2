@@ -118,8 +118,8 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 }
             }
 
-            // Calculate required catalysts.
-            List<IngredientInfo> ingredients = GetIngredients(item);
+            // Calculate required catalysts, at the counts the dialog shows under a running SaleRemake event.
+            List<IngredientInfo> ingredients = SaleIngredients(session, item, GetIngredients(item));
 
             // Clone the item so we can preview changes without modifying existing item.
             Item changeItem = item.Clone();
@@ -219,6 +219,20 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         }
 
         return ingredients;
+    }
+
+    // The ingredient counts a running SaleRemake event leaves. The staged item's reply carries the full counts:
+    // the client lowers them itself (EventSaleRules.RemakeIngredientCount).
+    private static List<IngredientInfo> SaleIngredients(GameSession session, Item item, List<IngredientInfo> ingredients) {
+        int rate = EventSaleRules.RemakeSaleRate(session.FindEvent(GameEventType.SaleRemake)
+                .Select(gameEvent => gameEvent.Metadata.Data).OfType<SaleRemake>(),
+            EventSaleRules.RemakeSaleType(item.Type.Group, item.Type.Type, item.Type.IsPet));
+        if (rate <= 0) {
+            return ingredients;
+        }
+        float limit = session.ServerTableMetadata.ConstantsTable.IngredientFeeReduceLimit;
+        return ingredients.Select(ingredient => new IngredientInfo(ingredient.Tag,
+            EventSaleRules.RemakeIngredientCount(ingredient.Amount, rate, limit))).ToList();
     }
 
     private static void HandleSelect(GameSession session, IByteReader packet) {

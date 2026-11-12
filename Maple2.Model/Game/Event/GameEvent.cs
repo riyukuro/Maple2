@@ -386,6 +386,17 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteInt(helperBonus.Bonus);
                 break;
+            case SaleRemake saleRemake:
+                writer.WriteInt(Id);
+                writer.WriteInt(saleRemake.Rate);
+                writer.WriteByte(saleRemake.ItemType);
+                break;
+            case SaleBeautyShop saleBeautyShop:
+                writer.WriteInt(Id);
+                writer.WriteInt(saleBeautyShop.ShopId);
+                writer.WriteInt(saleBeautyShop.Rate);
+                writer.WriteBool(saleBeautyShop.Flag);
+                break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);
                 writer.WriteInt();

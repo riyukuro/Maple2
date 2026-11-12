@@ -403,6 +403,20 @@ public record SaleHousingCube(
 public record FindDungeonHelperBonus(
     int Bonus) : GameEventData;
 
+// The change of attributes sale (GameEventSaleRemake, commonfiles/gameevent.cpp:1966): value1 is the rate out of
+// 10000 taken off the ingredient counts, value2 the item class it is for (EventSaleRules.RemakeSaleType, 0 all).
+public record SaleRemake(
+    int Rate,
+    byte ItemType) : GameEventData;
+
+// The beauty fee sale (GameEventSaleBeautyShop, commonfiles/gameevent.cpp:760): value1 is the beauty shop's id,
+// value2 the rate out of 10000 taken off its fees, value3 the flag that picks the client's first rate slot
+// (EventSaleRules.BeautyShopRate).
+public record SaleBeautyShop(
+    int ShopId,
+    int Rate,
+    bool Flag) : GameEventData;
+
 // Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
 public record DungeonEnterTime(
     int DungeonId,
@@ -454,4 +468,6 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(SaleUgcDesign), "SaleUgcDesign")]
 [JsonDerivedType(typeof(SaleHousing), "SaleHousing")]
 [JsonDerivedType(typeof(FindDungeonHelperBonus), "FindDungeonHelperBonus")]
+[JsonDerivedType(typeof(SaleRemake), "SaleRemake")]
+[JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
 public abstract record GameEventData;

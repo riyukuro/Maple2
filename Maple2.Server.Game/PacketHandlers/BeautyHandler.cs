@@ -258,7 +258,7 @@ public class BeautyHandler : FieldPacketHandler {
                 return;
             }
         } else {
-            if (!PayWithCurrency(session, session.BeautyShop.Metadata.StyleCostMetadata)) {
+            if (!PayWithCurrency(session, session.BeautyShop, session.BeautyShop.Metadata.StyleCostMetadata)) {
                 return;
             }
         }
@@ -282,7 +282,7 @@ public class BeautyHandler : FieldPacketHandler {
                 return;
             }
         } else {
-            if (!PayWithCurrency(session, shop.Metadata.StyleCostMetadata)) {
+            if (!PayWithCurrency(session, shop, shop.Metadata.StyleCostMetadata)) {
                 return;
             }
         }
@@ -526,6 +526,7 @@ public class BeautyHandler : FieldPacketHandler {
     // Whether the fee can be taken; nothing is taken. Packets of one session are handled one at a time, so
     // a Pay after the change finds what this found.
     private static bool CanPay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
+        cost = SaleCost(session, shop, cost);
         if (useVoucher) {
             ItemTag voucherTag = shop.Metadata.CouponTag;
             if (voucherTag == ItemTag.None) {
@@ -553,7 +554,16 @@ public class BeautyHandler : FieldPacketHandler {
     }
 
     private static bool Pay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
-        return useVoucher ? PayWithVoucher(session, shop) : PayWithCurrency(session, cost);
+        return useVoucher ? PayWithVoucher(session, shop) : PayWithCurrency(session, shop, cost);
+    }
+
+    // The fee a running SaleBeautyShop event of the shop leaves, the fee the shop's window shows
+    // (EventSaleRules.BeautyShopPrice).
+    private static BeautyShopCostMetadata SaleCost(GameSession session, BeautyShop shop, BeautyShopCostMetadata cost) {
+        int rate = EventSaleRules.BeautyShopRate(session.FindEvent(GameEventType.SaleBeautyShop)
+            .Select(gameEvent => gameEvent.Metadata.Data).OfType<SaleBeautyShop>(), shop.Id);
+        int price = EventSaleRules.BeautyShopPrice(cost.Price, rate);
+        return price == cost.Price ? cost : cost with { Price = price };
     }
 
     private static CurrencyType ToCurrencyType(ShopCurrencyType type) {
@@ -588,7 +598,8 @@ public class BeautyHandler : FieldPacketHandler {
         return true;
     }
 
-    private static bool PayWithCurrency(GameSession session, BeautyShopCostMetadata cost) {
+    private static bool PayWithCurrency(GameSession session, BeautyShop shop, BeautyShopCostMetadata cost) {
+        cost = SaleCost(session, shop, cost);
         switch (cost.CurrencyType) {
             case ShopCurrencyType.Meso:
                 if (session.Currency.CanAddMeso(-cost.Price) != -cost.Price) {

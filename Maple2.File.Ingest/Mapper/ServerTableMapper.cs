@@ -1609,6 +1609,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.Housing(value1, value2, value3);
             case GameEventType.FindDungeonHelperBonus:
                 return EventSaleReader.HelperBonus(value1);
+            case GameEventType.SaleRemake:
+                return EventSaleReader.Remake(value1, value2);
+            case GameEventType.SaleBeautyShop:
+                return EventSaleReader.BeautyShop(value1, value2, value3);
             case GameEventType.SaleAutoPlayInstrument:
                 if (!int.TryParse(value1, out int performanceDiscount) && string.IsNullOrEmpty(value2)) {
                     return null;

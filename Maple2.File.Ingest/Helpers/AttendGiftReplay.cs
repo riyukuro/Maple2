@@ -9,7 +9,8 @@ namespace Maple2.File.Ingest.Helpers;
 // attendance calendar or the stamp card. MS2_REPLAY_ATTEND_GIFT=1 keeps one ended event of each type and moves it
 // to start on the ingest day with its original length. Unset, the ingest is unchanged. The same holds for the
 // design price sale (SaleUgcDesign), the cube price sale (SaleHousing) and the dungeon helper bonus
-// (FindDungeonHelperBonus): every row has ended, and the switch replays one of each.
+// (FindDungeonHelperBonus), the change of attributes sale (SaleRemake) and the beauty fee sale (SaleBeautyShop):
+// every row has ended, and the switch replays one of each.
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -17,6 +18,7 @@ public static class AttendGiftReplay {
     public static readonly GameEventType[] Types = [
         GameEventType.AttendGift, GameEventType.LongTermAttendGift, GameEventType.StampEvent,
         GameEventType.SaleUgcDesign, GameEventType.SaleHousing, GameEventType.FindDungeonHelperBonus,
+        GameEventType.SaleRemake, GameEventType.SaleBeautyShop,
     ];
 
     private static readonly string[] TimeFormats = ["yyyy-MM-dd-HH-mm", "yyyy-MM-dd-HH-mm-ss"];

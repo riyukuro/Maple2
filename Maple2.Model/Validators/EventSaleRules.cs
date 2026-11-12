@@ -23,17 +23,79 @@ public static class EventSaleRules {
 
     // The price of a cube under a SaleHousing event, as the build palette computes it (CGameRule, gamerule.cpp:1985):
     // the first row with the item's housing filter and the price's money type gives
-    // (int) (price * (1 - rate / 10000) + 0.5) in single floats; no such row, the price.
+    // (int) (price * (1 - rate / 10000) + 0.5) in single floats; no such row, the price. Chosen here: the rate is
+    // held to 0..10000, so a data error neither raises the price nor makes it negative (the client does not test it).
     public static int HousingPrice(SaleHousing? sale, int filter, FurnishingCurrencyType currency, int price) {
         if (sale == null) {
             return price;
         }
         foreach (SaleHousingCube cube in sale.Cubes) {
             if (cube.Filter == filter && cube.MoneyType == (short) currency) {
-                return (int) ((float) price * (1f - (float) cube.Rate / FullRate) + 0.5f);
+                return (int) ((float) price * (1f - (float) Math.Clamp(cube.Rate, 0, FullRate) / FullRate) + 0.5f);
             }
         }
         return price;
+    }
+
+    // The item class a SaleRemake row names (CGameRule, gamerule.cpp): 1 for equip types 13 to 17, 2 for 12 and
+    // 18 to 21, 3 for a pet, else 0. A row of class 0 counts for every item.
+    public static byte RemakeSaleType(int group, int type, bool isPet) {
+        if (group == 1 && type is >= 13 and <= 17) {
+            return 1;
+        }
+        if (group == 1 && type is 12 or >= 18 and <= 21) {
+            return 2;
+        }
+        return (byte) (isPet ? 3 : 0);
+    }
+
+    // The rate of the running SaleRemake events for an item class: the higher of the class's rate and the rate of
+    // class 0 (CGameRule::GetRemakeSaleRate). Chosen here: of several events of one class the highest rate.
+    public static int RemakeSaleRate(IEnumerable<SaleRemake> sales, byte saleType) {
+        int rate = 0;
+        foreach (SaleRemake sale in sales) {
+            if ((sale.ItemType == saleType || sale.ItemType == 0) && sale.Rate > rate) {
+                rate = sale.Rate;
+            }
+        }
+        return rate;
+    }
+
+    // The count of one ingredient of a change of attributes under a discount, as the dialog shows it
+    // (GetDiscountedIngredientCount, itemremakescrolldata.cpp:397): no discount, the count; else the discount is
+    // held to 10000 x IngredientFeeReduceLimit and the count is (count * (1 - discount / 10000) + 0.000001) in
+    // doubles, cut to a whole number and at least 1. Chosen here: a count of 0 or less stays as it is.
+    public static int RemakeIngredientCount(int count, int discount, float reduceLimit) {
+        if (discount <= 0 || count <= 0) {
+            return count;
+        }
+        int limit = (int) (FullRate * (double) reduceLimit + 1e-06);
+        discount = Math.Min(discount, Math.Max(limit, 0));
+        int result = (int) (count * (1.0 - discount / 10000.0) + 1e-06);
+        return result < 1 ? 1 : result;
+    }
+
+    // The rate a shop's beauty fees are lowered by: the highest rate of the running SaleBeautyShop events of the
+    // shop (CGameRule, gamerule.cpp:656: the client keeps two rates per shop, by the row's value3, and takes the
+    // higher; the first only for a level above 0, which every character has).
+    public static int BeautyShopRate(IEnumerable<SaleBeautyShop> sales, int shopId) {
+        int rate = 0;
+        foreach (SaleBeautyShop sale in sales) {
+            if (sale.ShopId == shopId && sale.Rate > rate) {
+                rate = sale.Rate;
+            }
+        }
+        return rate;
+    }
+
+    // A beauty fee under a rate (CGameRule::GetDiscountedPrice): price - price * rate / 10000 in unsigned 32 bit
+    // whole numbers. Chosen here: the rate is held to 0..10000 (the client does not test it).
+    public static int BeautyShopPrice(int price, int rate) {
+        if (price <= 0 || rate <= 0) {
+            return price;
+        }
+        uint discount = unchecked((uint) price * (uint) Math.Min(rate, FullRate)) / FullRate;
+        return (int) Math.Max(0, price - discount);
     }
 
     // The times the helper reward's boxes are given under FindDungeonHelperBonus events: once, and once more per

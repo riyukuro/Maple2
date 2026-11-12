@@ -545,12 +545,13 @@ public class HousingManager {
     }
 
     // The cube's shop row with the price the running SaleHousing events leave, the price the build palette shows:
-    // the first event row with the item's housing filter and the row's money type (EventSaleRules.HousingPrice).
+    // the first event row with the item's housing filter and the row's money type (EventSaleRules.HousingPrice),
+    // the events taken by id as the client keeps them (gamerule.cpp:1988).
     private FurnishingShopTable.Entry? SalePrice(FurnishingShopTable.Entry? shopEntry, ItemMetadata? itemMetadata) {
         if (shopEntry == null || itemMetadata?.Housing == null || shopEntry.Price <= 0) {
             return shopEntry;
         }
-        SaleHousingCube[] cubes = session.FindEvent(GameEventType.SaleHousing)
+        SaleHousingCube[] cubes = session.FindEvent(GameEventType.SaleHousing).OrderBy(gameEvent => gameEvent.Id)
             .SelectMany(gameEvent => gameEvent.Metadata.Data is SaleHousing sale ? sale.Cubes : []).ToArray();
         if (cubes.Length == 0) {
             return shopEntry;

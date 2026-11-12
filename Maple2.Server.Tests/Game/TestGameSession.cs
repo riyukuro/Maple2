@@ -324,6 +324,9 @@ public sealed class TestGameSession {
         var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         Set(session, nameof(GameSession.QuestMetadata), new QuestMetadataStorage(new MetadataContext(metadataOptions)));
         Set(session, nameof(GameSession.ScriptMetadata), scripts);
+        // What placing a cube and a design upload read: no function cubes, and no upload fee held.
+        Set(session, nameof(GameSession.FunctionCubeMetadata), new FunctionCubeMetadataStorage(new MetadataContext(metadataOptions)));
+        typeof(GameSession).GetField(nameof(GameSession.UgcFees), Any)!.SetValue(session, new Maple2.Model.Validators.UgcFeeBook());
         Set(session, nameof(GameSession.PlayerInfo), new PlayerInfoStorage(World));
 
         using GameStorage.Request db = Storage.Context();
