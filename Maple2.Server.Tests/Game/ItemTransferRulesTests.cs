@@ -2,6 +2,8 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -56,5 +58,29 @@ public class ItemTransferRulesTests {
         Assert.That(item.Transfer.RemainTrades, Is.EqualTo(1));
         Assert.That(item.Transfer.Binding!.CharacterId, Is.EqualTo(5));
         Assert.That(TradeRules.IsTradeable(item.Transfer.Flag, item.Transfer.RemainTrades, true), Is.False);
+    }
+
+    // The rule and trade count a new unbound item is sent with, one case per transfer type, as KMS2 sent the same
+    // class of items in builds 2497-2549 (row counts from the session item records). The tooltip
+    // (ASTooltip::SetItemSellPrice, FUN_1409e6120) picks its trade, trade-count and bind lines from these two
+    // values and the binding, so equal values give equal lines.
+    [TestCase(TransferType.Tradable, 0, 1, 4, 0)]        // 9703 rows
+    [TestCase(TransferType.Tradable, 0, 4, 0, 0)]        // 11
+    [TestCase(TransferType.Tradable, 1, 4, 16, 1)]       // 13
+    [TestCase(TransferType.Untradeable, 0, 1, 0, 0)]     // 9834
+    [TestCase(TransferType.Untradeable, 1, 1, 16, 1)]    // 328
+    [TestCase(TransferType.BindOnEquip, 1, 4, 24, 1)]    // 100
+    [TestCase(TransferType.BindPet, 1, 1, 24, 1)]        // 4306
+    [TestCase(TransferType.BlackMarketOnly, 0, 4, 4, 0)] // 1306
+    public void NewItem_WritesTheKms2Rule(TransferType type, int tradableCount, int rarity, int rule, int count) {
+        Item item = ItemOf(type, tradableCount, 4, rarity);
+
+        var writer = new ByteWriter();
+        writer.WriteClass<ItemTransfer>(item.Transfer!);
+        var reader = new ByteReader(writer.ToArray(), 0);
+
+        Assert.That(reader.ReadInt(), Is.EqualTo(rule));
+        reader.ReadBool();
+        Assert.That(reader.ReadInt(), Is.EqualTo(count));
     }
 }
