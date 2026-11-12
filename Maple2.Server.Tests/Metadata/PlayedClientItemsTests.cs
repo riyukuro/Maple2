@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -54,6 +55,49 @@ public class PlayedClientItemsTests {
             [101] = "LockItemOptionWeapon",
             [103] = "",
         }));
+    }
+
+    // The type and subtype of the available environments; an id whose environments disagree has none.
+    [Test]
+    public void Types_FromTheAvailableEnvironments() {
+        XmlDocument file = File("""
+            <item id="100"><environment><property type="4" subtype="1" /></environment></item>
+            <item id="101"><environment locale="KR"><property type="19" subtype="21" /></environment><environment locale="NA"><property type="3" /></environment></item>
+            <item id="102"><environment><property type="2" /></environment><environment locale="NA"><property type="3" /></environment></item>
+            <item id="103"><environment><basic /></environment></item>
+            """);
+
+        Assert.That(PlayedClientItems.Types([file], Available), Is.EquivalentTo(new Dictionary<int, (int, int)> {
+            [100] = (4, 1),
+            [101] = (3, 0),
+        }));
+    }
+
+    private static ItemMetadataProperty Property(int type, int subType, bool fragment = false) =>
+        Maple2.Server.Tests.Game.TestGameSession.Metadata(1, type: type).Property with { SubType = subType, IsFragment = fragment };
+
+    // KR shapes: the pack's merge material 19/21 is the client's 4/1 (Misc), 15/0 the client's 20 (Currency), 3/0
+    // the client's 27 (Fragment): the client's type and subtype are taken. Where the pack's subtype rules already
+    // give the client's tab (10/20 = the client's 8, 2/14 = 24), and without a client type, the pack's stay.
+    [TestCase(19, 21, false, 4, 1, 4, 1)]
+    [TestCase(19, 22, false, 4, 1, 4, 1)]
+    [TestCase(15, 0, false, 20, 0, 20, 0)]
+    [TestCase(3, 0, false, 27, 0, 27, 0)]
+    [TestCase(4, 16, false, 3, 0, 3, 0)]
+    [TestCase(10, 20, false, 8, 3, 10, 20)]
+    [TestCase(2, 14, false, 24, 0, 2, 14)]
+    [TestCase(19, 1, false, 19, 2, 19, 1)]
+    [TestCase(10, 0, true, 27, 0, 10, 0)]
+    public void ClientType_WhenTheTabDiffers(int type, int subType, bool fragment, int clientType, int clientSubType, int expectedType, int expectedSubType) {
+        ItemMetadataProperty result = PlayedClientItems.ClientType(Property(type, subType, fragment), (clientType, clientSubType));
+        Assert.That((result.Type, result.SubType), Is.EqualTo((expectedType, expectedSubType)));
+        Assert.That(result.Inventory(), Is.EqualTo(ModelExtensions.TabOfType(clientType, false)));
+    }
+
+    [Test]
+    public void ClientType_WithoutAClientType() {
+        ItemMetadataProperty property = Property(19, 21);
+        Assert.That(PlayedClientItems.ClientType(property, null), Is.SameAs(property));
     }
 
     // The shape of a scroll the played client tags for armour and the NA pack for accessories: the server takes the

@@ -51,8 +51,9 @@ public static class ModelExtensions {
     // every type it does not list goes to Misc. Where this server pack types items differently from the
     // client's own item data, the client's type wins: pieces (functionTags "piece") are 27 there, 10/20 are
     // 8 or 23 and 4/5 are 6 (FishingMusic), emotes 2/14 are 24 and 2/8 are 4 (Misc).
-    public static InventoryType Inventory(this ItemMetadata metadata) {
-        ItemMetadataProperty property = metadata.Property;
+    public static InventoryType Inventory(this ItemMetadata metadata) => metadata.Property.Inventory();
+
+    public static InventoryType Inventory(this ItemMetadataProperty property) {
         if (property.IsFragment) {
             return InventoryType.Fragment;
         }
@@ -62,8 +63,13 @@ public static class ModelExtensions {
         if (property is { Type: 2, SubType: 8 or 14 }) {
             return InventoryType.Misc;
         }
-        return property.Type switch {
-            1 => property.IsSkin ? InventoryType.Outfit : InventoryType.Gear,
+        return TabOfType(property.Type, property.IsSkin);
+    }
+
+    // The client's own rule: the tab by the type alone (FUN_14053e530).
+    public static InventoryType TabOfType(int type, bool isSkin) {
+        return type switch {
+            1 => isSkin ? InventoryType.Outfit : InventoryType.Gear,
             2 => InventoryType.Consumable,
             3 => InventoryType.Quest,
             5 or 9 => InventoryType.Mount,

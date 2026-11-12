@@ -297,9 +297,8 @@ public sealed class ItemMergeManager {
     // pack (ItemMergeTable.TableIds). Without it the table is asked by the material's item id and the ingest
     // copies the rows of some materials that share one.
     // The data folder's item xml is of another version than the played client's: its merge materials have
-    // subtype 21 and 22 where the client's have 1 and 2. So a material that is not of subtype 1 and whose
-    // table has no row of part 0 is asked by the item's equip subtype too (a table has rows by part or one
-    // row of part 0, never both).
+    // subtype 21 and 22 where the client's have 1 and 2 (every KR material of both packs: 30 x 21 -> 1,
+    // 35 x 22 -> 2). So subtype 21 is asked by part as the client's 1 is, and every other subtype by part 0.
     public static ItemMergeTable.Entry? MergeSlot(ItemMergeTable table, ItemMetadata item, ItemMetadata material) {
         if (material.Property.Type != 19) {
             return null;
@@ -308,7 +307,7 @@ public sealed class ItemMergeManager {
         if (!table.Entries.TryGetValue(tableId, out Dictionary<int, ItemMergeTable.Entry>? parts)) {
             return null;
         }
-        bool byPart = material.Property.SubType == 1 || !parts.ContainsKey(0);
+        bool byPart = material.Property.SubType is 1 or 21;
         if (!parts.TryGetValue(byPart ? EquipSubtype(item) : 0, out ItemMergeTable.Entry? entry)) {
             return null;
         }

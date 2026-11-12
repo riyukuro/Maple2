@@ -72,6 +72,56 @@ public static class PlayedClientItems {
         return tags;
     }
 
+    // The <property type subtype> of each item from its available environments, for items whose available
+    // environments agree on both.
+    public static Dictionary<int, (int Type, int SubType)> Types(IEnumerable<XmlDocument> itemFiles, Func<XmlElement, bool> available) {
+        var types = new Dictionary<int, (int Type, int SubType)>();
+        var mixed = new HashSet<int>();
+        foreach (XmlDocument file in itemFiles) {
+            XmlNodeList? items = file.SelectNodes("ms2/item");
+            if (items == null) {
+                continue;
+            }
+            foreach (XmlNode node in items) {
+                if (node is not XmlElement item || !int.TryParse(item.GetAttribute("id"), out int id) || id == 0) {
+                    continue;
+                }
+                foreach (XmlNode child in item.ChildNodes) {
+                    if (child is not XmlElement { Name: "environment" } environment || !available(environment)) {
+                        continue;
+                    }
+                    XmlElement? property = environment["property"];
+                    if (property == null) {
+                        continue;
+                    }
+                    int.TryParse(property.GetAttribute("type"), out int type);
+                    int.TryParse(property.GetAttribute("subtype"), out int subType);
+                    if (types.TryGetValue(id, out (int Type, int SubType) other) && other != (type, subType)) {
+                        mixed.Add(id);
+                    }
+                    types[id] = (type, subType);
+                }
+            }
+        }
+        foreach (int id in mixed) {
+            types.Remove(id);
+        }
+        return types;
+    }
+
+    // The client puts an item in the bag tab of its own item data's type alone (CItemData FUN_14053e530,
+    // ModelExtensions.TabOfType). Where the server pack's type, subtype and piece tag give another tab, the
+    // client's type and subtype are taken, so the server keeps the item in the tab the client shows it in (KR:
+    // 11 merge materials 19/21-22 are the client's 4, Misc; a few 3, 15 and 10 items). Other items keep the
+    // pack's type: the server's subtype rules (ModelExtensions.Inventory) give the client's tab for them.
+    // played null = the played client has no single type for the id.
+    public static ItemMetadataProperty ClientType(ItemMetadataProperty property, (int Type, int SubType)? played) {
+        if (played is not { } client || property.Inventory() == ModelExtensions.TabOfType(client.Type, property.IsSkin)) {
+            return property;
+        }
+        return property with { Type = client.Type, SubType = client.SubType };
+    }
+
     // The option-lock tags are taken from the played client: the server picks and accepts the lock scroll the
     // client counts (ItemRemakeRules.IsLockItem), where the server pack can tag the same id for another item kind
     // (e.g. a scroll the played client tags LockItemOptionArmor is LockItemOptionAccessory in the NA pack).

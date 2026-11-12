@@ -32,6 +32,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         // its pack has no item data, and then no item is marked.
         HashSet<int>? known = null;
         Dictionary<int, string>? playedTags = null;
+        Dictionary<int, (int Type, int SubType)>? playedTypes = null;
         if (playedReader != null) {
             List<XmlDocument> itemFiles = playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)).ToList();
@@ -43,9 +44,11 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             } else {
                 // The option-lock tags the played client tests (PlayedClientItems.LockTag).
                 playedTags = PlayedClientItems.Tags(itemFiles, available);
+                // The types that decide the client's bag tab (PlayedClientItems.ClientType).
+                playedTypes = PlayedClientItems.Types(itemFiles, available);
             }
         }
-        int notInPlayed = 0, inPlayed = 0, lockTagsChanged = 0;
+        int notInPlayed = 0, inPlayed = 0, lockTagsChanged = 0, typesChanged = 0;
 
         Dictionary<int, int> itemExtractionTryCount = tableParser.ParseItemExtraction()
             .ToDictionary(entry => entry.Id, entry => entry.Extraction.TryCount);
@@ -268,6 +271,14 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 Install: install
             );
 
+            if (playedTypes != null && playedTypes.TryGetValue(id, out (int Type, int SubType) playedType)) {
+                ItemMetadataProperty clientTyped = PlayedClientItems.ClientType(itemMetadata.Property, playedType);
+                if (clientTyped != itemMetadata.Property) {
+                    itemMetadata = itemMetadata with { Property = clientTyped };
+                    typesChanged++;
+                }
+            }
+
             ItemMetadataById[id] = itemMetadata;
             if (known != null) {
                 if (itemMetadata.Property.NotInPlayedClient) notInPlayed++;
@@ -279,6 +290,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         if (known != null) {
             Console.WriteLine($"items: {notInPlayed} not in the played client's item data (the server creates none of them), {inPlayed} in it");
             Console.WriteLine($"items: {lockTagsChanged} option-lock tags taken from the played client's item data");
+            Console.WriteLine($"items: {typesChanged} types taken from the played client's item data (another bag tab)");
         }
     }
 }

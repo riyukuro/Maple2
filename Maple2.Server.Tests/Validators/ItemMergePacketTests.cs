@@ -174,11 +174,13 @@ public class ItemMergePacketTests {
         // The stored xml subtype (the data folder's, 0 or 16 for equips) does not pick the row; the id does.
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(12200001, 1, 0, 50), byPart)?.Slot, Is.EqualTo(22));
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 16, 50), byPart)?.Slot, Is.EqualTo(13));
-        // The data folder's material subtype (21 where the client has 1): a table without a part 0 row is
-        // asked by the item's part.
+        // The data folder's material subtype (21 where the client has 1, 22 where it has 2): 21 is asked by
+        // the item's part, 22 by part 0 even when its table has rows by part (the client finds no row then).
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(12200001, 1, 0, 50), Leveled(37000001, 19, 21, 60))?.Slot, Is.EqualTo(22));
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11400001, 1, 0, 50), Leveled(37000001, 19, 21, 60)), Is.Null);
         Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 0, 50), Leveled(37000002, 19, 22, 60))?.Slot, Is.EqualTo(0));
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 0, 50), Leveled(37000001, 19, 22, 60)), Is.Null);
+        Assert.That(ItemMergeManager.MergeSlot(table, Leveled(11300001, 1, 0, 50), Leveled(37000001, 19, 2, 60)), Is.Null);
         // The table id is the played client's param1 when the ingest read it, else the material's id.
         ItemMergeTable shared = table with { TableIds = new Dictionary<int, int> { [37000009] = 37000001 } };
         Assert.That(ItemMergeManager.MergeSlot(shared, Leveled(11300001, 1, 0, 50), Leveled(37000009, 19, 1, 60))?.Slot, Is.EqualTo(13));
