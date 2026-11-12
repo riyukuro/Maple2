@@ -21,6 +21,9 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class MicrogameHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Microgame;
 
+    // The handlers below are static; the base class Logger is per instance.
+    private static readonly Serilog.ILogger Log = Serilog.Log.Logger.ForContext<MicrogameHandler>();
+
     public override void Handle(GameSession session, IByteReader packet) {
         short mode = packet.ReadShort();
         switch (mode) {
@@ -108,6 +111,35 @@ public class MicrogameHandler : FieldPacketHandler {
 
     private static long Expiration() => DateTime.Now.AddDays(1).Date.ToEpochSeconds();
 
+    // Creates the reward items; an item that cannot be created is logged and left out.
+    private static List<Item> CreateRewards(GameSession session, IEnumerable<RewardItem> rewards, int eventId) {
+        var items = new List<Item>();
+        foreach (RewardItem reward in rewards) {
+            Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
+            if (item == null) {
+                Log.Error("Microgame reward of event {EventId} for {CharacterId}: item {ItemId} could not be created",
+                    eventId, session.CharacterId, reward.ItemId);
+                continue;
+            }
+            items.Add(item);
+        }
+        return items;
+    }
+
+    // Puts the items in the inventory, or in the mail when the inventory is full; the items delivered either way.
+    private static List<Item> Deliver(GameSession session, List<Item> items, int eventId) {
+        var delivered = new List<Item>();
+        foreach (Item item in items) {
+            if (session.Item.Inventory.Add(item, true) || session.Item.MailItem(item)) {
+                delivered.Add(item);
+                continue;
+            }
+            Log.Error("Microgame reward of event {EventId} for {CharacterId}: item {ItemId} could not be added or mailed",
+                eventId, session.CharacterId, item.Id);
+        }
+        return delivered;
+    }
+
     // An invite or game of either microgame.
     private static bool IsBusy(FieldManager field, long characterId) {
         return field.Rps.IsBusy(characterId) || field.CoupleDance.IsBusy(characterId);
@@ -146,7 +178,7 @@ public class MicrogameHandler : FieldPacketHandler {
         if (session.Field == null) {
             return;
         }
-        if (!CanPlay(session, inviteeId, out FieldPlayer? invitee) || !session.Field.Rps.Invite(session.CharacterId, inviteeId)) {
+        if (!CanPlay(session, inviteeId, out FieldPlayer? invitee) || !session.Field.Rps.Invite(session.CharacterId, inviteeId, session.Field.FieldTick)) {
             session.Send(MicrogamePacket.Failed(inviteeId, RpsRules.ReasonPeerState));
             return;
         }
@@ -177,7 +209,7 @@ public class MicrogameHandler : FieldPacketHandler {
         if (session.Field == null || !session.Field.Rps.IsPending(inviterId, session.CharacterId)) {
             return;
         }
-        if (!CanPlay(session, inviterId, out FieldPlayer? inviter) || !session.Field.Rps.Start(inviterId, session.CharacterId)) {
+        if (!CanPlay(session, inviterId, out FieldPlayer? inviter) || !session.Field.Rps.Start(inviterId, session.CharacterId, session.Field.FieldTick)) {
             session.Field.Rps.RemovePending(inviterId, session.CharacterId);
             session.Send(MicrogamePacket.Failed(inviterId, RpsRules.ReasonAcceptPeerState));
             if (session.Field.TryGetPlayerById(inviterId, out FieldPlayer? waiting)) {
@@ -239,8 +271,19 @@ public class MicrogameHandler : FieldPacketHandler {
             invitee.Session.Send(MicrogamePacket.Failed(game.Inviter, RpsRules.ReasonFailed));
             return;
         }
-        inviter.Session.Item.Inventory.Consume(inviterTicket.Uid, 1);
-        invitee.Session.Item.Inventory.Consume(inviteeTicket.Uid, 1);
+        // Both tickets were found above; a consume that still fails ends the game without a count (the other ticket
+        // is not taken when the first one failed).
+        bool inviterPaid = inviter.Session.Item.Inventory.Consume(inviterTicket.Uid, 1);
+        bool inviteePaid = inviterPaid && invitee.Session.Item.Inventory.Consume(inviteeTicket.Uid, 1);
+        if (!inviteePaid) {
+            if (inviterPaid) {
+                Log.Error("RPS event {EventId}: ticket of {Invitee} not consumed after the ticket of {Inviter} was",
+                    gameEvent.Id, game.Invitee, game.Inviter);
+            }
+            inviter.Session.Send(MicrogamePacket.Failed(game.Invitee, RpsRules.ReasonFailed));
+            invitee.Session.Send(MicrogamePacket.Failed(game.Inviter, RpsRules.ReasonFailed));
+            return;
+        }
 
         Finish(inviter.Session, gameEvent, game.InviterCard, game.InviteeCard);
         Finish(invitee.Session, gameEvent, game.InviteeCard, game.InviterCard);
@@ -266,22 +309,13 @@ public class MicrogameHandler : FieldPacketHandler {
             return;
         }
 
-        var items = new List<Item>();
-        foreach (RewardItem reward in rps.Rewards[index].Rewards) {
-            Item? item = session.Field.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
-            if (item != null) {
-                items.Add(item);
-            }
+        // The reward counts as claimed only when at least one item reached the player; otherwise it stays open.
+        List<Item> delivered = Deliver(session, CreateRewards(session, rps.Rewards[index].Rewards, gameEvent.Id), gameEvent.Id);
+        if (delivered.Count == 0) {
+            return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.RPSRewardsClaimed, RpsRules.AddClaimed(claimed.String(), index));
-        var notified = new List<RewardItem>();
-        foreach (Item item in items) {
-            notified.Add(item);
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
-            }
-        }
-        session.Send(MicrogamePacket.Rewards(notified));
+        session.Send(MicrogamePacket.Rewards(delivered.Select(item => (RewardItem) item).ToList()));
     }
 
     // The client keeps one couple dance event (CGameEventValueCoupleDance) and sends its id with every mode; the
@@ -293,6 +327,12 @@ public class MicrogameHandler : FieldPacketHandler {
             }
         }
         return null;
+    }
+
+    // A mode about the player's invite or dance that names another event than the invite was made for.
+    private static bool OtherEvent(FieldManager field, long characterId, int eventId) {
+        int matchEvent = field.CoupleDance.EventOf(characterId);
+        return matchEvent != 0 && matchEvent != eventId;
     }
 
     private static void HandleDanceBanner(GameSession session, int eventId) {
@@ -322,7 +362,7 @@ public class MicrogameHandler : FieldPacketHandler {
         if (session.Field == null) {
             return;
         }
-        if (!CanDance(session, eventId, inviteeId, out FieldPlayer? invitee) || !session.Field.CoupleDance.Invite(session.CharacterId, inviteeId)) {
+        if (!CanDance(session, eventId, inviteeId, out FieldPlayer? invitee) || !session.Field.CoupleDance.Invite(session.CharacterId, inviteeId, eventId, session.Field.FieldTick)) {
             session.Send(MicrogamePacket.CoupleDanceFailed(eventId, inviteeId, CoupleDanceRules.ReasonPeerState));
             return;
         }
@@ -331,7 +371,8 @@ public class MicrogameHandler : FieldPacketHandler {
 
     // The invitee shows the request box: the inviter waits.
     private static void HandleDanceInviteAck(GameSession session, int eventId, long inviterId) {
-        if (session.Field == null || !session.Field.CoupleDance.IsPending(inviterId, session.CharacterId)) {
+        if (session.Field == null || !session.Field.CoupleDance.IsPending(inviterId, session.CharacterId)
+            || OtherEvent(session.Field, session.CharacterId, eventId)) {
             return;
         }
         if (session.Field.TryGetPlayerById(inviterId, out FieldPlayer? inviter)) {
@@ -341,7 +382,7 @@ public class MicrogameHandler : FieldPacketHandler {
 
     // The invitee cannot show the request box (not on the banner, a box open, the inviter blocked, ...).
     private static void HandleDanceAutoReject(GameSession session, int eventId, long inviterId) {
-        if (session.Field == null || !session.Field.CoupleDance.RemovePending(inviterId, session.CharacterId)) {
+        if (session.Field == null || OtherEvent(session.Field, session.CharacterId, eventId) || !session.Field.CoupleDance.RemovePending(inviterId, session.CharacterId)) {
             return;
         }
         if (session.Field.TryGetPlayerById(inviterId, out FieldPlayer? inviter)) {
@@ -351,13 +392,14 @@ public class MicrogameHandler : FieldPacketHandler {
 
     // Accept: the invitee is in the dance state now; the stages go to both and the dance starts.
     private static void HandleDanceAccept(GameSession session, int eventId, long inviterId) {
-        if (session.Field == null || !session.Field.CoupleDance.IsPending(inviterId, session.CharacterId)) {
+        if (session.Field == null || !session.Field.CoupleDance.IsPending(inviterId, session.CharacterId)
+            || OtherEvent(session.Field, session.CharacterId, eventId)) {
             return;
         }
         short[] stages = FindDance(session, eventId) is (_, CoupleDance dance)
             ? CoupleDanceRules.PickStages(dance.Dances.Length, dance.MaxRound, Random.Shared)
             : [];
-        if (!CanDance(session, eventId, inviterId, out FieldPlayer? inviter) || !session.Field.CoupleDance.Start(inviterId, session.CharacterId, stages)) {
+        if (!CanDance(session, eventId, inviterId, out FieldPlayer? inviter) || !session.Field.CoupleDance.Start(inviterId, session.CharacterId, stages, session.Field.FieldTick)) {
             session.Field.CoupleDance.RemovePending(inviterId, session.CharacterId);
             session.Send(MicrogamePacket.CoupleDanceFailed(eventId, inviterId, CoupleDanceRules.ReasonAcceptPeerState));
             if (session.Field.TryGetPlayerById(inviterId, out FieldPlayer? waiting)) {
@@ -371,7 +413,7 @@ public class MicrogameHandler : FieldPacketHandler {
     }
 
     private static void HandleDanceDecline(GameSession session, int eventId, long inviterId) {
-        if (session.Field == null || !session.Field.CoupleDance.RemovePending(inviterId, session.CharacterId)) {
+        if (session.Field == null || OtherEvent(session.Field, session.CharacterId, eventId) || !session.Field.CoupleDance.RemovePending(inviterId, session.CharacterId)) {
             return;
         }
         if (session.Field.TryGetPlayerById(inviterId, out FieldPlayer? inviter)) {
@@ -381,7 +423,7 @@ public class MicrogameHandler : FieldPacketHandler {
 
     // The inviter's waiting box closed (cancel or time out), or a player left a running dance.
     private static void HandleDanceCancel(GameSession session, int eventId, long otherId) {
-        if (session.Field == null) {
+        if (session.Field == null || OtherEvent(session.Field, session.CharacterId, eventId)) {
             return;
         }
         if (session.Field.CoupleDance.RemovePending(session.CharacterId, otherId)) {
@@ -401,12 +443,23 @@ public class MicrogameHandler : FieldPacketHandler {
     }
 
     // One answer per player and round; when both are in, each gets its own dance and the partner's. After the last
-    // round both players record the finished dance.
+    // round both players record the finished dance. An answer for another event than the dance's, or for an event
+    // that ended, ends the dance for both (neither would get out of the dance state otherwise).
     private static void HandleDanceAnswer(GameSession session, int eventId, int round, int danceIndex) {
-        if (session.Field == null || FindDance(session, eventId) is not (GameEvent gameEvent, CoupleDance dance)) {
+        if (session.Field == null || session.Field.CoupleDance.GamePartner(session.CharacterId) == 0) {
             return;
         }
-        if (!session.Field.CoupleDance.Answer(session.CharacterId, round, danceIndex, dance.Dances.Length, out CoupleDanceMatchTable.RoundResult? answered)
+        if (OtherEvent(session.Field, session.CharacterId, eventId) || FindDance(session, eventId) is not (GameEvent gameEvent, CoupleDance dance)) {
+            int matchEvent = session.Field.CoupleDance.EventOf(session.CharacterId);
+            long partnerId = session.Field.CoupleDance.Remove(session.CharacterId);
+            session.Send(MicrogamePacket.CoupleDanceFailed(matchEvent, partnerId, CoupleDanceRules.ReasonFailed));
+            if (session.Field.TryGetPlayerById(partnerId, out FieldPlayer? partner)) {
+                partner.Session.Send(MicrogamePacket.CoupleDanceFailed(matchEvent, session.CharacterId, CoupleDanceRules.ReasonFailed));
+            }
+            return;
+        }
+        if (!session.Field.CoupleDance.Answer(session.CharacterId, round, danceIndex, dance.Dances.Length, session.Field.FieldTick,
+                out CoupleDanceMatchTable.RoundResult? answered)
             || answered is not { } result) {
             return;
         }
@@ -428,13 +481,15 @@ public class MicrogameHandler : FieldPacketHandler {
         FinishDance(invitee.Session, gameEvent, dance, goodEnd);
     }
 
-    // The next open daily reward becomes completed (with the bonus on a good end); none left today records nothing.
+    // The next open daily reward becomes completed (with the bonus on a good end); none left today records nothing,
+    // and only a recorded dance counts for couple_dance_event, so the count stops with the day's rewards.
     private static void FinishDance(GameSession player, GameEvent gameEvent, CoupleDance dance, bool goodEnd) {
         GameEventUserValue states = player.GameEvent.Get(GameEventUserValueType.CoupleDanceRewardState, gameEvent.Id, Expiration());
         string? value = CoupleDanceRules.Complete(states.String(), dance.DailyRewards.Length, goodEnd);
-        if (value != null) {
-            player.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CoupleDanceRewardState, value);
+        if (value == null) {
+            return;
         }
+        player.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CoupleDanceRewardState, value);
         player.ConditionUpdate(ConditionType.couple_dance_event);
     }
 
@@ -451,18 +506,11 @@ public class MicrogameHandler : FieldPacketHandler {
         if (bonus) {
             rewards = rewards.Concat(dance.GoodEndRewards);
         }
-        var items = new List<Item>();
-        foreach (RewardItem reward in rewards) {
-            Item? item = session.Field.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
-            if (item != null) {
-                items.Add(item);
-            }
+        // The step counts as received only when at least one item reached the player; otherwise it stays claimable.
+        List<Item> delivered = Deliver(session, CreateRewards(session, rewards, gameEvent.Id), gameEvent.Id);
+        if (delivered.Count == 0) {
+            return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CoupleDanceRewardState, value);
-        foreach (Item item in items) {
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
-            }
-        }
     }
 }

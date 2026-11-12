@@ -377,6 +377,7 @@ public partial class FieldManager : IField {
         foreach (FieldPortal portal in fieldPortals.Values) portal.Update(FieldTick);
         foreach (FieldReactor reactor in fieldReactors.Values) reactor.Update(FieldTick);
         UpdateBanners();
+        ExpireMicrogames();
 
         RoomTimer?.Update(FieldTick);
         PerformanceStage?.Update();

@@ -1562,7 +1562,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     // value1 <rewards> (the <daily> rewards by "order", then <goodEndBonus count="">) and value2 <gameData> (<dances>,
     // <start fieldID="">, <play maxRound="">, the steps), as CoupleDanceContext::LoadReward and LoadDance read them
     // (gameeventcontext.cpp). Null where those fail: a missing node, a daily or bonus without <items>, a step without
-    // action and message; also when there is no dance or round, as the client then cannot play.
+    // action and message; also when there is no dance or round, as the client then cannot play. Also when maxRound
+    // or the goodEndBonus count do not fit the byte and the short the event is written with (GameEvent.WriteTo), as
+    // the client would read another round count than mode 0x12 sends.
     public static CoupleDance? ReadCoupleDance(string value1, string value2) {
         XmlElement? rewards = LoadElement(value1, "rewards");
         XmlElement? gameData = LoadElement(value2, "gameData");
@@ -1594,7 +1596,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         string[] dances = dancesNode.ChildNodes.OfType<XmlElement>().Select(node => node.GetAttribute("anim")).ToArray();
         int maxRound = int.TryParse(play.GetAttribute("maxRound"), out int parsedRound) ? parsedRound : 0;
         int fieldId = int.TryParse(start.GetAttribute("fieldID"), out int parsedField) ? parsedField : 0;
-        if (dances.Length == 0 || maxRound <= 0) {
+        if (dances.Length == 0 || maxRound <= 0 || maxRound > byte.MaxValue || goodEndCount is < 0 or > short.MaxValue) {
             return null;
         }
 

@@ -110,7 +110,9 @@ public sealed class CoupleDanceMatchTable {
     private sealed class Match {
         public long Inviter { get; init; }
         public long Invitee { get; init; }
+        public int EventId { get; init; }
         public bool Started { get; set; }
+        public long Since { get; set; } // the invite, then the start of the current round
         public short[] Stages { get; set; } = [];
         public int Round { get; set; }
         public int InviterDance { get; set; } = -1;
@@ -124,7 +126,11 @@ public sealed class CoupleDanceMatchTable {
     public readonly record struct RoundResult(
         long Inviter, int InviterDance, long Invitee, int InviteeDance, int Round, bool Good, int Score, bool Finished);
 
+    // An invite or dance dropped for its time limit.
+    public readonly record struct Expired(long Inviter, long Invitee, int EventId, bool Started);
+
     private readonly Dictionary<long, Match> matches = new();
+    private readonly Dictionary<long, long> lastInvite = new();
     private readonly object guard = new();
 
     public bool IsBusy(long characterId) {
@@ -133,16 +139,26 @@ public sealed class CoupleDanceMatchTable {
         }
     }
 
-    // A new invite; false when either player already has an invite or a dance.
-    public bool Invite(long inviter, long invitee) {
+    // A new invite of the event; false when either player already has an invite or a dance, or the inviter invited
+    // within the cooldown.
+    public bool Invite(long inviter, long invitee, int eventId, long now) {
         lock (guard) {
-            if (inviter == invitee || matches.ContainsKey(inviter) || matches.ContainsKey(invitee)) {
+            if (inviter == invitee || matches.ContainsKey(inviter) || matches.ContainsKey(invitee)
+                || MicrogameLimits.CoolingDown(lastInvite, inviter, now)) {
                 return false;
             }
-            var match = new Match { Inviter = inviter, Invitee = invitee };
+            var match = new Match { Inviter = inviter, Invitee = invitee, EventId = eventId, Since = now };
             matches[inviter] = match;
             matches[invitee] = match;
+            lastInvite[inviter] = now;
             return true;
+        }
+    }
+
+    // The event id of the player's invite or dance (kept from the invite), 0 when there is none.
+    public int EventOf(long characterId) {
+        lock (guard) {
+            return matches.TryGetValue(characterId, out Match? match) ? match.EventId : 0;
         }
     }
 
@@ -155,7 +171,7 @@ public sealed class CoupleDanceMatchTable {
     }
 
     // Accept: the pending invite becomes a dance with these stages (one per round).
-    public bool Start(long inviter, long invitee, short[] stages) {
+    public bool Start(long inviter, long invitee, short[] stages, long now) {
         lock (guard) {
             if (stages.Length == 0 || !matches.TryGetValue(invitee, out Match? match) || match.Started
                 || match.Inviter != inviter || match.Invitee != invitee) {
@@ -163,19 +179,43 @@ public sealed class CoupleDanceMatchTable {
             }
             match.Started = true;
             match.Stages = stages;
+            match.Since = now;
             return true;
         }
     }
 
     // Drops the player's invite or dance; the partner's id, or 0 when there was none.
-    public long Remove(long characterId) {
+    public long Remove(long characterId) => Remove(characterId, out _);
+
+    // The same, with the event id the invite was made for.
+    public long Remove(long characterId, out int eventId) {
         lock (guard) {
+            eventId = 0;
             if (!matches.TryGetValue(characterId, out Match? match)) {
                 return 0;
             }
             matches.Remove(match.Inviter);
             matches.Remove(match.Invitee);
+            eventId = match.EventId;
             return match.Partner(characterId);
+        }
+    }
+
+    // Drops the invites older than MicrogameLimits.PendingMs and the dances whose round has waited RoundMs for an
+    // answer.
+    public List<Expired> Expire(long now) {
+        lock (guard) {
+            MicrogameLimits.PruneCooldowns(lastInvite, now);
+            var expired = new List<Expired>();
+            foreach (Match match in matches.Values.Distinct().ToList()) {
+                if (now - match.Since < (match.Started ? MicrogameLimits.RoundMs : MicrogameLimits.PendingMs)) {
+                    continue;
+                }
+                matches.Remove(match.Inviter);
+                matches.Remove(match.Invitee);
+                expired.Add(new Expired(match.Inviter, match.Invitee, match.EventId, match.Started));
+            }
+            return expired;
         }
     }
 
@@ -201,7 +241,7 @@ public sealed class CoupleDanceMatchTable {
     // An answer of the current round (the client sends GetRound, the 0-based round); one per player and round. A
     // dance index outside the event's dances, another round or a second answer is refused. When both answers are
     // in, the round ends: `result` holds both dances, and after the last round the dance is over and dropped.
-    public bool Answer(long characterId, int round, int dance, int danceCount, out RoundResult? result) {
+    public bool Answer(long characterId, int round, int dance, int danceCount, long now, out RoundResult? result) {
         result = null;
         lock (guard) {
             if (dance < 0 || dance >= danceCount || !matches.TryGetValue(characterId, out Match? match) || !match.Started
@@ -228,6 +268,7 @@ public sealed class CoupleDanceMatchTable {
             match.InviterDance = -1;
             match.InviteeDance = -1;
             match.Round++;
+            match.Since = now;
             if (finished) {
                 matches.Remove(match.Inviter);
                 matches.Remove(match.Invitee);

@@ -16,6 +16,9 @@ namespace Maple2.Server.Game.Manager;
 public sealed class GameEventManager {
     private readonly GameSession session;
     private readonly Dictionary<int, Dictionary<GameEventUserValueType, GameEventUserValue>> eventValues;
+    // The packet handlers run on the field thread, but a partner's values are written from the other player's
+    // handler (a game of two) and Save runs on logout; every access of eventValues takes this lock.
+    private readonly object valuesLock = new();
     private long nextUpdateTick;
 
     public MapleopolyTurn Mapleopoly { get; } = new();
@@ -127,6 +130,14 @@ public sealed class GameEventManager {
     }
 
     public void Set(int gameEventId, GameEventUserValueType type, object value) {
+        GameEventUserValue gameEventUserValue;
+        lock (valuesLock) {
+            gameEventUserValue = SetLocked(gameEventId, type, value);
+        }
+        session.Send(GameEventUserValuePacket.Update(gameEventUserValue));
+    }
+
+    private GameEventUserValue SetLocked(int gameEventId, GameEventUserValueType type, object value) {
         if (!eventValues.TryGetValue(gameEventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? eventDictionary)) {
             throw new ArgumentOutOfRangeException(nameof(gameEventId), gameEventId, "Invalid game event id.");
         }
@@ -136,26 +147,38 @@ public sealed class GameEventManager {
 
         string newValue = value.ToString() ?? throw new ArgumentException("Invalid value type.");
         gameEventUserValue.SetValue(newValue);
-        session.Send(GameEventUserValuePacket.Update(gameEventUserValue));
+        return gameEventUserValue;
     }
 
     public void Load() {
         // One packet: the client clears its list on every Load (GameEventUserValue::Read,
         // commonfiles/gameeventuservalue.cpp:139), so batches would leave only the last one.
-        session.Send(GameEventUserValuePacket.Load(eventValues.Values.SelectMany(dict => dict.Values).ToList()));
+        List<GameEventUserValue> values;
+        lock (valuesLock) {
+            values = eventValues.Values.SelectMany(dict => dict.Values).ToList();
+        }
+        session.Send(GameEventUserValuePacket.Load(values));
     }
 
     // The text of an unexpired value, null when there is none; unlike Get it adds no value.
     public string? Peek(GameEventUserValueType type, int eventId) {
-        if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)
-            || !valueDict.TryGetValue(type, out GameEventUserValue? value)
-            || value.ExpirationTime <= DateTime.Now.ToEpochSeconds()) {
-            return null;
+        lock (valuesLock) {
+            if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)
+                || !valueDict.TryGetValue(type, out GameEventUserValue? value)
+                || value.ExpirationTime <= DateTime.Now.ToEpochSeconds()) {
+                return null;
+            }
+            return value.Value;
         }
-        return value.Value;
     }
 
     public GameEventUserValue Get(GameEventUserValueType type, int eventId, long expirationTime) {
+        lock (valuesLock) {
+            return GetLocked(type, eventId, expirationTime);
+        }
+    }
+
+    private GameEventUserValue GetLocked(GameEventUserValueType type, int eventId, long expirationTime) {
         if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
             eventValues.Add(eventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {
                 { type, new GameEventUserValue(type, expirationTime, eventId) },
@@ -172,13 +195,17 @@ public sealed class GameEventManager {
     }
 
     public void Save(GameStorage.Request db) {
-        // Update certain values upon log off
-        // TODO: Maybe update this to handle a list of other types that need to be updated upon logoff?
-        IEnumerable<GameEventUserValue> accumulatedTimeValues =
-            eventValues.Values.SelectMany(dict => dict.Values.Where(value => value.Type == GameEventUserValueType.AttendanceAccumulatedTime));
-        foreach (GameEventUserValue userValue in accumulatedTimeValues) {
-            userValue.SetValue((DateTime.Now.AddSeconds(userValue.Long()) - session.Player.Value.Character.LastModified).Seconds.ToString());
+        List<GameEventUserValue> values;
+        lock (valuesLock) {
+            // Update certain values upon log off
+            // TODO: Maybe update this to handle a list of other types that need to be updated upon logoff?
+            IEnumerable<GameEventUserValue> accumulatedTimeValues =
+                eventValues.Values.SelectMany(dict => dict.Values.Where(value => value.Type == GameEventUserValueType.AttendanceAccumulatedTime));
+            foreach (GameEventUserValue userValue in accumulatedTimeValues) {
+                userValue.SetValue((DateTime.Now.AddSeconds(userValue.Long()) - session.Player.Value.Character.LastModified).Seconds.ToString());
+            }
+            values = eventValues.Values.SelectMany(value => value.Values).ToList();
         }
-        db.SaveGameEventUserValues(session.CharacterId, eventValues.Values.SelectMany(value => value.Values).ToList());
+        db.SaveGameEventUserValues(session.CharacterId, values);
     }
 }

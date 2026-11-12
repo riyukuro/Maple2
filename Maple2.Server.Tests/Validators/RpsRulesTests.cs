@@ -61,16 +61,16 @@ public class RpsRulesTests {
     [Test]
     public void Table_InviteStartPlay() {
         var table = new RpsMatchTable();
-        Assert.That(table.Invite(1, 1), Is.False);
-        Assert.That(table.Invite(1, 2), Is.True);
-        Assert.That(table.Invite(3, 2), Is.False); // the invitee is busy
-        Assert.That(table.Invite(2, 3), Is.False);
+        Assert.That(table.Invite(1, 1, 0), Is.False);
+        Assert.That(table.Invite(1, 2, 0), Is.True);
+        Assert.That(table.Invite(3, 2, 0), Is.False); // the invitee is busy
+        Assert.That(table.Invite(2, 3, 0), Is.False);
         Assert.That(table.IsPending(1, 2), Is.True);
         Assert.That(table.IsPending(2, 1), Is.False);
         Assert.That(table.Play(1, RpsRules.Rock, out _), Is.False); // not started
-        Assert.That(table.Start(2, 1), Is.False);
-        Assert.That(table.Start(1, 2), Is.True);
-        Assert.That(table.Start(1, 2), Is.False);
+        Assert.That(table.Start(2, 1, 0), Is.False);
+        Assert.That(table.Start(1, 2, 0), Is.True);
+        Assert.That(table.Start(1, 2, 0), Is.False);
         Assert.That(table.GamePartner(2), Is.EqualTo(1));
         Assert.That(table.RemovePending(1, 2), Is.False); // started
 
@@ -86,16 +86,43 @@ public class RpsRulesTests {
     [Test]
     public void Table_DeclineAndLeave() {
         var table = new RpsMatchTable();
-        table.Invite(1, 2);
+        table.Invite(1, 2, 0);
         Assert.That(table.RemovePending(2, 1), Is.False);
         Assert.That(table.RemovePending(1, 2), Is.True);
         Assert.That(table.IsBusy(1), Is.False);
 
-        table.Invite(1, 2);
-        table.Start(1, 2);
+        Assert.That(table.Invite(1, 2, MicrogameLimits.InviteCooldownMs), Is.True);
+        table.Start(1, 2, MicrogameLimits.InviteCooldownMs);
         Assert.That(table.Remove(3), Is.EqualTo(0));
         Assert.That(table.Remove(2), Is.EqualTo(1));
         Assert.That(table.IsBusy(1), Is.False);
+    }
+
+    [Test]
+    public void Table_InviteCooldown() {
+        var table = new RpsMatchTable();
+        Assert.That(table.Invite(1, 2, 0), Is.True);
+        table.RemovePending(1, 2);
+        Assert.That(table.Invite(1, 2, MicrogameLimits.InviteCooldownMs - 1), Is.False);
+        Assert.That(table.Invite(2, 1, 1), Is.True); // per inviter
+        table.RemovePending(2, 1);
+        Assert.That(table.Invite(1, 2, MicrogameLimits.InviteCooldownMs), Is.True);
+    }
+
+    [Test]
+    public void Table_Expire() {
+        var table = new RpsMatchTable();
+        table.Invite(1, 2, 0);
+        Assert.That(table.Expire(MicrogameLimits.PendingMs - 1), Is.Empty);
+        Assert.That(table.Expire(MicrogameLimits.PendingMs), Is.EqualTo(new[] { new RpsMatchTable.Expired(1, 2, false) }));
+
+        long start = 100_000;
+        table.Invite(1, 2, start);
+        table.Start(1, 2, start + 30_000);
+        table.Play(1, RpsRules.Rock, out _);
+        Assert.That(table.Expire(start + MicrogameLimits.RoundMs), Is.Empty);
+        Assert.That(table.Expire(start + 30_000 + MicrogameLimits.RoundMs), Is.EqualTo(new[] { new RpsMatchTable.Expired(1, 2, true) }));
+        Assert.That(table.IsBusy(1) || table.IsBusy(2), Is.False);
     }
 
     private static byte[] Body(ByteWriter writer) => writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();

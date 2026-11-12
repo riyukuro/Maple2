@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -1248,9 +1248,8 @@ public partial class FieldManager {
                 rpsPlayer.Session.Send(MicrogamePacket.Failed(leaverId, RpsRules.ReasonFailed));
             }
             // The same for a couple dance invite or dance, with mode 0x14 (microgamemanagercli.cpp).
-            long dancePartner = CoupleDance.Remove(leaverId);
+            long dancePartner = CoupleDance.Remove(leaverId, out int danceEventId);
             if (dancePartner != 0 && TryGetPlayerById(dancePartner, out FieldPlayer? dancePlayer)) {
-                int danceEventId = dancePlayer.Session.FindEvent(GameEventType.CoupleDance).FirstOrDefault(gameEvent => gameEvent.IsActive())?.Id ?? 0;
                 dancePlayer.Session.Send(MicrogamePacket.CoupleDanceFailed(danceEventId, leaverId, CoupleDanceRules.ReasonFailed));
             }
             Broadcast(FieldPacket.RemovePlayer(objectId));
@@ -1513,4 +1512,25 @@ public partial class FieldManager {
         }
     }
     #endregion Events
+
+    // Drops the RPS and couple dance invites and games past their MicrogameLimits; both players get the failed mode
+    // with the other as actor, which closes their boxes and ends the game state on the client (as for a leaver).
+    private void ExpireMicrogames() {
+        foreach (RpsMatchTable.Expired expired in Rps.Expire(FieldTick)) {
+            if (TryGetPlayerById(expired.Inviter, out FieldPlayer? inviter)) {
+                inviter.Session.Send(MicrogamePacket.Failed(expired.Invitee, RpsRules.ReasonFailed));
+            }
+            if (TryGetPlayerById(expired.Invitee, out FieldPlayer? invitee)) {
+                invitee.Session.Send(MicrogamePacket.Failed(expired.Inviter, RpsRules.ReasonFailed));
+            }
+        }
+        foreach (CoupleDanceMatchTable.Expired expired in CoupleDance.Expire(FieldTick)) {
+            if (TryGetPlayerById(expired.Inviter, out FieldPlayer? inviter)) {
+                inviter.Session.Send(MicrogamePacket.CoupleDanceFailed(expired.EventId, expired.Invitee, CoupleDanceRules.ReasonFailed));
+            }
+            if (TryGetPlayerById(expired.Invitee, out FieldPlayer? invitee)) {
+                invitee.Session.Send(MicrogamePacket.CoupleDanceFailed(expired.EventId, expired.Inviter, CoupleDanceRules.ReasonFailed));
+            }
+        }
+    }
 }

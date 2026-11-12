@@ -98,11 +98,30 @@ public static class RpsRules {
 
 // The pending invites and running games of one field, keyed by character id. One invite or game per player:
 // the client keeps one request box and one game state.
+// Server limits of both microgames (RPS and couple dance), in ms of the field clock. The client keeps its own
+// countdowns (the request box, the choice time) and sends nothing when a player's client stops answering, so the server
+// drops what is left waiting. The values are the server's choice, not the client's.
+public static class MicrogameLimits {
+    public const long PendingMs = 60_000;        // an invite nobody accepted, declined or cancelled
+    public const long RoundMs = 60_000;          // a running game or round with an answer missing
+    public const long InviteCooldownMs = 5_000;  // between two invites of one inviter
+
+    public static bool CoolingDown(Dictionary<long, long> lastInvite, long inviter, long now) =>
+        lastInvite.TryGetValue(inviter, out long last) && now - last < InviteCooldownMs;
+
+    public static void PruneCooldowns(Dictionary<long, long> lastInvite, long now) {
+        foreach (long inviter in lastInvite.Where(entry => now - entry.Value >= InviteCooldownMs).Select(entry => entry.Key).ToList()) {
+            lastInvite.Remove(inviter);
+        }
+    }
+}
+
 public sealed class RpsMatchTable {
     private sealed class Match {
         public long Inviter { get; init; }
         public long Invitee { get; init; }
         public bool Started { get; set; }
+        public long Since { get; set; } // the invite, then the game start
         public int InviterCard { get; set; } = -1;
         public int InviteeCard { get; set; } = -1;
 
@@ -112,7 +131,11 @@ public sealed class RpsMatchTable {
     // Both cards of a finished game.
     public readonly record struct Played(long Inviter, int InviterCard, long Invitee, int InviteeCard);
 
+    // An invite or game dropped for its time limit.
+    public readonly record struct Expired(long Inviter, long Invitee, bool Started);
+
     private readonly Dictionary<long, Match> matches = new();
+    private readonly Dictionary<long, long> lastInvite = new();
     private readonly object guard = new();
 
     public bool IsBusy(long characterId) {
@@ -121,15 +144,18 @@ public sealed class RpsMatchTable {
         }
     }
 
-    // A new invite; false when either player already has an invite or a game.
-    public bool Invite(long inviter, long invitee) {
+    // A new invite; false when either player already has an invite or a game, or the inviter invited within the
+    // cooldown.
+    public bool Invite(long inviter, long invitee, long now) {
         lock (guard) {
-            if (inviter == invitee || matches.ContainsKey(inviter) || matches.ContainsKey(invitee)) {
+            if (inviter == invitee || matches.ContainsKey(inviter) || matches.ContainsKey(invitee)
+                || MicrogameLimits.CoolingDown(lastInvite, inviter, now)) {
                 return false;
             }
-            var match = new Match { Inviter = inviter, Invitee = invitee };
+            var match = new Match { Inviter = inviter, Invitee = invitee, Since = now };
             matches[inviter] = match;
             matches[invitee] = match;
+            lastInvite[inviter] = now;
             return true;
         }
     }
@@ -143,12 +169,13 @@ public sealed class RpsMatchTable {
     }
 
     // Accept: the pending invite becomes a game.
-    public bool Start(long inviter, long invitee) {
+    public bool Start(long inviter, long invitee, long now) {
         lock (guard) {
             if (!matches.TryGetValue(invitee, out Match? match) || match.Started || match.Inviter != inviter || match.Invitee != invitee) {
                 return false;
             }
             match.Started = true;
+            match.Since = now;
             return true;
         }
     }
@@ -204,6 +231,23 @@ public sealed class RpsMatchTable {
                 matches.Remove(match.Invitee);
             }
             return true;
+        }
+    }
+
+    // Drops the invites older than MicrogameLimits.PendingMs and the games without both cards after RoundMs.
+    public List<Expired> Expire(long now) {
+        lock (guard) {
+            MicrogameLimits.PruneCooldowns(lastInvite, now);
+            var expired = new List<Expired>();
+            foreach (Match match in matches.Values.Distinct().ToList()) {
+                if (now - match.Since < (match.Started ? MicrogameLimits.RoundMs : MicrogameLimits.PendingMs)) {
+                    continue;
+                }
+                matches.Remove(match.Inviter);
+                matches.Remove(match.Invitee);
+                expired.Add(new Expired(match.Inviter, match.Invitee, match.Started));
+            }
+            return expired;
         }
     }
 }

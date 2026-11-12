@@ -166,28 +166,28 @@ public class CoupleDanceRulesTests {
     [Test]
     public void Table_InviteStartAnswer() {
         var table = new CoupleDanceMatchTable();
-        Assert.That(table.Invite(1, 1), Is.False);
-        Assert.That(table.Invite(1, 2), Is.True);
-        Assert.That(table.Invite(3, 2), Is.False);
+        Assert.That(table.Invite(1, 1, 900001, 0), Is.False);
+        Assert.That(table.Invite(1, 2, 900001, 0), Is.True);
+        Assert.That(table.Invite(3, 2, 900001, 0), Is.False);
         Assert.That(table.IsPending(1, 2), Is.True);
-        Assert.That(table.Answer(1, 0, 0, 3, out _), Is.False); // not started
-        Assert.That(table.Start(1, 2, []), Is.False);
-        Assert.That(table.Start(2, 1, [0, 1]), Is.False);
-        Assert.That(table.Start(1, 2, [0, 1]), Is.True);
-        Assert.That(table.Start(1, 2, [0, 1]), Is.False);
+        Assert.That(table.Answer(1, 0, 0, 3, 0, out _), Is.False); // not started
+        Assert.That(table.Start(1, 2, [], 0), Is.False);
+        Assert.That(table.Start(2, 1, [0, 1], 0), Is.False);
+        Assert.That(table.Start(1, 2, [0, 1], 0), Is.True);
+        Assert.That(table.Start(1, 2, [0, 1], 0), Is.False);
         Assert.That(table.GamePartner(2), Is.EqualTo(1));
         Assert.That(table.RemovePending(1, 2), Is.False);
 
-        Assert.That(table.Answer(1, 0, 3, 3, out _), Is.False); // no such dance
-        Assert.That(table.Answer(1, 1, 0, 3, out _), Is.False); // another round
-        Assert.That(table.Answer(1, 0, 2, 3, out CoupleDanceMatchTable.RoundResult? none), Is.True);
+        Assert.That(table.Answer(1, 0, 3, 3, 0, out _), Is.False); // no such dance
+        Assert.That(table.Answer(1, 1, 0, 3, 0, out _), Is.False); // another round
+        Assert.That(table.Answer(1, 0, 2, 3, 0, out CoupleDanceMatchTable.RoundResult? none), Is.True);
         Assert.That(none, Is.Null);
-        Assert.That(table.Answer(1, 0, 1, 3, out _), Is.False); // one answer each
-        Assert.That(table.Answer(2, 0, 2, 3, out CoupleDanceMatchTable.RoundResult? first), Is.True);
+        Assert.That(table.Answer(1, 0, 1, 3, 0, out _), Is.False); // one answer each
+        Assert.That(table.Answer(2, 0, 2, 3, 0, out CoupleDanceMatchTable.RoundResult? first), Is.True);
         Assert.That(first, Is.EqualTo(new CoupleDanceMatchTable.RoundResult(1, 2, 2, 2, 0, true, 1, false)));
 
-        Assert.That(table.Answer(2, 1, 0, 3, out _), Is.True);
-        Assert.That(table.Answer(1, 1, 1, 3, out CoupleDanceMatchTable.RoundResult? last), Is.True);
+        Assert.That(table.Answer(2, 1, 0, 3, 0, out _), Is.True);
+        Assert.That(table.Answer(1, 1, 1, 3, 0, out CoupleDanceMatchTable.RoundResult? last), Is.True);
         Assert.That(last, Is.EqualTo(new CoupleDanceMatchTable.RoundResult(1, 1, 2, 0, 1, false, 1, true)));
         Assert.That(table.IsBusy(1) || table.IsBusy(2), Is.False);
     }
@@ -195,16 +195,72 @@ public class CoupleDanceRulesTests {
     [Test]
     public void Table_DeclineAndLeave() {
         var table = new CoupleDanceMatchTable();
-        table.Invite(1, 2);
+        table.Invite(1, 2, 900001, 0);
         Assert.That(table.RemovePending(2, 1), Is.False);
         Assert.That(table.RemovePending(1, 2), Is.True);
         Assert.That(table.IsBusy(2), Is.False);
 
-        table.Invite(1, 2);
-        table.Start(1, 2, [0]);
+        Assert.That(table.Invite(1, 2, 900001, MicrogameLimits.InviteCooldownMs), Is.True);
+        table.Start(1, 2, [0], MicrogameLimits.InviteCooldownMs);
         Assert.That(table.Remove(3), Is.EqualTo(0));
         Assert.That(table.Remove(1), Is.EqualTo(2));
         Assert.That(table.IsBusy(2), Is.False);
+    }
+
+    // The event id of an invite stays with it (the leave notice and the mode check use it).
+    [Test]
+    public void Table_KeepsTheEventId() {
+        var table = new CoupleDanceMatchTable();
+        Assert.That(table.EventOf(1), Is.EqualTo(0));
+        table.Invite(1, 2, 900002, 0);
+        Assert.That(table.EventOf(1), Is.EqualTo(900002));
+        Assert.That(table.EventOf(2), Is.EqualTo(900002));
+        Assert.That(table.Remove(2, out int eventId), Is.EqualTo(1));
+        Assert.That(eventId, Is.EqualTo(900002));
+        Assert.That(table.Remove(2, out eventId), Is.EqualTo(0));
+        Assert.That(eventId, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Table_InviteCooldown() {
+        var table = new CoupleDanceMatchTable();
+        Assert.That(table.Invite(1, 2, 900001, 1000), Is.True);
+        table.RemovePending(1, 2);
+        Assert.That(table.Invite(1, 2, 900001, 1000 + MicrogameLimits.InviteCooldownMs - 1), Is.False);
+        Assert.That(table.Invite(3, 2, 900001, 1001), Is.True); // per inviter
+        table.RemovePending(3, 2);
+        Assert.That(table.Invite(1, 2, 900001, 1000 + MicrogameLimits.InviteCooldownMs), Is.True);
+    }
+
+    // A pending invite ends after PendingMs; a dance ends when a round waits RoundMs, counted from the last round.
+    [Test]
+    public void Table_Expire() {
+        var table = new CoupleDanceMatchTable();
+        table.Invite(1, 2, 900001, 0);
+        Assert.That(table.Expire(MicrogameLimits.PendingMs - 1), Is.Empty);
+        Assert.That(table.Expire(MicrogameLimits.PendingMs),
+            Is.EqualTo(new[] { new CoupleDanceMatchTable.Expired(1, 2, 900001, false) }));
+        Assert.That(table.IsBusy(1) || table.IsBusy(2), Is.False);
+
+        long start = 100_000;
+        table.Invite(1, 2, 900001, start);
+        table.Start(1, 2, [0, 1], start);
+        table.Answer(1, 0, 0, 3, start + 10, out _);
+        table.Answer(2, 0, 0, 3, start + 50_000, out _); // round 1 starts here
+        Assert.That(table.Expire(start + MicrogameLimits.RoundMs), Is.Empty);
+        Assert.That(table.Expire(start + 50_000 + MicrogameLimits.RoundMs),
+            Is.EqualTo(new[] { new CoupleDanceMatchTable.Expired(1, 2, 900001, true) }));
+        Assert.That(table.IsBusy(1), Is.False);
+    }
+
+    [Test]
+    public void Ingest_DropsWhatTheEventPacketCannotHold() {
+        Assert.Multiple(() => {
+            Assert.That(ServerTableMapper.ReadCoupleDance(Rewards, GameData(maxRound: "255")), Is.Not.Null);
+            Assert.That(ServerTableMapper.ReadCoupleDance(Rewards, GameData(maxRound: "256")), Is.Null);
+            Assert.That(ServerTableMapper.ReadCoupleDance(Rewards.Replace("goodEndBonus count=\"3\"", "goodEndBonus count=\"32768\""), GameData()), Is.Null);
+            Assert.That(ServerTableMapper.ReadCoupleDance(Rewards.Replace("goodEndBonus count=\"3\"", "goodEndBonus count=\"32767\""), GameData()), Is.Not.Null);
+        });
     }
 
     private static byte[] Body(ByteWriter writer) => writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
