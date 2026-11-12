@@ -123,6 +123,9 @@ public class DungeonFieldManager : FieldManager {
                 // The room's group type (1 normal or adventure, 2 raid, 3 chaos raid) is the code of dungeon_clear_group.
                 player.Session.ConditionUpdate(ConditionType.dungeon_clear_group,
                     codeLong: (long) DungeonMetadata.GroupType);
+                if (DungeonRoomRules.WithOtherVeteran(characterId, veterans)) {
+                    player.Session.ConditionUpdate(ConditionType.dungeon_help_beginner_helpee);
+                }
 
             }
         } else if (DungeonRoomRecord.State == DungeonState.Fail) {

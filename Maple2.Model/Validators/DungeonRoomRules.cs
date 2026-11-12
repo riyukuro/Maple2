@@ -133,6 +133,12 @@ public static class DungeonRoomRules {
     public static bool WithOtherRookie(long characterId, IReadOnlyDictionary<long, bool> veterans) =>
         veterans.Any(entry => entry.Key != characterId && !entry.Value);
 
+    // Whether characterId cleared the room as a rookie with a veteran: their own record is not a veteran's and
+    // another player's of the clear is (70210090 "Complete a dungeon as a dungeon rookie with the aid of a dungeon veteran").
+    public static bool WithOtherVeteran(long characterId, IReadOnlyDictionary<long, bool> veterans) =>
+        veterans.TryGetValue(characterId, out bool veteran) && !veteran &&
+        veterans.Any(entry => entry.Key != characterId && entry.Value);
+
     // A party member's enter state for a room blocks the party's entry at 10 and above, as the client tests it
     // (CPartyManager::CanEnterDungeonRoom, partymanager.cpp:561; a missing room counts as 0). The room window
     // shows each member's state but its party button sends the request anyway (UIDungeonRoomInfo::OnEnterParty).

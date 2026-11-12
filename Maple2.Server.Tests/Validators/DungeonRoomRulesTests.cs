@@ -215,6 +215,17 @@ public class DungeonRoomRulesTests {
         });
     }
 
+    // WithOtherVeteran: the player is a rookie and another player of the clear is a veteran.
+    [Test]
+    public void WithOtherVeteran_RookieWithAVeteranOnly() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.WithOtherVeteran(1, new Dictionary<long, bool> { [1] = false, [2] = true }), Is.True);
+            Assert.That(DungeonRoomRules.WithOtherVeteran(1, new Dictionary<long, bool> { [1] = true, [2] = true }), Is.False);
+            Assert.That(DungeonRoomRules.WithOtherVeteran(1, new Dictionary<long, bool> { [1] = false, [2] = false }), Is.False);
+            Assert.That(DungeonRoomRules.WithOtherVeteran(1, new Dictionary<long, bool> { [2] = true }), Is.False);
+        });
+    }
+
     // The client takes a room's cooldown type from cooldownValue alone: 0 is the next day, else a weekday.
     [TestCase(0, DungeonCooldownType.nextDay)]
     [TestCase(6, DungeonCooldownType.dayOfWeeks)]
