@@ -8,7 +8,7 @@ using Maple2.Model.Validators;
 namespace Maple2.File.Ingest.Helpers;
 
 // The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows and the values of the TreeWatering rows,
-// each an <ms2> element. Text that is not XML is
+// each an <ms2> element, and the value2 of the MiniGameBonusReward rows, an <items> element. Text that is not XML is
 // a row that cannot be read; it does not stop the ingest.
 public static class EventXmlReader {
     // <ms2><v dungeonID groupType mesoRate expRate itemRolls customDropBoxIds/></ms2>: the client reads the root's
@@ -156,6 +156,21 @@ public static class EventXmlReader {
             EmotionDayEffect: resource?.GetAttribute("EmotionDayEffect") ?? string.Empty);
     }
 
+    // value1 a comma list of mini game names, value2 <items><v itemID grade count/>...</items>. A row without a name
+    // or without an item gives nothing and is not stored; an item without an id or a count is skipped.
+    public static MiniGameBonusReward? MiniGameBonusReward(string? value1, string? value2) {
+        string[] names = (value1 ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct()
+            .ToArray();
+        XmlElement? items = Root(value2, "items");
+        if (names.Length == 0 || items == null) {
+            return null;
+        }
+        RewardItem[] rewards = Children(items, "v").Select(Item).OfType<RewardItem>().ToArray();
+        return rewards.Length == 0 ? null : new MiniGameBonusReward(names, rewards);
+    }
+
     private static IEnumerable<XmlElement> Children(XmlElement? parent, string name) {
         return parent?.ChildNodes.OfType<XmlElement>().Where(element => element.Name == name) ?? [];
     }
@@ -188,14 +203,14 @@ public static class EventXmlReader {
         return float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float rate) && float.IsFinite(rate) && rate > 0f ? rate : 0f;
     }
 
-    private static XmlElement? Root(string? text) {
+    private static XmlElement? Root(string? text, string name = "ms2") {
         if (string.IsNullOrWhiteSpace(text)) {
             return null;
         }
         try {
             var document = new XmlDocument();
             document.LoadXml(text);
-            return document.DocumentElement is { Name: "ms2" } root ? root : null;
+            return document.DocumentElement is { } root && root.Name == name ? root : null;
         } catch (XmlException) {
             return null;
         }

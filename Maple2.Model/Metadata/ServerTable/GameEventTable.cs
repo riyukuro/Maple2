@@ -463,6 +463,15 @@ public record ArcadeOpen(
     int RewardCountPerDay,
     RewardItem[] Rewards) : GameEventData;
 
+// A mini game's bonus reward: value1 is a comma list of mini game names, the game_name of the scripts' end_mini_game
+// (oxquiz, crazyrunner, springbeach, dancedancestop, escape, trapmaster, finalsurvivor, christmasdancedancestop),
+// value2 <items><v itemID grade count/>...</items>. The client has no class for this type (GameEventManagerCli
+// finds no GameEventMiniGameBonusReward), so it is not sent; the server gives the items to the winners at
+// end_mini_game (MiniGameBonus) and the result window lists them with the game's own rewards.
+public record MiniGameBonusReward(
+    string[] GameNames,
+    RewardItem[] Items) : GameEventData;
+
 // Tree watering (GameEventTreeWatering::ReadTreeWateringData, commonfiles/gameevent.cpp:5664). value1 is
 // <ms2><tree_step><step step begin end/>...</tree_step><emotion_day><time begin end/>...</emotion_day></ms2>, value2
 // <ms2><watering_reward MaxRewardCountDaily itemID grade count/><emotion_reward .../></ms2>, value3
@@ -550,4 +559,5 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
 [JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
 [JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
+[JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
 public abstract record GameEventData;

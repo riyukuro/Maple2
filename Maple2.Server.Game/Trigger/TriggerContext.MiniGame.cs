@@ -8,6 +8,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 using Locale = Maple2.Server.Game.Trigger.Helpers.Locale;
 
 namespace Maple2.Server.Game.Trigger;
@@ -20,6 +21,7 @@ public partial class TriggerContext {
         session.ConditionUpdate(ConditionType.minigame_clear, codeLong: mapId);
     }
 
+    // The winners also get the items of the running MiniGameBonusReward events that name the game (MiniGameBonus).
     public void EndMiniGame(int winnerBoxId, string gameName, bool isOnlyWinner) {
         IEnumerable<FieldPlayer> players = PlayersInBox(winnerBoxId);
         foreach (FieldPlayer player in players) {
@@ -28,6 +30,7 @@ public partial class TriggerContext {
             }
 
             ReportClear(player.Session, Field.MapId);
+            MiniGameBonus.Give(player.Session, player.Session.MiniGameRecord, gameName);
             if (player.Session.MiniGameRecord.ShowResult) {
                 player.Session.Send(DungeonRewardPacket.MiniGame(player.Session.MiniGameRecord));
             }
