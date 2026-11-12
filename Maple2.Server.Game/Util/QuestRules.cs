@@ -47,6 +47,64 @@ public static class QuestRules {
         quests.Where(quest => quest.State != QuestState.Completed && PlayedClientQuests.Known(quest.Metadata.Basic)
                               && quest.Conditions.Values.Any(condition => condition.Metadata.Type == type));
 
+    // A level condition moves only on a level-up (ExperienceManager.LevelUp sends the new level), so a quest started
+    // at or above its level target waited for the next level-up and never came due at the top level. The start counts
+    // the current level once the same way (ConditionUtil level: level >= a target value). Conditions with codes or a
+    // party count are left to the level-up. True when a counter moved.
+    public static bool CountLevelAtStart(IEnumerable<Quest.Condition> conditions, int level) {
+        bool changed = false;
+        foreach (Quest.Condition condition in conditions) {
+            ConditionMetadata metadata = condition.Metadata;
+            if (metadata.Type != ConditionType.level || condition.Counter >= metadata.Value) {
+                continue;
+            }
+            if (metadata.Codes != null || metadata.PartyCount > 0 || metadata.GuildPartyCount > 0) {
+                continue;
+            }
+            if (metadata.Target?.Integers is not { } targets || !targets.Any(value => level >= value)) {
+                continue;
+            }
+
+            condition.Counter = (int) Math.Min(metadata.Value, condition.Counter + 1L);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    // Quest 0x18 (remote complete): the claim button of the daily mission page and the level guide
+    // (uidailymissiondialog.cpp:321, uilevelupguidedialog.cpp:380). The client sends it only for a quest it holds as
+    // started with every counter at its goal, so a refusal means the two disagree; the server says why in its log.
+    public enum RemoteClaim {
+        Done,
+        NoMetadata,
+        NotHeld,
+        Completed,
+        NotInClient,
+        Unmet,
+        InventoryFull,
+    }
+
+    public static RemoteClaim RemoteClaimCheck(bool hasMetadata, Quest? held, bool knownToClient, bool conditionsMet) {
+        if (held == null) {
+            return hasMetadata ? RemoteClaim.NotHeld : RemoteClaim.NoMetadata;
+        }
+        if (held.State == QuestState.Completed) {
+            return RemoteClaim.Completed;
+        }
+        if (!knownToClient) {
+            return RemoteClaim.NotInClient;
+        }
+        return conditionsMet ? RemoteClaim.Done : RemoteClaim.Unmet;
+    }
+
+    // The answer of a refused claim: Quest mode 0 with error 2, "failed to complete the quest" (string 0x5ef,
+    // CQuestManager::ShowQuestErrorMessage, questmanager_2.cpp:1187). A full inventory has its own answer already
+    // (ItemInventory s_err_inventory from QuestManager.Complete), and a claim of a quest just completed is a second
+    // click before the Complete packet came, which needs no box.
+    public static bool AnswersRefusal(RemoteClaim claim) =>
+        claim is not (RemoteClaim.Done or RemoteClaim.InventoryFull or RemoteClaim.Completed);
+
     // The quests the client asks to start by itself (Quest, sub-type 8) when it enters a field: a quest that is
     // not an exploration quest, starts by itself and is not locked, or an exploration quest whose first
     // progress map is the field the player is in.

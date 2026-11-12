@@ -411,14 +411,18 @@ public class QuestHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
 
-    private static void HandleRemoteComplete(GameSession session, IByteReader packet) {
+    private void HandleRemoteComplete(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest)) {
+        QuestRules.RemoteClaim claim = session.Quest.RemoteComplete(questId);
+        if (claim == QuestRules.RemoteClaim.Done) {
             return;
         }
 
-        session.Quest.Complete(quest);
+        Logger.Information("Refused the reward claim of quest {QuestId} from {CharacterId}: {Reason}", questId, session.CharacterId, claim);
+        if (QuestRules.AnswersRefusal(claim)) {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
+        }
     }
 
     private static void HandleCompleteFieldMission(GameSession session, IByteReader packet) {

@@ -108,6 +108,7 @@ public sealed class QuestManager {
             for (int i = 0; i < metadata.Conditions.Length; i++) {
                 quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
             }
+            QuestRules.CountLevelAtStart(quest.Conditions.Values, session.Player.Value.Character.Level);
 
             long ownerId = metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
             quest = db.CreateQuest(ownerId, quest);
@@ -173,6 +174,7 @@ public sealed class QuestManager {
             for (int i = 0; i < metadata.Conditions.Length; i++) {
                 quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
             }
+            QuestRules.CountLevelAtStart(quest.Conditions.Values, session.Player.Value.Character.Level);
         } else {
             quest = new Quest(metadata) {
                 Track = true,
@@ -183,6 +185,7 @@ public sealed class QuestManager {
             for (int i = 0; i < metadata.Conditions.Length; i++) {
                 quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
             }
+            QuestRules.CountLevelAtStart(quest.Conditions.Values, session.Player.Value.Character.Level);
 
             using GameStorage.Request db = session.GameStorage.Context();
             long ownerId = metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
@@ -379,6 +382,22 @@ public sealed class QuestManager {
     public bool CanComplete(Quest quest) {
         return quest.State != QuestState.Completed && quest.Conditions
             .All(condition => condition.Value.Counter >= condition.Value.Metadata.Value);
+    }
+
+    /// <summary>
+    /// Quest 0x18, the claim button of the daily mission page and the level guide: completes the held quest when the
+    /// client and the server agree it is due (QuestRules.RemoteClaimCheck), else says why.
+    /// </summary>
+    public QuestRules.RemoteClaim RemoteComplete(int questId) {
+        TryGetQuest(questId, out Quest? quest);
+        QuestRules.RemoteClaim claim = QuestRules.RemoteClaimCheck(session.QuestMetadata.TryGet(questId, out _), quest,
+            quest != null && PlayedClientQuests.Known(quest.Metadata.Basic), quest != null && CanComplete(quest));
+        if (claim != QuestRules.RemoteClaim.Done) {
+            return claim;
+        }
+
+        // The checks above leave Complete only the full inventory to refuse (it answers that itself).
+        return Complete(quest!) ? QuestRules.RemoteClaim.Done : QuestRules.RemoteClaim.InventoryFull;
     }
 
     /// <summary>
