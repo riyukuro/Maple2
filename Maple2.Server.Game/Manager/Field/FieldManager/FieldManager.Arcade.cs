@@ -155,25 +155,27 @@ public partial class FieldManager {
                     db.SaveArcadeScore(player.Value.Character.Id, game.Id, seasonId, game.Score, now);
                 }
             }
-            player.Session.Send(ArcadePacket.Result(game.Score, best?.Score ?? 0, (int) Math.Min(exp, int.MaxValue), reward.Meso, 0, GiveEventRewards(player, game.Id)));
+            player.Session.Send(ArcadePacket.Result(game.Score, best?.Score ?? 0, (int) Math.Min(exp, int.MaxValue), reward.Meso, 0, GiveEventRewards(player, game.Id, game.RoundsCleared)));
             player.Session.Send(HideAndSeekPacket.End(player.ObjectId));
         }
     }
 
     // An event arcade's reward (ArcadeEvent): the reward rows of the event that opens the arcade, while the player
-    // is under its count for the day, each to the bag or by mail. The items given are listed in the result dialog.
-    private List<RewardItem> GiveEventRewards(FieldPlayer player, int arcadeId) {
+    // is under its count for the day and the game cleared a round, each to the bag or by mail. The items given are listed in the result dialog.
+    private List<RewardItem> GiveEventRewards(FieldPlayer player, int arcadeId, int roundsCleared) {
         var given = new List<RewardItem>();
         if (!TableMetadata.ArcadeGameTable.Entries.TryGetValue(arcadeId, out ArcadeGameTable.Entry? entry) || !entry.IsEventArcade
             || ArcadeEvent.Open(player.Session.FindEvent(GameEventType.ArcadeOpen), arcadeId) is not { } gameEvent
             || gameEvent.Metadata.Data is not ArcadeOpen arcadeOpen) {
             return given;
         }
-        RewardItem[] due = ArcadeEvent.RewardsDue(arcadeOpen, ArcadeEvent.RewardCount(player.Session, gameEvent));
+        RewardItem[] due = ArcadeEvent.RewardsDue(arcadeOpen, ArcadeEvent.RewardCount(player.Session, gameEvent), roundsCleared);
         if (due.Length == 0) {
             return given;
         }
-        ArcadeEvent.AddReward(player.Session, gameEvent);
+        if (!ArcadeEvent.AddReward(player.Session, gameEvent)) {
+            logger.Error("Arcade event {EventId}: the count of {CharacterId} was not stored", gameEvent.Id, player.Value.Character.Id);
+        }
         foreach (RewardItem rewardItem in due) {
             Item? item = ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
             if (item == null) {

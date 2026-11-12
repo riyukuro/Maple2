@@ -60,7 +60,10 @@ public static class TreeWateringEvent {
         return session.GameEvent.Get(CountType(action), gameEvent.Id, DateTime.Now.Date.AddDays(1).ToEpochSeconds()).Int();
     }
 
-    public static void AddCount(GameSession session, GameEvent gameEvent, Action action) {
+    // Stored at once, not at logout: the reward may sit in a stored mail already, and a lost session must not
+    // give it again. False when the database refused it.
+    public static bool AddCount(GameSession session, GameEvent gameEvent, Action action) {
         session.GameEvent.Set(gameEvent.Id, CountType(action), Count(session, gameEvent, action) + 1);
+        return session.GameEvent.Store(gameEvent.Id, CountType(action));
     }
 }

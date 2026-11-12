@@ -88,8 +88,8 @@ public class StateReactHandler : FieldPacketHandler {
             }
         }
         session.Send(ReactorPacket.Reward(reactor.Metadata.Rewards));
-        if (gameEvent != null) {
-            ReactorEvent.AddReward(session, gameEvent);
+        if (gameEvent != null && !ReactorEvent.AddReward(session, gameEvent)) {
+            Logger.Error("Reactor event {EventId}: the count of {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
         }
         reactor.Disconnect(session.CharacterId);
     }

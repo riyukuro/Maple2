@@ -110,6 +110,8 @@ public partial class GameStorage {
 
             Dictionary<int, Dictionary<GameEventUserValueType, Model.GameEventUserValue>> existing = Context.GameEventUserValue
                 .Where(model => model.CharacterId == characterId)
+                // Grouped here, not in the query: a GroupBy that ends a query is not translated by every provider.
+                .AsEnumerable()
                 .GroupBy(model => model.EventId)
                 .ToDictionary(
                     group => group.Key,

@@ -34,7 +34,10 @@ public static class ReactorEvent {
         return session.GameEvent.Get(GameEventUserValueType.ReactorRewardCount, gameEvent.Id, DateTime.Now.Date.AddDays(1).ToEpochSeconds()).Int();
     }
 
-    public static void AddReward(GameSession session, GameEvent gameEvent) {
+    // Stored at once, not at logout: the reward may sit in a stored mail already, and a lost session must not
+    // give it again. False when the database refused it.
+    public static bool AddReward(GameSession session, GameEvent gameEvent) {
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.ReactorRewardCount, RewardCount(session, gameEvent) + 1);
+        return session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.ReactorRewardCount);
     }
 }

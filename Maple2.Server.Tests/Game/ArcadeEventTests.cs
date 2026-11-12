@@ -106,13 +106,15 @@ public class ArcadeEventTests {
         Assert.That(ArcadeEvent.CanEnter(new ArcadeGameTable.Entry(1, 1, 51000001, false), []), Is.True);
     }
 
-    [TestCase(0, 2)]
-    [TestCase(1, 2)]
-    [TestCase(2, 0)]
-    [TestCase(5, 0)]
-    public void RewardsDue_UnderTheCountOfTheDay(int countToday, int expected) {
+    // Under the count of the day and with a round cleared; a game that cleared none gets nothing.
+    [TestCase(0, 1, 2)]
+    [TestCase(1, 3, 2)]
+    [TestCase(2, 1, 0)]
+    [TestCase(5, 1, 0)]
+    [TestCase(0, 0, 0)]
+    public void RewardsDue_UnderTheCountOfTheDay(int countToday, int roundsCleared, int expected) {
         var arcadeOpen = new ArcadeOpen(4, 2, [new RewardItem(1, 1, 1), new RewardItem(2, 1, 1)]);
-        Assert.That(ArcadeEvent.RewardsDue(arcadeOpen, countToday), Has.Length.EqualTo(expected));
+        Assert.That(ArcadeEvent.RewardsDue(arcadeOpen, countToday, roundsCleared), Has.Length.EqualTo(expected));
     }
 }
 
@@ -164,8 +166,17 @@ public class ArcadeEventSessionTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    private ByteReader EndGame() {
-        session.Field!.ThreeTwoOne = new ThreeTwoOneGame(4, 1, 0, [test.CharacterId]);
+    // A game of the given rounds won (the script's start_round, the pick, result_round and result_round2), then its end.
+    private ByteReader EndGame(int wins = 1) {
+        var game = new ThreeTwoOneGame(4, 1, 10000, [test.CharacterId]);
+        for (int round = 1; round <= wins; round++) {
+            game.StartRound(round);
+            game.Pick(test.CharacterId, 1);
+            game.ResultRound(2, [test.CharacterId]);
+            game.ResultRound2();
+        }
+        Assert.That(game.Wins, Is.EqualTo(wins));
+        session.Field!.ThreeTwoOne = game;
         session.Field.EndThreeTwoOne();
         List<byte[]> sent = test.TakeSent();
         byte[] result = sent.Last(packet => TestGameSession.Op(packet) == SendOp.PlayArcade);
@@ -195,8 +206,23 @@ public class ArcadeEventSessionTests {
                 result.ReadInt();
             }
             Assert.That(result.Available, Is.EqualTo(0));
+            // The count is stored with the reward, before any logout.
+            Assert.That(test.StoredEventValues(900501).GetValueOrDefault(GameEventUserValueType.ArcadeOpenRewardCount),
+                Is.EqualTo(game <= 2 ? game.ToString() : "2"), $"game {game}");
         }
         Assert.That(Held(), Is.EqualTo(20));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A game with no round won (Three Two One lost from the first round, still at its init score) gives no event
+    // reward and uses none of the day's count.
+    [Test]
+    public void End_NoWinNoReward() {
+        Start(withEvent: true);
+        Assert.That(EndGame(wins: 0).ReadByte(), Is.EqualTo(0));
+        Assert.That(Held(), Is.EqualTo(0));
+        Assert.That(ArcadeEvent.RewardCount(session, session.FindEvent(900501)!), Is.EqualTo(0));
+        Assert.That(EndGame(wins: 1).ReadByte(), Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
     }
 

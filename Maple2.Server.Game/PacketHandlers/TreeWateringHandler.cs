@@ -54,8 +54,10 @@ public class TreeWateringHandler : FieldPacketHandler {
     }
 
     // The count goes up first, so a reward that cannot be made is not given again.
-    private static void Reward(GameSession session, GameEvent gameEvent, RewardItem reward, TreeWateringEvent.Action action) {
-        TreeWateringEvent.AddCount(session, gameEvent, action);
+    private void Reward(GameSession session, GameEvent gameEvent, RewardItem reward, TreeWateringEvent.Action action) {
+        if (!TreeWateringEvent.AddCount(session, gameEvent, action)) {
+            Logger.Error("Tree watering event {EventId}: the count of {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
+        }
         if (reward.ItemId == 0 || reward.Amount <= 0) {
             return;
         }

@@ -218,6 +218,8 @@ public class TreeWateringSessionTests {
         Assert.That(Send(TreeWateringEvent.Action.Water), Is.EqualTo(((byte) 2, (byte) 2, Array.Empty<int>())));
         Assert.That((Held(WaterRewardId), Held(PotId)), Is.EqualTo((2, 1)));
         Assert.That(TreeWateringEvent.Count(session, session.FindEvent(EventId)!, TreeWateringEvent.Action.Water), Is.EqualTo(2));
+        // Stored with the reward, before any logout.
+        Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.TreeWateringCount), Is.EqualTo("2"));
         Assert.That(test.Errors, Is.Empty);
     }
 
@@ -246,6 +248,7 @@ public class TreeWateringSessionTests {
         Assert.That(Send(TreeWateringEvent.Action.Emotion), Is.EqualTo(((byte) 3, (byte) 0, new[] { 1, 1 })));
         Assert.That(Send(TreeWateringEvent.Action.Emotion), Is.EqualTo(((byte) 3, (byte) 3, Array.Empty<int>())));
         Assert.That(Held(EmotionRewardId), Is.EqualTo(3));
+        Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.TreeWateringEmotionCount), Is.EqualTo("1"));
         Assert.That(test.Errors, Is.Empty);
     }
 
