@@ -25,11 +25,16 @@ public class TradeHandlerTests {
     [SetUp]
     public void StartTrade() => StartTrade(TestGameSession.Metadata(20000001, type: 2));
 
-    private void StartTrade(ItemMetadata metadata) {
+    private void StartTrade(ItemMetadata metadata, bool takerBagFull = false) {
         giverTest = new TestGameSession();
         takerTest = new TestGameSession();
         item = giverTest.Store(metadata, amount: 3);
         takerTest.Register(metadata);
+        if (takerBagFull) {
+            // One slot in the taker's Misc tab, taken by another item.
+            takerTest.Store(TestGameSession.Metadata(20000009));
+            takerTest.SetServerTable(takerTest.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = [(short) 1, 0] });
+        }
         // The request's time-out is set far off: with the table's 0 seconds the timer can end the request before
         // the taker's answer below, and the trade then never starts.
         foreach (TestGameSession test in new[] { giverTest, takerTest }) {
@@ -161,6 +166,41 @@ public class TradeHandlerTests {
         Assert.That(toTaker.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Meso, SendOp.Trade }));
         Assert.That(taker.Currency.Meso, Is.EqualTo(5000));
         Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
+    }
+
+    // A finish refused for a full bag: the full side gets the bag's notice, the other side trade error 8, then the
+    // trade ends as cancelled. The dialog's confirm click greyed its Cancel button and nothing enables it again
+    // (uitradedialogex.gfx), so the trade end is the answer that leaves no window waiting: each offer goes back to
+    // its owner, nothing moves, and both players are out of the trade.
+    [Test]
+    public void Complete_WithAFullBagEndsTheTrade() {
+        StartTrade(TestGameSession.Metadata(20000001), takerBagFull: true);
+        Assert.That(item.Inventory, Is.EqualTo(InventoryType.Misc));
+        Assert.That(taker.Item.Inventory.FreeSlots(item.Inventory), Is.EqualTo(0));
+        Offer();
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+
+        Send(taker, 13);
+
+        List<byte[]> toTaker = takerTest.TakeSent();
+        Assert.That(toTaker.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Trade, SendOp.ItemInventory, SendOp.Meso, SendOp.Trade }));
+        Assert.That(Convert.ToHexString(toTaker[1]), Is.EqualTo(Convert.ToHexString(
+            ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory).ToArray())));
+        Assert.That(Convert.ToHexString(toTaker[^1]), Is.EqualTo(Hex(TradePacket.EndTrade(false))));
+        List<byte[]> toGiver = giverTest.TakeSent();
+        Assert.That(Convert.ToHexString(toGiver[1]), Is.EqualTo(Hex(TradePacket.Error(Maple2.Model.Error.TradeError.s_trade_error_slotcount))));
+        Assert.That(Modes(toGiver), Is.EqualTo(new[] { "Trade 13", "Trade 1", "Trade 9", "ItemInventory 0", "Trade 6" }));
+        Assert.That(Convert.ToHexString(toGiver[^1]), Is.EqualTo(Hex(TradePacket.EndTrade(false))));
+
+        Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
+        Assert.That(taker.Item.Inventory.Find(20000001), Is.Empty);
+        Assert.That(taker.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(giver.Trade, Is.Null);
+        Assert.That(taker.Trade, Is.Null);
     }
 
     // A refused offer: the notice (or nothing), and neither the bag nor the mesos nor the other window change.

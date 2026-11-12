@@ -327,9 +327,12 @@ public class TradeManager : IDisposable {
             if (self.Completed && other.Completed) {
                 // A bag that cannot take what it would receive refuses the finish: nothing moves. The client shows
                 // error 8 (s_trade_error_slotcount, "The other player's inventory is full.") as a notice and keeps the
-                // trade window open; only EndTrade closes it. Its confirm click greyed Confirm and Cancel, and only a
-                // latch of both sides (mode 11) brings Confirm back, so both sides are unlatched (mode 12, chosen here:
-                // KMS2 has no refused finish): each player locks again, may change the offer, then confirms.
+                // trade window open (OnTradeRequestFailed). The dialog's confirm click (TradeDialogEx.onConfirm in
+                // uitradedialogex.gfx) greyed Confirm and Cancel; latch enables Confirm again, but nothing in the
+                // dialog enables Cancel until it is opened anew, so after a confirm the client waits for the trade
+                // end (mode 6), the only answer that closes the window. The trade ends as cancelled after the
+                // notices: each offer goes back to its owner and both windows close with the
+                // cancelled line (string 0x825, OnTradeFinished @0x14185cee0).
                 bool senderTakes = sender.Session.Item.Inventory.TakesAll(receiver.Items);
                 bool receiverTakes = receiver.Session.Item.Inventory.TakesAll(sender.Items);
                 if (!senderTakes || !receiverTakes) {
@@ -340,14 +343,8 @@ public class TradeManager : IDisposable {
                         full.Session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
                         giver.Session.Send(TradePacket.Error(s_trade_error_slotcount));
                     }
-                    foreach (Trader trader in new[] { sender, receiver }) {
-                        foreach (var packet in TradePacket.UnFinalizeBoth()) {
-                            trader.Session.Send(packet);
-                        }
-                        trader.Completed = false;
-                        trader.Finalized = false;
-                    }
-                    state = TradeState.Started;
+                    EndTrade(false);
+                    ClearTraders();
                     return;
                 }
 
