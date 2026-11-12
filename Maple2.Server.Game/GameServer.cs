@@ -48,21 +48,8 @@ public class GameServer : Server<GameSession> {
         using GameStorage.Request db = gameStorage.Context();
         bannerCache = db.GetBanners().ToImmutableList();
 
-        premiumMarketCache = new ConcurrentDictionary<int, PremiumMarketItem>();
-        foreach ((int id, MeretMarketItemMetadata marketItemMetadata) in serverTableMetadataStorage.MeretMarketTable.Entries) {
-            if (marketItemMetadata.ParentId != 0) {
-                if (premiumMarketCache.TryGetValue(marketItemMetadata.ParentId, out PremiumMarketItem? parentItem) &&
-                    itemMetadataStorage.TryGet(parentItem.Metadata.ItemId, out ItemMetadata? subItemMetadata)) {
-                    parentItem.AdditionalQuantities.Add(new PremiumMarketItem(marketItemMetadata, subItemMetadata));
-                }
-                continue;
-            }
-
-            if (!itemMetadataStorage.TryGet(marketItemMetadata.ItemId, out ItemMetadata? itemMetadata)) {
-                continue;
-            }
-            premiumMarketCache.TryAdd(id, new PremiumMarketItem(marketItemMetadata, itemMetadata));
-        }
+        premiumMarketCache = PremiumMarket(serverTableMetadataStorage.MeretMarketTable,
+            itemId => itemMetadataStorage.TryGet(itemId, out ItemMetadata? itemMetadata) ? itemMetadata : null);
 
         debugGraphicsContext.Initialize();
     }
@@ -225,6 +212,24 @@ public class GameServer : Server<GameSession> {
     public IEnumerable<GameEvent> GetEvents() => eventCache.Values.Where(gameEvent => gameEvent.IsActive());
 
     public IList<SystemBanner> GetSystemBanners() => bannerCache;
+
+    // The Meret Market custom shop (shop_merat_custom.xml): the parents first, then each additionalQuantity child (the
+    // bigger packs) under its parent, so a child is kept whatever order the table's rows come back in.
+    public static ConcurrentDictionary<int, PremiumMarketItem> PremiumMarket(MeretMarketTable table, Func<int, ItemMetadata?> items) {
+        var market = new ConcurrentDictionary<int, PremiumMarketItem>();
+        foreach ((int id, MeretMarketItemMetadata metadata) in table.Entries) {
+            if (metadata.ParentId == 0 && items(metadata.ItemId) is { } itemMetadata) {
+                market.TryAdd(id, new PremiumMarketItem(metadata, itemMetadata));
+            }
+        }
+        foreach (MeretMarketItemMetadata metadata in table.Entries.Values) {
+            if (metadata.ParentId != 0 && market.TryGetValue(metadata.ParentId, out PremiumMarketItem? parent) &&
+                items(parent.Metadata.ItemId) is { } itemMetadata) {
+                parent.AdditionalQuantities.Add(new PremiumMarketItem(metadata, itemMetadata));
+            }
+        }
+        return market;
+    }
 
     public ICollection<PremiumMarketItem> GetPremiumMarketItems(params int[] tabIds) {
         if (tabIds.Length == 0) {
