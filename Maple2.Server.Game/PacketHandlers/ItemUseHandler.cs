@@ -157,6 +157,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.QuestStart:
                 HandleQuestStart(session, item);
                 break;
+            case ItemFunction.TreasureMap:
+                HandleTreasureMap(session, packet, item);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -882,6 +885,30 @@ public class ItemUseHandler : FieldPacketHandler {
         string amountString = packet.ReadUnicodeString();
         session.ItemBox.OpenPetBox(item, amountString == "multi" ? 10 : 1);
         session.ItemBox.Reset();
+    }
+
+    // UIItemTreasureMapDialog's submit: the item use with "free" when the npc opened the dialog free, else no text. One
+    // map leaves the bag, the cost is taken and one roll of the map's drop box is given; the answer shows the item.
+    // Without a box, a rolled item, the cost or the room, nothing is taken and the dialog goes back to its list.
+    private static void HandleTreasureMap(GameSession session, IByteReader packet, Item item) {
+        bool free = packet.ReadUnicodeString() == TreasureMapRules.FreeArgument;
+        if (!TreasureMapRules.TryPick(item.Metadata.Function?.Parameters, free, out int boxId, out long cost)
+            || session.Currency.Meso < cost) {
+            session.Send(ItemScriptPacket.TreasureMapFailed());
+            return;
+        }
+
+        Item? reward = session.Field!.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).FirstOrDefault();
+        if (reward == null || !session.Item.Inventory.CanAdd(reward) || !session.Item.Inventory.Consume(item.Uid, 1)) {
+            session.Send(ItemScriptPacket.TreasureMapFailed());
+            return;
+        }
+
+        if (cost > 0) {
+            session.Currency.Meso -= cost;
+        }
+        session.Item.Inventory.Add(reward, true);
+        session.Send(ItemScriptPacket.TreasureMapResult(reward.Id, reward.Rarity));
     }
 
     // The client's QuestStart: parameter "questId[,level]", level 10 when it is absent or 0. The client checks the

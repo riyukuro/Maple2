@@ -68,4 +68,16 @@ public class TimeEventRulesTests {
     public void BossLeaves_WhenNotHitWithinTheThreshold(long lastDamageTick, long nowTick, bool expected) {
         Assert.That(TimeEventRules.BossLeaves(lastDamageTick, nowTick, TimeSpan.FromMinutes(4)), Is.EqualTo(expected));
     }
+
+    // The close 10 s after the warning: a boss last hit 3:50 to 4:00 before the warning got none (it was not idle
+    // then), so it stays at the close although it is idle by then; a boss idle at the warning or never hit leaves.
+    [TestCase(0, 1_000_000, true)]
+    [TestCase(1_000_000 - 180_000, 1_000_000, false)]
+    [TestCase(1_000_000 - 240_000, 1_000_000, false)]
+    [TestCase(1_000_000 - 249_999, 1_000_000, false)]
+    [TestCase(1_000_000 - 250_000, 1_000_000, true)]
+    [TestCase(1_000_000 - 300_000, 1_000_000, true)]
+    public void BossLeavesAtClose_OnlyWhenItWasIdleAtTheWarning(long lastDamageTick, long nowTick, bool expected) {
+        Assert.That(TimeEventRules.BossLeavesAtClose(lastDamageTick, nowTick, TimeSpan.FromMinutes(4), WorldRules.BossLeaveDelay), Is.EqualTo(expected));
+    }
 }

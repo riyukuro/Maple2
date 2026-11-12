@@ -9,6 +9,8 @@ public static class ItemScriptPacket {
     private enum Command : byte {
         LulluBox = 0,
         PetBox = 1,
+        TreasureMapCost = 2,
+        TreasureMapResult = 3,
         TreasureChest = 4,
         Gacha = 5,
     }
@@ -38,6 +40,35 @@ public static class ItemScriptPacket {
             pWriter.WriteInt(item.Rarity);
             pWriter.WriteBool(special);
         }
+
+        return pWriter;
+    }
+
+    // UIItemTreasureMapDialog: the cost of the map the player picked; a negative cost reads "cannot be appraised".
+    public static ByteWriter TreasureMapCost(long itemUid, long cost) {
+        var pWriter = Packet.Of(SendOp.ItemScript);
+        pWriter.WriteByte((byte) Command.TreasureMapCost);
+        pWriter.WriteLong(itemUid);
+        pWriter.WriteLong(cost);
+
+        return pWriter;
+    }
+
+    // The appraised item (id and rank) the dialog shows; without one the dialog goes back to its map list.
+    public static ByteWriter TreasureMapResult(int itemId, int rarity) {
+        var pWriter = Packet.Of(SendOp.ItemScript);
+        pWriter.WriteByte((byte) Command.TreasureMapResult);
+        pWriter.WriteBool(true);
+        pWriter.WriteInt(itemId);
+        pWriter.WriteInt(rarity);
+
+        return pWriter;
+    }
+
+    public static ByteWriter TreasureMapFailed() {
+        var pWriter = Packet.Of(SendOp.ItemScript);
+        pWriter.WriteByte((byte) Command.TreasureMapResult);
+        pWriter.WriteBool(false);
 
         return pWriter;
     }

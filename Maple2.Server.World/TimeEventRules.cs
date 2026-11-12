@@ -5,7 +5,7 @@ public static class TimeEventRules {
     // Chosen here from one KMS2 session of a boss with a LifeTime of five minutes: the "about to disappear" notice
     // came 302 s after the spawn and the "disappeared" notice 10 s later. So the warning is sent when the LifeTime
     // has passed and the boss leaves this long after it.
-    public static readonly TimeSpan BossLeaveDelay = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan BossLeaveDelay = Maple2.Model.Metadata.Constant.WorldBossLeaveDelay;
 
     // roll: 0..99. A row with a probability of 100 or more always runs, one of 0 never.
     public static bool Runs(int probability, int roll) {

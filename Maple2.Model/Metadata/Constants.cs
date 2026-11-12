@@ -115,6 +115,8 @@ public static class Constant {
     public static readonly TimeSpan WorldBossIdleWarningThreshold = TimeSpan.FromMinutes(4);
     public static readonly TimeSpan WorldBossDespawnThreshold = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan WorldBossMonitorInterval = TimeSpan.FromSeconds(30);
+    // The time between the "about to disappear" warning and the boss leaving (see FORK.md, world boss lifetime).
+    public static readonly TimeSpan WorldBossLeaveDelay = TimeSpan.FromSeconds(10);
 
     public const int MaxMentees = 3;
     public const long FurnishingBaseId = 2870000000000000000;

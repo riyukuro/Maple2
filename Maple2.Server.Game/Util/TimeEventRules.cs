@@ -14,4 +14,11 @@ public static class TimeEventRules {
     public static bool BossLeaves(long lastDamageTick, long nowTick, TimeSpan idleThreshold) {
         return lastDamageTick <= 0 || nowTick - lastDamageTick >= (long) idleThreshold.TotalMilliseconds;
     }
+
+    // The close comes warningDelay after the warning. Only a boss that was idle at the warning (so its players were
+    // warned) and was not hit since leaves then; a boss that passed the idle threshold between the two stays for the
+    // idle monitor, which warns before it lets the boss leave.
+    public static bool BossLeavesAtClose(long lastDamageTick, long nowTick, TimeSpan idleThreshold, TimeSpan warningDelay) {
+        return BossLeaves(lastDamageTick, nowTick, idleThreshold + warningDelay);
+    }
 }

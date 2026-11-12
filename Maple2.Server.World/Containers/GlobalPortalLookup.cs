@@ -38,10 +38,12 @@ public class GlobalPortalLookup : IDisposable {
     }
 
     public void Dispose() {
-        if (globalPortalManager == null) {
+        GlobalPortalManager? closing = globalPortalManager;
+        if (closing == null) {
             return;
         }
-        globalPortalManager.Dispose();
+        // Cleared before the channels are told: a field enter during the close must not get the announce after it.
         globalPortalManager = null;
+        closing.Dispose();
     }
 }

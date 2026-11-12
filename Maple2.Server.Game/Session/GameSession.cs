@@ -640,6 +640,25 @@ public sealed partial class GameSession : Core.Network.Session {
         return true;
     }
 
+    // The field enter's global portal announce: sent while the World server has a portal open, in the field types
+    // the announce at the opening goes to.
+    public void AnnounceOpenGlobalPortal() {
+        if (Field == null) {
+            return;
+        }
+
+        TimeEventResponse globalEventResponse = World.TimeEvent(new TimeEventRequest {
+            GetGlobalPortal = new TimeEventRequest.Types.GetGlobalPortal(),
+        });
+
+        if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null
+            && TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type)) {
+            if (ServerTableMetadata.TimeEventTable.GlobalPortal.TryGetValue(globalEventResponse.GlobalPortalInfo.MetadataId, out GlobalPortalMetadata? portal)) {
+                Send(GlobalPortalPacket.Announce(portal, globalEventResponse.GlobalPortalInfo.EventId));
+            }
+        }
+    }
+
     public bool EnterField() {
         if (Field == null) return false;
 
@@ -714,16 +733,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Config.LoadSkillPoints();
         Player.Buffs.LoadFieldBuffs();
 
-        TimeEventResponse globalEventResponse = World.TimeEvent(new TimeEventRequest {
-            GetGlobalPortal = new TimeEventRequest.Types.GetGlobalPortal(),
-        });
-
-        if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null
-            && TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type)) {
-            if (ServerTableMetadata.TimeEventTable.GlobalPortal.TryGetValue(globalEventResponse.GlobalPortalInfo.MetadataId, out GlobalPortalMetadata? portal)) {
-                Send(GlobalPortalPacket.Announce(portal, globalEventResponse.GlobalPortalInfo.EventId));
-            }
-        }
+        AnnounceOpenGlobalPortal();
 
         Send(PremiumCubPacket.Activate(Player.ObjectId, Player.Value.Account.PremiumTime));
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));

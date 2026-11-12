@@ -571,6 +571,18 @@ public sealed class TestGameSession {
             return new LockResponse();
         }
 
+        // The world's open global portal (the answer to GetGlobalPortal); none is open while it is null.
+        public GlobalPortalInfo? OpenPortal;
+        public int TimeEventError;
+
+        public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
+            var response = new TimeEventResponse { Error = TimeEventError };
+            if (request.GetGlobalPortal != null && OpenPortal != null) {
+                response.GlobalPortalInfo = OpenPortal;
+            }
+            return response;
+        }
+
         // The black market's world side: every listing change is accepted.
         public readonly List<BlackMarketRequest> BlackMarketRequests = [];
 

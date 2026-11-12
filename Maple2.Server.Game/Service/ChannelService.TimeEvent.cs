@@ -114,7 +114,7 @@ public partial class ChannelService {
             FieldNpc? bossNpc = field.GetWorldBossNpc();
             if (bossNpc == null) continue;
 
-            if (!TimeEventRules.BossLeaves(bossNpc.LastDamageTick, Environment.TickCount64, Constant.WorldBossIdleWarningThreshold)) {
+            if (!TimeEventRules.BossLeavesAtClose(bossNpc.LastDamageTick, Environment.TickCount64, Constant.WorldBossIdleWarningThreshold, Constant.WorldBossLeaveDelay)) {
                 if (monitoringBossFields.TryAdd(targetMapId, 0)) {
                     _ = MonitorExtendedBossLifetimeAsync(field, npcId, targetMapId);
                 }
