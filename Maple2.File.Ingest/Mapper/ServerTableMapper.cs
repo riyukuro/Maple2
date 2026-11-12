@@ -978,8 +978,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 continue;
             }
 
-            DateTime startTime = DateTime.TryParseExact(data.eventStart, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out startTime) ? startTime : DateTime.MinValue;
-            DateTime endTime = DateTime.TryParseExact(data.eventEnd, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out endTime) ? endTime : DateTime.MinValue;
+            // Times are written to the minute or to the second (634 KR rows, such as the mini game bonus rows to 2099).
+            DateTime startTime = AttendGiftReplay.ParseTime(data.eventStart);
+            DateTime endTime = AttendGiftReplay.ParseTime(data.eventEnd);
 
             (TimeSpan partTimeStart, TimeSpan partTimeEnd) = ParsePartTime(data.partTime);
             var metadata = new GameEventMetadata(
@@ -998,14 +999,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
             // Only add events that are not expired
             if (endTime < now) {
-                // The replay also reads ends written to the second (the long-term attendance rows), which the
-                // parse above leaves at DateTime.MinValue.
-                ended.Add(replayAttendGift
-                    ? metadata with {
-                        StartTime = AttendGiftReplay.ParseTime(data.eventStart),
-                        EndTime = AttendGiftReplay.ParseTime(data.eventEnd),
-                    }
-                    : metadata);
+                ended.Add(metadata);
                 continue;
             }
             results.Add(id, metadata);

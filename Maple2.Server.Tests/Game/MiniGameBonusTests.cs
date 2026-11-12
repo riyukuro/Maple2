@@ -23,7 +23,7 @@ using Maple2.Server.Game.Util;
 namespace Maple2.Server.Tests.Game;
 
 // The MiniGameBonusReward game event: the reader of its two values, the events that name a game, and the winners'
-// items at end_mini_game. Rows as KR ships them (99000032: the oxquiz bonus, 40 of item 30001258).
+// items at end_mini_game. Rows as KR ships them (99000030: the oxquiz bonus, 40 of item 30001258).
 public class MiniGameBonusReaderTests {
     private const string Items = """<items><v itemID="30001258" grade="1" count="40" /></items>""";
 
@@ -54,6 +54,20 @@ public class MiniGameBonusReaderTests {
     [TestCase("oxquiz", "<items>")]
     public void Reader_NothingToGive(string? value1, string value2) {
         Assert.That(EventXmlReader.MiniGameBonusReward(value1, value2), Is.Null);
+    }
+
+    // The KR bonus rows end at "2099-04-20-23-59-59": event times to the second are read like those to the minute.
+    [TestCase("2099-04-20-23-59-59", 2099, 4, 20, 23, 59, 59)]
+    [TestCase("2023-03-20-00-00", 2023, 3, 20, 0, 0, 0)]
+    public void EventTime_MinuteOrSecond(string text, int year, int month, int day, int hour, int minute, int second) {
+        Assert.That(AttendGiftReplay.ParseTime(text), Is.EqualTo(new DateTime(year, month, day, hour, minute, second)));
+    }
+
+    [TestCase("")]
+    [TestCase(null)]
+    [TestCase("2099-04-20")]
+    public void EventTime_Unreadable(string? text) {
+        Assert.That(AttendGiftReplay.ParseTime(text), Is.EqualTo(DateTime.MinValue));
     }
 
     // The client has no class for it: the event list leaves it out.
@@ -92,7 +106,7 @@ public class MiniGameBonusSessionTests {
     private void Start(params string[] gameNames) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(BonusItemId));
-        test.AddEvent(99000032, GameEventType.MiniGameBonusReward, new MiniGameBonusReward(gameNames, [new RewardItem(BonusItemId, 1, 40)]));
+        test.AddEvent(99000030, GameEventType.MiniGameBonusReward, new MiniGameBonusReward(gameNames, [new RewardItem(BonusItemId, 1, 40)]));
         test.Start();
         test.TakeSent();
     }
