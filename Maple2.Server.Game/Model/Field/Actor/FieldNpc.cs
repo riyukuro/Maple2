@@ -240,9 +240,13 @@ public class FieldNpc : Actor<Npc> {
         WalkSequence = npc.Animations.GetValueOrDefault("Walk_A");
         FlySequence = npc.Animations.GetValueOrDefault("Fly_A");
         SpawnAnimation = spawnAnimation;
+        // An action the npc's model has no sequence for is left out (KR: 198 npcs, 122 of them name a Bore_A their
+        // model lacks, as the Dummy model of 11003970 has only Idle_A and Idle_B); it would only fall back to standby.
         defaultRoutines = new WeightedSet<string>();
         foreach (NpcAction action in Value.Metadata.Action.Actions) {
-            defaultRoutines.Add(action.Name, action.Probability);
+            if (npc.Animations.ContainsKey(action.Name)) {
+                defaultRoutines.Add(action.Name, action.Probability);
+            }
         }
 
         if (agent is not null) {
@@ -423,12 +427,12 @@ public class FieldNpc : Actor<Npc> {
             return NextWaypoint();
         }
 
-        string routineName = defaultRoutines.Get();
-        if (!Value.Animations.TryGetValue(routineName, out AnimationSequenceMetadata? sequence)) {
-            Logger.Error("Invalid routine: {Routine} for npc {NpcId}", routineName, Value.Metadata.Id);
-
+        if (defaultRoutines.Count == 0) {
             return MovementState.TryStandby(null, true);
         }
+
+        string routineName = defaultRoutines.Get();
+        AnimationSequenceMetadata sequence = Value.Animations[routineName];
 
         switch (routineName) {
             case not null when routineName.Contains("Idle_"):
