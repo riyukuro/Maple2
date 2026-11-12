@@ -163,7 +163,11 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         // The voucher byte is the client's. Every path below either takes a coupon or the full price, or returns.
-        long price = ugcMetadata.CreatePrice;
+        // A running SaleUgcDesign event lowers the price as the design window shows it; of several, the highest
+        // rate (chosen here: the client keeps one rate).
+        int saleRate = session.FindEvent(GameEventType.SaleUgcDesign)
+            .Select(gameEvent => gameEvent.Metadata.Data is SaleUgcDesign sale ? sale.Rate : 0).DefaultIfEmpty(0).Max();
+        long price = EventSaleRules.UgcDesignPrice(ugcMetadata.CreatePrice, saleRate);
         if (price < 0) {
             return;
         }

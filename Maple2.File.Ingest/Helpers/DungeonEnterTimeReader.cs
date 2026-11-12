@@ -3,9 +3,11 @@ using Maple2.Model.Metadata;
 
 namespace Maple2.File.Ingest.Helpers;
 
-// value1 of a DungeonEnterTimeLimit row, read as the client reads it (GameEventDungeonEnterTimeLimit,
-// commonfiles/gameevent.cpp:2372): each child of the root gives dungeonID and rangeTime "hh:mm-hh:mm"; a child
-// without a room, or whose range starts after its end, is left out.
+// value1 of a DungeonEnterTimeLimit row: each child of the root gives dungeonID and rangeTime "hh:mm-hh:mm"
+// (GameEventDungeonEnterTimeLimit, commonfiles/gameevent.cpp:2372); a child without a room, or whose range starts
+// after its end, is left out. Chosen here: the times are read as hours and minutes of the day. The client does not
+// read this text itself (its own parse of the row asserts and gives 0:00; it gets the ranges from the event list),
+// so how the official server read it is not known.
 public static class DungeonEnterTimeReader {
     public static DungeonEnterTime[] Parse(string xml) {
         XElement? root;
@@ -38,8 +40,7 @@ public static class DungeonEnterTimeReader {
         return times.ToArray();
     }
 
-    // "hh", "hh:mm" or "hh:mm:ss" as seconds of the day (Unk_DayTime::Parse, timeutil.cpp:241); 0 when it is not a
-    // time of day.
+    // "hh", "hh:mm" or "hh:mm:ss" as seconds of the day; 0 when it is not a time of day.
     private static int Seconds(string text) {
         string[] parts = text.Trim().Split(':');
         int minute = 0;

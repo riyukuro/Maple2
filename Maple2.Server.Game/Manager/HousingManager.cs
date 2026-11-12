@@ -544,6 +544,21 @@ public class HousingManager {
         }
     }
 
+    // The cube's shop row with the price the running SaleHousing events leave, the price the build palette shows:
+    // the first event row with the item's housing filter and the row's money type (EventSaleRules.HousingPrice).
+    private FurnishingShopTable.Entry? SalePrice(FurnishingShopTable.Entry? shopEntry, ItemMetadata? itemMetadata) {
+        if (shopEntry == null || itemMetadata?.Housing == null || shopEntry.Price <= 0) {
+            return shopEntry;
+        }
+        SaleHousingCube[] cubes = session.FindEvent(GameEventType.SaleHousing)
+            .SelectMany(gameEvent => gameEvent.Metadata.Data is SaleHousing sale ? sale.Cubes : []).ToArray();
+        if (cubes.Length == 0) {
+            return shopEntry;
+        }
+        int price = EventSaleRules.HousingPrice(new SaleHousing(cubes), itemMetadata.Housing.Filter, shopEntry.FurnishingTokenType, shopEntry.Price);
+        return price == shopEntry.Price ? shopEntry : shopEntry with { Price = price };
+    }
+
     private bool PlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
                            [NotNullWhen(true)] out PlotCube? result, bool isReplace, GameSession? helper) {
         result = null;
@@ -552,6 +567,7 @@ public class HousingManager {
         if (session.Field is null || itemMetadata.Install is null) return false;
 
         tableMetadata.FurnishingShopTable.Entries.TryGetValue(cube.ItemId, out FurnishingShopTable.Entry? shopEntry);
+        shopEntry = SalePrice(shopEntry, itemMetadata);
 
         switch (plot.PlotMode) {
             case PlotMode.BlueprintPlanner when itemMetadata.Housing!.IsNotAllowedInBlueprint:
@@ -1097,6 +1113,8 @@ public class HousingManager {
 
         foreach ((int id, int amount) in groupedCubes) {
             tableMetadata.FurnishingShopTable.Entries.TryGetValue(id, out FurnishingShopTable.Entry? shopEntry);
+            session.ItemMetadata.TryGet(id, out ItemMetadata? saleItem);
+            shopEntry = SalePrice(shopEntry, saleItem);
 
             Item? item = session.Item.Furnishing.GetItem(id);
             if (item is null) {

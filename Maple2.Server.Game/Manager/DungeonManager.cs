@@ -773,7 +773,10 @@ public class DungeonManager {
         record.UnionSubClears++;
         UserRecord.Flag |= DungeonBonusFlag.Helper;
 
-        foreach (int boxId in Metadata.HelperRewardDropBoxIds ?? []) {
+        // The boxes once, and once more per bonus of the running FindDungeonHelperBonus events.
+        int times = EventSaleRules.HelperRewardTimes(session.FindEvent(GameEventType.FindDungeonHelperBonus)
+            .Select(gameEvent => gameEvent.Metadata.Data is FindDungeonHelperBonus bonus ? bonus.Bonus : 0));
+        foreach (int boxId in Enumerable.Repeat(Metadata.HelperRewardDropBoxIds ?? [], times).SelectMany(ids => ids)) {
             foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level))) {
                 UserRecord.RewardItems.Add(item);
                 if (!session.Item.Inventory.Add(item, true)) {

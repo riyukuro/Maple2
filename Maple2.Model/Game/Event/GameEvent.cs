@@ -23,8 +23,12 @@ public class GameEvent : IByteSerializable {
     public bool SentToClient => Metadata.Data is not (NewUser or ReturnUserCandidate or ActiveUser
         or MapleSurvivalOpenPeriod or ShutdownMapleSurvival);
 
-    public bool IsActive() {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+    public bool IsActive() => IsActive(DateTime.Now);
+
+    // The day of the week and the time of day are the server's local ones, the clock the start and end are on
+    // (their times carry no zone and are compared as local time).
+    public bool IsActive(DateTime localNow) {
+        DateTimeOffset now = localNow;
         if (Metadata.StartTime > now) {
             return false;
         }
@@ -33,15 +37,15 @@ public class GameEvent : IByteSerializable {
             return false;
         }
 
-        if (Metadata.ActiveDays.Length > 0 && !Metadata.ActiveDays.Contains(now.DayOfWeek)) {
+        if (Metadata.ActiveDays.Length > 0 && !Metadata.ActiveDays.Contains(localNow.DayOfWeek)) {
             return false;
         }
 
-        if (Metadata.StartPartTime != TimeSpan.Zero && Metadata.StartPartTime > now.TimeOfDay) {
+        if (Metadata.StartPartTime != TimeSpan.Zero && Metadata.StartPartTime > localNow.TimeOfDay) {
             return false;
         }
 
-        if (Metadata.EndPartTime != TimeSpan.Zero && Metadata.EndPartTime < now.TimeOfDay) {
+        if (Metadata.EndPartTime != TimeSpan.Zero && Metadata.EndPartTime < localNow.TimeOfDay) {
             return false;
         }
 
@@ -364,6 +368,23 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(time.StartSeconds);
                     writer.WriteInt(time.EndSeconds);
                 }
+                break;
+            case SaleUgcDesign saleUgcDesign:
+                writer.WriteInt(Id);
+                writer.WriteInt(saleUgcDesign.Rate);
+                break;
+            case SaleHousing saleHousing:
+                writer.WriteInt(Id);
+                writer.WriteInt(saleHousing.Cubes.Length);
+                foreach (SaleHousingCube cube in saleHousing.Cubes) {
+                    writer.WriteShort(cube.Filter);
+                    writer.WriteShort(cube.MoneyType);
+                    writer.WriteInt(cube.Rate);
+                }
+                break;
+            case FindDungeonHelperBonus helperBonus:
+                writer.WriteInt(Id);
+                writer.WriteInt(helperBonus.Bonus);
                 break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);

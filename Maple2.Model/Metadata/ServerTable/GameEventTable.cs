@@ -382,6 +382,27 @@ public record LevelUpPackage(
 public record DungeonEnterTimeLimit(
     DungeonEnterTime[] Times) : GameEventData;
 
+// The design price sale (GameEventSaleUGCDesign, commonfiles/gameevent.cpp:2258): value1 is the rate out of 10000
+// taken off the price of making a design (CGameRule::GetSaleUgcDesignRate, EventSaleRules.UgcDesignPrice).
+public record SaleUgcDesign(
+    int Rate) : GameEventData;
+
+// The cube price sale (GameEventSaleHousing, commonfiles/gameevent.cpp:2395): value1, value2 and value3 are lists
+// of the same length, one cube row per place (EventSaleRules.HousingPrice).
+public record SaleHousing(
+    SaleHousingCube[] Cubes) : GameEventData;
+
+// The item's housing filter, the price's money type (1 meso, 3 meret) and the rate out of 10000 taken off.
+public record SaleHousingCube(
+    short Filter,
+    short MoneyType,
+    int Rate);
+
+// The dungeon helper bonus (GameEventFindDungeonHelperBonus, commonfiles/gameevent.cpp:4560): value1 is the bonus
+// (EventSaleRules.HelperRewardTimes).
+public record FindDungeonHelperBonus(
+    int Bonus) : GameEventData;
+
 // Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
 public record DungeonEnterTime(
     int DungeonId,
@@ -430,4 +451,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
 [JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]
+[JsonDerivedType(typeof(SaleUgcDesign), "SaleUgcDesign")]
+[JsonDerivedType(typeof(SaleHousing), "SaleHousing")]
+[JsonDerivedType(typeof(FindDungeonHelperBonus), "FindDungeonHelperBonus")]
 public abstract record GameEventData;

@@ -131,7 +131,8 @@ public record ItemMetadataHousing(
     int InteriorLevel,
     HousingCategory HousingCategory,
     bool IsNotAllowedInBlueprint,
-    int MaidId = 0 // <maid maidID>: the maid the furnishing places (MaidTable), 0 for other furnishings
+    int MaidId = 0, // <maid maidID>: the maid the furnishing places (MaidTable), 0 for other furnishings
+    int Filter = 0 // <housing filter>: the key a SaleHousing event's rows name (EventSaleRules.HousingPrice)
 );
 
 public record ItemMetadataInstall(

@@ -1598,7 +1598,17 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     ItemId: packageItemId,
                     QuestIds: value2);
             case GameEventType.DungeonEnterTimeLimit:
+                if (string.IsNullOrEmpty(value1)) {
+                    Console.WriteLine("DungeonEnterTimeLimit event without value1 skipped");
+                    return null;
+                }
                 return new DungeonEnterTimeLimit(DungeonEnterTimeReader.Parse(value1));
+            case GameEventType.SaleUgcDesign:
+                return EventSaleReader.UgcDesign(value1);
+            case GameEventType.SaleHousing:
+                return EventSaleReader.Housing(value1, value2, value3);
+            case GameEventType.FindDungeonHelperBonus:
+                return EventSaleReader.HelperBonus(value1);
             case GameEventType.SaleAutoPlayInstrument:
                 if (!int.TryParse(value1, out int performanceDiscount) && string.IsNullOrEmpty(value2)) {
                     return null;
