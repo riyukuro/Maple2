@@ -844,7 +844,16 @@ public partial class FieldManager {
         return !target.IsScriptMarker && NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
     }
 
+    // The players a skill can reach: every player but a rank duel's onlookers.
+    private IEnumerable<FieldPlayer> TargetPlayers => Players.Values.Where(player => !IsOnlooker(player));
+
+    private bool IsOnlooker(FieldPlayer player) => RankDuel?.IsOnlooker(player.Value.Character.Id) == true;
+
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {
+        // A rank duel's onlookers take no part: their skills reach no one, and no one's reach them.
+        if (caster is FieldPlayer onlooker && IsOnlooker(onlooker)) {
+            return [];
+        }
         // A friendly npc (e.g. a cannon a player fires by InteractNpc) sides with the players: its hostile
         // targets are the mobs it fights (NpcTargetRules.FightsNpc) and its friendly targets the players.
         if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 } friendlyCaster and not FieldPet) {
@@ -852,7 +861,7 @@ public partial class FieldManager {
                 case ApplyTargetType.Hostile:
                     return prisms.Filter(Mobs.Values.Where(mob => FightsNpc(friendlyCaster, mob)), limit, ignore);
                 case ApplyTargetType.Friendly:
-                    return prisms.Filter(Players.Values, limit, ignore);
+                    return prisms.Filter(TargetPlayers, limit, ignore);
             }
         }
         switch (targetType) {
@@ -860,23 +869,23 @@ public partial class FieldManager {
                 if (caster is FieldNpc) {
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 } else if (caster is FieldPlayer) {
-                    return prisms.Filter(Players.Values, limit, ignore);
+                    return prisms.Filter(TargetPlayers, limit, ignore);
                 }
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
             case ApplyTargetType.Hostile:
                 if (caster is FieldPet) {
-                    return prisms.Filter(Players.Values, limit, ignore);
+                    return prisms.Filter(TargetPlayers, limit, ignore);
                 }
                 if (caster is FieldNpc monster) {
                     // The players and the friendly npcs the monster fights (a barrier a script waits on to fall).
-                    return prisms.Filter(Players.Values.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc))), limit, ignore);
+                    return prisms.Filter(TargetPlayers.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc))), limit, ignore);
                 } else if (caster is FieldPlayer casterPlayer) {
                     //TODO Include other players if PVP is Active
                     // In a rank duel's fight or a PvP zone the other side's players are hostile too.
                     if (RankDuel != null || PvpZone != null) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>()
-                            .Concat(Players.Values.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
+                            .Concat(TargetPlayers.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
                     }
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 }
@@ -886,7 +895,7 @@ public partial class FieldManager {
                 return prisms.Filter(Pets.Values.Where(pet => pet.OwnerId == 0), limit, ignore);
             case ApplyTargetType.RegionBuff:
             case ApplyTargetType.RegionBuff2:
-                return prisms.Filter(Players.Values, limit, ignore);
+                return prisms.Filter(TargetPlayers, limit, ignore);
             default:
                 Log.Debug("Unhandled SkillEntity:{Entity}", targetType);
                 return [];

@@ -192,4 +192,14 @@ public class PvpHandlerTests {
     public void RequestsWithoutAnAnswer_SendNothing(string request) {
         Assert.That(Send(request), Is.Empty);
     }
+
+    // The observe offer goes only to a player whose join would not be refused: not in a dungeon.
+    [Test]
+    public void ObserveOffer_NotInADungeon() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        Assert.That(PvpHandler.TakesObserveOffer(session), Is.True);
+        test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
+        Assert.That(PvpHandler.TakesObserveOffer(session), Is.False);
+    }
 }

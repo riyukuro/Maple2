@@ -86,6 +86,11 @@ public class PvpHandler : FieldPacketHandler {
         }
     }
 
+    // Whether a player takes the rank duel's observe offer (Pvp 0x19): one its join would not refuse.
+    public static bool TakesObserveOffer(GameSession session) {
+        return session.Field is { RankDuel: null, Arena: null, PvpZone: null } && CanLeave(session);
+    }
+
     // RankDuelField.CanLeaveFor for the session's player and field.
     private static bool CanLeave(GameSession session) {
         InstanceFieldMetadata? instance = session.Field?.FieldInstance;

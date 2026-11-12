@@ -272,10 +272,18 @@ public class RankDuelFieldTests {
         Duel duel = Start();
         Fight(duel);
         duel.Bystander.TakeSent();
+        // A rating changed after the fight started: the dialog keeps the one read at its start.
+        using (GameStorage.Request db = duel.A.Storage.Context()) {
+            db.SaveRankDuelRecord(duel.B.CharacterId, new RankDuelRecord { Season = 90, Rating = 1500, BestRating = 1500 });
+        }
         duel.Field.RankDuel!.Enter(duel.Bystander.Session.Player);
         List<byte[]> entered = duel.Bystander.TakeSent();
         Assert.That(Convert.ToHexString(entered[0]), Is.EqualTo("B600" + "13" + "00"));
-        string dialog = Convert.ToHexString(entered[1]);
+        // The duelists' points, so the client follows their health into the dialog.
+        Assert.That(Convert.ToHexString(entered[1]), Is.EqualTo("B600" + "64" + Int(duel.PlayerA.ObjectId) + "01000000" + "0000"));
+        Assert.That(Convert.ToHexString(entered[2]), Is.EqualTo("B600" + "64" + Int(duel.PlayerB.ObjectId) + "02000000" + "0000"));
+        string dialog = Convert.ToHexString(entered[3]);
+        Assert.That(dialog, Does.Contain(Long(duel.B.CharacterId) + "00000000" + "00000000" + "00" + "E8030000"));
         Assert.That(dialog[..8], Is.EqualTo("4E00" + "0F" + "05"));
         Assert.That(dialog, Does.Contain(Long(duel.A.CharacterId)));
         Assert.That(dialog, Does.Contain(Long(duel.B.CharacterId)));
@@ -284,5 +292,25 @@ public class RankDuelFieldTests {
         List<string> after = duel.Bystander.TakeSent().Select(Convert.ToHexString).ToList();
         Assert.That(after, Does.Contain("B600" + "13" + "01"));
         Assert.That(after.Any(packet => packet.StartsWith("4E000F05") && packet.EndsWith("01" + new string('0', 46 * 2))), Is.True);
+    }
+
+    // An onlooker takes no part: its friendly and hostile skills reach no player, and a duelist's friendly skills do
+    // not reach it.
+    [Test]
+    public void Onlooker_IsNoTarget() {
+        Duel duel = Start();
+        Fight(duel);
+        FieldPlayer onlooker = duel.Bystander.Session.Player;
+        duel.Field.RankDuel!.Enter(onlooker);
+        Assert.That(Pool(duel, onlooker, ApplyTargetType.Friendly), Is.Empty);
+        Assert.That(Pool(duel, onlooker, ApplyTargetType.Hostile), Is.Empty);
+        Assert.That(Pool(duel, duel.PlayerA, ApplyTargetType.Friendly), Does.Not.Contain(onlooker));
+        Assert.That(Pool(duel, duel.PlayerA, ApplyTargetType.Friendly), Does.Contain(duel.PlayerB));
+    }
+
+    private static List<IActor> Pool(Duel duel, FieldPlayer caster, ApplyTargetType type) {
+        var prisms = new[] { new Prism(new Circle(Vector2.Zero, 500), -100, 300) };
+        MethodInfo pool = typeof(FieldManager).GetMethod("GetTargetPool", Any)!;
+        return ((IEnumerable<IActor>) pool.Invoke(duel.Field, [caster, prisms, type, 10, new List<IActor> { caster }])!).ToList();
     }
 }

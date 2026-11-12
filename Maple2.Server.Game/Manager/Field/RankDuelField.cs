@@ -51,6 +51,13 @@ public sealed class RankDuelField {
 
     public bool IsDuelist(long characterId) => state.IsDuelist(characterId);
 
+    public bool IsOnlooker(long characterId) {
+        lock (mutex) return observers.Contains(characterId);
+    }
+
+    // The duelists' ratings, read once when the fight starts (for the onlookers' dialog).
+    private readonly Dictionary<long, int> ratings = [];
+
     // Whether the match field still takes its duelists: not once it has sent them out.
     public bool Runs => IsRunning(Phase);
     public static bool IsRunning(RankDuelPhase phase) => phase != RankDuelPhase.Closed;
@@ -111,6 +118,17 @@ public sealed class RankDuelField {
         }
         observers.Add(characterId);
         player.Session.Send(PvpPacket.RankDuelObserving(false));
+        // The duelists' points, as the field got them when the fight started: the client follows the health of a
+        // player with a point (PC::vfunc_74) into the dialog.
+        if (state.Phase == RankDuelPhase.Fighting) {
+            int point = 1;
+            foreach (long duelist in new[] { state.First, state.Second }) {
+                if (field.TryGetPlayerById(duelist, out FieldPlayer? fighter)) {
+                    player.Session.Send(PvpPacket.Point(fighter.ObjectId, point, 0, 0));
+                }
+                point++;
+            }
+        }
         if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
             player.Session.Send(dialog);
         }
@@ -126,15 +144,22 @@ public sealed class RankDuelField {
     }
 
     private TriggerPacket.PvpFighter Fighter(FieldPlayer player) {
-        int rating = Rating;
-        try {
-            using GameStorage.Request db = field.GameStorage.Context();
-            rating = RankDuelStanding.Load(db, player.Value.Character.Id, RankDuelStanding.CurrentSeason(field.TableMetadata)).Rating;
-        } catch (Exception) {
-            // The record could not be read: the start rating.
-        }
+        int rating = ratings.GetValueOrDefault(player.Value.Character.Id, Rating);
         return new TriggerPacket.PvpFighter(player.Value.Character.Id, (int) player.Stats.Values[BasicAttribute.Health].Current,
             (int) player.Stats.Values[BasicAttribute.Health].Total, 0, rating);
+    }
+
+    // Once per duel, when its fight starts.
+    private void ReadRatings() {
+        try {
+            using GameStorage.Request db = field.GameStorage.Context();
+            int season = RankDuelStanding.CurrentSeason(field.TableMetadata);
+            foreach (long duelist in new[] { state.First, state.Second }) {
+                ratings[duelist] = RankDuelStanding.Load(db, duelist, season).Rating;
+            }
+        } catch (Exception) {
+            // The records could not be read: the start rating.
+        }
     }
 
     private void SendObservers(Maple2.PacketLib.Tools.ByteWriter packet) {
@@ -166,6 +191,7 @@ public sealed class RankDuelField {
                     Send(state.First, PvpPacket.RankDuelFight());
                     Send(state.Second, PvpPacket.RankDuelFight());
                     StartFight();
+                    ReadRatings();
                     if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
                         SendObservers(dialog);
                     }

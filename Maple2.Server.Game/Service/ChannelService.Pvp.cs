@@ -1,5 +1,6 @@
 ﻿using Grpc.Core;
 using Maple2.Server.Channel.Service;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
@@ -11,7 +12,7 @@ public partial class ChannelService {
     public override Task<PvpNoticeResponse> Pvp(PvpNoticeRequest request, ServerCallContext context) {
         if (request.ObserveOffer) {
             foreach (GameSession player in server.GetSessions()) {
-                if (player.Field is { RankDuel: null, Arena: null, PvpZone: null }) {
+                if (PvpHandler.TakesObserveOffer(player)) {
                     player.Send(PvpPacket.RankDuelObserveOffer());
                 }
             }
