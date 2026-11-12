@@ -3,6 +3,7 @@ using Maple2.Database.Model;
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using ILogger = Serilog.ILogger;
 
@@ -14,6 +15,7 @@ public partial class GlobalService : Global.GlobalBase {
     private readonly GameStorage gameStorage;
 
     private readonly ILogger logger = Log.Logger.ForContext<GlobalService>();
+    private static readonly object createLock = new();
 
     public GlobalService(GameStorage gameStorage) {
         this.gameStorage = gameStorage;
@@ -58,26 +60,18 @@ public partial class GlobalService : Global.GlobalBase {
 
         Account? account = db.GetAccount(username);
         if (account is null) {
-            if (Constant.AutoRegister) {
-                account = new Account {
-                    Username = username,
-                    MachineId = machineId,
-                };
-
-                db.BeginTransaction();
-                account = db.CreateAccount(account, password);
-                if (account == null) {
-                    throw new RpcException(new Status(StatusCode.Internal, "Failed to create account."));
-                }
-
-                db.Commit();
-                return Task.FromResult(new LoginResponse { AccountId = account.Id });
+            if (!Constant.AutoRegister) {
+                return Task.FromResult(new LoginResponse {
+                    Code = LoginResponse.Types.Code.ErrorId,
+                    Message = "Account not found",
+                });
             }
 
-            return Task.FromResult(new LoginResponse {
-                Code = LoginResponse.Types.Code.ErrorId,
-                Message = "Account not found",
-            });
+            Account? created = CreateAccount(username, password, machineId, out account);
+            if (created != null) {
+                return Task.FromResult(new LoginResponse { AccountId = created.Id });
+            }
+            // Another login made the account first: it is checked below as an existing one.
         }
 
         bool isPasswordValid = db.VerifyPassword(account.Id, password);
@@ -114,5 +108,38 @@ public partial class GlobalService : Global.GlobalBase {
         }
 
         return Task.FromResult(new LoginResponse { AccountId = account.Id });
+    }
+
+    // The client may open two login connections at once, and both find no account for a new name. The creates are
+    // serialized and each looks again first; a create that still fails on the unique username (another writer) reads
+    // the account back. Returns the new account, or null with the one another login made in existing.
+    private Account? CreateAccount(string username, string password, Guid machineId, out Account existing) {
+        lock (createLock) {
+            using (GameStorage.Request db = gameStorage.Context()) {
+                Account? found = db.GetAccount(username);
+                if (found != null) {
+                    existing = found;
+                    return null;
+                }
+
+                try {
+                    db.BeginTransaction();
+                    Account account = db.CreateAccount(new Account {
+                        Username = username,
+                        MachineId = machineId,
+                    }, password);
+                    db.Commit();
+                    existing = account;
+                    return account;
+                } catch (DbUpdateException ex) {
+                    logger.Warning(ex, "Account {Username} was not created, reading it back", username);
+                }
+            }
+
+            using GameStorage.Request reread = gameStorage.Context();
+            existing = reread.GetAccount(username)
+                       ?? throw new RpcException(new Status(StatusCode.Internal, "Failed to create account."));
+            return null;
+        }
     }
 }
