@@ -70,6 +70,13 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         return tile;
     }
 
+    private Vector3? GroundAt(Vector3 point) {
+        if (Field.FindNearestPoly(point, out long nearestRef, out RcVec3f position) && nearestRef != 0) {
+            return DotRecastHelper.FromNavMeshSpace(position);
+        }
+        return null;
+    }
+
     private void InitializeSpawns() {
         if (validSpawns.Count > 0) {
             return;
@@ -95,8 +102,14 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
             validSpawns.Add(entity.Position);
         }
 
+        if (validSpawns.Count > 0) {
+            return;
+        }
+
+        // No ground cube in reach (the point stands on a mesh's floor): the walkable spots around the point.
+        validSpawns.AddRange(SpawnPicker.GroundSpots(Position, (float) Constant.BlockSize, SPAWN_DISTANCE, GroundAt));
         if (validSpawns.Count == 0) {
-            Log.Logger.Error("Failed to find spawns for spawn {SpawnId} in map {MapId}", spawnId, Field.MapId);
+            Log.Logger.Warning("No spawn tile or walkable spot for spawn {SpawnId} in map {MapId}", spawnId, Field.MapId);
 
             validSpawns.Add(Position);
         }

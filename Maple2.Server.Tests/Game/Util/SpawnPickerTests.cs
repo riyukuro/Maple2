@@ -47,6 +47,35 @@ public class SpawnPickerTests {
         Assert.That(picked.Distinct().Count(), Is.EqualTo(4));
     }
 
+    // A point on a mesh's floor: the point and its neighbours that have ground under them, none past a ledge
+    // (ground a block lower, or only found far aside) or without ground.
+    [Test]
+    public void GroundSpots_AreTheWalkableNeighbours() {
+        var point = new Vector3(1050, 2850, 2100);
+        List<Vector3> spots = SpawnPicker.GroundSpots(point, 150, 250, candidate => {
+            if (candidate.X > point.X) {
+                return null; // no ground on that side
+            }
+            if (candidate.X < point.X && candidate.Y > point.Y) {
+                return candidate with { Z = point.Z - 300 }; // a ledge
+            }
+            if (candidate.X < point.X && candidate.Y < point.Y) {
+                return candidate + new Vector3(100, 0, 0); // the nearest ground is the next block's
+            }
+            return candidate with { Z = point.Z - 20 };
+        });
+        Assert.That(spots, Is.EquivalentTo(new[] {
+            new Vector3(900, 2850, 2080), new Vector3(1050, 2700, 2080), new Vector3(1050, 2850, 2080), new Vector3(1050, 3000, 2080),
+        }));
+    }
+
+    [Test]
+    public void GroundSpots_KeepToTheRange() {
+        Assert.That(SpawnPicker.GroundSpots(Vector3.Zero, 150, 250, candidate => candidate), Has.Count.EqualTo(9));
+        Assert.That(SpawnPicker.GroundSpots(Vector3.Zero, 150, 200, candidate => candidate), Has.Count.EqualTo(5));
+        Assert.That(SpawnPicker.GroundSpots(Vector3.Zero, 150, 250, _ => null), Is.Empty);
+    }
+
     [Test]
     public void NoTilesOrNoMobsPicksNothing() {
         Assert.That(SpawnPicker.Pick([], 3, new Random(1), _ => Spread), Is.Empty);
