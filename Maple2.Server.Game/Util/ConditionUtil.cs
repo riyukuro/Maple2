@@ -248,7 +248,16 @@ public static class ConditionUtil {
             case ConditionType.enchant_result:
             case ConditionType.install_billboard:
             case ConditionType.item_move:
+                if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
+                    return true;
+                }
+                break;
             case ConditionType.npc:
+                // The target is the map of the kill; quest 71000065 lists the maps 3000001-3999999 as a range.
+                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
+                    return true;
+                }
+
                 if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
                     return true;
                 }

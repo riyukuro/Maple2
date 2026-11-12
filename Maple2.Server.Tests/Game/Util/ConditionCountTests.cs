@@ -112,6 +112,18 @@ public class ConditionCountTests {
         Assert.That(target.CheckTarget(null!, type, longValue: value), Is.EqualTo(expected));
     }
 
+    // An npc kill target can be a range of maps (quest 71000065: 3000001-3999999).
+    [TestCase(3000001, true)]
+    [TestCase(3500000, true)]
+    [TestCase(3999999, true)]
+    [TestCase(2000085, false)]
+    [TestCase(4000000, false)]
+    public void Npc_CountsAKillOnAMapInTheTargetRange(long mapId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.npc, 5,
+            null, new ConditionMetadata.Parameters(Range: new ConditionMetadata.Range<int>(3000001, 3999999)));
+        Assert.That(condition.Check(null!, targetLong: mapId, codeLong: 21000063), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
