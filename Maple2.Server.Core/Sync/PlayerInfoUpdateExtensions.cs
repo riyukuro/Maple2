@@ -160,10 +160,11 @@ public static class PlayerInfoUpdateExtensions {
             self.PremiumTime = other.PremiumTime;
         }
         if (type.HasFlag(UpdateField.Clubs)) {
-            self.ClubIds = other.ClubIds;
+            self.ClubIds = new List<long>(other.ClubIds);
         }
         if (type.HasFlag(UpdateField.Dungeon)) {
-            self.DungeonEnterLimits = other.DungeonEnterLimits;
+            // A copy: the source table is merged in place by later updates.
+            self.DungeonEnterLimits = new Dictionary<int, DungeonEnterLimit>(other.DungeonEnterLimits);
         }
 
         self.UpdateTime = other.UpdateTime;

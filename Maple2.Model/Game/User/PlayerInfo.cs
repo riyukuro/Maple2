@@ -50,7 +50,11 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
     }
 
     public PlayerInfo Clone() {
-        return (PlayerInfo) MemberwiseClone();
+        // The copy holds its own club list and dungeon limits: the original's are changed in place by updates.
+        var clone = (PlayerInfo) MemberwiseClone();
+        clone.ClubIds = new List<long>(ClubIds);
+        clone.DungeonEnterLimits = new Dictionary<int, DungeonEnterLimit>(DungeonEnterLimits);
+        return clone;
     }
 
     public void WriteTo(IByteWriter writer) {

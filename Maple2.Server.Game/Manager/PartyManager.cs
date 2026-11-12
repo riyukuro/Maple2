@@ -432,7 +432,6 @@ public class PartyManager : IDisposable {
         member.TokenSource = null;
     }
 
-    // The party is told once that a member is under a tombstone: when the member goes from alive to dead.
     // Two dungeon limit tables with the same dungeons and the same limit for each.
     internal static bool SameLimits(IReadOnlyDictionary<int, DungeonEnterLimit> before, IReadOnlyDictionary<int, DungeonEnterLimit> after) {
         if (before.Count != after.Count) {
@@ -446,6 +445,7 @@ public class PartyManager : IDisposable {
         return true;
     }
 
+    // The party is told once that a member is under a tombstone: when the member goes from alive to dead.
     internal static bool DiedNow(DeathState before, DeathState after) {
         return before == DeathState.Alive && after != DeathState.Alive;
     }

@@ -221,6 +221,16 @@ public class WeddingCeremonyTests {
     }
 
     [Test]
+    public void InvitationClear_IsMode23WithoutABody() {
+        ByteWriter packet = WeddingPacket.InvitationClear();
+
+        var reader = new ByteReader(packet.Buffer, 0);
+        Assert.That(reader.ReadShort(), Is.EqualTo((short) SendOp.Wedding));
+        Assert.That(reader.ReadByte(), Is.EqualTo(23));
+        Assert.That(packet.Length, Is.EqualTo(3));
+    }
+
+    [Test]
     public void Ticket_IdThenTheHall() {
         WeddingHall hall = MakeHall();
         ByteWriter packet = WeddingPacket.Ticket(9, hall);

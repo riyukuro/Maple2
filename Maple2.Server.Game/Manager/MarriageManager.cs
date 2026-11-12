@@ -139,6 +139,9 @@ public sealed class MarriageManager {
         CheckDivorceExpiration();
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
         session.Send(WeddingPacket.UpdateHall(WeddingHall));
+        // The client keeps a ticket until it is told to drop it, so a field entry clears its list first: a ticket
+        // of a hall that ended, was cancelled or is no longer this player's to enter goes away.
+        session.Send(WeddingPacket.InvitationClear());
         // The client shows a ticket again when it gets it again, so a field entry sends them all anew.
         lock (ticketsSent) {
             ticketsSent.Clear();

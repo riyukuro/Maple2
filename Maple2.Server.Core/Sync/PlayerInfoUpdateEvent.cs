@@ -111,16 +111,16 @@ public class PlayerInfoUpdateEvent {
             }
         }
 
+        // Clubs and dungeon limits are compared by content: a request that repeats what is held changes nothing.
         if (request.Clubs.Count > 0) {
-            if (player.ClubIds != request.Clubs.Select(club => club.Id).ToList()) {
+            if (!player.ClubIds.SequenceEqual(request.Clubs.Select(club => club.Id))) {
                 Type |= UpdateField.Clubs;
             }
         }
 
-        if (request.DungeonEnterLimits.Count > 0) {
-            if (player.DungeonEnterLimits != request.DungeonEnterLimits.Select(dungeon => new KeyValuePair<int, DungeonEnterLimit>(dungeon.DungeonId, (DungeonEnterLimit) dungeon.Limit)).ToDictionary()) {
-                Type |= UpdateField.Dungeon;
-            }
+        // The request's limits are merged into the held ones, so only its own entries count.
+        if (request.DungeonEnterLimits.Any(dungeon => !player.DungeonEnterLimits.TryGetValue(dungeon.DungeonId, out DungeonEnterLimit limit) || limit != (DungeonEnterLimit) dungeon.Limit)) {
+            Type |= UpdateField.Dungeon;
         }
     }
 }

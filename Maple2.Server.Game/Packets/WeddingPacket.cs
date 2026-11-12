@@ -25,7 +25,7 @@ public static class WeddingPacket {
         ChangeReservationRequest = 20,
         DeclineReservationChange = 21,
         AcceptReservationChange = 22,
-        Unknown23 = 23,
+        InvitationClear = 23,
         Ticket = 24,
         SearchInvitee = 27,
         SendInvite = 29,
@@ -222,13 +222,11 @@ public static class WeddingPacket {
         return pWriter;
     }
 
-    /// <summary>
-    /// Gets sent every field load? not sure why
-    /// </summary>
-    /// <returns></returns>
-    public static ByteWriter Unknown23() {
+    // Client: WeddingManager::OnInvitationClear (weddingmanager.cpp:282): no body; the client drops every hall
+    // ticket it holds. KMS2 sends it after the marriage and the hall on a field entry.
+    public static ByteWriter InvitationClear() {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.Unknown23);
+        pWriter.WriteByte((byte) Command.InvitationClear);
 
         return pWriter;
     }
