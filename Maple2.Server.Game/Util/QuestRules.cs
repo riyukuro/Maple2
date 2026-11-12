@@ -74,7 +74,6 @@ public static class QuestRules {
         return metadata.Basic.CompleteNpc == 0;
     }
 
-    // Quest 2 (Abandon): a forfeitable quest known to the played client that is not completed, for the same reason.
     // CQuestCommon::GetEndTime (questdata.cpp:253), in epoch seconds: a reset weekday gives the start of that weekday
     // after the start, else a duration the start plus its minutes (a quest not started counts from now); an event tag
     // gives the end of its term (the QuestTag event), 0 when the term is gone or the quest was started outside it;
@@ -114,6 +113,7 @@ public static class QuestRules {
         return now >= EndTime(basic, startTime, now, term);
     }
 
+    // Quest 2 (Abandon): a forfeitable quest known to the played client that is not completed, for the same reason.
     public static bool CanForfeit(QuestMetadataBasic basic, QuestState state) {
         return basic.Forfeitable && state != QuestState.Completed && PlayedClientQuests.Known(basic);
     }
