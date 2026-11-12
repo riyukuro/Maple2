@@ -316,6 +316,10 @@ public class BuffManager : IUpdatable {
     private BuffSums? sums;
     private int sumsVersion;
 
+    // A buff with the invincible flag is held: skill hits on the actor are sent as Invincible with amount 0 and a
+    // damage over time tick as 0.
+    public bool Invincible => Sums().Invincible;
+
     private void InvalidateSums() {
         Interlocked.Increment(ref sumsVersion);
         Volatile.Write(ref sums, null);

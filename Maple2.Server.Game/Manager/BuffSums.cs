@@ -10,12 +10,16 @@ public sealed class BuffSums {
     private readonly Dictionary<BasicAttribute, float> resistances = [];
     private readonly (AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)[] invokes;
 
+    // One of the buffs held has the invincible flag.
+    public bool Invincible { get; }
+
     public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held) {
         List<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> withInvoke = [];
         foreach ((AdditionalEffectMetadata metadata, int stacks) in held) {
             foreach ((BasicAttribute attribute, float value) in metadata.Status.Resistances) {
                 resistances[attribute] = resistances.GetValueOrDefault(attribute) + Model.Buff.ByStacks(value, stacks);
             }
+            Invincible |= metadata.Status.Invincible;
             if (metadata.InvokeEffect != null) {
                 withInvoke.Add((metadata.InvokeEffect, stacks));
             }

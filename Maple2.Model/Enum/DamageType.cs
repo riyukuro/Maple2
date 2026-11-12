@@ -5,5 +5,7 @@ public enum DamageType : byte {
     Critical = 1,
     Miss = 2,
     Block = 3,
-    // 8 is mapped to 3
+    // The target holds a buff with the invincible flag: the hit comes with amount 0 (the client's GetGradeName calls
+    // 4 "Invincible" and 8 "InvincibleReflection"; 8 is not sent here).
+    Invincible = 4,
 }

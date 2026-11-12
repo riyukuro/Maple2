@@ -17,6 +17,8 @@ public class DotDamageRecord {
     public readonly int SpAmount;
     public readonly int EpAmount;
     public readonly int RecoverHp;
+    // The tick's damage was taken away by an invincible buff of the target; the 0 is still sent.
+    public readonly bool Invincible;
 
     public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1) {
         Caster = caster;
@@ -32,7 +34,8 @@ public class DotDamageRecord {
         // The whole amount is times the buff's stack count (Buff.AmountFactor), before the not-kill cap.
         long hpAmount = dotDamage.HpValue;
         if (!dotDamage.IsConstDamage) {
-            if (dotDamage.Type != AttackType.None) {
+            // An invincible target's tick is not rolled, so its shields stay.
+            if (dotDamage.Type != AttackType.None && !target.Buffs.Invincible) {
                 try {
                     (DamageType type, long amount) = DamageCalculator.CalculateDamage(caster, target, Properties);
                     Type = type;
@@ -45,6 +48,11 @@ public class DotDamageRecord {
             hpAmount += (long) (dotDamage.DamageByTargetMaxHp * Target.Stats.Values[BasicAttribute.Health].Total);
         }
         hpAmount = Buff.AmountByStacks(hpAmount, stacks);
+        if (hpAmount > 0 && target.Buffs.Invincible) {
+            // A tick on a holder of an invincible buff is sent as Normal with amount 0.
+            hpAmount = 0;
+            Invincible = true;
+        }
         if (dotDamage.NotKill) {
             hpAmount = Math.Min(hpAmount, Target.Stats.Values[BasicAttribute.Health].Current - 1);
         }

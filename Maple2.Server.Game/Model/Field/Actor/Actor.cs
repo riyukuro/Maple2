@@ -132,6 +132,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
                 targetRecord.AddDamage(DamageType.Normal, health);
                 damageAmount -= health;
+            } else if (Buffs.Invincible) {
+                // KMS2 sends each hit on a holder of an invincible buff as type 4 with amount 0.
+                targetRecord.AddDamage(DamageType.Invincible, 0);
             } else if (attack.Damage.DamageByTargetMaxHp > 0) {
                 targetRecord.AddDamage(DamageType.Normal, (long) (Stats.Values[BasicAttribute.Health].Total * attack.Damage.DamageByTargetMaxHp));
                 damageAmount -= (long) (Stats.Values[BasicAttribute.Health].Total * attack.Damage.DamageByTargetMaxHp);

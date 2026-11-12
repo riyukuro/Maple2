@@ -319,11 +319,13 @@ public class Buff : IUpdatable, IByteSerializable {
             targetUpdated.Add(BasicAttribute.Stamina);
         }
 
-        if (targetUpdated.Count <= 0) {
+        if (targetUpdated.Count <= 0 && !record.Invincible) {
             return;
         }
 
-        Field.Broadcast(StatsPacket.Update(Owner, targetUpdated.ToArray()));
+        if (targetUpdated.Count > 0) {
+            Field.Broadcast(StatsPacket.Update(Owner, targetUpdated.ToArray()));
+        }
         Field.Broadcast(SkillDamagePacket.DotDamage(record));
         if (record.RecoverHp != 0) {
             Caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
