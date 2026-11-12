@@ -44,6 +44,30 @@ public static class FieldEntryRules {
         return roomRuns ? MigrationError.ok : MigrationError.s_move_err_dungeon_not_exist_2;
     }
 
+    public enum DungeonFieldProblem { None, NoMap, NoNavmesh, NoEntities }
+
+    // The first field of a dungeon room (its lobby, then its fields) that the server cannot make: a field with no
+    // map data, no navmesh file or no map entities. KR rooms taken from the client's rows alone can name such
+    // fields (room 23080003's field 02000529 has no map row). The room is then not made at all, and the player
+    // gets error 0x1E, which the client's GetFieldMoveErrorMessage shows as s_move_err_FailCreateDungeon from
+    // OnGameToGame: a lobby made without one of its fields would leave the player in a room whose next field never loads.
+    public static (int MapId, DungeonFieldProblem Problem) UnmadeDungeonField(int lobbyFieldId, IEnumerable<int> fieldIds,
+            Func<int, string?> xblockOf, Func<string, bool> hasNavmesh, Func<string, bool> hasEntities) {
+        foreach (int fieldId in fieldIds.Prepend(lobbyFieldId)) {
+            string? xblock = xblockOf(fieldId);
+            if (xblock == null) {
+                return (fieldId, DungeonFieldProblem.NoMap);
+            }
+            if (!hasNavmesh(xblock)) {
+                return (fieldId, DungeonFieldProblem.NoNavmesh);
+            }
+            if (!hasEntities(xblock)) {
+                return (fieldId, DungeonFieldProblem.NoEntities);
+            }
+        }
+        return (0, DungeonFieldProblem.None);
+    }
+
     // "Enter Dungeon" failed for a room that is gone. The party's dungeon is cleared only when the party still
     // names that room: a member whose session holds an older room id must not wipe a dungeon the leader made since.
     public static bool ClearsPartyDungeon(int failedRoomId, int partyRoomId) {

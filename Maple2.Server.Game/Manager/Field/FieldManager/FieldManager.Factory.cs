@@ -176,13 +176,16 @@ public partial class FieldManager {
                 ugcMetadata = new UgcMapMetadata(dungeonMetadata.LobbyFieldId, new Dictionary<int, UgcMapGroup>());
             }
 
-            // Every field of the dungeon needs its navmesh file. Check them all before any field is made, so
-            // a missing one refuses the whole dungeon instead of throwing after the lobby exists.
-            foreach (int fieldId in dungeonMetadata.FieldIds.Prepend(dungeonMetadata.LobbyFieldId)) {
-                if (MapMetadata.TryGet(fieldId, out MapMetadata? checkMetadata) && !Navigation.Exists(checkMetadata.XBlock)) {
-                    logger.Error("Dungeon:{DungeonId} Map:{MapId} has no navmesh file ({XBlock}), dungeon not created", dungeonMetadata.Id, fieldId, checkMetadata.XBlock);
-                    return null;
-                }
+            // Every field of the dungeon needs its map data, navmesh file and map entities. Check them all before any
+            // field is made, so a missing one refuses the whole dungeon instead of throwing after the lobby exists
+            // or making the lobby without that field.
+            (int unmadeMapId, FieldEntryRules.DungeonFieldProblem problem) = FieldEntryRules.UnmadeDungeonField(
+                dungeonMetadata.LobbyFieldId, dungeonMetadata.FieldIds,
+                fieldId => MapMetadata.TryGet(fieldId, out MapMetadata? checkMetadata) ? checkMetadata.XBlock : null,
+                Navigation.Exists, xblock => MapEntities.Get(xblock) != null);
+            if (problem != FieldEntryRules.DungeonFieldProblem.None) {
+                logger.Error("Dungeon:{DungeonId} Map:{MapId} cannot be made ({Problem}), dungeon not created", dungeonMetadata.Id, unmadeMapId, problem);
+                return null;
             }
 
             MapEntityMetadata? entities = MapEntities.Get(mapMetadata.XBlock);

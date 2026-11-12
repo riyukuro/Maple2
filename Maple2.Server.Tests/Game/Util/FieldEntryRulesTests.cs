@@ -146,4 +146,28 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.ExploreExp(true, 0), Is.Null, "a map with no explore type pays none");
         Assert.That(FieldEntryRules.ExploreExp(false, 1), Is.Null, "a map seen before pays none");
     }
+
+    // A dungeon room is made only when its lobby and every field have map data, a navmesh and map entities.
+    // Made-up maps: 1 and 2 are complete, 3 has no navmesh, 4 no entities, 5 no map data.
+    private static (int, FieldEntryRules.DungeonFieldProblem) Unmade(int lobby, params int[] fields) =>
+        FieldEntryRules.UnmadeDungeonField(lobby, fields, id => id is >= 1 and <= 4 ? $"x{id}" : null,
+            xblock => xblock != "x3", xblock => xblock != "x4");
+
+    [Test]
+    public void DungeonFields_AllPresent_AreMade() {
+        Assert.That(Unmade(1, 2), Is.EqualTo((0, FieldEntryRules.DungeonFieldProblem.None)));
+        Assert.That(Unmade(1), Is.EqualTo((0, FieldEntryRules.DungeonFieldProblem.None)));
+    }
+
+    [Test]
+    public void DungeonFields_FirstMissingPiece_RefusesTheRoom() {
+        Assert.Multiple(() => {
+            Assert.That(Unmade(1, 2, 5), Is.EqualTo((5, FieldEntryRules.DungeonFieldProblem.NoMap)));
+            Assert.That(Unmade(1, 3, 5), Is.EqualTo((3, FieldEntryRules.DungeonFieldProblem.NoNavmesh)));
+            Assert.That(Unmade(1, 4), Is.EqualTo((4, FieldEntryRules.DungeonFieldProblem.NoEntities)));
+            // The lobby is checked first; a reward-count row has lobby 0, which no map has.
+            Assert.That(Unmade(3, 5), Is.EqualTo((3, FieldEntryRules.DungeonFieldProblem.NoNavmesh)));
+            Assert.That(Unmade(0), Is.EqualTo((0, FieldEntryRules.DungeonFieldProblem.NoMap)));
+        });
+    }
 }
