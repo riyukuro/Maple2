@@ -468,4 +468,19 @@ public static class GuildRules {
         float bonus = factor >= 1.0f ? factor - 1.0f : 0f;
         return (long) ((float) value * (1.0f + bonus));
     }
+
+    // The weekly reset: each member's weekly contribution goes back to 0 (the total stays), under the member's
+    // lock as a check-in or a donation adds to it. Returns the members that had any.
+    public static int ResetWeeklyContribution(IEnumerable<GuildMember> members) {
+        int reset = 0;
+        foreach (GuildMember member in members) {
+            lock (member) {
+                if (member.WeeklyContribution != 0) {
+                    reset++;
+                }
+                member.WeeklyContribution = 0;
+            }
+        }
+        return reset;
+    }
 }

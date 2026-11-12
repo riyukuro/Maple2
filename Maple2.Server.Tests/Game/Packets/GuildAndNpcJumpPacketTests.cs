@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Linq;
+using System.Numerics;
 using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -15,6 +16,30 @@ namespace Maple2.Server.Tests.Game.Packets;
 public class GuildAndNpcJumpPacketTests {
     private static PlayerInfo Info(string name) =>
         new(new CharacterInfo(1, 2, name, "", "", Gender.Male, Job.Newbie, 1), "", new AchievementInfo(), []);
+
+    // CGuildManager::OnPacketWeeklyContributionReset (mode 61) reads no body.
+    [Test]
+    public void WeeklyContributionReset_IsMode61WithNoBody() {
+        ByteWriter writer = GuildPacket.WeeklyContributionReset();
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(61));
+        Assert.That(writer.Length, Is.EqualTo(3));
+    }
+
+    // The weekly reset zeroes each member's weekly contribution and keeps the total.
+    [Test]
+    public void ResetWeeklyContribution_KeepsTheTotal() {
+        var members = new[] {
+            new GuildMember { Info = Info("A"), WeeklyContribution = 30, TotalContribution = 120 },
+            new GuildMember { Info = Info("B"), WeeklyContribution = 0, TotalContribution = 50 },
+        };
+
+        Assert.That(GuildRules.ResetWeeklyContribution(members), Is.EqualTo(1));
+        Assert.That(members.Select(member => (member.WeeklyContribution, member.TotalContribution)),
+            Is.EqualTo(new[] { (0, 120), (0, 50) }));
+    }
 
     [Test]
     public void Donated_IsMode113WithCountAndTime() {

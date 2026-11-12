@@ -58,7 +58,7 @@ public static class GuildPacket {
         UpgradeHouse = 57,
         UpdatePoster = 58,
         UpgradeNpc = 59,
-        // 59, 60
+        WeeklyContributionReset = 61,
         UpdateLeader = 63,
         UpdateNotice = 64,
         UpdateEmblem = 65,
@@ -488,6 +488,15 @@ public static class GuildPacket {
 
     // s_guild_gain_contribution
     // - You have acquired {0} contributions.
+    // Guild 61 has no body: the client sets every member's weekly contribution to 0 and then, as Guild 62, clears
+    // the members' guild raid records (the server keeps none).
+    public static ByteWriter WeeklyContributionReset() {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.WeeklyContributionReset);
+
+        return pWriter;
+    }
+
     public static ByteWriter GuildContribution(GuildMember member, int contribution) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.GuildContribution);

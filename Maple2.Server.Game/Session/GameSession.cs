@@ -984,6 +984,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Shop.WeeklyReset();
         // The rank duel window's weekly token gauge: the database row is reset already.
         RankDuelStanding.Send(this);
+        // Guild weekly contribution: the World's guild and the database row are reset already.
+        Guild.WeeklyReset();
     }
 
     public void MonthlyReset() {

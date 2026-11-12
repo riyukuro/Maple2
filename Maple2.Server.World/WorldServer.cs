@@ -30,6 +30,7 @@ public class WorldServer {
     private readonly GlobalPortalLookup globalPortalLookup;
     private readonly WorldBossLookup worldBossLookup;
     private readonly PlayerInfoLookup playerInfoLookup;
+    private readonly GuildLookup guildLookup;
     private ConstantsTable Constants => serverTableMetadata.ConstantsTable;
     #endregion
 
@@ -44,13 +45,14 @@ public class WorldServer {
 
     private readonly LoginClient login;
 
-    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
+    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, GuildLookup guildLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
         this.gameStorage = gameStorage;
         this.channelClients = channelClients;
         this.serverTableMetadata = serverTableMetadata;
         this.globalPortalLookup = globalPortalLookup;
         this.worldBossLookup = worldBossLookup;
         this.playerInfoLookup = playerInfoLookup;
+        this.guildLookup = guildLookup;
         this.login = login;
         this.itemMetadata = itemMetadata;
         this.questMetadata = questMetadata;
@@ -243,6 +245,9 @@ public class WorldServer {
     }
 
     private void WeeklyReset() {
+        // The guilds held in memory first: a save of one after the database reset would write the old weekly
+        // contribution back.
+        guildLookup.WeeklyReset();
         using GameStorage.Request db = gameStorage.Context();
         db.WeeklyReset();
         foreach ((int channelId, ChannelClient channelClient) in channelClients) {

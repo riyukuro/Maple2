@@ -38,6 +38,12 @@ public class GuildManager : IDisposable {
         }
     }
 
+    // The weekly reset of the members held here; the database row is reset after it, so a later save of the
+    // guild keeps the 0.
+    public void WeeklyReset() {
+        GuildRules.ResetWeeklyContribution(Guild.Members.Values);
+    }
+
     public bool HasPermission(long characterId, GuildPermission permission) {
         if (!Guild.Members.TryGetValue(characterId, out GuildMember? member)) {
             return false;

@@ -33,6 +33,12 @@ public class GuildLookup : IDisposable {
         }
     }
 
+    public void WeeklyReset() {
+        foreach (GuildManager manager in guilds.Values) {
+            manager.WeeklyReset();
+        }
+    }
+
     // The join requests are rows of the game database; they have no copy in the guild held here.
     public GameStorage.Request Storage() {
         return gameStorage.Context();

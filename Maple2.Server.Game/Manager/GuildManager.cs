@@ -244,6 +244,16 @@ public class GuildManager : IDisposable {
         return true;
     }
 
+    // The weekly reset: this copy's members go to 0 and the client is told with Guild 61.
+    public void WeeklyReset() {
+        if (Guild == null) {
+            return;
+        }
+
+        GuildRules.ResetWeeklyContribution(Guild.Members.Values);
+        session.Send(GuildPacket.WeeklyContributionReset());
+    }
+
     public bool UpdateMemberContribution(long characterId, long checkInTime, int contribution) {
         GuildMember? member = GetMember(characterId);
         if (member == null) {
