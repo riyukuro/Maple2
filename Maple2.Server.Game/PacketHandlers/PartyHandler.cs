@@ -97,7 +97,7 @@ public class PartyHandler : FieldPacketHandler {
     private void HandleInvite(GameSession session, IByteReader packet) {
         string playerName = packet.ReadUnicodeString();
 
-        if (playerName == session.PlayerName.ToLower()) {
+        if (string.Equals(playerName, session.PlayerName, StringComparison.OrdinalIgnoreCase)) {
             session.Send(PartyPacket.Error(PartyError.s_party_err_myself));
             return;
         }
@@ -191,10 +191,16 @@ public class PartyHandler : FieldPacketHandler {
                 PartyId = session.Party.Id,
             },
         });
+        SendError(session, response);
     }
 
     private void HandleKick(GameSession session, IByteReader packet) {
         long targetCharacterId = packet.ReadLong();
+        if (session.Party.Party == null) {
+            session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
+            return;
+        }
+
         PartyResponse response = World.Party(new PartyRequest {
             RequestorId = session.CharacterId,
             Kick = new PartyRequest.Types.Kick {
@@ -203,14 +209,16 @@ public class PartyHandler : FieldPacketHandler {
             },
         });
 
-        var error = (PartyError) response.Error;
-        if (error != PartyError.none) {
-            return;
-        }
+        SendError(session, response);
     }
 
     private void HandleSetLeader(GameSession session, IByteReader packet) {
         string targetName = packet.ReadUnicodeString();
+        if (session.Party.Party == null) {
+            session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
+            return;
+        }
+
         using GameStorage.Request db = session.GameStorage.Context();
         long targetCharacterId = db.GetCharacterId(targetName);
         if (targetCharacterId == 0) {
@@ -225,6 +233,15 @@ public class PartyHandler : FieldPacketHandler {
                 CharacterId = targetCharacterId,
             },
         });
+        SendError(session, response);
+    }
+
+    // World refuses a party command with an error code (not leader, not found, ...); KMS2 shows it to the player.
+    private static void SendError(GameSession session, PartyResponse response) {
+        var error = (PartyError) response.Error;
+        if (error != PartyError.none) {
+            session.Send(PartyPacket.Error(error));
+        }
     }
 
     private void HandleMatchPartyJoin(GameSession session, IByteReader packet) {
@@ -414,6 +431,7 @@ public class PartyHandler : FieldPacketHandler {
         if (session.Party.Party.Members.Values.Count(member => member.Info.Online) < 2 ||
             session.Party.Party.Members.Count < 4) {
             session.Send(PartyPacket.Error(PartyError.s_party_err_vote_need_more_people));
+            return;
         }
 
         PartyResponse response = World.Party(new PartyRequest {

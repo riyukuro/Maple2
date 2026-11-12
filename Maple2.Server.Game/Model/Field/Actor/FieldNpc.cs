@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using DotRecast.Detour.Crowd;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -623,7 +624,7 @@ public class FieldNpc : Actor<Npc> {
     // CN-locale items, while item GROUP 4 ("boss equipment drop") is a completely different entity
     // only reachable via drop BOX 10, which no NPC uses. Equipment drops for bosses come from
     // IndividualDropBoxIds instead (keyed to the NPC id, e.g. individualDropBoxId="23000013" for Doondun).
-    private void DropGlobalLoot(long receiverCharacterId) {
+    private void DropGlobalLoot(FieldPlayer receiver) {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
@@ -631,9 +632,10 @@ public class FieldNpc : Actor<Npc> {
         }
 
         foreach (Item item in globalDrops) {
+            ApplyMesoRate(receiver, item);
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
-            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: receiverCharacterId, dropKind: ItemDropKind.NpcDeath);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: receiver.Value.Character.Id, dropKind: ItemDropKind.NpcDeath);
         }
     }
 
@@ -667,9 +669,17 @@ public class FieldNpc : Actor<Npc> {
         }
 
         foreach (Item item in individualDrops) {
+            ApplyMesoRate(player, item);
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
             Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcDeath);
+        }
+    }
+
+    // The meso rate (SpecialAttribute.Meso: the party buff, gear options) raises the mesos a kill drops for the player.
+    private static void ApplyMesoRate(FieldPlayer player, Item item) {
+        if (item.IsMeso()) {
+            item.Amount = KillRate.Apply(item.Amount, player.Stats.Values[SpecialAttribute.Meso].Multiplier());
         }
     }
 
@@ -716,7 +726,7 @@ public class FieldNpc : Actor<Npc> {
                 continue;
             }
 
-            DropGlobalLoot(player.Value.Character.Id);
+            DropGlobalLoot(player);
             DropIndividualLoot(player);
             GiveExp(player);
 
@@ -743,13 +753,15 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
 
+        // The exp rate (SpecialAttribute.Experience: the party buff, gear options) raises the exp of a kill.
+        double expRate = player.Stats.Values[SpecialAttribute.Experience].Multiplier();
         if (Value.Metadata.Basic.CustomExp == -1) {
             // TODO: this is temporary. We need to know how to split exp between players.
-            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level);
+            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, modifier: (float) Math.Max(0d, 1d + expRate));
             return;
         }
 
-        player.Session.Exp.AddExp(Value.Metadata.Basic.CustomExp);
+        player.Session.Exp.AddExp(KillRate.Apply(Value.Metadata.Basic.CustomExp, expRate));
     }
 
     public void SendDebugAiInfo(GameSession requester) {

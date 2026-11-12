@@ -73,6 +73,9 @@ public class FieldPlayer : Actor<Player> {
     private long revivalInvincibleUntil;
 
     private long battleTick;
+    // The party buffs follow the party members in the field; checked once a second.
+    private const int PartyBuffIntervalMs = 1000;
+    private long partyBuffTick;
     private bool inBattle;
 
     // Key: Attribute, Value: RegenAttribute, RegenInterval
@@ -175,6 +178,32 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
+    // The party buffs (PartyBuff) at the level the party members in this field give; none outside a party, alone, or
+    // in a PvP field (the exp and meso buff is removed in one).
+    private void UpdatePartyBuffs() {
+        int partyId = Session.Party.Id;
+        int others = partyId == 0 || Field.Metadata.Property.Type == MapType.Pvp ? 0
+            : Field.Players.Values.Count(other => other != this && other.Session.Party.Id == partyId);
+        short level = PartyBuff.Level(others);
+
+        ConstantsTable constants = Session.ServerTableMetadata.ConstantsTable;
+        foreach (int buffId in new[] { constants.partyBuffID0, constants.partyBuffID1 }) {
+            if (buffId == 0) {
+                continue;
+            }
+            short current = Buffs.EnumerateBuffs(buffId).Select(buff => buff.Level).DefaultIfEmpty((short) 0).Max();
+            if (current == level) {
+                continue;
+            }
+            if (current > 0) {
+                Buffs.Remove(buffId, ObjectId);
+            }
+            if (level > 0) {
+                Buffs.AddBuff(this, this, buffId, level, Field.FieldTick);
+            }
+        }
+    }
+
     public override void Update(long tickCount) {
         base.Update(tickCount);
         Session.GameEvent.Update(tickCount);
@@ -184,6 +213,11 @@ public class FieldPlayer : Actor<Player> {
             Field.Broadcast(ProxyObjectPacket.UpdatePlayer(this, Flag));
             Flag = PlayerObjectFlag.None;
             flagTick = (long) (tickCount + TimeSpan.FromSeconds(2).TotalMilliseconds);
+        }
+
+        if (tickCount >= partyBuffTick) {
+            partyBuffTick = tickCount + PartyBuffIntervalMs;
+            UpdatePartyBuffs();
         }
 
         if (IsDead) {
