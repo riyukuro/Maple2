@@ -43,8 +43,9 @@ public class PvpHandler : FieldPacketHandler {
                 HandleArenaRegister(session, packet.ReadInt());
                 return;
             case Command.ArenaUnregister:
-                Request(session, new PvpRequest { RequesterId = session.CharacterId, ArenaUnregister = new PvpRequest.Types.ArenaUnregister() });
+                PvpResponse? unregistered = Request(session, new PvpRequest { RequesterId = session.CharacterId, ArenaUnregister = new PvpRequest.Types.ArenaUnregister() });
                 session.Send(PvpPacket.ArenaUnregistered());
+                SendWaits(session, unregistered);
                 return;
             case Command.ArenaJoin:
                 HandleArenaJoin(session);
@@ -129,13 +130,22 @@ public class PvpHandler : FieldPacketHandler {
         }
 
         session.Send(PvpPacket.ArenaRegistered(arenaType));
-        int? error = Request(session, new PvpRequest {
+        PvpResponse? response = Request(session, new PvpRequest {
             RequesterId = session.CharacterId,
             ArenaRegister = new PvpRequest.Types.ArenaRegister { Arena = arenaType, PlayerCount = arena.PlayerCount },
-        })?.Error;
-        if (error is not ((int) RankDuelError.none or (int) RankDuelError.Queued)) {
+        });
+        if (response?.Error is not ((int) RankDuelError.none or (int) RankDuelError.Queued)) {
             session.Send(PvpPacket.ArenaUnregistered());
         }
+        SendWaits(session, response);
+    }
+
+    // Pvp 12 with the arena queues' waits (the arena window's wait labels).
+    private static void SendWaits(GameSession session, PvpResponse? response) {
+        if (response == null) {
+            return;
+        }
+        session.Send(PvpPacket.GameRuleValues(response.ArenaWaits.Select(wait => (wait.Key, wait.Value)).ToList()));
     }
 
     // The yes of the individualArenaJoin box: the character moves into the arena match's field.

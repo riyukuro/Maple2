@@ -842,4 +842,6 @@ message PvpResponse {
   int32 map_id = 2;
   int32 room_id = 3;
   int32 channel = 4;
+  // The arena queues' waits in milliseconds by arenaType (on the arena register and unregister answers).
+  map<int32, int32> arena_waits = 5;
 }

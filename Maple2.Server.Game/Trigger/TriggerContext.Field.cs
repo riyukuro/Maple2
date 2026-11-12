@@ -93,17 +93,17 @@ public partial class TriggerContext {
         Broadcast(FieldPropertyPacket.Add(sightRange));
     }
 
-    // The PvP zone of a map script. Its type is the client's PvP mode (CPvPInfo m_nMode): 2 is the free-for-all of the
-    // Crimson Tear Mine, the one built (PvpZoneField); the others (1 Red Arena, 3 Treasure Island, 4 guild) are not.
+    // The PvP zone of a map script. Its type is the client's PvP mode (CPvPInfo m_nMode): 1 the Red Arena's face-offs,
+    // 2 the free-for-all of the Crimson Tear Mine, 3 Treasure Island's teams (RedArenaZoneField, PvpZoneField,
+    // TeamZoneField); 4 (the guild arena 64000001) is not built.
     public void SetPvpZone(int boxId, int prepareTime, int matchTime, int additionalEffectId, int type, params int[] boxIds) {
-        if (type != PvpZoneState.FfaMode) {
+        if (!Field.StartPvpZone(type, boxId, prepareTime, matchTime, additionalEffectId, boxIds, box => PlayersInBox(box))) {
             ErrorLog("[SetPvpZone] boxId:{BoxId}, prepareTime:{PrepareTime}, matchTime:{MatchTime}, additionalEffectId:{AdditionalEffectId}, type:{Type}, boxIds:{BoxIds}",
                 boxId, prepareTime, matchTime, additionalEffectId, type, string.Join(", ", boxIds));
             return;
         }
         DebugLog("[SetPvpZone] boxId:{BoxId}, prepareTime:{PrepareTime}, matchTime:{MatchTime}, additionalEffectId:{AdditionalEffectId}, type:{Type}",
             boxId, prepareTime, matchTime, additionalEffectId, type);
-        Field.StartPvpZone(boxId, prepareTime, matchTime, additionalEffectId, () => PlayersInBox(boxId));
     }
 
     public void SetTimeScale(bool enabled, float startScale, float endScale, float duration, int interpolator) {

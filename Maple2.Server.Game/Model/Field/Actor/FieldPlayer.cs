@@ -655,6 +655,16 @@ public class FieldPlayer : Actor<Player> {
         }
         Field.Broadcast(RevivalPacket.Revive(ObjectId));
         revivalInvincibleUntil = Field.FieldTick + Session.ServerTableMetadata.ConstantsTable.UserRevivalInvincibleTick;
+        // A participant of a running PvP zone comes back with the PvP revive buff and the PvP invincible time (the
+        // server constants ModePvPReviveBuff and ModePvPInvincibleTime; chosen here: level 1, and the longer of the two
+        // invincible times).
+        if (Field.PvpZone?.IsParticipant(this) == true) {
+            ConstantsTable pvpConstants = Session.ServerTableMetadata.ConstantsTable;
+            revivalInvincibleUntil = Math.Max(revivalInvincibleUntil, Field.FieldTick + pvpConstants.ModePvPInvincibleTime);
+            if (pvpConstants.ModePvPReviveBuff > 0) {
+                Buffs.AddBuff(this, this, pvpConstants.ModePvPReviveBuff, 1, Field.FieldTick);
+            }
+        }
 
         // Move to spawn point if not instant revival
         if (!instant) {

@@ -13,14 +13,14 @@ namespace Maple2.Server.Game.Manager.Field;
 // (0x67, 0x6a) follow the hits and deaths, the kill log (PlayerKillNotice 0) names each kill, and at the end each
 // participant here gets its rank (0x68), the win or loss pose (0x65), its reward and its point back to 0.
 // pvp_zone_ended is true from then on. See PvpZoneState for the rules.
-public sealed class PvpZoneField {
+public sealed class PvpZoneField : IPvpZoneField {
     private readonly ILogger logger = Log.Logger.ForContext<PvpZoneField>();
     private readonly object mutex = new();
     private readonly FieldManager field;
     private readonly PvpZoneState state;
     private readonly int additionalEffectId;
     private readonly Func<IEnumerable<FieldPlayer>> playersInBox;
-    private readonly Action<IReadOnlyList<long>>? onEnd;
+    private readonly Action<IReadOnlyList<long>, int>? onEnd;
 
     public int BoxId => state.BoxId;
     public bool Ended {
@@ -30,13 +30,23 @@ public sealed class PvpZoneField {
     }
 
     public PvpZoneField(FieldManager field, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId,
-                        Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>>? onEnd, long tick) {
+                        Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick) {
         this.field = field;
         this.additionalEffectId = additionalEffectId;
         this.playersInBox = playersInBox;
         this.onEnd = onEnd;
         ConstantsTable constants = field.ServerTableMetadata.ConstantsTable;
-        state = new PvpZoneState(boxId, PvpZoneState.FfaMode, tick, prepareSeconds, matchSeconds, constants.ModePvPScoreKill, constants.ModePvPScoreDead);
+        state = new PvpZoneState(boxId, PvpZoneState.FfaMode, tick, prepareSeconds, matchSeconds, constants.ModePvPScoreKill, constants.ModePvPScoreDead) {
+            ComboTickMs = constants.pvpFFALongComboTick,
+            SlayerCount = constants.pvpFFASlayerCount,
+            RulerCount = constants.pvpFFARulerCount,
+        };
+    }
+
+    public bool IsParticipant(FieldPlayer player) {
+        lock (mutex) {
+            return state.Phase == PvpZonePhase.Active && state.Entry(player.Value.Character.Id) != null;
+        }
     }
 
     public bool Hostile(FieldPlayer caster, FieldPlayer target) {
@@ -75,7 +85,7 @@ public sealed class PvpZoneField {
     // A player hit another: the attacker's damage row.
     public void Damage(FieldPlayer attacker, FieldPlayer victim, long amount) {
         lock (mutex) {
-            PvpZoneEntry? entry = state.Damage(attacker.Value.Character.Id, victim.Value.Character.Id, amount);
+            PvpZoneEntry? entry = state.Damage(attacker.Value.Character.Id, victim.Value.Character.Id, amount, field.FieldTick);
             if (entry != null) {
                 field.Broadcast(PvpPacket.Damage(entry.CharacterId, entry.Damage));
             }
@@ -84,12 +94,15 @@ public sealed class PvpZoneField {
 
     public void Death(FieldPlayer victim) {
         lock (mutex) {
-            List<PvpZoneEntry> changed = state.Death(victim.Value.Character.Id, out long killer);
+            List<PvpZoneEntry> changed = state.Death(victim.Value.Character.Id, field.FieldTick, out long killer, out int notice);
             foreach (PvpZoneEntry entry in changed) {
                 field.Broadcast(PvpPacket.RankRow(entry.CharacterId, entry.Score, entry.Kill, entry.Death));
             }
             if (killer != 0 && field.TryGetPlayerById(killer, out FieldPlayer? killerPlayer)) {
                 field.Broadcast(PlayerKillNoticePacket.Kill(killerPlayer.Value.Character.Name, victim.Value.Character.Name));
+                if (notice != 0) {
+                    field.Broadcast(PvpPacket.KillNotice(notice, killerPlayer.Value.Character.Name));
+                }
             }
         }
     }
@@ -101,6 +114,10 @@ public sealed class PvpZoneField {
                 return;
             }
             state.SetHere(player.Value.Character.Id, true);
+            // A participant that comes back: the others see its point again.
+            if (state.Entry(player.Value.Character.Id) is { } own) {
+                field.Broadcast(PvpPacket.Point(player.ObjectId, own.Point, 0, (byte) state.Mode), player.Session);
+            }
             foreach (PvpZoneEntry entry in state.Entries) {
                 if (field.TryGetPlayerById(entry.CharacterId, out FieldPlayer? other)) {
                     player.Session.Send(PvpPacket.Point(other.ObjectId, entry.Point, 0, (byte) state.Mode));
@@ -144,7 +161,7 @@ public sealed class PvpZoneField {
             }
         }
         logger.Information("PvP zone {BoxId} on {MapId} ended", state.BoxId, field.MapId);
-        onEnd?.Invoke(ranking.Select(entry => entry.CharacterId).ToList());
+        onEnd?.Invoke(ranking.Select(entry => entry.CharacterId).ToList(), ranking.Count > 0 ? 1 : 0);
     }
 
     // The rank's tokens (the result dialog's reward) and the blood mine exp of the rank (the client's commonexptable

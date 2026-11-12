@@ -108,6 +108,12 @@ public sealed class PvpLookup : IDisposable {
         return error;
     }
 
+    public Dictionary<int, int> ArenaWaits() {
+        lock (mutex) {
+            return arenas.WaitTimes(tick()).ToDictionary(wait => wait.Key, wait => (int) Math.Min(wait.Value, int.MaxValue));
+        }
+    }
+
     public RankDuelError ArenaUnregister(long characterId) {
         lock (mutex) {
             return arenas.Unregister(characterId);
@@ -247,9 +253,14 @@ public sealed class PvpLookup : IDisposable {
     public void Expire() {
         List<RankDuelMatch> expired;
         List<ArenaMatch> arenaExpired;
+        List<(long CharacterId, int Arena)> released;
         lock (mutex) {
             expired = queue.Expire(tick());
             arenaExpired = arenas.Expire(tick());
+            released = arenas.Release(tick());
+        }
+        foreach ((long characterId, int arena) in released) {
+            TryNotify(characterId, false, arena);
         }
         foreach (RankDuelMatch match in expired) {
             logger.Information("Rank duel match {MatchId} expired", match.Id);
@@ -289,7 +300,7 @@ public sealed class PvpLookup : IDisposable {
     }
 
     private void TellAbsent(ArenaMatch match) {
-        foreach (long characterId in match.Characters.Where(id => !match.Joined.Contains(id))) {
+        foreach (long characterId in match.Characters.Where(id => !match.Joined.Contains(id) && !match.Released.Contains(id))) {
             TryNotify(characterId, false, match.Arena);
         }
     }

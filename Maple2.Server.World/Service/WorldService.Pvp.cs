@@ -21,12 +21,18 @@ public partial class WorldService {
                     pvpLookup.End(request.End.MatchId);
                 }
                 return Task.FromResult(new PvpResponse());
-            case PvpRequest.PvpOneofCase.ArenaRegister:
-                return Task.FromResult(new PvpResponse {
+            case PvpRequest.PvpOneofCase.ArenaRegister: {
+                var response = new PvpResponse {
                     Error = (int) pvpLookup.ArenaRegister(request.RequesterId, request.ArenaRegister.Arena, request.ArenaRegister.PlayerCount),
-                });
-            case PvpRequest.PvpOneofCase.ArenaUnregister:
-                return Task.FromResult(new PvpResponse { Error = (int) pvpLookup.ArenaUnregister(request.RequesterId) });
+                };
+                response.ArenaWaits.Add(pvpLookup.ArenaWaits());
+                return Task.FromResult(response);
+            }
+            case PvpRequest.PvpOneofCase.ArenaUnregister: {
+                var response = new PvpResponse { Error = (int) pvpLookup.ArenaUnregister(request.RequesterId) };
+                response.ArenaWaits.Add(pvpLookup.ArenaWaits());
+                return Task.FromResult(response);
+            }
             case PvpRequest.PvpOneofCase.ArenaJoin: {
                 RankDuelError error = pvpLookup.ArenaJoin(request.RequesterId, out int channel, out int mapId, out int roomId);
                 return Task.FromResult(new PvpResponse { Error = (int) error, Channel = channel, MapId = mapId, RoomId = roomId });

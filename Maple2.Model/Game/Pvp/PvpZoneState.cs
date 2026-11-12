@@ -1,4 +1,4 @@
-namespace Maple2.Model.Game.Pvp;
+﻿namespace Maple2.Model.Game.Pvp;
 
 public enum PvpZonePhase {
     // The zone is set; the fight starts after its prepare time.
@@ -19,6 +19,19 @@ public sealed class PvpZoneEntry {
     public int Death { get; set; }
     public long Damage { get; set; }
     public bool Here { get; set; } = true;
+    // Kills since the last death, and the kills in the running combo (each within the combo tick of the one before).
+    public int Streak { get; set; }
+    public int Combo { get; set; }
+    public long LastKillTick { get; set; } = long.MinValue;
+}
+
+// The kill streak notices of Pvp 0x69, by their client string ids (CommonString, commonstringtable.cpp:
+// 2421 s_pvp_ffa_double_kill, 2422 s_pvp_ffa_triple_kill, 2423 s_pvp_ffa_slayer_kill, 2424 s_pvp_ffa_ruler_kill).
+public static class PvpKillNotice {
+    public const int DoubleKill = 2421;
+    public const int TripleKill = 2422;
+    public const int Slayer = 2423;
+    public const int Ruler = 2424;
 }
 
 // A trigger's PvP zone (set_pvp_zone: box, prepare seconds, match seconds, additional effect, type) in its free-for-all
@@ -30,7 +43,7 @@ public sealed class PvpZoneEntry {
 // the reward of a rank (UIPvPResultDialog::FUN_141344210: PvpFFAReward<rank>Count plus PvpFFAAdditionRewardRate per
 // kill for ranks 1 to 10, PvpFFAReward10Count otherwise, of PvpFFARewardItem). Chosen here: the participants are
 // the players in the zone's box when the fight starts, each with its own point from FirstPoint up (as KMS2's one
-// recorded free-for-all numbers them); a death counts for the player that hit the victim last, if any; every
+// recorded free-for-all numbers them); a death counts for the player that hit the victim last, within KillCreditMs; every
 // participant gets a rank.
 public sealed class PvpZoneState {
     public const int FfaMode = 2;
@@ -44,8 +57,14 @@ public sealed class PvpZoneState {
 
     private readonly int scoreKill;
     private readonly int scoreDead;
+    // The server constants of the kill notices (pvpFFALongComboTick, pvpFFASlayerCount, pvpFFARulerCount).
+    public long ComboTickMs { get; init; }
+    public int SlayerCount { get; init; }
+    public int RulerCount { get; init; }
     private readonly Dictionary<long, PvpZoneEntry> entries = [];
-    private readonly Dictionary<long, long> lastHitBy = [];
+    private readonly Dictionary<long, (long Attacker, long Tick)> lastHitBy = [];
+    // Chosen here: a death counts as a kill only for a player that hit the victim within this time.
+    public const long KillCreditMs = 10_000;
 
     public PvpZoneState(int boxId, int mode, long tick, int prepareSeconds, int matchSeconds, int scoreKill, int scoreDead) {
         BoxId = boxId;
@@ -77,34 +96,65 @@ public sealed class PvpZoneState {
     }
 
     // A hit between participants: the attacker's damage grows; the victim's last attacker is kept for its death.
-    public PvpZoneEntry? Damage(long attacker, long victim, long amount) {
+    public PvpZoneEntry? Damage(long attacker, long victim, long amount) => Damage(attacker, victim, amount, 0);
+
+    public PvpZoneEntry? Damage(long attacker, long victim, long amount, long tick) {
         if (!Hostile(attacker, victim) || amount <= 0) {
             return null;
         }
         PvpZoneEntry entry = entries[attacker];
         entry.Damage += amount;
-        lastHitBy[victim] = attacker;
+        lastHitBy[victim] = (attacker, tick);
         return entry;
     }
 
     // A participant died: its death counts, and the kill goes to its last attacker. The changed rows are returned
     // (the killer first, when there is one).
-    public List<PvpZoneEntry> Death(long victim, out long killer) {
+    public List<PvpZoneEntry> Death(long victim, out long killer) => Death(victim, 0, out killer, out _);
+
+
+    // The same, with the kill's notice (a PvpKillNotice id, 0 for none). Chosen here (the constants do not say how
+    // they count): a kill within ComboTickMs of the killer's last kill grows its combo (2 a double, 3 or more a
+    // triple kill); the killer's streak (kills since its last death) reaching SlayerCount or RulerCount gives those
+    // notices instead, the ruler first.
+    public List<PvpZoneEntry> Death(long victim, long tick, out long killer, out int notice) {
         killer = 0;
+        notice = 0;
         var changed = new List<PvpZoneEntry>();
         if (Phase != PvpZonePhase.Active || !entries.TryGetValue(victim, out PvpZoneEntry? dead)) {
             return changed;
         }
-        if (lastHitBy.Remove(victim, out long last) && entries.TryGetValue(last, out PvpZoneEntry? winner)) {
-            killer = last;
+        if (lastHitBy.Remove(victim, out (long Attacker, long Tick) last) && tick - last.Tick <= KillCreditMs
+            && entries.TryGetValue(last.Attacker, out PvpZoneEntry? winner)) {
+            killer = last.Attacker;
             winner.Kill++;
             winner.Score += scoreKill;
+            winner.Streak++;
+            winner.Combo = ComboTickMs > 0 && winner.LastKillTick != long.MinValue && tick - winner.LastKillTick <= ComboTickMs ? winner.Combo + 1 : 1;
+            winner.LastKillTick = tick;
+            notice = KillNotice(winner);
             changed.Add(winner);
         }
+        dead.Streak = 0;
+        dead.Combo = 0;
         dead.Death++;
         dead.Score += scoreDead;
         changed.Add(dead);
         return changed;
+    }
+
+    private int KillNotice(PvpZoneEntry killer) {
+        if (RulerCount > 0 && killer.Streak == RulerCount) {
+            return PvpKillNotice.Ruler;
+        }
+        if (SlayerCount > 0 && killer.Streak == SlayerCount) {
+            return PvpKillNotice.Slayer;
+        }
+        return killer.Combo switch {
+            2 => PvpKillNotice.DoubleKill,
+            >= 3 => PvpKillNotice.TripleKill,
+            _ => 0,
+        };
     }
 
     public void SetHere(long characterId, bool here) {

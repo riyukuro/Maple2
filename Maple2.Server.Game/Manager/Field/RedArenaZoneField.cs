@@ -1,0 +1,136 @@
+﻿using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Game.Pvp;
+using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Packets;
+using Serilog;
+
+namespace Maple2.Server.Game.Manager.Field;
+
+// The Red Arena's PvP zone (set_pvp_zone type 1): face-offs of two participants at a time (RedArenaState). The steps
+// are announced to the field with the client's PvP strings (MassiveEvent text of kind 3: s_dualprepareplayer 10,
+// s_dualstartcombat 11, s_dualwin1 to 9); the two fighters get their own PvP points in mode 1 for their fight
+// (Pvp 0x64; the client's enemies). At the end the champion gets the win pose and redDuelWin exp, the others the loss
+// pose and redDuelLose exp, and the arena match (if any) gives its row's reward, the champion first.
+public sealed class RedArenaZoneField : IPvpZoneField {
+    private const byte Mode = 1;
+    private const int TextDurationMs = 3_000;
+    private const int PrepareText = 10;
+    private const int StartText = 11;
+
+    private readonly ILogger logger = Log.Logger.ForContext<RedArenaZoneField>();
+    private readonly object mutex = new();
+    private readonly FieldManager field;
+    private readonly RedArenaState state;
+    private readonly int additionalEffectId;
+    private readonly Func<IEnumerable<FieldPlayer>> playersInBox;
+    private readonly Action<IReadOnlyList<long>, int>? onEnd;
+
+    public int BoxId => state.BoxId;
+    public bool Ended {
+        get {
+            lock (mutex) return state.Ended;
+        }
+    }
+
+    public RedArenaZoneField(FieldManager field, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId,
+                             Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick, Random? random = null) {
+        this.field = field;
+        this.additionalEffectId = additionalEffectId;
+        this.playersInBox = playersInBox;
+        this.onEnd = onEnd;
+        state = new RedArenaState(boxId, tick, prepareSeconds, matchSeconds, random);
+    }
+
+    public bool Hostile(FieldPlayer caster, FieldPlayer target) {
+        lock (mutex) return state.Hostile(caster.Value.Character.Id, target.Value.Character.Id);
+    }
+
+    public bool IsParticipant(FieldPlayer player) {
+        lock (mutex) return state.Active && !state.Ended && state.IsParticipant(player.Value.Character.Id);
+    }
+
+    public void Update(long tick) {
+        lock (mutex) {
+            if (state.DueToActivate(tick)) {
+                Apply(state.Activate(playersInBox().Select(player => player.Value.Character.Id).ToList(), tick));
+                return;
+            }
+            Apply(state.Update(tick));
+        }
+    }
+
+    public void Damage(FieldPlayer attacker, FieldPlayer victim, long amount) { }
+
+    public void Death(FieldPlayer victim) {
+        lock (mutex) Apply(state.Out(victim.Value.Character.Id, field.FieldTick));
+    }
+
+    public void Enter(FieldPlayer player) { }
+
+    public void Leave(FieldPlayer player) {
+        lock (mutex) Apply(state.Out(player.Value.Character.Id, field.FieldTick));
+    }
+
+    private void Apply(List<RedArenaEvent> events) {
+        foreach (RedArenaEvent @event in events) {
+            switch (@event.Type) {
+                case RedArenaEventType.Prepare:
+                    field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(PrepareText), TextDurationMs));
+                    break;
+                case RedArenaEventType.Start:
+                    field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(StartText), TextDurationMs));
+                    int point = 1;
+                    foreach (long characterId in new[] { @event.First, @event.Second }) {
+                        if (field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
+                            field.Broadcast(PvpPacket.Point(fighter.ObjectId, point, 0, Mode));
+                            if (additionalEffectId > 0) {
+                                fighter.Buffs.AddBuff(field.FieldActor, fighter, additionalEffectId, 1, field.FieldTick);
+                            }
+                        }
+                        point++;
+                    }
+                    break;
+                case RedArenaEventType.Result:
+                    foreach (long characterId in new[] { @event.First, @event.Second }) {
+                        if (field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
+                            field.Broadcast(PvpPacket.Point(fighter.ObjectId, 0, 0, 0));
+                        }
+                    }
+                    if (@event.Winner != 0 && field.TryGetPlayerById(@event.Winner, out FieldPlayer? winner)) {
+                        // s_dualwin1 to 8 by the win count; 9 is kept for the end with no challenger left.
+                        field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(Math.Min(@event.Wins, 8), winner.Value.Character.Name), TextDurationMs));
+                    }
+                    break;
+                case RedArenaEventType.End:
+                    End(@event);
+                    break;
+            }
+        }
+    }
+
+    private void End(RedArenaEvent @event) {
+        long champion = @event.Winner;
+        if (champion != 0 && field.TryGetPlayerById(champion, out FieldPlayer? hero)) {
+            field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(9, hero.Value.Character.Name), TextDurationMs));
+        }
+        var ranking = new List<long>();
+        if (champion != 0) {
+            ranking.Add(champion);
+        }
+        foreach (FieldPlayer player in field.Players.Values) {
+            long characterId = player.Value.Character.Id;
+            if (!state.IsParticipant(characterId)) {
+                continue;
+            }
+            bool won = characterId == champion;
+            player.Session.Send(PvpPacket.WinLose(won));
+            player.Session.Exp.AddExp(won ? ExpType.redDuelWin : ExpType.redDuelLose);
+            if (!won) {
+                ranking.Add(characterId);
+            }
+        }
+        logger.Information("Red Arena zone {BoxId} on {MapId} ended, champion {Champion}", state.BoxId, field.MapId, champion);
+        onEnd?.Invoke(ranking, champion != 0 ? 1 : 0);
+    }
+}

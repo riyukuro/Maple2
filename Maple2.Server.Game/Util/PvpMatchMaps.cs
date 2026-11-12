@@ -1,4 +1,4 @@
-using Maple2.Database.Storage;
+﻿using Maple2.Database.Storage;
 using Maple2.Server.Game.Manager.Field;
 
 namespace Maple2.Server.Game.Util;
@@ -19,8 +19,7 @@ public static class PvpMatchMaps {
         return maps;
     }
 
-    // The arenas whose field runs a round the server builds: the map's script sets a PvP zone of the free-for-all
-    // type (2), the Crimson Tear Mine 65000002. The Red Arena (type 1) and Treasure Island (type 3) zones are not
-    // built, so their arenas are refused.
-    public static readonly IReadOnlySet<int> PlayableArenaFields = new HashSet<int> { 65000002 };
+    // The arenas whose field runs a round the server builds: their map scripts set PvP zones of type 1 (Red Arena
+    // 65000001), 2 (Crimson Tear Mine 65000002) and 3 (Treasure Island 65000003).
+    public static readonly IReadOnlySet<int> PlayableArenaFields = new HashSet<int> { 65000001, 65000002, 65000003 };
 }

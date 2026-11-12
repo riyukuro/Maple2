@@ -1445,6 +1445,7 @@ public partial class FieldManager {
             // A duelist who leaves the rank duel loses it.
             RankDuel?.Leave(fieldPlayer);
             PvpZone?.Leave(fieldPlayer);
+            Arena?.Left(this);
             // Last, and guarded: a failed send to the world must not cut the leave short.
             try {
                 fieldPlayer.FlushHealth();

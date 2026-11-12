@@ -11,6 +11,7 @@ namespace Maple2.Server.Game.Packets;
 public static class PvpPacket {
     private enum Command : byte {
         ArenaRegistered = 9,
+        GameRuleValues = 12,
         ArenaUnregistered = 10,
         ArenaMatchFound = 11,
         RankDuelRegistered = 14,
@@ -30,7 +31,15 @@ public static class PvpPacket {
         ClearRanking = 102,
         RankRow = 103,
         LastRank = 104,
+        KillNotice = 105,
         Damage = 106,
+        TeamReset = 107,
+        TeamScore = 108,
+        TeamRecord = 109,
+        TeamResult = 110,
+        TeamGauge = 111,
+        TeamFlag = 112,
+        TeamPlunder = 113,
     }
 
     // One side of the rank duel result (UIPvPRankDuelResultDialog::FUN_140f90b10): the name, the character,
@@ -226,6 +235,94 @@ public static class PvpPacket {
         pWriter.WriteByte((byte) Command.Damage);
         pWriter.WriteLong(characterId);
         pWriter.WriteInt(unchecked((int) (uint) Math.Clamp(damage, 0, uint.MaxValue)));
+        return pWriter;
+    }
+
+    // Pvp 12: the game rule values (CGameRule::ReadValues: a count byte, then key and value ints). The arena window
+    // reads them as arenaType and the wait in milliseconds (UIIndividualPvPDialog::UpdateWaitTimeLabels; 0 shows the
+    // unknown wait, more than 10 minutes its own text; the client skips arena 2).
+    public static ByteWriter GameRuleValues(IReadOnlyCollection<(int Key, int Value)> values) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.GameRuleValues);
+        pWriter.WriteByte((byte) Math.Min(values.Count, byte.MaxValue));
+        foreach ((int key, int value) in values.Take(byte.MaxValue)) {
+            pWriter.WriteInt(key);
+            pWriter.WriteInt(value);
+        }
+        return pWriter;
+    }
+
+    // 0x69: a kill notice by its string id (PvpKillNotice) with the player's name, as a system notice.
+    public static ByteWriter KillNotice(int stringId, string name) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.KillNotice);
+        pWriter.WriteInt(stringId);
+        pWriter.WriteUnicodeString(name);
+        return pWriter;
+    }
+
+    // 0x6b: the team result dialog starts over and takes the player's team from its point (Unk_PvpEntryBlock).
+    public static ByteWriter TeamReset() {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamReset);
+        return pWriter;
+    }
+
+    // 0x6c: the red and the blue team's scores.
+    public static ByteWriter TeamScore(int red, int blue) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamScore);
+        pWriter.WriteInt(red);
+        pWriter.WriteInt(blue);
+        return pWriter;
+    }
+
+    // 0x6d: a player's row in its team's table (the team is its point): CPvPInfo::ReadRecordFromPacket's three ints,
+    // the first two shown as kills and deaths by the team result dialog.
+    public static ByteWriter TeamRecord(long characterId, int kill, int death) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamRecord);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteInt(kill);
+        pWriter.WriteInt(death);
+        pWriter.WriteInt(0);
+        return pWriter;
+    }
+
+    // 0x6e: the winning team (201 red, 202 blue, other a draw) and the reward count the dialog shows the player (of
+    // the client constant's reward item, s_team_pvp_winner_reward_one_type or the loser's).
+    public static ByteWriter TeamResult(int winnerTeam, int rewardCount) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamResult);
+        pWriter.WriteInt(winnerTeam);
+        pWriter.WriteInt(rewardCount);
+        return pWriter;
+    }
+
+    // 0x6f: an int the client does not use, then the red team's gauge in tenths of a percent.
+    public static ByteWriter TeamGauge(int redPerMille) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamGauge);
+        pWriter.WriteInt(0);
+        pWriter.WriteInt(redPerMille);
+        return pWriter;
+    }
+
+    // 0x70: "the <team> is capturing the <flag> flag": team 1 red or 2 blue, flag 0 north, 1 center, 2 south.
+    public static ByteWriter TeamFlag(int team, int flag) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamFlag);
+        pWriter.WriteInt(team);
+        pWriter.WriteInt(flag);
+        return pWriter;
+    }
+
+    // 0x71: "<name> plundered the <team>'s treasure": team 1 red or 2 blue.
+    public static ByteWriter TeamPlunder(string name, byte team) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.TeamPlunder);
+        pWriter.WriteUnicodeString(name);
+        pWriter.WriteByte(team);
         return pWriter;
     }
 }

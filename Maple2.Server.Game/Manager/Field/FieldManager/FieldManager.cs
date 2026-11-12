@@ -105,12 +105,26 @@ public partial class FieldManager : IField {
     }
 
     // The trigger's PvP zone (set_pvp_zone) while it runs and after (pvp_zone_ended); null before one is set.
-    public PvpZoneField? PvpZone { get; private set; }
+    public IPvpZoneField? PvpZone { get; private set; }
 
-    public void StartPvpZone(int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId, Func<IEnumerable<FieldPlayer>> playersInBox) {
+    // A PvP zone of the script's type: 1 the Red Arena's face-offs, 2 the free-for-all, 3 Treasure Island's teams. False
+    // for a type the server does not build.
+    public bool StartPvpZone(int type, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId, IReadOnlyList<int> boxIds,
+                             Func<int, IEnumerable<FieldPlayer>> playersInBox) {
         ArenaMatchField? arena = Arena;
-        PvpZone = new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, playersInBox,
-            ranking => arena?.ZoneEnded(ranking), Environment.TickCount64);
+        Action<IReadOnlyList<long>, int> onEnd = (ranking, winners) => arena?.ZoneEnded(ranking, winners);
+        long tick = Environment.TickCount64;
+        IPvpZoneField? zone = type switch {
+            1 => new RedArenaZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick),
+            2 => new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick),
+            3 => new TeamZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, boxIds, playersInBox, onEnd, tick),
+            _ => null,
+        };
+        if (zone == null) {
+            return false;
+        }
+        PvpZone = zone;
+        return true;
     }
 
     // Whether a player's hostile skills reach another player here: the rank duel's fight or the PvP zone's.
@@ -904,6 +918,8 @@ public partial class FieldManager : IField {
         if (Disposed) {
             return;
         }
+        // An arena match whose field goes before its zone ended: the World lets its characters go.
+        Arena?.Close();
 
         logger.Debug("Disposing FieldManager {MapId}", MapId);
 

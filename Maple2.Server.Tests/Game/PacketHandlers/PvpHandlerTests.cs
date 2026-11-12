@@ -139,18 +139,24 @@ public class PvpHandlerTests {
         Assert.That(move.CharacterId, Is.EqualTo(test.CharacterId));
     }
 
-    // Arena register (9 with the arena): the free-for-all arena (2, the Crimson Tear Mine) is queued with its
-    // playerCount; an arena whose round is not built (1, the Red Arena) gets Pvp 10, the client's state 0.
+    // Arena register (9 with the arena): queued with its playerCount, then Pvp 12 with the World's waits (arenaType,
+    // milliseconds). An arena that is not in the table gets Pvp 10, the client's state 0.
     [Test]
-    public void ArenaRegister_PlayableArenaIsQueued() {
+    public void ArenaRegister_IsQueued() {
         TestGameSession test = NewTest();
         GameSession session = test.Start();
-        Assert.That(Send(test, session, "09" + "02000000"), Is.EqualTo(new[] { "B600" + "09" + "02000000" }));
+        var response = new PvpResponse();
+        response.ArenaWaits.Add(1, 4000);
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaRegister] = response;
+        Assert.That(Send(test, session, "09" + "01000000"), Is.EqualTo(new[] {
+            "B600" + "09" + "01000000",
+            "B600" + "0C" + "01" + "01000000" + "A00F0000",
+        }));
         PvpRequest request = test.World.PvpRequests.Single();
-        Assert.That((request.ArenaRegister.Arena, request.ArenaRegister.PlayerCount), Is.EqualTo((2, 10)));
+        Assert.That((request.ArenaRegister.Arena, request.ArenaRegister.PlayerCount), Is.EqualTo((1, 10)));
 
         test.World.PvpRequests.Clear();
-        Assert.That(Send(test, session, "09" + "01000000"), Is.EqualTo(new[] { "B600" + "0A" }));
+        Assert.That(Send(test, session, "09" + "04000000"), Is.EqualTo(new[] { "B600" + "0A" }));
         Assert.That(test.World.PvpRequests, Is.Empty);
     }
 
@@ -158,7 +164,7 @@ public class PvpHandlerTests {
     public void ArenaUnregister_LeavesTheQueue() {
         TestGameSession test = NewTest();
         GameSession session = test.Start();
-        Assert.That(Send(test, session, "0A"), Is.EqualTo(new[] { "B600" + "0A" }));
+        Assert.That(Send(test, session, "0A"), Is.EqualTo(new[] { "B600" + "0A", "B600" + "0C" + "00" }));
         Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.ArenaUnregister));
     }
 

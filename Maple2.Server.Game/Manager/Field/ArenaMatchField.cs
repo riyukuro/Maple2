@@ -1,4 +1,4 @@
-using Maple2.Model.Game;
+﻿using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Serilog;
@@ -25,19 +25,44 @@ public sealed class ArenaMatchField {
         Characters = characters;
     }
 
-    // The zone's ranking, first place first. The arena window shows rewardItemId1 with reward1Winner and
-    // reward1Loser (and the same for item 2; UIIndividualPvPDialog::BindRewardIcon). Chosen here: first place is the
-    // winner, every other participant here a loser.
-    public void ZoneEnded(IReadOnlyList<long> ranking) {
+    // The zone's ranking, the winners first (winners: how many; the free-for-all's first place, the Red Arena's
+    // champion, the winning team). The arena window shows rewardItemId1 with reward1Winner and reward1Loser (and the
+    // same for item 2; UIIndividualPvPDialog::BindRewardIcon). Chosen here: those are the winners, every other
+    // participant here a loser.
+    public void ZoneEnded(IReadOnlyList<long> ranking, int winners) {
         for (int index = 0; index < ranking.Count; index++) {
             if (!field.TryGetPlayerById(ranking[index], out FieldPlayer? player)) {
                 continue;
             }
-            bool winner = index == 0;
+            bool winner = index < winners;
             Give(player, Arena.RewardItemId1, winner ? Arena.Reward1Winner : Arena.Reward1Loser);
             Give(player, Arena.RewardItemId2, winner ? Arena.Reward2Winner : Arena.Reward2Loser);
         }
 
+        EndInWorld();
+    }
+
+    // A match character left the field: when none is left and the zone has not ended (they all left during the wait
+    // or the fight, or too few came for the script to start), the World lets the match go.
+    public void Left(FieldManager from) {
+        if (from.Players.Values.Any(player => Characters.Contains(player.Value.Character.Id))) {
+            return;
+        }
+        if (from.PvpZone is { Ended: true }) {
+            return;
+        }
+        EndInWorld();
+    }
+
+    // The field is disposed: the match ends in the World if it has not.
+    public void Close() => EndInWorld();
+
+    private int endSent;
+
+    private void EndInWorld() {
+        if (Interlocked.Exchange(ref endSent, 1) != 0) {
+            return;
+        }
         int matchId = MatchId;
         Task.Run(() => {
             try {
