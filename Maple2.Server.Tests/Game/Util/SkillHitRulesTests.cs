@@ -8,7 +8,7 @@ public class SkillHitRulesTests {
     public void TargetNeedsADeclaredAttackOnce() {
         var budget = new SkillHitBudget();
         Assert.That(budget.TakeTarget(11, 0, 0), Is.False, "nothing declared");
-        Assert.That(budget.TakePoint(0, 0, held: false, count: 3), Is.True);
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 3, tick: 0), Is.True);
         budget.Declare(11, 0);
         budget.Declare(12, 0);
         budget.Declare(13, 0);
@@ -23,7 +23,7 @@ public class SkillHitRulesTests {
     [Test]
     public void BouncingArrowPaysOncePerBounce() {
         var budget = new SkillHitBudget();
-        Assert.That(budget.TakePoint(0, 0, held: false, count: 1), Is.True);
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.True);
         budget.Declare(5, 0);
         for (int i = 0; i < 9; i++) {
             Assert.That(budget.TakeTarget(5, 0, bounceCount: 8), Is.True, $"use {i}");
@@ -34,24 +34,24 @@ public class SkillHitRulesTests {
     [Test]
     public void AttackPointIsSentOncePerCast() {
         var budget = new SkillHitBudget();
-        Assert.That(budget.TakePoint(0, 1, held: false, count: 1), Is.False, "first iteration is 0");
-        Assert.That(budget.TakePoint(0, 0, held: false, count: 1), Is.True);
-        Assert.That(budget.TakePoint(0, 0, held: false, count: 1), Is.False);
-        Assert.That(budget.TakePoint(0, 1, held: false, count: 1), Is.False, "not a held skill");
-        Assert.That(budget.TakePoint(1, 0, held: false, count: 1), Is.True, "the next attack point");
-        Assert.That(budget.TakePoint(2, 0, held: false, count: SkillHitRules.MaxPointAttacks), Is.True);
-        Assert.That(budget.TakePoint(3, 0, held: false, count: SkillHitRules.MaxPointAttacks + 1), Is.False);
+        Assert.That(budget.TakePoint(0, 1, held: false, count: 1, tick: 0), Is.False, "first iteration is 0");
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.True);
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.False);
+        Assert.That(budget.TakePoint(0, 1, held: false, count: 1, tick: 0), Is.False, "not a held skill");
+        Assert.That(budget.TakePoint(1, 0, held: false, count: 1, tick: 0), Is.True, "the next attack point");
+        Assert.That(budget.TakePoint(2, 0, held: false, count: SkillHitRules.MaxPointAttacks, tick: 0), Is.True);
+        Assert.That(budget.TakePoint(3, 0, held: false, count: SkillHitRules.MaxPointAttacks + 1, tick: 0), Is.False);
     }
 
     [Test]
     public void HeldSkillRepeatsItsAttackPointInOrder() {
         var budget = new SkillHitBudget();
         for (int i = 0; i < 12; i++) {
-            Assert.That(budget.TakePoint(0, i, held: true, count: 1), Is.True, $"iteration {i}");
+            Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: 0), Is.True, $"iteration {i}");
         }
-        Assert.That(budget.TakePoint(0, 11, held: true, count: 1), Is.False, "repeated");
-        Assert.That(budget.TakePoint(0, 13, held: true, count: 1), Is.False, "skipped");
-        Assert.That(budget.TakePoint(0, 12, held: true, count: 1), Is.True);
+        Assert.That(budget.TakePoint(0, 11, held: true, count: 1, tick: 0), Is.False, "repeated");
+        Assert.That(budget.TakePoint(0, 13, held: true, count: 1, tick: 0), Is.False, "skipped");
+        Assert.That(budget.TakePoint(0, 12, held: true, count: 1, tick: 0), Is.True);
     }
 
     [Test]
@@ -80,6 +80,34 @@ public class SkillHitRulesTests {
         Assert.That(SkillHitRules.ImpactTooFar(new Vector3(0, 1001, 0), cast, 250), Is.True);
         Assert.That(SkillHitRules.ImpactTooFar(new Vector3(0, 2400, 0), cast, 800), Is.False);
         Assert.That(SkillHitRules.ImpactTooFar(new Vector3(0, 2401, 0), cast, 800), Is.True);
+    }
+
+    [Test]
+    public void HeldCastKeepsPayingPastTheWindow() {
+        var budget = new SkillHitBudget();
+        budget.Open(10000);
+        long tick = 10000;
+        for (int i = 0; i < 20; i++) {
+            tick += 550;
+            Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: tick), Is.True, $"iteration {i}");
+            budget.Declare(100 + i, 0);
+            Assert.That(budget.TooLate(tick + 200), Is.False);
+            Assert.That(budget.TakeTarget(100 + i, 0, bounceCount: 0), Is.True);
+        }
+        Assert.That(tick, Is.GreaterThan(10000 + 2 * SkillHitRules.HitWindowMs));
+        Assert.That(budget.TooLate(tick + SkillHitRules.HitWindowMs), Is.False);
+        Assert.That(budget.TakePoint(0, 20, held: true, count: 1, tick: tick + SkillHitRules.HitWindowMs + 1), Is.False, "the hold stopped");
+    }
+
+    [Test]
+    public void OtherCastStopsAtTheWindow() {
+        var budget = new SkillHitBudget();
+        budget.Open(10000);
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 14000), Is.True);
+        budget.Declare(100, 0);
+        Assert.That(budget.TooLate(15000), Is.False);
+        Assert.That(budget.TooLate(15100), Is.True, "the attack point packet does not restart the window");
+        Assert.That(budget.TakePoint(1, 0, held: false, count: 1, tick: 15100), Is.False);
     }
 
     [Test]

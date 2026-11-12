@@ -125,7 +125,7 @@ public class SkillHandler : FieldPacketHandler {
             record.Position = session.Player.Position;
         }
         record.CastPosition = record.Position;
-        record.CastFieldTick = startTick;
+        record.Hits.Open(startTick);
         SkillCooldown? blocking = null;
         if (!CastAllowed(session, record, startTick, serverTick, out blocking) || !session.Player.SkillCastConsume(record)) {
             // Nothing was paid. The client ends the cast and takes the cooldown from this answer
@@ -179,6 +179,10 @@ public class SkillHandler : FieldPacketHandler {
     }
 
     private void HandlePoint(GameSession session, IByteReader packet) {
+        if (session.Field == null) {
+            return;
+        }
+
         long skillUid = packet.ReadLong();
         SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
         if (record == null) {
@@ -204,9 +208,8 @@ public class SkillHandler : FieldPacketHandler {
         int iterations = packet.ReadInt();
 
         // An attack point packet outside what a cast sends (SkillHitRules) is dropped: nothing is declared or relayed.
-        long tick = session.Field?.FieldTick ?? Environment.TickCount64;
-        if (SkillHitRules.TooLate(tick, record.CastFieldTick) || SkillHitRules.PointMoved(position, record.CastPosition)
-            || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count)) {
+        if (SkillHitRules.PointMoved(position, record.CastPosition)
+            || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick)) {
             Logger.Debug("Attack point dropped: AttackPoint={AttackPoint} iteration={Iteration} count={Count} at {Position}: {Record}",
                 attackPoint, iterations, count, position, record);
             return;
@@ -310,7 +313,7 @@ public class SkillHandler : FieldPacketHandler {
         // A target packet pays damage only for an attack its cast declared for this attack point, once (a bouncing
         // arrow once per target it can reach), in time and with the impact near the cast (SkillHitRules). Anything
         // else is dropped without damage.
-        if (SkillHitRules.TooLate(session.Field.FieldTick, record.CastFieldTick)
+        if (record.Hits.TooLate(session.Field.FieldTick)
             || SkillHitRules.ImpactTooFar(impactPosition, record.CastPosition, record.Attack.Range.Distance)
             || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount)) {
             Logger.Debug("Target packet dropped: attack {AttackUid} AttackPoint={AttackPoint} impact {Impact}: {Record}",

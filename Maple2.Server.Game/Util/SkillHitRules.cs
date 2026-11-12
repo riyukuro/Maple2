@@ -18,7 +18,8 @@ public static class SkillHitRules {
     public const float ImpactExtra = 750f;
     // KMS2 attack point packets declare 0, 1, 3, 4, 10 or 20 attacks.
     public const int MaxPointAttacks = 20;
-    // KMS2 sends the last attack packet of a cast at most 3.55 s after the cast (99 in 100 within 0.82 s).
+    // KMS2 sends the last attack packet of a cast at most 3.55 s after the cast (99 in 100 within 0.82 s). A skill
+    // that continues while held counts from its last taken attack point packet instead (SkillHitBudget).
     public const long HitWindowMs = 5000;
 
     public static bool CastTooFar(Vector3 cast, Vector3 player, long sinceSyncMs) {
@@ -36,19 +37,26 @@ public static class SkillHitRules {
         return Vector3.Distance(impact, cast) > ImpactReach(rangeDistance);
     }
 
-    public static bool TooLate(long tick, long castTick) => tick - castTick > HitWindowMs;
+    public static bool TooLate(long tick, long windowTick) => tick - windowTick > HitWindowMs;
 }
 
 // What one cast may still hit. An attack point packet declares attacks by uid; a target packet pays damage for one
 // declared attack. In KMS2 each attack point is sent once per cast, a skill that continues while held sends it again
 // with the iteration one higher, and every target packet names an attack declared for its attack point, once
-// (a bouncing arrow once per target it can reach).
+// (a bouncing arrow once per target it can reach). The time window for these packets starts at the cast; each taken
+// iteration of a held skill starts it again, so a hold pays for as long as its iterations keep coming.
 public sealed class SkillHitBudget {
+    private long windowTick;
     private readonly Dictionary<byte, int> iterations = new();
     private readonly Dictionary<long, (byte AttackPoint, int Uses)> attacks = new();
 
-    public bool TakePoint(byte attackPoint, int iteration, bool held, int count) {
-        if (count > SkillHitRules.MaxPointAttacks) {
+    // The cast: the time window starts here.
+    public void Open(long tick) => windowTick = tick;
+
+    public bool TooLate(long tick) => SkillHitRules.TooLate(tick, windowTick);
+
+    public bool TakePoint(byte attackPoint, int iteration, bool held, int count, long tick) {
+        if (TooLate(tick) || count > SkillHitRules.MaxPointAttacks) {
             return false;
         }
         if (iterations.TryGetValue(attackPoint, out int last)) {
@@ -60,6 +68,9 @@ public sealed class SkillHitBudget {
         }
 
         iterations[attackPoint] = iteration;
+        if (held) {
+            windowTick = tick;
+        }
         return true;
     }
 

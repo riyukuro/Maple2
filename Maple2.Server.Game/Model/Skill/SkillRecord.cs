@@ -23,7 +23,6 @@ public class SkillRecord {
 
     public Vector3 Position;
     public Vector3 CastPosition; // the cast's position as taken at the use; attack packets are held to it
-    public long CastFieldTick; // field tick of the use
     public readonly SkillHitBudget Hits = new();
     public Vector3 ImpactPosition;
     public Vector3 Direction; // Sometimes Rotation
