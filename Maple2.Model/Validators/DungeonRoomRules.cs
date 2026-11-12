@@ -160,6 +160,18 @@ public static class DungeonRoomRules {
     public static bool OpenOnDay(IReadOnlyCollection<DayOfWeek> days, DayOfWeek today) =>
         days.Count == 0 || days.Contains(today);
 
+    // isLimitTime: such a room is open only inside a range the running DungeonEnterTimeLimit events give it, both
+    // ends included (CGameRule::IsEventTimeLimitDungeonOpen, commonfiles/gamerule.cpp:1552); with no range the
+    // client's room page says it cannot be entered (uidungeonroomdialog.cpp:727). Tested on the server's local
+    // time of day, as the day limit above. The refusal is OnError 0x15, s_room_dungeon_NotAllowTime.
+    public static bool OpenAtTime(bool isLimitTime, int dungeonId, IEnumerable<DungeonEnterTime> times, TimeSpan timeOfDay) {
+        if (!isLimitTime) {
+            return true;
+        }
+        int seconds = (int) timeOfDay.TotalSeconds;
+        return times.Any(time => time.DungeonId == dungeonId && time.StartSeconds <= seconds && seconds <= time.EndSeconds);
+    }
+
     // A room's reward period. The client reads only cooldownValue and takes the type from it
     // (DungeonRoom::GetCooldownType, commonfiles/dungeonroom.cpp:524: 0 is the next day, else a weekday), so a
     // table without cooldownType (the KR one) still has weekly rooms; the ingest maps the type the same way.

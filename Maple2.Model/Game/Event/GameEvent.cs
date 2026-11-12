@@ -348,6 +348,23 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(fishing.Discount);
                 writer.WriteUnicodeString(fishing.ContentType);
                 break;
+            case LevelUpPackage levelUpPackage:
+                writer.WriteInt(Id);
+                writer.WriteInt(levelUpPackage.ItemId);
+                writer.WriteUnicodeString(levelUpPackage.QuestIds);
+                break;
+            case DungeonEnterTimeLimit enterTimeLimit:
+                // A count, then EventTimeLimitDungeonContext per range: the event's id again, the room and its
+                // start and end as seconds of the day.
+                writer.WriteInt(Id);
+                writer.WriteInt(enterTimeLimit.Times.Length);
+                foreach (DungeonEnterTime time in enterTimeLimit.Times) {
+                    writer.WriteInt(Id);
+                    writer.WriteInt(time.DungeonId);
+                    writer.WriteInt(time.StartSeconds);
+                    writer.WriteInt(time.EndSeconds);
+                }
+                break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);
                 writer.WriteInt();

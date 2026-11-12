@@ -370,6 +370,24 @@ public record SaleAutoFishing(
     int Discount,
     string ContentType) : GameEventData;
 
+// The level-up package (GameEventLevelUpPackage, commonfiles/gameevent.cpp:2541): value1 is the quest scroll item
+// that starts the package's quests, value2 their ids as the row writes them ("a,b,c"). The client keeps both
+// (CGameRule::SetLevelUpPackage) and its menu opens the package window while one of the quests is active.
+public record LevelUpPackage(
+    int ItemId,
+    string QuestIds) : GameEventData;
+
+// The hours a time-limited dungeon room is open (GameEventDungeonEnterTimeLimit, commonfiles/gameevent.cpp:2323):
+// value1 is an xml list of dungeonID and rangeTime "hh:mm-hh:mm".
+public record DungeonEnterTimeLimit(
+    DungeonEnterTime[] Times) : GameEventData;
+
+// Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
+public record DungeonEnterTime(
+    int DungeonId,
+    int StartSeconds,
+    int EndSeconds);
+
 public record LoginNotice : GameEventData;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]
@@ -410,4 +428,6 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(DailyLoginReward), "DailyLoginReward")]
 [JsonDerivedType(typeof(SaleAutoPlayInstrument), "SaleAutoPlayInstrument")]
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
+[JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
+[JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]
 public abstract record GameEventData;

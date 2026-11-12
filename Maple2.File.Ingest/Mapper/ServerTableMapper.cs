@@ -1589,6 +1589,16 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new MapleSurvivalOpenPeriod();
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
+            case GameEventType.LevelUpPackage:
+                // No item: the client's menu answers that the event is not valid.
+                if (!int.TryParse(value1, out int packageItemId) || packageItemId == 0) {
+                    return null;
+                }
+                return new LevelUpPackage(
+                    ItemId: packageItemId,
+                    QuestIds: value2);
+            case GameEventType.DungeonEnterTimeLimit:
+                return new DungeonEnterTimeLimit(DungeonEnterTimeReader.Parse(value1));
             case GameEventType.SaleAutoPlayInstrument:
                 if (!int.TryParse(value1, out int performanceDiscount) && string.IsNullOrEmpty(value2)) {
                     return null;

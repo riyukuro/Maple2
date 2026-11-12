@@ -80,5 +80,7 @@ public record DungeonRoomLimitMetadata(
     bool ChangeMaxUsers,
     bool DisableMeretRevival,
     bool DisableMesoRevival,
-    int MaxRevivalCount
+    int MaxRevivalCount,
+    // isLimitTime: the room is entered only inside the hours a DungeonEnterTimeLimit event gives it.
+    bool IsLimitTime = false
 );

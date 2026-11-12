@@ -369,6 +369,12 @@ public class DungeonManager {
         }
     }
 
+    // The open hours the running DungeonEnterTimeLimit events give.
+    private IEnumerable<DungeonEnterTime> EnterTimes() {
+        return session.FindEvent(GameEventType.DungeonEnterTimeLimit)
+            .SelectMany(gameEvent => gameEvent.Metadata.Data is DungeonEnterTimeLimit limit ? limit.Times : []);
+    }
+
     public void CreateDungeonRoom(int dungeonId, bool withParty, bool useTicket = false) {
         int size = 1;
         if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)) {
@@ -384,6 +390,11 @@ public class DungeonManager {
         // The server's local day, as the cooldowns use it.
         if (!DungeonRoomRules.OpenOnDay(metadata.Limit.DayOfWeeks, DateTime.Now.DayOfWeek)) {
             session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_canEnterDayOfWeeks));
+            return;
+        }
+
+        if (!DungeonRoomRules.OpenAtTime(metadata.Limit.IsLimitTime, dungeonId, EnterTimes(), DateTime.Now.TimeOfDay)) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_NotAllowTime));
             return;
         }
 
