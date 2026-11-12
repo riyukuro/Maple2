@@ -260,9 +260,15 @@ public static class ConditionUtil {
             case ConditionType.level:
             case ConditionType.enchant_result:
             case ConditionType.install_billboard:
-            case ConditionType.item_move:
             case ConditionType.dungeon_rank:
                 if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
+                    return true;
+                }
+                break;
+            case ConditionType.item_move:
+                // The target is the id of the box the item goes on (902, 905, 906 in one region), not a minimum:
+                // the client's CConditionParam::Matches finds the value in the id list.
+                if (target.Integers != null && target.Integers.Any(value => longValue == value)) {
                     return true;
                 }
                 break;

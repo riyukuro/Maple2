@@ -215,6 +215,18 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: (long) rank, codeLong: dungeonId), Is.EqualTo(expected));
     }
 
+    // A moved item counts for item_move only on the row's box: the target is a box id, so a higher box does not
+    // count (93000061 "World Stone: Shadow Gate": 30001007 on box 905; boxes 906 and 907 belong to other rows).
+    [TestCase(30001007, 905, true)]
+    [TestCase(30001007, 906, false)]
+    [TestCase(30001007, 904, false)]
+    [TestCase(30001008, 905, false)]
+    public void ItemMove_CountsOnlyTheListedBox(int itemId, int boxId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.item_move, 1,
+            new ConditionMetadata.Parameters(Integers: [30001007]), new ConditionMetadata.Parameters(Integers: [905]));
+        Assert.That(condition.Check(null!, targetLong: boxId, codeLong: itemId), Is.EqualTo(expected));
+    }
+
     // A design made from a template counts for item_design with its kind (70400058 "Craft 1 template in the
     // workshop": item, furniture and mount).
     [TestCase(UgcType.Item, true)]
