@@ -186,7 +186,7 @@ public partial class WorldService {
             return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
         }
 
-        PartyError error = manager.ReadyCheckReply(requestorId, reply.Reply);
+        PartyError error = manager.ReadyCheckReply(requestorId, reply.VoteId, reply.Reply);
         return new PartyResponse {
             Error = (int) error,
         };

@@ -11,13 +11,13 @@ public class PartyVoteEndTimeTests {
     // its timer counts down to.
     [Test]
     public void ReadyCheckCarriesItsEndTime() {
-        var vote = new PartyVote(PartyVoteType.ReadyCheck, new long[] { 1, 2 }, 1) { EndTime = 1_700_000_030 };
+        var vote = new PartyVote(PartyVoteType.ReadyCheck, new long[] { 1, 2 }, 1) { Id = 7, EndTime = 1_700_000_030 };
         var writer = new ByteWriter();
         writer.WriteClass<PartyVote>(vote);
         var reader = new ByteReader(writer.Buffer, 0);
 
         Assert.That(reader.ReadByte(), Is.EqualTo((byte) PartyVoteType.ReadyCheck));
-        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(7));
         Assert.That(reader.ReadLong(), Is.EqualTo(1_700_000_030));
         Assert.That(reader.ReadInt(), Is.EqualTo(2));
     }

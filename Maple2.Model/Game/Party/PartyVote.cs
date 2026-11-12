@@ -10,6 +10,8 @@ public class PartyVote : IByteSerializable {
     public readonly ICollection<long> Approvals;
     public readonly ICollection<long> Disapprovals;
     public readonly long InitiatorId;
+    // The vote's number in its party: the client keeps it and answers with it (PartyVoteCli::SendParty).
+    public int Id { get; init; }
     public PartyMember? TargetMember;
     // When the vote ends, unix seconds: the client counts its timer down to it (PartyVoteCli::vfunc_1).
     public long EndTime { get; init; }
@@ -28,7 +30,7 @@ public class PartyVote : IByteSerializable {
 
     public void WriteTo(IByteWriter writer) {
         writer.Write<PartyVoteType>(Type);
-        writer.WriteInt(); // Counter
+        writer.WriteInt(Id);
         writer.WriteLong(EndTime);
 
         writer.WriteInt(Voters.Count);

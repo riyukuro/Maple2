@@ -404,6 +404,15 @@ public class PartyLookup : IDisposable {
     public void DungeonMatchStep(Action body) => steps.Run(body);
     public static void Defer(Action effect) => LockedSteps.Defer(effect);
 
+    // Runs expire as a step once a party vote's time is up (PartyVoteReadyDurationSeconds).
+    protected internal virtual void AfterVoteTime(PartyManager manager, Action expire) {
+        int seconds = manager.VoteSeconds;
+        Task.Factory.StartNew(() => {
+            Thread.Sleep(TimeSpan.FromSeconds(seconds));
+            DungeonMatchStep(expire);
+        });
+    }
+
     // Before a search: each searching group takes its party's members now; a group whose party is gone stops. A
     // leader who went offline without a logout reaching World hands the party over to an online member and the
     // search goes on (rv42 MINOR 7); with no member online the search stops.

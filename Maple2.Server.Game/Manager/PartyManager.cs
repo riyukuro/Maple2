@@ -270,13 +270,14 @@ public class PartyManager : IDisposable {
         });
     }
 
-    public void StartReadyCheck(long characterId) {
+    public void StartReadyCheck(long characterId, int voteId) {
         if (Party == null) {
             return;
         }
 
         Party.LastVoteTime = DateTime.Now.ToEpochSeconds();
         Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, characterId) {
+            Id = voteId,
             EndTime = VoteEndTime(Party.LastVoteTime),
         };
         session.Send(PartyPacket.StartVote(Party.Vote));
@@ -328,7 +329,7 @@ public class PartyManager : IDisposable {
         EndVote();
     }
 
-    public void StartVoteKick(long requestorId, long targetId, ICollection<long> receiverIds) {
+    public void StartVoteKick(long requestorId, long targetId, ICollection<long> receiverIds, int voteId) {
         if (Party == null) {
             return;
         }
@@ -339,6 +340,7 @@ public class PartyManager : IDisposable {
 
         Party.LastVoteTime = DateTime.Now.ToEpochSeconds();
         Party.Vote = new PartyVote(PartyVoteType.Kick, receiverIds, requestorId) {
+            Id = voteId,
             TargetMember = target,
             EndTime = VoteEndTime(Party.LastVoteTime),
         };

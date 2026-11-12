@@ -179,7 +179,7 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Party.StartReadyCheck(startReadyCheck.CharacterId);
+            session.Party.StartReadyCheck(startReadyCheck.CharacterId, startReadyCheck.VoteId);
         }
 
         return new PartyResponse();
@@ -243,7 +243,7 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Party.StartVoteKick(startVoteKick.CharacterId, startVoteKick.TargetId, startVoteKick.ReceiverIds);
+            session.Party.StartVoteKick(startVoteKick.CharacterId, startVoteKick.TargetId, startVoteKick.ReceiverIds, startVoteKick.VoteId);
         }
 
         return new PartyResponse();

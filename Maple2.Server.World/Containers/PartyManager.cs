@@ -19,12 +19,15 @@ public class PartyManager : IDisposable {
     public required PartyLookup PartyLookup { get; init; }
     public required ServerTableMetadataStorage ServerTableMetadata { get; init; }
     private ConstantsTable Constants => ServerTableMetadata.ConstantsTable;
+    internal int VoteSeconds => Constants.PartyVoteReadyDurationSeconds;
     // ReSharper restore All
     // ReSharper restore UnusedAutoPropertyAccessor.Global
     #endregion
 
     public readonly Party Party;
     private readonly ConcurrentDictionary<long, (string, DateTime)> pendingInvites;
+    // Numbers the party's votes; the client answers a vote with its number (PartyVoteCli::SendParty).
+    private int voteCount;
 
     public PartyManager(Party party) {
         Party = party;
@@ -357,28 +360,32 @@ public class PartyManager : IDisposable {
         if (requestorId != Party.LeaderCharacterId) {
             return PartyError.s_party_err_not_chief;
         }
+        if (Party.Vote != null) {
+            return PartyError.s_party_err_already_vote;
+        }
 
-        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, requestorId);
+        int voteId = ++voteCount;
+        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, requestorId) {
+            Id = voteId,
+        };
         Broadcast(new PartyRequest {
             StartReadyCheck = new PartyRequest.Types.StartReadyCheck {
                 CharacterId = requestorId,
+                VoteId = voteId,
             },
         });
 
-        Task.Factory.StartNew(() => {
-            Thread.Sleep(TimeSpan.FromSeconds(Constants.PartyVoteReadyDurationSeconds));
-            PartyLookup.DungeonMatchStep(ExpireReadyCheck);
-        });
-
+        PartyLookup.AfterVoteTime(this, () => ExpireVote(voteId));
         return PartyError.none;
     });
 
-    private void ExpireReadyCheck() {
-        if (Party.Vote == null) {
+    // A vote's timer ends only its own vote: a newer vote started after this one ended keeps its full time.
+    internal void ExpireVote(int voteId) {
+        if (Party.Vote == null || Party.Vote.Id != voteId) {
             return;
         }
-        int count = Party.Vote.Disapprovals.Count + Party.Vote.Approvals.Count;
-        if (count >= Party.Vote.Voters.Count) {
+        if (Party.Vote.Type == PartyVoteType.ReadyCheck &&
+            Party.Vote.Disapprovals.Count + Party.Vote.Approvals.Count >= Party.Vote.Voters.Count) {
             Party.Vote = null;
             return;
         }
@@ -392,9 +399,13 @@ public class PartyManager : IDisposable {
         Party.Vote = null;
     }
 
-    public PartyError ReadyCheckReply(long requestorId, bool reply) => PartyLookup.DungeonMatchStep(() => {
+    public PartyError ReadyCheckReply(long requestorId, int voteId, bool reply) => PartyLookup.DungeonMatchStep(() => {
         if (Party.Vote == null) {
             return PartyError.s_party_err_not_found;
+        }
+        // An answer to an earlier vote (the client sends the number it was given) is not counted in this one.
+        if (voteId != 0 && voteId != Party.Vote.Id) {
+            return PartyError.none;
         }
 
         if (!Party.Members.TryGetValue(requestorId, out PartyMember? requestor)) {
@@ -445,13 +456,16 @@ public class PartyManager : IDisposable {
             case PartyVoteType.Kick:
                 if (Party.Vote.Type == PartyVoteType.Kick &&
                     Party.Vote.Approvals.Count >= Party.Vote.VotesNeeded) {
-                    Kick(Party.Vote.InitiatorId, Party.Vote.TargetMember!.CharacterId);
+                    // Any member may start a kick vote; once it passes, the party removes the target as its leader would.
+                    Kick(Party.LeaderCharacterId, Party.Vote.TargetMember!.CharacterId);
 
                     Broadcast(new PartyRequest {
                         EndVote = new PartyRequest.Types.EndVote {
                             PartyId = Party.Id,
                         },
                     });
+                    // The vote is over: later answers must not kick again, and a new vote can start.
+                    Party.Vote = null;
                 }
                 break;
         }
@@ -466,8 +480,14 @@ public class PartyManager : IDisposable {
             return PartyError.s_party_err_not_found;
         }
 
+        if (Party.Vote != null) {
+            return PartyError.s_party_err_already_vote;
+        }
+
+        int voteId = ++voteCount;
         ICollection<long> voters = Party.Members.Keys.Where(member => member != targetId).ToList();
         Party.Vote = new PartyVote(PartyVoteType.Kick, voters, requestorId) {
+            Id = voteId,
             TargetMember = target,
         };
 
@@ -477,26 +497,12 @@ public class PartyManager : IDisposable {
                 CharacterId = requestorId,
                 TargetId = targetId,
                 ReceiverIds = { Party.Vote.Voters },
+                VoteId = voteId,
             },
         });
 
-        Task.Factory.StartNew(() => {
-            // The client does not settle the kick vote's length; the ready check's is kept (FORK.md).
-            Thread.Sleep(TimeSpan.FromSeconds(Constants.PartyVoteReadyDurationSeconds));
-            PartyLookup.DungeonMatchStep(() => {
-                if (Party.Vote == null) {
-                    return;
-                }
-
-                Broadcast(new PartyRequest {
-                    ExpiredVote = new PartyRequest.Types.ExpiredVote {
-                        PartyId = Party.Id,
-                    },
-                });
-
-                Party.Vote = null;
-            });
-        });
+        // The client does not settle the kick vote's length; the ready check's is kept (FORK.md).
+        PartyLookup.AfterVoteTime(this, () => ExpireVote(voteId));
 
         return PartyError.none;
     });

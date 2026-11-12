@@ -48,6 +48,9 @@ public class PartyLookupTests {
         protected override PartyError JoinSolo(PartyManager target, PlayerInfo info) =>
             FailSoloJoin ? PartyError.s_party_err_full_limit_player : base.JoinSolo(target, info);
 
+        public readonly List<Action> VoteTimers = [];
+        protected override void AfterVoteTime(PartyManager manager, Action expire) => VoteTimers.Add(expire);
+
         protected override void RunRoomTask(Action work) {
             if (Async) {
                 base.RunRoomTask(work);
@@ -666,5 +669,84 @@ public class PartyLookupTests {
         PlayerInfo weak = Player();
         Assert.That(Recruit(weak, [weak], new DungeonRecruitRoom(200, 50, 1000, 4)).Error, Is.EqualTo((int) PartyError.s_party_err_lack_gear_score));
         Assert.That(lookup.Notices, Is.Empty);
+    }
+
+    // Client: PartyVoteCli::vfunc_1 keeps the vote's number and PartyVoteCli::SendParty answers with it. A ready
+    // check run again after a "not ready" keeps its full time: the first check's timer does not end it.
+    [Test]
+    public void OldReadyCheckTimerDoesNotEndANewerCheck() {
+        PartyManager party = Party(2);
+        long leader = party.Party.LeaderCharacterId;
+        long member = party.Party.Members.Keys.First(id => id != leader);
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int first = party.Party.Vote!.Id;
+        Assert.That(party.ReadyCheckReply(member, first, false), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Null);
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int second = party.Party.Vote!.Id;
+        Assert.That(second, Is.GreaterThan(first));
+
+        lookup.VoteTimers[0]();
+        Assert.That(party.Party.Vote, Is.Not.Null);
+        Assert.That(party.Party.Vote!.Id, Is.EqualTo(second));
+
+        lookup.VoteTimers[1]();
+        Assert.That(party.Party.Vote, Is.Null);
+    }
+
+    // An answer carrying an earlier vote's number is not counted in the running vote.
+    [Test]
+    public void AnswerToAnEarlierVoteIsNotCounted() {
+        PartyManager party = Party(3);
+        long leader = party.Party.LeaderCharacterId;
+        long member = party.Party.Members.Keys.First(id => id != leader);
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int id = party.Party.Vote!.Id;
+        Assert.That(party.ReadyCheckReply(member, id + 1, true), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote!.Approvals, Does.Not.Contain(member));
+        Assert.That(party.ReadyCheckReply(member, id, true), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote!.Approvals, Does.Contain(member));
+    }
+
+    // One vote at a time (client error s_party_err_already_vote): a second ready check or a kick vote is refused.
+    [Test]
+    public void SecondVoteIsRefusedWhileOneRuns() {
+        PartyManager party = Party(4);
+        long leader = party.Party.LeaderCharacterId;
+        long target = party.Party.Members.Keys.First(id => id != leader);
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int id = party.Party.Vote!.Id;
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.s_party_err_already_vote));
+        Assert.That(party.VoteKick(leader, target), Is.EqualTo(PartyError.s_party_err_already_vote));
+        Assert.That(party.Party.Vote!.Id, Is.EqualTo(id));
+        Assert.That(lookup.VoteTimers, Has.Count.EqualTo(1));
+    }
+
+    // A kick vote started by a member who is not the leader removes the target once it passes, and ends: a later
+    // answer kicks no one and a new vote can start.
+    [Test]
+    public void PassedKickVoteRemovesTheTargetAndEnds() {
+        PartyManager party = Party(4);
+        long leader = party.Party.LeaderCharacterId;
+        long[] others = party.Party.Members.Keys.Where(id => id != leader).ToArray();
+        long starter = others[0], target = others[1], voter = others[2];
+
+        Assert.That(party.VoteKick(starter, target), Is.EqualTo(PartyError.none));
+        int id = party.Party.Vote!.Id;
+        Assert.That(party.ReadyCheckReply(voter, id, true), Is.EqualTo(PartyError.none));
+
+        Assert.That(party.Party.Members.ContainsKey(target), Is.False);
+        Assert.That(party.Party.Vote, Is.Null);
+        Assert.That(party.ReadyCheckReply(leader, id, true), Is.EqualTo(PartyError.s_party_err_not_found));
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote!.Id, Is.GreaterThan(id));
+
+        // The kick vote's timer, run late, leaves the new ready check alone.
+        lookup.VoteTimers[0]();
+        Assert.That(party.Party.Vote, Is.Not.Null);
     }
 }

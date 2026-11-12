@@ -437,6 +437,10 @@ public class PartyHandler : FieldPacketHandler {
                 TargetUserId = targetCharacterId,
             },
         });
+        var error = (PartyError) response.Error;
+        if (error != PartyError.none) {
+            session.Send(PartyPacket.Error(error));
+        }
     }
 
     private void HandleReadyCheck(GameSession session) {
@@ -474,7 +478,7 @@ public class PartyHandler : FieldPacketHandler {
     }
 
     private void HandleVoteReply(GameSession session, IByteReader packet) {
-        int counter = packet.ReadInt();
+        int voteId = packet.ReadInt();
         bool isReady = packet.ReadBool();
 
         if (session.Party.Party == null) {
@@ -487,6 +491,7 @@ public class PartyHandler : FieldPacketHandler {
             VoteReply = new PartyRequest.Types.VoteReply {
                 PartyId = session.Party.Id,
                 Reply = isReady,
+                VoteId = voteId,
             },
         });
 
