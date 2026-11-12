@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Model.Skill;
 
@@ -21,6 +22,9 @@ public class SkillRecord {
     public byte AttackPoint { get; private set; }
 
     public Vector3 Position;
+    public Vector3 CastPosition; // the cast's position as taken at the use; attack packets are held to it
+    public long CastFieldTick; // field tick of the use
+    public readonly SkillHitBudget Hits = new();
     public Vector3 ImpactPosition;
     public Vector3 Direction; // Sometimes Rotation
     public Vector3 Rotation;

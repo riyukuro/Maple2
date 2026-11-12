@@ -94,6 +94,8 @@ public class FieldPlayer : Actor<Player> {
     private readonly Dictionary<ActorState, float> stateSyncDistanceTracking;
     private long StateSyncTimeTracking { get; set; }
     private long StateSyncTrackingTick { get; set; }
+    // Time since the client last synced its position.
+    public long SinceStateSync => Field.FieldTick - StateSyncTrackingTick;
 
     private long LastCurrentBlockUpdateTick { get; set; }
 

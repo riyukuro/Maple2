@@ -119,6 +119,13 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         long startTick = session.Field.FieldTick;
+        // A cast position away from the player's own is not taken: the cast stands where the server has the player.
+        if (SkillHitRules.CastTooFar(record.Position, session.Player.Position, session.Player.SinceStateSync)) {
+            Logger.Debug("Cast position {Cast} away from the player at {Player}: {Record}", record.Position, session.Player.Position, record);
+            record.Position = session.Player.Position;
+        }
+        record.CastPosition = record.Position;
+        record.CastFieldTick = startTick;
         SkillCooldown? blocking = null;
         if (!CastAllowed(session, record, startTick, serverTick, out blocking) || !session.Player.SkillCastConsume(record)) {
             // Nothing was paid. The client ends the cast and takes the cooldown from this answer
@@ -185,8 +192,8 @@ public class SkillHandler : FieldPacketHandler {
             return;
         }
 
-        record.Position = packet.Read<Vector3>();
-        record.Direction = packet.Read<Vector3>();
+        var position = packet.Read<Vector3>();
+        var direction = packet.Read<Vector3>();
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Attack.Point: {skillUid}; AttackPoint: {attackPoint}"));
@@ -196,6 +203,18 @@ public class SkillHandler : FieldPacketHandler {
         // Note: counts up for skills that are held down (reused skillUid)
         int iterations = packet.ReadInt();
 
+        // An attack point packet outside what a cast sends (SkillHitRules) is dropped: nothing is declared or relayed.
+        long tick = session.Field?.FieldTick ?? Environment.TickCount64;
+        if (SkillHitRules.TooLate(tick, record.CastFieldTick) || SkillHitRules.PointMoved(position, record.CastPosition)
+            || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count)) {
+            Logger.Debug("Attack point dropped: AttackPoint={AttackPoint} iteration={Iteration} count={Count} at {Position}: {Record}",
+                attackPoint, iterations, count, position, record);
+            return;
+        }
+
+        record.Position = position;
+        record.Direction = direction;
+
         for (byte i = 0; i < count; i++) {
             var targets = new List<TargetRecord>();
             var targetRecord = new TargetRecord {
@@ -204,6 +223,7 @@ public class SkillHandler : FieldPacketHandler {
                 Unknown = packet.ReadByte(),
             };
             targets.Add(targetRecord);
+            record.Hits.Declare(targetRecord.Uid, attackPoint);
 
             // While more targets in packet.
             while (packet.ReadBool()) {
@@ -215,6 +235,7 @@ public class SkillHandler : FieldPacketHandler {
                     Index = packet.ReadByte(),
                 };
                 targets.Add(targetRecord);
+                record.Hits.Declare(targetRecord.Uid, attackPoint);
             }
 
             session.Player.InBattle = true;
@@ -276,15 +297,30 @@ public class SkillHandler : FieldPacketHandler {
             return;
         }
 
-        record.TargetUid = packet.ReadLong();
-        record.ImpactPosition = packet.Read<Vector3>();
+        long targetUid = packet.ReadLong();
+        var impactPosition = packet.Read<Vector3>();
         packet.Read<Vector3>(); // ImpactPosition2
-        record.Direction = packet.Read<Vector3>();
+        var direction = packet.Read<Vector3>();
         byte attackPoint = packet.ReadByte();
         if (!record.TrySetAttackPoint(attackPoint)) {
             Logger.Error("Invalid AttackPoint({AttackPoint}) for {Record}", attackPoint, record);
             return;
         }
+
+        // A target packet pays damage only for an attack its cast declared for this attack point, once (a bouncing
+        // arrow once per target it can reach), in time and with the impact near the cast (SkillHitRules). Anything
+        // else is dropped without damage.
+        if (SkillHitRules.TooLate(session.Field.FieldTick, record.CastFieldTick)
+            || SkillHitRules.ImpactTooFar(impactPosition, record.CastPosition, record.Attack.Range.Distance)
+            || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount)) {
+            Logger.Debug("Target packet dropped: attack {AttackUid} AttackPoint={AttackPoint} impact {Impact}: {Record}",
+                targetUid, attackPoint, impactPosition, record);
+            return;
+        }
+
+        record.TargetUid = targetUid;
+        record.ImpactPosition = impactPosition;
+        record.Direction = direction;
 
         byte count = packet.ReadByte();
         // The client sends every hit of a bounce chain in one packet: TargetCount first hits, each with up to
