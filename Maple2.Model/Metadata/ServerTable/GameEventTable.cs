@@ -454,6 +454,15 @@ public record CollectItemGroup(
     RewardItem[] Conditions,
     RewardItem Result) : GameEventData;
 
+// An event arcade's opening (GameEventArcadeOpen, commonfiles/gameevent.cpp:6657): value1 is
+// <ms2><info arcadeId rewardCountPerDay/><reward itemID count grade/>...</ms2>. While it runs the client lists the
+// arcade in its lobby (CGameEventValueArcadeOpen::Get of the arcade id). The client receives only the arcade id; the
+// reward rows and the daily count are the server's (ArcadeEventRules).
+public record ArcadeOpen(
+    int ArcadeId,
+    int RewardCountPerDay,
+    RewardItem[] Rewards) : GameEventData;
+
 // Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
 public record DungeonEnterTime(
     int DungeonId,
@@ -511,4 +520,5 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
 [JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
+[JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
 public abstract record GameEventData;

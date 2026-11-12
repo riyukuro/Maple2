@@ -1029,23 +1029,24 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 }
             }
             bool ClientQuest(int questId) => playedQuests == null || playedQuests.Contains(questId);
-            foreach (GameEventType type in AttendGiftReplay.Types) {
-                // An event whose data was not read (null) is not a candidate.
-                GameEventMetadata[] readable = ended.Where(e => e.Type != GameEventType.StampEvent || e.Data is StampEvent).ToArray();
-                GameEventMetadata? replay = AttendGiftReplay.Pick(readable, now, type, ClientRank, ClientQuest);
-                int[] passed = AttendGiftReplay.Candidates(readable, now, type).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
-                if (passed.Length > 0) {
-                    Console.WriteLine($"{AttendGiftReplay.Option}: {type} {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data"
-                                      + (type == GameEventType.StampEvent ? " or a stamp quest is not in the client's quest table" : string.Empty));
+            // An event whose data was not read (null) is not a candidate.
+            GameEventMetadata[] readableEvents = ended.Where(e => e.Type != GameEventType.StampEvent || e.Data is StampEvent).ToArray();
+            foreach (GameEventType type in AttendGiftReplay.Types)
+                foreach (GameEventMetadata[] readable in AttendGiftReplay.Pools(readableEvents, type)) {
+                    GameEventMetadata? replay = AttendGiftReplay.Pick(readable, now, type, ClientRank, ClientQuest);
+                    int[] passed = AttendGiftReplay.Candidates(readable, now, type).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
+                    if (passed.Length > 0) {
+                        Console.WriteLine($"{AttendGiftReplay.Option}: {type} {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data"
+                                          + (type == GameEventType.StampEvent ? " or a stamp quest is not in the client's quest table" : string.Empty));
+                    }
+                    if (replay == null) {
+                        Console.WriteLine($"{AttendGiftReplay.Option}: no ended {type} event to replay");
+                    } else if (!results.ContainsKey(replay.Id)) {
+                        GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
+                        results.Add(moved.Id, moved);
+                        Console.WriteLine($"{AttendGiftReplay.Option}: {type} {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
+                    }
                 }
-                if (replay == null) {
-                    Console.WriteLine($"{AttendGiftReplay.Option}: no ended {type} event to replay");
-                } else if (!results.ContainsKey(replay.Id)) {
-                    GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
-                    results.Add(moved.Id, moved);
-                    Console.WriteLine($"{AttendGiftReplay.Option}: {type} {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
-                }
-            }
         }
         return new GameEventTable(results);
 
@@ -1646,6 +1647,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.DungeonBonus(value1);
             case GameEventType.CollectItemGroup:
                 return EventXmlReader.CollectItemGroup(value1);
+            case GameEventType.ArcadeOpen:
+                return EventXmlReader.ArcadeOpen(value1);
             case GameEventType.SAHotTime:
                 specialRates ??= ClientSpecialRates();
                 // Without a client pack every attribute counts as a rate: the 12 the KR rows name are rates.

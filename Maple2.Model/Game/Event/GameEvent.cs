@@ -438,6 +438,11 @@ public class GameEvent : IByteSerializable {
                 WriteItemEntities(writer, collect.Conditions);
                 WriteItemEntity(writer, collect.Result);
                 break;
+            case ArcadeOpen arcadeOpen:
+                // ArcadeOpenContext::Read (gameeventcontext.cpp:2225): the arcade id only.
+                writer.WriteInt(Id);
+                writer.WriteInt(arcadeOpen.ArcadeId);
+                break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);
                 writer.WriteInt();

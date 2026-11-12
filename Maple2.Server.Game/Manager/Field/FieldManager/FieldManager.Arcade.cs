@@ -1,9 +1,12 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager.Field;
 
@@ -47,32 +50,32 @@ public partial class FieldManager {
     }
 
     // Boom Boom Ocean: a hit by a skill or a buff the game scores, on a game player. A negative score also takes a
-    // life.
-    public void BoomBoomOceanScored(FieldPlayer player, int id) {
+    // life; when the hit also kills (killed), the death takes no second one.
+    public void BoomBoomOceanScored(FieldPlayer player, int id, bool killed = false) {
         if (BoomBoomOcean is not { } game || !game.Plays(player.Value.Character.Id) || !game.Scored(id, out bool lostLife)) {
             return;
         }
         Broadcast(ArcadePacket.Score(game.Score));
         if (lostLife) {
+            if (killed) {
+                game.KillingHitTookLife(player.Value.Character.Id);
+            }
             ArcadeLifeLost(game);
         }
     }
 
     public void BoomBoomOceanDied(FieldPlayer player) {
-        if (BoomBoomOcean is { } game && game.Plays(player.Value.Character.Id) && game.Died()) {
+        if (BoomBoomOcean is { } game && game.Plays(player.Value.Character.Id) && game.Died(player.Value.Character.Id)) {
             ArcadeLifeLost(game);
         }
     }
 
-    // The script's end_game: the open round's time score, then the end.
+    // The script's end_game (after the last round, or a player in the fail box). A round still open pays no time
+    // score (BoomBoomOceanGame).
     public void EndBoomBoomOcean() {
-        if (BoomBoomOcean is not { Ended: false } game) {
-            return;
+        if (BoomBoomOcean is { Ended: false } game) {
+            EndArcade(game);
         }
-        if (game.CloseRound(FieldTick) > 0) {
-            Broadcast(ArcadePacket.Score(game.Score));
-        }
-        EndArcade(game);
     }
 
     // Three Two One: the players' picks are decided at result_round; result_round2 gives the score of a won round
@@ -113,9 +116,6 @@ public partial class FieldManager {
         if (game.Lives > 0) {
             return;
         }
-        if (game is BoomBoomOceanGame boomBoomOcean && boomBoomOcean.CloseRound(FieldTick) > 0) {
-            Broadcast(ArcadePacket.Score(game.Score));
-        }
         EndArcade(game);
         if (!TryGetPortal(ArcadeFailPortal, out FieldPortal? portal)) {
             return;
@@ -155,8 +155,37 @@ public partial class FieldManager {
                     db.SaveArcadeScore(player.Value.Character.Id, game.Id, seasonId, game.Score, now);
                 }
             }
-            player.Session.Send(ArcadePacket.Result(game.Score, best?.Score ?? 0, (int) Math.Min(exp, int.MaxValue), reward.Meso, 0, []));
+            player.Session.Send(ArcadePacket.Result(game.Score, best?.Score ?? 0, (int) Math.Min(exp, int.MaxValue), reward.Meso, 0, GiveEventRewards(player, game.Id)));
             player.Session.Send(HideAndSeekPacket.End(player.ObjectId));
         }
+    }
+
+    // An event arcade's reward (ArcadeEvent): the reward rows of the event that opens the arcade, while the player
+    // is under its count for the day, each to the bag or by mail. The items given are listed in the result dialog.
+    private List<RewardItem> GiveEventRewards(FieldPlayer player, int arcadeId) {
+        var given = new List<RewardItem>();
+        if (!TableMetadata.ArcadeGameTable.Entries.TryGetValue(arcadeId, out ArcadeGameTable.Entry? entry) || !entry.IsEventArcade
+            || ArcadeEvent.Open(player.Session.FindEvent(GameEventType.ArcadeOpen), arcadeId) is not { } gameEvent
+            || gameEvent.Metadata.Data is not ArcadeOpen arcadeOpen) {
+            return given;
+        }
+        RewardItem[] due = ArcadeEvent.RewardsDue(arcadeOpen, ArcadeEvent.RewardCount(player.Session, gameEvent));
+        if (due.Length == 0) {
+            return given;
+        }
+        ArcadeEvent.AddReward(player.Session, gameEvent);
+        foreach (RewardItem rewardItem in due) {
+            Item? item = ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item == null) {
+                logger.Error("Arcade event {EventId}: item {ItemId} could not be made", gameEvent.Id, rewardItem.ItemId);
+                continue;
+            }
+            if (player.Session.Item.AddOrMail(item, true)) {
+                given.Add(rewardItem);
+            } else {
+                logger.Error("Arcade event {EventId}: item {ItemId} went to neither bag nor mail", gameEvent.Id, rewardItem.ItemId);
+            }
+        }
+        return given;
     }
 }

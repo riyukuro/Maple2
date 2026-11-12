@@ -21,6 +21,8 @@ public class ThreeTwoOneGame : ArcadeGame {
 
     // The rounds won in a row.
     public int Streak { get; private set; }
+    // The rounds won, the rounds cleared of the reward row.
+    public int Wins { get; private set; }
     // The last result_round's result, applied by result_round2.
     public bool? LastWin { get; private set; }
 
@@ -89,15 +91,15 @@ public class ThreeTwoOneGame : ArcadeGame {
         if (win) {
             Score += WinScore;
             Streak++;
+            Wins++;
+            Cleared(Wins);
             return false;
         }
         Streak = 0;
         return Died();
     }
 
-    public void ClearRound(int round) {
-        if (!Ended) {
-            Cleared(round);
-        }
-    }
+    // clear_round: every shipped script passes round="1" and runs it after a lost round too, so the rounds cleared
+    // are the rounds won (ResultRound2), not the script's round.
+    public void ClearRound(int round) { }
 }

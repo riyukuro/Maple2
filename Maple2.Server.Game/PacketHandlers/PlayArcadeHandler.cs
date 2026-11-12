@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
@@ -7,6 +8,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -54,12 +56,12 @@ public class PlayArcadeHandler : FieldPacketHandler {
     }
 
     // The game's field (arcadegame.xml targetField). A game the table does not list, one without a field and an
-    // event arcade (open only while an arcade event names it, which our server does not run) are dropped, as are a
-    // dead player, a player in battle (the lobby's own check) and one already in the field.
+    // event arcade no running ArcadeOpen event names (ArcadeEvent.CanEnter) are dropped, as are a dead player, a
+    // player in battle (the lobby's own check) and one already in the field.
     private static void HandleEnter(GameSession session, int arcadeId) {
         if (session.Field == null
             || !session.TableMetadata.ArcadeGameTable.Entries.TryGetValue(arcadeId, out ArcadeGameTable.Entry? game)
-            || game.TargetField == 0 || game.IsEventArcade
+            || game.TargetField == 0 || !ArcadeEvent.CanEnter(game, session.FindEvent(GameEventType.ArcadeOpen))
             || session.Player.IsDead || session.Player.InBattle || session.Field.MapId == game.TargetField) {
             return;
         }

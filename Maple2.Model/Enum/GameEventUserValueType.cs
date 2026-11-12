@@ -53,6 +53,10 @@ public enum GameEventUserValueType {
 
     CollectItemGroup = 2200, // Meta Badge event. Serves as a flag for tiers
 
+    // Event arcade (ArcadeOpen): rewards taken today. Not a KMS2 value; the client keeps any type in its list
+    // (GameEventUserValue::ReadVariable) and reads this one nowhere.
+    ArcadeOpenRewardCount = 2400,
+
     // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
     LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
     LongTermAttendPoints = 2701,

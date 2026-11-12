@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -7,7 +7,7 @@ using Maple2.Model.Validators;
 
 namespace Maple2.File.Ingest.Helpers;
 
-// The value1 of the DungeonBonusReward and CollectItemGroup rows, both an <ms2> element. Text that is not XML is
+// The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows, each an <ms2> element. Text that is not XML is
 // a row that cannot be read; it does not stop the ingest.
 public static class EventXmlReader {
     // <ms2><v dungeonID groupType mesoRate expRate itemRolls customDropBoxIds/></ms2>: the client reads the root's
@@ -78,6 +78,24 @@ public static class EventXmlReader {
             return null;
         }
         return new CollectItemGroup(info.GetAttribute("name"), conditions.ToArray(), result);
+    }
+
+    // <ms2><info arcadeId rewardCountPerDay/><reward itemID count grade/>...</ms2> (GameEventArcadeOpen::vfunc_2,
+    // commonfiles/gameevent.cpp:6657): the client reads nothing without the info element. A row without an arcade
+    // id opens nothing and is not stored; a reward row without an item id or a count is skipped.
+    public static ArcadeOpen? ArcadeOpen(string? value1) {
+        XmlElement? root = Root(value1);
+        if (root?["info"] is not { } info
+            || !int.TryParse(info.GetAttribute("arcadeId"), out int arcadeId) || arcadeId <= 0) {
+            return null;
+        }
+        int.TryParse(info.GetAttribute("rewardCountPerDay"), out int countPerDay);
+        RewardItem[] rewards = root.ChildNodes.OfType<XmlElement>()
+            .Where(element => element.Name == "reward")
+            .Select(Item)
+            .OfType<RewardItem>()
+            .ToArray();
+        return new ArcadeOpen(arcadeId, Math.Max(countPerDay, 0), rewards);
     }
 
     private static RewardItem? Item(XmlElement element) {

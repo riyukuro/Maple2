@@ -1,4 +1,6 @@
-﻿namespace Maple2.Server.Game.Model;
+﻿using Maple2.Model.Enum;
+
+namespace Maple2.Server.Game.Model;
 
 /// <summary>
 /// The state of a Boom Boom Ocean arcade game (arcade 2, field 51000003) on its field, without the field, so the
@@ -9,9 +11,10 @@
 /// hits a player (the field's projectiles, negative) and of each buff a player picks up (positive), then 25 rounds
 /// of start_round (the round time and the time score rate) and clear_round 20 seconds later; end_game follows the
 /// last round or a player reaching the fail box. Our choices, as the scripts do not say: a hit by a skill with a
-/// negative score also takes a life, as does a death; the score stays at 0 or above; a round's time score is its
-/// whole seconds survived (at most the round time) times the rate, given at clear_round, or at the end for the round
-/// still open.
+/// negative score also takes a life, as does a death, but a hit that takes a life and kills takes only that one; an
+/// evaded hit or one on an invincible player does not score (HitLands); the score stays at 0 or above; a round's
+/// time score is its whole seconds survived (at most the round time) times the rate, given at clear_round only: a
+/// game that ends inside a round (the last life, the fail box) pays nothing for that round.
 /// </remarks>
 public class BoomBoomOceanGame : ArcadeGame {
     public const int ArcadeId = 2;
@@ -21,6 +24,8 @@ public class BoomBoomOceanGame : ArcadeGame {
     private long roundStartTick;
     private int roundDuration;
     private bool roundOpen;
+    // The game players whose killing hit took a life, so their death does not take another.
+    private readonly HashSet<long> lethalHits = new();
 
     public BoomBoomOceanGame(int lifeCount, IEnumerable<long>? characterIds = null) : base(ArcadeId, lifeCount, 0, characterIds) { }
 
@@ -58,6 +63,36 @@ public class BoomBoomOceanGame : ArcadeGame {
     }
 
     /// <summary>
+    /// Whether a hit scores: one that is not evaded and does not meet an invincible player. A hit without damage
+    /// rows (a skill that only pushes) lands.
+    /// </summary>
+    public static bool HitLands(IEnumerable<DamageType> hits) {
+        bool any = false;
+        foreach (DamageType hit in hits) {
+            any = true;
+            if (hit is DamageType.Normal or DamageType.Critical or DamageType.Block) {
+                return true;
+            }
+        }
+        return !any;
+    }
+
+    /// <summary>
+    /// A hit that took a life also killed the player: the death that follows takes none.
+    /// </summary>
+    public void KillingHitTookLife(long characterId) {
+        lethalHits.Add(characterId);
+    }
+
+    /// <summary>
+    /// A game player's death: a life, unless the killing hit took it already.
+    /// </summary>
+    /// <returns>Whether a life was lost.</returns>
+    public bool Died(long characterId) {
+        return !lethalHits.Remove(characterId) && Died();
+    }
+
+    /// <summary>
     /// The script cleared a round. The round started last gives its time score once.
     /// </summary>
     /// <returns>The time score added.</returns>
@@ -69,10 +104,8 @@ public class BoomBoomOceanGame : ArcadeGame {
         return round == Round ? CloseRound(nowTick) : 0;
     }
 
-    /// <summary>
-    /// The time score of the round still open, given when the game ends.
-    /// </summary>
-    public int CloseRound(long nowTick) {
+    // The time score of the round still open, given when the script clears it.
+    private int CloseRound(long nowTick) {
         if (!roundOpen) {
             return 0;
         }

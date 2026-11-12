@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
@@ -11,7 +11,8 @@ namespace Maple2.File.Ingest.Helpers;
 // design price sale (SaleUgcDesign), the cube price sale (SaleHousing) and the dungeon helper bonus
 // (FindDungeonHelperBonus), the change of attributes sale (SaleRemake), the beauty fee sale (SaleBeautyShop), the
 // special attribute bonus (SAHotTime), the dungeon clear bonus (DungeonBonusReward) and the item collection
-// (CollectItemGroup): every row has ended, and the switch replays one of each.
+// (CollectItemGroup): every row has ended, and the switch replays one of each. The event arcades' openings
+// (ArcadeOpen) have ended too; one is replayed per arcade, since each opens one arcade.
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -20,8 +21,21 @@ public static class AttendGiftReplay {
         GameEventType.AttendGift, GameEventType.LongTermAttendGift, GameEventType.StampEvent,
         GameEventType.SaleUgcDesign, GameEventType.SaleHousing, GameEventType.FindDungeonHelperBonus,
         GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
-        GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup,
+        GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
     ];
+
+    // The events of a type that one replay is picked from: all of them, or for ArcadeOpen those of each arcade
+    // (in arcade id order). An ArcadeOpen event whose data was not read names no arcade and is left out.
+    public static IEnumerable<GameEventMetadata[]> Pools(IEnumerable<GameEventMetadata> events, GameEventType type) {
+        GameEventMetadata[] ofType = events.Where(e => e.Type == type).ToArray();
+        if (type != GameEventType.ArcadeOpen) {
+            return [ofType];
+        }
+        return ofType.Where(e => e.Data is ArcadeOpen)
+            .GroupBy(e => ((ArcadeOpen) e.Data!).ArcadeId)
+            .OrderBy(group => group.Key)
+            .Select(group => group.ToArray());
+    }
 
     private static readonly string[] TimeFormats = ["yyyy-MM-dd-HH-mm", "yyyy-MM-dd-HH-mm-ss"];
 
@@ -77,8 +91,9 @@ public static class AttendGiftReplay {
     // an item id. KR AttendGift rows list items the KR item data does not have (99000056's four), so such an
     // event cannot be shown. A LongTermAttendGift reward is a plain ItemEntity shown with the rank sent, so an
     // unknown item there does not assert, but it has no icon or name; such a calendar is passed over too (an empty
-    // slot, item 0, is not an item). The same holds for a StampEvent's reward rows and complete reward, and for a
-    // CollectItemGroup's condition items and result.
+    // slot, item 0, is not an item). The same holds for a StampEvent's reward rows and complete reward, for a
+    // CollectItemGroup's condition items and result, and for an ArcadeOpen's reward items (shown in the arcade
+    // result dialog).
     public static bool ClientHasRewards(GameEventMetadata gameEvent, Func<int, int> clientRank) {
         return gameEvent.Data switch {
             AttendGift attendGift => attendGift.Items.All(item => clientRank(item.ItemId) > 0),
@@ -92,6 +107,7 @@ public static class AttendGiftReplay {
             CollectItemGroup collect => collect.Conditions
                 .Append(collect.Result)
                 .All(item => clientRank(item.ItemId) > 0),
+            ArcadeOpen arcadeOpen => arcadeOpen.Rewards.All(item => clientRank(item.ItemId) > 0),
             _ => true,
         };
     }

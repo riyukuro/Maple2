@@ -365,8 +365,55 @@ public class SpringFarmGameTests {
         game.StartRound(1, 1500, 1033, 0);
         Assert.That(game.ClearRound(1, 20_000), Is.EqualTo(1033));
         Assert.That(game.ClearRound(1, 20_000), Is.EqualTo(0));
-        Assert.That(game.CloseRound(20_000), Is.EqualTo(0));
         Assert.That(BoomBoomOceanGame.TimeScore(10, 999), Is.EqualTo(0));
+    }
+
+    // A hit scores when it lands: an evaded hit (Miss) or one on an invincible player does not; a block still
+    // lands, as does a hit without damage rows.
+    [TestCase(new[] { DamageType.Normal }, true)]
+    [TestCase(new[] { DamageType.Critical }, true)]
+    [TestCase(new[] { DamageType.Block }, true)]
+    [TestCase(new[] { DamageType.Miss }, false)]
+    [TestCase(new[] { DamageType.Invincible }, false)]
+    [TestCase(new[] { DamageType.InvincibleReflection }, false)]
+    [TestCase(new[] { DamageType.Miss, DamageType.Normal }, true)]
+    [TestCase(new DamageType[0], true)]
+    public void BoomBoomOcean_HitLands(DamageType[] hits, bool expected) {
+        Assert.That(BoomBoomOceanGame.HitLands(hits), Is.EqualTo(expected));
+    }
+
+    // A killing hit that took a life: the death after it takes none, the next death does.
+    [Test]
+    public void BoomBoomOcean_KillingHitTakesOneLife() {
+        var game = new BoomBoomOceanGame(3, [7]);
+        game.SetSkillScore(1, -500);
+        Assert.That(game.Scored(1, out bool lost), Is.True);
+        Assert.That(lost, Is.True);
+        game.KillingHitTookLife(7);
+        Assert.That(game.Died(7), Is.False);
+        Assert.That(game.Lives, Is.EqualTo(2));
+        Assert.That(game.Died(7), Is.True);
+        Assert.That(game.Lives, Is.EqualTo(1));
+    }
+
+    // Three Two One: the rounds cleared are the rounds won; the script's clear_round (round 1 in every shipped
+    // script, after a loss too) changes nothing.
+    [Test]
+    public void ThreeTwoOne_RoundsClearedAreWins() {
+        var game = new ThreeTwoOneGame(5, 3, 10000, [7]);
+        game.StartRound(1);
+        game.ResultRound(1, [7]);
+        game.ResultRound2();
+        game.ClearRound(1);
+        Assert.That(game.RoundsCleared, Is.EqualTo(0));
+        for (int round = 2; round <= 3; round++) {
+            game.StartRound(round);
+            game.Pick(7, 2);
+            game.ResultRound(1, [7]);
+            game.ResultRound2();
+            game.ClearRound(1);
+        }
+        Assert.That((game.Wins, game.RoundsCleared), Is.EqualTo((2, 2)));
     }
 
     // The reward row is the arcade's own.
@@ -417,6 +464,11 @@ public class SpringFarmSessionTests {
             },
             [BoomBoomOceanGame.ArcadeId] = new Dictionary<int, ArcadeRewardTable.Entry> {
                 [3] = new(3, 1f, 70),
+            },
+            [5] = new Dictionary<int, ArcadeRewardTable.Entry> {
+                [0] = new(0, 0f, 10),
+                [1] = new(1, 0f, 50),
+                [2] = new(2, 0f, 90),
             },
         }));
         test.Start();
@@ -871,7 +923,7 @@ public class SpringFarmSessionTests {
 
     // The Boom Boom Ocean script (field 51000003, arcade 2): start_game opens the score dialog (type 2) and the life
     // bar; a scored skill's hit on a game player takes its score and a life, a scored buff adds its score; end_game
-    // adds the open round's time score and gives arcade 2's reward row of the rounds cleared.
+    // gives arcade 2's reward row of the rounds cleared, and the round still open pays no time score.
     [Test]
     public void BoomBoomOcean_Script() {
         TriggerContext context = Context();
@@ -903,15 +955,15 @@ public class SpringFarmSessionTests {
         Assert.That(Arcade(test.TakeSent().Single(), 1).ReadInt(), Is.EqualTo(620));
         Assert.That(game.RoundsCleared, Is.EqualTo(3));
 
-        // The next round runs past its time: 20 s at most.
+        // The next round is still open at the end (the fail box): its time is not paid.
         Run(context, """<action name="arcade_boom_boom_ocean_start_round" round="4" round_duration="20000" time_score_rate="10" />""");
-        SetTick(60_000);
+        SetTick(42_000);
         long meso = session.Currency.Meso;
         Run(context, """<action name="arcade_boom_boom_ocean_end_game" />""");
         sent = test.TakeSent();
-        Assert.That(Arcade(sent[0], 1).ReadInt(), Is.EqualTo(820));
+        Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ExpUp, SendOp.Meso, SendOp.PlayArcade, SendOp.HideAndSeek }));
         ByteReader result = Arcade(ResultOf(sent), 2);
-        Assert.That(Enumerable.Range(0, 4).Select(_ => result.ReadInt()), Is.EqualTo(new[] { 820, 0, 100, 70 }));
+        Assert.That(Enumerable.Range(0, 4).Select(_ => result.ReadInt()), Is.EqualTo(new[] { 620, 0, 100, 70 }));
         Assert.That(session.Currency.Meso - meso, Is.EqualTo(70));
         Assert.That(game.Ended, Is.True);
         Assert.That(test.Errors, Is.Empty);
@@ -932,6 +984,59 @@ public class SpringFarmSessionTests {
         session.Field.BoomBoomOceanScored(session.Player, 49210001);
         session.Field.BoomBoomOceanDied(session.Player);
         Assert.That(Sent(), Is.Empty);
+    }
+
+    // A lethal hit of a negative score takes one life: the death that follows takes none.
+    [Test]
+    public void BoomBoomOcean_LethalHitOneLife() {
+        var game = new BoomBoomOceanGame(3, [test.CharacterId]);
+        game.SetSkillScore(49210001, -500);
+        session.Field!.BoomBoomOcean = game;
+        session.Field.BoomBoomOceanScored(session.Player, 49210001, killed: true);
+        session.Field.BoomBoomOceanDied(session.Player);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent, Has.Count.EqualTo(2));
+        ByteReader life = Arcade(sent[1], 6);
+        Assert.That(new[] { life.ReadInt(), life.ReadInt() }, Is.EqualTo(new[] { 2, 3 }));
+        Assert.That(game.Lives, Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The last life lost inside a round ends the game without that round's time score.
+    [Test]
+    public void BoomBoomOcean_LastLifeInsideARoundPaysNoTime() {
+        var game = new BoomBoomOceanGame(1, [test.CharacterId]);
+        session.Field!.BoomBoomOcean = game;
+        Context();
+        SetTick(30_000);
+        game.StartRound(1, 20_000, 10, 10_000);
+        session.Field.BoomBoomOceanDied(session.Player);
+        ByteReader result = Arcade(ResultOf(test.TakeSent()), 2);
+        Assert.That(result.ReadInt(), Is.EqualTo(0));
+        Assert.That(game.Ended, Is.True);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // Three Two One: a lost round's clear_round (round 1 in the shipped scripts) clears nothing, so the end gives
+    // the row of no rounds; two wins give the row of two.
+    [TestCase(false, 10)]
+    [TestCase(true, 90)]
+    public void ThreeTwoOne_RewardRowOfTheWins(bool win, int meso) {
+        TriggerContext context = Context();
+        Run(context, """<action name="arcade_three_two_one3_start_game" type="StartGame" life_count="5" init_score="10000" />""");
+        for (int round = 1; round <= 2; round++) {
+            Run(context, $"""<action name="arcade_three_two_one3_start_round" type="StartRound" round="{round}" ui_duration="4" />""");
+            Pick(win ? 2 : 1);
+            Run(context, """<action name="arcade_three_two_one3_result_round" type="ResultRound" result_direction="1" />""");
+            Run(context, """<action name="arcade_three_two_one3_result_round2" type="ResultRound2" round="1" />""");
+            Run(context, """<action name="arcade_three_two_one3_clear_round" type="ClearRound" round="1" />""");
+        }
+        test.TakeSent();
+        long before = session.Currency.Meso;
+        Run(context, """<action name="arcade_three_two_one3_end_game" type="EndGame" />""");
+        Assert.That(session.Currency.Meso - before, Is.EqualTo(meso));
+        Assert.That(session.Field!.ThreeTwoOne!.RoundsCleared, Is.EqualTo(win ? 2 : 0));
+        Assert.That(test.Errors, Is.Empty);
     }
     #endregion
 }

@@ -543,8 +543,11 @@ public class FieldPlayer : Actor<Player> {
             }
         }
         if (caster is not FieldPlayer) {
-            // Boom Boom Ocean: a hit by a skill the game scores (the field's projectiles).
-            Field.BoomBoomOceanScored(this, damage.SkillMetadata.Id);
+            // Boom Boom Ocean: a hit by a skill the game scores (the field's projectiles), when it lands.
+            if (damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hitRecord)
+                && BoomBoomOceanGame.HitLands(hitRecord.Damage.Select(hit => hit.Type))) {
+                Field.BoomBoomOceanScored(this, damage.SkillMetadata.Id, KilledByHit(healthBefore, Stats.Values[BasicAttribute.Health].Current));
+            }
             // A hit by a monster's or the map's skill counts for skill_damage_npc with the skill id as the code
             // (70400009 "Get attacked by a seedling at the Maple Arcade" 49230005, 21233002 "Get trapped in the
             // $npc:23000018$'s water prison" 99999981).
