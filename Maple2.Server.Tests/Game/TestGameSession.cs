@@ -557,10 +557,12 @@ public sealed class TestGameSession {
 
         // The guild requests handed to the world.
         public readonly List<GuildRequest> GuildRequests = [];
+        // The world's answer to a guild request; an empty answer without it.
+        public Func<GuildRequest, GuildResponse>? GuildWorld;
 
         public override GuildResponse Guild(GuildRequest request, CallOptions options) {
             GuildRequests.Add(request);
-            return new GuildResponse();
+            return GuildWorld?.Invoke(request) ?? new GuildResponse();
         }
 
         public readonly List<MailNotificationRequest> MailNotifications = [];

@@ -816,7 +816,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             }
 
-            session.Send(GuildPacket.SendApplication(response.GuildId, response.GuildName));
+            session.Send(GuildPacket.SendApplication(response.ApplicationId, response.GuildName));
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to send guild application");
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));

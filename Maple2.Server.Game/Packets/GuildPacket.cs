@@ -651,11 +651,12 @@ public static class GuildPacket {
 
     // s_guild_search_request_join_guild
     // - You have applied to the guild {0}.
-    // Client CGuildManager::FUN_1413c5360 (case 0x52): the guild id (0 shows nothing), then the guild name.
-    public static ByteWriter SendApplication(long guildId, string guildName) {
+    // Client CGuildManager::FUN_1413c5360 (case 0x52): an id (0 shows nothing), then the guild name. KMS2 sends
+    // the id of the new request there, the one its row in Guild 86 starts with.
+    public static ByteWriter SendApplication(long applicationId, string guildName) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.SendApplication);
-        pWriter.WriteLong(guildId);
+        pWriter.WriteLong(applicationId);
         pWriter.WriteUnicodeString(guildName);
 
         return pWriter;

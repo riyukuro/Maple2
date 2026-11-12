@@ -2,8 +2,11 @@ using System;
 using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
 
@@ -74,17 +77,54 @@ public class UserChatHandlerTests {
         Assert.That(test.World.Chats, Is.Empty);
     }
 
-    // Normal chat goes to the field with no channel: the int after the GM flag stays 0.
-    [Test]
-    public void NormalChat_GoesToTheFieldWithChannelZero() {
+    // Normal chat goes to the field. The int after the GM flag is the channel in a field that is no instance and 0
+    // in an instanced one.
+    [TestCase(InstanceType.none, Channel)]
+    [TestCase(InstanceType.solo, 0)]
+    [TestCase(InstanceType.ugcMap, 0)]
+    public void NormalChat_GoesToTheFieldWithTheChannelOutsideInstances(InstanceType instance, int expected) {
         GameSession session = Login(meret: 0);
+        typeof(FieldManager).GetProperty("FieldInstance")!.SetValue(session.Field,
+            new InstanceFieldMetadata(0, instance, 0, false, 0, true, 0, 0, 0, 0));
 
         Say(session, ChatType.Normal, "hi");
 
         byte[] line = test.TakeSent().Single(packet => TestGameSession.Op(packet) == Maple2.Server.Core.Constants.SendOp.UserChat);
         int flag = 2 + 8 + 8 + (2 + session.PlayerName.Length * 2) + 1 + (2 + 2 * 2) + 4;
         Assert.That(BitConverter.ToInt32(line, flag - 4), Is.EqualTo((int) ChatType.Normal));
-        Assert.That(BitConverter.ToInt32(line, flag + 1), Is.EqualTo(0));
+        Assert.That(BitConverter.ToInt32(line, flag + 1), Is.EqualTo(expected));
         Assert.That(test.World.Chats, Is.Empty);
+    }
+
+    // Party and guild lines hand the same channel int to the world.
+    [TestCase(InstanceType.none, Channel)]
+    [TestCase(InstanceType.solo, 0)]
+    public void LineChannel_IsZeroInAnInstance(InstanceType instance, int expected) {
+        GameSession session = Login(meret: 0);
+        typeof(FieldManager).GetProperty("FieldInstance")!.SetValue(session.Field,
+            new InstanceFieldMetadata(0, instance, 0, false, 0, true, 0, 0, 0, 0));
+
+        Assert.That(UserChatHandler.LineChannel(session), Is.EqualTo(expected));
+    }
+
+    // The received whisper carries the sender's channel after the GM flag; the sender's own copy keeps 0.
+    [Test]
+    public void Whisper_CarriesTheChannelInTheReceivedLineOnly() {
+        byte[] received = ChatPacket.Whisper(1, 2, "ab", "hi", "pic", channel: Channel).ToArray();
+        byte[] plain = ChatPacket.Whisper(1, 2, "ab", "hi", "pic").ToArray();
+        // op 2, ids 16, name 2 + 4, flag 1, text 2 + 4, type 4, gm 1: the int starts at 36.
+        Assert.That(BitConverter.ToInt32(received, 36), Is.EqualTo(Channel));
+        Assert.That(BitConverter.ToInt32(plain, 36), Is.EqualTo(0));
+        Assert.That(ChatPacket.Whisper(0, 2, "ab", "hi", channel: Channel).ToArray(),
+            Is.EqualTo(ChatPacket.Whisper(0, 2, "ab", "hi").ToArray()));
+    }
+
+    // Party, guild and system notice lines carry the channel the request names.
+    [Test]
+    public void Message_WritesTheChannelOfTheRequest() {
+        foreach (ChatType type in new[] { ChatType.Party, ChatType.Guild, ChatType.SystemNotice }) {
+            byte[] line = ChatPacket.Message(1, 2, "ab", type, "hi", channel: Channel).ToArray();
+            Assert.That(BitConverter.ToInt32(line, 36), Is.EqualTo(Channel), type.ToString());
+        }
     }
 }

@@ -6,6 +6,8 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.World.Service;
 using Maple2.Server.Game.Packets;
 using Serilog;
 using GuildManager = Maple2.Server.Game.Manager.GuildManager;
@@ -69,6 +71,34 @@ public class GuildJoinTests {
         // A member the session already has is not announced again.
         Assert.That(manager.AddMember("Leader", Member(11, "Joiner", 5)), Is.False);
         Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild), Is.Empty);
+    }
+
+    // KMS2 answers a join request with Guild 82 carrying the new request's id, not the guild's.
+    [Test]
+    public void Apply_AnswersWithTheRequestId() {
+        var test = new TestGameSession();
+        test.Start();
+        test.Session.Guild = Manager(test, null);
+        test.World.GuildWorld = request => new GuildResponse {
+            GuildId = request.Apply.GuildId,
+            ApplicationId = 818914,
+            GuildName = "Guild",
+        };
+        test.TakeSent();
+        var handler = new GuildHandler {
+            World = test.World, TableMetadata = null!, BanWordStorage = null!, ServerTableMetadata = test.ServerTableMetadata,
+        };
+
+        handler.Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(82);
+            writer.WriteLong(7);
+        }));
+
+        Assert.That(test.World.GuildRequests.Single().Apply.GuildId, Is.EqualTo(7));
+        byte[][] sent = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild).ToArray();
+        Assert.That(sent.Select(System.Convert.ToHexString), Is.EqualTo(new[] {
+            System.Convert.ToHexString(GuildPacket.SendApplication(818914, "Guild").ToArray()),
+        }));
     }
 
     [Test]

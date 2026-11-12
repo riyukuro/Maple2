@@ -10,7 +10,8 @@ namespace Maple2.Server.Game.Packets;
 public static class ChatPacket {
     // The byte after the chat type: the sender is a GM. Every receiver but the sender then sees the name and
     // the text in the client's GM chat colour (white by default). It is set from the sender's account.
-    public static ByteWriter Message(Player player, ChatType type, string message) {
+    // channel: see UserChatHandler.LineChannel.
+    public static ByteWriter Message(Player player, ChatType type, string message, int channel = 0) {
         var pWriter = Packet.Of(SendOp.UserChat);
         pWriter.WriteLong(player.Account.Id);
         pWriter.WriteLong(player.Character.Id);
@@ -19,7 +20,7 @@ public static class ChatPacket {
         pWriter.WriteUnicodeString(message);
         pWriter.Write<ChatType>(type);
         pWriter.WriteBool(AdminLevel.IsGm(player.Account.AdminPermissions));
-        pWriter.WriteInt();
+        pWriter.WriteInt(channel);
 
         switch (type) {
             case ChatType.WhisperFrom:
@@ -47,7 +48,8 @@ public static class ChatPacket {
         pWriter.WriteUnicodeString(message);
         pWriter.Write<ChatType>(type);
         pWriter.WriteBool(gm);
-        // The sender's channel. The client prints it in front of the world and super chat lines.
+        // The sender's channel. The client prints it in front of the world and super chat lines. In the lines of a
+        // player (normal, party, guild, whisper) it is 0 when the sender stands in an instanced field.
         pWriter.WriteInt(channel);
 
         switch (type) {
@@ -68,7 +70,7 @@ public static class ChatPacket {
     }
 
     // picture: the sender's profile picture, for the portrait of the whisper notice. Null makes the sender's own copy.
-    public static ByteWriter Whisper(long accountId, long characterId, string name, string message, string? picture = null, bool gm = false) {
+    public static ByteWriter Whisper(long accountId, long characterId, string name, string message, string? picture = null, bool gm = false, int channel = 0) {
         ChatType type = picture == null ? ChatType.WhisperTo : ChatType.WhisperFrom;
 
         var pWriter = Packet.Of(SendOp.UserChat);
@@ -80,7 +82,8 @@ public static class ChatPacket {
         pWriter.Write<ChatType>(type);
         // Only the received line: the sender's own copy carries the recipient's name and stays normal.
         pWriter.WriteBool(gm && type == ChatType.WhisperFrom);
-        pWriter.WriteInt();
+        // The sender's channel in the received line; the own copy keeps 0.
+        pWriter.WriteInt(type == ChatType.WhisperFrom ? channel : 0);
 
         if (type == ChatType.WhisperFrom) {
             pWriter.WriteUnicodeString(picture ?? string.Empty);

@@ -26,6 +26,8 @@ public static class ChatUtil {
             Name = session.PlayerName,
             Message = message,
             ItemUids = { item.Uid },
+            // KMS2 item announcements carry the announcer's channel, from any field.
+            Channel = GameServer.GetChannel(),
             SystemNotice = new ChatRequest.Types.SystemNotice(),
         });
     }
@@ -51,6 +53,7 @@ public static class ChatUtil {
                 Name = session.PlayerName,
                 Message = ItemBoxAnnouncement(item.Uid, session.PlayerName, boxItemId),
                 ItemUids = { item.Uid },
+                Channel = GameServer.GetChannel(),
                 SystemNotice = new ChatRequest.Types.SystemNotice(),
             });
         } catch (RpcException) { /* ignored */ }

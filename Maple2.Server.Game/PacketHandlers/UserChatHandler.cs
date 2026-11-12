@@ -74,6 +74,12 @@ public class UserChatHandler : FieldPacketHandler {
         session.ConditionUpdate(ConditionType.chat, targetLong: session.Field.MapId);
     }
 
+    // The channel int of a player's own line (normal, party, guild, whisper): KMS2 sends the sender's channel from a
+    // field that is no instance and 0 from an instanced one (home, dungeon, instanced map).
+    internal static int LineChannel(GameSession session) {
+        return session.Field is { FieldInstance.Type: InstanceType.none } ? GameServer.GetChannel() : 0;
+    }
+
     private static void HandleNormal(GameSession session, string message, ICollection<long> itemUids) {
         if (itemUids.Count > 0) {
             List<Item> items = [];
@@ -89,7 +95,7 @@ public class UserChatHandler : FieldPacketHandler {
             }
         }
 
-        session.Field?.Broadcast(ChatPacket.Message(session.Player.Value, ChatType.Normal, message));
+        session.Field?.Broadcast(ChatPacket.Message(session.Player.Value, ChatType.Normal, message, LineChannel(session)));
     }
 
     private void HandleWhisper(GameSession session, string message, string recipient, ICollection<long> itemUids) {
@@ -113,6 +119,7 @@ public class UserChatHandler : FieldPacketHandler {
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
             Picture = session.Player.Value.Character.Picture,
+            Channel = LineChannel(session),
             Whisper = new ChatRequest.Types.Whisper { RecipientId = info.CharacterId, RecipientName = recipient },
         };
 
@@ -146,6 +153,7 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
+            Channel = LineChannel(session),
             Party = new ChatRequest.Types.Party {
                 PartyId = session.Party.Id,
             },
@@ -168,6 +176,7 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
+            Channel = LineChannel(session),
             Guild = new ChatRequest.Types.Guild {
                 GuildId = session.Guild.Id,
             },

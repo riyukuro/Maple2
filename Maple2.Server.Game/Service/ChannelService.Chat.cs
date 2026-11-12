@@ -57,7 +57,7 @@ public partial class ChannelService {
             session.Send(MessengerBrowserPacket.Link(items.ToArray()));
         }
 
-        session.Send(ChatPacket.Whisper(request.AccountId, request.CharacterId, request.Name, request.Message, request.Picture, request.Gm));
+        session.Send(ChatPacket.Whisper(request.AccountId, request.CharacterId, request.Name, request.Message, request.Picture, request.Gm, request.Channel));
     }
 
     private void PartyChat(ChatRequest request, List<Item> items) {
@@ -69,7 +69,7 @@ public partial class ChannelService {
             if (items.Count > 0) {
                 session.Send(MessengerBrowserPacket.Link(items.ToArray()));
             }
-            session.Send(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Party, request.Message, gm: request.Gm));
+            session.Send(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Party, request.Message, gm: request.Gm, channel: request.Channel));
         }
     }
 
@@ -83,7 +83,7 @@ public partial class ChannelService {
                 session.Send(MessengerBrowserPacket.Link(items.ToArray()));
             }
 
-            session.Send(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Guild, request.Message, gm: request.Gm));
+            session.Send(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Guild, request.Message, gm: request.Gm, channel: request.Channel));
         }
     }
 
@@ -119,6 +119,6 @@ public partial class ChannelService {
         if (items.Count > 0) {
             server.Broadcast(MessengerBrowserPacket.Link(items.ToArray()));
         }
-        server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.SystemNotice, request.Message));
+        server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.SystemNotice, request.Message, channel: request.Channel));
     }
 }

@@ -56,7 +56,8 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(tail, Is.EqualTo(new byte[] { 1, 0, 0, 0, 0, 0, 0 }));
     }
 
-    // CGuildManager::FUN_1413c5360 (0x52) and FUN_1413c5440 (0x53) read the guild id, then the guild name.
+    // CGuildManager::FUN_1413c5360 (0x52) and FUN_1413c5440 (0x53) read a long, then the guild name
+    // (82: the new request's id; 83: the id that was withdrawn).
     [TestCase(82)]
     [TestCase(83)]
     public void ApplicationReplies_CarryTheGuildIdAndName(byte mode) {
