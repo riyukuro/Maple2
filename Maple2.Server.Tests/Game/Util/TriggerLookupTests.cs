@@ -38,6 +38,20 @@ public class TriggerLookupTests {
         Assert.That(TriggerContext.AllDead([], false), Is.True);
     }
 
+    // 'monster_dead' (02000066 spawn_ids="99"): the spawn point holds a friendly npc, which is not in the
+    // monster list; it counts as alive while it stands.
+    [Test]
+    public void MonsterDead_LooksAtFriendlyNpcsToo() {
+        (int Spawn, bool Dead)[] npcs = [(99, false), (5001, false)];
+        (int Spawn, bool Dead)[] mobs = [(900, true), (0, false)];
+        Assert.Multiple(() => {
+            Assert.That(TriggerContext.AllDead(TriggerContext.OfSpawnPoints(npcs, mobs, npc => npc.Spawn, [99]).Select(npc => npc.Dead), false), Is.False);
+            Assert.That(TriggerContext.AllDead(TriggerContext.OfSpawnPoints(npcs, mobs, npc => npc.Spawn, [900]).Select(npc => npc.Dead), false), Is.True);
+            Assert.That(TriggerContext.OfSpawnPoints(npcs, mobs, npc => npc.Spawn, [99, 900]).Count(), Is.EqualTo(2));
+            Assert.That(TriggerContext.OfSpawnPoints(npcs, mobs, npc => npc.Spawn, [7]), Is.Empty);
+        });
+    }
+
     // 'monster_in_combat' (02000066 spawn_ids="5001"): a monster of a listed spawn point that is in battle.
     [Test]
     public void MonsterInCombat_LooksAtTheListedSpawnPoints() {

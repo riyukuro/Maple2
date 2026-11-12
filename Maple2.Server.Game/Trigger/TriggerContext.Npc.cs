@@ -232,16 +232,22 @@ public partial class TriggerContext {
 
     public bool MonsterDead(int[] spawnIds, bool autoTarget, bool negate) {
         DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}, negate:{Negate}", string.Join(", ", spawnIds), autoTarget, negate);
-        IEnumerable<FieldNpc> matchingMobs = Field.Mobs.Values.Where(x => spawnIds.Contains(x.SpawnPointId));
+        IEnumerable<FieldNpc> matchingMobs = OfSpawnPoints(Field.Npcs.Values, Field.Mobs.Values, npc => npc.SpawnPointId, spawnIds);
         return AllDead(matchingMobs.Select(mob => mob.IsDead), negate);
     }
+
+    // The npcs and the monsters of the listed spawn points. A spawn point a script waits on can hold a friendly
+    // npc: 02000066 fails its waves on monster_dead spawn_ids="99", the friendly barrier the players guard, and
+    // starts its helpers' talk on monster_in_combat spawn_ids="5001", a friendly npc as well.
+    public static IEnumerable<T> OfSpawnPoints<T>(IEnumerable<T> npcs, IEnumerable<T> mobs, Func<T, int> spawnPointId, int[] spawnIds) =>
+        npcs.Concat(mobs).Where(npc => spawnIds.Contains(spawnPointId(npc)));
 
     // Either no mobs were found or they are all dead; '!monster_dead' (negate) is the opposite.
     public static bool AllDead(IEnumerable<bool> isDead, bool negate) => isDead.All(dead => dead) != negate;
 
     public bool MonsterInCombat(int[] spawnIds, bool negate) {
         DebugLog("[MonsterInCombat] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
-        return AnyInCombat(Field.Mobs.Values.Select(mob => (mob.SpawnPointId, mob.BattleState.InBattle)), spawnIds, negate);
+        return AnyInCombat(Field.Npcs.Values.Concat(Field.Mobs.Values).Select(mob => (mob.SpawnPointId, mob.BattleState.InBattle)), spawnIds, negate);
     }
 
     // True when a monster of one of the spawn points is in battle; negate is the opposite. Every shipped use names
