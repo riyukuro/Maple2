@@ -268,7 +268,7 @@ public class EquipManager {
     /// <param name="cosmetic">The hair, face, or face decor item to equip.</param>
     /// <param name="equipSlot">Slot to equip the cosmetic item.</param>
     public bool EquipCosmetic(Item cosmetic, EquipSlot equipSlot) {
-        if (equipSlot is not (EquipSlot.HR or EquipSlot.FA or EquipSlot.FD)) {
+        if (equipSlot is not (EquipSlot.HR or EquipSlot.FA or EquipSlot.FD or EquipSlot.ER)) {
             return false;
         }
 

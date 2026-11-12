@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Collections.Concurrent;
+using System.Numerics;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -76,6 +77,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 break;
             case ItemFunction.ChangeCharName:
                 HandleChangeCharacterName(session, packet, item);
+                break;
+            case ItemFunction.ChangeGender:
+                HandleChangeGender(session, item);
                 break;
             case ItemFunction.VIPCoupon:
                 HandlePremiumClubCoupon(session, item);
@@ -388,6 +392,67 @@ public class ItemUseHandler : FieldPacketHandler {
             session.Player.Value.Account.MaxCharacters++;
             session.Send(ItemUsePacket.CharacterSlotAdded());
         }
+    }
+
+    // The gender voucher. KMS2: the voucher leaves the bag, hair, face, face decoration and ear
+    // come off (ItemPutOff), a Notice 5 message box with common string 755 closes the game scene,
+    // and the character list then shows the other gender with new items in those four slots.
+    private void HandleChangeGender(GameSession session, Item item) {
+        Character character = session.Player.Value.Character;
+        Gender gender = GenderChangeRules.Other(character.Gender);
+
+        // The client refuses this by itself with the same text.
+        foreach (ConcurrentDictionary<EquipSlot, Item> tab in new[] { session.Item.Equips.Gear, session.Item.Equips.Outfit, session.Item.Equips.Outfit2 }) {
+            foreach ((EquipSlot slot, Item worn) in tab) {
+                if (GenderChangeRules.BlocksChange(slot, worn.Metadata.Limit.Gender)) {
+                    session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_err_equip_items));
+                    return;
+                }
+            }
+        }
+
+        var picks = new List<(EquipSlot Slot, ItemMetadata Metadata)>();
+        foreach (EquipSlot slot in GenderChangeRules.LookSlots) {
+            if (!TableMetadata.DefaultItemsTable.Common.TryGetValue(slot, out int[]? ids)) {
+                continue;
+            }
+            var defaults = new List<(int Id, Gender Limit)>();
+            foreach (int defaultId in ids) {
+                if (session.ItemMetadata.TryGet(defaultId, out ItemMetadata? metadata)) {
+                    defaults.Add((defaultId, metadata.Limit.Gender));
+                }
+            }
+            if (session.ItemMetadata.TryGet(GenderChangeRules.PickDefault(defaults, gender), out ItemMetadata? pick)) {
+                picks.Add((slot, pick));
+            }
+        }
+        // Hair and face are needed to draw the character; taking a look item off needs a free outfit slot.
+        if (!picks.Exists(pick => pick.Slot == EquipSlot.HR) || !picks.Exists(pick => pick.Slot == EquipSlot.FA)
+            || session.Item.Inventory.FreeSlots(InventoryType.Outfit) == 0
+            || !session.Item.Inventory.Consume(item.Uid, 1)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_result_failed));
+            return;
+        }
+
+        character.Gender = gender;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            foreach ((EquipSlot slot, ItemMetadata pick) in picks) {
+                Item? old = session.Item.Equips.Get(slot);
+                var look = new Item(pick);
+                if (old?.Appearance != null && look.Appearance != null) {
+                    look.Appearance.Color = old.Appearance.Color;
+                }
+                if (old != null) {
+                    session.Item.Equips.Unequip(old.Uid);
+                }
+                Item? stored = db.CreateItem(session.CharacterId, look);
+                if (stored != null) {
+                    session.Item.Equips.EquipCosmetic(stored, slot);
+                }
+            }
+        }
+
+        session.Send(NoticePacket.Disconnect(StringCode.s_change_gender_err_equip_items));
     }
 
     private void HandleChangeCharacterName(GameSession session, IByteReader packet, Item item) {
