@@ -209,4 +209,12 @@ public static class DungeonRoomRules {
         record.UnionCooldownTimestamp = new DateTimeOffset(CooldownEnd(type, cooldownValue, written.AddDays(-days))).ToUnixTimeSeconds();
         return true;
     }
+
+    // The boxes a clear with a reward count left gives: the room's rewardLimitedDropBoxIds, the boxes the client's
+    // reward preview lists (DungeonRoom::Load reads them into m_rewardDropBoxIds, dungeonroom.cpp:391-395), then its
+    // rewardUnlimitedDropBoxIds. Box 0 is no box, and a box is given once when both lists name it (the KR client's
+    // rows often list the boss box in both).
+    public static IReadOnlyList<int> ClearDropBoxIds(DungeonRoomRewardMetadata reward) {
+        return reward.LimitedDropBoxIds.Concat(reward.UnlimitedDropBoxIds).Where(boxId => boxId != 0).Distinct().ToList();
+    }
 }

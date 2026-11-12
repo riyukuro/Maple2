@@ -313,4 +313,22 @@ public class DungeonRoomRulesTests {
     public void ContinuedRound_StartsWithTheRoundsCleared(int round, int cleared, int expected) {
         Assert.That(DungeonRoomRules.ContinuedRound(round, cleared), Is.EqualTo(expected));
     }
+
+    private static DungeonRoomRewardMetadata Reward(int[] limited, int[] unlimited) => new(false, 0, 0, 0, 0, 0, limited, unlimited, 0, 0, 0);
+
+    // KR room 21001001: the boss box only in the limited list, the unlimited list is the NA pack's.
+    [Test]
+    public void ClearDropBoxIds_GivesTheLimitedBoxes() {
+        Assert.That(DungeonRoomRules.ClearDropBoxIds(Reward([21001001], [10, 330001977])), Is.EqualTo(new[] { 21001001, 10, 330001977 }));
+    }
+
+    // KR room 23021003 lists its boss box in both lists: it is given once. Box 0 is no box.
+    [Test]
+    public void ClearDropBoxIds_GivesABoxOnce() {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.ClearDropBoxIds(Reward([23000114], [23000114, 920007019])), Is.EqualTo(new[] { 23000114, 920007019 }));
+            Assert.That(DungeonRoomRules.ClearDropBoxIds(Reward([0], [])), Is.Empty);
+            Assert.That(DungeonRoomRules.ClearDropBoxIds(Reward([390000070], [])), Is.EqualTo(new[] { 390000070 }));
+        });
+    }
 }
