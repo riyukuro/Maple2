@@ -19,10 +19,10 @@ public class DisabledBuffTests {
             Dictionary<SpecialAttribute, float>? specialRates = null, Dictionary<BasicAttribute, float>? resistances = null,
             AdditionalEffectMetadataInvokeEffect? invoke = null, bool invincible = false, AdditionalEffectMetadataProperty? property = null,
             Dictionary<BasicAttribute, float>? rates = null, AdditionalEffectMetadataStatus.CompulsionEvent? compulsion = null,
-            AdditionalEffectMetadataShield? shield = null) {
+            AdditionalEffectMetadataShield? shield = null, bool deathResistance = false) {
         var status = new AdditionalEffectMetadataStatus(values ?? new Dictionary<BasicAttribute, long>(), rates ?? new Dictionary<BasicAttribute, float>(),
             new Dictionary<SpecialAttribute, float>(), specialRates ?? new Dictionary<SpecialAttribute, float>(),
-            resistances ?? new Dictionary<BasicAttribute, float>(), false, compulsion, null, 0, invincible);
+            resistances ?? new Dictionary<BasicAttribute, float>(), deathResistance, compulsion, null, 0, invincible);
         return new AdditionalEffectMetadata(id, 1, null!, property ?? Property, null!, null!, null!, status, null, null!, shield, invoke, [], [], []);
     }
 

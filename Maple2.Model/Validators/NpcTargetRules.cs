@@ -27,6 +27,7 @@ public static class NpcTargetRules {
     // The health change an npc takes: an npc tagged no_die (npc propertyTags) is not brought below 1 health by damage,
     // so a story ally a script waits on stays on the field however long monsters hit it. The client has no rule
     // of its own for the tag (the fight between npcs is the server's); chosen here: its health is held at 1.
+    // The same holds for any holder of an enabled buff with deathResistanceHP (BuffManager.DeathResistance).
     public static long HealthChange(long current, long change, bool noDie) {
         if (!noDie || change >= 0) {
             return change;

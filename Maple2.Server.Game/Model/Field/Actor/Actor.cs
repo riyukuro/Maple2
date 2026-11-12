@@ -161,7 +161,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 DamageDealers.TryAdd(caster.ObjectId, record);
             }
             record.AddDamage(DamageType.Normal, positiveDamage);
-            Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true }));
+            Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true } || (Buffs.DeathResistance && caster is not FieldPlayer { DeathPower: true })));
             Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
             OnDamageReceived(caster, positiveDamage);
         }

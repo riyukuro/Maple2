@@ -346,6 +346,8 @@ public class BuffManager : IUpdatable {
     public bool Invincible => Sums().Invincible;
     // A buff that stuns a monster is held.
     public bool Stunned => Sums().Stun;
+    // An enabled buff held has deathResistanceHP: hits and dot ticks take the holder no lower than 1 health.
+    public bool DeathResistance => Sums().DeathResistance;
     // The type of that hit: InvincibleReflection when the buff's invincible value is 2.
     public DamageType InvincibleHitType => Sums().InvincibleReflect ? DamageType.InvincibleReflection : DamageType.Invincible;
 

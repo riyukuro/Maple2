@@ -16,6 +16,8 @@ public sealed class BuffSums {
     public bool InvincibleReflect { get; }
     // One of them has a stun value that stuns a monster (NpcControlRules.Stuns).
     public bool Stun { get; }
+    // One of them has deathResistanceHP (the Berserker's Raging Soul, 10200221): damage leaves its holder at 1 health.
+    public bool DeathResistance { get; }
 
     public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held) {
         List<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> withInvoke = [];
@@ -25,6 +27,7 @@ public sealed class BuffSums {
             }
             Invincible |= metadata.Status.Invincible;
             Stun |= metadata.Property is { } property && Util.NpcControlRules.Stuns(property.Stun);
+            DeathResistance |= metadata.Status.DeathResistanceHp;
             InvincibleReflect |= metadata.Status.Invincible && metadata.Status.InvincibleReflect;
             if (metadata.InvokeEffect != null) {
                 withInvoke.Add((metadata.InvokeEffect, stacks));
