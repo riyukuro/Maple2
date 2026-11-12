@@ -111,6 +111,32 @@ public static class CubePacket {
         return pWriter;
     }
 
+    public enum Edit : byte {
+        Place = Command.PlaceCube,
+        Remove = Command.RemoveCube,
+        Replace = Command.ReplaceCube,
+    }
+
+    // A refused place, remove or replace as KMS2 answers it: the edit's own command, the error, then the two
+    // object ids of the answer that succeeds (10 bytes).
+    public static ByteWriter EditError(Edit edit, UgcMapError error, int objectId) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.WriteByte((byte) edit);
+        pWriter.WriteByte((byte) error);
+        pWriter.WriteInt(objectId); // Owner
+        pWriter.WriteInt(objectId); // Player
+        return pWriter;
+    }
+
+    // A refused lift as KMS2 answers it: the lift command, the error and the player's object id (6 bytes).
+    public static ByteWriter LiftupError(UgcMapError error, int objectId) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.Write<Command>(Command.LiftupObject);
+        pWriter.WriteByte((byte) error);
+        pWriter.WriteInt(objectId);
+        return pWriter;
+    }
+
     public static ByteWriter BuyPlot(PlotInfo plot) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.BuyPlot);

@@ -111,7 +111,9 @@ public class FurnishingManager {
         }
     }
 
-    public bool PurchaseCube(FurnishingShopTable.Entry furnishingShopMetadata) {
+    // False with the error the edit's answer carries (s_ugcmap_ok for none) when the cube is not paid.
+    public bool PurchaseCube(FurnishingShopTable.Entry furnishingShopMetadata, out UgcMapError error) {
+        error = UgcMapError.s_ugcmap_ok;
         if (!furnishingShopMetadata.Buyable) {
             return false;
         }
@@ -126,7 +128,7 @@ public class FurnishingManager {
                 case FurnishingCurrencyType.Meso:
                     negAmount = -furnishingShopMetadata.Price;
                     if (session.Currency.CanAddMeso(negAmount) != negAmount) {
-                        session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
+                        error = UgcMapError.s_err_ugcmap_not_enough_meso_balance;
                         return false;
                     }
 
@@ -135,7 +137,7 @@ public class FurnishingManager {
                 case FurnishingCurrencyType.Meret:
                     negAmount = -furnishingShopMetadata.Price;
                     if (session.Currency.CanAddMeret(negAmount) != negAmount) {
-                        session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_merat_balance));
+                        error = UgcMapError.s_err_ugcmap_not_enough_merat_balance;
                         return false;
                     }
 

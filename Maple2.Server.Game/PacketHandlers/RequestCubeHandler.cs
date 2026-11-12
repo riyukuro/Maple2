@@ -417,12 +417,12 @@ public class RequestCubeHandler : FieldPacketHandler {
         var position = packet.Read<Vector3B>();
 
         if (session.Field == null || session.HeldLiftup != null) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_allowed_item));
+            session.Send(CubePacket.LiftupError(UgcMapError.s_ugcmap_not_allowed_item, session.Player.ObjectId));
             return;
         }
 
         if (!session.Field.LiftupCube(position, out LiftupWeapon? weapon)) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_lift));
+            session.Send(CubePacket.LiftupError(UgcMapError.s_ugcmap_no_cube_to_lift, session.Player.ObjectId));
             return;
         }
 
