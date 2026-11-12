@@ -429,7 +429,8 @@ public class AiState {
     }
 
     private void ProcessNode(StandbyNode node) {
-        NpcTask task = actor.MovementState.TryStandby(null, false);
+        IActor? faceTarget = AiStandbyFace.FacesTarget(node.FaceTarget) ? actor.BattleState.Target : null;
+        NpcTask task = actor.MovementState.TryStandby(faceTarget, false);
 
         if (node.IsKeepBattle) {
             actor.BattleState.KeepBattle = true;

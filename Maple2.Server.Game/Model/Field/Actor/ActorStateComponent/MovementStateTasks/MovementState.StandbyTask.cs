@@ -1,4 +1,5 @@
 ﻿using Maple2.Server.Game.Model.Enum;
+using Maple2.Server.Game.Util;
 using System.Numerics;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
@@ -31,6 +32,9 @@ public partial class MovementState {
             return;
         }
 
-        actor.Transform.LookTo(Vector3.Normalize(target.Position - actor.Position));
+        Vector3? direction = AiStandbyFace.Direction(actor.Position, target.Position);
+        if (direction is not null) {
+            actor.Transform.LookTo(direction.Value);
+        }
     }
 }

@@ -100,7 +100,9 @@ public partial class MovementState {
     public NpcTask TryStandby(IActor? target, bool isIdle, string sequence = "") {
         NpcTaskPriority priority = isIdle ? NpcTaskPriority.IdleAction : NpcTaskPriority.BattleStandby;
 
-        return new NpcStandbyTask(actor.TaskState, this, sequence, priority, isIdle);
+        return new NpcStandbyTask(actor.TaskState, this, sequence, priority, isIdle) {
+            Target = target,
+        };
     }
 
     public NpcTask TryEmote(string sequenceName, bool isIdle, float duration = -1f) {
