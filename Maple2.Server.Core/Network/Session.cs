@@ -38,7 +38,6 @@ public abstract class Session : IDisposable {
     private bool disposed;
     private int disconnecting; // 0 = not disconnecting, 1 = disconnect in progress/already triggered (reentrancy guard)
     private volatile bool sendFailed; // set on first SendRaw failure to stop send queue drain
-    private volatile bool resetOnClose; // set by Cut: the socket is closed with a reset
     private long lastReceivedMs = Environment.TickCount64;
     private readonly uint siv;
     private readonly uint riv;
@@ -133,7 +132,15 @@ public abstract class Session : IDisposable {
         sendQueue.CompleteAdding();
     }
 
+    // Closes in order (FIN after the send queue is drained): for a session that was sent a last packet that tells
+    // the client what happens (a move to another server, a result or a notice), and for a close the client asked
+    // for. The client shows nothing of its own for such a close. Anything else is closed with Cut.
     public void Disconnect([CallerMemberName] string caller = "", [CallerLineNumber] int line = 0, [CallerFilePath] string filePath = "") {
+        Close(false, caller, line, filePath);
+    }
+
+    // The first close decides how the socket closes; a later Cut or Disconnect changes nothing.
+    private void Close(bool reset, string caller, int line, string filePath) {
         if (disposed) return;
 
         if (Interlocked.Exchange(ref disconnecting, 1) == 1) return;
@@ -149,7 +156,7 @@ public abstract class Session : IDisposable {
         // Graceful close: linger 0 turns Close into an RST, which can drop the just-sent last packet (GameToLogin) under wine.
         // Close gracefully after the drain: FIN first, short linger.
         try {
-            if (resetOnClose) {
+            if (reset) {
                 client.LingerState = new LingerOption(true, 0);
             } else {
                 client.LingerState = new LingerOption(true, 2);
@@ -162,11 +169,10 @@ public abstract class Session : IDisposable {
 
     // Closes the session so that the client learns of it. The client shows its lost-connection notice only when
     // its socket closes with an error (CGameSocket::OnClose); after an orderly close it shows nothing and stays
-    // where it is. So the socket is reset here. For a session that was sent its last packet and is expected to
-    // leave (a channel or server change), Disconnect closes in order instead.
+    // where it is. So the socket is reset here: for every close that the client did not ask for and was not told
+    // of by a last packet.
     public void Cut([CallerMemberName] string caller = "", [CallerLineNumber] int line = 0, [CallerFilePath] string filePath = "") {
-        resetOnClose = true;
-        Disconnect(caller, line, filePath);
+        Close(true, caller, line, filePath);
     }
 
     // The time (Environment.TickCount64) the last packet of the client arrived at; the session's start before one.
@@ -225,7 +231,7 @@ public abstract class Session : IDisposable {
             if (!disposed) {
                 Logger.Error(ex, "Exception on session thread");
             }
-        } finally { Disconnect(); }
+        } finally { Cut(); }
     }
 
     private void PerformHandshake() {
@@ -285,7 +291,7 @@ public abstract class Session : IDisposable {
             Logger.Debug(ex, "WriteRecvPipe exception during disposal account={AccountId} char={CharacterId}", AccountId, CharacterId);
         } catch (Exception ex) {
             Logger.Debug(ex, "WriteRecvPipe exception account={AccountId} char={CharacterId}", AccountId, CharacterId);
-            Disconnect();
+            Cut();
         }
     }
 
@@ -326,7 +332,7 @@ public abstract class Session : IDisposable {
             if (!disposed) {
                 Logger.Error(ex, "Exception reading recv packet || AccountId: {AccountId}, CharacterId: {CharacterId}", AccountId, CharacterId);
             }
-        } finally { Disconnect(); }
+        } finally { Cut(); }
     }
 
 
@@ -378,7 +384,7 @@ public abstract class Session : IDisposable {
                     }
                 }, TaskContinuationOptions.OnlyOnFaulted);
 
-                Disconnect();
+                Cut();
                 return;
             }
 
@@ -390,11 +396,11 @@ public abstract class Session : IDisposable {
             // Connection was closed by the client or is no longer valid
             sendFailed = true;
             Logger.Debug("SendRaw connection closed account={AccountId} char={CharacterId}", AccountId, CharacterId);
-            Disconnect();
+            Cut();
         } catch (Exception ex) {
             sendFailed = true;
             Logger.Warning(ex, "[LIFECYCLE] SendRaw write failed account={AccountId} char={CharacterId}", AccountId, CharacterId);
-            Disconnect();
+            Cut();
         }
     }
 

@@ -41,7 +41,9 @@ public partial class ChannelService {
             });
         }
 
-        session.Disconnect();
+        // Asked for by the World server (the account logs in elsewhere, or a GM ends the session): the client was
+        // told nothing, so it gets the reset and shows its notice.
+        session.Cut();
         return Task.FromResult(new DisconnectResponse {
             Success = true,
         });

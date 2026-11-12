@@ -54,7 +54,7 @@ public class LoginHandler : PacketHandler<LoginSession> {
 
         // Account is already logged into login server.
         if (session.Server.GetSession(response.AccountId, out LoginSession? existing) && existing != session) {
-            existing.Disconnect();
+            existing.Cut();
             session.Send(LoginResultPacket.Error((byte) LoginResponse.Types.Code.AlreadyLogin, "", response.AccountId));
             return;
         }
@@ -102,6 +102,6 @@ public class LoginHandler : PacketHandler<LoginSession> {
         }
 
         // Disconnect by default if anything goes wrong.
-        session.Disconnect();
+        session.Cut();
     }
 }

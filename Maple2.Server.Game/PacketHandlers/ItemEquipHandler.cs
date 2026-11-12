@@ -49,7 +49,7 @@ public class ItemEquipHandler : FieldPacketHandler {
         // Disconnect if this fails to avoid bad state.
         if (!session.Item.Equips.Unequip(itemUid)) {
             Logger.Fatal("Failed to unequip item: {Uid}", itemUid);
-            session.Disconnect();
+            session.Cut();
         }
     }
 

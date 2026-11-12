@@ -15,7 +15,7 @@ public abstract class ResponseVersionHandler<T> : PacketHandler<T> where T : Ses
         short region = packet.ReadShort();
 
         if (version != Session.VERSION) {
-            session.Disconnect();
+            session.Cut();
             return;
         }
         if (!ClientRegion.Matches(region, Target.LOCALE)) {

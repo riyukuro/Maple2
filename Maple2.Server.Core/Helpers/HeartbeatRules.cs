@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Maple2.Server.Core.Network;
+using Maple2.Server.Core.Packets;
 
 namespace Maple2.Server.Core.Helpers;
 
@@ -27,6 +29,18 @@ public static class HeartbeatRules {
     // Whether the client has been silent for too long; both times in the same millisecond count.
     public static bool IsSilent(long lastReceivedMs, long nowMs) {
         return nowMs - lastReceivedMs >= SilenceLimitMs;
+    }
+
+    // One heartbeat round for a session, on the login server and on a channel alike: a silent session is cut
+    // (false), any other is asked.
+    public static bool Ask(Session session, long nowMs) {
+        if (IsSilent(session.LastReceivedMs, nowMs)) {
+            session.Cut();
+            return false;
+        }
+
+        session.Send(RequestPacket.Heartbeat());
+        return true;
     }
 }
 

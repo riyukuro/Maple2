@@ -72,7 +72,7 @@ public class BadgeEquipHandler : FieldPacketHandler {
         Item? badgeItem = session.Item.Equips.Get(badgeType);
 
         if (badgeItem?.Badge == null || badgeItem.Badge.Type != BadgeType.Transparency) {
-            session.Disconnect();
+            session.Cut();
             return;
         }
 

@@ -124,4 +124,56 @@ public class HeartbeatSessionTests {
             Assert.That(peer.Receive(new byte[16]), Is.EqualTo(0));
         }
     }
+
+    // The first close decides: a Cut that comes while an orderly close is under way (the session's own threads
+    // end with one) does not turn it into a reset.
+    [Test]
+    public void ACutAfterADisconnectStaysInOrder() {
+        (SocketSession served, Socket peer) = Connect();
+        using (peer) {
+            served.Disconnect();
+            served.Cut();
+
+            Assert.That(peer.Receive(new byte[16]), Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void ADisconnectAfterACutStaysAReset() {
+        (SocketSession served, Socket peer) = Connect();
+        using (peer) {
+            served.Cut();
+            served.Disconnect();
+
+            var error = Assert.Throws<SocketException>(() => peer.Receive(new byte[16]));
+            Assert.That(error!.SocketErrorCode, Is.EqualTo(SocketError.ConnectionReset));
+        }
+    }
+
+    // The round the login server runs for its sessions.
+    [Test]
+    public void ASilentSessionOfAnyServerIsReset() {
+        (SocketSession served, Socket peer) = Connect();
+        using (peer) {
+            long now = Environment.TickCount64;
+            served.MarkReceived(now - HeartbeatRules.SilenceLimitMs);
+
+            Assert.That(HeartbeatRules.Ask(served, now), Is.False);
+            var error = Assert.Throws<SocketException>(() => peer.Receive(new byte[16]));
+            Assert.That(error!.SocketErrorCode, Is.EqualTo(SocketError.ConnectionReset));
+        }
+    }
+
+    [Test]
+    public void ASessionOfAnyServerThatStillSendsIsKept() {
+        (SocketSession served, Socket peer) = Connect();
+        using (peer) {
+            long now = Environment.TickCount64;
+            served.MarkReceived(now - HeartbeatRules.SilenceLimitMs + 1);
+
+            Assert.That(HeartbeatRules.Ask(served, now), Is.True);
+            Assert.That((int) typeof(Session).GetField("disconnecting", Any)!.GetValue(served)!, Is.EqualTo(0));
+            served.Disconnect();
+        }
+    }
 }
