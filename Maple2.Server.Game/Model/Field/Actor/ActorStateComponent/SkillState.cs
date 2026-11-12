@@ -32,24 +32,26 @@ public class SkillState {
             attackTargets = Aim(attack, paths!, attackTargets);
         }
 
-        // The attack's shots are swept when every flying path of it sweeps; one that mixes in a curve keeps the hit
-        // in its range at the cast (chosen here), so no target is hit twice.
-        bool swept = flies && paths!.Where(NpcSplashRules.Flies).All(path => NpcProjectileRules.Sweeps(attack.Arrow, path));
-        var shots = new List<(MagicPath Path, IActor? Homing)>();
+        // The attack's shots are swept when every path of it flies and sweeps (NpcProjectileRules.Swept).
+        bool swept = flies && NpcProjectileRules.Swept(attack.Arrow, paths!);
+        var shots = new List<(MagicPath Path, IActor? Homing, Vector3 Direction)>();
         if (attack.MagicPathId != 0) {
             if (actor.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths)) {
-                int targetIndex = 0;
-
-                foreach (MagicPath path in magicPaths) {
+                // Each path takes its own target of the list (NpcProjectileRules.PathTargets).
+                int[] pathTargets = NpcProjectileRules.PathTargets(magicPaths.Count, attackTargets.Count);
+                for (int pathIndex = 0; pathIndex < magicPaths.Count; pathIndex++) {
+                    MagicPath path = magicPaths[pathIndex];
+                    int targetIndex = pathTargets[pathIndex];
+                    IActor? pathTarget = targetIndex >= 0 ? attackTargets[targetIndex] : null;
                     int targetId = 0;
 
-                    if (attack.Arrow.Overlap && attackTargets.Count > targetIndex) {
-                        targetId = attackTargets[targetIndex].ObjectId;
+                    if (attack.Arrow.Overlap && pathTarget != null) {
+                        targetId = pathTarget.ObjectId;
                     }
 
                     var targets = new List<TargetRecord>();
                     var targetRecord = new TargetRecord {
-                        Uid = 0 + 2 + targetIndex,
+                        Uid = 0 + 2 + pathIndex,
                         TargetId = targetId,
                         Unknown = 0,
                     };
@@ -67,11 +69,11 @@ public class SkillState {
                     //     };
                     //     targets.Add(targetRecord);
                     // }
-                    if (attackTargets.Count > targetIndex) {
+                    if (pathTarget != null) {
                         // if attack.direction == 3, use direction to target, if attack.direction == 0, use rotation maybe?
                         cast.Position = actor.Position;
                         // A target on the caster's spot gives no direction: the cast keeps the one it has.
-                        Vector3 offset = attackTargets[targetIndex].Position - actor.Position;
+                        Vector3 offset = pathTarget.Position - actor.Position;
                         float length = offset.Length();
                         if (float.IsFinite(length) && length > 1e-3f) {
                             cast.Direction = offset / length;
@@ -80,8 +82,9 @@ public class SkillState {
 
                     actor.Field.Broadcast(SkillDamagePacket.Target(cast, targets));
 
-                    if (swept && NpcSplashRules.Flies(path)) {
-                        shots.Add((path, targetId != 0 ? attackTargets[targetIndex] : null));
+                    // The shot flies in the direction this path's target packet sent.
+                    if (swept) {
+                        shots.Add((path, targetId != 0 ? pathTarget : null, cast.Direction));
                     }
                 }
             }
@@ -102,8 +105,8 @@ public class SkillState {
             LandSplashes(noTarget, paths!, attackTargets);
         }
 
-        foreach ((MagicPath path, IActor? homing) in shots) {
-            Fire(cast, path, homing);
+        foreach ((MagicPath path, IActor? homing, Vector3 direction) in shots) {
+            Fire(cast, path, homing, direction);
         }
 
         // A swept shot hits what it passes (Fire), not the attack range at the caster.
@@ -168,13 +171,13 @@ public class SkillState {
 
     // Flies one shot along a straight path and hits the actors its arrow box sweeps (NpcProjectileRules), with a
     // copy of the cast as it is now, so a later attack point of the cast does not change it.
-    private void Fire(SkillRecord cast, MagicPath path, IActor? homing) {
+    private void Fire(SkillRecord cast, MagicPath path, IActor? homing, Vector3 direction) {
         var shot = new SkillRecord(cast.Metadata, cast.CastUid, actor) {
             TargetUid = cast.TargetUid,
             ServerTick = cast.ServerTick,
             Position = cast.Position,
             CastPosition = cast.CastPosition,
-            Direction = cast.Direction,
+            Direction = direction,
             Rotation = cast.Rotation,
             SplashPlaced = cast.SplashPlaced,
         };
@@ -185,40 +188,38 @@ public class SkillState {
         SkillMetadataAttack attack = shot.Attack;
         SkillMetadataArrow arrow = attack.Arrow;
         FieldManager field = actor.Field;
-        Vector3 forward = NpcProjectileRules.Forward(cast.Direction, path);
+        Vector3 forward = NpcProjectileRules.Forward(direction, path);
         Vector3 start = NpcProjectileRules.Start(actor.Position, forward, path);
-        Vector3 end = NpcProjectileRules.End(start, forward, path);
+        Vector3 end = homing != null
+            ? NpcProjectileRules.AimPoint(homing.Position, HitHeight(homing))
+            : NpcProjectileRules.End(start, forward, path);
+        var flight = new NpcProjectileRules.Flight(start, end, path, homing != null);
         var hits = new NpcProjectileRules.Hits(arrow, path);
         var hitActors = new Dictionary<int, IActor>();
-        float seconds = (float) NpcProjectileRules.Step.TotalSeconds;
-        long lifeMs = path.LifeTime > 0 ? (long) (path.LifeTime * 1000) : long.MaxValue;
-        Vector3 current = start;
-        long elapsedMs = 0;
 
         void Tick() {
-            if (actor.IsDead || actor.Field != field) {
+            // The shot flies on when the caster dies; it ends with the caster gone from the field (chosen here: its
+            // hit is the caster's attack).
+            if (actor.Field != field) {
                 return;
             }
 
-            elapsedMs += (long) NpcProjectileRules.Step.TotalMilliseconds;
-            Vector3 goal = end;
+            Vector3? aim = null;
             if (homing != null) {
                 if (homing.IsDead || homing.Field != field) {
-                    return;
+                    homing = null;
+                } else {
+                    aim = NpcProjectileRules.AimPoint(homing.Position, HitHeight(homing));
                 }
-                goal = NpcProjectileRules.AimPoint(homing.Position, HitHeight(homing));
             }
-
-            (Vector3 next, bool arrived) = NpcProjectileRules.Move(current, goal, path.Velocity, seconds);
-            if (homing != null && NpcProjectileRules.PastDistance(start, next, path)) {
-                arrived = true;
+            if (flight.Next(aim) is not { } step) {
+                return;
             }
-            bool last = arrived || elapsedMs >= lifeMs;
+            (Vector3 from, Vector3 next, bool arrived) = step;
 
-            IReadOnlySet<int> excluded = hits.Excluded(elapsedMs);
-            Tools.Collision.Prism box = NpcProjectileRules.SweepBox(current, next, forward, arrow);
-            Vector3 from = current;
-            Vector3 travel = next - current;
+            IReadOnlySet<int> excluded = hits.Excluded(flight.ElapsedMs);
+            Tools.Collision.Prism box = NpcProjectileRules.SweepBox(from, next, forward, arrow);
+            Vector3 travel = next - from;
             Vector3 facing = travel.LengthSquared() > 1e-6f ? Vector3.Normalize(travel) : forward;
             List<IActor> found = field.GetTargets(actor, [NpcProjectileRules.QueryBox(box)], attack.Range, int.MaxValue)
                 .Where(target => target.ObjectId != actor.ObjectId && !excluded.Contains(target.ObjectId))
@@ -228,8 +229,7 @@ public class SkillState {
             foreach (IActor target in found) {
                 hitActors[target.ObjectId] = target;
             }
-            List<int> hit = hits.Take(found.Select(target => target.ObjectId).ToList(), last);
-            current = next;
+            List<int> hit = hits.Take(found.Select(target => target.ObjectId).ToList(), arrived);
 
             if (hit.Count > 0) {
                 shot.Targets.Clear();
@@ -240,12 +240,13 @@ public class SkillState {
                 actor.TargetAttack(shot);
             }
 
-            if (!last && !hits.Done) {
+            if (!flight.Ended && !hits.Done) {
                 field.Scheduler.Schedule(Tick, NpcProjectileRules.Step);
             }
         }
 
-        field.Scheduler.Schedule(Tick, NpcProjectileRules.Delay(path));
+        // The shot spawns at the delay and first moves one step later.
+        field.Scheduler.Schedule(Tick, NpcProjectileRules.Delay(path) + NpcProjectileRules.Step);
     }
 
     // An actor's hit box for a swept shot: a player's is the client's PC box, an npc's its shape.

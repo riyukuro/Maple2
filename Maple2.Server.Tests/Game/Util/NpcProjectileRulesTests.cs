@@ -164,4 +164,78 @@ public class NpcProjectileRulesTests {
     public void TheShotWaitsItsDelayAndSpawnTime() {
         Assert.That(NpcProjectileRules.Delay(Path(delay: 1) with { SpawnTime = 0.5f }), Is.EqualTo(System.TimeSpan.FromSeconds(1.5)));
     }
+
+    [Test]
+    public void EachPathTakesItsOwnTarget() {
+        // Three paths, two targets: one shot on each target, the third without one.
+        Assert.That(NpcProjectileRules.PathTargets(3, 2), Is.EqualTo(new[] { 0, 1, -1 }));
+        Assert.That(NpcProjectileRules.PathTargets(2, 2), Is.EqualTo(new[] { 0, 1 }));
+        Assert.That(NpcProjectileRules.PathTargets(1, 0), Is.EqualTo(new[] { -1 }));
+    }
+
+    [Test]
+    public void AnAttackIsSweptOnlyWhenEveryPathFliesAndSweeps() {
+        Assert.That(NpcProjectileRules.Swept(Wave(), [Path(), Path()]), Is.True);
+        // A path that does not fly keeps the attack's range hit.
+        Assert.That(NpcProjectileRules.Swept(Wave(), [Path(), Path(velocity: 0)]), Is.False);
+        Assert.That(NpcProjectileRules.Swept(Wave(), [Path(), Path(control0: new Vector3(0, 0.5f, 600))]), Is.False);
+        Assert.That(NpcProjectileRules.Swept(Wave(), []), Is.False);
+    }
+
+    [Test]
+    public void APathAboveAStandingPlayerKeepsItsRangeHit() {
+        // 40149001's path 5288: fired 400 up, level, with a box from 25 below to 125 above it.
+        SkillMetadataArrow arrow = Wave() with { Collision = new Vector3(100, 50, 125), CollisionAdd = new Vector3(0, 0, 25) };
+        Assert.That(NpcProjectileRules.ReachesGround(arrow, Path(fireZ: 400)), Is.False);
+        Assert.That(NpcProjectileRules.Sweeps(arrow, Path(fireZ: 400)), Is.False);
+        Assert.That(NpcProjectileRules.ReachesGround(arrow, Path(fireZ: 175)), Is.True);
+        // A path that comes down to the ground on its way reaches it.
+        MagicPath down = Path(fireZ: 400) with { Direction = new Vector3(0, 1, -0.5f), Distance = 1000 };
+        Assert.That(NpcProjectileRules.ReachesGround(arrow, down), Is.True);
+    }
+
+    [Test]
+    public void APathThatDoesNotRotateIsStillTurnedByItsRotateZ() {
+        Vector3 forward = NpcProjectileRules.Forward(new Vector3(1, 0, 0), Path(rotate: false, rotateZ: 90));
+        Assert.That(forward.X, Is.EqualTo(1).Within(1e-5));
+        Assert.That(forward.Y, Is.EqualTo(0).Within(1e-5));
+    }
+
+    [Test]
+    public void TheFirstStepMovesOneStepFromTheStart() {
+        var flight = new NpcProjectileRules.Flight(default, new Vector3(0, 1000, 0), Path(velocity: 500), homes: false);
+        var step = flight.Next(null);
+        Assert.That(step, Is.Not.Null);
+        Assert.That(step!.Value.From, Is.EqualTo(Vector3.Zero));
+        Assert.That(step.Value.To.Y, Is.EqualTo(50).Within(1e-3));
+        Assert.That(flight.ElapsedMs, Is.EqualTo(100));
+    }
+
+    [Test]
+    public void TheLifeTimeEndsTheFlightWithoutAHitTest() {
+        var flight = new NpcProjectileRules.Flight(default, new Vector3(0, 10000, 0), Path(velocity: 500) with { LifeTime = 0.3f }, homes: false);
+        Assert.That(flight.Next(null), Is.Not.Null);
+        Assert.That(flight.Next(null), Is.Not.Null);
+        Assert.That(flight.Next(null), Is.Null);
+        Assert.That(flight.Ended, Is.True);
+    }
+
+    [Test]
+    public void AShotWhoseTargetIsLostFliesOnToItsLastPoint() {
+        var flight = new NpcProjectileRules.Flight(default, new Vector3(0, 100, 0), Path(velocity: 500), homes: true);
+        Assert.That(flight.Next(new Vector3(0, 200, 0))!.Value.To.Y, Is.EqualTo(50).Within(1e-3));
+        // The target moved, then was lost: the shot keeps the last point it was given.
+        Assert.That(flight.Next(new Vector3(0, 120, 0))!.Value.To.Y, Is.EqualTo(100).Within(1e-3));
+        var last = flight.Next(null);
+        Assert.That(last!.Value.To.Y, Is.EqualTo(120).Within(1e-3));
+        Assert.That(last.Value.Arrived, Is.True);
+        Assert.That(flight.Next(null), Is.Null);
+    }
+
+    [Test]
+    public void AFollowingShotStopsAtItsDistance() {
+        var flight = new NpcProjectileRules.Flight(default, default, Path(velocity: 500, distance: 80), homes: true);
+        Assert.That(flight.Next(new Vector3(0, 1000, 0))!.Value.Arrived, Is.False);
+        Assert.That(flight.Next(new Vector3(0, 1000, 0))!.Value.Arrived, Is.True);
+    }
 }

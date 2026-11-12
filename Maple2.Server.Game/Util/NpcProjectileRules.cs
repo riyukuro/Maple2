@@ -9,8 +9,13 @@ namespace Maple2.Server.Game.Util;
 // client moves and tests it (CMagic, client/ms2/magicdata.cpp). The client sends the hit only for a shot of its own
 // player, so an npc's shot is swept here.
 // - Timing (FUN_14145de80): the shot waits the path's delayTime and spawnTime after the target packet, then flies;
-//   a lifeTime ends it early.
-// - Start (FUN_1414609e0): the caster's position plus fireOffset, turned to the cast direction when the path rotates.
+//   a lifeTime ends it early, without a hit test in that update.
+// - Start (FUN_1414609e0): the caster's position plus fireOffset, turned to the cast direction when the path rotates,
+//   and by -rotateZDegree either way. The client starts at the caster's fire node (its model's node position); the
+//   server has no node positions and starts at the feet.
+// - Targets: each path of the attack takes its own target of the target packet, in order.
+// - Once spawned the shot flies on when the caster dies (it needs the caster only at the start); a homing shot whose
+//   target dies or leaves flies on to the target's last point.
 // - Movement (FUN_14145ec50): a straight line at the path's velocity to its end: the target actor's position when the
 //   target packet names one (its middle, followed each step), else start + direction × distance + controlEndOffset.
 // - Box (FUN_141465b30 with the arrow row): from the last position to the new one, collision.X wide, from
@@ -25,14 +30,44 @@ public static class NpcProjectileRules {
     public static readonly TimeSpan Step = TimeSpan.FromMilliseconds(100);
 
     // Whether the attack's shot along the path is swept here: the path flies a straight line (no curve control
-    // points), starts at the caster (no fireFixed point), and the arrow has a collision box that can hit another
-    // actor.
+    // points), starts at the caster (no fireFixed point), the arrow has a collision box that can hit another actor,
+    // and the box can reach a player standing level with the caster somewhere along the line (ReachesGround).
     public static bool Sweeps(SkillMetadataArrow arrow, MagicPath path) {
         return NpcSplashRules.Flies(path)
                && path.ControlValue0 == Vector3.Zero && path.ControlValue1 == Vector3.Zero && !path.CatmullRom
                && path.FireFixed == Vector3.Zero
                && arrow.NonTarget != SkillTargetType.None
-               && arrow.Collision.X > 0 && arrow.Collision.Z + arrow.CollisionAdd.Z > 0;
+               && arrow.Collision.X > 0 && arrow.Collision.Z + arrow.CollisionAdd.Z > 0
+               && ReachesGround(arrow, path);
+    }
+
+    // Whether an attack's shots are swept: every path of it flies and sweeps. An attack with a path that does not
+    // fly or sweep keeps its hit in its range at the cast (chosen here), so no path loses its hit and no target is
+    // hit twice.
+    public static bool Swept(SkillMetadataArrow arrow, IReadOnlyList<MagicPath> paths) {
+        return paths.Count > 0 && paths.All(path => Sweeps(arrow, path));
+    }
+
+    // Whether the box, from the start to the end of the line, overlaps the height of a player's box standing level
+    // with the caster (0 to PlayerHeight above the caster's feet). The fire node the client starts from is unknown
+    // here, so a path that starts or ends well above the caster cannot be told from one drawn there; those keep
+    // their range hit (chosen here: 127 fixed and 2 homing npc paths in KR).
+    public static bool ReachesGround(SkillMetadataArrow arrow, MagicPath path) {
+        Vector3 direction = path.Direction.LengthSquared() > 1e-6f ? Vector3.Normalize(path.Direction) : Vector3.UnitY;
+        float startZ = path.FireOffset.Z;
+        float endZ = startZ + direction.Z * path.Distance + path.ControlEndOffsetValue.Z;
+        return MathF.Min(startZ, endZ) - arrow.CollisionAdd.Z <= PlayerHeight
+               && MathF.Max(startZ, endZ) + arrow.Collision.Z >= 0;
+    }
+
+    // The target of the target packet each path of an attack takes: the path's own index when there is one, else
+    // none (-1). A path homes on its target only for an overlap arrow.
+    public static int[] PathTargets(int pathCount, int targetCount) {
+        var result = new int[pathCount];
+        for (int i = 0; i < pathCount; i++) {
+            result[i] = i < targetCount ? i : -1;
+        }
+        return result;
     }
 
     public static bool Pierces(SkillMetadataArrow arrow) => arrow.BounceType is BounceType.Pierce or BounceType.Boomerang;
@@ -42,12 +77,10 @@ public static class NpcProjectileRules {
     // The wait between the target packet and the first step.
     public static TimeSpan Delay(MagicPath path) => TimeSpan.FromSeconds(Math.Max(0, path.DelayTime) + Math.Max(0, path.SpawnTime));
 
-    // The shot's forward on the ground: the cast direction for a rotating path (turned by rotateZDegree), else +Y.
+    // The shot's forward on the ground: the cast direction for a rotating path, else +Y; either turned by
+    // rotateZDegree (FUN_1414609e0 turns the direction by -rotZ in both cases).
     public static Vector3 Forward(Vector3 castDirection, MagicPath path) {
-        if (!path.Rotate) {
-            return Vector3.UnitY;
-        }
-        var flat = new Vector2(castDirection.X, castDirection.Y);
+        var flat = path.Rotate ? new Vector2(castDirection.X, castDirection.Y) : Vector2.UnitY;
         if (flat.LengthSquared() < 1e-6f) {
             flat = Vector2.UnitY;
         }
@@ -127,6 +160,56 @@ public static class NpcProjectileRules {
     // How far along the travel a point is, to take the nearest hit first.
     public static float Along(Vector3 from, Vector3 forward, Vector3 point) {
         return (point.X - from.X) * forward.X + (point.Y - from.Y) * forward.Y;
+    }
+
+    // The flight of one shot, one Step at a time from its spawn (Delay after the target packet).
+    public sealed class Flight {
+        private readonly Vector3 start;
+        private readonly MagicPath path;
+        private readonly bool homes;
+        private readonly long lifeMs;
+        private Vector3 goal;
+
+        // end: where a shot without a target flies; a homing shot flies to the point Next is given.
+        public Flight(Vector3 start, Vector3 end, MagicPath path, bool homes) {
+            this.start = start;
+            this.path = path;
+            this.homes = homes;
+            goal = end;
+            Position = start;
+            lifeMs = path.LifeTime > 0 ? (long) Math.Round(path.LifeTime * 1000) : long.MaxValue;
+        }
+
+        public Vector3 Position { get; private set; }
+        public long ElapsedMs { get; private set; }
+        public bool Ended { get; private set; }
+
+        // The next step, from the last position to the new one, or null once the flight ended (it reached its goal
+        // or its distance, or its lifeTime passed: that update tests nothing). target: the homing target's aim point
+        // now, null once it is lost, so the shot flies on to the last one.
+        public (Vector3 From, Vector3 To, bool Arrived)? Next(Vector3? target) {
+            if (Ended) {
+                return null;
+            }
+            if (homes && target is Vector3 point) {
+                goal = point;
+            }
+
+            ElapsedMs += (long) Step.TotalMilliseconds;
+            if (ElapsedMs >= lifeMs) {
+                Ended = true;
+                return null;
+            }
+
+            Vector3 from = Position;
+            (Vector3 next, bool arrived) = Move(from, goal, path.Velocity, (float) Step.TotalSeconds);
+            if (homes && PastDistance(start, next, path)) {
+                arrived = true;
+            }
+            Position = next;
+            Ended = arrived;
+            return (from, next, arrived);
+        }
     }
 
     // The hit bookkeeping of one shot.
