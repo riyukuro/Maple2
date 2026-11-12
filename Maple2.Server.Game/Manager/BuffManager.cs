@@ -26,7 +26,6 @@ public class BuffManager : IUpdatable {
     #endregion
     public IActor Actor { get; private set; }
     private readonly ConcurrentDictionary<int, List<Buff>> buffs = [];
-    public IDictionary<InvokeEffectType, IDictionary<int, InvokeRecord>> Invokes { get; init; }
     public IDictionary<BuffCompulsionEventType, IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>> Compulsions { get; init; }
     public ConcurrentDictionary<int, long> CooldownTimes { get; } = new(); // TODO: Cache this
     public ReflectRecord? Reflect;
@@ -34,7 +33,6 @@ public class BuffManager : IUpdatable {
 
     public BuffManager(IActor actor) {
         Actor = actor;
-        Invokes = new ConcurrentDictionary<InvokeEffectType, IDictionary<int, InvokeRecord>>();
         Compulsions = new ConcurrentDictionary<BuffCompulsionEventType, IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>>();
     }
 
@@ -142,9 +140,6 @@ public class BuffManager : IUpdatable {
                     ? existing.Refresh(startTick, endTick)
                     : existing.UpdateEndTime(endTick);
                 bool stacked = existing.Stack(stacks);
-                if (stacked) {
-                    StacksChanged(existing);
-                }
                 if (timeChanged | stacked) {
                     if (notifyField) {
                         owner.Field.Broadcast(BuffPacket.Update(existing));
@@ -176,7 +171,6 @@ public class BuffManager : IUpdatable {
 
         // Set Reflect if applicable
         SetReflect(buff);
-        SetInvoke(buff);
         SetCompulsionEvent(buff);
         SetShield(buff);
         SetUpdates(buff);
@@ -271,9 +265,9 @@ public class BuffManager : IUpdatable {
     }
 
 
-    // A buff's stack count changed: what is kept by count follows it, the invoke values and the owner's stat totals.
+    // A buff's stack count changed (Buff.Stack calls this): the owner's stat totals follow it. Invoke values and
+    // resistances are summed from the buffs held when they are read.
     public void StacksChanged(Buff buff) {
-        SetInvoke(buff);
         if (HasStatus(buff.Metadata)) {
             Actor.Stats.Refresh();
         }
@@ -282,30 +276,6 @@ public class BuffManager : IUpdatable {
     private static bool HasStatus(AdditionalEffectMetadata metadata) {
         return metadata.Status.Values.Count > 0 || metadata.Status.Rates.Count > 0
             || metadata.Status.SpecialValues.Count > 0 || metadata.Status.SpecialRates.Count > 0;
-    }
-
-    private void SetInvoke(Buff buff) {
-        if (buff.Metadata.InvokeEffect == null) {
-            return;
-        }
-
-        for (int i = 0; i < buff.Metadata.InvokeEffect.Types.Length; i++) {
-            var record = new InvokeRecord(buff.Id, buff.Metadata.InvokeEffect) {
-                Value = Buff.ByStacks(buff.Metadata.InvokeEffect.Values[i], buff.Stacks),
-                Rate = Buff.ByStacks(buff.Metadata.InvokeEffect.Rates[i], buff.Stacks),
-            };
-
-            // if exists, replace the record to support differentiating buff levels.
-            if (Invokes.TryGetValue(buff.Metadata.InvokeEffect.Types[i], out IDictionary<int, InvokeRecord>? nestedInvokeDic)) {
-                // Only this type's record: a buff with two invoke types keeps both.
-                nestedInvokeDic[buff.Id] = record;
-                continue;
-            }
-
-            Invokes.Add(buff.Metadata.InvokeEffect.Types[i], new ConcurrentDictionary<int, InvokeRecord> {
-                [buff.Id] = record,
-            });
-        }
     }
 
     private void SetCompulsionEvent(Buff buff) {
@@ -349,16 +319,28 @@ public class BuffManager : IUpdatable {
     }
 
     public (int, float) GetInvokeValues(InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
-        if (!Invokes.TryGetValue(invokeType, out var nestedInvokeDic))
-            return (0, 0f);
+        return SumInvokes(EnumerateBuffs().Select(buff => (buff.Metadata.InvokeEffect, buff.Stacks)), invokeType, skillId, skillGroup);
+    }
 
+    // The invoke values and rates of a type for a skill, summed over every buff held, each times its stack count
+    // (Buff.StackFactor), as the client sums them (additionalcli_2.cpp:938). The same buff from two casters counts
+    // twice, and a removed buff leaves nothing behind.
+    public static (int, float) SumInvokes(IEnumerable<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> held,
+            InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
         float value = 0, rate = 0;
-        foreach (InvokeRecord invoke in nestedInvokeDic.Values) {
-            AdditionalEffectMetadataInvokeEffect meta = invoke.Metadata;
-            if ((meta.SkillId != 0 && meta.SkillId == skillId) ||
-                (meta.SkillGroupId != 0 && skillGroup.Contains(meta.SkillGroupId))) {
-                value += invoke.Value;
-                rate += invoke.Rate;
+        foreach ((AdditionalEffectMetadataInvokeEffect? meta, int stacks) in held) {
+            if (meta == null) {
+                continue;
+            }
+            if ((meta.SkillId == 0 || meta.SkillId != skillId) &&
+                (meta.SkillGroupId == 0 || !skillGroup.Contains(meta.SkillGroupId))) {
+                continue;
+            }
+            for (int i = 0; i < meta.Types.Length; i++) {
+                if (meta.Types[i] == invokeType) {
+                    value += Buff.ByStacks(meta.Values[i], stacks);
+                    rate += Buff.ByStacks(meta.Rates[i], stacks);
+                }
             }
         }
 
@@ -387,7 +369,6 @@ public class BuffManager : IUpdatable {
                     Remove(buffResult.Id, buffResult.Caster.ObjectId);
                     continue;
                 }
-                StacksChanged(buffResult);
                 Actor.Field.Broadcast(BuffPacket.Update(buffResult));
             }
         }
@@ -516,15 +497,22 @@ public class BuffManager : IUpdatable {
         }
     }
 
+    // The effects of a worn item or gem that its wearer does not hold yet. Every stat refresh applies the worn
+    // items' effects again; an effect already held is left alone, so a refresh never adds a stack to it (168 item
+    // and gem effects have a stack maximum above 1) nor restarts it.
+    public static IEnumerable<ItemMetadataAdditionalEffect> ItemEffectsToAdd(IEnumerable<ItemMetadataAdditionalEffect> effects, Func<int, short, bool> held) {
+        return effects.Where(effect => !held(effect.Id, effect.Level));
+    }
+
     public void AddItemBuffs(Item item) {
-        foreach (ItemMetadataAdditionalEffect buff in item.Metadata.AdditionalEffects) {
+        foreach (ItemMetadataAdditionalEffect buff in ItemEffectsToAdd(item.Metadata.AdditionalEffects, (id, level) => HasBuff(id, level))) {
             AddBuff(Actor, Actor, buff.Id, buff.Level, Actor.Field.FieldTick);
         }
 
         if (item.Socket != null) {
             foreach (ItemGemstone? gem in item.Socket.Sockets) {
                 if (gem != null && Actor.Field.ItemMetadata.TryGet(gem.ItemId, out ItemMetadata? metadata)) {
-                    foreach (ItemMetadataAdditionalEffect buff in metadata.AdditionalEffects) {
+                    foreach (ItemMetadataAdditionalEffect buff in ItemEffectsToAdd(metadata.AdditionalEffects, (id, level) => HasBuff(id, level))) {
                         AddBuff(Actor, Actor, buff.Id, buff.Level, Actor.Field.FieldTick);
                     }
                 }
@@ -601,7 +589,6 @@ public class BuffManager : IUpdatable {
         }
 
 
-        Invokes.RemoveAll(id);
         Compulsions.RemoveAll(id);
 
         foreach (Buff buff in buffsToRemove) {

@@ -29,7 +29,7 @@ public class DotDamageRecord {
         };
         Type = DamageType.Normal;
 
-        // The whole amount is times the buff's stack count (Buff.StackFactor), before the not-kill cap.
+        // The whole amount is times the buff's stack count (Buff.AmountFactor), before the not-kill cap.
         long hpAmount = dotDamage.HpValue;
         if (!dotDamage.IsConstDamage) {
             if (dotDamage.Type != AttackType.None) {

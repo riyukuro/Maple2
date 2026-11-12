@@ -85,18 +85,23 @@ public class Buff : IUpdatable, IByteSerializable {
         return maxCount <= 0 ? 0 : Math.Clamp(requested, 1, maxCount);
     }
 
-    // What a buff's values are multiplied by: its stack count, 1 for a buff without one. The client sums a buff's
-    // status values, consume rates and resistance rates times the count (AdditionalCliList additionalcli_2.cpp:1110)
-    // and its invoke values and rates as well (additionalcli_2.cpp:938). KMS2 dot damage follows the count too: a
-    // dot of 0.8 % of the target's health hits for 3 times that at 3 stacks.
-    public static int StackFactor(int stacks) => Math.Max(1, stacks);
-    public int Factor => StackFactor(Stacks);
+    // What a buff's status, resistance and invoke values are multiplied by: its stack count, with no floor. The
+    // client sums a buff's status values, consume rates and resistance rates times the count (AdditionalCliList
+    // additionalcli_2.cpp:1110) and its invoke values and rates as well (additionalcli_2.cpp:938), so a buff
+    // without a stack maximum (count 0) adds none of them. The 16 such effects have no such value.
+    public static int StackFactor(int stacks) => Math.Max(0, stacks);
 
     public static long ByStacks(long value, int stacks) => value * StackFactor(stacks);
     public static float ByStacks(float rate, int stacks) => rate * StackFactor(stacks);
+
+    // What a dot or recovery amount is multiplied by: the stack count, 1 for a buff without one. KMS2 dot damage
+    // follows the count: a dot of 0.8 % of the target's health hits for 3 times that at 3 stacks. The client does
+    // not compute these amounts; counting a buff without a stack maximum once is chosen here (the 16 such effects
+    // are recoveries).
+    public static int AmountFactor(int stacks) => Math.Max(1, stacks);
     // A dot or recovery amount (an int in its packet) at a stack count.
     public static int AmountByStacks(long amount, int stacks) {
-        return (int) Math.Clamp(amount * StackFactor(stacks), int.MinValue, int.MaxValue);
+        return (int) Math.Clamp(amount * AmountFactor(stacks), int.MinValue, int.MaxValue);
     }
 
     // Applying a buff its owner already has restarts it when the reset condition is 0 or 2 and it has a duration:
@@ -142,7 +147,14 @@ public class Buff : IUpdatable, IByteSerializable {
             return false;
         }
 
-        if (!silent && Stacks >= Metadata.Property.MaxCount) {
+        if (silent) {
+            return true;
+        }
+        // What is kept by count follows first, so a skill started by reaching the maximum sees the new totals.
+        if (Stacks > 0) {
+            Owner.Buffs.StacksChanged(this);
+        }
+        if (Stacks >= Metadata.Property.MaxCount) {
             Owner.Buffs.TriggerEvent(Owner, Owner, Owner, EventConditionType.OnBuffStacksReached, buffId: Id);
         }
 

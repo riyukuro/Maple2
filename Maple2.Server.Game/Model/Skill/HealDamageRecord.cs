@@ -23,7 +23,7 @@ public class HealDamageRecord : IByteSerializable {
             multiplier = 1.5f;
         }
 
-        // Times the buff's stack count as a dot is (Buff.StackFactor); chosen here, no KMS2 heal of a stacked buff
+        // Times the buff's stack count as a dot is (Buff.AmountFactor); chosen here, no KMS2 heal of a stacked buff
         // is known.
         HpAmount = Buff.AmountByStacks((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total
                                            + recovery.RecoveryRate * caster.Stats.Values[BasicAttribute.MagicalAtk].Current * multiplier), stacks);

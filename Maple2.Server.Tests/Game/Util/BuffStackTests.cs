@@ -1,16 +1,60 @@
-﻿using Maple2.Server.Game.Model;
+﻿using System.Linq;
+using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Model;
 
 namespace Maple2.Server.Tests.Game.Util;
 
 // A stacked buff's values: status values and rates, dot and recovery amounts at 1 stack, 2 stacks and the maximum.
 public class BuffStackTests {
     [Test]
-    public void FactorIsTheCountAndAtLeastOne() {
+    public void FactorIsTheCount() {
         Assert.That(Buff.StackFactor(1), Is.EqualTo(1));
         Assert.That(Buff.StackFactor(2), Is.EqualTo(2));
         Assert.That(Buff.StackFactor(10), Is.EqualTo(10));
-        // A buff without a stack maximum has count 0 and still counts once.
-        Assert.That(Buff.StackFactor(0), Is.EqualTo(1));
+        // A buff without a stack maximum has count 0: its status and invoke values count 0 times, as in the client,
+        // and its dot or recovery amount once.
+        Assert.That(Buff.StackFactor(0), Is.EqualTo(0));
+        Assert.That(Buff.ByStacks(12L, 0), Is.EqualTo(0));
+        Assert.That(Buff.AmountFactor(0), Is.EqualTo(1));
+        Assert.That(Buff.AmountByStacks(150, 0), Is.EqualTo(150));
+    }
+
+    // A stat refresh applies a worn item's effects again: one already held is skipped, at its level or above.
+    [Test]
+    public void ItemEffectHeldIsNotAppliedAgain() {
+        ItemMetadataAdditionalEffect[] effects = [new(90050809, 1, false), new(90050816, 1, false), new(90050820, 2, false)];
+        var heldLevels = new System.Collections.Generic.Dictionary<int, short> { [90050809] = 1, [90050820] = 1 };
+        bool Held(int id, short level) => heldLevels.TryGetValue(id, out short have) && have >= level;
+
+        Assert.That(BuffManager.ItemEffectsToAdd(effects, Held).Select(effect => effect.Id), Is.EqualTo(new[] { 90050816, 90050820 }));
+        // Applied once, a second refresh adds nothing.
+        heldLevels[90050816] = 1;
+        heldLevels[90050820] = 2;
+        Assert.That(BuffManager.ItemEffectsToAdd(effects, Held), Is.Empty);
+    }
+
+    // Invoke values are summed over the buffs held: times the stack count, the same buff from two casters twice,
+    // only the asked type of a buff with two types, and only for the buff's skill or skill group.
+    [Test]
+    public void InvokeValuesSumOverHeldBuffs() {
+        var bySkill = new AdditionalEffectMetadataInvokeEffect([InvokeEffectType.IncreaseSkillDamage, InvokeEffectType.IncreaseEffectDuration],
+            [0f, 500f], [0.1f, 0f], 0, 0, SkillId: 10500001, SkillGroupId: 0);
+        var byGroup = new AdditionalEffectMetadataInvokeEffect([InvokeEffectType.IncreaseSkillDamage], [0f], [0.05f], 0, 0, SkillId: 0, SkillGroupId: 7);
+
+        (int value, float rate) = BuffManager.SumInvokes([(bySkill, 3), (bySkill, 1), (byGroup, 2), (null, 1)],
+            InvokeEffectType.IncreaseSkillDamage, 10500001, 7);
+        Assert.That(value, Is.EqualTo(0));
+        Assert.That(rate, Is.EqualTo(0.5f).Within(1e-6f));
+
+        (value, rate) = BuffManager.SumInvokes([(bySkill, 3), (bySkill, 1)], InvokeEffectType.IncreaseEffectDuration, 10500001);
+        Assert.That(value, Is.EqualTo(2000));
+        Assert.That(rate, Is.EqualTo(0f));
+
+        // Another skill, and a caster's buff removed.
+        Assert.That(BuffManager.SumInvokes([(bySkill, 3)], InvokeEffectType.IncreaseSkillDamage, 10500002), Is.EqualTo((0, 0f)));
+        Assert.That(BuffManager.SumInvokes([(bySkill, 1)], InvokeEffectType.IncreaseSkillDamage, 10500001).Item2, Is.EqualTo(0.1f).Within(1e-6f));
     }
 
     // The counts a buff with the maximum reaches (Buff.AddStacks) and its status value at each.
