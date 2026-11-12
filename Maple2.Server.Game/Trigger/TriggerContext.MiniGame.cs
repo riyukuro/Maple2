@@ -140,19 +140,9 @@ public partial class TriggerContext {
         }
     }
 
-    public void StartMiniGameRound(int boxId, int round) {
-        IEnumerable<FieldPlayer> players = PlayersInBox(boxId);
-
-        foreach (FieldPlayer player in players) {
-            if (player.Session.MiniGameRecord == null) {
-                continue;
-            }
-            if (player.Session.MiniGameRecord.TotalRounds == player.Session.MiniGameRecord.MinRound) {
-                return;
-            }
-            player.Session.Send(MassiveEventPacket.Round(round, player.Session.MiniGameRecord.TotalRounds, player.Session.MiniGameRecord.MinRound));
-        }
-    }
+    // KMS2 sends nothing for the round start: the round UI comes from set_event_ui_round alone, which the
+    // scripts that show one call themselves. A second one here replayed the round banner a few seconds later.
+    public void StartMiniGameRound(int boxId, int round) { }
 
     public void UnsetMiniGameAreaForHack() { }
 

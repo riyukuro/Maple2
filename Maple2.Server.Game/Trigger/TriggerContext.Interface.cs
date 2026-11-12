@@ -98,7 +98,7 @@ public partial class TriggerContext {
         }
     }
 
-    public void SetEventUiRound(int[] rounds, int arg3, int vOffset) {
+    public void SetEventUiRound(int[] rounds, int vOffset, int arg3) {
         DebugLog("[SetEventUIRound] rounds:{Rounds}, arg3:{Arg3}, vOffset:{VOffset}", string.Join(", ", rounds), arg3, vOffset);
         int round = rounds.ElementAtOrDefault(0, 1);
         int maxRound = rounds.ElementAtOrDefault(1, 1);
@@ -109,18 +109,32 @@ public partial class TriggerContext {
         Broadcast(MassiveEventPacket.Round(round, maxRound, minRound, vOffset));
     }
 
+    // The boxes a banner goes to: "!id" is everyone outside the box. An action with no box (most of them) or
+    // box 0 goes to the whole field, as KMS2 sends it.
+    public static (int[] In, int[] NotIn) EventUiBoxes(string[] boxIds) {
+        var inBoxes = new List<int>();
+        var notInBoxes = new List<int>();
+        foreach (string boxId in boxIds) {
+            string id = boxId.Trim();
+            if (id.StartsWith('!')) {
+                if (int.TryParse(id.AsSpan(1), out int notBoxId)) {
+                    notInBoxes.Add(notBoxId);
+                }
+            } else if (int.TryParse(id, out int inBoxId)) {
+                inBoxes.Add(inBoxId);
+            }
+        }
+        if (inBoxes.Count == 0 && notInBoxes.Count == 0) {
+            inBoxes.Add(0);
+        }
+        return (inBoxes.ToArray(), notInBoxes.ToArray());
+    }
+
     public void SetEventUiScript(BannerType type, string script, int duration, string[] boxIds) {
         DebugLog("[SetEventUIScript] type:{Type}, script:{Script}, duration:{Duration}, boxIds:{BoxIds}", type, script, duration, string.Join(", ", boxIds));
         ByteWriter packet = MassiveEventPacket.Banner(type, script, duration);
 
-        int[] notBoxIdInts = boxIds
-            .Where(id => id.StartsWith("!")).
-            Select(id => int.Parse(id.Substring(1)))
-            .ToArray();
-        int[] boxIdInts = boxIds
-            .Where(id => !id.StartsWith("!"))
-            .Select(int.Parse)
-            .ToArray();
+        (int[] boxIdInts, int[] notBoxIdInts) = EventUiBoxes(boxIds);
 
         foreach (int notBoxId in notBoxIdInts) {
             foreach (FieldPlayer player in PlayersNotInBox(notBoxId)) {
