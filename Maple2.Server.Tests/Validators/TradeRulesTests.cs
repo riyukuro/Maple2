@@ -1,11 +1,55 @@
+using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Validators;
 
 public class TradeRulesTests {
+    // Trade 0, a request: a block either way and oneself are answered with 6, past TradeDistance with 1.
+    [TestCase(1L, 2L, false, false, 0f, null)]
+    [TestCase(1L, 1L, false, false, 0f, TradeError.s_trade_error_decline)]
+    [TestCase(1L, 2L, true, false, 0f, TradeError.s_trade_error_decline)]
+    [TestCase(1L, 2L, false, true, 0f, TradeError.s_trade_error_decline)]
+    [TestCase(1L, 2L, false, false, 500f, null)]
+    [TestCase(1L, 2L, false, false, 501f, TradeError.s_trade_error_distance)]
+    [TestCase(1L, 2L, true, false, 900f, TradeError.s_trade_error_decline)]
+    public void Request(long requesterId, long targetId, bool blockedByRequester, bool blockedByTarget, float distance, TradeError? expected) {
+        Assert.That(TradeRules.CheckRequest(requesterId, targetId, blockedByRequester, blockedByTarget,
+            new Vector3(100, 200, 300), new Vector3(100 + distance, 200, 300), 500), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void RequestDistanceIn3D() {
+        // 300, 400 and 0 apart is 500: still near enough; 150 higher as well is past it.
+        Assert.That(TradeRules.CheckRequest(1, 2, false, false, Vector3.Zero, new Vector3(300, 400, 0), 500), Is.Null);
+        Assert.That(TradeRules.CheckRequest(1, 2, false, false, Vector3.Zero, new Vector3(300, 400, 150), 500),
+            Is.EqualTo(TradeError.s_trade_error_distance));
+    }
+
+    [Test]
+    public void RequestWithNoDistanceLimit() {
+        // A constants table without TradeDistance reads 0: no distance limit then.
+        Assert.That(TradeRules.CheckRequest(1, 2, false, false, Vector3.Zero, new Vector3(100000, 0, 0), 0), Is.Null);
+    }
+
+    [Test]
+    public void RequestErrorPacket() {
+        // OnTradeRequestFailed after the Trade sub-type: the code byte, the name (the text's {0}), an int and the level int.
+        byte[] bytes = TradePacket.Error(TradeError.s_trade_error_distance, name: "Ab").ToArray();
+        var packet = new ByteReader(bytes, 0);
+        packet.ReadShort(); // opcode
+        packet.ReadByte(); // sub-type
+        Assert.That(packet.ReadByte(), Is.EqualTo(1));
+        Assert.That(packet.ReadUnicodeString(), Is.EqualTo("Ab"));
+        Assert.That(packet.ReadInt(), Is.EqualTo(0));
+        Assert.That(packet.ReadInt(), Is.EqualTo(0));
+        Assert.That(packet.Available, Is.EqualTo(0));
+    }
+
     // Trade 0x0049 mode 8 after the mode byte: i64 item uid, i32 amount, i32 trade slot.
     [TestCase(1, true)]
     [TestCase(100, true)]

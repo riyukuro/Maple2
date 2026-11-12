@@ -1,4 +1,6 @@
+using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 
 namespace Maple2.Model.Validators;
@@ -7,6 +9,22 @@ namespace Maple2.Model.Validators;
 // The client asks its own "may be traded" check before it sends the packet: no binding, and
 // either the trade flag or the limited-trade flag with trades left. The server asks the same.
 public static class TradeRules {
+    // Trade 0 (a request, CTradeManagerEx::SendTradeMode0 from the player menu): the client tests only its own
+    // trade window and its GM action block before it sends, and the one asked tests only its "refuse trades"
+    // option. Who may be asked is the server's to say, in the answers the client has a text for
+    // (OnTradeRequestFailed): 6 "not possible with this target" for oneself and a block either way,
+    // 1 "too far away" past the constants' TradeDistance (500, 0 for no limit).
+    public static TradeError? CheckRequest(long requesterId, long targetId, bool blockedByRequester, bool blockedByTarget,
+                                           Vector3 requester, Vector3 target, int maxDistance) {
+        if (requesterId == targetId || blockedByRequester || blockedByTarget) {
+            return TradeError.s_trade_error_decline;
+        }
+        if (maxDistance > 0 && Vector3.Distance(requester, target) > maxDistance) {
+            return TradeError.s_trade_error_distance;
+        }
+        return null;
+    }
+
     public static bool IsOfferAmount(int amount) {
         return amount > 0;
     }

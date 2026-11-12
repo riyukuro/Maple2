@@ -1,4 +1,5 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Manager;
@@ -79,6 +80,13 @@ public class TradeHandler : FieldPacketHandler {
         long characterId = packet.ReadLong();
         if (!session.Field.TryGetPlayerById(characterId, out FieldPlayer? target)) {
             session.Send(TradePacket.Error(s_trade_error_decline));
+            return;
+        }
+
+        if (TradeRules.CheckRequest(session.CharacterId, characterId, session.Buddy.IsBlocked(characterId),
+                target.Session.Buddy.IsBlocked(session.CharacterId), session.Player.Position, target.Position,
+                session.ServerTableMetadata.ConstantsTable.TradeDistance) is { } error) {
+            session.Send(TradePacket.Error(error, name: target.Value.Character.Name));
             return;
         }
 
