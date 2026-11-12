@@ -90,6 +90,7 @@ public static class ConditionUtil {
             case ConditionType.field_mission:
             case ConditionType.quest_alliance:
             case ConditionType.pet_catch_id:
+            case ConditionType.pet_catch_grade:
             case ConditionType.openItemBox:
             case ConditionType.dungeon_clear:
             case ConditionType.dungeon_clear_group:

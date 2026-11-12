@@ -156,6 +156,8 @@ public sealed class FieldPet : FieldNpc {
         if (capturer is FieldPlayer player) {
             // The capture counts for the pet catch conditions: the pet's item id (94000006 "Capture $item:61000153$").
             player.Session.ConditionUpdate(ConditionType.pet_catch_id, codeLong: pet.Id);
+            // The pet's rarity (70600024 "Capture a normal pet" 1, 70600034 "Capture a rare pet" 2).
+            player.Session.ConditionUpdate(ConditionType.pet_catch_grade, codeLong: pet.Rarity);
             player.Session.Send(FieldPacket.DropItem(fieldItem));
         } else {
             Field.Broadcast(FieldPacket.DropItem(fieldItem));

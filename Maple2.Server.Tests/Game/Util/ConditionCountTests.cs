@@ -132,6 +132,16 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: petId), Is.EqualTo(expected));
     }
 
+    // A captured pet counts for pet_catch_grade when its rarity is the code (70600034 "Capture a rare pet": 2); the
+    // event rows without a code count any capture.
+    [TestCase(2, true)]
+    [TestCase(1, false)]
+    public void PetCatchGrade_CountsTheListedRarity(int rarity, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.pet_catch_grade, 1, new ConditionMetadata.Parameters(Integers: [2]), null);
+        Assert.That(condition.Check(null!, codeLong: rarity), Is.EqualTo(expected));
+        Assert.That(new ConditionMetadata(ConditionType.pet_catch_grade, 15, null, null).Check(null!, codeLong: rarity), Is.True);
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
