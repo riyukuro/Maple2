@@ -61,6 +61,12 @@ public record ItemMetadataProperty(
     // after CItem::FUN_140523c40 failed, item.cpp:2760), so the server creates no such item (PlayedClientItems.CanCreate).
     // False when the option is not set; the JSON store omits false values, so the default must be false.
     public bool NotInPlayedClient { get; init; }
+    // The property element's iconCode (CItemData, commonfiles/itemdata.cpp:344): a maid recipe's WorkbenchType names
+    // the cubes that serve as its workbench by it. Null in a row ingested before this field existed.
+    public int? IconCode { get; init; }
+    // The property element's rank (CItemData::GetRank, 0: none), the rarity a maid recipe ingredient that is not
+    // equipment must have. Null in a row ingested before this field existed.
+    public int? Rank { get; init; }
 }
 
 public record ItemMetadataCustomize(

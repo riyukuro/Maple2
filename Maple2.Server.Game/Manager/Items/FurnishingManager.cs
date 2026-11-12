@@ -310,6 +310,7 @@ public class FurnishingManager {
                 using GameStorage.Request db = session.GameStorage.Context();
                 if (db.DeleteMaid(itemUid)) {
                     session.Send(UserMaidPacket.Remove(itemUid));
+                    session.Send(MaidCraftItemPacket.Remove(itemUid)); // its craft, if any, goes too
                 }
             }
         }

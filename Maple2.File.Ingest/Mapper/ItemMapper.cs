@@ -230,6 +230,8 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     LimitBreakMaxLevel: data.property.unlimitedEnchantMaxGrade
                 ) {
                     Fusionable = data.fusion.fusionable != 0,
+                    IconCode = data.property.iconCode,
+                    Rank = data.property.rank,
                     NotInPlayedClient = known != null && !known.Contains(id),
                 },
                 Customize: new ItemMetadataCustomize(

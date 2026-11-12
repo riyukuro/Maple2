@@ -1164,6 +1164,15 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("Id")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("CraftDuration")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CraftRecipeId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CraftStartTime")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreationTime")
                         .HasColumnType("datetime(6)");
 

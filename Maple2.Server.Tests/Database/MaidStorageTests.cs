@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System;
 using System.Reflection;
@@ -188,6 +188,27 @@ public class MaidStorageTests {
             Assert.That(maid?.Mood, Is.EqualTo(40));
             Assert.That(maid?.CreationTime, Is.EqualTo(1700000000));
             Assert.That(maid?.ExpiryTime, Is.EqualTo(1702592000));
+        });
+    }
+
+    [Test]
+    public void Save_WritesTheCraft_AndAMoveKeepsIt() {
+        PlotCube cube = PlaceCube();
+        Hire(cube.Id);
+        using (GameStorage.Request db = storage.Context()) {
+            Maid maid = db.GetMaid(cube.Id)!;
+            maid.CraftRecipeId = 4101;
+            maid.CraftStartTime = 1700000500;
+            maid.CraftDuration = 3600;
+            Assert.That(db.SaveMaid(maid), Is.True);
+            Assert.That(db.MoveMaid(cube.Id, StoredUid)?.CraftRecipeId, Is.EqualTo(4101));
+        }
+        using GameStorage.Request check = storage.Context();
+        Maid? stored = check.GetMaid(StoredUid);
+        Assert.Multiple(() => {
+            Assert.That(stored?.CraftRecipeId, Is.EqualTo(4101));
+            Assert.That(stored?.CraftStartTime, Is.EqualTo(1700000500));
+            Assert.That(stored?.CraftDuration, Is.EqualTo(3600));
         });
     }
 

@@ -17,6 +17,11 @@ public class Maid : IByteSerializable {
     public required long CreationTime { get; init; }
     public required long ExpiryTime { get; set; } // the contract end; the client shows the maid as expired after it
     public MaidProfile Profile { get; set; } = new();
+    // The running craft (MaidCraftItem, CManufacture): the recipe (0: none), its start in epoch seconds and its lead
+    // time in seconds. The product is ready at CraftStartTime + CraftDuration.
+    public int CraftRecipeId { get; set; }
+    public long CraftStartTime { get; set; }
+    public int CraftDuration { get; set; }
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteByte(); // the maid's mode (CMaid::SetMode)

@@ -1150,6 +1150,9 @@ public partial class FieldManager {
             Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
             if (hired || announce) {
                 SendToMaidOwner(slot.Maid.OwnerId, UserMaidPacket.Add(slot.Maid));
+                if (MaidRules.IsCrafting(slot.Maid)) {
+                    SendToMaidOwner(slot.Maid.OwnerId, MaidCraftItemPacket.Add(slot.Maid));
+                }
             }
         });
     }
@@ -1168,6 +1171,9 @@ public partial class FieldManager {
         });
         // The owner's maid windows drop the cube uid (a picked-up maid comes back under its storage item uid).
         SendToMaidOwner(removed.Maid.OwnerId, UserMaidPacket.Remove(cubeUid));
+        if (MaidRules.IsCrafting(removed.Maid)) {
+            SendToMaidOwner(removed.Maid.OwnerId, MaidCraftItemPacket.Remove(cubeUid));
+        }
     }
 
     // Removes the maids whose cube is no longer on any plot of the field (a plot forfeited or expired, its cubes

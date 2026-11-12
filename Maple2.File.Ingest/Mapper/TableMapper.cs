@@ -2349,7 +2349,40 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
         }
 
-        return new MaidTable(results, exps);
+        // table/maidrecipe.xml <recipe/>: the recipes a maid crafts (CMaidRecipeTable::Load).
+        var recipes = new Dictionary<int, MaidTable.Recipe>();
+        foreach (XmlElement row in MaidRows(reader, "table/maidrecipe.xml", "ms2/recipe")) {
+            if (!MaidRowAvailable(row)) continue;
+            MaidTable.Recipe? recipe = MaidTable.RecipeRow(row.GetAttribute);
+            if (recipe == null) {
+                Console.WriteLine($"Maid recipe {row.GetAttribute("Id")} dropped: no id, or an ingredient tag the server does not know");
+                continue;
+            }
+            recipes[recipe.Id] = recipe;
+        }
+
+        // table/maidrecipegroup.xml <group GroupID RecipeIDs RequireLevels/>: a maid's recipes by group id
+        // (CMaidRecipeGroupTable::Load). A row whose two lists differ in length fails the client's whole table, so no
+        // group is kept then.
+        var groups = new Dictionary<int, IReadOnlyList<MaidTable.RecipeLevel>>();
+        foreach (XmlElement row in MaidRows(reader, "table/maidrecipegroup.xml", "ms2/group")) {
+            if (!MaidRowAvailable(row)) continue;
+            int.TryParse(row.GetAttribute("GroupID"), out int groupId);
+            IReadOnlyList<MaidTable.RecipeLevel>? group = MaidTable.GroupRow(row.GetAttribute("RecipeIDs"), row.GetAttribute("RequireLevels"));
+            if (group == null) {
+                Console.WriteLine($"Maid recipe group {groupId}: RecipeIDs and RequireLevels differ in count, no maid recipe group kept");
+                groups.Clear();
+                break;
+            }
+            groups[groupId] = group;
+        }
+
+        return new MaidTable(results, exps, recipes, groups);
+    }
+
+    // IsElementAvailable and the locale list, as the client's maid recipe tables check each row.
+    private static bool MaidRowAvailable(XmlElement row) {
+        return FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"));
     }
 
     private static IEnumerable<XmlElement> MaidRows(M2dReader reader, string file, string path) {

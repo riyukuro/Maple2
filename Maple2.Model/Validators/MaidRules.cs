@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
@@ -125,6 +126,135 @@ public static class MaidRules {
         }
         maid.ExpiryTime = PaidUntil(maid.ExpiryTime, now, periodDays);
         return true;
+    }
+
+    // Maid crafting (MaidCraftItem, CManufactureManager and UIManufactureDialog, client/ms2/manufacturemanager.cpp).
+    // The results the client shows by number (CManufactureManager::GetMaidText).
+    public const int CraftStarted = 1;
+    public const int CraftReceived = 2;
+    public const int CraftCancelled = 4;
+    public const int CraftNoRecord = 7;
+    public const int CraftNotEnough = 8;
+    public const int CraftNotReady = 0xd;
+    public const int CraftExpired = 0x12;
+
+    public static bool IsCrafting(Maid maid) => maid.CraftRecipeId != 0;
+
+    // CManufacture::GetReadyTime.
+    public static long CraftReadyTime(Maid maid) => maid.CraftStartTime + maid.CraftDuration;
+
+    // The ingredient count a recipe takes at the ReduceMaidRecipe rate (CGameRule::FUN_14047b860, float math).
+    public static int IngredientNeed(int count, float rate) {
+        return rate > 0 ? (int) Math.Max(1.0f, count * (1.0f - rate)) : count;
+    }
+
+    // The affinity exp a finished recipe gives at the MaidExp rate (CGameRule::FUN_14047b7c0).
+    public static int ExpGain(int exp, float rate) {
+        return rate > 0 ? (int) Math.Max(exp, exp * (1.0 + rate)) : exp;
+    }
+
+    // The lead time of a recipe in seconds at the maid's mood (leadTimes[CMaid::GetMoodGrade]).
+    public static int LeadTime(MaidTable.Recipe recipe, int mood) {
+        int grade = MoodGrade(mood);
+        return grade < recipe.LeadTimes.Length ? Math.Max(0, recipe.LeadTimes[grade]) : 0;
+    }
+
+    // The level a maid needs for a recipe of its group (CMaidRecipeGroupTable::GetRequireLevel); null when the group
+    // does not list the recipe. The craft dialog lists CMaidRecipeGroupTable::Find(maid id), so the group is the
+    // maid id.
+    public static int? RequireLevel(IReadOnlyDictionary<int, IReadOnlyList<MaidTable.RecipeLevel>>? groups, int maidId, int recipeId) {
+        if (groups == null || !groups.TryGetValue(maidId, out IReadOnlyList<MaidTable.RecipeLevel>? group)) {
+            return null;
+        }
+        return group.FirstOrDefault(entry => entry.RecipeId == recipeId)?.RequireLevel;
+    }
+
+    // An owned item that counts toward an ingredient: by tag (any rarity) or by id. An id ingredient that is not
+    // equipment (item type 1) needs the item's rank as its rarity when it has one; equipment takes any rarity (the
+    // client's ingredient rarity, never set by the table). Expired and locked items do not count.
+    public static bool Fills(MaidTable.Ingredient ingredient, Item item) {
+        if (item.IsExpired() || item.IsLocked || item.Amount <= 0) {
+            return false;
+        }
+        if (ingredient.Tag != ItemTag.None) {
+            return item.Metadata.Property.Tag == ingredient.Tag;
+        }
+        if (item.Id != ingredient.ItemId) {
+            return false;
+        }
+        int rarity = item.Metadata.Property.Type == 1 ? 0 : item.Metadata.Property.Rank ?? 0;
+        return rarity == 0 || item.Rarity == rarity;
+    }
+
+    // The items (uid, amount) a recipe takes from owned at the ReduceMaidRecipe rate; null when they are short. An
+    // item counts once across all the ingredients.
+    public static List<(long Uid, int Amount)>? TakeIngredients(IList<Item> owned, MaidTable.Recipe recipe, float reduceRate) {
+        var left = owned.ToDictionary(item => item.Uid, item => item.Amount);
+        var taken = new List<(long Uid, int Amount)>();
+        foreach (MaidTable.Ingredient ingredient in recipe.Ingredients) {
+            int need = IngredientNeed(ingredient.Count, reduceRate);
+            foreach (Item item in owned) {
+                if (need <= 0) break;
+                if (!Fills(ingredient, item)) continue;
+                int take = Math.Min(need, left[item.Uid]);
+                if (take <= 0) continue;
+                left[item.Uid] -= take;
+                need -= take;
+                taken.Add((item.Uid, take));
+            }
+            if (need > 0) {
+                return null;
+            }
+        }
+        return taken.GroupBy(entry => entry.Uid).Select(group => (group.Key, group.Sum(entry => entry.Amount))).ToList();
+    }
+
+    // A recipe's workbench (WorkbenchType > 0): a cube with that icon code on a plot of the field the account owns
+    // (CubeMapInformationService::FUN_1410d2fb0). ownedCubes are the cubes of those plots.
+    public static bool HasWorkbench(int workbenchType, IEnumerable<PlotCube> ownedCubes) {
+        return workbenchType <= 0 || ownedCubes.Any(cube => cube.Metadata.Property.IconCode == workbenchType);
+    }
+
+    // Whether the owner may start recipe with maid (the request names it): the maid crafts nothing yet, its group
+    // lists the recipe at a level it has. The contract and the ingredients are checked after (CraftExpired,
+    // CraftNotEnough).
+    public static bool CanStart(Maid maid, long accountId, MaidTable.Recipe? recipe,
+                                IReadOnlyDictionary<int, IReadOnlyList<MaidTable.RecipeLevel>>? groups) {
+        if (recipe == null || maid.OwnerId != accountId || IsCrafting(maid)) {
+            return false;
+        }
+        int? level = RequireLevel(groups, maid.MaidId, recipe.Id);
+        return level != null && level <= maid.Level;
+    }
+
+    public static void StartCraft(Maid maid, MaidTable.Recipe recipe, long now) {
+        maid.CraftRecipeId = recipe.Id;
+        maid.CraftStartTime = now;
+        maid.CraftDuration = LeadTime(recipe, maid.Mood);
+    }
+
+    // The receive check: CraftNoRecord without a craft, CraftNotReady before the ready time, else CraftReceived.
+    public static int ReceiveResult(Maid maid, long now) {
+        if (!IsCrafting(maid)) {
+            return CraftNoRecord;
+        }
+        return CraftReadyTime(maid) <= now ? CraftReceived : CraftNotReady;
+    }
+
+    // A received or cancelled craft leaves the maid free.
+    public static void ClearCraft(Maid maid) {
+        maid.CraftRecipeId = 0;
+        maid.CraftStartTime = 0;
+        maid.CraftDuration = 0;
+    }
+
+    // The affinity and mood a finished recipe gives; returns the exp gained.
+    public static int Finish(Maid maid, MaidTable.Recipe recipe, float expRate, IReadOnlyDictionary<int, int> exps, int affinityMax) {
+        int exp = ExpGain(recipe.MaidExp, expRate);
+        AddExp(maid, exp, exps, affinityMax);
+        AddMood(maid, recipe.MaidMood);
+        ClearCraft(maid);
+        return exp;
     }
 
     // The maid dialog's debug buttons (Maid modes 5-9; 10 is Expiry). Mood moves by moodStep.

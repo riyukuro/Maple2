@@ -12,6 +12,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
+using Maple2.Model.Validators;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -369,7 +370,10 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Buddy.Load();
         Send(HomeBlockPacket.Load(db.GetHomeBlocks(AccountId)));
-        Send(UserMaidPacket.List(db.GetMaids(AccountId)));
+        IList<Maid> maids = db.GetMaids(AccountId);
+        Send(UserMaidPacket.List(maids));
+        // The crafts of those maids, keyed by the maid uid (CManufactureManager).
+        Send(MaidCraftItemPacket.List(maids.Where(MaidRules.IsCrafting).ToList()));
 
         try {
             PlayerConfigResponse configResponse = World.PlayerConfig(new PlayerConfigRequest {

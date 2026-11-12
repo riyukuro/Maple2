@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -20,6 +20,10 @@ internal class Maid {
     public DateTime CreationTime { get; set; }
     public DateTime ExpiryTime { get; set; }
     public required Maple2.Model.Game.MaidProfile Profile { get; set; }
+    // The running craft (MaidCraftItem): recipe id (0: none), start in epoch seconds, lead time in seconds.
+    public int CraftRecipeId { get; set; }
+    public long CraftStartTime { get; set; }
+    public int CraftDuration { get; set; }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Maid?(Maple2.Model.Game.Maid? other) {
@@ -34,6 +38,9 @@ internal class Maid {
             CreationTime = other.CreationTime.FromEpochSeconds(),
             ExpiryTime = other.ExpiryTime.FromEpochSeconds(),
             Profile = other.Profile,
+            CraftRecipeId = other.CraftRecipeId,
+            CraftStartTime = other.CraftStartTime,
+            CraftDuration = other.CraftDuration,
         };
     }
 
@@ -50,6 +57,9 @@ internal class Maid {
             CreationTime = other.CreationTime.ToEpochSeconds(),
             ExpiryTime = other.ExpiryTime.ToEpochSeconds(),
             Profile = other.Profile,
+            CraftRecipeId = other.CraftRecipeId,
+            CraftStartTime = other.CraftStartTime,
+            CraftDuration = other.CraftDuration,
         };
     }
 

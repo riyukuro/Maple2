@@ -763,10 +763,14 @@ public class HousingManager {
             return false;
         }
         using GameStorage.Request db = session.GameStorage.Context();
-        if (db.MoveMaid(storedUid, cube.Id) == null) {
+        Maid? moved = db.MoveMaid(storedUid, cube.Id);
+        if (moved == null) {
             return false;
         }
         session.Send(UserMaidPacket.Remove(storedUid));
+        if (MaidRules.IsCrafting(moved)) {
+            session.Send(MaidCraftItemPacket.Remove(storedUid)); // the craft comes back under the cube uid
+        }
         return true;
     }
 
@@ -780,6 +784,9 @@ public class HousingManager {
         Maid? moved = db.MoveMaid(cube.Id, itemUid);
         if (moved != null) {
             session.Send(UserMaidPacket.Add(moved));
+            if (MaidRules.IsCrafting(moved)) {
+                session.Send(MaidCraftItemPacket.Add(moved));
+            }
         }
     }
 

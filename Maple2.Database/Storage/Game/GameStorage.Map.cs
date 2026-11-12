@@ -303,7 +303,8 @@ public partial class GameStorage {
         }
 
         // Re-keys a maid from one uid to another (cube to storage item on pickup, item to cube on placement), keeping
-        // its mood, affinity, contract and profile. Null when there is no maid at fromUid or toUid is taken.
+        // its mood, affinity, contract, profile and running craft. Null when there is no maid at fromUid or toUid is
+        // taken.
         public Maid? MoveMaid(long fromUid, long toUid) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
             Model.Maid? model = Context.Maid.Find(fromUid);
@@ -344,7 +345,7 @@ public partial class GameStorage {
                 .ToList();
         }
 
-        // Writes the mood, affinity, contract end and profile of a maid; false when its row is gone.
+        // Writes the mood, affinity, contract end, profile and running craft of a maid; false when its row is gone.
         public bool SaveMaid(Maid maid) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
             Model.Maid? model = Context.Maid.Find(maid.Uid);
@@ -356,6 +357,9 @@ public partial class GameStorage {
             model.Exp = maid.Exp;
             model.ExpiryTime = maid.ExpiryTime.FromEpochSeconds();
             model.Profile = maid.Profile;
+            model.CraftRecipeId = maid.CraftRecipeId;
+            model.CraftStartTime = maid.CraftStartTime;
+            model.CraftDuration = maid.CraftDuration;
             return Context.TrySaveChanges();
         }
 
