@@ -6,6 +6,7 @@ using Maple2.File.Ingest.Helpers;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Skill;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
 namespace Maple2.File.Ingest.Mapper;
@@ -22,7 +23,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (playedReader != null) {
             played = PlayedClientSkills.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)));
-            Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses)");
+            Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses, {played.Values.Count(entry => entry.Weapons.Length > 0)} with hand weapons)");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -41,7 +42,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Dictionary<short, SkillMetadataLevel> levels = data.level.ToDictionary(
                 level => level.value,
                 level => new SkillMetadataLevel(
-                    Condition: level.beginCondition.Convert(),
+                    // The played client's hand weapons stand in for the data pack's (PlayedClientSkills).
+                    Condition: client is { } played ? level.beginCondition.Convert() with { Weapon = played.Weapons.Select(weapon =>
+                        new BeginConditionWeapon(new ItemType(1, (byte) weapon.LeftHand), new ItemType(1, (byte) weapon.RightHand))).ToArray() }
+                        : level.beginCondition.Convert(),
                     Change: level.changeSkill?.Convert(),
                     AutoTargeting: level.autoTargeting?.Convert(),
                     Consume: new SkillMetadataConsume(

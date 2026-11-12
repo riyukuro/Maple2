@@ -286,6 +286,20 @@ public static class SkillCastRules {
         return (int) Math.Clamp(result, 0, int.MaxValue);
     }
 
+    // A skill with hand weapons in its condition (skill basic condition weapon lh rh) is cast only while one of
+    // those rows fits the weapons held: each hand of the row is 0 (any) or the subtype held in that hand, and
+    // the client sends no cast otherwise (CSkillSystem cast check 0x14176a8c0, answer 0x1c). A left hand that
+    // holds the right hand's item (a two-handed weapon) counts as empty.
+    public static bool WeaponRefuses(IReadOnlyCollection<(int LeftHand, int RightHand)> weapons, int heldLeft, int heldRight) {
+        return weapons.Count > 0 && !weapons.Any(weapon =>
+            (weapon.RightHand == 0 || weapon.RightHand == heldRight) && (weapon.LeftHand == 0 || weapon.LeftHand == heldLeft));
+    }
+
+    // A skill with a spirit threshold in its condition (skill basic condition sp) is cast only with at least that
+    // much spirit, the threshold being cut by the spirit cost reductions as the cost is (SpiritCost); the
+    // client sends no cast otherwise (the same check, answer 0xb).
+    public static bool SpiritThresholdRefuses(long reducedThreshold, long currentSpirit) => reducedThreshold > 0 && reducedThreshold > currentSpirit;
+
     // A held, enabled buff that lists the skill among the ones it disables stops the cast: the client does not
     // send it (CSkillSystem cast check, answer 0x1f).
     public static bool DisabledByBuff(IEnumerable<int[]?> heldLists, int skillId) {

@@ -153,7 +153,8 @@ public class SkillHandler : FieldPacketHandler {
     // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
     // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it. A skill of a job's tree
     // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
-    // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast.
+    // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast and must find
+    // its hand weapons held and its spirit threshold met.
     // No cast comes before the motion of the last cast lets the next one in. The two timing checks
     // (ConfigManager.CastTimingRefusal) refuse only when CastCheckSetting says so, else they log.
     private bool CastAllowed(GameSession session, SkillRecord record, long tick, int castTick, out SkillCooldown? blocking) {
@@ -196,13 +197,38 @@ public class SkillHandler : FieldPacketHandler {
             }
         }
         if (!useItem) {
-            return true;
+            return HandsAndSpiritAllow(session, record);
         }
         if (!condition.Check(session.Player, session.Player, session.Player)) {
             return false;
         }
         blocking = session.Config.BlockingCooldown(record.Metadata, tick);
         return blocking == null;
+    }
+
+    // A job skill's weapon condition and spirit threshold (an item skill's own condition checks both).
+    private bool HandsAndSpiritAllow(GameSession session, SkillRecord record) {
+        BeginCondition condition = record.Metadata.Data.Condition;
+        if (condition.Weapon is { Length: > 0 } weapons) {
+            Item? right = session.Item.Equips.Get(EquipSlot.RH);
+            Item? left = session.Item.Equips.Get(EquipSlot.LH);
+            int heldRight = right?.Type.Type ?? 0;
+            int heldLeft = left == null || left.Uid == right?.Uid ? 0 : left.Type.Type;
+            if (SkillCastRules.WeaponRefuses(weapons.Select(weapon => ((int) weapon.LeftHand.Type, (int) weapon.RightHand.Type)).ToArray(), heldLeft, heldRight)) {
+                Logger.Debug("Cast refused, skill {SkillId} needs another weapon than {Left}/{Right}", record.SkillId, heldLeft, heldRight);
+                return false;
+            }
+        }
+        if (condition.Stat.TryGetValue(BasicAttribute.Spirit, out long threshold)) {
+            FieldPlayer player = session.Player;
+            (int invokeValue, float invokeRate) = player.Buffs.GetInvokeValues(InvokeEffectType.ReduceSpiritCost, record.SkillId, record.Metadata.Property.SkillGroup);
+            int reduced = SkillCastRules.SpiritCost(threshold, invokeValue, invokeRate, player.Buffs.ConsumeSpRate);
+            if (SkillCastRules.SpiritThresholdRefuses(reduced, player.Stats.Values[BasicAttribute.Spirit].Current)) {
+                Logger.Debug("Cast refused, skill {SkillId} needs {Spirit} spirit", record.SkillId, reduced);
+                return false;
+            }
+        }
+        return true;
     }
 
     private void HandlePoint(GameSession session, IByteReader packet) {

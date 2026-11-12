@@ -10,10 +10,12 @@ namespace Maple2.Model.Metadata;
 //   skill of the main types in UnrideMainType, whatever its unrideOnUse says (SkillData::IsUnrideOnUse).
 // - rechargeMaxCount: the uses the client lets out before it stops casting (CSkillSystem::GetRechargeRemainCount).
 // - rechargeShareOrigin with originID: the skill counts its uses on its origin skill (SkillData::GetRechargeId).
+// - the <weapon lh rh> rows of <condition>: the hand weapons the client casts the skill with (SkillCondition::Load,
+//   CSkillSystem::FUN_14176a8c0). The data pack's beginCondition differs for two skills (11000146, 10100061).
 public static class PlayedClientSkills {
     public const string SkillFolder = "skilldata/";
 
-    public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared);
+    public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons);
 
     public static bool IsSkillFile(string name) => name.StartsWith(SkillFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -31,10 +33,14 @@ public static class PlayedClientSkills {
                 XmlElement? basic = skill.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "basic");
                 XmlElement? state = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "stateAttr");
                 int origin = Number(skill, "originID");
+                XmlElement? condition = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "condition");
+                (int, int)[] weapons = condition?.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "weapon")
+                    .Select(weapon => (Number(weapon, "lh"), Number(weapon, "rh"))).ToArray() ?? [];
                 entries[id] = new Entry(
                     MainType: Number(basic, "mainType"),
                     RechargeMaxCount: Number(state, "rechargeMaxCount"),
-                    RechargeShared: Number(state, "rechargeShareOrigin") != 0 && origin != 0 && origin != id);
+                    RechargeShared: Number(state, "rechargeShareOrigin") != 0 && origin != 0 && origin != id,
+                    Weapons: weapons);
             }
         }
         return entries;

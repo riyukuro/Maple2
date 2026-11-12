@@ -221,6 +221,30 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.SpiritCost(10, 30, 0f, 0f), Is.EqualTo(0));
     }
 
+    // Any one weapon row fits: a hand of 0 is any weapon (or none), else the subtype held there.
+    [Test]
+    public void WeaponConditionNeedsOneRowToFit() {
+        (int, int)[] bowOrKnifeDagger = [(0, 30), (41, 33)];
+        Assert.That(SkillCastRules.WeaponRefuses([], 0, 0), Is.False);
+        Assert.That(SkillCastRules.WeaponRefuses(bowOrKnifeDagger, 0, 30), Is.False);
+        Assert.That(SkillCastRules.WeaponRefuses(bowOrKnifeDagger, 41, 30), Is.False);
+        Assert.That(SkillCastRules.WeaponRefuses(bowOrKnifeDagger, 41, 33), Is.False);
+        Assert.That(SkillCastRules.WeaponRefuses(bowOrKnifeDagger, 0, 33), Is.True);
+        Assert.That(SkillCastRules.WeaponRefuses(bowOrKnifeDagger, 0, 0), Is.True);
+        Assert.That(SkillCastRules.WeaponRefuses([(41, 0)], 41, 0), Is.False);
+        Assert.That(SkillCastRules.WeaponRefuses([(41, 0)], 0, 30), Is.True);
+    }
+
+    // The threshold, after the spirit cost reductions, is met with that much spirit; 0 is no threshold.
+    [TestCase(20, 20, false)]
+    [TestCase(20, 19, true)]
+    [TestCase(60, 0, true)]
+    [TestCase(0, 0, false)]
+    public void SpiritThresholdNeedsThatMuchSpirit(long reducedThreshold, long spirit, bool expected) {
+        Assert.That(SkillCastRules.SpiritThresholdRefuses(reducedThreshold, spirit), Is.EqualTo(expected));
+        Assert.That(SkillCastRules.SpiritThresholdRefuses(SkillCastRules.SpiritCost(40, 0, 0f, -0.5f), 19), Is.True);
+    }
+
     [Test]
     public void BuffListDisablesOnlyItsSkills() {
         int[]?[] held = [null, [11000101, 11000121], []];
@@ -513,7 +537,7 @@ public class SkillCastRulesTests {
             <ms2>
               <skill id="100"><basic mainType="4"><stateAttr rechargeMaxCount="6" /></basic></skill>
               <skill id="101" originID="100"><basic><stateAttr rechargeMaxCount="6" rechargeShareOrigin="1" /></basic></skill>
-              <skill id="102" originID="100"><basic mainType="2" feature="X"><stateAttr rechargeMaxCount="3" /></basic></skill>
+              <skill id="102" originID="100"><basic mainType="2" feature="X"><stateAttr rechargeMaxCount="3" /><condition sp="20"><weapon lh="0" rh="32" /><weapon lh="41" rh="30" /></condition></basic></skill>
               <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /></basic></skill>
               <skill id="0"><basic mainType="1" /></skill>
               <skill id="100"><basic mainType="9" /></skill>
@@ -522,14 +546,19 @@ public class SkillCastRulesTests {
             """);
         Dictionary<int, PlayedClientSkills.Entry> read = PlayedClientSkills.Read([document]);
         Assert.That(read.Keys.OrderBy(id => id), Is.EqualTo(new[] { 100, 101, 102, 103, 104 }));
-        Assert.That(read[100], Is.EqualTo(new PlayedClientSkills.Entry(4, 6, false)));
-        Assert.That(read[101], Is.EqualTo(new PlayedClientSkills.Entry(0, 6, true)), "uses counted on the origin skill");
-        Assert.That(read[102], Is.EqualTo(new PlayedClientSkills.Entry(2, 3, false)));
-        Assert.That(read[103], Is.EqualTo(new PlayedClientSkills.Entry(0, 0, false)), "no origin: its own uses");
-        Assert.That(read[104], Is.EqualTo(new PlayedClientSkills.Entry(0, 0, false)));
+        Assert.That(Kept(read[100]), Is.EqualTo((4, 6, false)));
+        Assert.That(Kept(read[101]), Is.EqualTo((0, 6, true)), "uses counted on the origin skill");
+        Assert.That(Kept(read[102]), Is.EqualTo((2, 3, false)));
+        Assert.That(Kept(read[103]), Is.EqualTo((0, 0, false)), "no origin: its own uses");
+        Assert.That(Kept(read[104]), Is.EqualTo((0, 0, false)));
+        Assert.That(read[102].Weapons, Is.EqualTo(new[] { (0, 32), (41, 30) }), "the hand weapons of <condition>");
+        Assert.That(read[100].Weapons, Is.Empty);
+        Assert.That(read[104].Weapons, Is.Empty);
         Assert.That(PlayedClientSkills.IsSkillFile("skilldata/010.xml"), Is.True);
         Assert.That(PlayedClientSkills.IsSkillFile("skill/10/10000001.xml"), Is.False);
     }
+
+    private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]
     public void RechargeSkillIsNotCastWithNoUseLeft() {
