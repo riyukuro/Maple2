@@ -463,8 +463,12 @@ public sealed class QuestManager {
             return false;
         }
 
-        if (reward.Exp > 0) {
-            session.Exp.AddExp(reward.Exp);
+        // The exp the reward line shows: the fixed exp or the relativeExp curve at the player's level, whichever is
+        // larger, with the rank factor of field and alliance quests.
+        QuestMetadataBasic basic = quest.Metadata.Basic;
+        long exp = QuestExpRules.Exp(reward.Exp, session.Exp.TypeValue(reward.RelativeExp), basic.Type, basic.Rank, (int) basic.Alliance);
+        if (exp > 0) {
+            session.Exp.AddExp(exp);
         }
 
         if (reward.Meso > 0) {

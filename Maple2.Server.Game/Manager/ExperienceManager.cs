@@ -141,6 +141,18 @@ public sealed class ExperienceManager {
         return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), expType.Message());
     }
 
+    // The client's CExpTable::GetTypeValue at the character's level: the type's common exp curve, its base exp times its
+    // factor rounded and at least 1; 0 for a type without a curve or a level past the table.
+    public long TypeValue(ExpType expType) {
+        if (expType == ExpType.none
+            || !session.TableMetadata.CommonExpTable.Entries.TryGetValue(expType, out CommonExpTable.Entry? entry)
+            || !session.TableMetadata.ExpTable.ExpBase.TryGetValue(entry.ExpTableId, out IReadOnlyDictionary<int, long>? expBase)
+            || !expBase.TryGetValue(Level, out long expValue)) {
+            return 0;
+        }
+        return QuestExpRules.CurveValue(expValue, entry.Factor);
+    }
+
     public void AddStaticExp(long amount) {
         if (amount <= 0) {
             return;
