@@ -165,6 +165,7 @@ public partial class FieldManager {
             Origin = owner?.Position ?? spawnPosition,
             SpawnPointId = owner?.Value.Id ?? 0,
             MaidUid = maidUid,
+            SpawnBuffsPending = npc.Property.Buffs.Length > 0,
         };
 
         // The room's npcStatFactorByPlayerCount row, taken once at spawn: an npc keeps its stats when players join or

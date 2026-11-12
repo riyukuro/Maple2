@@ -180,6 +180,10 @@ public class FieldNpc : Actor<Npc> {
     public readonly SkillMetadata?[] Skills;
 
     public int SpawnPointId = 0;
+
+    // Set by the field when it spawns this npc: the npc's own additionalEffect list is added on its first update,
+    // after the spawn was announced.
+    public bool SpawnBuffsPending;
     // InteractNpc: the field tick from which the npc is talkable again, and whether the field still has to hear it.
     public long InteractReadyTick { get; private set; }
     private bool interactCoolingDown;
@@ -261,6 +265,17 @@ public class FieldNpc : Actor<Npc> {
     private bool playersListeningToDebug = false; // controls whether messages should log
     private long nextDebugPacket = 0;
 
+    // The npc data's additionalEffect codes and levels: each is added to the npc, cast by itself. A code the
+    // effect data does not have is left out.
+    private void AddSpawnBuffs(long tickCount) {
+        foreach (NpcMetadataBuff buff in Value.Metadata.Property.Buffs) {
+            if (!Field.SkillMetadata.TryGetEffect(buff.Id, (short) buff.Level, out _)) {
+                continue;
+            }
+            Buffs.AddBuff(this, this, buff.Id, (short) buff.Level, tickCount);
+        }
+    }
+
     public override void Update(long tickCount) {
         if (IsDead) {
             if (IsCorpse && tickCount - lastCorpseBroadcastTick >= 1000) {
@@ -269,6 +284,11 @@ public class FieldNpc : Actor<Npc> {
                 Field.Broadcast(NpcControlPacket.Dead(this));
             }
             return;
+        }
+
+        if (SpawnBuffsPending) {
+            SpawnBuffsPending = false;
+            AddSpawnBuffs(tickCount);
         }
 
         base.Update(tickCount);

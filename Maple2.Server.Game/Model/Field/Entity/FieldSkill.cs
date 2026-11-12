@@ -68,7 +68,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
             NextTick = baseTick;
             endTick = baseTick + splash.RemoveDelay + (FireCount - 1) * splash.Interval;
         } else {
-            NextTick = baseTick + splash.Interval;
+            NextTick = baseTick + SplashTiming.FirstFire(splash.ImmediateActive, splash.OnlySensingActive, splash.Delay, splash.Interval);
             endTick = baseTick + splash.Delay + splash.RemoveDelay + FireCount * splash.Interval;
         }
         if (splash.OnlySensingActive) {
