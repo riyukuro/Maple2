@@ -254,6 +254,10 @@ public class PetHandler : FieldPacketHandler {
             if (petFodders > 0) {
                 session.ConditionUpdate(ConditionType.pet_enchant, counter: petFodders, codeLong: pet.Id);
             }
+            // "Acquire 10,000 pet experience through fusion" (70600033): the exp the fodders gave.
+            if (gain > 0) {
+                session.ConditionUpdate(ConditionType.pet_enchant_exp, counter: gain);
+            }
         }
     }
 

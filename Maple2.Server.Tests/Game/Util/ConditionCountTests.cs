@@ -275,6 +275,7 @@ public class ConditionCountTests {
     // The played quests of these types list no code or target, so every event counts.
     [TestCase(ConditionType.item_break)] // 74000011 "Dismantle 1 item"
     [TestCase(ConditionType.guild_join)] // 70300010 "Join a guild"
+    [TestCase(ConditionType.pet_enchant_exp)] // 70600033 "Acquire 10,000 pet experience through fusion"
     [TestCase(ConditionType.guild_attendance)] // 70300011 "Guild Check-In"
     [TestCase(ConditionType.dungeon_reward)] // 70700002 "Collect a reward from any dungeon"
     public void CodelessQuestRow_CountsEveryEvent(ConditionType type) {
