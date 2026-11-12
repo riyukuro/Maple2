@@ -323,6 +323,8 @@ public class BuffManager : IUpdatable {
     // A buff with the invincible flag is held: skill hits on the actor are sent as Invincible with amount 0 and a
     // damage over time tick as 0.
     public bool Invincible => Sums().Invincible;
+    // A buff that stuns a monster is held.
+    public bool Stunned => Sums().Stun;
     // The type of that hit: InvincibleReflection when the buff's invincible value is 2.
     public DamageType InvincibleHitType => Sums().InvincibleReflect ? DamageType.InvincibleReflection : DamageType.Invincible;
 

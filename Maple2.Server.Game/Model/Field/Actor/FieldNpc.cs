@@ -204,6 +204,9 @@ public class FieldNpc : Actor<Npc> {
 
     public bool IsCorpse { get; private set; }
     private long lastCorpseBroadcastTick;
+    private byte lastControlFlags;
+    // The flags byte of this npc's NpcControl entries.
+    public byte ControlFlags => NpcControlRules.Flags(BattleState.InBattle, MovementState.State == ActorState.Stun);
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
     public long LastDamageTick { get; private set; }
     private int lastAttackerObjectId;
@@ -309,6 +312,7 @@ public class FieldNpc : Actor<Npc> {
         }
 
         bool isSpawning = MovementState.State is ActorState.Spawn or ActorState.Regen;
+        bool isStunned = false;
 
         if (!isSpawning) {
             string? aiFile = Interlocked.Exchange(ref pendingAiFile, null);
@@ -316,7 +320,9 @@ public class FieldNpc : Actor<Npc> {
                 AiState = new AiState(this, aiFile);
             }
             BattleState.Update(tickCount);
-            if (!AiOff) {
+            MovementState.SetStunned(Buffs.Stunned);
+            isStunned = MovementState.State == ActorState.Stun;
+            if (!AiOff && !isStunned) {
                 AiState.Update(tickCount);
                 DoIdleBehavior(tickCount);
             }
@@ -324,7 +330,7 @@ public class FieldNpc : Actor<Npc> {
 
         MovementState.Update(tickCount);
 
-        if (!isSpawning) {
+        if (!isSpawning && !isStunned) {
             TaskState.Update(tickCount);
         }
 
@@ -341,6 +347,11 @@ public class FieldNpc : Actor<Npc> {
         }
 
         playersListeningToDebug = playersListeningToDebugNow;
+
+        // The battle flag goes out when it changes.
+        byte controlFlags = ControlFlags;
+        SendControl |= controlFlags != lastControlFlags;
+        lastControlFlags = controlFlags;
 
         if (SendControl && !IsDead) {
             SequenceCounter++;

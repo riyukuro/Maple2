@@ -10,11 +10,13 @@ namespace Maple2.Server.Tests.Game.Util;
 // The kept sums of the buffs held (BuffSums) equal a walk over the same buffs.
 public class BuffSumsTests {
     private static AdditionalEffectMetadata Effect(int id, Dictionary<BasicAttribute, float>? resistances = null,
-            AdditionalEffectMetadataInvokeEffect? invoke = null, bool invincible = false, bool reflect = false) {
+            AdditionalEffectMetadataInvokeEffect? invoke = null, bool invincible = false, bool reflect = false, int stun = 0) {
+        AdditionalEffectMetadataProperty property = stun == 0 ? null! : new AdditionalEffectMetadataProperty(BuffType.Debuff, BuffSubType.Status, BuffCategory.None, BuffEventType.None,
+            0, 1000, 0, 0, 1, false, false, false, false, false, false, false, 0, 0, 0, 0, stun, BuffKeepCondition.TimerDuration, default, default, 0);
         var status = new AdditionalEffectMetadataStatus(new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>(),
             new Dictionary<SpecialAttribute, float>(), new Dictionary<SpecialAttribute, float>(),
             resistances ?? new Dictionary<BasicAttribute, float>(), false, null, null, 0, invincible, reflect);
-        return new AdditionalEffectMetadata(id, 1, null!, null!, null!, null!, null!, status, null, null!, null, invoke, [], [], []);
+        return new AdditionalEffectMetadata(id, 1, null!, property, null!, null!, null!, status, null, null!, null, invoke, [], [], []);
     }
 
     private static readonly AdditionalEffectMetadataInvokeEffect BySkill = new(
@@ -72,6 +74,14 @@ public class BuffSumsTests {
         Assert.That(new BuffSums([.. Held, (Effect(6, invincible: true), 1)]).Invincible, Is.True);
         Assert.That(new BuffSums([]).Invincible, Is.False);
         Assert.That((byte) DamageType.Invincible, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void StunWhenOneBuffHasAStunValueThatStuns() {
+        Assert.That(new BuffSums(Held).Stun, Is.False);
+        Assert.That(new BuffSums([.. Held, (Effect(6, stun: 1), 1)]).Stun, Is.True);
+        Assert.That(new BuffSums([.. Held, (Effect(6, stun: 3), 1)]).Stun, Is.True);
+        Assert.That(new BuffSums([.. Held, (Effect(6, stun: 2), 1)]).Stun, Is.False);
     }
 
     [Test]

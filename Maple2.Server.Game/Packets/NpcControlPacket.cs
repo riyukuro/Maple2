@@ -4,6 +4,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Util;
 using System.Numerics;
 
 namespace Maple2.Server.Game.Packets;
@@ -52,7 +53,7 @@ public static class NpcControlPacket {
     /// block. Send it once: every packet with sequence -2 / -3 starts the arc again.
     /// </summary>
     public static ByteWriter Jump(FieldNpc npc, short seqId, Vector3 from, Vector3 to, float duration, float scale) =>
-        SingleNpcPacket(npc, flags: 2, velocity: default, animSpeed: 100,
+        SingleNpcPacket(npc, flags: npc.ControlFlags, velocity: default, animSpeed: 100,
             bossTargetId: npc.BattleState.TargetId, state: ActorState.Jump, seqId: seqId, jump: (from, to, duration, scale));
 
     private static ByteWriter SingleNpcPacket(FieldNpc npc, byte flags, Vector3S velocity,
@@ -76,12 +77,12 @@ public static class NpcControlPacket {
             state = ActorState.Talk;
             seqId = -1;
         } else {
-            state = npc.MovementState.State;
-            seqId = npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId;
+            state = NpcControlRules.WireState(npc.MovementState.State);
+            seqId = NpcControlRules.WireSequence(npc.MovementState.State, npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId);
         }
 
         buffer.WriteNpcEntry(npc,
-            flags: 2, // bit-1 (AdditionalEffectRelated), bit-2 (UIHpBarRelated)
+            flags: npc.ControlFlags,
             velocity: npc.MovementState.Velocity,
             animSpeed: (short) (npc.Animation.SequenceSpeed * 100),
             bossTargetId: npc.BattleState.TargetId,

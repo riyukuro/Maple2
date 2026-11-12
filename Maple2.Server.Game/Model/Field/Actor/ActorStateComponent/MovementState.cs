@@ -143,6 +143,28 @@ public partial class MovementState {
         return new NpcCleanupPatrolDataTask(player, actor.TaskState, this);
     }
 
+    // A monster that holds a stun buff stands in state 18 (gosStun) until the buff leaves: its cast, walk and
+    // emote end, and the AI and its tasks wait (FieldNpc.Update). The cast gets no cancel packet (KMS2 sends none
+    // for an npc). Chosen here: an npc that is spawning or in a jump arc is not stunned until that ends.
+    public void SetStunned(bool stunned) {
+        if (stunned == (State == ActorState.Stun)) {
+            return;
+        }
+        if (!stunned) {
+            Idle();
+            return;
+        }
+        if (actor.IsDead || IsJumping || State is ActorState.Spawn or ActorState.Regen) {
+            return;
+        }
+
+        CastTask?.Cancel();
+        walkTask?.Cancel();
+        emoteActionTask?.Cancel();
+        Velocity = new Vector3(0, 0, 0);
+        SetState(ActorState.Stun);
+    }
+
     private void SetState(ActorState state) {
         if (actor.IsDead) {
             return;
@@ -203,7 +225,7 @@ public partial class MovementState {
     }
 
     public void Update(long tickCount) {
-        if (actor.Animation.PlayingSequence != stateSequence) {
+        if (State != ActorState.Stun && actor.Animation.PlayingSequence != stateSequence) {
             Idle();
         }
 

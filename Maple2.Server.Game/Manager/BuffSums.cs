@@ -14,6 +14,8 @@ public sealed class BuffSums {
     public bool Invincible { get; }
     // One of them has the invincible value 2. Chosen here for a holder of buffs of both values: this one counts.
     public bool InvincibleReflect { get; }
+    // One of them has a stun value that stuns a monster (NpcControlRules.Stuns).
+    public bool Stun { get; }
 
     public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held) {
         List<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> withInvoke = [];
@@ -22,6 +24,7 @@ public sealed class BuffSums {
                 resistances[attribute] = resistances.GetValueOrDefault(attribute) + Model.Buff.ByStacks(value, stacks);
             }
             Invincible |= metadata.Status.Invincible;
+            Stun |= metadata.Property is { } property && Util.NpcControlRules.Stuns(property.Stun);
             InvincibleReflect |= metadata.Status.Invincible && metadata.Status.InvincibleReflect;
             if (metadata.InvokeEffect != null) {
                 withInvoke.Add((metadata.InvokeEffect, stacks));
