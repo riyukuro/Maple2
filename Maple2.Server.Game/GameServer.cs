@@ -14,6 +14,7 @@ using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Core.Helpers;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.DebugGraphics;
 
@@ -106,7 +107,11 @@ public class GameServer : Server<GameSession> {
                 }
             } catch (Grpc.Core.RpcException ex) {
                 Logger.Warning("Could not report {CharacterId} to the World server: {Status}", session.CharacterId, ex.StatusCode);
-                return false;
+                // A World server that is gone ends the report, to be tried again. A report the World server
+                // refuses for this one session is skipped, so it does not hold up the sessions after it.
+                if (ChannelRegisterRules.WorldGone(ex.StatusCode)) {
+                    return false;
+                }
             }
         }
         return true;

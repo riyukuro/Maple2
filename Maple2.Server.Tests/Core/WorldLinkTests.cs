@@ -228,4 +228,13 @@ public class WorldLinkTests {
     public void PartyGone(int held, int world, bool expected) {
         Assert.That(ChannelRegisterRules.PartyGone(held, world), Is.EqualTo(expected));
     }
+
+    // Only a World server that is not there ends a report; a refusal for one session does not.
+    [TestCase(StatusCode.Unavailable, true)]
+    [TestCase(StatusCode.DeadlineExceeded, true)]
+    [TestCase(StatusCode.InvalidArgument, false)]
+    [TestCase(StatusCode.NotFound, false)]
+    public void WorldGone(StatusCode status, bool expected) {
+        Assert.That(ChannelRegisterRules.WorldGone(status), Is.EqualTo(expected));
+    }
 }

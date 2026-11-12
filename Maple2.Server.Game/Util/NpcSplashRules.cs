@@ -12,7 +12,6 @@ public static class NpcSplashRules {
     public enum Place {
         None, // no splash without a target
         Targets, // at the targets hit in the attack's range
-        Caster, // at the cast position (the cube magic path's points when the attack has one): chosen here
         Landing, // where each magic path ends
     }
 
@@ -27,7 +26,7 @@ public static class NpcSplashRules {
         if (targetsInRange > 0) {
             return Place.Targets;
         }
-        return noTargetSplash ? Place.Caster : Place.None;
+        return Place.None;
     }
 
     // A shot aimed at an actor lands on its cell.
@@ -52,11 +51,22 @@ public static class NpcSplashRules {
         return TimeSpan.FromSeconds(distance / path.Velocity);
     }
 
+    // Whether a shot along the path reaches the point: inside the path's distance on the ground.
+    public static bool Reaches(Vector3 point, Vector3 from, MagicPath path) {
+        return new Vector2(point.X - from.X, point.Y - from.Y).Length() <= path.Distance + AimSlack;
+    }
+
+    // The splash effects the hit targets still get once the shot's own regions are placed: the ones that need a
+    // target. Without a landing every splash stays with the targets.
+    public static IEnumerable<T> AtTargets<T>(IEnumerable<T> splashes, Func<T, bool> noTarget, bool landed) {
+        return landed ? splashes.Where(effect => !noTarget(effect)) : splashes;
+    }
+
     // The actors a shot can be aimed at: inside the path's distance on the ground, nearest first.
     public static IEnumerable<T> Aims<T>(IEnumerable<T> pool, Func<T, Vector3> position, Vector3 from, MagicPath path) {
         return pool
             .Select(actor => (Actor: actor, Distance: new Vector2(position(actor).X - from.X, position(actor).Y - from.Y).Length()))
-            .Where(entry => entry.Distance <= path.Distance + AimSlack)
+            .Where(entry => Reaches(position(entry.Actor), from, path))
             .OrderBy(entry => entry.Distance)
             .Select(entry => entry.Actor);
     }

@@ -92,16 +92,6 @@ public class SkillState {
         cast.SplashPlaced = place == NpcSplashRules.Place.Landing;
         if (place == NpcSplashRules.Place.Landing) {
             LandSplashes(noTarget, paths!, attackTargets);
-        } else if (place == NpcSplashRules.Place.Caster) {
-            cast.Position = actor.Position;
-            cast.Rotation = actor.Rotation;
-            if (attack.CubeMagicPathId != 0) {
-                actor.Field.AddSkill(cast);
-            } else {
-                foreach (SkillEffectMetadata effect in noTarget) {
-                    actor.Field.AddSkill(actor, effect, [actor.Position], actor.Rotation);
-                }
-            }
         }
 
         if (resolvedTargets.Count > 0) {
@@ -116,20 +106,24 @@ public class SkillState {
         }
     }
 
-    // The actors the attack's shots are aimed at, one per path: the npc's own targets first, then the nearest
-    // actors of the attack's target kind the first flying path reaches (chosen here).
+    // The actors the attack's shots are aimed at, one per path: the npc's own targets the first flying path
+    // reaches, then the nearest other actors of the attack's target kind it reaches (chosen here). The npc itself
+    // is never an aim.
     private List<IActor> Aim(SkillMetadataAttack attack, IReadOnlyList<MagicPath> paths, List<IActor> attackTargets) {
-        var aims = new List<IActor>(attackTargets);
+        MagicPath path = paths.First(NpcSplashRules.Flies);
+        Vector3 from = actor.Position;
+        List<IActor> aims = attackTargets
+            .Where(target => target.ObjectId != actor.ObjectId && NpcSplashRules.Reaches(target.Position, from, path))
+            .ToList();
         if (aims.Count >= paths.Count) {
             return aims;
         }
 
-        MagicPath path = paths.First(NpcSplashRules.Flies);
-        Vector3 from = actor.Position;
         float low = MathF.Min(0, path.ControlEndOffsetValue.Z) - AimHeight;
         var prism = new Tools.Collision.Prism(new Tools.Collision.Circle(new Vector2(from.X, from.Y), path.Distance + NpcSplashRules.AimSlack),
             from.Z + low, MathF.Abs(path.ControlEndOffsetValue.Z) + 2 * AimHeight);
-        IEnumerable<IActor> pool = actor.Field.GetTargets(actor, [prism], attack.Range, int.MaxValue, aims);
+        IEnumerable<IActor> pool = actor.Field.GetTargets(actor, [prism], attack.Range, int.MaxValue, aims)
+            .Where(target => target.ObjectId != actor.ObjectId);
         aims.AddRange(NpcSplashRules.Aims(pool, target => target.Position, from, path).Take(paths.Count - aims.Count));
         return aims;
     }

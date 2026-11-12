@@ -24,8 +24,8 @@ public class NpcSplashRulesTests {
     }
 
     [Test]
-    public void ANoTargetSplashWithoutAShotAppearsAtTheCasterWhenNothingIsHit() {
-        Assert.That(NpcSplashRules.Where(noTargetSplash: true, flies: false, targetsInRange: 0), Is.EqualTo(NpcSplashRules.Place.Caster));
+    public void ANoTargetSplashWithoutAShotPlacesNothingWhenNothingIsHit() {
+        Assert.That(NpcSplashRules.Where(noTargetSplash: true, flies: false, targetsInRange: 0), Is.EqualTo(NpcSplashRules.Place.None));
         Assert.That(NpcSplashRules.Where(noTargetSplash: true, flies: false, targetsInRange: 1), Is.EqualTo(NpcSplashRules.Place.Targets));
     }
 
@@ -34,6 +34,23 @@ public class NpcSplashRulesTests {
         Assert.That(NpcSplashRules.Where(noTargetSplash: false, flies: true, targetsInRange: 0), Is.EqualTo(NpcSplashRules.Place.None));
         Assert.That(NpcSplashRules.Where(noTargetSplash: false, flies: true, targetsInRange: 1), Is.EqualTo(NpcSplashRules.Place.Targets));
         Assert.That(NpcSplashRules.Where(noTargetSplash: false, flies: false, targetsInRange: 0), Is.EqualTo(NpcSplashRules.Place.None));
+    }
+
+    [Test]
+    public void AShotReachesItsDistancePlusOneBlockOnTheGround() {
+        MagicPath path = Path(800, 1200);
+        Assert.That(NpcSplashRules.Reaches(new Vector3(0, 950, -2000), default, path), Is.True);
+        Assert.That(NpcSplashRules.Reaches(new Vector3(0, 951, 0), default, path), Is.False);
+        // A target 3,000 away is no aim for a path of 800.
+        Assert.That(NpcSplashRules.Reaches(new Vector3(3000, 0, 0), default, path), Is.False);
+    }
+
+    [Test]
+    public void ALandedShotLeavesTheTargetNeedingSplashesWithTheTargets() {
+        // Odd numbers stand for the splashes that need no target.
+        int[] splashes = [1, 2, 3, 4];
+        Assert.That(NpcSplashRules.AtTargets(splashes, splash => splash % 2 == 1, landed: true), Is.EqualTo(new[] { 2, 4 }));
+        Assert.That(NpcSplashRules.AtTargets(splashes, splash => splash % 2 == 1, landed: false), Is.EqualTo(splashes));
     }
 
     [Test]

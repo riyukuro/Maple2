@@ -189,7 +189,18 @@ public sealed partial class GameSession : Core.Network.Session {
         if (Party.Id != 0) {
             PartyInfoResponse response = world.PartyInfo(new PartyInfoRequest { CharacterId = CharacterId });
             if (ChannelRegisterRules.PartyGone(Party.Id, response.Party?.Id ?? 0)) {
-                Party.Disband(notify: true);
+                // This runs on the World link's thread: the party is ended as a task of the player's field.
+                int heldPartyId = Party.Id;
+                FieldManager? field = Field;
+                if (field == null) {
+                    Party.Disband(notify: true);
+                } else {
+                    field.Scheduler.Schedule(() => {
+                        if (Party != null && Party.Id == heldPartyId) {
+                            Party.Disband(notify: true);
+                        }
+                    }, TimeSpan.Zero);
+                }
             }
         }
         return true;

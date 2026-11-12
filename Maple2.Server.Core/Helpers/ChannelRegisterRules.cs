@@ -34,6 +34,13 @@ public static class ChannelRegisterRules {
         return registeredInstance.Length > 0 && registeredInstance == askingInstance;
     }
 
+    // Whether a failed call means the World server is not there (or too slow), as opposed to a call it answered
+    // with a refusal.
+    public static bool WorldGone(Grpc.Core.StatusCode status) {
+        return status is Grpc.Core.StatusCode.Unavailable or Grpc.Core.StatusCode.DeadlineExceeded
+            or Grpc.Core.StatusCode.Cancelled;
+    }
+
     // Whether a player's party on the Game server is gone: the World server no longer has the player in it.
     // Parties live in the World server's memory only, so none survives its restart.
     public static bool PartyGone(int heldPartyId, int worldPartyId) {
