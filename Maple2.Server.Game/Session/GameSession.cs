@@ -477,7 +477,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(PetPacket.AutoChanged(true));
         Send(FieldEnterPacket.Request(Player));
         // The design market's charge table, where KMS2 sends it.
-        Send(UgcPacket.CostTable(UgcPacket.CostRows));
+        Send(UgcPacket.CostTable(UgcMarketRules.CostRows));
         Party = new PartyManager(World, this);
         Send(HomeCommandPacket.LoadHome(AccountId, db.GetLastHomeCommend(AccountId)));
         // ResponseCube

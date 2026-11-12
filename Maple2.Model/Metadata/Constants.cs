@@ -136,7 +136,6 @@ public static class Constant {
     public const float SouthWest = -90;
     public const short HairSlotCount = 30;
     public const ShopCurrencyType InitialTierExcessRestockCurrency = ShopCurrencyType.Meso;
-    public const float UGCShopProfitFee = 0.25f;
     public const int UGCShopProfitDelayDays = 10;
     public const int PartyFinderListingsPageCount = 12;
     public const int ProposalItemId = 11600482;

@@ -26,11 +26,6 @@ public static class UgcPacket {
         CostTable = 21,
     }
 
-    // The design market's charge table as KMS2 sends it at every login: a step and a value per row.
-    public static readonly (long Step, int Value)[] CostRows = [
-        (0, 70), (5000, 60), (10000, 50), (100000, 40), (200000, 20),
-    ];
-
     public static ByteWriter Upload(UgcResource ugc) {
         var pWriter = Packet.Of(SendOp.Ugc);
         pWriter.Write<Command>(Command.Upload);

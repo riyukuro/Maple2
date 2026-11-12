@@ -5,10 +5,12 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
@@ -444,6 +446,10 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
+        // The seller's share by the charge table the client shows, at the seller's sales total before this sale.
+        long salesTotal = UgcMarketManager.SalesTotal(db.GetUgcListingsByAccountId(ugcItem.SellerAccountId).Values);
+        long profit = UgcMarketRules.Profit(UgcMarketRules.CostRows, salesTotal, ugcItem.Price);
+
         ugcItem.SalesCount++;
         db.SaveUgcMarketItem(ugcItem);
 
@@ -451,7 +457,7 @@ public class MeretMarketHandler : FieldPacketHandler {
             AccountId = ugcItem.SellerAccountId,
             Price = ugcItem.Price,
             Name = ugcItem.Look.Name,
-            Profit = (long) (ugcItem.Price - Constant.UGCShopProfitFee * ugcItem.Price),
+            Profit = profit,
         };
 
         soldEntry = db.CreateSoldUgcMarketItem(soldEntry);
