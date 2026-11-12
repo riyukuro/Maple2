@@ -536,7 +536,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleIncreaseArea(GameSession session) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         if (session.Player.Value.Home.IsPlanner) {
             int decorArea = session.Player.Value.Home.PlannerArea + 1;
             if (session.Player.Value.Home.SetPlannerArea(decorArea)) {
@@ -552,7 +552,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleDecreaseArea(GameSession session) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         int newArea;
         if (session.Player.Value.Home.IsPlanner) {
             newArea = session.Player.Value.Home.PlannerArea - 1;
@@ -587,7 +587,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleIncreaseHeight(GameSession session) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         if (session.Player.Value.Home.IsPlanner) {
             int decorHeight = session.Player.Value.Home.PlannerHeight + 1;
             if (session.Player.Value.Home.SetPlannerHeight(decorHeight)) {
@@ -603,7 +603,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleDecreaseHeight(GameSession session) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         int newHeight;
         if (session.Player.Value.Home.IsPlanner) {
             newHeight = session.Player.Value.Home.PlannerHeight - 1;
@@ -655,30 +655,30 @@ public class RequestCubeHandler : FieldPacketHandler {
         session.Housing.InteriorReward(rewardId);
     }
 
+    // The options are the owner's (HomePermissionRules.MayChange). They are saved at once: a player who enters
+    // the home later gets them from the database (LoadUgcMapHandler), not from the owner's session.
+    private static bool InOwnHome(GameSession session) {
+        return session.Field is HomeFieldManager home && HomePermissionRules.MayChange(home.OwnerId, session.AccountId);
+    }
+
     private void HandleEnablePermission(GameSession session, IByteReader packet) {
         var permission = packet.Read<HomePermission>();
         bool enabled = packet.ReadBool();
+        if (session.Field is null || !InOwnHome(session)) return;
 
-        if (enabled) {
-            session.Player.Value.Home.Permissions[permission] = HomePermissionSetting.None;
-        } else {
-            session.Player.Value.Home.Permissions.Remove(permission);
+        if (HomePermissionRules.Enable(session.Player.Value.Home.Permissions, permission, enabled) && session.Housing.SaveHome()) {
+            session.Field.Broadcast(CubePacket.EnablePermission(permission, enabled));
         }
-
-        session.Field?.Broadcast(CubePacket.EnablePermission(permission, enabled));
     }
 
     private void HandleSetPermission(GameSession session, IByteReader packet) {
         var permission = packet.Read<HomePermission>();
         var setting = packet.Read<HomePermissionSetting>();
+        if (session.Field is null || !InOwnHome(session)) return;
 
-        if (session.Player.Value.Home.Permissions.ContainsKey(permission)) {
-            session.Player.Value.Home.Permissions[permission] = setting;
-        } else {
-            setting = HomePermissionSetting.None;
+        if (HomePermissionRules.Set(session.Player.Value.Home.Permissions, permission, setting) is { } applied && session.Housing.SaveHome()) {
+            session.Field.Broadcast(CubePacket.SetPermission(permission, applied));
         }
-
-        session.Field?.Broadcast(CubePacket.SetPermission(permission, setting));
     }
 
     private void HandleSaveLayout(GameSession session, IByteReader packet) {
@@ -806,25 +806,25 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleSetBackground(GameSession session, IByteReader packet) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         var background = packet.Read<HomeBackground>();
-        if (session.Player.Value.Home.SetBackground(background)) {
+        if (session.Player.Value.Home.SetBackground(background) && session.Housing.SaveHome()) {
             session.Field.Broadcast(CubePacket.SetBackground(background));
         }
     }
 
     private void HandleSetLighting(GameSession session, IByteReader packet) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         var lighting = packet.Read<HomeLighting>();
-        if (session.Player.Value.Home.SetLighting(lighting)) {
+        if (session.Player.Value.Home.SetLighting(lighting) && session.Housing.SaveHome()) {
             session.Field.Broadcast(CubePacket.SetLighting(lighting));
         }
     }
 
     private void HandleSetCamera(GameSession session, IByteReader packet) {
-        if (session.Field is null) return;
+        if (session.Field is null || !InOwnHome(session)) return;
         var camera = packet.Read<HomeCamera>();
-        if (session.Player.Value.Home.SetCamera(camera)) {
+        if (session.Player.Value.Home.SetCamera(camera) && session.Housing.SaveHome()) {
             session.Field.Broadcast(CubePacket.SetCamera(camera));
         }
     }
