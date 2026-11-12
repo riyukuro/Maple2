@@ -158,6 +158,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.ROOM_RANDOM,
             Table = ParseRoomRandom(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.NPC_STAT_FACTOR,
+            Table = ParseNpcStatFactor(),
+        };
 
     }
 
@@ -2499,6 +2503,55 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
 
         return new RoomRandomTable(randomRoomTable, roomTable);
+    }
+
+    private NpcStatFactorTable ParseNpcStatFactor() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/npcStatFactorByPlayerCount.xml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null) {
+            return new NpcStatFactorTable(new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyDictionary<int, NpcStatFactorMetadata>>>());
+        }
+        NpcStatFactorTable table = MapNpcStatFactor(xmlReader.GetXmlDocument(entry),
+            row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
+        Console.WriteLine($"npcStatFactorByPlayerCount: {table.Entries.Values.Sum(classes => classes.Values.Sum(counts => counts.Count))} rows after the feature filter");
+        return table;
+    }
+
+    // Rows with an empty factorID, class or playerCount (the file ends with a few) are skipped; keep says whether a
+    // row's feature and locale are on. A later row for the same (factorID, class, playerCount) replaces an earlier one.
+    public static NpcStatFactorTable MapNpcStatFactor(XmlDocument document, Func<XmlElement, bool> keep) {
+        var results = new Dictionary<int, Dictionary<int, Dictionary<int, NpcStatFactorMetadata>>>();
+        foreach (XmlNode node in document.SelectNodes("ms2/PlayerCountFactor")!) {
+            if (node is not XmlElement row || !keep(row)) continue;
+            if (!int.TryParse(row.GetAttribute("factorID"), out int factorId)
+                || !int.TryParse(row.GetAttribute("class"), out int npcClass)
+                || !int.TryParse(row.GetAttribute("playerCount"), out int playerCount)) {
+                continue;
+            }
+
+            double Read(string name, double fallback) {
+                return double.TryParse(row.GetAttribute(name), NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ? value : fallback;
+            }
+
+            if (!results.TryGetValue(factorId, out Dictionary<int, Dictionary<int, NpcStatFactorMetadata>>? classes)) {
+                results[factorId] = classes = new Dictionary<int, Dictionary<int, NpcStatFactorMetadata>>();
+            }
+            if (!classes.TryGetValue(npcClass, out Dictionary<int, NpcStatFactorMetadata>? counts)) {
+                classes[npcClass] = counts = new Dictionary<int, NpcStatFactorMetadata>();
+            }
+            counts[playerCount] = new NpcStatFactorMetadata(
+                HpRate: Read("hpRate", 1), HpValue: Read("hpValue", 0),
+                PapRate: Read("papRate", 1), PapValue: Read("papValue", 0),
+                MapRate: Read("mapRate", 1), MapValue: Read("mapValue", 0),
+                NddRate: Read("nddRate", 1), NddValue: Read("nddValue", 0),
+                CapRate: Read("capRate", 1), CapValue: Read("capValue", 0));
+        }
+
+        return new NpcStatFactorTable(results.ToDictionary(
+            factor => factor.Key,
+            factor => (IReadOnlyDictionary<int, IReadOnlyDictionary<int, NpcStatFactorMetadata>>) factor.Value.ToDictionary(
+                npcClass => npcClass.Key,
+                npcClass => (IReadOnlyDictionary<int, NpcStatFactorMetadata>) npcClass.Value)));
     }
 
     private ConstantsTable ParseConstants() {

@@ -558,7 +558,7 @@ public class ItemUseHandler : FieldPacketHandler {
 
         Vector3 position = session.Player.Transform.Position + session.Player.Transform.FrontAxis * distance;
         // TODO: Do we check Z?
-        FieldNpc? fieldNpc = session.Field?.SpawnNpc(npcMetadata, position, session.Player.Rotation);
+        FieldNpc? fieldNpc = session.Field?.SpawnNpc(npcMetadata, position, session.Player.Rotation, playerSummon: true);
         if (fieldNpc == null || session.Field is null) {
             return;
         }

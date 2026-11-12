@@ -123,7 +123,7 @@ public partial class FieldManager {
         return fieldPlayer;
     }
 
-    public FieldNpc? SpawnNpc(NpcMetadata npc, Vector3 position, Vector3 rotation, bool disableAi = false, FieldMobSpawn? owner = null, SpawnPointNPC? spawnPointNpc = null, string spawnAnimation = "", long maidUid = 0) {
+    public FieldNpc? SpawnNpc(NpcMetadata npc, Vector3 position, Vector3 rotation, bool disableAi = false, FieldMobSpawn? owner = null, SpawnPointNPC? spawnPointNpc = null, string spawnAnimation = "", long maidUid = 0, bool playerSummon = false) {
         // The played client creates no NPC it has no data for (PlayedClientNpcs).
         if (!PlayedClientNpcs.CanSpawn(npc)) {
             logger.Debug("[SpawnNpc] NPC {NpcId} is not in the played client's NPC data, not spawned", npc.Id);
@@ -166,6 +166,17 @@ public partial class FieldManager {
             SpawnPointId = owner?.Value.Id ?? 0,
             MaidUid = maidUid,
         };
+
+        // The room's npcStatFactorByPlayerCount row, taken once at spawn: an npc keeps its stats when players join or
+        // leave later. A player's summon is never scaled (pets do not come through here).
+        if (!playerSummon) {
+            int factorId = NpcStatFactorRules.FactorId((this as DungeonFieldManager)?.DungeonMetadata.PlayerCountFactorId ?? 0, FieldInstance.NpcStatFactorId);
+            NpcStatFactorMetadata? factor = NpcStatFactorRules.Find(ServerTableMetadata.NpcStatFactorTable, factorId, npc.Basic.Class,
+                NpcStatFactorRules.PlayerCount(Size, Players.Count));
+            if (factor != null) {
+                fieldNpc.Stats.Values.SetStaticStats(NpcStatFactorRules.Apply(npc.Stat.Stats, factor));
+            }
+        }
 
         if (npc.Basic.Friendly > 0) {
             Npcs[fieldNpc.ObjectId] = fieldNpc;
