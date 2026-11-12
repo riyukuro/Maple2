@@ -111,11 +111,29 @@ public class ItemEnchantManager {
         Reset();
         Type = enchantType;
         upgradeItem = item;
+        int minFodder = Prepare();
+        // KMS2 order: the staged item, then the smith's line.
+        session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder));
+        NpcTalkEvent(ScriptEventType.EnchantSelect);
+        return true;
+    }
+
+    // The staged item's cost, rate and options for its next grade, with no fodder and no charges chosen.
+    // Returns the fodder the grade needs.
+    private int Prepare() {
+        catalysts.Clear();
+        fodders.Clear();
+        attributeDeltas.Clear();
+        rates.Clear();
+        fodderWeight = 0;
+        useCharges = 0;
+        if (upgradeItem == null) {
+            return 0;
+        }
 
         // Ensure this item has an Enchant field set.
         upgradeItem.Enchant ??= new ItemEnchant();
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
-        int minFodder = RequireFodder[enchants];
 
         foreach (IngredientInfo ingredient in GetRequiredCatalysts()) {
             catalysts.Add(ingredient);
@@ -132,10 +150,7 @@ public class ItemEnchantManager {
                 rates.Success = MaxRate;
                 break;
         }
-        // KMS2 order: the staged item, then the smith's line.
-        session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder));
-        NpcTalkEvent(ScriptEventType.EnchantSelect);
-        return true;
+        return RequireFodder[enchants];
     }
 
     public bool UpdateFodder(long itemUid, bool add) {
@@ -324,15 +339,19 @@ public class ItemEnchantManager {
                 if (enchantResult == EnchantResult.Success) {
                     ApplyEnchantStats();
 
-                    session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Success, targetLong: upgradeItem.Enchant.Enchants);
+                    // KMS2 order: the result, then the quest and trophy updates.
                     session.Send(ItemEnchantPacket.Success(upgradeItem, attributeDeltas));
+                    session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Success, targetLong: upgradeItem.Enchant.Enchants);
                     ChatUtil.SendEnchantAnnouncement(session, upgradeItem);
                 } else {
-                    session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Fail, targetLong: upgradeItem.Enchant.Enchants);
                     upgradeItem.Enchant.Charges += FailCharge[enchants];
                     session.Send(ItemEnchantPacket.Failure(upgradeItem, FailCharge[enchants]));
+                    session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Fail, targetLong: upgradeItem.Enchant.Enchants);
                 }
 
+                // What was staged is spent: a request that follows without a new stage pays the cost of the
+                // item's grade as it is now, at that grade's rate, with no fodder and no charges.
+                Prepare();
                 return true;
             case EnchantType.Peachy:
                 upgradeItem.Enchant.EnchantExp += force ? MaxExp : GainExp[enchants];
@@ -340,9 +359,9 @@ public class ItemEnchantManager {
                     upgradeItem.Enchant.EnchantExp = 0;
                     ApplyEnchantStats();
 
-                    session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Success, targetLong: upgradeItem.Enchant.Enchants);
                     session.Send(ItemEnchantPacket.Success(upgradeItem, attributeDeltas));
                     session.Send(ItemEnchantPacket.UpdateExp(itemUid, 0));
+                    session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Success, targetLong: upgradeItem.Enchant.Enchants);
                     ChatUtil.SendEnchantAnnouncement(session, upgradeItem);
                     Reset();
                 } else {

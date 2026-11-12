@@ -138,9 +138,10 @@ public class LoginSession : Core.Network.Session {
     }
 
     // No server path stores a name longer than the limit; a row that has one (written by hand, or kept from another
-    // region's limit) must be renamed before it enters.
+    // region's limit) must be renamed before it enters. The client's test counts the length first, so a long name
+    // with a character the region does not allow is due as well.
     public static bool IsRenameDue(string name) {
-        return NameChangeRules.IsRenameDue(NameValidator.CharacterNameWidth(name, Target.LOCALE), Constant.CharacterNameLengthMax);
+        return NameChangeRules.IsRenameDue(NameValidator.CharacterNameScanWidth(name, Target.LOCALE), Constant.CharacterNameLengthMax);
     }
 
     public void CreateCharacter(Character createCharacter, List<Item> createOutfits) {

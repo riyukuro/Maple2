@@ -72,6 +72,23 @@ public static partial class NameValidator {
         return width;
     }
 
+    // The count ScanLimit makes before it looks at what the characters are: one per character and one more for a
+    // character the region counts twice. A character the region does not allow counts once.
+    public static int CharacterNameScanWidth(string name, string locale) {
+        int width = name.Length;
+        foreach (char ch in name) {
+            bool wide = locale switch {
+                "NA" => false,
+                "CN" => ch is >= '\u4E00' and < '\u9FAF',
+                _ => ch is >= '\uAC00' and < '\uD7A4',
+            };
+            if (wide) {
+                width++;
+            }
+        }
+        return width;
+    }
+
     public static bool ValidCharacterName(string name, string locale) {
         int width = CharacterNameWidth(name, locale);
         return width >= Constant.CharacterNameLengthMin && width <= Constant.CharacterNameLengthMax;

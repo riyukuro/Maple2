@@ -124,12 +124,6 @@ public class ItemDismantleHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            // Nothing staged: the client's result 5 says so and resets the dialog's pending break.
-            if (Array.TrueForAll(session.DismantleStaging, staged => staged == default)) {
-                session.Send(ItemDismantlePacket.Error(5));
-                return;
-            }
-
             // The item can have changed since it was staged (locked, split, its pet summoned): drop those slots.
             for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
                 (long uid, int amount) = session.DismantleStaging[slot];
@@ -142,6 +136,13 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
             }
 
+            // Nothing staged, or nothing left of it: the client's result 5 says so and resets the dialog's
+            // pending break.
+            if (Array.TrueForAll(session.DismantleStaging, staged => staged == default)) {
+                session.Send(ItemDismantlePacket.Error(5));
+                return;
+            }
+
             // Room for every reward at its max before anything is broken. The client's result 3 shows
             // s_err_inventory ("Your inventory is full.") and keeps the staged items.
             if (!CanHoldRewards(session, GetRewards(session))) {
@@ -150,6 +151,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
             }
 
             var rewards = new Dictionary<int, (int Min, int Max)>();
+            var broken = new List<int>();
             for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
                 (long uid, int amount) = session.DismantleStaging[slot];
                 Item? item = session.Item.Inventory.Get(uid);
@@ -162,8 +164,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     session.DismantleStaging[slot] = default;
                     continue;
                 }
-                // Each item broken counts for item_break (74000011 "Dismantle 1 item", 10002700 dismantles 10).
-                session.ConditionUpdate(ConditionType.item_break, counter: amount);
+                broken.Add(amount);
 
                 foreach ((int id, int min, int max) in GetReward(item, amount)) {
                     (int Min, int Max) prev = rewards.GetValueOrDefault(id, (0, 0));
@@ -196,6 +197,11 @@ public class ItemDismantleHandler : FieldPacketHandler {
             }
 
             session.Send(ItemDismantlePacket.Result(session.DismantleType, result));
+            // Each item broken counts for item_break (74000011 "Dismantle 1 item", 10002700 dismantles 10).
+            // KMS2 order: the items taken, the rewards, the result, then the trophy updates.
+            foreach (int amount in broken) {
+                session.ConditionUpdate(ConditionType.item_break, counter: amount);
+            }
         }
     }
 

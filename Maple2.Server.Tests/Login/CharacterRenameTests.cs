@@ -82,6 +82,8 @@ public class CharacterRenameTests {
     [TestCase(LONG_NAME, true)]
     [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00", false)] // 6 Hangul count 12
     [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00a", true)]
+    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\u00E9", true)] // a character the region does not allow counts once
+    [TestCase("Abcdefghijk\u00E9", false)]
     public void RenameIsDueForANameThatIsTooLong(string name, bool due) {
         Assert.That(LoginSession.IsRenameDue(name), Is.EqualTo(due));
     }
@@ -215,12 +217,12 @@ public class CharacterRenameTests {
         test.AddCharacter("PARRY", accountId: 2000);
 
         Assert.Multiple(() => {
-            Assert.That(db.RenameCharacter(test.AccountId, due, "Parry"), Is.False);
+            Assert.That(db.RenameCharacter(test.AccountId, due, "Parry"), Is.EqualTo(NameChangeRules.Refusal.Taken));
             Assert.That(test.Name(due), Is.EqualTo(LONG_NAME));
             // Another account's character is not renamed; the own name in another case is.
-            Assert.That(db.RenameCharacter(2000, due, "Free"), Is.False);
-            Assert.That(db.RenameCharacter(test.AccountId, due, "Free"), Is.True);
-            Assert.That(db.RenameCharacter(test.AccountId, due, "FREE"), Is.True);
+            Assert.That(db.RenameCharacter(2000, due, "Free"), Is.EqualTo(NameChangeRules.Refusal.Invalid));
+            Assert.That(db.RenameCharacter(test.AccountId, due, "Free"), Is.EqualTo(NameChangeRules.Refusal.None));
+            Assert.That(db.RenameCharacter(test.AccountId, due, "FREE"), Is.EqualTo(NameChangeRules.Refusal.None));
             Assert.That(test.Name(due), Is.EqualTo("FREE"));
         });
     }

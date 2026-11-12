@@ -100,6 +100,35 @@ public class NameChangeItemHandlerTests {
         });
     }
 
+    // The used item is stored with the name, not at the logout save.
+    [Test]
+    public void TheUsedItemIsStoredWithTheName() {
+        GameSession session = test.Start();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+        using (var context = new Ms2Context(test.Options)) {
+            Assert.That(context.Item.Find(voucher.Uid)!.OwnerId, Is.EqualTo(test.CharacterId));
+        }
+
+        Use(session, "Parry");
+
+        using (var context = new Ms2Context(test.Options)) {
+            Assert.That(context.Item.Find(voucher.Uid)?.OwnerId ?? 0, Is.EqualTo(0));
+        }
+        Assert.That(StoredName(), Is.EqualTo("Parry"));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A rename of a character that is not the account's is no "taken" answer.
+    [Test]
+    public void AWriteThatFailsIsNotAnsweredAsTaken() {
+        test.Start();
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.RenameCharacter(999999, test.CharacterId, "Parry"), Is.EqualTo(NameChangeRules.Refusal.Invalid));
+        Assert.That(StoredName(), Is.Not.EqualTo("Parry"));
+    }
+
     // A create that stores the name after the rename is found by the create's own check at once: the name is
     // written with the rename, not at the logout save.
     [Test]

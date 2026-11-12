@@ -169,4 +169,58 @@ public class LimitBreakMarketLockHandlerTests {
         Assert.That(Convert.ToHexString(sent[0])[4..24], Is.EqualTo("0301" + uid));
         Assert.That(session.Item.Inventory.Get(cap.Uid)!.IsLocked, Is.True);
     }
+
+    // Two upgrade requests on one preview: the second takes nothing and the level stays.
+    [Test]
+    public void LimitBreak_TwiceOnOnePreviewPaysOnce() {
+        GameSession session = LimitBreakLogin(fragments: 171, meso: 2000000);
+        LimitBreak(session, 0);
+        LimitBreak(session, 1);
+        test.TakeSent();
+
+        LimitBreak(session, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps(), Has.No.Member(SendOp.ItemInventory).And.No.Member(SendOp.Meso));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000000));
+            Assert.That(Held(session, ItemTag.ChaosOnix), Is.EqualTo(6));
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(90));
+            Assert.That(session.Item.Inventory.Get(weapon.Uid)!.LimitBreak!.Level, Is.EqualTo(1));
+        });
+    }
+
+    // A locked item is not staged for another lock, and a commit with nothing staged changes nothing.
+    [Test]
+    public void ItemLock_CommitTwiceLocksOnce() {
+        test = new TestGameSession();
+        Item cap = test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, type: 1, slotMax: 1));
+        GameSession session = test.Start();
+        typeof(GameSession).GetField(nameof(GameSession.ItemLockStaging))!.SetValue(session, new long[18]);
+        var handler = new ItemLockHandler { ServerTableMetadata = test.ServerTableMetadata };
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(0)));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteBool(false);
+            writer.WriteLong(cap.Uid);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteBool(false);
+        }));
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteBool(false);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteBool(false);
+            writer.WriteLong(cap.Uid);
+        }));
+
+        Assert.That(session.Item.Inventory.Get(cap.Uid)!.IsLocked, Is.True);
+        Assert.That(session.ItemLockStaging, Is.All.EqualTo(0L));
+        Assert.That(test.Errors, Is.Empty);
+    }
 }

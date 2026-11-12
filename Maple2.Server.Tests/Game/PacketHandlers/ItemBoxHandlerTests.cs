@@ -245,4 +245,19 @@ public class ItemBoxHandlerTests {
         Assert.That(test.TakeSent(), Is.Empty);
         Assert.That(Held(session, BoxId), Is.EqualTo(1));
     }
+
+    // Two uses of the last box: the second finds no box and gives nothing.
+    [Test]
+    public void OpenItemBox_Use_TwiceWithOneBoxOpensOnce() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 1);
+        Use(session);
+        test.TakeSent();
+
+        Use(session);
+        MultiOpen(session, 1);
+
+        Assert.That(test.TakeSentOps(), Has.No.Member(SendOp.ItemInventory));
+        Assert.That(Held(session, RewardA), Is.EqualTo(3));
+        Assert.That(Held(session, RewardB), Is.EqualTo(1));
+    }
 }

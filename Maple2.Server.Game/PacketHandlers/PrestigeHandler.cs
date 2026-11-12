@@ -57,13 +57,17 @@ public class PrestigeHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.Add(item, true)) {
+        if (!session.Item.Inventory.CanAdd(item)) {
             session.Send(ChatPacket.Alert(StringCode.s_err_inventory));
             return;
         }
 
+        // KMS2 order: the claim, then the item.
         session.Exp.PrestigeRewardsClaimed.Add(level);
         session.Send(PrestigePacket.ClaimReward(level));
+        if (!session.Item.Inventory.Add(item, true)) {
+            session.Item.MailItem(item);
+        }
     }
 
     private void HandleMissionReward(GameSession session, IByteReader packet) {
@@ -88,11 +92,11 @@ public class PrestigeHandler : FieldPacketHandler {
             return;
         }
 
+        // KMS2 order: the missions, then the item.
+        mission.Awarded = true;
+        session.Send(PrestigePacket.UpdateMissions(session.Player.Value.Account));
         if (!session.Item.Inventory.Add(item, true)) {
             session.Item.MailItem(item);
         }
-
-        mission.Awarded = true;
-        session.Send(PrestigePacket.UpdateMissions(session.Player.Value.Account));
     }
 }

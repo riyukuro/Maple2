@@ -4,6 +4,7 @@ using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Config;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -715,22 +716,43 @@ public partial class GameStorage {
         }
         #endregion
 
-        // A new name for a character of the account, written at once. False when another character holds the name
-        // (the name's unique index decides between two writers) or the character is not the account's.
-        public bool RenameCharacter(long accountId, long characterId, string name) {
+        // A new name for a character of the account, written at once. Taken when another character holds the name
+        // (the name's unique index decides between two writers), Invalid when the character is not the account's
+        // or the write failed for another reason. A session's own character is passed as well: its row version
+        // moves with the write, and the next full save must not find it stale.
+        public NameChangeRules.Refusal RenameCharacter(long accountId, long characterId, string name, Character? character = null) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
-            Model.Character? model = Context.Character.FirstOrDefault(character =>
-                character.Id == characterId && character.AccountId == accountId);
+            Model.Character? model = Context.Character.FirstOrDefault(row =>
+                row.Id == characterId && row.AccountId == accountId);
             if (model == null) {
-                return false;
+                return NameChangeRules.Refusal.Invalid;
             }
-            if (Context.Character.Any(character => character.Id != characterId && character.Name.ToLower() == name.ToLower())) {
-                return false;
+            if (IsNameOfAnother(characterId, name)) {
+                return NameChangeRules.Refusal.Taken;
             }
 
             model.Name = name;
-            return Context.TrySaveChanges();
+            if (!Context.TrySaveChanges()) {
+                Context.Entry(model).State = EntityState.Detached;
+                try {
+                    return IsNameOfAnother(characterId, name) ? NameChangeRules.Refusal.Taken : NameChangeRules.Refusal.Invalid;
+                } catch (Exception) {
+                    return NameChangeRules.Refusal.Invalid;
+                }
+            }
+
+            if (character != null) {
+                (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(characterId);
+                if (updated != null) {
+                    character.LastModified = updated.Value.CharacterLastModified;
+                }
+            }
+            return NameChangeRules.Refusal.None;
+        }
+
+        private bool IsNameOfAnother(long characterId, string name) {
+            return Context.Character.Any(row => row.Id != characterId && row.Name.ToLower() == name.ToLower());
         }
 
         #region Delete

@@ -206,4 +206,41 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(wardrobe.Equips, Is.Empty);
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(WardrobePacket.Load(0, wardrobe)) }));
     }
+
+    // Two upgrade requests with what one upgrade needs: the second finds the lapenshard gone and takes nothing.
+    [Test]
+    public void LapenshardUpgrade_TwiceWithOneSetPaysOnce() {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 5);
+        Item crystals = test.Store(crystalData, amount: 50);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20)], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+        void Upgrade() {
+            handler.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(5);
+                writer.WriteLong(shards.Uid);
+                writer.WriteInt(ShardId);
+                writer.WriteInt(0);
+                writer.WriteInt(1);
+                writer.WriteLong(shards.Uid);
+                writer.WriteInt(4);
+            }));
+        }
+        Upgrade();
+        test.TakeSent();
+
+        Upgrade();
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+        Assert.That(session.Item.Inventory.Get(crystals.Uid)!.Amount, Is.EqualTo(30));
+        Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
+    }
 }

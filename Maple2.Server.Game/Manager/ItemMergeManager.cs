@@ -154,6 +154,13 @@ public sealed class ItemMergeManager {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
             return;
         }
+        // The crystal picked can be gone by now (the last one was used by the request before this one):
+        // refuse before the materials are taken.
+        Item? heldCatalyst = session.Item.Inventory.Get(catalystUid);
+        if (heldCatalyst == null || heldCatalyst.Amount < 1 || heldCatalyst.IsExpired()) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
+            return;
+        }
 
         ItemMergeTable.Entry? mergeSlot = MergeSlot(session.ServerTableMetadata.ItemMergeTable, upgradeItem.Metadata, catalystItem.Metadata);
         if (mergeSlot == null || mergeSlot.BasicOptions.Count + mergeSlot.SpecialOptions.Count == 0) {

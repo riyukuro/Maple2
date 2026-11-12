@@ -150,9 +150,10 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         bool banned = !blank && BanWordStorage.ContainsBannedWord(name);
         bool taken = !blank && db.GetCharacterId(name) != default;
         NameChangeRules.Refusal refusal = NameChangeRules.Check(blank, width, Constant.CharacterNameLengthMin, Constant.CharacterNameLengthMax, banned, taken);
-        // The write refuses a name that was taken since the check.
-        if (refusal == NameChangeRules.Refusal.None && !db.RenameCharacter(session.AccountId, characterId, name)) {
-            refusal = NameChangeRules.Refusal.Taken;
+        // The write refuses a name that was taken since the check; a write that failed for another reason gets the
+        // system text.
+        if (refusal == NameChangeRules.Refusal.None) {
+            refusal = db.RenameCharacter(session.AccountId, characterId, name);
         }
         if (refusal != NameChangeRules.Refusal.None) {
             (StringCode code, string[] args) = NameChangeRules.Text(refusal, name);

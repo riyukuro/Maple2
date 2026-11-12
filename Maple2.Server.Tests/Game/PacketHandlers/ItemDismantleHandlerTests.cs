@@ -95,4 +95,47 @@ public class ItemDismantleHandlerTests {
         Assert.That(Convert.ToHexString(test.TakeSent()[^1]), Is.EqualTo(Hex(ItemDismantlePacket.Result(1, new Dictionary<int, int> { [Onyx] = 190, [ChaosOnyx] = 3 }))));
         Assert.That(session.Item.Inventory.Find(ChaosOnyx).Sum(item => item.Amount), Is.EqualTo(3));
     }
+
+    // Two confirms in a row: the second finds nothing staged, answers with result 5 and gives nothing more.
+    [Test]
+    public void Confirm_TwiceBreaksTheItemOnce() {
+        GameSession session = Login(rarity: 3);
+        Stage(session);
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Find(Onyx).Sum(item => item.Amount), Is.EqualTo(142));
+    }
+
+    // The staged item left the bag before the confirm: result 5, nothing given.
+    [Test]
+    public void Confirm_OfAnItemThatIsGoneGivesNothing() {
+        GameSession session = Login(rarity: 3);
+        Stage(session);
+        Assert.That(session.Item.Inventory.Consume(gear.Uid, 1), Is.True);
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+    }
+
+    // A confirm with nothing staged, and a locked item: nothing is broken.
+    [Test]
+    public void Confirm_OfALockedItemKeepsIt() {
+        GameSession session = Login(rarity: 3);
+        Stage(session);
+        session.Item.Inventory.Get(gear.Uid)!.IsLocked = true;
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+    }
 }

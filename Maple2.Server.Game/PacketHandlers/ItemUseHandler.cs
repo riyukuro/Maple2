@@ -489,15 +489,19 @@ public class ItemUseHandler : FieldPacketHandler {
         // The name is written at once: the name's unique index decides between this rename and a create or another
         // rename with the same name, and the voucher is used up only for a name that was written.
         string oldName = session.Player.Value.Character.Name;
-        if (!db.RenameCharacter(session.AccountId, session.CharacterId, newName)) {
-            (StringCode code, string[] args) = NameChangeRules.Text(NameChangeRules.Refusal.Taken, newName);
+        refusal = db.RenameCharacter(session.AccountId, session.CharacterId, newName, session.Player.Value.Character);
+        if (refusal == NameChangeRules.Refusal.None && !session.Item.Inventory.Consume(item.Uid, 1)) {
+            db.RenameCharacter(session.AccountId, session.CharacterId, oldName, session.Player.Value.Character);
+            refusal = NameChangeRules.Refusal.Invalid;
+        }
+        if (refusal != NameChangeRules.Refusal.None) {
+            (StringCode code, string[] args) = NameChangeRules.Text(refusal, newName);
             session.Send(NoticePacket.MessageBox(new InterfaceText(code, args)));
             return;
         }
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
-            db.RenameCharacter(session.AccountId, session.CharacterId, oldName);
-            return;
-        }
+        // The used item is stored with the name, so a crash before the logout save cannot give the item back
+        // next to the new name.
+        session.SavePurchase(save => session.Item.Inventory.Save(save));
 
         // KMS2's order: the item, the answer, then the guild's and each club's member name (Guild 12, Club 27, sent
         // by the world's player update to every member online). It sends nothing for the names kept in mails, market
