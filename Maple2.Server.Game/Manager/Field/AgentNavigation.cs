@@ -343,6 +343,14 @@ public sealed class AgentNavigation {
         return SetPathTo(end);
     }
 
+    // True when the npc stands on the navmesh but no navmesh poly lies near the goal, so PathTo fails for it.
+    public bool GoalOffMesh(Vector3 goal) {
+        if (!field.FindNearestPoly(agent.npos, out long startRef, out _) || startRef == 0) {
+            return false;
+        }
+        return field.FindNearestPoly(goal, out long endRef, out _) && endRef == 0;
+    }
+
     private bool SetPathTo(RcVec3f target) {
         currentPath = [];
         currentPathIndex = 0;

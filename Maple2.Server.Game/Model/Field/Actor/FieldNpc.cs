@@ -454,6 +454,16 @@ public class FieldNpc : Actor<Npc> {
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
+            } else if (Navigation.GoalOffMesh(currentWaypoint.Position)) {
+                // The waypoint stands on ground the navmesh does not cover (e.g. a train track that is not path geometry):
+                // go there in a straight line at walk speed instead of skipping it, so boxes waiting for the npc see it.
+                if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
+                    approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: 1);
+                } else if (WalkSequence is not null) {
+                    approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: WalkSequence.Name, speed: 1);
+                } else {
+                    Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
+                }
             } else {
                 Logger.Warning("Failed to path to waypoint id({Id}) coord {Coord} for npc {NpcName} - {NpcId} in patrol {PatrolId}", currentWaypoint.Id, currentWaypoint.Position, Value.Metadata.Name, Value.Metadata.Id, Patrol.Uuid);
             }
