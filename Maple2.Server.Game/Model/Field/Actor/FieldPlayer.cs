@@ -815,39 +815,28 @@ public class FieldPlayer : Actor<Player> {
 
         SkillMetadata metadata = record.Metadata;
 
+        // Every cost is checked before any is paid, so a refused cast pays nothing.
+        if (metadata.Data.Consume.Meso > 0 && Session.Currency.Meso < metadata.Data.Consume.Meso) {
+            Logger.Error("Not enough meso to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+            return false;
+        }
+        if (!CanPayCastStats(metadata, out int spiritCost, out int staminaCost)) {
+            return false;
+        }
+        // HpRate is a negative value in decimal form (e.g., -0.01 for 1%)
+        long hp = Stats.Values[BasicAttribute.Health].Current;
+        int hpToConsume = SkillCastRules.HpCost(hp, metadata.Data.Consume.HpRate);
+        if (SkillCastRules.HpCostRefused(hp, hpToConsume)) {
+            Logger.Error("Not enough health to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+            return false;
+        }
+
         if (metadata.Data.Consume.Meso > 0) {
-            if (Session.Currency.Meso < metadata.Data.Consume.Meso) {
-                Logger.Error("Not enough meso to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
-                return false;
-            }
             Session.Currency.Meso -= metadata.Data.Consume.Meso;
         }
-
-        if (metadata.Data.Consume.Stat.TryGetValue(BasicAttribute.Spirit, out long spiritCost)) {
-            (int invokeValue, float invokeRate) = Buffs.GetInvokeValues(InvokeEffectType.ReduceSpiritCost, metadata.Id, metadata.Property.SkillGroup);
-            int finalSpriteCost = Math.Max(0, (int) (-invokeValue + (1 - invokeRate) * spiritCost));
-            if (Stats.Values[BasicAttribute.Spirit].Current < finalSpriteCost) {
-                Logger.Error("Not enough spirit to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
-                return false;
-            }
-            ConsumeSp(finalSpriteCost);
-        }
-
-        if (metadata.Data.Consume.Stat.TryGetValue(BasicAttribute.Stamina, out long staminaCost)) {
-            if (Stats.Values[BasicAttribute.Stamina].Current < staminaCost) {
-                Logger.Error("Not enough stamina to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
-                return false;
-            }
-            ConsumeStamina((int) staminaCost);
-        }
-
-        if (metadata.Data.Consume.HpRate != 0) {
-            long hp = Stats.Values[BasicAttribute.Health].Current;
-            // HpRate is a negative value in decimal form (e.g., -0.01 for 1%)
-            int hpToConsume = (int) (hp * Math.Abs(metadata.Data.Consume.HpRate));
-            if (hpToConsume > 0) {
-                ConsumeHp(hpToConsume);
-            }
+        PayCastStats(spiritCost, staminaCost);
+        if (hpToConsume > 0) {
+            ConsumeHp(hpToConsume);
         }
 
         // One item per cast: a tick sync of the same cast pays the other costs again, not the item.
@@ -881,6 +870,45 @@ public class FieldPlayer : Actor<Player> {
         }
 
         return true;
+    }
+
+    // The spirit and stamina a held skill pays again at a tick sync of its cast (SkillCastRules.SyncPays).
+    public bool SkillSyncConsume(SkillRecord record) {
+        if (!CanPayCastStats(record.Metadata, out int spiritCost, out int staminaCost)) {
+            return false;
+        }
+        PayCastStats(spiritCost, staminaCost);
+        return true;
+    }
+
+    private bool CanPayCastStats(SkillMetadata metadata, out int spiritCost, out int staminaCost) {
+        spiritCost = 0;
+        staminaCost = 0;
+        if (metadata.Data.Consume.Stat.TryGetValue(BasicAttribute.Spirit, out long spirit)) {
+            (int invokeValue, float invokeRate) = Buffs.GetInvokeValues(InvokeEffectType.ReduceSpiritCost, metadata.Id, metadata.Property.SkillGroup);
+            spiritCost = Math.Max(0, (int) (-invokeValue + (1 - invokeRate) * spirit));
+            if (Stats.Values[BasicAttribute.Spirit].Current < spiritCost) {
+                Logger.Error("Not enough spirit to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+                return false;
+            }
+        }
+        if (metadata.Data.Consume.Stat.TryGetValue(BasicAttribute.Stamina, out long stamina)) {
+            staminaCost = (int) stamina;
+            if (Stats.Values[BasicAttribute.Stamina].Current < staminaCost) {
+                Logger.Error("Not enough stamina to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void PayCastStats(int spiritCost, int staminaCost) {
+        if (spiritCost > 0) {
+            ConsumeSp(spiritCost);
+        }
+        if (staminaCost > 0) {
+            ConsumeStamina(staminaCost);
+        }
     }
 
     public override string ToString() {

@@ -1,4 +1,7 @@
-﻿using Maple2.Model.Enum;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
@@ -114,5 +117,165 @@ public class SkillCastRulesTests {
     public void ResistanceMatchesTheAttackStat() {
         Assert.That(SkillCastRules.ResistanceOf(BasicAttribute.PhysicalAtk), Is.EqualTo(BasicAttribute.PhysicalRes));
         Assert.That(SkillCastRules.ResistanceOf(BasicAttribute.MagicalAtk), Is.EqualTo(BasicAttribute.MagicalRes));
+    }
+
+    [Test]
+    public void LongCooldownTakesACastHalfASecondEarly() {
+        Assert.That(SkillCastRules.RequiredGap(8000), Is.EqualTo(7500));
+        Assert.That(SkillCastRules.RequiredGap(1000), Is.EqualTo(500));
+        Assert.That(SkillCastRules.RequiredGap(0), Is.EqualTo(0));
+        SkillCastRules.LastCast[] casts = [new SkillCastRules.LastCast(10900061, 0, 8000, 100_000, 50_000)];
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900061, 0, 57_499, 107_499), Is.True);
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900061, 0, 57_500, 107_500), Is.False);
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900061, 0, 58_000, 108_000), Is.False);
+        // Another skill without a group is not held back.
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900081, 0, 50_100, 100_100), Is.False);
+    }
+
+    [Test]
+    public void ShortCooldownTakesThreeQuarters() {
+        Assert.That(SkillCastRules.RequiredGap(800), Is.EqualTo(600));
+        Assert.That(SkillCastRules.RequiredGap(400), Is.EqualTo(300));
+        SkillCastRules.LastCast[] casts = [new SkillCastRules.LastCast(10900001, 0, 800, 100_000, 50_000)];
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900001, 0, 50_599, 100_599), Is.True);
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900001, 0, 50_600, 100_600), Is.False);
+    }
+
+    [Test]
+    public void CastGapIsNotLengthenedByTheClientTick() {
+        // The client's tick says 8 s, the arrivals 1 s apart: the arrivals count, plus the allowance.
+        Assert.That(SkillCastRules.CastGap(58_000, 50_000, 101_000, 100_000), Is.EqualTo(1000 + SkillCastRules.ArrivalAllowanceMs));
+        // Arrivals bunched by up to the allowance do not shorten the client's own gap.
+        Assert.That(SkillCastRules.CastGap(58_000, 50_000, 107_600, 100_000), Is.EqualTo(8000));
+        // A tick that runs backwards is left out.
+        Assert.That(SkillCastRules.CastGap(40_000, 50_000, 108_000, 100_000), Is.EqualTo(8000 + SkillCastRules.ArrivalAllowanceMs));
+        // The 32-bit tick wraps.
+        Assert.That(SkillCastRules.CastGap(int.MinValue + 3999, int.MaxValue - 4000, 108_000, 100_000), Is.EqualTo(8000));
+        SkillCastRules.LastCast[] casts = [new SkillCastRules.LastCast(10900061, 0, 8000, 100_000, 50_000)];
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10900061, 0, 58_000, 101_000), Is.True);
+    }
+
+    [Test]
+    public void CooldownGroupHoldsBackItsOtherSkills() {
+        SkillCastRules.LastCast[] casts = [new SkillCastRules.LastCast(10300021, 77, 6000, 100_000, 50_000)];
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10300031, 77, 52_000, 102_000), Is.True);
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10300031, 77, 55_500, 105_500), Is.False);
+        Assert.That(SkillCastRules.CooldownRefuses(casts, 10300031, 78, 52_000, 102_000), Is.False);
+        Assert.That(SkillCastRules.CooldownRefuses([], 10300031, 77, 52_000, 102_000), Is.False);
+    }
+
+    [Test]
+    public void JobSkillsAreTheTreeAndTheJobIds() {
+        Assert.That(SkillCastRules.IsJobSkill(10900061, false), Is.True);
+        Assert.That(SkillCastRules.IsJobSkill(1000001, true), Is.True);
+        Assert.That(SkillCastRules.IsJobSkill(90000036, false), Is.False);
+        Assert.That(SkillCastRules.IsJobSkill(12000001, false), Is.False);
+    }
+
+    [Test]
+    public void OnlyAHeldSkillPaysAtASync() {
+        Assert.That(SkillCastRules.SyncPays(true), Is.True);
+        Assert.That(SkillCastRules.SyncPays(false), Is.False);
+    }
+
+    [Test]
+    public void HealthCostMustLeaveHealth() {
+        Assert.That(SkillCastRules.HpCost(1000, -0.01f), Is.EqualTo(10));
+        Assert.That(SkillCastRules.HpCost(50, -0.01f), Is.EqualTo(0));
+        Assert.That(SkillCastRules.HpCost(1000, 0f), Is.EqualTo(0));
+        Assert.That(SkillCastRules.HpCostRefused(1000, 10), Is.False);
+        Assert.That(SkillCastRules.HpCostRefused(50, 0), Is.False);
+        Assert.That(SkillCastRules.HpCostRefused(10, 10), Is.True);
+        Assert.That(SkillCastRules.HpCostRefused(10, 25), Is.True);
+    }
+
+    private static JobTable.Skill Tree(int main, short maxLevel, params int[] sub) => new(main, sub, maxLevel, 0);
+
+    private static JobTable.Entry Entry(JobTable.Skill[] basic, JobTable.Skill[] awakening, params int[] baseSkills) {
+        return new JobTable.Entry(null!, new Dictionary<SkillRank, JobTable.Skill[]> {
+            [SkillRank.Basic] = basic,
+            [SkillRank.Awakening] = awakening,
+        }, baseSkills);
+    }
+
+    // The Runeblade's and the Knight's trees of the job table.
+    private static readonly JobTable.Entry RuneBlader = Entry([
+        Tree(20000001, 1), Tree(20000011, 1), Tree(1000001, 1, 1000003, 1000005, 1000007), Tree(1000011, 1, 1000012, 1000013, 1000014),
+        Tree(10900041, 1), Tree(10900051, 1), Tree(10900031, 10, 10900032, 10900033, 10900034),
+        Tree(10900151, 10, 10900153, 10900155, 10900157), Tree(10900001, 10), Tree(10900061, 10, 10900062, 10900063, 10900065),
+        Tree(10900081, 10), Tree(10900071, 10, 10900072, 10900074, 10900076), Tree(10900011, 10), Tree(10900111, 10),
+        Tree(10900091, 10, 10900092, 10900094, 10900095), Tree(10900121, 10), Tree(10900021, 10), Tree(10900141, 10),
+        Tree(10900131, 10), Tree(10900101, 10, 10900103, 10900105, 10900107), Tree(10900161, 10, 10900163),
+    ], [
+        Tree(10900211, 5, 10900212, 10900213, 10900214), Tree(10900221, 5, 10900222, 10900223, 10900225), Tree(10900241, 5),
+        Tree(10900181, 5), Tree(10900271, 5), Tree(10900261, 5), Tree(10900201, 5, 10900203, 10900205, 10900207),
+        Tree(10900171, 5, 10900173, 10900175, 10900177), Tree(10900251, 5), Tree(10900191, 5, 10900193, 10900196, 10900198),
+        Tree(10900281, 5), Tree(10900291, 5, 10900292, 10900293, 10900294), Tree(10900231, 1, 10900232),
+    ], 1000001, 1000011, 10900031, 10900041, 10900051, 10900151, 10900231, 20000001, 20000011);
+
+    private static readonly JobTable.Entry Knight = Entry([
+        Tree(20000001, 1), Tree(20000011, 1), Tree(10100061, 1, 10100062), Tree(10100091, 1), Tree(10100001, 10), Tree(10100011, 10),
+        Tree(10100151, 10), Tree(10100021, 10), Tree(10100161, 10, 10100162),
+    ], [Tree(10100171, 5), Tree(10100231, 1)], 10100001, 10100011, 10100061, 10100091, 10100231, 20000001, 20000011);
+
+    private static readonly JobTable Jobs = new(new Dictionary<JobCode, JobTable.Entry> {
+        [JobCode.RuneBlader] = RuneBlader,
+        [JobCode.Knight] = Knight,
+    });
+
+    // A first-job Runeblade's tree with these points on top of its base skills, as SkillInfo holds it.
+    private static void AssertRunebladeCasts(Dictionary<int, short> points) {
+        HashSet<int> treeSkills = SkillCastRules.TreeSkills(Jobs);
+        Dictionary<int, int> mainOf = SkillCastRules.MainSkills(RuneBlader, awakening: false);
+        var levels = new Dictionary<int, short>();
+        foreach (JobTable.Skill skill in RuneBlader.Skills[SkillRank.Basic]) {
+            short level = (short) (RuneBlader.BaseSkills.Contains(skill.Main) ? 1 : 0);
+            levels[skill.Main] = (short) Math.Min(level + points.GetValueOrDefault(skill.Main), skill.MaxLevel);
+        }
+        short? TreeLevel(int skillId) => mainOf.TryGetValue(skillId, out int main) ? levels[main] : null;
+
+        foreach (JobTable.Skill skill in RuneBlader.Skills[SkillRank.Basic]) {
+            foreach (int skillId in skill.Sub.Prepend(skill.Main)) {
+                short learned = levels[skill.Main];
+                Assert.That(treeSkills, Does.Contain(skillId));
+                for (short level = 1; level <= learned; level++) {
+                    Assert.That(SkillCastRules.TreeRefuses(true, TreeLevel(skillId), level), Is.False, $"{skillId} level {level}");
+                }
+                Assert.That(SkillCastRules.TreeRefuses(true, TreeLevel(skillId), (short) (learned + 1)), Is.True, $"{skillId} above {learned}");
+            }
+        }
+        // The awakening rank is not in a first job's tree; another job's skill is in none of its own.
+        Assert.That(SkillCastRules.TreeRefuses(treeSkills.Contains(10900211), TreeLevel(10900211), 1), Is.True);
+        Assert.That(SkillCastRules.TreeRefuses(treeSkills.Contains(10100001), TreeLevel(10100001), 1), Is.True);
+        Assert.That(SkillCastRules.TreeRefuses(treeSkills.Contains(10100162), TreeLevel(10100162), 1), Is.True);
+        // Skills of no tree are never refused: an item skill, a mount skill.
+        Assert.That(SkillCastRules.TreeRefuses(treeSkills.Contains(90000036), TreeLevel(90000036), 1), Is.False);
+        Assert.That(SkillCastRules.TreeRefuses(treeSkills.Contains(80000001), TreeLevel(80000001), 3), Is.False);
+    }
+
+    [Test]
+    public void RunebladeCastsItsTreeAtLevel13() {
+        AssertRunebladeCasts(new Dictionary<int, short> {
+            [10900001] = 3, [10900061] = 2, [10900081] = 1, [10900031] = 2, [10900151] = 1, [10900071] = 1,
+        });
+    }
+
+    [Test]
+    public void RunebladeCastsItsTreeAtLevel30() {
+        AssertRunebladeCasts(new Dictionary<int, short> {
+            [10900001] = 5, [10900061] = 4, [10900081] = 3, [10900031] = 4, [10900151] = 3, [10900071] = 3, [10900011] = 2,
+            [10900111] = 2, [10900091] = 1, [10900121] = 1, [10900021] = 1,
+        });
+    }
+
+    [Test]
+    public void AwakenedJobHoldsItsAwakeningRank() {
+        Dictionary<int, int> mainOf = SkillCastRules.MainSkills(RuneBlader, awakening: true);
+        Assert.That(mainOf[10900212], Is.EqualTo(10900211));
+        Assert.That(mainOf[10900231], Is.EqualTo(10900231));
+        Assert.That(SkillCastRules.MainSkills(RuneBlader, awakening: false).ContainsKey(10900212), Is.False);
+        Assert.That(SkillCastRules.TreeRefuses(true, 0, 1), Is.True);
+        Assert.That(SkillCastRules.TreeRefuses(true, 3, 3), Is.False);
+        Assert.That(SkillCastRules.TreeRefuses(true, 3, 4), Is.True);
     }
 }

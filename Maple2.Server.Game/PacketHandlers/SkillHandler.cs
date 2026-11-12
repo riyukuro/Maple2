@@ -6,6 +6,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Model.Skill;
@@ -119,7 +120,7 @@ public class SkillHandler : FieldPacketHandler {
 
         long startTick = session.Field.FieldTick;
         SkillCooldown? blocking = null;
-        if (!CastAllowed(session, record, startTick, out blocking) || !session.Player.SkillCastConsume(record)) {
+        if (!CastAllowed(session, record, startTick, serverTick, out blocking) || !session.Player.SkillCastConsume(record)) {
             // Nothing was paid. The client ends the cast and takes the cooldown from this answer
             // (CSceneStateGame::OnSkillUseFailed, mode 5).
             session.Send(SkillUseFailedPacket.Fail(record.CastUid, record.SkillId, record.Metadata.Data.Condition.CooldownTime,
@@ -138,17 +139,29 @@ public class SkillHandler : FieldPacketHandler {
 
         session.ConditionUpdate(ConditionType.skill, codeLong: skillId, targetLong: session.Field.MapId);
         session.Config.SaveSkillCooldown(record.Metadata, startTick);
+        session.Config.SaveCastTime(record.Metadata, serverTick, startTick);
     }
 
-    // Checked before any cost is paid. A dead player casts only a skill that allows it. An item skill must also
-    // pass its own condition and be off cooldown, its own and its cooldown group's.
-    private static bool CastAllowed(GameSession session, SkillRecord record, long tick, out SkillCooldown? blocking) {
+    // Checked before any cost is paid. A dead player casts only a skill that allows it. A skill of a job's tree
+    // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
+    // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast.
+    private bool CastAllowed(GameSession session, SkillRecord record, long tick, int castTick, out SkillCooldown? blocking) {
         blocking = null;
         BeginCondition condition = record.Metadata.Data.Condition;
         if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
             return false;
         }
+        SkillInfo skillInfo = session.Config.Skill.SkillInfo;
+        bool inAnyTree = skillInfo.InAnyTree(record.SkillId);
+        if (SkillCastRules.TreeRefuses(inAnyTree, skillInfo.TreeLevel(record.SkillId), record.Level)) {
+            Logger.Debug("Cast refused, skill {SkillId} level {Level} is not in the tree of {Job} at that level", record.SkillId, record.Level, skillInfo.Job);
+            return false;
+        }
         if (!record.Metadata.Data.Consume.UseItem) {
+            if (SkillCastRules.IsJobSkill(record.SkillId, inAnyTree) && session.Config.CastTooEarly(record.Metadata, castTick, tick)) {
+                Logger.Debug("Cast refused, skill {SkillId} is on cooldown", record.SkillId);
+                return false;
+            }
             return true;
         }
         if (!condition.Check(session.Player, session.Player, session.Player)) {
@@ -433,7 +446,8 @@ public class SkillHandler : FieldPacketHandler {
             session.Send(NoticePacket.Message($"Skill.SyncTick: {skillUid}"));
         }
 
-        if (!session.Player.SkillCastConsume(record)) {
+        // Only a skill that continues while held pays again at a sync, and only its spirit and stamina.
+        if (SkillCastRules.SyncPays(record.Metadata.Property.ContinueSkill) && !session.Player.SkillSyncConsume(record)) {
             session.Send(SkillUseFailedPacket.Fail(record.CastUid, record.SkillId, record.Metadata.Data.Condition.CooldownTime,
                 session.Config.GetSkillCooldown(record.SkillId), session.Field?.FieldTick ?? 0));
             return;

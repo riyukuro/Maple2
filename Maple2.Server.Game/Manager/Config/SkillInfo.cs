@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Maple2.Tools.Extensions;
 using Serilog;
@@ -21,6 +22,10 @@ public class SkillInfo : IByteSerializable {
     public Job Job { get; private set; }
     public readonly IDictionary<int, Skill>[,] Skills;
     public readonly IDictionary<int, Skill>[,] SubSkills;
+    // Every skill of every job's tree, main and sub.
+    private readonly HashSet<int> treeSkills;
+    // The own tree's skills: a main skill to itself, a sub skill to its main skill.
+    private Dictionary<int, int> mainOf = new();
 
     public SkillInfo(JobTable jobTable, SkillMetadataStorage skillMetadata, Job job, SkillTab? skillTab) {
         this.jobTable = jobTable;
@@ -34,6 +39,8 @@ public class SkillInfo : IByteSerializable {
                 SubSkills[i, j] = new Dictionary<int, Skill>();
             }
         }
+
+        treeSkills = SkillCastRules.TreeSkills(jobTable);
 
         SetJob(job);
         SetTab(skillTab);
@@ -62,6 +69,7 @@ public class SkillInfo : IByteSerializable {
         foreach (IDictionary<int, Skill> dict in SubSkills) {
             dict.Clear();
         }
+        mainOf = SkillCastRules.MainSkills(jobTableEntry, job.IsAwakening());
 
         var baseSkills = new HashSet<int>(jobTableEntry.BaseSkills);
         foreach ((SkillRank rank, JobTable.Skill[] jobSkills) in jobTableEntry.Skills) {
@@ -191,6 +199,12 @@ public class SkillInfo : IByteSerializable {
 
         return null;
     }
+
+    // Whether the skill is in any job's skill tree.
+    public bool InAnyTree(int skillId) => treeSkills.Contains(skillId);
+
+    // The level the own tree holds the skill at (a sub skill: its main skill's level); null when not in it.
+    public short? TreeLevel(int skillId) => mainOf.TryGetValue(skillId, out int main) ? GetMainSkill(main)?.Level : null;
 
     public void WriteTo(IByteWriter writer) {
         // JobSystem's rank, which decides which skills the client shows as learned (rank >= the skill's

@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
 
@@ -34,5 +35,111 @@ public static class SkillCastRules {
     // The target's resistance against an attack counted by this attack stat.
     public static BasicAttribute ResistanceOf(BasicAttribute attack) {
         return attack == BasicAttribute.MagicalAtk ? BasicAttribute.MagicalRes : BasicAttribute.PhysicalRes;
+    }
+
+    // A job skill's cooldown, counted from one accepted cast to the next. In KMS2 the casts of a skill with a
+    // cooldown of 1 s or more never come sooner than the cooldown by the cast's own tick; shorter cooldowns are
+    // cut by the attack speed, down to 0.8 of their length.
+    // Chosen here: a cooldown of 1 s or more refuses a cast that comes more than this long before its end.
+    public const long JobCooldownSlackMs = 500;
+    // Chosen here: a cooldown under 1 s refuses a cast that comes sooner than this share of it.
+    public const float ShortCooldownShare = 0.75f;
+    // Chosen here: the time between two arrivals may be this much shorter than the time between the two casts.
+    public const long ArrivalAllowanceMs = 500;
+
+    // The last accepted cast of a skill: the cooldown it started and when, by the server's clock and by the
+    // tick the client sent with the cast.
+    public readonly record struct LastCast(int SkillId, int GroupId, long CooldownMs, long ServerTick, int CastTick);
+
+    // The shortest time after a cast at which the next one is taken.
+    public static long RequiredGap(long cooldownMs) {
+        if (cooldownMs <= 0) {
+            return 0;
+        }
+        return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare);
+    }
+
+    // The time between two casts: the shorter of the client's own ticks and the arrivals plus the allowance, so
+    // a client cannot lengthen it with its tick. A cast tick that runs backwards is not counted.
+    public static long CastGap(int castTick, int lastCastTick, long serverTick, long lastServerTick) {
+        long arrival = serverTick - lastServerTick + ArrivalAllowanceMs;
+        long client = unchecked(castTick - lastCastTick);
+        return client < 0 ? arrival : Math.Min(client, arrival);
+    }
+
+    // Whether a cast of the skill comes too early after its own last cast or after the last cast of a skill of
+    // the same cooldown group (group 0 is no group).
+    public static bool CooldownRefuses(IEnumerable<LastCast> casts, int skillId, int groupId, int castTick, long serverTick) {
+        foreach (LastCast last in casts) {
+            if (last.SkillId != skillId && (groupId == 0 || last.GroupId != groupId)) {
+                continue;
+            }
+            if (CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < RequiredGap(last.CooldownMs)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // The skills whose cooldown is checked as a job skill's: those of a job's tree and the job skill ids.
+    public static bool IsJobSkill(int skillId, bool inAnyTree) => inAnyTree || skillId is >= 10000000 and <= 11999999;
+
+    // A tick sync of a running cast pays the cast's spirit and stamina again only for a skill that continues
+    // while held, as KMS2 does; no other skill and no other cost is paid twice.
+    public static bool SyncPays(bool continueSkill) => continueSkill;
+
+    // The health a cast costs: the skill's rate (negative in the data) of the current health.
+    public static int HpCost(long currentHp, float hpRate) => (int) (currentHp * Math.Abs(hpRate));
+
+    // Chosen here: a cast whose health cost would leave no health is refused.
+    public static bool HpCostRefused(long currentHp, int cost) => cost > 0 && cost >= currentHp;
+
+    // Every skill of every job's tree, main and sub.
+    public static HashSet<int> TreeSkills(JobTable jobTable) {
+        var skills = new HashSet<int>();
+        foreach (JobTable.Entry entry in jobTable.Entries.Values) {
+            foreach (JobTable.Skill[] jobSkills in entry.Skills.Values) {
+                foreach (JobTable.Skill skill in jobSkills) {
+                    skills.Add(skill.Main);
+                    skills.UnionWith(skill.Sub);
+                }
+            }
+        }
+        return skills;
+    }
+
+    // One job's tree: each main skill to itself and each sub skill to its main skill. The awakening rank counts
+    // only for an awakened job.
+    public static Dictionary<int, int> MainSkills(JobTable.Entry entry, bool awakening) {
+        var mainOf = new Dictionary<int, int>();
+        foreach ((SkillRank rank, JobTable.Skill[] jobSkills) in entry.Skills) {
+            if (rank == SkillRank.Awakening && !awakening) {
+                continue;
+            }
+            foreach (JobTable.Skill skill in jobSkills) {
+                foreach (int sub in skill.Sub) {
+                    mainOf.TryAdd(sub, skill.Main);
+                }
+            }
+        }
+        foreach ((SkillRank rank, JobTable.Skill[] jobSkills) in entry.Skills) {
+            if (rank == SkillRank.Awakening && !awakening) {
+                continue;
+            }
+            foreach (JobTable.Skill skill in jobSkills) {
+                mainOf[skill.Main] = skill.Main;
+            }
+        }
+        return mainOf;
+    }
+
+    // A cast of a skill that is in a job's skill tree is refused when the caster's own tree lacks it or holds
+    // it at a lower level. A skill in no tree (mount, lift-up, a skill a buff gives or changes to) is not checked.
+    // learnedLevel: the level in the caster's tree (a sub skill's is its main skill's), null when not in it.
+    public static bool TreeRefuses(bool inAnyTree, short? learnedLevel, short castLevel) {
+        if (!inAnyTree) {
+            return false;
+        }
+        return learnedLevel == null || learnedLevel <= 0 || castLevel > learnedLevel;
     }
 }
