@@ -622,6 +622,10 @@ public class DungeonManager {
             return;
         }
 
+        // A clear of a room with a rank table: the room id is the code (93000174 "Clear the "Duel on the Deck"
+        // Fortress Rumble", 24091005). The client groups the type with dungeon_rank (conditionutil.cpp 0xc1, 0x2a).
+        session.ConditionUpdate(ConditionType.dungeon_rank_clear, codeLong: Metadata.Id);
+
         DungeonRecord record = GetRecord(Metadata.Id);
         short score = DungeonScoreRules.RunScore(UserRecord.Missions.Values.Select(mission => mission.Score), rankTable.MaxScore);
         DungeonScoreRules.ApplyLifetime(record, score);

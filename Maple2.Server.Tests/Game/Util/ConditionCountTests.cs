@@ -193,6 +193,16 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
     }
 
+    // A clear of a ranked room counts for dungeon_rank_clear when the room is the row's code
+    // (93000174 "Clear the "Duel on the Deck" Fortress Rumble": 24091005).
+    [TestCase(24091005, true)]
+    [TestCase(24092005, false)]
+    public void DungeonRankClear_CountsTheListedRoom(int dungeonId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.dungeon_rank_clear, 1,
+            new ConditionMetadata.Parameters(Integers: [24091005]), null);
+        Assert.That(condition.Check(null!, codeLong: dungeonId), Is.EqualTo(expected));
+    }
+
     // A completed daily quest counts for quest_daily when its id is one of the row's codes.
     [TestCase(30000359, true)]
     [TestCase(30000360, false)]
