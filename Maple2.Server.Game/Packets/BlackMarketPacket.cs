@@ -17,6 +17,16 @@ public static class BlackMarketPacket {
         Purchase = 5,
         PurchaseResponse = 7,
         Preview = 8,
+        Open = 9,
+    }
+
+    // Client: CBlackMarketMan::OnBlackMarket mode 9 (blackmarketman.cpp:143), no body: opens the black market window
+    // (0x4e97) unless it is open.
+    public static ByteWriter Open() {
+        var pWriter = Packet.Of(SendOp.BlackMarket);
+        pWriter.Write<Command>(Command.Open);
+
+        return pWriter;
     }
 
     // Client: CBlackMarketMan::FUN_140a21ca0 (blackmarketman.cpp:423): byte request mode, int code, long listing id,

@@ -160,6 +160,12 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.TreasureMap:
                 HandleTreasureMap(session, packet, item);
                 break;
+            case ItemFunction.OpenBank:
+                HandleOpenBank(session);
+                break;
+            case ItemFunction.CallBlackMarket:
+                HandleCallBlackMarket(session);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -828,6 +834,29 @@ public class ItemUseHandler : FieldPacketHandler {
     }
 
     // RecallGuild (unnamed/unit_140d1ae30_itemfunctiondispatch.cpp): the client casts StateRecall, then uses the scroll.
+    // OpenBank and CallBlackMarket (unit_140d1ae30_itemfunctiondispatch.cpp) start the client's cash call
+    // (CCashCallManager @0x140b03d70 / @0x140b03980, cashcallmanager.cpp). At its end StateCashCall::SendRequest sends
+    // this plain item use with the price, 0, as text. The client refuses a dead player, and the market also refuses a
+    // field whose cashCall market flag is off. The items are 1-slot passes (1, 7 or 30 days, or no end) and are kept.
+    // The answer opens the window: StorageInventory 14 (CStore::OnReset, store.cpp:869) opens the bank 0x4e47, which
+    // asks for its items itself (StorageInventory Load), and BlackMarket 9 (CBlackMarketMan::OnBlackMarket,
+    // blackmarketman.cpp:143) opens the black market 0x4e97.
+    private static void HandleOpenBank(GameSession session) {
+        if (!CashCallRules.CanOpenBank(session.Player.IsDead)) {
+            return;
+        }
+
+        session.Send(StorageInventoryPacket.OpenDialog());
+    }
+
+    private static void HandleCallBlackMarket(GameSession session) {
+        if (session.Field is null || !CashCallRules.CanCallBlackMarket(session.Player.IsDead, session.Field.Metadata.CashCall?.Market == true)) {
+            return;
+        }
+
+        session.Send(BlackMarketPacket.Open());
+    }
+
     private void HandleRecallGuild(GameSession session, Item item) {
         if (!session.Guild.Recall()) {
             return;
