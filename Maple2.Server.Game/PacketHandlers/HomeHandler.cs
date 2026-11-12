@@ -133,7 +133,7 @@ public class HomeHandler : PacketHandler<GameSession> {
         }
 
         // home_goto (trophy 23500019): KMS2 sends its update, up by 1, just before the migrate packet to the own home.
-        session.ConditionUpdate(ConditionType.home_goto);
-        session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId);
+        // A refused move counts nothing.
+        session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId, () => session.ConditionUpdate(ConditionType.home_goto));
     }
 }

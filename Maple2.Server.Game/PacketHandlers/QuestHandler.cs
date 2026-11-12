@@ -9,6 +9,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Items;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -390,8 +391,10 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         if (metadata.GoToMapId is Constant.DefaultHomeMapId) {
-            session.ConditionUpdate(ConditionType.home_goto);
-            session.Migrate(Constant.DefaultHomeMapId, session.AccountId);
+            // home_goto counts a move home: not when the player already stands in the own home, nor a refused move.
+            bool atHome = session.Field is HomeFieldManager homeField && homeField.OwnerId == session.AccountId;
+            session.Migrate(Constant.DefaultHomeMapId, session.AccountId,
+                TrophyReportRules.CountsAsGoHome(atHome) ? () => session.ConditionUpdate(ConditionType.home_goto) : null);
             return;
         }
 

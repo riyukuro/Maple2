@@ -57,7 +57,7 @@ public sealed class AchievementManager {
     /// <param name="codeLong">Trophy grade condition code parameter in long.</param>
     public void Update(ConditionType conditionType, long count = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
         foreach (AchievementMetadata metadata in session.AchievementMetadata.GetType(conditionType)) {
-            if (metadata.Locked) {
+            if (!TrophyReportRules.Counts(metadata)) {
                 continue;
             }
             IDictionary<int, Achievement> achievements = metadata.AccountWide ? accountValues : characterValues;

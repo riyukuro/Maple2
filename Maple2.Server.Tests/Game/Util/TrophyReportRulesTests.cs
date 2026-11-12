@@ -21,6 +21,13 @@ public class TrophyReportRulesTests {
         Assert.That(AchievementManager.Advances(ConditionType.home_goto, 16, 1), Is.True);
     }
 
+    // The guide's go-home step sent while standing in the own home is no move home.
+    [Test]
+    public void GoHomeCountsOnlyFromElsewhere() {
+        Assert.That(TrophyReportRules.CountsAsGoHome(alreadyInOwnHome: false), Is.True);
+        Assert.That(TrophyReportRules.CountsAsGoHome(alreadyInOwnHome: true), Is.False);
+    }
+
     // KMS2 sends dungeon_first_clear only with the record update that shows 1 clear.
     [Test]
     public void FirstClearOnlyAtOneClear() {
@@ -42,5 +49,8 @@ public class TrophyReportRulesTests {
         var metadata = new AchievementMetadata(1, null, false, AchievementCategory.Life, [], new System.Collections.Generic.Dictionary<int, AchievementMetadataGrade>());
         Assert.That(metadata.Locked, Is.False);
         Assert.That((metadata with { Locked = true }).Locked, Is.True);
+        // AchievementManager.Update asks this before a trophy takes any progress.
+        Assert.That(TrophyReportRules.Counts(metadata), Is.True);
+        Assert.That(TrophyReportRules.Counts(metadata with { Locked = true }), Is.False);
     }
 }

@@ -9,6 +9,16 @@ public static class TrophyReportRules {
         return delta < 0 ? -delta : 0;
     }
 
+    // Whether a move to the own home counts for home_goto: not when the player is already there.
+    public static bool CountsAsGoHome(bool alreadyInOwnHome) {
+        return !alreadyInOwnHome;
+    }
+
+    // Whether a trophy takes progress at all: a locked one does not.
+    public static bool Counts(Maple2.Model.Metadata.AchievementMetadata metadata) {
+        return !metadata.Locked;
+    }
+
     // Whether a clear that left the record at totalClears is the dungeon's first. A colosseum record keeps the round
     // in TotalClears, so it never reports.
     public static bool IsFirstClear(DungeonGroupType groupType, int totalClears) {

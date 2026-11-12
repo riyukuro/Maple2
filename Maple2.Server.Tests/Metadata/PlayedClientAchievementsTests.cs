@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using Maple2.Model.Metadata;
@@ -25,6 +26,24 @@ public class PlayedClientAchievementsTests {
 
         Assert.That(PlayedClientAchievements.LockedIds([first, second, third, fourth, fifth, sixth], Available).OrderBy(id => id),
             Is.EqualTo(new[] { 100, 104 }));
+    }
+
+    // The played client's flag stands alone for a trophy that client has: a data folder lock does not hold a trophy
+    // the played client shows open, and the data folder's flag is used only where the played client has no row.
+    [Test]
+    public void Locked_IsThePlayedClientsFlagWhenItHasTheTrophy() {
+        XmlDocument file = File("""<achieves id="100" locking="1" /><achieves id="101" /><achieves id="105" locking="1" feature="Off" />""");
+        Dictionary<int, bool> states = PlayedClientAchievements.LockStates([file], Available);
+
+        Assert.Multiple(() => {
+            Assert.That(states, Is.EquivalentTo(new Dictionary<int, bool> { [100] = true, [101] = false }));
+            Assert.That(PlayedClientAchievements.Locked(100, false, states), Is.True);
+            Assert.That(PlayedClientAchievements.Locked(101, true, states), Is.False);
+            Assert.That(PlayedClientAchievements.Locked(105, true, states), Is.True);
+            Assert.That(PlayedClientAchievements.Locked(105, false, states), Is.False);
+            Assert.That(PlayedClientAchievements.Locked(100, true, new Dictionary<int, bool>()), Is.True);
+            Assert.That(PlayedClientAchievements.Locked(100, false, new Dictionary<int, bool>()), Is.False);
+        });
     }
 
     [Test]

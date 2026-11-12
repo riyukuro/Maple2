@@ -14,6 +14,13 @@ public static class PlayedClientAchievements {
     // The ids whose <achieves> rows that pass the filter (feature and locale) are all locked. A trophy with one
     // unlocked row that passes stays countable.
     public static HashSet<int> LockedIds(IEnumerable<XmlDocument> achieveFiles, Func<XmlElement, bool> available) {
+        return LockStates(achieveFiles, available).Where(state => state.Value).Select(state => state.Key).ToHashSet();
+    }
+
+    // Every trophy with a row that passes the filter, and whether the played client holds it locked. For a trophy
+    // in here the played client's flag stands alone (Locked below); the data folder's flag is used only for a trophy
+    // the played client has no row for.
+    public static Dictionary<int, bool> LockStates(IEnumerable<XmlDocument> achieveFiles, Func<XmlElement, bool> available) {
         var locked = new HashSet<int>();
         var unlocked = new HashSet<int>();
         foreach (XmlDocument file in achieveFiles) {
@@ -32,8 +39,19 @@ public static class PlayedClientAchievements {
                 }
             }
         }
-        locked.ExceptWith(unlocked);
-        return locked;
+        var states = new Dictionary<int, bool>();
+        foreach (int id in locked) {
+            states[id] = true;
+        }
+        foreach (int id in unlocked) {
+            states[id] = false;
+        }
+        return states;
+    }
+
+    // Whether a trophy is locked: the played client's flag when that client has the trophy, else the data folder's.
+    public static bool Locked(int id, bool dataLocked, IReadOnlyDictionary<int, bool> playedStates) {
+        return playedStates.TryGetValue(id, out bool playedLocked) ? playedLocked : dataLocked;
     }
 
     // The attribute is a number: empty or 0 is not locked.

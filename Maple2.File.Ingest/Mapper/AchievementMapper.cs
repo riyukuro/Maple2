@@ -24,13 +24,14 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
         FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
 
     protected override IEnumerable<AchievementMetadata> Map() {
-        // The trophies the played client holds locked (PlayedClientAchievements); empty without a played client.
-        HashSet<int> playedLocked = playedReader == null ? []
-            : PlayedClientAchievements.LockedIds(
+        // The played client's trophies and whether it holds them locked (PlayedClientAchievements); empty without a
+        // played client.
+        Dictionary<int, bool> playedStates = playedReader == null ? []
+            : PlayedClientAchievements.LockStates(
                 playedReader.Files.Where(file => PlayedClientAchievements.IsAchieveFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
                 RowAvailable);
-        if (playedLocked.Count > 0) {
-            Console.WriteLine($"achievements: {playedLocked.Count} locked in the played client's achieve data");
+        if (playedStates.Count > 0) {
+            Console.WriteLine($"achievements: {playedStates.Count(state => state.Value)} locked of {playedStates.Count} in the played client's achieve data");
         }
         foreach ((int id, string name, AchieveData data) in parser.Parse()) {
             var grades = new Dictionary<int, AchievementMetadataGrade>();
@@ -64,7 +65,7 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                 Category: category,
                 CategoryTags: tags,
                 Grades: grades,
-                Locked: data.locking || playedLocked.Contains(id));
+                Locked: PlayedClientAchievements.Locked(id, data.locking, playedStates));
         }
     }
 

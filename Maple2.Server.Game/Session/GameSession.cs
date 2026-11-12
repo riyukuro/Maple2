@@ -932,7 +932,9 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    public void Migrate(int mapId, long ownerId = 0) {
+    // beforeMove runs right before the migrate packet, only when the move is made (not when the map is refused or
+    // the World server gives no address).
+    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null) {
         // Not to a map the played client does not have (see PrepareFieldInternal).
         if (MapMetadata.TryGet(mapId, out MapMetadata? target) && target.Property.NotInPlayedClient) {
             Send(NoticePacket.Message(FieldEntryRules.NotInPlayedClientNotice(target.Id, target.Name)));
@@ -959,6 +961,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                 return;
             }
+            beforeMove?.Invoke();
             Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
 
             if (isInstanced) {
