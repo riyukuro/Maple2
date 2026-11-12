@@ -450,7 +450,7 @@ public class AiState {
     }
 
     private void ProcessNode(SayNode node) {
-        actor.Field.Broadcast(CinematicPacket.BalloonTalk(true, actor.ObjectId, node.Message, node.DurationTick, node.DelayTick));
+        actor.Field.Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.NpcAi, actor.ObjectId, node.Message, node.DurationTick, node.DelayTick));
 
         actor.AppendDebugMessage($"Say '{node.Message}'\n");
     }

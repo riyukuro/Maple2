@@ -128,10 +128,17 @@ public static class CinematicPacket {
         return pWriter;
     }
 
-    public static ByteWriter BalloonTalk(bool isNpc, int objectId, string script, int duration, int delay) {
+    // Which client string table resolves a "$key$" script (UICutSceneCinematic 0x141909eb0): 0 looks it up in
+    // stringTrigger.xml (and takes the voice from the key), anything else in stringNpcAi.xml. Text without '$' is shown as is.
+    public enum BalloonText : byte {
+        Trigger = 0,
+        NpcAi = 1,
+    }
+
+    public static ByteWriter BalloonTalk(BalloonText table, int objectId, string script, int duration, int delay) {
         var pWriter = Packet.Of(SendOp.Cinematic);
         pWriter.Write<Command>(Command.BalloonTalk);
-        pWriter.WriteBool(isNpc);
+        pWriter.WriteByte((byte) table);
         pWriter.WriteInt(objectId);
         pWriter.WriteUnicodeString(script);
         pWriter.WriteInt(duration);

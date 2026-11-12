@@ -90,7 +90,7 @@ public partial class TriggerContext {
                 return;
             }
 
-            Broadcast(CinematicPacket.BalloonTalk(false, fieldPlayer.ObjectId, msg, duration, delayTick));
+            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, fieldPlayer.ObjectId, msg, duration, delayTick));
             return;
         }
 
@@ -100,7 +100,7 @@ public partial class TriggerContext {
             return;
         }
 
-        Broadcast(CinematicPacket.BalloonTalk(true, fieldNpc.ObjectId, msg, duration, delayTick));
+        Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, fieldNpc.ObjectId, msg, duration, delayTick));
     }
 
     public void RemoveBalloonTalk(int spawnId) {

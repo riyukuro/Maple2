@@ -149,7 +149,7 @@ public partial class TriggerContext {
             if (player == null) {
                 return;
             }
-            Broadcast(CinematicPacket.BalloonTalk(false, player.ObjectId, script, delay * 1000, 0));
+            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, player.ObjectId, script, delay * 1000, 0));
             return;
         }
 
@@ -159,7 +159,7 @@ public partial class TriggerContext {
                 return;
             }
 
-            Broadcast(CinematicPacket.BalloonTalk(false, npc.ObjectId, script, delay * 1000, 0));
+            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, npc.ObjectId, script, delay * 1000, 0));
             return;
         }
 

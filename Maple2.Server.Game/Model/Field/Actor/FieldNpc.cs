@@ -314,7 +314,7 @@ public class FieldNpc : Actor<Npc> {
         if (tickCount >= nextDebugPacket && playersListeningToDebugNow && debugMessages.Count > 0) {
             sentDebugPacket = true;
 
-            Field.BroadcastAiMessage(CinematicPacket.BalloonTalk(false, ObjectId, string.Join("", debugMessages.ToArray()), 2500, 0));
+            Field.BroadcastAiMessage(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, ObjectId, string.Join("", debugMessages.ToArray()), 2500, 0));
         }
 
         if (sentDebugPacket || tickCount >= nextDebugPacket) {
@@ -745,7 +745,7 @@ public class FieldNpc : Actor<Npc> {
                 message += "\nOwner: " + player.Value.Character.Name;
             }
         }
-        requester.Send(CinematicPacket.BalloonTalk(false, ObjectId, message, 2500, 0));
+        requester.Send(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, ObjectId, message, 2500, 0));
     }
 
     public void AppendDebugMessage(string message, bool sanitize = false) {
