@@ -1,5 +1,4 @@
-﻿using Maple2.Model.Metadata;
-using Maple2.PacketLib.Tools;
+﻿using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Session;
@@ -13,14 +12,8 @@ public class ResponseHeartbeatHandler : PacketHandler<GameSession> {
         int serverTick = packet.ReadInt();
         int clientTick = packet.ReadInt();
 
-        int latency = Environment.TickCount - serverTick;
-        if (latency > Constant.MaxAllowedLatency) {
-#if !DEBUG
-            session.Disconnect();
-#endif
-            return;
-        }
-
+        // A late answer does not end the session: the client was held up (a stall of the link or of the client)
+        // and is still there. A client that is gone is found by its silence (ChannelService.Heartbeat).
         if (serverTick == 0 || clientTick == 0) {
             return;
         }

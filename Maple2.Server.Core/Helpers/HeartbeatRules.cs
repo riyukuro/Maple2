@@ -15,6 +15,19 @@ public static class HeartbeatRules {
     public static bool MarksOffline(int askedChannel, int recordedChannel, bool leavingAskedChannel) {
         return StillOn(askedChannel, recordedChannel) && !leavingAskedChannel;
     }
+
+    // The World server asks every session for a heartbeat this often.
+    public const long IntervalMs = 30000;
+
+    // A session is cut when nothing at all has arrived from its client for this long: three heartbeat rounds
+    // (chosen here). The client only answers heartbeats; it keeps no time limit of its own for them, and an
+    // answer that comes late says the client stood still for a while, not that it is gone.
+    public const long SilenceLimitMs = 3 * IntervalMs;
+
+    // Whether the client has been silent for too long; both times in the same millisecond count.
+    public static bool IsSilent(long lastReceivedMs, long nowMs) {
+        return nowMs - lastReceivedMs >= SilenceLimitMs;
+    }
 }
 
 // The channel changes that are under way: who left which channel, and when. An entry counts for as long as the

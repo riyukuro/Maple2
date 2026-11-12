@@ -38,6 +38,8 @@ public abstract class Session : IDisposable {
     private bool disposed;
     private int disconnecting; // 0 = not disconnecting, 1 = disconnect in progress/already triggered (reentrancy guard)
     private volatile bool sendFailed; // set on first SendRaw failure to stop send queue drain
+    private volatile bool resetOnClose; // set by Cut: the socket is closed with a reset
+    private long lastReceivedMs = Environment.TickCount64;
     private readonly uint siv;
     private readonly uint riv;
 
@@ -147,12 +149,30 @@ public abstract class Session : IDisposable {
         // Graceful close: linger 0 turns Close into an RST, which can drop the just-sent last packet (GameToLogin) under wine.
         // Close gracefully after the drain: FIN first, short linger.
         try {
-            client.LingerState = new LingerOption(true, 2);
-            client.Client.Shutdown(SocketShutdown.Send);
+            if (resetOnClose) {
+                client.LingerState = new LingerOption(true, 0);
+            } else {
+                client.LingerState = new LingerOption(true, 2);
+                client.Client.Shutdown(SocketShutdown.Send);
+            }
         } catch (Exception) { /* already closed */ }
 
         Dispose();
     }
+
+    // Closes the session so that the client learns of it. The client shows its lost-connection notice only when
+    // its socket closes with an error (CGameSocket::OnClose); after an orderly close it shows nothing and stays
+    // where it is. So the socket is reset here. For a session that was sent its last packet and is expected to
+    // leave (a channel or server change), Disconnect closes in order instead.
+    public void Cut([CallerMemberName] string caller = "", [CallerLineNumber] int line = 0, [CallerFilePath] string filePath = "") {
+        resetOnClose = true;
+        Disconnect(caller, line, filePath);
+    }
+
+    // The time (Environment.TickCount64) the last packet of the client arrived at; the session's start before one.
+    public long LastReceivedMs => Interlocked.Read(ref lastReceivedMs);
+
+    public void MarkReceived(long now) => Interlocked.Exchange(ref lastReceivedMs, now);
 
     public bool Connected() {
         if (disposed) {
@@ -279,6 +299,7 @@ public abstract class Session : IDisposable {
                 ReadOnlySequence<byte> buffer = result.Buffer;
                 while ((bytesRead = recvCipher.TryDecrypt(buffer, out PoolByteReader packet)) > 0) {
                     try {
+                        MarkReceived(Environment.TickCount64);
 #if DEBUG
                         LogRecv(packet.Buffer);
 #endif
