@@ -143,25 +143,18 @@ public class ItemBoxManager {
 
         var boxIngredient = new IngredientInfo(Enum.Parse<ItemTag>(parameters["boxItemTag"]), 1);
         var keyIngredient = new IngredientInfo(Enum.Parse<ItemTag>(parameters["keyItemTag"]), 1);
+        int.TryParse(parameters.GetValueOrDefault("boxPrice"), out int mesoCost);
+        mesoCost = Math.Max(mesoCost, 0);
         var totalItems = new List<Item>();
+        ItemBoxError error = ItemBoxError.ok;
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.Consume([keyIngredient])) {
-                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-            }
-
-            if (autoPay) {
-                if (!session.Item.Inventory.Consume([boxIngredient])) {
-                    int.TryParse(parameters["boxPrice"], out int mesoCost);
-                    mesoCost = Math.Max(mesoCost, 0);
-                    if (session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
-                        return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-                    }
-                    session.Currency.Meso -= mesoCost;
-                }
-            } else {
-                if (!session.Item.Inventory.Consume([boxIngredient])) {
-                    return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-                }
+            // Nothing is taken unless the key and the box (or its price) are all there and the roll gave items.
+            int keys = session.Item.Inventory.Find(keyIngredient.Tag).Sum(held => held.Amount);
+            int boxes = session.Item.Inventory.Find(boxIngredient.Tag).Sum(held => held.Amount);
+            ItemBoxRules.LuluPay pay = ItemBoxRules.LuluPayment(keys, boxes, autoPay, session.Currency.Meso, mesoCost);
+            if (pay == ItemBoxRules.LuluPay.None) {
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                break;
             }
 
             // common dropbox items
@@ -170,7 +163,19 @@ public class ItemBoxManager {
             // uncommon dropbox items
             items = items.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, commonBoxId)).ToList();
             if (items.Count == 0) {
-                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+                break;
+            }
+
+            if (!session.Item.Inventory.Consume([keyIngredient])) {
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                break;
+            }
+            if (pay == ItemBoxRules.LuluPay.Meso) {
+                session.Currency.Meso -= mesoCost;
+            } else if (!session.Item.Inventory.Consume([boxIngredient])) {
+                // The key is gone and the box could not be taken: the items are still given, so nothing is lost.
+                logger.Error("Key box {ItemId}: the box item could not be taken after the key", item.Id);
             }
 
             foreach (Item newItem in items) {
@@ -183,8 +188,11 @@ public class ItemBoxManager {
             BoxCount++;
         }
 
-        session.Send(ItemScriptPacket.LulluBox(totalItems));
-        return ItemBoxError.ok;
+        // The boxes opened before a stop still show their items.
+        if (totalItems.Count > 0 || error == ItemBoxError.ok) {
+            session.Send(ItemScriptPacket.LulluBox(totalItems));
+        }
+        return error;
     }
 
     public ItemBoxError OpenLulluBoxSimple(Item item, int count = 1) => Counted(item, () => OpenLulluBoxesSimple(item, count));
@@ -207,15 +215,23 @@ public class ItemBoxManager {
 
         var keyItemTag = new IngredientInfo(Enum.Parse<ItemTag>(parameters["keyItemTag"]), 1);
         var totalItems = new List<Item>();
+        ItemBoxError error = ItemBoxError.ok;
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.Consume([keyItemTag])) {
-                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+            if (session.Item.Inventory.Find(keyItemTag.Tag).Sum(held => held.Amount) < 1) {
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                break;
             }
 
-            // common dropbox items
+            // common dropbox items; the key is taken only when the roll gave items
             ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, commonBoxId);
             if (items.Count == 0) {
-                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+                break;
+            }
+
+            if (!session.Item.Inventory.Consume([keyItemTag])) {
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                break;
             }
 
             foreach (Item newItem in items) {
@@ -228,8 +244,11 @@ public class ItemBoxManager {
             BoxCount++;
         }
 
-        session.Send(ItemScriptPacket.LulluBox(totalItems));
-        return ItemBoxError.ok;
+        // The boxes opened before a stop still show their items.
+        if (totalItems.Count > 0 || error == ItemBoxError.ok) {
+            session.Send(ItemScriptPacket.LulluBox(totalItems));
+        }
+        return error;
     }
 
     // UIItemPetBoxDialog: each open takes one item with the tag of the xml parameter itemTag and rolls the boxes of
@@ -452,9 +471,11 @@ public class ItemBoxManager {
 
         var totalItems = new List<Item>();
         var ingredient = new ItemComponent(item.Id, item.Rarity, 1, ItemTag.None);
+        ItemBoxError error = ItemBoxError.ok;
         for (int startCount = 0; startCount < count; startCount++) {
             if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
-                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+                break;
             }
 
             IEnumerable<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, gachaEntry.DropBoxId);
@@ -468,7 +489,10 @@ public class ItemBoxManager {
             BoxCount++;
         }
 
-        session.Send(ItemScriptPacket.Gacha(totalItems));
-        return ItemBoxError.ok;
+        // The capsules opened before a stop still show their items.
+        if (totalItems.Count > 0 || error == ItemBoxError.ok) {
+            session.Send(ItemScriptPacket.Gacha(totalItems));
+        }
+        return error;
     }
 }

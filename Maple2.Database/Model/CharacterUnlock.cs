@@ -139,8 +139,11 @@ internal class CharacterUnlock {
             }
         }
         if (other.EmoteStates != null) {
-            foreach ((int emoteId, Maple2.Model.Game.EmoteState state) in other.EmoteStates) {
-                unlock.EmoteStates[emoteId] = state;
+            foreach ((int emoteId, Maple2.Model.Game.EmoteState? state) in other.EmoteStates) {
+                // A hand-edited row can hold an entry without a state ({"id":null}); it is left out.
+                if (state != null) {
+                    unlock.EmoteStates[emoteId] = state;
+                }
             }
         }
         if (other.FameLogs != null) {

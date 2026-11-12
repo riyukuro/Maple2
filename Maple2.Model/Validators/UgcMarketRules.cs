@@ -33,4 +33,55 @@ public static class UgcMarketRules {
         }
         return price * SharePercent(rows, salesTotal) / 100;
     }
+
+    // The fee of putting a design on sale, as the register dialog works it out before it sends the request
+    // (GetRegisterFee): the client script calcMarketRegisterFee by the seller's listings on sale that are not music
+    // scores, nothing for a music score, plus the constant UGCShopAdFeeMerat when the listing is promoted.
+    public static long RegisterFee(int activeCount, bool score, bool promote, int adFee, bool cn) {
+        long fee = 0;
+        if (!score && activeCount > 0) {
+            if (cn) {
+                fee = activeCount >= 9 ? 300 : activeCount >= 2 ? 200 : 120;
+            } else {
+                fee = activeCount >= 9 ? 100 : activeCount >= 2 ? 50 : 30;
+            }
+        }
+        if (promote) {
+            fee += Math.Max(adFee, 0);
+        }
+        return fee;
+    }
+
+    // The price range of the register dialog (GetSellPriceRange): the constants UGCShopSellMinPrice and
+    // UGCShopSellMaxPrice; a design item's own range from the design table where that is above 0; a music score's
+    // lowest price from the client script calcMarketSellPriceMinMaxMusicScore (its highest is 0 there, which keeps
+    // the constant). Never below 0, and the highest is at least the lowest.
+    public static (long Min, long Max) PriceRange(long constantMin, long constantMax, long designMin, long designMax, bool score, bool cn) {
+        long min = constantMin;
+        long max = constantMax;
+        if (score) {
+            min = cn ? 15 : 100;
+        } else {
+            if (designMin > 0) {
+                min = designMin;
+            }
+            if (designMax > 0) {
+                max = designMax;
+            }
+        }
+        if (min < 0) {
+            min = 0;
+        }
+        return (min, Math.Max(min, max));
+    }
+
+    public static long ClampPrice((long Min, long Max) range, long price) {
+        return Math.Clamp(price, range.Min, range.Max);
+    }
+
+    // A listing can be bought while it is on sale: active, its sale time not over, and a price that takes nothing
+    // from the seller's side (a price below 0 would pay the buyer).
+    public static bool CanBuy(bool active, long listingEndTime, long nowSeconds, long price) {
+        return active && listingEndTime > nowSeconds && price >= 0;
+    }
 }

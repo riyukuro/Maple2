@@ -165,10 +165,15 @@ public class MeretMarketHandler : FieldPacketHandler {
         bool promote = packet.ReadBool();
         string[] tags = packet.ReadUnicodeString().Split(",");
         string description = packet.ReadUnicodeString();
-        long listingFee = packet.ReadLong();
+        packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
         Item? item = GetUgcItem(itemUid);
         if (item?.Template == null || item.Template.Id == 0) {
+            return;
+        }
+
+        // The dialog only offers a design the player made (CItem 0x140526060 on the look's owner ids).
+        if (item.Template.AccountId != session.AccountId) {
             return;
         }
 
@@ -179,6 +184,8 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         int tabId = tab.FirstOrDefault(kv => kv.Value.Categories.Contains(item.Metadata.Property.Category)).Key;
 
+        bool score = item.Type.IsMusicScore;
+        long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
         StringCode stringCode = Pay(session, listingFee, MeretMarketCurrencyType.Meret);
         if (stringCode != StringCode.s_empty_string) {
             session.Send(NoticePacket.MessageBox(stringCode));
@@ -197,7 +204,7 @@ public class MeretMarketHandler : FieldPacketHandler {
             PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0,
             ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds(),
             CreationTime = DateTime.Now.ToEpochSeconds(),
-            Price = Math.Clamp(price, Constants.UGCShopSellMinPrice, Constants.UGCShopSellMaxPrice),
+            Price = UgcMarketRules.ClampPrice(SellPriceRange(item.Metadata.Id), price),
             TabId = tabId,
         };
 
@@ -205,8 +212,10 @@ public class MeretMarketHandler : FieldPacketHandler {
         marketItem = db.CreateUgcMarketItem(marketItem);
         if (marketItem == null) {
             Logger.Error("Failed to create UGC market item: {ItemUid}", itemUid);
+            session.Currency.Meret += listingFee; // nothing was listed: the fee goes back
             return;
         }
+        session.SavePurchase();
 
         session.UgcMarket.ListItem(marketItem);
         return;
@@ -228,19 +237,23 @@ public class MeretMarketHandler : FieldPacketHandler {
         bool promote = packet.ReadBool();
         string[] tags = packet.ReadUnicodeString().Split(",");
         string description = packet.ReadUnicodeString();
-        long listingFee = packet.ReadLong();
+        packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
         if (!session.UgcMarket.TryGetItem(ugcMarketItemId, out UgcMarketItem? item) || item.ListingEndTime > DateTime.Now.ToEpochSeconds()) {
             return;
         }
 
+        bool score = new ItemType(item.ItemMetadata.Id).IsMusicScore;
+        long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
         StringCode stringCode = Pay(session, listingFee, MeretMarketCurrencyType.Meret);
         if (stringCode != StringCode.s_empty_string) {
             session.Send(NoticePacket.MessageBox(stringCode));
             return;
         }
 
-        item.Price = price;
+        (long Price, long PromotionEndTime, long ListingEndTime, UgcMarketListingStatus Status, string Description, string[] Tags) before =
+            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags);
+        item.Price = UgcMarketRules.ClampPrice(SellPriceRange(item.ItemMetadata.Id), price);
         item.PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0;
         item.ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds();
         item.Status = UgcMarketListingStatus.Active;
@@ -249,10 +262,21 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (!db.SaveUgcMarketItem(item)) {
+            // Not stored: the listing stays as it was and the fee goes back.
+            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags) = before;
+            session.Currency.Meret += listingFee;
             return;
         }
+        session.SavePurchase();
 
         session.Send(MeretMarketPacket.RelistItem(item));
+    }
+
+    // The register dialog's price range for an item (GetSellPriceRange).
+    private (long Min, long Max) SellPriceRange(int itemId) {
+        TableMetadata.UgcDesignTable.Entries.TryGetValue(itemId, out UgcDesignTable.Entry? design);
+        return UgcMarketRules.PriceRange(Constants.UGCShopSellMinPrice, Constants.UGCShopSellMaxPrice,
+            design?.MarketMinPrice ?? 0, design?.MarketMaxPrice ?? 0, new ItemType(itemId).IsMusicScore, Target.LOCALE == "CN");
     }
 
     private void HandleCollectProfit(GameSession session, IByteReader packet) {
@@ -404,17 +428,21 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
+        // The item is made before anything is paid: a product whose item cannot be made costs nothing.
+        Item? item = session.Field?.ItemDrop.CreateItem(entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
+        if (item == null) {
+            Logger.Error("Failed to create item {ItemId}, {Rarity}, {Quantity}", entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
+            return null;
+        }
+
         long price = entry.Metadata.SalePrice > 0 ? entry.Metadata.SalePrice : entry.Price;
+        if (price < 0) {
+            return null;
+        }
         StringCode payResult = Pay(session, price, entry.Metadata.CurrencyType);
         if (payResult != StringCode.s_empty_string) {
             session.Send(NoticePacket.MessageBox(payResult));
             return null;
-        }
-
-        Item? item = session.Field?.ItemDrop.CreateItem(entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
-        if (item == null) {
-            Logger.Fatal("Failed to create item {ItemId}, {Rarity}, {Quantity}", entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
-            throw new InvalidOperationException($"Fatal: Failed to create item {entry.ItemMetadata.Id}, {entry.Metadata.Rarity}, {entry.Metadata.Quantity + entry.Metadata.BonusQuantity}");
         }
 
         if (entry.Metadata.DurationInDays > 0) {
@@ -440,6 +468,18 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
+        // Only a listing on sale: one taken off sale or past its sale time is not in any list the client shows.
+        if (!UgcMarketRules.CanBuy(ugcItem.Status == UgcMarketListingStatus.Active, ugcItem.ListingEndTime, DateTime.Now.ToEpochSeconds(), ugcItem.Price)) {
+            return null;
+        }
+
+        // The item is made before anything is paid, and a sale that cannot be stored gives the merets back.
+        Item? item = session.Field?.ItemDrop.CreateItem(ugcItem.ItemMetadata.Id, designMetadata.ItemRarity);
+        if (item == null) {
+            Logger.Error("Unable to create Item for {itemId}", ugcItem.ItemMetadata.Id);
+            return null;
+        }
+
         StringCode stringCode = Pay(session, ugcItem.Price, MeretMarketCurrencyType.Meret);
         if (stringCode != StringCode.s_empty_string) {
             session.Send(NoticePacket.MessageBox(stringCode));
@@ -450,12 +490,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         SoldUgcMarketItem? soldEntry = UgcMarketManager.RecordSale(db, ugcItem);
         if (soldEntry == null) {
             Logger.Fatal("Unable to create Sold Ugc Market Entry for {itemId}", ugcItem.Id);
-            return null;
-        }
-
-        Item? item = session.Field?.ItemDrop.CreateItem(ugcItem.ItemMetadata.Id, designMetadata.ItemRarity);
-        if (item == null) {
-            Logger.Fatal("Unable to create Item for {itemId}", ugcItem.ItemMetadata.Id);
+            session.Currency.Meret += ugcItem.Price;
             return null;
         }
         item.Template = ugcItem.Look;

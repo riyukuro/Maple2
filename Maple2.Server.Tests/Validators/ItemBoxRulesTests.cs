@@ -26,4 +26,17 @@ public class ItemBoxRulesTests {
         Assert.That(ItemBoxRules.IsOpenCount(packet.ReadInt(), max), Is.EqualTo(expected));
         Assert.That(packet.ReadUnicodeString(), Is.EqualTo(""));
     }
+
+    [TestCase(1, 1, false, 0, 500, ItemBoxRules.LuluPay.Box)]
+    [TestCase(1, 1, true, 9000, 500, ItemBoxRules.LuluPay.Box)]
+    [TestCase(1, 0, true, 500, 500, ItemBoxRules.LuluPay.Meso)]
+    [TestCase(1, 0, true, 9000, 0, ItemBoxRules.LuluPay.Meso)]
+    // No key: nothing, even with a box and meso. No box: only by meso, and only when ticked and enough.
+    [TestCase(0, 1, true, 9000, 500, ItemBoxRules.LuluPay.None)]
+    [TestCase(1, 0, false, 9000, 500, ItemBoxRules.LuluPay.None)]
+    [TestCase(1, 0, true, 499, 500, ItemBoxRules.LuluPay.None)]
+    [TestCase(1, 0, true, 9000, -500, ItemBoxRules.LuluPay.None)]
+    public void LuluPayment_KeyThenBoxOrMeso(int keys, int boxes, bool autoPay, long meso, long price, ItemBoxRules.LuluPay expected) {
+        Assert.That(ItemBoxRules.LuluPayment(keys, boxes, autoPay, meso, price), Is.EqualTo(expected));
+    }
 }

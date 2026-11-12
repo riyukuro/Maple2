@@ -68,7 +68,8 @@ public class Unlock {
         if (!Emotes.Contains(emoteId)) {
             return false;
         }
-        if (EmoteStates.TryGetValue(emoteId, out EmoteState? state)) {
+        // A stored row may hold an entry without a state (a hand-edited null): it counts as none.
+        if (EmoteStates.TryGetValue(emoteId, out EmoteState? state) && state != null) {
             state.Favorite = favorite;
         } else if (favorite) {
             EmoteStates[emoteId] = new EmoteState { Favorite = true };

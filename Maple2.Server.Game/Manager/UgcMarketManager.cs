@@ -90,6 +90,12 @@ public sealed class UgcMarketManager {
         session.Send(MeretMarketPacket.LoadSales(sales.Values));
     }
 
+    // The count the register fee goes by (CMeratMarketBasketInfo, 0x1406a50b0): the account's listings on sale that
+    // are not music scores.
+    public int ActiveListingCount() {
+        return items.Values.Count(listing => listing.Status == UgcMarketListingStatus.Active && !new ItemType(listing.ItemMetadata.Id).IsMusicScore);
+    }
+
     public void ListItem(UgcMarketItem item) {
         items.Add(item.Id, item);
         session.Send(MeretMarketPacket.ListItem(item));

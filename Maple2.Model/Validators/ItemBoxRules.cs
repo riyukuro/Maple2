@@ -27,4 +27,19 @@ public static class ItemBoxRules {
 
         return rows;
     }
+
+    public enum LuluPay { None, Box, Meso }
+
+    // What one open of a key box (OpenItemBoxLullu) takes besides the key: a box item when one is held; without
+    // one, the box price in meso when the player ticked the pay box and has that much. None: no key, or neither,
+    // and then nothing is taken at all.
+    public static LuluPay LuluPayment(int keys, int boxes, bool autoPay, long meso, long boxPrice) {
+        if (keys < 1) {
+            return LuluPay.None;
+        }
+        if (boxes >= 1) {
+            return LuluPay.Box;
+        }
+        return autoPay && boxPrice >= 0 && meso >= boxPrice ? LuluPay.Meso : LuluPay.None;
+    }
 }

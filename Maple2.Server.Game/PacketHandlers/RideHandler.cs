@@ -114,8 +114,11 @@ public class RideHandler : FieldPacketHandler {
         session.Ride.Dismount(action);
     }
 
+    // ResponseRide has no refusal mode, so a refused swap is answered like a refused ride start, with the
+    // s_action_cant_ride box (chosen here).
     private void HandleChange(GameSession session, IByteReader packet) {
         if (session.Field == null || session.Ride.Ride == null) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
             return;
         }
 
@@ -132,7 +135,9 @@ public class RideHandler : FieldPacketHandler {
             return;
         }
 
-        session.Ride.Change(rideId, itemUid);
+        if (!session.Ride.Change(rideId, itemUid)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
+        }
     }
 
     private void HandleJoin(GameSession session, IByteReader packet) {
