@@ -55,10 +55,9 @@ public class TradeManager : IDisposable {
     }
 
     public void Dispose() {
-        sender.Session.Trade = null;
-        receiver.Session.Trade = null;
-
         lock (mutex) {
+            ClearTraders();
+
             // Nothing to cancel if not started. The request is over, so the request timer has nothing to report.
             if (state < TradeState.Started) {
                 state = TradeState.Completed;
@@ -79,9 +78,22 @@ public class TradeManager : IDisposable {
             }
 
             state = TradeState.Acknowledged;
+            // Inside the lock: a request that ends at the same moment either refuses this or clears it after.
+            receiver.Session.Trade = this;
         }
         sender.Session.Send(TradePacket.Acknowledge());
         return true;
+    }
+
+    // Takes this trade from its two players. A player who is in another trade by now keeps that one.
+    // Called with the lock held.
+    private void ClearTraders() {
+        if (sender.Session.Trade == this) {
+            sender.Session.Trade = null;
+        }
+        if (receiver.Session.Trade == this) {
+            receiver.Session.Trade = null;
+        }
     }
 
     // The trade's two players; nobody else may act on it.
@@ -111,7 +123,7 @@ public class TradeManager : IDisposable {
 
             state = TradeState.Completed;
             sender.Session.Send(TradePacket.Error(s_trade_error_timeout, name: receiver.Session.PlayerName));
-            sender.Session.Trade = null;
+            ClearTraders();
         }
     }
 
@@ -324,8 +336,7 @@ public class TradeManager : IDisposable {
                 EndTrade(true);
 
                 // Since this trade has ended, we can clear it from traders.
-                sender.Session.Trade = null;
-                receiver.Session.Trade = null;
+                ClearTraders();
             }
         }
     }

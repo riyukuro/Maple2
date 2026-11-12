@@ -282,7 +282,8 @@ public class GuildManager : IDisposable {
         lock (guildLock) {
             GuildTable.Property property = GuildProperty();
             Guild.Experience += property.CheckInExp;
-            Guild.Funds += property.CheckInFund;
+            // The fund stops at the level's ceiling, as a donation is refused above it.
+            Guild.Funds = GuildRules.AddFund(Guild.Funds, property.CheckInFund, property.FundMax);
             guildExp = Guild.Experience;
             guildFund = Guild.Funds;
         }
@@ -786,7 +787,10 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_member;
         }
 
-        GuildTable.Property property = GuildProperty();
+        GuildTable.Property property;
+        lock (guildLock) {
+            property = GuildProperty(); // reads the experience, which changes under this lock
+        }
         int guildExp;
         int guildFund;
         lock (member) {

@@ -106,15 +106,12 @@ public class TradeHandler : FieldPacketHandler {
             return;
         }
 
-        // Only the player the request was sent to gets the trade: anyone else naming a trader is refused and
-        // holds nothing it could cancel.
+        // Only the player the request was sent to gets the trade (Acknowledge gives it, under the trade's lock):
+        // anyone else naming a trader is refused and holds nothing it could cancel.
         TradeManager trade = target.Session.Trade;
         if (!trade.Acknowledge(session)) {
             session.Send(TradePacket.Error(s_trade_error_decline));
-            return;
         }
-
-        session.Trade = trade;
     }
 
     // Sent instead of Acknowledge when the client cannot show the request (another message box is open).

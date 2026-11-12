@@ -324,10 +324,12 @@ public static class GuildPacket {
 
     // s_guild_notify_change_mark
     // - {0} has changed the guild emblem.
+    // The client puts the text it reads into that line itself (CGuildManager::FUN_1413c15b0), so the text is
+    // the changer's name alone, as KMS2 sends it; the line's own code here would wrap the line in itself.
     public static ByteWriter NotifyUpdateEmblem(string requestorName, string emblem) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.NotifyUpdateEmblem);
-        pWriter.WriteClass<InterfaceText>(new InterfaceText(StringCode.s_guild_notify_change_mark, requestorName));
+        pWriter.WriteClass<InterfaceText>(new InterfaceText(requestorName));
         pWriter.WriteUnicodeString(emblem);
 
         return pWriter;

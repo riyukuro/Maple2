@@ -318,6 +318,57 @@ public class TradeHandlerTests {
         Assert.That(taker.Trade, Is.Null);
     }
 
+    // An accept that waits for the trade's lock while the request is ended under it starts nothing: the state
+    // is read after the wait, not before it.
+    [Test]
+    public void Accept_WaitingWhileTheRequestEndsStartsNothing() {
+        Send(giver, 7);
+        TradeManager request = Request();
+        Assert.That(request.Acknowledge(taker), Is.True);
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+        object mutex = typeof(TradeManager).GetField("mutex", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(request)!;
+
+        var accept = new System.Threading.Thread(() => request.Accept(taker));
+        lock (mutex) {
+            accept.Start();
+            for (int i = 0; i < 2000 && (accept.ThreadState & System.Threading.ThreadState.WaitSleepJoin) == 0; i++) {
+                System.Threading.Thread.Sleep(1);
+            }
+            Assert.That(accept.ThreadState & System.Threading.ThreadState.WaitSleepJoin, Is.Not.EqualTo((System.Threading.ThreadState) 0));
+            request.Dispose();
+        }
+        Assert.That(accept.Join(5000), Is.True);
+
+        Assert.That(giverTest.TakeSent(), Is.Empty);
+        Assert.That(takerTest.TakeSent(), Is.Empty);
+        Assert.That(giver.Trade, Is.Null);
+        Assert.That(taker.Trade, Is.Null);
+    }
+
+    // Acknowledge gives the trade to the player asked, and the end of a request takes it only from players who
+    // still hold it: one who is in another trade by then keeps that one.
+    [Test]
+    public void EndOfARequest_LeavesANewerTradeAlone() {
+        Send(giver, 7);
+        TradeManager old = Request();
+        taker.Trade = null;
+        Assert.That(old.Acknowledge(taker), Is.True);
+        Assert.That(taker.Trade, Is.SameAs(old));
+
+        TradeManager newer = Request();
+        old.Dispose();
+        Assert.That(giver.Trade, Is.SameAs(newer));
+        Assert.That(taker.Trade, Is.SameAs(newer));
+
+        // A request that is over gives the trade to no one.
+        taker.Trade = null;
+        Assert.That(old.Acknowledge(taker), Is.False);
+        Assert.That(taker.Trade, Is.Null);
+        newer.Dispose();
+        Assert.That(giver.Trade, Is.Null);
+    }
+
     // An accept and the end of the request at the same moment: the trade either never starts, or starts and is
     // then ended for both; a started trade is never left on a request that was dropped.
     [Test]
