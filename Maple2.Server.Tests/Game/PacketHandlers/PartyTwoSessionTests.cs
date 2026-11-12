@@ -1,0 +1,223 @@
+using System;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
+using Maple2.Model.Error;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Service;
+using Maple2.Server.Game.Session;
+using Maple2.Server.World.Service;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using ChannelPartyRequest = Maple2.Server.Channel.Service.PartyRequest;
+
+namespace Maple2.Server.Tests.Game.PacketHandlers;
+
+// A party invite between two sessions that share one character table. The handlers and the channel service are the
+// server's; the world's party state (one party, its members, who is told) is scripted here.
+public class PartyTwoSessionTests {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private const int PartyId = 5;
+    private const byte Error = 0;
+    private const byte Joined = 2;
+    private const byte Load = 9;
+    private const byte Invited = 11;
+
+    private TestGameSession inviterTest = null!;
+    private TestGameSession guestTest = null!;
+    private PartyHandler inviterHandler = null!;
+    private PartyHandler guestHandler = null!;
+    private ChannelService channel = null!;
+    private PartyInfo party = null!;
+    private GameSession inviter => inviterTest.Session;
+    private GameSession guest => guestTest.Session;
+
+    [SetUp]
+    public void Login() {
+        DbContextOptions options = new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        inviterTest = new TestGameSession(options);
+        guestTest = new TestGameSession(options);
+        foreach (TestGameSession test in new[] { inviterTest, guestTest }) {
+            test.AddMap(TestGameSession.Map(2000023));
+            test.Start();
+            test.EnterMap(TestGameSession.Map(2000023));
+        }
+
+        var server = (GameServer) RuntimeHelpers.GetUninitializedObject(typeof(GameServer));
+        var sessions = new ConcurrentDictionary<long, GameSession>();
+        sessions[inviter.CharacterId] = inviter;
+        sessions[guest.CharacterId] = guest;
+        typeof(GameServer).GetField("sessions", Any)!.SetValue(server, sessions);
+        // Both sessions are on one game server; its player info comes from the inviter's world.
+        channel = new ChannelService(server, inviter.PlayerInfo, inviterTest.Storage, null!, null!, null!);
+
+        foreach (TestGameSession test in new[] { inviterTest, guestTest }) {
+            test.World.AddPlayer(inviter.AccountId, inviter.CharacterId, inviter.PlayerName);
+            test.World.AddPlayer(guest.AccountId, guest.CharacterId, guest.PlayerName);
+            test.World.PartyWorld = World;
+            GameSession session = test.Session;
+            using (GameStorage.Request db = test.Storage.Context()) {
+                session.Buddy = new BuddyManager(db, session);
+            }
+            session.Party = new PartyManager(test.World, session);
+            test.TakeSent();
+        }
+        inviterHandler = new PartyHandler { World = inviterTest.World, ServerTableMetadata = inviterTest.ServerTableMetadata };
+        guestHandler = new PartyHandler { World = guestTest.World, ServerTableMetadata = guestTest.ServerTableMetadata };
+    }
+
+    // What the world does with the three requests of an invite.
+    private PartyResponse World(PartyRequest request) {
+        switch (request.PartyCase) {
+            case PartyRequest.PartyOneofCase.Create:
+                party = new PartyInfo {
+                    Id = PartyId,
+                    LeaderAccountId = inviter.AccountId,
+                    LeaderCharacterId = request.RequestorId,
+                    LeaderName = inviter.PlayerName,
+                    CreationTime = 1000,
+                };
+                party.Members.Add(new PartyInfo.Types.Member { CharacterId = request.RequestorId, JoinTime = 1000 });
+                return new PartyResponse { Party = party };
+            case PartyRequest.PartyOneofCase.Invite:
+                var invite = new ChannelPartyRequest {
+                    PartyId = request.Invite.PartyId,
+                    Invite = new ChannelPartyRequest.Types.Invite { SenderId = inviter.CharacterId, SenderName = inviter.PlayerName },
+                };
+                invite.ReceiverIds.Add(request.Invite.ReceiverId);
+                return new PartyResponse {
+                    PartyId = request.Invite.PartyId,
+                    Error = channel.Party(invite, null!).GetAwaiter().GetResult().Error,
+                };
+            case PartyRequest.PartyOneofCase.RespondInvite:
+                if (request.RespondInvite.Reply != (int) PartyInviteResponse.Accept) {
+                    return new PartyResponse { PartyId = PartyId };
+                }
+                var add = new ChannelPartyRequest {
+                    PartyId = PartyId,
+                    AddMember = new ChannelPartyRequest.Types.AddMember { CharacterId = request.RequestorId, JoinTime = 2000 },
+                };
+                add.ReceiverIds.Add(party.Members.Select(member => member.CharacterId));
+                channel.Party(add, null!).GetAwaiter().GetResult();
+                party.Members.Add(new PartyInfo.Types.Member { CharacterId = request.RequestorId, JoinTime = 2000 });
+                return new PartyResponse { Party = party };
+            default:
+                return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
+        }
+    }
+
+    private void Invite(string name) {
+        inviterHandler.Handle(inviter, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteUnicodeString(name);
+        }));
+    }
+
+    private void Reply(PartyInviteResponse reply) {
+        guestHandler.Handle(guest, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteUnicodeString(inviter.PlayerName);
+            writer.WriteByte((byte) reply);
+            writer.WriteInt(PartyId);
+        }));
+    }
+
+    private static byte[][] Party(TestGameSession test) {
+        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Party).ToArray();
+    }
+
+    private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+
+    [Test]
+    public void Invite_ReachesTheGuestAndAcceptJoinsBoth() {
+        Assume.That(inviter.CharacterId, Is.Not.EqualTo(guest.CharacterId));
+
+        Invite(guest.PlayerName);
+
+        // The inviter is alone in a new party; the guest is asked.
+        Assert.That(inviter.Party.Party, Is.Not.Null);
+        Assert.That(inviter.Party.Party!.Members.Keys, Is.EqualTo(new[] { inviter.CharacterId }));
+        Assert.That(Party(inviterTest).Select(packet => packet[2]), Is.All.EqualTo(Load));
+        Assert.That(Party(guestTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Invite(PartyId, inviter.PlayerName)),
+        }));
+        Assert.That(guest.Party.Party, Is.Null);
+
+        Reply(PartyInviteResponse.Accept);
+
+        Assert.That(guest.Party.Party, Is.Not.Null);
+        Assert.That(guest.Party.Party!.Members.Keys, Is.EquivalentTo(new[] { inviter.CharacterId, guest.CharacterId }));
+        Assert.That(guest.Party.Party.LeaderCharacterId, Is.EqualTo(inviter.CharacterId));
+        Assert.That(guest.Player.Value.Character.PartyId, Is.EqualTo(PartyId));
+        // The guest's last packet is the party with the join notice.
+        byte[][] sent = Party(guestTest);
+        Assert.That(sent.Select(packet => packet[2]), Is.All.EqualTo(Load));
+        Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(PartyPacket.Load(guest.Party.Party, true))));
+        // The inviter is told of the new member.
+        Assert.That(inviter.Party.Party.Members.Keys, Is.EquivalentTo(new[] { inviter.CharacterId, guest.CharacterId }));
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Joined(inviter.Party.Party.Members[guest.CharacterId])),
+        }));
+    }
+
+    [Test]
+    public void Invite_RefusedLeavesTheGuestWithoutAParty() {
+        Assume.That(inviter.CharacterId, Is.Not.EqualTo(guest.CharacterId));
+        Invite(guest.PlayerName);
+        Party(inviterTest);
+        Party(guestTest);
+
+        Reply(PartyInviteResponse.RejectInvite);
+
+        Assert.That(guest.Party.Party, Is.Null);
+        Assert.That(Party(guestTest), Is.Empty);
+        Assert.That(inviter.Party.Party!.Members.Keys, Is.EqualTo(new[] { inviter.CharacterId }));
+        Assert.That(Party(inviterTest), Is.Empty);
+    }
+
+    [Test]
+    public void Invite_OfTheOwnNameIsRefused() {
+        Invite(inviter.PlayerName);
+
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Error(PartyError.s_party_err_myself)),
+        }));
+        Assert.That(inviter.Party.Party, Is.Null);
+    }
+
+    [Test]
+    public void Invite_OfANameNobodyHasIsRefused() {
+        Invite("nobody");
+
+        byte[][] sent = Party(inviterTest);
+        Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(PartyPacket.Error(PartyError.s_party_err_cannot_invite))));
+        Assert.That(Party(guestTest), Is.Empty);
+    }
+
+    [Test]
+    public void Invite_OfAPlayerInAFullerPartyIsRefused() {
+        Assume.That(inviter.CharacterId, Is.Not.EqualTo(guest.CharacterId));
+        Invite(guest.PlayerName);
+        Reply(PartyInviteResponse.Accept);
+        Party(inviterTest);
+        Party(guestTest);
+
+        // The guest, now a member and not the leader, is invited again.
+        Invite(guest.PlayerName);
+
+        Assert.That(Party(guestTest), Is.Empty);
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Error(PartyError.s_party_err_cannot_invite, guest.PlayerName)),
+        }));
+    }
+}

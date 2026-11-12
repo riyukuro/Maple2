@@ -29,6 +29,33 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // CGuildInfo::Read: the byte after the creation time is the championship state (0 in KMS2), then the score
+    // 1000; the npc shop block before the storage list is a set flag and an empty list, as KMS2 sends it.
+    [Test]
+    public void Load_SendsNoChampionshipStateAndAnEmptyNpcShopList() {
+        var guild = new Guild(7, "Guild", 1, 2, "Leader") { CreationTime = 0x0102030405060708 };
+        ByteWriter writer = GuildPacket.Load(guild);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadLong(), Is.EqualTo(7));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Guild"));
+        reader.ReadUnicodeString();
+        reader.ReadByte();
+        reader.ReadUnicodeString();
+        reader.ReadUnicodeString();
+        Assert.That(reader.ReadLong(), Is.EqualTo(1));
+        Assert.That(reader.ReadLong(), Is.EqualTo(2));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Leader"));
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x0102030405060708));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1000));
+
+        byte[] tail = writer.ToArray()[^7..];
+        Assert.That(tail, Is.EqualTo(new byte[] { 1, 0, 0, 0, 0, 0, 0 }));
+    }
+
     // CGuildManager::FUN_1413c5360 (0x52) and FUN_1413c5440 (0x53) read the guild id, then the guild name.
     [TestCase(82)]
     [TestCase(83)]

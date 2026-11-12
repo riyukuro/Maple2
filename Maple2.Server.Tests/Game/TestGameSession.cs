@@ -529,6 +529,17 @@ public sealed class TestGameSession {
             throw new RpcException(new Status(StatusCode.NotFound, "no such character"));
         }
 
+        // The world's party side: no party at login; a test scripts what the world answers to a party request.
+        public Func<PartyRequest, PartyResponse>? PartyWorld;
+
+        public override PartyInfoResponse PartyInfo(PartyInfoRequest request, CallOptions options) {
+            return new PartyInfoResponse();
+        }
+
+        public override PartyResponse Party(PartyRequest request, CallOptions options) {
+            return PartyWorld?.Invoke(request) ?? new PartyResponse();
+        }
+
         public readonly List<MailNotificationRequest> MailNotifications = [];
 
         public override MailNotificationResponse MailNotification(MailNotificationRequest request, CallOptions options) {

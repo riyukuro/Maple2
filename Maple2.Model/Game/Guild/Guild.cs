@@ -88,7 +88,7 @@ public class Guild : IByteSerializable {
         writer.WriteLong(LeaderCharacterId);
         writer.WriteUnicodeString(LeaderName);
         writer.WriteLong(CreationTime);
-        writer.WriteByte(1);
+        writer.WriteByte(); // championship state (CGuildInfo::SetPvpState); KMS2 sends 0
         writer.WriteInt(1000);
         writer.WriteInt();
         writer.WriteInt();
@@ -139,7 +139,9 @@ public class Guild : IByteSerializable {
             writer.Write<GuildNpc>(npc);
         }
 
-        writer.WriteBool(false); // GuildNpcShopProducts
+        // CGuildInfo::ReadNpcShop: a flag, then the shop list (count as a short). KMS2 sends the flag set with no shop.
+        writer.WriteBool(true);
+        writer.WriteShort();
 
         writer.WriteInt(Bank.Count);
         foreach (RewardItem item in Bank) {
