@@ -61,6 +61,7 @@ public class TableMetadataStorage {
     private readonly Lazy<SmartPushTable> smartPushTable;
     private readonly Lazy<AutoActionTable> autoActionTable;
     private readonly Lazy<MaidTable> maidTable;
+    private readonly Lazy<FieldMetaTable> fieldMetaTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -140,6 +141,7 @@ public class TableMetadataStorage {
     public SmartPushTable SmartPushTable => smartPushTable.Value;
     public AutoActionTable AutoActionTable => autoActionTable.Value;
     public MaidTable MaidTable => maidTable.Value;
+    public FieldMetaTable FieldMetaTable => fieldMetaTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -239,6 +241,7 @@ public class TableMetadataStorage {
         smartPushTable = Retrieve<SmartPushTable>(context, TableNames.SMART_PUSH);
         autoActionTable = Retrieve<AutoActionTable>(context, TableNames.AUTO_ACTION);
         maidTable = Retrieve<MaidTable>(context, TableNames.MAID_PROPERTY);
+        fieldMetaTable = Retrieve<FieldMetaTable>(context, TableNames.FIELD_METADATA);
 
     }
 

@@ -281,7 +281,12 @@ public class QuestHandler : FieldPacketHandler {
     private static void HandleGoToNpc(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !quest.Metadata.GoToNpc.Enabled) {
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest)) {
+            return;
+        }
+        bool conditionsMet = quest.Conditions.Values.All(condition => condition.Counter >= condition.Metadata.Value);
+        session.TableMetadata.FieldMetaTable.NpcFields.TryGetValue(quest.Metadata.Basic.CompleteNpc, out IReadOnlyList<int>? npcFields);
+        if (!QuestRules.CanGoToNpc(quest.Metadata.GoToNpc, quest.State, conditionsMet, npcFields, session.Player.Value.Character.MapId)) {
             return;
         }
 

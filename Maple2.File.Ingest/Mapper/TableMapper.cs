@@ -112,6 +112,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.SMART_PUSH, Table = ParseSmartPushTable() };
         yield return new TableMetadata { Name = TableNames.AUTO_ACTION, Table = ParseAutoActionTable() };
         yield return new TableMetadata { Name = TableNames.MAID_PROPERTY, Table = ParseMaidTable() };
+        yield return new TableMetadata { Name = TableNames.FIELD_METADATA, Table = ParseFieldMetaTable() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -2398,6 +2399,50 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         return new MaidTable(results, exps, recipes, groups);
+    }
+
+    // The played client's fieldmetadata.xml when there is one (the copy its taxi box and quest window read), else the data pack's
+    // table/<pack region>/fieldmetadata.xml. As CFieldMetaTable::Load reads it, a <portal> without targetField repeats
+    // the one before it in the same <fieldPortal>.
+    private FieldMetaTable ParseFieldMetaTable() {
+        XmlDocument? document = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, TableNames.FIELD_METADATA);
+        if (document == null) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file => file.Name == $"table/{PackTables.Locale.ToLowerInvariant()}/{TableNames.FIELD_METADATA}")
+                                                                ?? xmlReader.Files.FirstOrDefault(file => file.Name == $"table/{TableNames.FIELD_METADATA}");
+            document = entry == null ? null : xmlReader.GetXmlDocument(entry);
+        }
+
+        var results = new Dictionary<int, IReadOnlyList<int>>();
+        foreach (XmlNode node in document?.SelectNodes("ms2/fieldPortal")?.Cast<XmlNode>() ?? []) {
+            if (node is not XmlElement fieldPortal || !int.TryParse(fieldPortal.GetAttribute("field"), out int field)) continue;
+            var targets = new List<int>();
+            int target = 0;
+            foreach (XmlNode child in fieldPortal.SelectNodes("portal")!) {
+                if (child is not XmlElement portal) continue;
+                if (portal.HasAttribute("targetField")) {
+                    int.TryParse(portal.GetAttribute("targetField"), out target);
+                }
+                if (target != 0) {
+                    targets.Add(target);
+                }
+            }
+            results[field] = targets;
+        }
+
+        var npcFields = new Dictionary<int, List<int>>();
+        foreach (XmlNode node in document?.SelectNodes("ms2/npc")?.Cast<XmlNode>() ?? []) {
+            if (node is not XmlElement npc || !int.TryParse(npc.GetAttribute("id"), out int npcId)) continue;
+            foreach (XmlNode child in npc.SelectNodes("field")!) {
+                if (child is XmlElement field && int.TryParse(field.GetAttribute("id"), out int fieldId)) {
+                    if (!npcFields.TryGetValue(npcId, out List<int>? fields)) {
+                        npcFields[npcId] = fields = [];
+                    }
+                    fields.Add(fieldId);
+                }
+            }
+        }
+        Console.WriteLine($"{TableNames.FIELD_METADATA}: portal targets of {results.Count} fields, fields of {npcFields.Count} npcs");
+        return new FieldMetaTable(results, npcFields.ToDictionary(entry => entry.Key, entry => (IReadOnlyList<int>) entry.Value));
     }
 
     // IsElementAvailable and the locale list, as the client's maid recipe tables check each row.

@@ -224,4 +224,15 @@ public static class QuestRules {
         QuestMetadataBasic basic = metadata.Basic;
         return ClientStartsItself(basic.Type, basic.AutoStart, basic.Disabled, basic.ProgressMaps, mapId);
     }
+
+    // The quest window's "go to" button (CQuestCommon::FUN_1407441f0, commonfiles/pvpinfo.cpp; the client sends Quest
+    // mode 12 only when it holds): gotoNpc is enabled with a gotoField, the quest is started and every condition is
+    // met (CQuest::IsComplete), and the character stands neither in the gotoField nor in a field of the quest's
+    // complete npc (fieldmetadata.xml <npc>).
+    public static bool CanGoToNpc(QuestMetadataGoToNpc goTo, QuestState state, bool conditionsMet, IReadOnlyList<int>? npcFields, int mapId) {
+        if (!goTo.Enabled || goTo.MapId == 0 || state != QuestState.Started || !conditionsMet) {
+            return false;
+        }
+        return mapId != goTo.MapId && npcFields?.Contains(mapId) != true;
+    }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Maple2.Model.Validators;
 
 namespace Maple2.Server.Tests.Validators;
@@ -39,5 +40,30 @@ public class TaxiRulesTests {
     [TestCase(100, 1.5f, 0)]
     public void Fare(long price, float rate, long expected) {
         Assert.That(TaxiRules.AirFare(price, rate), Is.EqualTo(expected));
+    }
+
+    // Made-up fields: 1 -> 2 -> 3 -> 4, a short cut 1 -> 5 -> 4, 4 -> 1 back only, 6 cut off, 7 not enabled.
+    private static readonly Dictionary<int, IReadOnlyList<int>> Portals = new() {
+        [1] = [0, 1, 2, 5, 7],
+        [2] = [3, 1],
+        [3] = [4],
+        [4] = [1],
+        [5] = [4, 4],
+        [6] = [1],
+        [7] = [4],
+        [8] = [7, 1],
+    };
+
+    [TestCase(1, 1, 0)]
+    [TestCase(1, 2, 1)]
+    [TestCase(1, 3, 2)]
+    [TestCase(1, 4, 2)] // through 5, not 2 and 3
+    [TestCase(4, 3, 3)] // portals are one way: 4 -> 1 -> 2 -> 3
+    [TestCase(1, 6, -1)] // nothing leads to 6
+    [TestCase(1, 9, -1)] // 9 has no portal list
+    [TestCase(8, 4, 3)] // 8 -> 7 is not loaded: 8 -> 1 -> 5 -> 4
+    [TestCase(7, 4, -1)] // a field that is not enabled has no portals
+    public void PortalHops(int from, int to, int expected) {
+        Assert.That(TaxiRules.PortalHops(from, to, Portals, field => field != 7), Is.EqualTo(expected));
     }
 }

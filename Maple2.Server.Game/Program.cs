@@ -135,7 +135,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
         .SingleInstance();
     autofac.RegisterType<PlayerInfoStorage>()
         .SingleInstance();
-    autofac.RegisterType<WorldMapGraphStorage>()
+    autofac.RegisterType<TaxiRouteStorage>()
         .SingleInstance();
     autofac.RegisterInstance(debugGraphicsContext);
 

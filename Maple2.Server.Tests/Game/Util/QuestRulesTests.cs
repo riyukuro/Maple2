@@ -143,4 +143,17 @@ public class QuestRulesTests {
     public void ResetWeekday_ClientNames(string usePeriod, int expected) {
         Assert.That(Maple2.Model.Metadata.QuestPeriod.ResetWeekday(usePeriod), Is.EqualTo(expected));
     }
+
+    // Made-up fields: go-to field 100, complete npc in 200 and 201.
+    [TestCase(true, 100, QuestState.Started, true, 300, true)]
+    [TestCase(false, 100, QuestState.Started, true, 300, false)] // gotoNpc not enabled
+    [TestCase(true, 0, QuestState.Started, true, 300, false)] // no gotoField
+    [TestCase(true, 100, QuestState.Completed, true, 300, false)] // already rewarded
+    [TestCase(true, 100, QuestState.Started, false, 300, false)] // a condition not met yet
+    [TestCase(true, 100, QuestState.Started, true, 100, false)] // already in the gotoField
+    [TestCase(true, 100, QuestState.Started, true, 201, false)] // in a field of the complete npc
+    public void GoToNpc_ClientButtonRule(bool enabled, int gotoField, QuestState state, bool met, int mapId, bool expected) {
+        var goTo = new Maple2.Model.Metadata.QuestMetadataGoToNpc(enabled, gotoField, 1);
+        Assert.That(QuestRules.CanGoToNpc(goTo, state, met, [200, 201], mapId), Is.EqualTo(expected));
+    }
 }

@@ -92,6 +92,9 @@ public static class TableNames {
     // Housing
     public const string MAID_PROPERTY = "maidproperty.xml";
 
+    // Field
+    public const string FIELD_METADATA = "fieldmetadata.xml";
+
     public static readonly Dictionary<string, string> ItemOptionVariationTableNames = new Dictionary<string, string> {
         { "acc", ITEM_OPTION_VARIATION_ACC },
         { "armor", ITEM_OPTION_VARIATION_ARMOR },

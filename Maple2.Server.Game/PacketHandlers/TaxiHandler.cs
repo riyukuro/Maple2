@@ -32,7 +32,7 @@ public class TaxiHandler : FieldPacketHandler {
     // ReSharper disable MemberCanBePrivate.Global
     public required MapMetadataStorage MapMetadata { private get; init; }
     public required MapEntityStorage EntityMetadata { private get; init; }
-    public required WorldMapGraphStorage WorldMapGraph { private get; init; }
+    public required TaxiRouteStorage TaxiRoute { private get; init; }
     public required ServerTableMetadataStorage ServerTableMetadata { private get; init; }
     private ConstantsTable Constants => ServerTableMetadata.ConstantsTable;
     // ReSharper restore All
@@ -81,7 +81,10 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        if (!WorldMapGraph.CanPathFind(session.Player.Value.Character.MapId, mapId, out int mapCount)) {
+        // The fare the taxi box shows: CalcTaxiCharge of the client's portal hop count. With no path the client's fare
+        // would be negative (CalcTaxiCharge(-1)); the server refuses that ride.
+        int mapCount = TaxiRoute.Hops(session.Player.Value.Character.MapId, mapId);
+        if (mapCount < 0) {
             return;
         }
 
