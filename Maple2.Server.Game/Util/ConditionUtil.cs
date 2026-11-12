@@ -86,6 +86,7 @@ public static class ConditionUtil {
             case ConditionType.quest_accept:
             case ConditionType.quest_clear_by_chapter:
             case ConditionType.quest_clear:
+            case ConditionType.quest_daily:
             case ConditionType.dungeon_clear:
             case ConditionType.dungeon_clear_group:
             case ConditionType.buff:
@@ -342,6 +343,7 @@ public static class ConditionUtil {
             case ConditionType.send_mail:
             case ConditionType.change_ugc_equip:
             case ConditionType.unlimited_enchant:
+            case ConditionType.quest_daily:
             case ConditionType.enter_otherhouse:
                 return true;
         }

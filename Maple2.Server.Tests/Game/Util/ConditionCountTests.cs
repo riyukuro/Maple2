@@ -39,6 +39,30 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
     }
 
+    // A completed daily quest counts for quest_daily when its id is one of the row's codes.
+    [TestCase(30000359, true)]
+    [TestCase(30000360, false)]
+    public void QuestDaily_CountsTheListedQuests(int questId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.quest_daily, 4,
+            new ConditionMetadata.Parameters(Integers: [30000359]), null);
+        Assert.That(condition.Check(null!, codeLong: questId), Is.EqualTo(expected));
+    }
+
+    // Only a daily quest (repeat 2) counts for quest_daily.
+    [TestCase(2, true)]
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(3, false)]
+    public void QuestDaily_OnlyDailyQuests(int repeat, bool expected) {
+        Assert.That(QuestRules.CountsAsDaily(Basic(QuestType.WorldQuest, repeat)), Is.EqualTo(expected));
+    }
+
+    private static QuestMetadataBasic Basic(QuestType type, int repeat) {
+        return new QuestMetadataBasic(ChapterId: 0, Type: type, Account: 0, StandardLevel: 1, Forfeitable: false,
+            EventTag: string.Empty, AutoStart: false, Disabled: false, UsePostbox: false, StartNpc: 0, CompleteNpc: 0,
+            CompleteMaps: null, ProgressMaps: null, Repeat: repeat);
+    }
+
     private const int HomeMapId = 62000000;
 
     // Entering a home counts for enter_otherhouse only when another account owns it.

@@ -479,6 +479,9 @@ public sealed class QuestManager {
         session.ConditionUpdate(ConditionType.quest_clear_by_chapter, codeLong: quest.Metadata.Basic.ChapterId);
         session.ConditionUpdate(ConditionType.quest, codeLong: quest.Metadata.Id);
         session.ConditionUpdate(ConditionType.quest_clear, codeLong: quest.Metadata.Id);
+        if (QuestRules.CountsAsDaily(quest.Metadata.Basic)) {
+            session.ConditionUpdate(ConditionType.quest_daily, codeLong: quest.Metadata.Id);
+        }
         if (quest.Metadata.Basic.Type == QuestType.FieldMission) {
             session.ConditionUpdate(ConditionType.field_mission);
         }

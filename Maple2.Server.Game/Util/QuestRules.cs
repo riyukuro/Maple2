@@ -19,6 +19,10 @@ public static class QuestRules {
         };
     }
 
+    // A completed quest counts for quest_daily when it is a daily quest (repeat 2): every quest the quest_daily rows
+    // list is one, and the row's codes pick which.
+    public static bool CountsAsDaily(QuestMetadataBasic basic) => basic.Repeat == 2;
+
     // Quest 7 (Expired): the client sends it for a quest in progress whose end time has come, and a quest has an end
     // time only with a reset weekday, a duration or an event tag (FUN_14074b090, CQuestManager::FUN_1416d3010,
     // questmanager_2.cpp:2157). Anything else, a completed quest above all, stays: its row is what keeps a repeat
