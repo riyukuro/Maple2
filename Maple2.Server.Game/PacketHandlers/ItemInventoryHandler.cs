@@ -129,15 +129,6 @@ public class ItemInventoryHandler : FieldPacketHandler {
             return;
         }
 
-        // A black-market-only item passes CanDestroy by its trade bit, so the client sends mode 4 to drop it. When
-        // its data keeps it from another player the drop is refused and it stays in the bag: the client answers
-        // ItemInventory error 42 with s_item_err_drop (CSceneStateGame::OnItemInventory, mode 13). Only the
-        // destroy box (mode 5) destroys it.
-        if (amount > 0 && !TradeRules.IsHandTradeable(drop)) {
-            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_item_err_drop));
-            return;
-        }
-
         bool toField = amount > 0 && IsFieldDrop(drop);
         if (!session.Item.Inventory.Remove(uid, out drop, toField ? amount : -1)) {
             return;
@@ -151,10 +142,11 @@ public class ItemInventoryHandler : FieldPacketHandler {
         session.Field.DropItem(session.Player, drop);
     }
 
-    // The item lands on the field (CItemTransfer::CanDestroy); anything else is destroyed. A black-market-only item
-    // lands only when its data lets it go hand to hand (TradeRules.IsHandTradeable).
+    // The item lands on the field (CItemTransfer::CanDestroy: not bound, the trade bit); anything else is destroyed.
+    // The client asks only the rule bits, never the item's transfer type or trade rarity, so a black-market-only
+    // item (sent with the trade bit, as KMS2 sends it) lands too.
     internal static bool IsFieldDrop(Item item) {
         return item.Transfer != null && !item.IsExpired() && item.Transfer.Flag.HasFlag(TransferFlag.Trade)
-               && item.Transfer.Binding == null && TradeRules.IsHandTradeable(item);
+               && item.Transfer.Binding == null;
     }
 }

@@ -25,25 +25,13 @@ public class ItemTransferRulesTests {
         Assert.That(item.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
     }
 
-    // Hand to hand (trade, field drop) a black-market-only item goes only below its trade rarity or with trades
-    // left; the black market still takes it by its trade bit.
-    [TestCase(1, 4, 0, true)]
-    [TestCase(3, 4, 0, true)]
-    [TestCase(4, 4, 0, false)]
-    [TestCase(6, 4, 0, false)]
-    [TestCase(4, 4, 1, true)]
-    public void BlackMarketOnly_HandTrade(int rarity, int tradeMaxRarity, int tradableCount, bool expected) {
-        Item item = ItemOf(TransferType.BlackMarketOnly, tradableCount, tradeMaxRarity, rarity);
-        Assert.That(TradeRules.IsHandTradeable(item), Is.EqualTo(expected));
+    // The black market takes a black-market-only item by its trade bit, at any rarity.
+    [TestCase(1, 4)]
+    [TestCase(4, 4)]
+    [TestCase(6, 4)]
+    public void BlackMarketOnly_Lists(int rarity, int tradeMaxRarity) {
+        Item item = ItemOf(TransferType.BlackMarketOnly, 0, tradeMaxRarity, rarity);
         Assert.That(BlackMarketRules.CanList(false, true, item.Transfer!.Flag, item.Transfer.RemainTrades, false), Is.True);
-    }
-
-    // Every other transfer type is left to the flag.
-    [TestCase(TransferType.Tradable)]
-    [TestCase(TransferType.Untradeable)]
-    [TestCase(TransferType.BindOnLoot)]
-    public void OtherTypes_HandTradeByTheFlag(TransferType type) {
-        Assert.That(TradeRules.IsHandTradeable(type, 6, 4, 0), Is.True);
     }
 
     // Binding keeps the trades left (KMS2 sends bound items with 1); they are of no use while bound.

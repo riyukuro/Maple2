@@ -218,10 +218,11 @@ public class TradeHandlerTests {
     }
 
     // A black-market-only item comes with the trade bit and the client offers it (FUN_140635590 reads only the
-    // rule). At its trade rarity with no trades left the server keeps it in the bag; below that rarity it goes.
-    [TestCase(1, false)]
-    [TestCase(2, true)]
-    public void AddItem_BlackMarketOnly(int tradeMaxRarity, bool offered) {
+    // rule, never the transfer type or the trade rarity): it goes into the trade at its trade rarity too (Blue
+    // Paint 20000208, rarity 4, TradeMaxRarity 4, was kept in the bag with no answer).
+    [TestCase(1)]
+    [TestCase(2)]
+    public void AddItem_BlackMarketOnly(int tradeMaxRarity) {
         ItemMetadata metadata = TestGameSession.Metadata(20000001, type: 2);
         StartTrade(metadata with { Limit = metadata.Limit with { TransferType = TransferType.BlackMarketOnly, TradeMaxRarity = tradeMaxRarity } });
         Assert.That(giver.Item.Inventory.Get(item.Uid)!.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
@@ -232,8 +233,8 @@ public class TradeHandlerTests {
             writer.WriteInt(0);
         });
 
-        Assert.That(giver.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(offered ? null : 3));
-        Assert.That(takerTest.TakeSent(), offered ? Is.Not.Empty : Is.Empty);
+        Assert.That(giver.Item.Inventory.Get(item.Uid), Is.Null);
+        Assert.That(takerTest.TakeSent(), Is.Not.Empty);
     }
 
     // KMS2 order: a player who has locked is unlocked (mode 12) before the other player's change is shown.

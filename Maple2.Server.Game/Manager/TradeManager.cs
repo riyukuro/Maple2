@@ -6,11 +6,14 @@ using Maple2.Server.Core.Network;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Serilog;
 using static Maple2.Model.Error.TradeError;
 
 namespace Maple2.Server.Game.Manager;
 
 public class TradeManager : IDisposable {
+    private readonly ILogger logger = Log.Logger.ForContext<TradeManager>();
+
     private enum TradeState {
         Completed = 0,
         Requested = 1,
@@ -139,6 +142,10 @@ public class TradeManager : IDisposable {
         Dispose();
     }
 
+    // The client checks the same before it sends the offer, so a refusal here means the two sides disagree: logged.
+    private void Refused(GameSession caller, Item item, string why) =>
+        logger.Information("Trade offer refused for {CharacterId}: item {ItemId} ({Uid}): {Why}", caller.CharacterId, item.Id, item.Uid, why);
+
     public void AddItem(GameSession caller, long itemUid, int amount, int tradeSlot) {
         if (state != TradeState.Started || !IsTrader(caller)) {
             return;
@@ -172,21 +179,21 @@ public class TradeManager : IDisposable {
                 }
                 // Nor a locked item (InvenSlot::TryAddToTrade asks CItemLockManager::CanUseItem first).
                 if (!ItemLockRules.IsUsable(offered.IsLocked, offered.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+                    Refused(caller, offered, "locked");
                     return;
                 }
                 if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
-                    return;
-                }
-                // A black-market-only item passes the client's check by its trade bit; its data decides here.
-                if (!TradeRules.IsHandTradeable(offered)) {
+                    Refused(caller, offered, $"transfer {offered.Transfer.Flag}, {offered.Transfer.RemainTrades} trades left, bound {offered.Transfer.Binding != null}");
                     return;
                 }
                 // Nor one holding a gem that may not go with it (CItemSocket FUN_140622790).
                 if (!TradeRules.AreGemsTradeable(offered.Socket, id => caller.ItemMetadata.TryGet(id, out ItemMetadata? gem) ? gem.Limit.TransferType : null,
                         DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+                    Refused(caller, offered, "a gem may not go with it");
                     return;
                 }
                 if (!caller.Item.Inventory.Remove(itemUid, out Item? item, amount)) {
+                    Refused(caller, offered, $"amount {amount} of {offered.Amount}");
                     return;
                 }
 

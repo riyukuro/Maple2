@@ -129,32 +129,26 @@ public class ItemDropHandlerTests {
         Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(new[] { 2 }));
     }
 
-    // The client sends mode 4 for a black-market-only item (its trade bit passes CanDestroy). At its trade rarity
-    // with no trades left it may not go to another player: the drop is refused with error 42 (s_item_err_drop) and
-    // the stack stays whole. Below that rarity the chosen count lands. Mode 5 still destroys it.
-    [TestCase(1, false)]
-    [TestCase(2, true)]
-    public void BlackMarketOnly_Drop(int tradeMaxRarity, bool lands) {
+    // The client sends mode 4 for a black-market-only item: its trade bit passes CanDestroy, so the drag out drops
+    // it and no destroy box comes up. The chosen count lands at its trade rarity too; mode 5 still destroys it.
+    [TestCase(1)]
+    [TestCase(2)]
+    public void BlackMarketOnly_Drop(int tradeMaxRarity) {
         ItemMetadata metadata = TestGameSession.Metadata(20000001, type: 2);
         GameSession session = Start(metadata with { Limit = metadata.Limit with { TransferType = TransferType.BlackMarketOnly, TradeMaxRarity = tradeMaxRarity } });
         Assert.That(session.Item.Inventory.Get(stack.Uid)!.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
 
         Drop(session, 2);
 
-        if (lands) {
-            Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(3));
-            Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(new[] { 2 }));
-            return;
-        }
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(3));
+        Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(new[] { 2 }));
         Assert.That(test.TakeSent().Select(Convert.ToHexString),
-            Is.EqualTo(new[] { Convert.ToHexString(ItemInventoryPacket.Error(ItemInventoryError.s_item_err_drop).ToArray()) }));
-        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
-        Assert.That(Ground(session), Is.Empty);
+            Does.Not.Contain(Convert.ToHexString(ItemInventoryPacket.Error(ItemInventoryError.s_item_err_drop).ToArray())));
 
         DropAll(session);
 
         Assert.That(session.Item.Inventory.Get(stack.Uid), Is.Null);
-        Assert.That(Ground(session), Is.Empty);
+        Assert.That(Ground(session).Count(), Is.EqualTo(1));
     }
 
     // Mode 5 comes from the destroy box: the whole item goes and nothing lands, tradeable or not.
