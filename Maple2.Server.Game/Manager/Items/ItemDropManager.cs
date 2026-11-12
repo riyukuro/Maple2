@@ -253,12 +253,15 @@ public class ItemDropManager {
             yield break;
         }
 
+        // A smart group whose rows carry the plain weight only (no row has a job weight, as in box 330002235's
+        // group 1) is rolled by that weight; the job weights are what carries the job preference.
+        bool jobWeights = group.SmartDropRate > 0 && itemEntries.Any(x => x.ProperJobWeight != 0 || x.ImproperJobWeight != 0);
         var weightedItems = new WeightedSet<IndividualDropItemTable.Item>(random);
         foreach (IndividualDropItemTable.Item itemEntry in itemEntries.OrderBy(_ => random.Next()).ToList()) {
             if (!available(itemEntry)) {
                 continue;
             }
-            if (group.SmartDropRate <= 0) {
+            if (!jobWeights) {
                 weightedItems.Add(itemEntry, itemEntry.Weight);
                 continue;
             }
@@ -359,15 +362,21 @@ public class ItemDropManager {
             return weight;
         }
 
-        if (itemMetadata.Limit.JobRecommends.Length == 0) {
+        return JobWeight(itemMetadata.Limit.JobRecommends, job, weight, jobWeight, improperJobWeight);
+    }
+
+    // A smart drop row's weight for a job: properJobWeight when the item recommends the job (or every job),
+    // improperJobWeight when it recommends other jobs, the plain weight when it recommends none. A box made of
+    // one group per job (KR 320000497: 11 groups of one row, each with a plain weight too) shows a row of
+    // another job is not rolled by its plain weight: the box would give every job's item.
+    internal static int JobWeight(JobCode[] recommends, JobCode job, int weight, int properJobWeight, int improperJobWeight) {
+        if (recommends.Length == 0) {
             return weight;
         }
-
-        if (!itemMetadata.Limit.JobRecommends.Contains(job) && !itemMetadata.Limit.JobRecommends.Contains(JobCode.None)) {
+        if (!recommends.Contains(job) && !recommends.Contains(JobCode.None)) {
             return improperJobWeight;
         }
-
-        return jobWeight;
+        return properJobWeight;
     }
 
     private bool IsItemJobRecommended(int itemId, JobCode job) {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Items;
 
@@ -13,6 +14,10 @@ public class IndividualDropPickTests {
 
     private static IndividualDropItemTable.Item Entry(int id, int weight) =>
         new([id, 0], false, 1, 0, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], 0);
+
+    // A row with the plain weight only (no job weights).
+    private static IndividualDropItemTable.Item Plain(int id, int weight) =>
+        new([id, 0], false, 0, 0, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], 0);
 
     private static IndividualDropItemTable.Entry Group(int groupId, int smartDropRate, IndividualDropItemTable.Entry.DropCount[] counts, IEnumerable<IndividualDropItemTable.Item> items) =>
         new(groupId, smartDropRate, counts, 0, false, false, items.ToList());
@@ -48,6 +53,44 @@ public class IndividualDropPickTests {
                 itemId => itemId % 100 == JobItemOffset, item => item.Ids[0] % 100 == JobItemOffset ? item.ProperJobWeight : item.ImproperJobWeight).ToList();
             Assert.That(picked.Select(item => item.Ids[0]), Is.EqualTo(new[] { 13100000 + JobItemOffset }));
         }
+    }
+
+    [Test]
+    public void JobWeight_ByTheItemsRecommendedJobs() {
+        JobCode[] knight = [JobCode.Knight];
+        Assert.That(ItemDropManager.JobWeight(knight, JobCode.Knight, 23, 253, 0), Is.EqualTo(253));
+        Assert.That(ItemDropManager.JobWeight(knight, JobCode.Striker, 23, 253, 0), Is.EqualTo(0));
+        Assert.That(ItemDropManager.JobWeight(knight, JobCode.Striker, 18, 187, 18), Is.EqualTo(18));
+        Assert.That(ItemDropManager.JobWeight([JobCode.None], JobCode.Striker, 18, 187, 5), Is.EqualTo(187));
+        Assert.That(ItemDropManager.JobWeight([], JobCode.Striker, 18, 187, 5), Is.EqualTo(18));
+    }
+
+    // One group per job (KR box 320000497): the group of another job gives nothing, the own job's group its row.
+    [Test]
+    public void SmartDropGroupOfAnotherJob_GivesNothing() {
+        IndividualDropItemTable.Item row = Entry(20000001, 100);
+        IndividualDropItemTable.Entry group = Group(1, 100, Always, [row]);
+        JobCode[] knight = [JobCode.Knight];
+        Assert.That(ItemDropManager.PickGroupEntries(group, group.Items, _ => true, _ => false,
+            item => ItemDropManager.JobWeight(knight, JobCode.Striker, item.Weight, item.ProperJobWeight, item.ImproperJobWeight)), Is.Empty);
+        Assert.That(ItemDropManager.PickGroupEntries(group, group.Items, _ => true, _ => true,
+            item => ItemDropManager.JobWeight(knight, JobCode.Knight, item.Weight, item.ProperJobWeight, item.ImproperJobWeight)).ToList(), Has.Count.EqualTo(1));
+    }
+
+    // KR box 330002235 group 1: smart drop rate 100, rows with a plain weight and no job weights.
+    [Test]
+    public void SmartDropWithPlainWeightsOnly_RollsByWeight() {
+        IndividualDropItemTable.Entry group = Group(1, 100, Always, [Plain(20000001, 100), Plain(20000002, 29), Plain(20000003, 0)]);
+        var seen = new Dictionary<int, int>();
+        for (int i = 0; i < 4000; i++) {
+            List<IndividualDropItemTable.Item> picked = ItemDropManager.PickGroupEntries(group, group.Items, _ => true,
+                _ => false, item => item.ImproperJobWeight).ToList();
+            Assert.That(picked, Has.Count.EqualTo(1));
+            seen[picked[0].Ids[0]] = seen.GetValueOrDefault(picked[0].Ids[0]) + 1;
+        }
+        Assert.That(seen.ContainsKey(20000003), Is.False);
+        Assert.That(seen[20000001], Is.GreaterThan(seen[20000002] * 2));
+        Assert.That(seen[20000002], Is.GreaterThan(400));
     }
 
     [Test]

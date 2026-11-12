@@ -164,10 +164,10 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
-        // The design window sends a name of UgcNameLengthMin to UgcNameLengthMax characters; nothing is charged
-        // for another.
+        // The design window's text field holds UgcNameLengthMax characters, so a longer name is not the client's;
+        // nothing is charged for it.
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
-        if (!UgcRules.DesignNameValid(name, constants.UgcNameLengthMin, constants.UgcNameLengthMax)) {
+        if (!UgcRules.DesignNameValid(name, constants.UgcNameLengthMax)) {
             Logger.Warning("Refused design name of {Length} characters from {CharacterId}", name.Length, session.CharacterId);
             return;
         }

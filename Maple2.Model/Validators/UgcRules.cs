@@ -203,10 +203,11 @@ public static class UgcRules {
         return ugcUid != 0 && stagedUgcUid == ugcUid && resourceOfKind;
     }
 
-    // The name of a design (item, furniture, mount): the design window takes UgcNameLengthMin to
-    // UgcNameLengthMax characters (3 to 14 today). No control characters; a limit of 0 is not tested.
-    public static bool DesignNameValid(string? name, int min, int max) {
-        if (name == null || name.Length < min || (max > 0 && name.Length > max)) {
+    // The name of a design (item, furniture, mount): the design window gives its text field UgcNameLengthMax
+    // (14 today; uiugcitemeditdialog.cpp ugcNameLengthMax). UgcNameLengthMin is only put in the hint text there,
+    // so no lower limit is asked. No control characters; a limit of 0 is not tested.
+    public static bool DesignNameValid(string? name, int max) {
+        if (name == null || (max > 0 && name.Length > max)) {
             return false;
         }
         return !name.Any(char.IsControl);

@@ -322,17 +322,18 @@ public class UgcRulesTests {
 
     [Test]
     public void DesignName_LengthOfTheDesignWindow() {
-        Assert.That(UgcRules.DesignNameValid("abc", 3, 14), Is.True);
-        Assert.That(UgcRules.DesignNameValid("abcdefghijklmn", 3, 14), Is.True);
-        Assert.That(UgcRules.DesignNameValid("\uAC00\uB098\uB2E4", 3, 14), Is.True);
-        Assert.That(UgcRules.DesignNameValid("ab", 3, 14), Is.False);
-        Assert.That(UgcRules.DesignNameValid("", 3, 14), Is.False);
-        Assert.That(UgcRules.DesignNameValid(null, 3, 14), Is.False);
-        Assert.That(UgcRules.DesignNameValid("abcdefghijklmno", 3, 14), Is.False);
-        Assert.That(UgcRules.DesignNameValid("ab\ncd", 3, 14), Is.False);
-        Assert.That(UgcRules.DesignNameValid("ab\0cd", 3, 14), Is.False);
-        // constants not loaded: only the lower limit
-        Assert.That(UgcRules.DesignNameValid(new string('a', 40), 0, 0), Is.True);
+        Assert.That(UgcRules.DesignNameValid("abc", 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid("abcdefghijklmn", 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid("\uAC00\uB098\uB2E4", 14), Is.True);
+        // no lower limit: the client only shows the minimum in its hint text
+        Assert.That(UgcRules.DesignNameValid("ab", 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid("", 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid(null, 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("abcdefghijklmno", 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("ab\ncd", 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("ab\0cd", 14), Is.False);
+        // constants not loaded: no limit
+        Assert.That(UgcRules.DesignNameValid(new string('a', 40), 0), Is.True);
     }
 
     [Test]
