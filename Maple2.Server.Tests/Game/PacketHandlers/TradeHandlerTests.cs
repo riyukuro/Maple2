@@ -27,8 +27,10 @@ public class TradeHandlerTests {
         var metadata = TestGameSession.Metadata(20000001, type: 2);
         item = giverTest.Store(metadata, amount: 3);
         takerTest.Register(metadata);
+        // The request's time-out is set far off: with the table's 0 seconds the timer can end the request before
+        // the taker's answer below, and the trade then never starts.
         foreach (TestGameSession test in new[] { giverTest, takerTest }) {
-            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { TradeMaxMeso = 1000000 });
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { TradeMaxMeso = 1000000, TradeRequestDuration = 30 });
         }
         giverTest.Start();
         takerTest.Start();

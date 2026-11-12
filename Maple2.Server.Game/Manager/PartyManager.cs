@@ -469,6 +469,7 @@ public class PartyManager : IDisposable {
 
         if (DiedNow(previousDeathState, member.Info.DeathState)) {
             session.Send(PartyPacket.Tombstone(member.CharacterId, member.Info.DeathState == DeathState.Metal));
+            logger.Information("Party {PartyId}: member {MemberId} is down, notice sent to {CharacterId}", Party.Id, member.CharacterId, session.CharacterId);
         }
 
         if (!SameLimits(previousDungeonLimits, member.Info.DungeonEnterLimits)) {

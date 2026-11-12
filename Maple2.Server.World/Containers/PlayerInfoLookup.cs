@@ -18,7 +18,7 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
 
     // TODO: Just using dictionary for now, might need eviction at some point (LRUCache)
     private readonly ConcurrentDictionary<long, PlayerInfo> cache;
-    private readonly ConcurrentQueue<PlayerInfoUpdateEvent> events;
+    private readonly ConcurrentQueue<PlayerUpdateRequest> events;
 
     private readonly ILogger logger = Log.ForContext<PlayerInfoLookup>();
 
@@ -28,13 +28,19 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
         tokenSource = new CancellationTokenSource();
 
         cache = new ConcurrentDictionary<long, PlayerInfo>();
-        events = new ConcurrentQueue<PlayerInfoUpdateEvent>();
+        events = new ConcurrentQueue<PlayerUpdateRequest>();
 
         Task.Factory.StartNew(() => {
             try {
                 while (!tokenSource.Token.IsCancellationRequested) {
                     Thread.Sleep(syncInterval);
-                    Sync();
+                    try {
+                        Sync();
+                    } catch (Exception ex) when (ex is not ObjectDisposedException) {
+                        // One failed step (a database error on a record load) must not end the loop: every later
+                        // queued update (health, map, death) would stay queued for good.
+                        logger.Error(ex, "Player info sync step failed");
+                    }
                 }
             } catch (ObjectDisposedException) {
                 // Expected during shutdown, safe to ignore
@@ -83,18 +89,13 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
     }
 
     private bool UpdateOne(PlayerUpdateRequest request) {
-        PlayerInfoUpdateEvent @event = cache.TryGetValue(request.CharacterId, out PlayerInfo? info)
-            ? new PlayerInfoUpdateEvent(info, request)
-            : new PlayerInfoUpdateEvent(request);
-
         // TODO: This support for both sync and async can cause ordering issues where older updates overwrite newer ones.
         if (request.Async) {
-            events.Enqueue(@event);
+            events.Enqueue(request);
             return true;
         }
 
-        info = Update(@event);
-        return info != null && Notify(info, @event.Type);
+        return Update(request, out PlayerInfo? info, out UpdateField type) && Notify(info, type);
     }
 
     private void Sync() {
@@ -103,16 +104,15 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
         }
 
         var updated = new Dictionary<long, Notification>();
-        while (events.TryDequeue(out PlayerInfoUpdateEvent? @event)) {
-            PlayerInfo? info = Update(@event);
-            if (info == null) {
+        while (events.TryDequeue(out PlayerUpdateRequest? request)) {
+            if (!Update(request, out PlayerInfo? info, out UpdateField type)) {
                 continue;
             }
 
-            if (!updated.ContainsKey(@event.Request.CharacterId)) {
-                updated[@event.Request.CharacterId] = new Notification(info);
+            if (!updated.ContainsKey(request.CharacterId)) {
+                updated[request.CharacterId] = new Notification(info);
             }
-            updated[@event.Request.CharacterId].Type |= @event.Type;
+            updated[request.CharacterId].Type |= type;
         }
 
         foreach ((long _, Notification notification) in updated) {
@@ -120,17 +120,18 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
         }
     }
 
-    private PlayerInfo? Update(PlayerInfoUpdateEvent @event) {
-        if (@event.Type == UpdateField.None) {
-            return null; // No fields changed
+    // The request is compared with the record at the time it is applied (see ApplyChanged). False: no entry to
+    // update, or no field changed.
+    private bool Update(PlayerUpdateRequest request, [NotNullWhen(true)] out PlayerInfo? info, out UpdateField type) {
+        type = UpdateField.None;
+        if (!TryGet(request.CharacterId, out info)) {
+            info = null;
+            return false;
         }
 
-        if (!TryGet(@event.Request.CharacterId, out PlayerInfo? info)) {
-            return null; // No entry to update
-        }
-
-        info.Apply(@event);
-        return info;
+        PlayerInfoUpdateEvent? @event = info.ApplyChanged(request);
+        type = @event?.Type ?? UpdateField.None;
+        return @event != null;
     }
 
     // Applies the request at once, and only while the record still names `expectedChannel`: the compare and the

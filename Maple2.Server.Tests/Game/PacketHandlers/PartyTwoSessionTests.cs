@@ -134,10 +134,12 @@ public class PartyTwoSessionTests {
     }
 
     private static byte[][] Party(TestGameSession test) {
-        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Party).ToArray();
+        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Party).Select(TestGameSession.NoClock).ToArray();
     }
 
-    private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+    // The sent packets and the expected ones are compared without the time of writing in a member's info: the
+    // expected packet is built after the send, and the second can change in between.
+    private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(TestGameSession.NoClock(packet.ToArray()));
 
     [Test]
     public void Invite_ReachesTheGuestAndAcceptJoinsBoth() {
@@ -204,6 +206,51 @@ public class PartyTwoSessionTests {
 
         Update(UpdateField.Health | UpdateField.Death, state);
         Assert.That(Party(inviterTest).Select(Convert.ToHexString), Does.Contain(notice));
+    }
+
+    // A member killed in the field: the actor's death goes to the world as player updates; the world compares each
+    // with its record and hands the changed fields to the game server, where the party listens.
+    [Test]
+    public void MemberKilledInTheField_TellsThePartyOnce() {
+        Invite(guest.PlayerName);
+        Reply(PartyInviteResponse.Accept);
+        Party(inviterTest);
+        Assert.That(inviter.PlayerInfo.GetOrFetch(guest.CharacterId, out Maple2.Model.Game.PlayerInfo? fetched), Is.True);
+        Maple2.Model.Game.PlayerInfo record = fetched!.Clone();
+        void World() {
+            // One sync step of the world: every queued update is applied, then one notice names all changed fields.
+            UpdateField changed = UpdateField.None;
+            foreach (PlayerUpdateRequest request in guestTest.World.PlayerUpdates.Where(update => update.CharacterId == guest.CharacterId)) {
+                var update = new PlayerInfoUpdateEvent(record, request);
+                if (update.Type == UpdateField.None) {
+                    continue;
+                }
+                record.Apply(update);
+                changed |= update.Type;
+            }
+            guestTest.World.PlayerUpdates.Clear();
+            if (changed == UpdateField.None) {
+                return;
+            }
+            var notify = new PlayerUpdateRequest { AccountId = record.AccountId, CharacterId = record.CharacterId };
+            notify.SetFields(changed, record);
+            channel.UpdatePlayer(notify, null!).GetAwaiter().GetResult();
+        }
+        MethodInfo setDead = typeof(Maple2.Server.Game.Model.FieldPlayer).GetProperty("IsDead")!.GetSetMethod(true)!;
+
+        typeof(ConfigManager).GetField("session", Any)!.SetValue(guest.Config, guest);
+        setDead.Invoke(guest.Player, [true]);
+        guestTest.World.PlayerUpdates.Add(new PlayerUpdateRequest {
+            AccountId = guest.AccountId,
+            CharacterId = guest.CharacterId,
+            Health = new HealthUpdate { CurrentHp = 0, TotalHp = record.TotalHp + 10 },
+            Async = true,
+        });
+        World();
+
+        Assert.That(guest.Player.IsDead, Is.True);
+        string notice = "5300" + "12" + Convert.ToHexString(BitConverter.GetBytes(guest.CharacterId)) + "00";
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString).Count(packet => packet == notice), Is.EqualTo(1));
     }
 
     // The dungeon info line (Party 14) follows a member update only when the member's dungeon limits differ from the

@@ -13,6 +13,22 @@ public static class PlayerInfoUpdateExtensions {
         }
     }
 
+    // Compares `request` with the record as it is now and applies what differs, in one step. Returns the applied
+    // event, or null when nothing would change. A queued request is compared when it is applied, not when it is
+    // queued: two requests queued in one sync window (dead, then alive again) would both be compared with the
+    // record from before the first, so the second was dropped as "no change" and the record kept the first.
+    public static PlayerInfoUpdateEvent? ApplyChanged(this IPlayerInfo info, PlayerUpdateRequest request) {
+        lock (info) {
+            var update = new PlayerInfoUpdateEvent(info, request);
+            if (update.Type == UpdateField.None) {
+                return null;
+            }
+
+            info.Update(update);
+            return update;
+        }
+    }
+
     // Applies `request` only while the record still names `expectedChannel`. Returns the applied event, or null
     // when the record names another channel by now (the player has logged in there) or nothing would change.
     public static PlayerInfoUpdateEvent? ApplyIfOn(this IPlayerInfo info, int expectedChannel, PlayerUpdateRequest request) {

@@ -495,6 +495,19 @@ public class FieldPlayer : Actor<Player> {
         }
         long healthBefore = Stats.Values[BasicAttribute.Health].Current;
         base.ApplyDamage(caster, damage, attack);
+        if (Stats.Values[BasicAttribute.Health].Current != healthBefore) {
+            // The health a hit takes goes to the world like any other health change, so the party frames of
+            // members in other fields follow it (only heals, regen and non-skill damage were sent).
+            Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+                AccountId = Session.AccountId,
+                CharacterId = Session.CharacterId,
+                Health = new HealthUpdate {
+                    CurrentHp = Stats.Values[BasicAttribute.Health].Current,
+                    TotalHp = Stats.Values[BasicAttribute.Health].Total,
+                },
+                Async = true,
+            });
+        }
         if (caster is not FieldPlayer) {
             // A hit by a monster's or the map's skill counts for skill_damage_npc with the skill id as the code
             // (70400009 "Get attacked by a seedling at the Maple Arcade" 49230005, 21233002 "Get trapped in the

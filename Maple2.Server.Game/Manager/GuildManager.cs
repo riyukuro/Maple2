@@ -700,7 +700,11 @@ public class GuildManager : IDisposable {
             session.Send(GuildPacket.UpdateMemberName(name, member.Name));
         }
 
+        // The world sends one notice for all that changed in its sync step, so a field change often comes with
+        // fields the guild does not list (health): only the listed ones choose the packet.
+        type &= UpdateField.Guild;
         if (type == UpdateField.Map) {
+            // KMS2 sends a field change alone, by the member's name (Guild 31); the client redraws the member's row.
             session.Send(GuildPacket.UpdateMemberMap(member.Name, member.Info.MapId));
         } else if (type == UpdateField.GearScore) {
             // KMS2 sends a gear score change alone, by the member's name.

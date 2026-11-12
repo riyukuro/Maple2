@@ -101,6 +101,41 @@ public class GuildJoinTests {
         }));
     }
 
+    // A member's field change reaches an online member as Guild 31 (name, map), also when the world's notice
+    // carries the member's health with it.
+    [Test]
+    public void MemberChangesField_SendsTheNewMap() {
+        var test = new TestGameSession();
+        test.Start();
+        test.World.AddPlayer(111, 11, "Joiner");
+        Assert.That(test.Session.PlayerInfo.GetOrFetch(11, out _), Is.True);
+        GuildManager manager = Manager(test, OneMemberGuild());
+        Assert.That(manager.AddMember("Leader", Member(11, "Joiner", 5)), Is.True);
+        test.TakeSent();
+
+        test.Session.PlayerInfo.ReceiveUpdate(new PlayerUpdateRequest {
+            AccountId = 111,
+            CharacterId = 11,
+            MapId = 2000062,
+            RoomId = 3,
+        });
+        test.Session.PlayerInfo.ReceiveUpdate(new PlayerUpdateRequest {
+            AccountId = 111,
+            CharacterId = 11,
+            MapId = 2000023,
+            RoomId = 4,
+            Health = new HealthUpdate { CurrentHp = 40, TotalHp = 100 },
+        });
+
+        byte[][] sent = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild).ToArray();
+        Assert.That(sent.Select(System.Convert.ToHexString), Is.EqualTo(new[] {
+            System.Convert.ToHexString(GuildPacket.UpdateMemberMap("Joiner", 2000062).ToArray()),
+            System.Convert.ToHexString(GuildPacket.UpdateMemberMap("Joiner", 2000023).ToArray()),
+        }));
+        // The layout the client reads (CGuildManager case 31): the name, then the map id.
+        Assert.That(System.Convert.ToHexString(sent[0]), Is.EqualTo("8A00" + "1F" + "0600" + "4A006F0069006E0065007200" + "BE841E00"));
+    }
+
     [Test]
     public void AddMember_WithoutAGuildSendsNothing() {
         var test = new TestGameSession();

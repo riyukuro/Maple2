@@ -440,6 +440,20 @@ public sealed class TestGameSession {
 
     public static SendOp Op(byte[] packet) => (SendOp) (packet[1] << 8 | packet[0]);
 
+    // The packet with every long that holds the present time (unix seconds, within five of now) set to 0. A player's
+    // info writes the time of writing, so a packet built a moment after the sent one can differ by one second.
+    public static byte[] NoClock(byte[] packet) {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        byte[] result = (byte[]) packet.Clone();
+        for (int i = 2; i + 8 <= result.Length; i++) {
+            if (Math.Abs(BitConverter.ToInt64(result, i) - now) <= 5) {
+                Array.Clear(result, i, 8);
+                i += 7;
+            }
+        }
+        return result;
+    }
+
     public List<SendOp> TakeSentOps() => TakeSent().Select(Op).ToList();
 
     // A row as the database holds it now. A discarded item keeps its row with owner 0.
