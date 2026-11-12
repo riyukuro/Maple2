@@ -174,6 +174,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.CallMedic:
                 HandleCallMedic(session, item);
                 break;
+            case ItemFunction.OpenDungeonItemBox:
+                HandleOpenDungeonItemBox(session, item);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -883,6 +886,20 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Config.UpdateDeathPenalty(0);
+    }
+
+    // The dungeon reward pouch (OpenDungeonItemBox @0x140d24e70): the client opens its confirm box only for a room
+    // that exists and has a reward count left, and the confirmed box sends the plain item use. One pouch is used.
+    private static void HandleOpenDungeonItemBox(GameSession session, Item item) {
+        if (session.Field is null || item.Metadata.Function is null) {
+            return;
+        }
+        DungeonRoomMetadata? room = session.Dungeon.RewardPouchRoom(item.Metadata.Function.Parameters);
+        if (room is null || !session.Item.Inventory.Consume(item.Uid, 1)) {
+            return;
+        }
+
+        session.Dungeon.OpenRewardPouch(room, session.Field);
     }
 
     private void HandleRecallGuild(GameSession session, Item item) {

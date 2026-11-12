@@ -102,6 +102,23 @@ public static class DungeonRoomRules {
     public static int BonusCountNow(DungeonRecord? record, long now) =>
         record == null || now >= record.UnionCooldownTimestamp ? 0 : record.ExtraSubClears;
 
+    // The room a dungeon reward pouch (item function OpenDungeonItemBox, @0x140d24e70) names: MakeDungeonRoomId of
+    // its two arguments (dungeonroom.cpp:251, dungeon * 1000 + index), each read as 0 when it is not a number.
+    public static int PouchRoomId(string parameters) {
+        string[] args = parameters.Split(',');
+        int Arg(int index) => index < args.Length && int.TryParse(args[index].Trim(), out int value) ? value : 0;
+        return Arg(0) * 1000 + Arg(1);
+    }
+
+    // The pouch opens while the reward room's record has a count left as the client counts it there: the counts
+    // taken in the period (DungeonRecord::GetBonusRewardCount, 0 once now reaches the expire) below the room's
+    // rewardCount plus the bought counts (DungeonRecordCli::GetMaxCount). The daily subRewardCount and the event
+    // counts are not asked. A missing record has a count.
+    public static bool PouchHasCountLeft(DungeonRecord? record, int rewardCount, long now) {
+        int taken = record == null || now >= record.UnionCooldownTimestamp ? 0 : record.UnionClears;
+        return taken < rewardCount + BonusCountNow(record, now);
+    }
+
     // The tickets one more extra reward count costs (DungeonRoom::GetExtraRewardTicketCost, dungeonroom.cpp:618): the
     // room's base count times the coupon rate at the bought count, the last rate once the count is past the list.
     public static int ExtraTicketCost(DungeonExtraRewardTicket ticket, int bonusCount) {

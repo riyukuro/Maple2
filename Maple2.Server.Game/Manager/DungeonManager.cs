@@ -817,6 +817,56 @@ public class DungeonManager {
         }
     }
 
+    /// <summary>
+    /// A dungeon reward pouch (item function OpenDungeonItemBox, @0x140d24e70): the room it names, when the room
+    /// exists and its reward room's record has a count left as the client asks it (PouchHasCountLeft); else null.
+    /// The client asks the same before its confirm box (s_msg_dungeon_item_open_dungeon_count when none is left).
+    /// </summary>
+    public DungeonRoomMetadata? RewardPouchRoom(string parameters) {
+        if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(DungeonRoomRules.PouchRoomId(parameters), out DungeonRoomMetadata? metadata)) {
+            return null;
+        }
+        (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(metadata);
+        Records.TryGetValue(rewardId, out DungeonRecord? record);
+        return DungeonRoomRules.PouchHasCountLeft(record, rewardRoom.Reward.Count, DateTime.Now.ToEpochSeconds()) ? metadata : null;
+    }
+
+    /// <summary>
+    /// Opens the pouch of a room RewardPouchRoom gave: one reward count of its reward room is used (the confirm
+    /// text s_msg_item_open_dungeon_item_box: one dungeon reward is used up, the items go to the mailbox when the
+    /// bag is full) and the room's clear boxes are rolled for the player as a clear rolls them. Chosen here: the
+    /// count is taken as a clear takes it (the period starts anew once over, the daily count goes up with it), and
+    /// the pouch gives the boxes only, not the clear's exp and meso; the record goes out as after a clear.
+    /// </summary>
+    public ICollection<Item> OpenRewardPouch(DungeonRoomMetadata metadata, FieldManager field) {
+        (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(metadata);
+        DungeonRecord record = GetRecord(rewardId);
+        DateTime now = DateTime.Now;
+        long nowSeconds = now.ToEpochSeconds();
+        if (nowSeconds >= record.UnionCooldownTimestamp) {
+            record.UnionCooldownTimestamp = GetCooldownTime(rewardRoom.CooldownType, rewardRoom.CooldownValue, now);
+            record.UnionClears = 0;
+            record.ExtraSubClears = 0;
+        }
+        if (nowSeconds >= record.UnionSubCooldownTimestamp) {
+            record.UnionSubCooldownTimestamp = new DateTime(now.Year, now.Month, now.Day).AddDays(1).ToEpochSeconds();
+            record.UnionSubClears = 0;
+        }
+        record.UnionClears++;
+        record.UnionSubClears++;
+        session.Send(DungeonRoomPacket.Update(record));
+
+        List<Item> items = [];
+        foreach (int boxId in DungeonRoomRules.ClearDropBoxIds(metadata.Reward)) {
+            items.AddRange(field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId));
+            items.AddRange(field.ItemDrop.GetGlobalDropItems(boxId, metadata.Level));
+        }
+        foreach (Item item in items) {
+            GiveItem(item);
+        }
+        return items;
+    }
+
     private void GiveItem(Item item) {
         if (!session.Item.Inventory.Add(item, true)) {
             session.Item.MailItem(item);
