@@ -162,7 +162,8 @@ public class FurnishingManager {
                 return 0;
             }
 
-            session.Send(FurnishingStoragePacket.Purchase(cube.ItemId, amount));
+            // Sub-type 5 names the storage item by its uid (CSceneStateGame::OnFurnishingStorage), as KMS2 sends it.
+            session.Send(FurnishingStoragePacket.Purchase(itemUid, amount));
             if (storage.Count != count) {
                 session.Send(FurnishingStoragePacket.Count(storage.Count));
             }
@@ -180,7 +181,7 @@ public class FurnishingManager {
                 return 0;
             }
 
-            session.Send(FurnishingStoragePacket.Purchase(id, amount));
+            session.Send(FurnishingStoragePacket.Purchase(itemUid, amount));
             if (storage.Count != count) {
                 session.Send(FurnishingStoragePacket.Count(storage.Count));
             }
@@ -196,7 +197,7 @@ public class FurnishingManager {
                 return 0;
             }
 
-            session.Send(FurnishingStoragePacket.Purchase(item.Id, item.Amount));
+            session.Send(FurnishingStoragePacket.Purchase(itemUid, item.Amount));
             if (storage.Count != count) {
                 session.Send(FurnishingStoragePacket.Count(storage.Count));
             }

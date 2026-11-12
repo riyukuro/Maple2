@@ -893,6 +893,9 @@ public class HousingManager {
         Home ownerHome = owner.Housing.Home;
         BuildOwnerId = owner.AccountId;
         session.Send(CubePacket.GrantBuildPermissions(session.AccountId, owner.AccountId, ownerHome.BuildMeso, ownerHome.BuildMerat));
+        // KMS2 follows 0x35 with 0x37. Without it the helper's client holds interior level 0 for the owner.
+        session.Send(CubePacket.BuildOwnerLocks((short) Math.Clamp(ownerHome.DecorationLevel, 0, short.MaxValue),
+            HomeBuildRules.MissingTrophies(session.ItemMetadata.HousingTrophies(), owner.Achievement.HasAchievement)));
     }
 
     // The client keeps the owner 0x35 named until its next login, so the server takes it back.

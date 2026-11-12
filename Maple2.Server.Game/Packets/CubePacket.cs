@@ -54,7 +54,7 @@ public static class CubePacket {
         SetLighting = 52,
         GrantBuildPermissions = 53,
         SetCamera = 54,
-        // 55
+        BuildOwnerLocks = 55,
         UpdateBuildBudget = 56,
         AddBuildPermission = 57,
         RemoveBuildPermission = 58,
@@ -520,6 +520,21 @@ public static class CubePacket {
         pWriter.WriteLong(ownerId);
         pWriter.WriteLong(value1);
         pWriter.WriteLong(value2);
+
+        return pWriter;
+    }
+
+    // The home owner's interior level and the trophy grades the owner lacks, for a build helper: its client
+    // locks a cube by these instead of its own (MyPC::FUN_1415302e0, client/ms2/mypc.cpp:4437).
+    public static ByteWriter BuildOwnerLocks(short interiorLevel, IReadOnlyCollection<(int TrophyId, int Grade)> missing) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.Write<Command>(Command.BuildOwnerLocks);
+        pWriter.WriteShort(interiorLevel);
+        pWriter.WriteInt(missing.Count);
+        foreach ((int trophyId, int grade) in missing) {
+            pWriter.WriteInt(trophyId);
+            pWriter.WriteInt(grade);
+        }
 
         return pWriter;
     }

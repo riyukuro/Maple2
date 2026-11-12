@@ -12,6 +12,7 @@ public class ItemMetadataStorage : MetadataStorage<int, ItemMetadata>, ISearchab
 
     private readonly ConcurrentDictionary<int, ItemMetadata> petToItem = new();
     private readonly ConcurrentMultiDictionary<int, int, PetMetadata> petLookup = new();
+    private volatile IReadOnlyList<(int TrophyId, int Grade)>? housingTrophies;
 
     public ItemMetadataStorage(MetadataContext context) : base(context, CACHE_SIZE) {
         IndexPets();
@@ -56,8 +57,27 @@ public class ItemMetadataStorage : MetadataStorage<int, ItemMetadata>, ISearchab
         return petLookup.TryGetKey2(npcId, out pet);
     }
 
+    // The (trophy id, grade) pairs that housing items ask for (<housing trophyID trophyLevel>).
+    public IReadOnlyList<(int TrophyId, int Grade)> HousingTrophies() {
+        IReadOnlyList<(int, int)>? result = housingTrophies;
+        if (result != null) {
+            return result;
+        }
+        lock (Context) {
+            result = Context.ItemMetadata
+                .FromSql($"SELECT * FROM `item` WHERE JSON_EXTRACT(Housing, '$.TrophyId') > 0")
+                .AsNoTracking()
+                .ToList()
+                .Select(item => (item.Housing!.TrophyId, item.Housing.TrophyLevel))
+                .Distinct().Order().ToList();
+        }
+        housingTrophies = result;
+        return result;
+    }
+
     public override void InvalidateCache() {
         base.InvalidateCache();
+        housingTrophies = null;
         IndexPets();
     }
 
