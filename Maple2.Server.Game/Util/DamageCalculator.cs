@@ -56,6 +56,32 @@ public static class DamageCalculator {
         return ReductionFactor(Rate(RangeReductionOf(rangeType)), Rate(ElementReductionOf(element)));
     }
 
+    // The caster's bonus against an npc of the target's rank: Common Monster Damage (s_item_opt_sa_improve_damage_
+    // normalNpc), Elite Monster Damage (_namedNpc) or Bonus Boss Damage (_bossNpc). The ranks are those of the server
+    // table monsterExpTable's columns (MonsterExpMetadata.ForClass): class 3 elite and 7 dungeon elite, 4 boss and 6
+    // dungeon boss, any other class common. None against a friendly npc or (no npc) a player. Before, the boss bonus
+    // also went to elites, nothing read the elite one, and the common one went to every hit. The client never
+    // computes damage. Leader Monster Damage (_leaderNpc) is on no item or buff in the KR data and no class is a
+    // leader, so it stays unread.
+    internal static SpecialAttribute? RankBonusOf(int friendly, int npcClass) {
+        if (friendly != 0) {
+            return null;
+        }
+        return npcClass switch {
+            3 or 7 => SpecialAttribute.EliteNpcDamage,
+            4 or 6 => SpecialAttribute.BossNpcDamage,
+            _ => SpecialAttribute.NormalNpcDamage,
+        };
+    }
+
+    // The caster's rank bonus rate against the target (RankBonusOf), 0 against a player.
+    internal static double RankBonus(IActor caster, IActor target) {
+        if (target is not FieldNpc npc || RankBonusOf(npc.Value.Metadata.Basic.Friendly, npc.Value.Metadata.Basic.Class) is not { } attribute) {
+            return 0;
+        }
+        return caster.Stats.Values[attribute].Multiplier();
+    }
+
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
@@ -79,11 +105,7 @@ public static class DamageCalculator {
             ? NpcAttackRoll(Random.Shared.NextDouble())
             : minBonusAtkDamage + (maxBonusAtkDamage - minBonusAtkDamage) * double.Lerp(Random.Shared.NextDouble(), Random.Shared.NextDouble(), Random.Shared.NextDouble());
 
-        // change the NPCNormalDamage to be changed depending on target?
-        double damageBonus = 1 + (caster.Stats.Values[SpecialAttribute.TotalDamage].Multiplier()) + (caster.Stats.Values[SpecialAttribute.NormalNpcDamage].Multiplier());
-        if (target is FieldNpc npc && npc.Value.IsBoss) {
-            damageBonus += caster.Stats.Values[SpecialAttribute.BossNpcDamage].Multiplier();
-        }
+        double damageBonus = 1 + caster.Stats.Values[SpecialAttribute.TotalDamage].Multiplier() + RankBonus(caster, target);
 
         // Get elemental bonus
         double elementBonus = 0;
