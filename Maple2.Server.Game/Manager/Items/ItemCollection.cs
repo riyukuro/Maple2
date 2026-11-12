@@ -307,6 +307,56 @@ public class ItemCollection : IEnumerable<Item> {
         return OpenSlots > 0 || (stack && GetStackResult(add) <= 0);
     }
 
+    // Whether Add(item, stack: true) of each of the items in turn takes all of them, changing nothing: an item goes
+    // to its own slot when that slot is free, else on the stacks it can join (the bag's and the items placed before
+    // it), and what is left takes an open slot.
+    public bool TakesAll(IEnumerable<Item> adds) {
+        mutex.EnterReadLock();
+        try {
+            var placed = new List<(Item Item, int Amount)>();
+            var taken = new HashSet<short>();
+            foreach (Item existing in GetInternalEnumerator()) {
+                placed.Add((existing, existing.Amount));
+                taken.Add(existing.Slot);
+            }
+            int open = OpenSlots;
+            foreach (Item add in adds) {
+                int remaining = add.Amount;
+                if (!ValidSlot(add.Slot) || taken.Contains(add.Slot)) {
+                    for (int i = 0; i < placed.Count && remaining > 0; i++) {
+                        (Item stack, int amount) = placed[i];
+                        int room = stack.Metadata.Property.SlotMax - amount;
+                        if (room <= 0 || !SameStack(stack, add)) {
+                            continue;
+                        }
+                        int added = Math.Min(room, remaining);
+                        placed[i] = (stack, amount + added);
+                        remaining -= added;
+                    }
+                    if (remaining <= 0) {
+                        continue;
+                    }
+                }
+                if (open <= 0) {
+                    return false;
+                }
+                open--;
+                placed.Add((add, remaining));
+                if (ValidSlot(add.Slot) && taken.Add(add.Slot)) {
+                    continue;
+                }
+                for (short slot = 0; slot < Size; slot++) {
+                    if (taken.Add(slot)) {
+                        break;
+                    }
+                }
+            }
+            return true;
+        } finally {
+            mutex.ExitReadLock();
+        }
+    }
+
     private bool ValidSlot(short slot) => slot >= 0 && slot < Size;
 
     // Enumerate array while ignoring nulls
@@ -346,9 +396,12 @@ public class ItemCollection : IEnumerable<Item> {
     }
 
     private static bool CanStack(Item item, Item stack) {
+        return item.Amount < item.Metadata.Property.SlotMax && SameStack(item, stack);
+    }
+
+    private static bool SameStack(Item item, Item stack) {
         return item.Id == stack.Id
                && item.Rarity == stack.Rarity
-               && item.Amount < item.Metadata.Property.SlotMax
                && Equals(item.Transfer, stack.Transfer)
                // A merge keeps one item's lock state, so a locked and an unlocked item never merge.
                && item.IsLocked == stack.IsLocked && item.UnlockTime == stack.UnlockTime

@@ -400,6 +400,34 @@ public class ItemCollectionTest {
         });
     }
 
+    // A trade's items arrive with their trade window slots (0-4) as their slots; SlotMax is 100.
+    [Test]
+    public void TakesAll_CountsTheSlotsOfEachItemInTurn() {
+        var bag = new ItemCollection(3);
+        bag.Add(CreateItem(1000, amount: 90));
+        bag.Add(CreateItem(2000));
+        Model.Game.Item Offered(int id, int amount, short slot) {
+            Model.Game.Item item = CreateItem(id, amount: amount);
+            item.Slot = slot;
+            return item;
+        }
+
+        Assert.Multiple(() => {
+            // Slot 0 is taken: 10 join the stack, the other item takes the one open slot.
+            Assert.That(bag.TakesAll([Offered(1000, 10, 0), Offered(3000, 1, 1)]), Is.True);
+            // 15 do not all join the stack: 5 need the open slot, the other item has none.
+            Assert.That(bag.TakesAll([Offered(1000, 15, 0), Offered(3000, 1, 1)]), Is.False);
+            // Slot 2 is free, so the item goes there without stacking and takes the last slot.
+            Assert.That(bag.TakesAll([Offered(1000, 10, 2), Offered(3000, 1, 0)]), Is.False);
+            // Two offered items of one id stack on each other in the slot the first one took.
+            Assert.That(bag.TakesAll([Offered(4000, 40, 0), Offered(4000, 60, 1)]), Is.True);
+            Assert.That(bag.TakesAll([Offered(4000, 40, 0), Offered(4000, 61, 1)]), Is.False);
+            Assert.That(bag.TakesAll([]), Is.True);
+            Assert.That(bag.Count, Is.EqualTo(2));
+            Assert.That(bag.Single(item => item.Id == 1000).Amount, Is.EqualTo(90));
+        });
+    }
+
     private static Model.Game.Item CreateItem(int id, int rarity = 1, int amount = 1) {
         var fakeProperty = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
         var fakeCustomize = new ItemMetadataCustomize(0, 0);

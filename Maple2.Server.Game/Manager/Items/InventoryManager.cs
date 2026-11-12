@@ -400,6 +400,20 @@ public class InventoryManager {
         }
     }
 
+    // Whether Add of each of the items in turn takes all of them. Currency, medals and furnishings need no slot.
+    public bool TakesAll(IEnumerable<Item> adds) {
+        lock (session.Item) {
+            foreach (IGrouping<InventoryType, Item> group in adds
+                         .Where(item => !item.IsCurrency() && !item.Type.IsMedal && !item.Type.IsFurnishing)
+                         .GroupBy(item => item.Inventory)) {
+                if (!tabs.TryGetValue(group.Key, out ItemCollection? items) || !items.TakesAll(group)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     public bool CanAdd(ICollection<Item> items) {
         lock (session.Item) {
             // Group items by inventory type
