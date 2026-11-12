@@ -51,11 +51,15 @@ public static class SkillCastRules {
     }
 
     // The cooldown the client starts for a skill, in ms (CSkillSystem::FUN_1417664e0): the skill's cooldown less
-    // its share for the cooldown group's reduction and, unless the skill ignores cooldown reduction, for the
-    // caster's cooldown reduction rate; never under 0.
-    public static long CooldownMs(float cooldownSeconds, bool ignoreReduce, float groupRate, double reduceRate) {
-        double rate = groupRate + (ignoreReduce ? 0 : reduceRate);
-        return (long) Math.Max(0, (cooldownSeconds - cooldownSeconds * rate) * 1000);
+    // its share for the cooldown group's reduction and, unless the skill ignores cooldown reduction, less the
+    // flat seconds and the share for the rates of the held buffs' cooldown invoke effects on the skill (the
+    // client's skill options 1002 and 1001; the server's data names both invoke type 1, values and rates) and
+    // the caster's cooldown reduction rate; never under 0.
+    public static long CooldownMs(float cooldownSeconds, bool ignoreReduce, float groupRate, double reduceRate,
+            int invokeSeconds = 0, float invokeRate = 0) {
+        double rate = groupRate + (ignoreReduce ? 0 : reduceRate + invokeRate);
+        double flat = ignoreReduce ? 0 : invokeSeconds;
+        return (long) Math.Max(0, (cooldownSeconds - flat - cooldownSeconds * rate) * 1000);
     }
 
     // The recharge uses a cooldown record stands at by this tick, as the client counts them (CSkillSystem::Update

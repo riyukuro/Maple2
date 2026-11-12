@@ -440,6 +440,16 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void CooldownTakesTheInvokeEffectsSecondsAndRate() {
+        // The skill options 1002 (flat seconds) and 1001 (rate) of FUN_1417664e0: (cool - flat) - cool * rate.
+        Assert.That(SkillCastRules.CooldownMs(16f, false, 0f, 0, 4, 0f), Is.EqualTo(12000), "4 s off (11100062's 4)");
+        Assert.That(SkillCastRules.CooldownMs(20f, false, 0f, 0, 0, 0.5f), Is.EqualTo(10000).Within(1));
+        Assert.That(SkillCastRules.CooldownMs(20f, false, 0.1f, 0.1, 4, 0.3f), Is.EqualTo(6000).Within(1), "rates add up, the flat seconds come off first");
+        Assert.That(SkillCastRules.CooldownMs(20f, true, 0.1f, 0.1, 4, 0.3f), Is.EqualTo(18000).Within(1), "ignoring reduction keeps the group rate only");
+        Assert.That(SkillCastRules.CooldownMs(3f, false, 0f, 0, 4, 0f), Is.EqualTo(0), "never under 0");
+    }
+
+    [Test]
     public void RechargeUsesComeBackOnePerCooldown() {
         // Two uses out, 10 s each, the first cooldown ends at 10000.
         Assert.That(SkillCastRules.SettleRecharge(10_000, 2, 10_000, 9_999), Is.EqualTo((10_000L, 2)));
