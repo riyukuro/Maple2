@@ -34,7 +34,7 @@ public record IndividualDropItemTable(
         bool Bind,
         bool DisableBreak,
         int[] MapIds,
-        int QuestId) {
+        bool QuestConstraint) {
 
         public record Rarity(
             int Probability,

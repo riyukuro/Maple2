@@ -13,11 +13,11 @@ public class IndividualDropPickTests {
     private const int JobItemOffset = 7;
 
     private static IndividualDropItemTable.Item Entry(int id, int weight) =>
-        new([id, 0], false, 1, 0, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], 0);
+        new([id, 0], false, 1, 0, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false);
 
     // A row with the plain weight only (no job weights).
     private static IndividualDropItemTable.Item Plain(int id, int weight) =>
-        new([id, 0], false, 0, 0, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], 0);
+        new([id, 0], false, 0, 0, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false);
 
     private static IndividualDropItemTable.Entry Group(int groupId, int smartDropRate, IndividualDropItemTable.Entry.DropCount[] counts, IEnumerable<IndividualDropItemTable.Item> items) =>
         new(groupId, smartDropRate, counts, 0, false, false, items.ToList());
@@ -145,7 +145,7 @@ public class IndividualDropPickTests {
 
     [Test]
     public void SpawnBox_SkipsQuestAndOtherMapEntries() {
-        IndividualDropItemTable.Item quest = Entry(30000001, 10000) with { QuestId = 100 };
+        IndividualDropItemTable.Item quest = Entry(30000001, 10000) with { QuestConstraint = true };
         IndividualDropItemTable.Item otherMap = Entry(30000002, 10000) with { MapIds = [2000001] };
         IndividualDropItemTable.Item here = Entry(30000003, 10000) with { MapIds = [2000002] };
         IndividualDropItemTable.Entry[] box = [Group(1, 0, Always, [quest, otherMap, here])];

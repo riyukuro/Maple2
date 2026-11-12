@@ -87,7 +87,7 @@ public class TriggerFieldDropTests {
         Set<FieldManager>(field, "<ItemDrop>k__BackingField", new ItemDropManager(field));
 
         var row = new IndividualDropItemTable.Item([itemId], false, 0, 0, 100, new IndividualDropItemTable.Range<int>(OrbAmount, OrbAmount),
-            [], 0, 0, false, false, false, false, [], 0);
+            [], 0, 0, false, false, false, false, [], false);
         var group = new IndividualDropItemTable.Entry(1, 0, [new IndividualDropItemTable.Entry.DropCount(1, 100)], 0, false, false, [row]);
         var drops = new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
             [OrbBoxId] = new Dictionary<int, IndividualDropItemTable.Entry> { [1] = group },

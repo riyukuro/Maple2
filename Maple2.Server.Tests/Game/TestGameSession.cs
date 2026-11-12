@@ -291,7 +291,7 @@ public sealed class TestGameSession {
             int groupId = box.Count + 1;
             box[groupId] = new IndividualDropItemTable.Entry(groupId, 0, [new IndividualDropItemTable.Entry.DropCount(1, 100)], 0, false, false,
                 rows.Select(row => new IndividualDropItemTable.Item([row.ItemId], false, 0, 0, 100,
-                    new IndividualDropItemTable.Range<int>(row.Amount, row.Amount), [], 0, 0, false, false, false, false, [], 0)).ToList());
+                    new IndividualDropItemTable.Range<int>(row.Amount, row.Amount), [], 0, 0, false, false, false, false, [], false)).ToList());
         }
         return box;
     }

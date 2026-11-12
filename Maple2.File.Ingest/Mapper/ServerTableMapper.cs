@@ -752,7 +752,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                         Bind: item.isBindCharacter,
                         DisableBreak: item.disableBreak,
                         MapIds: item.mapDependency,
-                        QuestId: item.constraintsQuest ? GetQuestId(dropBox.comment, item.reference1) : 0
+                        // constraintsQuest: the row drops only for a player whose started quest still needs the item
+                        // (ItemDropManager); the quest is found by its item_exist condition, not named in the row.
+                        QuestConstraint: item.constraintsQuest
                     ));
                 }
 
@@ -791,23 +793,6 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> kept = PlayedClientItems.Keep(results, known, out PlayedClientItems.Count count, out int boxesDropped);
         Console.WriteLine($"individualItemDrop: {count} (items not in the played client's item data), {boxesDropped} boxes left empty dropped");
         return new IndividualDropItemTable(kept);
-
-        int GetQuestId(string comment, string reference1) {
-            if (reference1.Contains("Quest")) {
-                string[] referenceArray = reference1.Split("/");
-                int referenceQuestIndex = Array.IndexOf(referenceArray, "Quest");
-
-                if (!int.TryParse(referenceArray[referenceQuestIndex - 2], out int questId) && comment.Contains("Quest")) {
-                    string[] commentArray = comment.Split("/");
-                    int commentQuestIndex = Array.IndexOf(commentArray, "Quest");
-                    if (string.IsNullOrEmpty(commentArray[commentQuestIndex - 2])) {
-                        return 0;
-                    }
-                    return !int.TryParse(commentArray[commentQuestIndex - 2], out questId) ? 0 : questId;
-                }
-            }
-            return 0;
-        }
     }
 
     private PrestigeExpTable ParsePrestigeExpTable() {

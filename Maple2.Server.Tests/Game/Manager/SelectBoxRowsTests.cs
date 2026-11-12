@@ -12,7 +12,7 @@ namespace Maple2.Server.Tests.Game.Manager;
 // groups 3 and 4 have one item for each of 11 jobs, the others one item for every job.
 public class SelectBoxRowsTests {
     private static IndividualDropItemTable.Item Entry(int id, int id2 = 0) =>
-        new([id, id2], false, 10000, 0, 10000, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], 0);
+        new([id, id2], false, 10000, 0, 10000, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false);
 
     private static IndividualDropItemTable.Entry Group(int groupId, bool smart, params IndividualDropItemTable.Item[] items) =>
         new(groupId, smart ? 100 : 0, [new(1, 100)], 0, false, smart, items.ToList());

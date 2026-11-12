@@ -185,7 +185,7 @@ public class ItemDropManager {
 
     internal static IEnumerable<IndividualDropItemTable.Item> PickBoxEntriesWithoutPlayer(IEnumerable<IndividualDropItemTable.Entry> groups, int mapId) {
         return groups.SelectMany(group => PickGroupEntries(group, group.Items,
-            itemEntry => itemEntry.QuestId == 0 && (itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(mapId)),
+            itemEntry => !itemEntry.QuestConstraint && (itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(mapId)),
             _ => false, itemEntry => itemEntry.Weight));
     }
 
@@ -224,10 +224,10 @@ public class ItemDropManager {
     }
 
     private bool IsEntryAvailable(GameSession session, IndividualDropItemTable.Item itemEntry) {
-        if (itemEntry.QuestId > 0) {
-            if (!session.Quest.TryGetQuest(itemEntry.QuestId, out Quest? quest) || quest.State != QuestState.Started) {
-                return false;
-            }
+        // A quest-only row (constraintsQuest; KR has 432) drops only for a player whose started quest still needs the
+        // item here, as a quest-only global drop does (QuestManager.NeedsItem).
+        if (itemEntry.QuestConstraint && !session.Quest.NeedsItem(itemEntry.Ids[0], field.Metadata.Id)) {
+            return false;
         }
         return itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(field.Metadata.Id);
     }

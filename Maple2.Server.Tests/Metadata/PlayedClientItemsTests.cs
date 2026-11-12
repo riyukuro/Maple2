@@ -146,7 +146,7 @@ public class PlayedClientItemsTests {
     private static IndividualDropItemTable.Item ServerRow(int id, int id2 = 0) =>
         new(Ids: [id, id2], Announce: false, ProperJobWeight: 0, ImproperJobWeight: 0, Weight: 1,
             DropCount: new IndividualDropItemTable.Range<int>(1, 1), Rarities: [], EnchantLevel: 0, SocketDataId: 0,
-            DeductTradeCount: false, DeductRepackLimit: false, Bind: false, DisableBreak: false, MapIds: [], QuestId: 0);
+            DeductTradeCount: false, DeductRepackLimit: false, Bind: false, DisableBreak: false, MapIds: [], QuestConstraint: false);
 
     private static IndividualDropItemTable.Entry ServerGroup(int groupId, params IndividualDropItemTable.Item[] items) =>
         new(GroupId: groupId, SmartDropRate: 0, DropCounts: [new IndividualDropItemTable.Entry.DropCount(1, 100)],

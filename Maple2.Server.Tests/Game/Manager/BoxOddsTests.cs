@@ -15,7 +15,7 @@ public class BoxOddsTests {
     private const int Rolls = 20000;
 
     private static IndividualDropItemTable.Item Entry(int id, int weight, int proper = 0, int improper = 0) =>
-        new([id, 0], false, proper, improper, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], 0);
+        new([id, 0], false, proper, improper, weight, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false);
 
     private static IndividualDropItemTable.Entry Group(int groupId, int smartDropRate, IndividualDropItemTable.Entry.DropCount[] counts, params IndividualDropItemTable.Item[] items) =>
         new(groupId, smartDropRate, counts, 0, false, false, items.ToList());
