@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -336,7 +336,11 @@ public sealed class TestGameSession {
         typeof(FieldPlayer).GetField(nameof(FieldPlayer.Session), Any)!.SetValue(fieldPlayer, session);
         typeof(Actor<Player>).GetField("<Value>k__BackingField", Any)!.SetValue(fieldPlayer, player);
         typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(fieldPlayer, player.ObjectId);
+        typeof(Actor<Player>).GetField("<Transform>k__BackingField", Any)!.SetValue(fieldPlayer, new Maple2.Tools.VectorMath.Transform());
         Set(session, nameof(GameSession.Player), fieldPlayer);
+        // The objects and cubes whose interaction the session began.
+        typeof(GameSession).GetField(nameof(GameSession.InteractStarted), Any)!.SetValue(session, new HashSet<string>());
+        typeof(GameSession).GetField(nameof(GameSession.CubeStarted), Any)!.SetValue(session, new HashSet<string>());
 
         stats = Uninitialized<ItemStatsCalculator>();
         typeof(ItemStatsCalculator).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(stats, TableMetadata);
@@ -366,6 +370,7 @@ public sealed class TestGameSession {
         session.Marriage = marriage;
         session.Guild = Uninitialized<GuildManager>();
         session.Exp = new ExperienceManager(session);
+        session.Mastery = new MasteryManager(session);
         session.Dungeon = new DungeonManager(session);
         session.Housing = new HousingManager(session, TableMetadata);
         session.Item = new ItemManager(db, session, stats);
@@ -441,6 +446,28 @@ public sealed class TestGameSession {
     // The session stands in a field of this map (AddMap is not needed for it).
     public void EnterMap(MapMetadata map) {
         Session.Field = NewField<FieldManager>(map);
+    }
+
+    // An interact object of the session's field, at the player's place and ready to be used.
+    public FieldInteract AddInteract(InteractObjectMetadata metadata, IInteractObject interactObject) {
+        var interact = new FieldInteract(Session.Field, 9000 + metadata.Id, interactObject.EntityId, metadata, interactObject);
+        typeof(FieldInteract).GetField("<State>k__BackingField", Any)!.SetValue(interact, InteractState.Reactable);
+        var interacts = (ConcurrentDictionary<string, FieldInteract>) typeof(FieldManager).GetField("fieldInteracts", Any)!.GetValue(Session.Field)!;
+        interacts[interact.EntityId] = interact;
+        return interact;
+    }
+
+    // A function cube of the session's field, at the player's place.
+    public FieldFunctionInteract AddFunctionCube(InteractCube cube) {
+        var interact = new FieldFunctionInteract(Session.Field, 9500, cube, 1);
+        var interacts = (ConcurrentDictionary<string, FieldFunctionInteract>) typeof(FieldManager).GetField("fieldFunctionInteracts", Any)!.GetValue(Session.Field)!;
+        interacts[cube.Id] = interact;
+        return interact;
+    }
+
+    // The session's gathering counts start empty (the config manager is not loaded here).
+    public void SetGatheringCounts() {
+        typeof(ConfigManager).GetField(nameof(ConfigManager.GatheringCounts), Any)!.SetValue(Session.Config, new Dictionary<int, int>());
     }
 
     // The session stands in its own home, whose plot is returned (cubes can be put into Plot.Cubes).
@@ -619,6 +646,10 @@ public sealed class TestGameSession {
         typeof(FieldManager).GetField("<ServerTableMetadata>k__BackingField", Any)!.SetValue(field, ServerTableMetadata);
         typeof(FieldManager).GetField("<ItemStatsCalc>k__BackingField", Any)!.SetValue(field, stats);
         typeof(FieldManager).GetField("<ItemDrop>k__BackingField", Any)!.SetValue(field, new ItemDropManager(field));
+        // The field's own lists that an interaction reads: its objects, its cubes and the items on the ground.
+        typeof(FieldManager).GetField("fieldInteracts", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldInteract>());
+        typeof(FieldManager).GetField("fieldFunctionInteracts", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldFunctionInteract>());
+        typeof(FieldManager).GetField("fieldItems", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldItem>());
         return field;
     }
 

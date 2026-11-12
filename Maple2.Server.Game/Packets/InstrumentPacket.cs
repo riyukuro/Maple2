@@ -36,12 +36,14 @@ public static class InstrumentPacket {
         return pWriter;
     }
 
-    public static ByteWriter Improvise(FieldInstrument instrument, in InstrumentHandler.MidiMessage note) {
+    // The client reads the note as one int and hands it to its MIDI output as it is (CInstrumentManager::OnPacket,
+    // mode 1): KMS2 sends the status byte (0x90 on, 0x80 off), the key, the velocity and 0.
+    public static ByteWriter Improvise(FieldInstrument instrument, int midiMessage) {
         var pWriter = Packet.Of(SendOp.PlayInstrument);
         pWriter.Write<Command>(Command.Improvise);
         pWriter.WriteInt(instrument.ObjectId);
         pWriter.WriteInt(instrument.OwnerId);
-        pWriter.Write<InstrumentHandler.MidiMessage>(note);
+        pWriter.WriteInt(midiMessage);
 
         return pWriter;
     }

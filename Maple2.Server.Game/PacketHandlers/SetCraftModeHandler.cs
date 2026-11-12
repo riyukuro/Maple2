@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Game;
+﻿using System.Numerics;
+using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -53,6 +54,10 @@ public class SetCraftModeHandler : FieldPacketHandler {
         }
 
         session.GuideObject = session.Field.SpawnGuideObject(session.Player, new ConstructionGuideObject());
+        // KMS2 sends the guide with the player's heading: x and y 0, z the angle from 0 to 360. The client turns the
+        // guide to it (CConstructionGuideObject init) and takes the place from the owner, not from the packet.
+        float heading = MathF.Round(session.Player.Rotation.Z, 3) % 360f;
+        session.GuideObject.Heading = new Vector3(0, 0, heading < 0 ? heading + 360f : heading);
         session.HeldCube = firstCubeItem;
 
         session.Field.Broadcast(GuideObjectPacket.Create(session.GuideObject));

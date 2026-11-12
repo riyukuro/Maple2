@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 
@@ -39,6 +39,9 @@ public static class InteractRules {
 
     // FunctionCube 0x002E: the client's farming state sends mode 4 (begin) for the cubes in reach and mode 5
     // (use) for the same cubes when the cast completes. Furniture and nurturing uses send mode 5 alone.
+    // KMS2 sends no state update (4) for the end of a telescope or a UI object: it stays usable.
+    public static bool KeepsState(InteractType type) => type is InteractType.Telescope or InteractType.Ui;
+
     // What KMS2 answers the end of an interaction with, after the object's state update if its state changes:
     // InteractObject 5 (the interaction) and 13 (the result). A mesh object gets the result alone; a telescope,
     // a UI object and a gathered object get both; the other kinds get neither.

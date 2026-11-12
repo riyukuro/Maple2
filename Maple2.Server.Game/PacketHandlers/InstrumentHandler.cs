@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
@@ -36,9 +35,6 @@ public class InstrumentHandler : FieldPacketHandler {
         Fireworks = 14,
         Emote = 15,
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 4)]
-    public readonly record struct MidiMessage(byte Unknown, byte Note, short Volume);
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -114,7 +110,7 @@ public class InstrumentHandler : FieldPacketHandler {
             return;
         }
 
-        var note = packet.Read<MidiMessage>();
+        int note = packet.ReadInt();
         session.Field.Broadcast(InstrumentPacket.Improvise(session.Instrument, note), session);
     }
 

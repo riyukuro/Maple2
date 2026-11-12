@@ -91,7 +91,11 @@ public class InteractObjectHandler : FieldPacketHandler {
             session.Send(InteractObjectPacket.Interact(interact));
         }
         if (sendResult) {
-            session.Send(InteractObjectPacket.Result(InteractResult.none, interact));
+            // Result 0 for every kind. For a telescope the client itself shows the "new telescope" notice when the
+            // object's row is not yet in its own list (CSceneStateGame::OnInteractObject), so the named code and
+            // none are the same byte.
+            InteractResult result = interact.Value.Type == InteractType.Telescope ? InteractResult.s_interact_find_new_telescope : InteractResult.none;
+            session.Send(InteractObjectPacket.Result(result, interact));
         }
     }
 
@@ -106,6 +110,11 @@ public class InteractObjectHandler : FieldPacketHandler {
             if (!interact.Gather(session.CharacterId)) {
                 session.Send(InteractObjectPacket.Interact(interact, GatherResult.Fail, decreaseAmount: 0));
                 session.Send(InteractObjectPacket.Result(InteractResult.none, interact));
+                return;
+            }
+        } else if (InteractRules.KeepsState(interact.Value.Type)) {
+            // A telescope or a UI object stays as it is: KMS2 sends no state for its end.
+            if (interact.State != InteractState.Reactable) {
                 return;
             }
         } else if (!interact.React()) {
