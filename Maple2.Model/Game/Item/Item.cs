@@ -229,7 +229,9 @@ public class Item : IByteSerializable, IByteDeserializable {
         writer.WriteClass<ItemTransfer>(Transfer ?? ItemTransfer.Default);
         writer.WriteClass<ItemSocket>(Socket ?? ItemSocket.Default);
         writer.WriteClass<ItemCoupleInfo>(CoupleInfo ?? ItemCoupleInfo.Default);
-        writer.WriteClass<ItemBinding>(Transfer?.Binding ?? ItemBinding.Default);
+        // The character that put a moveDisable item into the storage (CItem's last block, commonfiles/item.cpp
+        // FUN_14052a480/FUN_14052a4f0); empty for every other item.
+        writer.WriteClass<ItemBinding>(Binding ?? ItemBinding.Default);
     }
 
     public void ReadFrom(IByteReader reader) {

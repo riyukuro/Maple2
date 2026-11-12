@@ -64,6 +64,9 @@ public class ItemEnchantManager {
     private int fodderWeight;
     private int useCharges;
     private EnchantResult enchantResult;
+    // The item of the last stage: the dialog's retry button asks for it again by a talk event alone.
+    private EnchantType retryType;
+    private long retryUid;
 
     // Limit break values only
     private long mesoCost;
@@ -111,6 +114,8 @@ public class ItemEnchantManager {
         Reset();
         Type = enchantType;
         upgradeItem = item;
+        retryType = enchantType;
+        retryUid = itemUid;
         int minFodder = Prepare();
         // KMS2 order: the staged item, then the smith's line.
         session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder));
@@ -307,11 +312,15 @@ public class ItemEnchantManager {
         }
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
         if (!force && fodderWeight < RequireFodder[enchants]) {
+            // The client shows a line for error 3 (OnItemEnchant mode 12, scenestategame.cpp:6196); the
+            // smith's line alone needs an open talk script.
+            session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.not_enough_fodder);
             return false;
         }
 
         if (!force && !ConsumeMaterial()) {
+            session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_lack_ingredient);
             return false;
         }
@@ -526,6 +535,20 @@ public class ItemEnchantManager {
         if (scriptEventType == ScriptEventType.EnchantComplete) {
             Reset();
         }
+    }
+
+    // The dialog's retry button (UIItemEnchantDialog::OnRetry, uiitemenchantdialog.cpp:781) clears its slots
+    // and sends talk event 4. KMS2 stages the same item again: the client resets its cost, rate and the listed
+    // copies on the stage packet only (OnEnchantInfoPacket), not on a result.
+    public bool Retry() {
+        if (retryUid == 0) {
+            return false;
+        }
+        Item? item = session.Item.GetGear(retryUid);
+        if (item == null || !ItemEnchantRules.CanEnchant(item.Metadata.Limit.EnableEnchant, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0)) {
+            return false;
+        }
+        return StageItem(retryType, retryUid);
     }
 
     #region Limit Break

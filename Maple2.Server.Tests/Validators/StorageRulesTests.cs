@@ -59,4 +59,26 @@ public class StorageRulesTests {
     public void SlotsNeeded_RoundsUpPerSlotMax(int notStackable, int slotMax, int expected) {
         Assert.That(StorageRules.SlotsNeeded(notStackable, slotMax), Is.EqualTo(expected));
     }
+
+    [TestCase(0, 6, 168, true)]
+    [TestCase(162, 6, 168, true)] // the last row: 36 + 168 slots
+    [TestCase(168, 6, 168, false)]
+    [TestCase(0, 6, 0, false)]
+    public void Expand_UpToTheConstantOverTheFirst36(int expanded, int row, int max, bool expected) {
+        Assert.That(StorageRules.CanExpand(expanded, row, max), Is.EqualTo(expected));
+    }
+
+    [TestCase(500, 0, true)] // no constant
+    [TestCase(500, 500, true)]
+    [TestCase(501, 500, false)]
+    public void MesoRequest_UpToItsConstant(long amount, long max, bool expected) {
+        Assert.That(StorageRules.IsRequestAmount(amount, max), Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 7, true)] // stored by no one
+    [TestCase(7, 7, true)]
+    [TestCase(8, 7, false)]
+    public void MoveDisableItem_LeavesWithItsCharacter(long storedBy, long asking, bool expected) {
+        Assert.That(StorageRules.CanTakeOut(storedBy, asking), Is.EqualTo(expected));
+    }
 }

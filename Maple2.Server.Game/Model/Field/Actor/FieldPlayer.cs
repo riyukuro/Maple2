@@ -235,6 +235,7 @@ public class FieldPlayer : Actor<Player> {
         if (tickCount >= partyBuffTick) {
             partyBuffTick = tickCount + PartyBuffIntervalMs;
             UpdatePartyBuffs();
+            Session.Stats.RefreshExpiry();
         }
 
         if (Field.MapId == Constant.DefaultHomeMapId) {

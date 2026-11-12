@@ -59,6 +59,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         }
 
         bool skinSocketEnabled = FeatureLocaleFilter.FeatureEnabled("SkinSocket");
+        bool moveDisableEnabled = FeatureLocaleFilter.FeatureEnabled("ItemStoreMoveDisable01");
         foreach ((int id, string name, ItemData data) in parser.Parse()) {
             int transferType = data.limit.transferType;
             int tradableCount = data.property.tradableCount;
@@ -231,6 +232,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     LimitBreakMaxLevel: data.property.unlimitedEnchantMaxGrade
                 ) {
                     Fusionable = data.fusion.fusionable != 0,
+                    MoveDisable = moveDisableEnabled && data.property.moveDisable,
                     IconCode = data.property.iconCode,
                     Rank = data.property.rank,
                     NotInPlayedClient = known != null && !known.Contains(id),

@@ -48,6 +48,21 @@ public class ItemDropHandlerTests {
         Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
     }
 
+    // An item with a gemstone in a socket is not dropped or destroyed.
+    [Test]
+    public void ItemWithAGemstone_StaysInTheBag() {
+        GameSession session = Start();
+        Item item = session.Item.Inventory.Get(stack.Uid)!;
+        item.Socket = new ItemSocket(1, 1);
+        item.Socket.Sockets[0] = new ItemGemstone(40000001, stats: new ItemStats());
+
+        Drop(session, 2);
+        DropAll(session);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
+    }
+
     [Test]
     public void ItemInItsUnlockWait_StaysInTheBag() {
         GameSession session = Start();

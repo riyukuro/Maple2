@@ -55,6 +55,9 @@ public record ItemMetadataProperty(
     // The item xml's fusion element, attribute fusionable (client itemdatastruct.cpp:1559, default 0).
     // Null in a row that was ingested before this field existed: such a row is not judged.
     public bool? Fusionable { get; init; }
+    // The item xml's property moveDisable (client itemdatastruct.cpp:1158) while the feature ItemStoreMoveDisable01
+    // is on: only the character that put the item into the storage takes it out again.
+    public bool MoveDisable { get; init; }
     // Set at ingest when MS2_PLAYED_CLIENT_XML names the pack of the played client and that pack has no item data
     // for this id (PlayedClientItems). The client reads an item packet into an item object even when it finds no
     // item data for the id and then dereferences the missing data (CItem::ReadFromStream, commonfiles/item.cpp:2655,

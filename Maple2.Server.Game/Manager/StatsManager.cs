@@ -204,6 +204,7 @@ public class StatsManager {
     private void AddEquips(FieldPlayer player) {
         Values.GearScore = 0;
         long now = DateTime.Now.ToEpochSeconds();
+        expiredWorn = ExpiredWorn(player, now);
         bool vip = player.Session.Config.IsPremiumClubActive();
         long characterId = player.Value.Character.Id;
         int characterLevel = player.Value.Character.Level;
@@ -211,7 +212,7 @@ public class StatsManager {
         // An item the client does not count gives it no stats either (SetItemRules.GivesStats).
         bool Gives(Item item, int layer) {
             return SetItemRules.GivesStats(layer, SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
-                item.Metadata.Limit.RequireVip, vip, item.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel));
+                item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel));
         }
 
         // The outfit tab's items add their own stats as the equip tab's do (equipment.cpp:3009-3020 runs for
@@ -301,7 +302,7 @@ public class StatsManager {
         // Only the items the client counts (SetItemRules.Counted).
         int[][] Pieces(IEnumerable<Item> worn) {
             return worn.Where(item => SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
-                    item.Metadata.Limit.RequireVip, vip, item.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel))
+                    item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel))
                 .Select(item => item.Metadata.Property.SetOptionIds).ToArray();
         }
         List<SetBonusMetadata> bonuses = SetItemRules.Bonuses([
@@ -361,6 +362,29 @@ public class StatsManager {
     private static Dictionary<SpecialAttribute, long> HotTimeBonus(GameSession session) {
         return EventSaleRules.HotTimeBonus(session.FindEvent(GameEventType.SAHotTime)
             .Select(gameEvent => gameEvent.Metadata.Data).OfType<SAHotTime>());
+    }
+
+    // The worn items past their time when the totals were built.
+    private int expiredWorn;
+
+    private static int ExpiredWorn(FieldPlayer player, long now) {
+        var equips = player.Session.Item.Equips;
+        return ExpiredWorn(equips.Gear.Values.Concat(equips.Outfit.Values).Concat(equips.Badge.Values), now);
+    }
+
+    internal static int ExpiredWorn(IEnumerable<Item> worn, long now) {
+        return worn.Count(item => SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null));
+    }
+
+    // A worn item that runs out stays worn. The client drops its look, stats and set count by itself at that
+    // moment (CEquipment tick, equipment.cpp:2950) with no packet; the totals here follow it.
+    public void RefreshExpiry() {
+        if (Actor is not FieldPlayer player) {
+            return;
+        }
+        if (ExpiredWorn(player, DateTime.Now.ToEpochSeconds()) != expiredWorn) {
+            Refresh();
+        }
     }
 
     // An event that starts or stops (its dates, its days of the week, its part of the day) changes the bonus

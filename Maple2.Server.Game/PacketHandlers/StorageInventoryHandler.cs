@@ -108,6 +108,12 @@ public class StorageInventoryHandler : FieldPacketHandler {
     private static void HandleDelete(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
 
+        // The client's check before it offers to destroy a stored item (StoreSlot::vfunc_26, storeslot.cpp:427)
+        // shows its own text for a dead player and sends nothing.
+        if (session.Player.IsDead) {
+            return;
+        }
+
         session.Storage?.Delete(uid);
     }
 

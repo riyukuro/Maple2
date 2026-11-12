@@ -110,6 +110,11 @@ public sealed class StorageManager : IDisposable {
             }
 
             deposit.Slot = slot;
+            // A moveDisable item carries the character that stored it: the client shows the name and lets only
+            // that character take it out.
+            if (deposit.Metadata.Property.MoveDisable) {
+                deposit.Binding = new ItemBinding(session.CharacterId, session.Player.Value.Character.Name);
+            }
             IList<(Item, int Added)> result = items.Add(deposit, true);
 
             foreach ((Item item, int _) in result) {
@@ -128,8 +133,16 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
-            if (withdraw.Binding != null && withdraw.Binding.CharacterId != session.CharacterId) {
+            ItemBinding? bound = withdraw.Transfer?.Binding;
+            if (bound != null && bound.CharacterId != session.CharacterId) {
                 session.Send(StorageInventoryPacket.Error(s_item_err_binditem_store_out));
+                return;
+            }
+            // A moveDisable item leaves with the character that stored it (the client tests the same before it
+            // asks, store.cpp:633, with the same text).
+            ItemBinding? storedBy = withdraw.Binding;
+            if (!StorageRules.CanTakeOut(storedBy?.CharacterId ?? 0, session.CharacterId)) {
+                session.Send(StorageInventoryPacket.Error(s_item_err_moveDisableitem_store_out));
                 return;
             }
 
@@ -145,9 +158,11 @@ public sealed class StorageManager : IDisposable {
 
             short storedSlot = withdraw.Slot;
             withdraw.Slot = slot;
+            withdraw.Binding = null;
             if (!session.Item.Inventory.Add(withdraw, commit: true)) {
                 // The bag did not take it (no field yet, or no such tab): it goes back into the storage.
                 withdraw.Slot = storedSlot;
+                withdraw.Binding = storedBy;
                 foreach ((Item item, int _) in items.Add(withdraw, true)) {
                     session.Send(withdraw.Uid == item.Uid
                         ? StorageInventoryPacket.Add(item)
@@ -178,7 +193,7 @@ public sealed class StorageManager : IDisposable {
     }
 
     // Deposit/Withdraw Mesos
-    private bool CanDepositMeso(long amount) => 0 <= amount && amount <= Constant.MaxMeso - mesos;
+    private bool CanDepositMeso(long amount) => 0 <= amount && amount <= StorageRules.MaxMesos - mesos;
     public void DepositMesos(long amount) {
         lock (session.Item) {
             if (!CanDepositMeso(amount)) {
@@ -186,6 +201,10 @@ public sealed class StorageManager : IDisposable {
                 session.Send(StorageInventoryPacket.Error(amount > 0
                     ? s_store_err_deposit_max_money
                     : s_store_err_deposit_invalid_money));
+                return;
+            }
+            if (!StorageRules.IsRequestAmount(amount, Constants.StoreDepositMax)) {
+                session.Send(StorageInventoryPacket.Error(s_store_err_deposit_invalid_money));
                 return;
             }
 
@@ -204,7 +223,7 @@ public sealed class StorageManager : IDisposable {
     private bool CanWithdrawMeso(long amount) => 0 <= amount && amount <= mesos;
     public void WithdrawMesos(long amount) {
         lock (session.Item) {
-            if (!CanWithdrawMeso(amount)) {
+            if (!CanWithdrawMeso(amount) || !StorageRules.IsRequestAmount(amount, Constants.StoreWithdrawMax)) {
                 session.Send(StorageInventoryPacket.Error(s_store_err_deposit_invalid_money));
                 return;
             }
@@ -223,7 +242,9 @@ public sealed class StorageManager : IDisposable {
     public void Expand() {
         lock (session.Item) {
             short newSize = (short) (items.Size + Constant.InventoryExpandRowCount);
-            if (newSize > Constants.StoreExpandMaxSlotCount) {
+            // StoreExpandMaxSlotCount counts the added slots: the client offers the expansion while its slot
+            // count is below the constant plus the 36 slots a storage starts with.
+            if (!StorageRules.CanExpand(expand, Constant.InventoryExpandRowCount, Constants.StoreExpandMaxSlotCount)) {
                 session.Send(StorageInventoryPacket.Error(s_store_err_expand_max));
                 return;
             }
@@ -240,7 +261,9 @@ public sealed class StorageManager : IDisposable {
             session.Currency.Meret -= Constants.StoreExpandPrice1Row;
             expand += Constant.InventoryExpandRowCount;
 
-            Load();
+            // The client's reader of the expansion (CStore::Dispatch 0xd) adds the slots to the open window; the
+            // items and the mesos stay as they are.
+            session.Send(StorageInventoryPacket.SlotsExpanded(expand));
         }
     }
 

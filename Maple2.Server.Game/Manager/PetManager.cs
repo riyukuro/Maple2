@@ -129,6 +129,11 @@ public sealed class PetManager : IDisposable {
                 return StringCode.s_pet_inventory_not_sendin_petitem;
             }
 
+            // The client does not ask with a summoned pet past its time (petmanager.cpp:533).
+            if (Pet.IsExpired()) {
+                return StringCode.s_empty_string;
+            }
+
             if (items.OpenSlots == 0) {
                 int remaining = items.GetStackResult(deposit, amount);
                 if (amount == remaining) {

@@ -6,6 +6,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -17,6 +18,13 @@ public class StorageInventoryHandlerTests {
 
     private GameSession Open(long meso = 0) {
         test = new TestGameSession();
+        test.SetServerTable(new Maple2.Model.Metadata.ConstantsTable(
+            bagSlotTabGameCount: [48, 48], bagSlotTabSkinCount: [48, 48], bagSlotTabSummonCount: [48, 48],
+            bagSlotTabMaterialCount: [48, 48], bagSlotTabMasteryCount: [48, 48], bagSlotTabLifeCount: [48, 48],
+            bagSlotTabQuestCount: [48, 48], bagSlotTabGemCount: [48, 48], bagSlotTabPetCount: [48, 48],
+            bagSlotTabActiveSkillCount: [48, 48], bagSlotTabCoinCount: [48, 48], bagSlotTabBadgeCount: [48, 48],
+            bagSlotTabMiscCount: [48, 48], bagSlotTabLapenShardCount: [48, 48], bagSlotTabPieceCount: [48, 48],
+            StoreExpandMaxSlotCount: 12));
         stack = test.Store(TestGameSession.Metadata(20000001, type: 2), amount: 5);
         GameSession session = test.Start();
         session.Currency.Meso = meso;
@@ -136,8 +144,8 @@ public class StorageInventoryHandlerTests {
     // More mesos than the storage holds: the max money text, and nothing moves. A count below 0: the invalid text.
     [Test]
     public void MesosOverTheMax_AreRefusedWithTheirOwnText() {
-        GameSession session = Open(meso: Maple2.Model.Metadata.Constant.MaxMeso);
-        Mesos(session, deposit: true, Maple2.Model.Metadata.Constant.MaxMeso);
+        GameSession session = Open(meso: Maple2.Model.Validators.StorageRules.MaxMesos);
+        Mesos(session, deposit: true, Maple2.Model.Validators.StorageRules.MaxMesos);
         session.Currency.Meso = 5;
         test.TakeSent();
 
@@ -167,6 +175,79 @@ public class StorageInventoryHandlerTests {
         Assert.That(sent.Select(packet => packet[2]), Is.EqualTo(new byte[] { 1, 0 })); // removed, added again
         Item(session, 1, stack.Uid, 5);
         Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(5));
+    }
+
+    // A moveDisable item is stored with its character, which the item block ends with; another character of the
+    // account is refused with the text of the client's own refusal, the storing one takes it out without the name.
+    [Test]
+    public void MoveDisableItem_LeavesWithTheCharacterThatStoredIt() {
+        GameSession session = Open();
+        Maple2.Model.Metadata.ItemMetadata metadata = TestGameSession.Metadata(20000002, type: 2, slotMax: 1);
+        metadata = metadata with { Property = metadata.Property with { MoveDisable = true } };
+        Item item = test.Store(metadata);
+        session.Item.Inventory.Add(item);
+        test.TakeSent();
+
+        Item(session, 0, item.Uid, 1);
+        byte[] added = test.TakeSent()[^1];
+        var block = new Maple2.PacketLib.Tools.ByteWriter();
+        block.WriteClass<ItemBinding>(new ItemBinding(test.CharacterId, session.Player.Value.Character.Name));
+        Assert.That(Convert.ToHexString(added), Does.EndWith(Convert.ToHexString(block.ToArray())));
+
+        typeof(ItemBinding).GetProperty(nameof(ItemBinding.CharacterId))!.SetValue(item.Binding, test.CharacterId + 1);
+        Item(session, 1, item.Uid, 1);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_item_err_moveDisableitem_store_out)),
+        }));
+
+        typeof(ItemBinding).GetProperty(nameof(ItemBinding.CharacterId))!.SetValue(item.Binding, test.CharacterId);
+        Item(session, 1, item.Uid, 1);
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Binding, Is.Null);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // An expansion: the merets, then the new count of added slots and nothing else; no further than the constant.
+    [Test]
+    public void Expand_AnswersWithTheAddedSlots() {
+        GameSession session = Open();
+        session.Currency.Meret = 1000;
+        test.TakeSent();
+        void Expand() => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(6);
+            writer.WriteLong(0);
+        }));
+
+        Expand();
+        Expand();
+        Expand();
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.StorageInventory).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(StorageInventoryPacket.SlotsExpanded(6)),
+            Hex(StorageInventoryPacket.SlotsExpanded(12)),
+            Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_expand_max)),
+        }));
+        Assert.That(session.Currency.Meret, Is.EqualTo(1000 - 2 * 330));
+    }
+
+    // The destroy request of a stored item (10, the item's uid): the storage's removal, and the item is in
+    // neither the storage nor the bag.
+    [Test]
+    public void Delete_RemovesTheStoredItem() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, stack.Amount);
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(10);
+            writer.WriteLong(stack.Uid);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(StorageInventoryPacket.Remove(stack.Uid)) }));
+            Assert.That(session.Item.Inventory.Get(stack.Uid), Is.Null);
+            Assert.That(test.Errors, Is.Empty);
+        });
     }
 
     // Deposits and withdrawals of parts of a stack, each side asked for more than it has in between: the five

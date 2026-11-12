@@ -32,4 +32,26 @@ public static class StorageRules {
         int perSlot = Math.Max(1, slotMax);
         return (notStackable + perSlot - 1) / perSlot;
     }
+
+    // The mesos a storage holds at most: the client refuses a deposit that takes it over this itself (its text
+    // 0x2b3) and writes the same number into s_store_err_deposit_max_money.
+    public const long MaxMesos = 2_000_000_000;
+
+    // The client's input boxes stop at the constants StoreDepositMax and StoreWithdrawMax per request
+    // (0 = the constant is not set).
+    public static bool IsRequestAmount(long amount, long requestMax) {
+        return requestMax <= 0 || amount <= requestMax;
+    }
+
+    // The storage starts with 36 slots and StoreExpandMaxSlotCount is the most it gains: the client offers the
+    // expansion while its slot count is below the constant + 36.
+    public static bool CanExpand(int expanded, int row, int expandMax) {
+        return expanded + row <= expandMax;
+    }
+
+    // A moveDisable item in the storage leaves only with the character that stored it (CItem FUN_14052a580:
+    // no character stored with it, or the asking one).
+    public static bool CanTakeOut(long storedByCharacterId, long characterId) {
+        return storedByCharacterId == 0 || storedByCharacterId == characterId;
+    }
 }

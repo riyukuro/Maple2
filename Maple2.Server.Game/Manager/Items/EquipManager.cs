@@ -442,7 +442,7 @@ public class EquipManager {
         if (item.Metadata.Limit.JobLimits.Length > 0 && !item.Metadata.Limit.JobLimits.Contains(session.Player.Value.Character.Job.Code())) {
             return StringCode.s_item_err_puton_job;
         }
-        if (item.Binding != null && item.Binding.CharacterId != session.CharacterId) {
+        if (item.Transfer?.Binding != null && item.Transfer.Binding.CharacterId != session.CharacterId) {
             return StringCode.s_item_err_puton_invalid_binding;
         }
 

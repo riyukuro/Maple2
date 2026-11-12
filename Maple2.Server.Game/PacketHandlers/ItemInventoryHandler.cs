@@ -116,6 +116,11 @@ public class ItemInventoryHandler : FieldPacketHandler {
                 uid, session.SummonedPetUid, session.Instrument?.Score?.Uid ?? 0)) {
             return;
         }
+        // Nor an item with a gemstone in one of its sockets (CItemSocket FUN_140622750; the client shows
+        // s_itembreak_usedgemstone_item and sends nothing).
+        if (drop.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) == true) {
+            return;
+        }
 
         if (drop.Metadata.Property.DisableDrop) {
             session.Send(NoticePacket.Notice(NoticePacket.Flags.MessageBox, StringCode.s_item_err_drop));

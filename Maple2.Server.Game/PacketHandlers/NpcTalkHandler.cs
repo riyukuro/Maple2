@@ -266,6 +266,9 @@ public class NpcTalkHandler : FieldPacketHandler {
             case ScriptEventType.EnchantComplete:
                 session.ItemEnchant.NpcTalkEvent(eventType);
                 return;
+            case ScriptEventType.EnchantRetry:
+                session.ItemEnchant.Retry();
+                return;
         }
     }
 

@@ -120,6 +120,7 @@ public enum ScriptEventType : short {
     EnchantSelect = 1,
     EnchantFail = 2,
     EnchantComplete = 3,
+    EnchantRetry = 4,
     PeachySelect = 31,
     RerollItemSelect = 100,
     RerollFail = 101,
