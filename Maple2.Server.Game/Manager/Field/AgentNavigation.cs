@@ -50,10 +50,22 @@ public sealed class AgentNavigation {
             return null;
         }
 
+        List<RcVec3f>? smoothPath = SmoothPath(navMesh, navMeshQuery, filter, pos1Ref, posRef2, startVec, targetVec);
+        if (smoothPath == null) {
+            Logger.Error("Failed to find path from {StartVec} to {TargetVec}", startVec, targetVec);
+        }
+
+        return smoothPath;
+    }
+
+    // The path from startVec to targetVec as points on the navmesh surface, one per STEP_SIZE. The last point is the
+    // target's closest point on the last poly, so a target above the mesh (a jumping player, or one standing on
+    // something the navmesh leaves out) does not lift the end of the path off the ground.
+    public static List<RcVec3f>? SmoothPath(DtNavMesh navMesh, DtNavMeshQuery navMeshQuery, IDtQueryFilter filter, long pos1Ref, long posRef2,
+                                            RcVec3f startVec, RcVec3f targetVec) {
         List<long> pathIterPolys = [];
         navMeshQuery.FindPath(pos1Ref, posRef2, startVec, targetVec, filter, ref pathIterPolys, new DtFindPathOption(0, float.MaxValue));
         if (pathIterPolys.Count == 0) {
-            Logger.Error("Failed to find path from {StartVec} to {TargetVec}", startVec, targetVec);
             return null;
         }
 
@@ -105,7 +117,7 @@ public sealed class AgentNavigation {
             // Handle end of path and off-mesh links when close enough.
             if (endOfPath && DtPathUtils.InRange(iterPos, steerPos, DotRecastHelper.MIN_TARGET_DIST, 1.0f)) {
                 // Reached end of path.
-                iterPos = targetVec;
+                iterPos = endPos;
                 if (smoothPath.Count < MAX_SMOOTH) {
                     smoothPath.Add(iterPos);
                 }
