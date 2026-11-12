@@ -12,7 +12,8 @@ namespace Maple2.File.Ingest.Helpers;
 // (FindDungeonHelperBonus), the change of attributes sale (SaleRemake), the beauty fee sale (SaleBeautyShop), the
 // special attribute bonus (SAHotTime), the dungeon clear bonus (DungeonBonusReward) and the item collection
 // (CollectItemGroup): every row has ended, and the switch replays one of each. The event arcades' openings
-// (ArcadeOpen) have ended too; one is replayed per arcade, since each opens one arcade.
+// (ArcadeOpen) have ended too; one is replayed per arcade, since each opens one arcade. The tree watering event
+// (TreeWatering) has ended too; its steps and emotion days move with it.
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -22,6 +23,7 @@ public static class AttendGiftReplay {
         GameEventType.SaleUgcDesign, GameEventType.SaleHousing, GameEventType.FindDungeonHelperBonus,
         GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
         GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
+        GameEventType.TreeWatering,
     ];
 
     // The events of a type that one replay is picked from: all of them, or for ArcadeOpen those of each arcade
@@ -93,7 +95,7 @@ public static class AttendGiftReplay {
     // unknown item there does not assert, but it has no icon or name; such a calendar is passed over too (an empty
     // slot, item 0, is not an item). The same holds for a StampEvent's reward rows and complete reward, for a
     // CollectItemGroup's condition items and result, and for an ArcadeOpen's reward items (shown in the arcade
-    // result dialog).
+    // result dialog), and for a TreeWatering's water pot and rewards (an empty reward, item 0, is none).
     public static bool ClientHasRewards(GameEventMetadata gameEvent, Func<int, int> clientRank) {
         return gameEvent.Data switch {
             AttendGift attendGift => attendGift.Items.All(item => clientRank(item.ItemId) > 0),
@@ -108,15 +110,27 @@ public static class AttendGiftReplay {
                 .Append(collect.Result)
                 .All(item => clientRank(item.ItemId) > 0),
             ArcadeOpen arcadeOpen => arcadeOpen.Rewards.All(item => clientRank(item.ItemId) > 0),
+            TreeWatering tree => clientRank(tree.WaterPotItemId) > 0
+                                 && new[] { tree.WaterReward, tree.EmotionReward }
+                                     .All(item => item.ItemId == 0 || clientRank(item.ItemId) > 0),
             _ => true,
         };
     }
 
     // The event moved to start on the given day at its original time of day, with its original length. The times
-    // keep no time zone, like the other events' (the server compares them with its local clock).
+    // keep no time zone, like the other events' (the server compares them with its local clock). A TreeWatering's
+    // step and emotion day times move by the same amount.
     public static GameEventMetadata Redate(GameEventMetadata gameEvent, DateTime day) {
         DateTime start = DateTime.SpecifyKind(day.Date, DateTimeKind.Unspecified) + gameEvent.StartTime.TimeOfDay;
         TimeSpan length = gameEvent.EndTime - gameEvent.StartTime;
-        return gameEvent with { StartTime = start, EndTime = start + length };
+        TimeSpan shift = start - gameEvent.StartTime;
+        GameEventData data = gameEvent.Data;
+        if (data is TreeWatering tree) {
+            data = tree with {
+                Steps = tree.Steps.Select(step => step with { Begin = step.Begin + shift, End = step.End + shift }).ToArray(),
+                EmotionDays = tree.EmotionDays.Select(period => new TreeWatering.Period(period.Begin + shift, period.End + shift)).ToArray(),
+            };
+        }
+        return gameEvent with { StartTime = start, EndTime = start + length, Data = data };
     }
 }

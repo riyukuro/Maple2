@@ -173,7 +173,8 @@ public class LongTermAttendRulesTests {
             GameEventType.AttendGift, GameEventType.LongTermAttendGift, GameEventType.StampEvent,
             GameEventType.SaleUgcDesign, GameEventType.SaleHousing, GameEventType.FindDungeonHelperBonus,
             GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
-            GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup,
+            GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
+            GameEventType.TreeWatering,
         }));
 
         var now = new DateTime(2030, 6, 15, 9, 30, 0);

@@ -7,7 +7,8 @@ using Maple2.Model.Validators;
 
 namespace Maple2.File.Ingest.Helpers;
 
-// The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows, each an <ms2> element. Text that is not XML is
+// The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows and the values of the TreeWatering rows,
+// each an <ms2> element. Text that is not XML is
 // a row that cannot be read; it does not stop the ingest.
 public static class EventXmlReader {
     // <ms2><v dungeonID groupType mesoRate expRate itemRolls customDropBoxIds/></ms2>: the client reads the root's
@@ -96,6 +97,79 @@ public static class EventXmlReader {
             .OfType<RewardItem>()
             .ToArray();
         return new ArcadeOpen(arcadeId, Math.Max(countPerDay, 0), rewards);
+    }
+
+    // The three values of a TreeWatering row (GameEventTreeWatering::ReadTreeWateringData,
+    // commonfiles/gameevent.cpp:5664). The client keeps no event when one of them is not an <ms2> document; a
+    // missing element or attribute leaves its fields 0 or empty. A step or an emotion day whose time is not
+    // "yyyy-MM-dd-HH-mm" (or to the second) is left out: it could never be the current one. The client keeps one step
+    // and one resource per step number (CAtlMap::SetAt), the last.
+    public static TreeWatering? TreeWatering(string? value1, string? value2, string? value3) {
+        XmlElement? times = Root(value1);
+        XmlElement? rewards = Root(value2);
+        XmlElement? resources = Root(value3);
+        if (times == null || rewards == null || resources == null) {
+            return null;
+        }
+
+        var steps = new Dictionary<int, TreeWatering.Step>();
+        foreach (XmlElement element in Children(times["tree_step"], "step")) {
+            int.TryParse(element.GetAttribute("step"), out int step);
+            DateTime begin = AttendGiftReplay.ParseTime(element.GetAttribute("begin"));
+            DateTime end = AttendGiftReplay.ParseTime(element.GetAttribute("end"));
+            if (begin != DateTime.MinValue && end != DateTime.MinValue) {
+                steps[step] = new TreeWatering.Step(step, begin, end);
+            }
+        }
+        var days = new List<TreeWatering.Period>();
+        foreach (XmlElement element in Children(times["emotion_day"], "time")) {
+            DateTime begin = AttendGiftReplay.ParseTime(element.GetAttribute("begin"));
+            DateTime end = AttendGiftReplay.ParseTime(element.GetAttribute("end"));
+            if (begin != DateTime.MinValue && end != DateTime.MinValue) {
+                days.Add(new TreeWatering.Period(begin, end));
+            }
+        }
+        (int waterLimit, RewardItem waterReward) = LimitedReward(rewards["watering_reward"]);
+        (int emotionLimit, RewardItem emotionReward) = LimitedReward(rewards["emotion_reward"]);
+
+        XmlElement? resource = resources["resource"];
+        var nifs = new Dictionary<int, TreeWatering.Resource>();
+        foreach (XmlElement element in Children(resources["tree_resource"], "step")) {
+            int.TryParse(element.GetAttribute("step"), out int step);
+            nifs[step] = new TreeWatering.Resource(step, element.GetAttribute("nif_id"));
+        }
+        int.TryParse(resource?.GetAttribute("FieldID"), out int fieldId);
+        int.TryParse(resource?.GetAttribute("WaterPotItemID"), out int potId);
+        return new TreeWatering(
+            Steps: steps.Values.ToArray(),
+            EmotionDays: days.ToArray(),
+            WaterLimit: waterLimit,
+            WaterReward: waterReward,
+            EmotionLimit: emotionLimit,
+            EmotionReward: emotionReward,
+            Resources: nifs.Values.ToArray(),
+            FieldId: fieldId,
+            TreeName: resource?.GetAttribute("TreeNameTag") ?? string.Empty,
+            WaterPotItemId: potId,
+            WaterAnimation: resource?.GetAttribute("WateringAnimation") ?? string.Empty,
+            EmotionAnimation: resource?.GetAttribute("EmotionAnimation") ?? string.Empty,
+            EmotionDayEffect: resource?.GetAttribute("EmotionDayEffect") ?? string.Empty);
+    }
+
+    private static IEnumerable<XmlElement> Children(XmlElement? parent, string name) {
+        return parent?.ChildNodes.OfType<XmlElement>().Where(element => element.Name == name) ?? [];
+    }
+
+    // MaxRewardCountDaily, then the item: id, grade and count as the client reads them (0 when missing).
+    private static (int Limit, RewardItem Item) LimitedReward(XmlElement? element) {
+        if (element == null) {
+            return (0, default);
+        }
+        int.TryParse(element.GetAttribute("MaxRewardCountDaily"), out int limit);
+        int.TryParse(element.GetAttribute("itemID"), out int itemId);
+        short.TryParse(element.GetAttribute("grade"), out short grade);
+        int.TryParse(element.GetAttribute("count"), out int count);
+        return (Math.Max(limit, 0), new RewardItem(Math.Max(itemId, 0), Math.Max(grade, (short) 0), Math.Max(count, 0)));
     }
 
     private static RewardItem? Item(XmlElement element) {

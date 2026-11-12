@@ -276,7 +276,7 @@ public enum SendOp : ushort {
     Reactor = 0x0115,
     SurvivalEvent = 0x0116,
     MeretUse = 0x0117,
-    HalloweenEvent = 0x0118,
+    TreeWatering = 0x0118, // SceneStateGame::OnTreeWatering (scenestategame.cpp); the table name is HalloweenEvent
     Survival = 0x0119,
     SpectateMushtopia = 0x011A,
     Lapenshard = 0x011B,

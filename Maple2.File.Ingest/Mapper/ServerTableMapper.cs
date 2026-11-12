@@ -1649,6 +1649,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.CollectItemGroup(value1);
             case GameEventType.ArcadeOpen:
                 return EventXmlReader.ArcadeOpen(value1);
+            case GameEventType.TreeWatering:
+                return EventXmlReader.TreeWatering(value1, value2, value3);
             case GameEventType.SAHotTime:
                 specialRates ??= ClientSpecialRates();
                 // Without a client pack every attribute counts as a rate: the 12 the KR rows name are rates.

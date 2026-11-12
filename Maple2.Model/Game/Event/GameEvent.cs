@@ -443,12 +443,54 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteInt(arcadeOpen.ArcadeId);
                 break;
+            case TreeWatering tree:
+                // GameEvent::vfunc_4 reads the id, then TreeWateringContext::Read (gameeventcontext.cpp) the same id,
+                // the steps, the emotion days, both rewards with their daily limits, the step resources and the
+                // tree's field, name tag, water pot and animations. Its strings are one-byte (ReadString).
+                writer.WriteInt(Id);
+                writer.WriteInt(Id);
+                writer.WriteInt(tree.Steps.Length);
+                foreach (TreeWatering.Step step in tree.Steps) {
+                    writer.WriteInt(step.Id);
+                    writer.WriteLong(EpochSeconds(step.Begin));
+                    writer.WriteLong(EpochSeconds(step.End));
+                }
+                writer.WriteInt(tree.EmotionDays.Length);
+                foreach (TreeWatering.Period day in tree.EmotionDays) {
+                    writer.WriteLong(EpochSeconds(day.Begin));
+                    writer.WriteLong(EpochSeconds(day.End));
+                }
+                writer.WriteInt(tree.WaterLimit);
+                writer.WriteInt(tree.WaterReward.ItemId);
+                writer.WriteByte((byte) tree.WaterReward.Rarity);
+                writer.WriteInt(tree.WaterReward.Amount);
+                writer.WriteInt(tree.EmotionLimit);
+                writer.WriteInt(tree.EmotionReward.ItemId);
+                writer.WriteByte((byte) tree.EmotionReward.Rarity);
+                writer.WriteInt(tree.EmotionReward.Amount);
+                writer.WriteInt(tree.Resources.Length);
+                foreach (TreeWatering.Resource resource in tree.Resources) {
+                    writer.WriteInt(resource.Step);
+                    writer.WriteString(resource.Nif);
+                }
+                writer.WriteInt(tree.FieldId);
+                writer.WriteString(tree.TreeName);
+                writer.WriteInt(tree.WaterPotItemId);
+                writer.WriteString(tree.WaterAnimation);
+                writer.WriteString(tree.EmotionAnimation);
+                writer.WriteString(tree.EmotionDayEffect);
+                break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);
                 writer.WriteInt();
                 writer.WriteUnicodeString(instrument.ContentType);
                 break;
         }
+    }
+
+    // A table time as the client's unix seconds, like StartTime and EndTime.
+    public static long EpochSeconds(DateTime time) {
+        return (long) (time.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
     }
 
     // A count, then ItemEntity::Read (commonstruct_wa.cpp) per item: id, rank, count and four flags.

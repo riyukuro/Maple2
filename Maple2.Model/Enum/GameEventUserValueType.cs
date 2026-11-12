@@ -38,6 +38,11 @@ public enum GameEventUserValueType {
     // Reactor event (flower pots, chocolate): rewards taken today; the client refuses at the event's limit.
     ReactorRewardCount = 1901,
 
+    // Tree watering (TreeWatering): waterings and emotions rewarded today, read by TreeWateringAction
+    // (actionkeyobject.cpp, user values 0x777 and 0x778 of the event).
+    TreeWateringCount = 1911,
+    TreeWateringEmotionCount = 1912,
+
     // Stamp card (StampEvent), read by its dialog (uistampeventdialog.cpp)
     StampCompleteRewardClaimed = 1200, // 1 once the complete reward is claimed
     StampRewardsClaimed = 1201, // counts of the claimed reward rows, "4,7"

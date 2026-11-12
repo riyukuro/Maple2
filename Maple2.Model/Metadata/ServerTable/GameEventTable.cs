@@ -463,6 +463,34 @@ public record ArcadeOpen(
     int RewardCountPerDay,
     RewardItem[] Rewards) : GameEventData;
 
+// Tree watering (GameEventTreeWatering::ReadTreeWateringData, commonfiles/gameevent.cpp:5664). value1 is
+// <ms2><tree_step><step step begin end/>...</tree_step><emotion_day><time begin end/>...</emotion_day></ms2>, value2
+// <ms2><watering_reward MaxRewardCountDaily itemID grade count/><emotion_reward .../></ms2>, value3
+// <ms2><resource FieldID TreeNameTag WaterPotItemID WateringAnimation EmotionAnimation EmotionDayEffect/>
+// <tree_resource><step step nif_id/>...</tree_resource></ms2>. A player near the field's entity named TreeName waters
+// it (WaterLimit times a day, holding the water pot) and on an emotion day, once watered that many times, admires
+// it (EmotionLimit times); each gives its reward (TreeWateringRules).
+public record TreeWatering(
+    TreeWatering.Step[] Steps,
+    TreeWatering.Period[] EmotionDays,
+    int WaterLimit,
+    RewardItem WaterReward,
+    int EmotionLimit,
+    RewardItem EmotionReward,
+    TreeWatering.Resource[] Resources,
+    int FieldId,
+    string TreeName,
+    int WaterPotItemId,
+    string WaterAnimation,
+    string EmotionAnimation,
+    string EmotionDayEffect) : GameEventData {
+    public record Step(int Id, DateTime Begin, DateTime End);
+
+    public record Period(DateTime Begin, DateTime End);
+
+    public record Resource(int Step, string Nif);
+}
+
 // Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
 public record DungeonEnterTime(
     int DungeonId,
@@ -521,4 +549,5 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
 [JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
 [JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
+[JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
 public abstract record GameEventData;
