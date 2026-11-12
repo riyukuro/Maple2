@@ -8,6 +8,7 @@ using Grpc.Net.Client;
 using Maple2.Database.Extensions;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Helpers;
 using Maple2.Server.Core.Sync;
 using Serilog;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
@@ -49,7 +50,31 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         }
     }
 
-    public (ushort gamePort, int grpcPort, int channel) FindOrCreateChannelByIp(string gameIp, string grpcGameIp, bool instancedContent) {
+    // A Game server that already runs names its own channel id. A channel this World server has for that same
+    // Game server is left as it is (known); an id that is free is registered for it, which is what a World server
+    // sees after its restart; an id that another Game server holds is refused (channel -1).
+    public (ushort gamePort, int grpcPort, int channel, bool known) Register(string gameIp, string grpcGameIp, bool instancedContent, int requested, string instance) {
+        lock (registerLock) {
+            if (channels.TryGetValue(requested, out Channel? existing)) {
+                if (!ChannelRegisterRules.SameServer(existing.Instance, instance)) {
+                    return (0, 0, -1, false);
+                }
+                // A channel that was marked inactive lost its players here: it is reported again as well.
+                if (existing.Status == ChannelStatus.Inactive) {
+                    existing.Status = ChannelStatus.Pending;
+                    return (existing.GamePort, existing.GrpcPort, existing.Id, false);
+                }
+                return (existing.GamePort, existing.GrpcPort, existing.Id, true);
+            }
+
+            (ushort gamePort, int grpcPort, int channel) = AddChannel(gameIp, grpcGameIp, instancedContent, instance, requested);
+            return (gamePort, grpcPort, channel, false);
+        }
+    }
+
+    private readonly object registerLock = new();
+
+    public (ushort gamePort, int grpcPort, int channel) FindOrCreateChannelByIp(string gameIp, string grpcGameIp, bool instancedContent, string instance = "") {
         // find the first channel that matches the ip, status and instanced content, but only if not Pending
         Channel? activeChannel = channels.Values.FirstOrDefault(channel =>
             channel.Endpoint.Address.ToString() == gameIp &&
@@ -59,10 +84,13 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         if (activeChannel is not null) {
             // Mark as pending before returning
             activeChannel.Status = ChannelStatus.Pending;
+            activeChannel.Instance = instance;
             return (activeChannel.GamePort, activeChannel.GrpcPort, activeChannel.Id);
         }
 
-        return AddChannel(gameIp, grpcGameIp, instancedContent);
+        lock (registerLock) {
+            return AddChannel(gameIp, grpcGameIp, instancedContent, instance, null);
+        }
     }
 
     /// Gets the ID of the first active, non-instanced content channel.
@@ -111,16 +139,11 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         return true;
     }
 
-    private (ushort gamePort, int grpcPort, int channel) AddChannel(string gameIp, string grpcGameIp, bool instancedContent) {
-        int channelId = 1;
-        if (!instancedContent) {
-            // Find the smallest positive integer not used as a channel ID (excluding 0)
-            HashSet<int> usedIds = channels.Keys.Where(id => id > 0).ToHashSet();
-            while (usedIds.Contains(channelId)) {
-                channelId++;
-            }
-        } else {
-            channelId = 0;
+    private (ushort gamePort, int grpcPort, int channel) AddChannel(string gameIp, string grpcGameIp, bool instancedContent, string instance, int? requested) {
+        int channelId = ChannelRegisterRules.Pick(channels.Keys.ToHashSet(), instancedContent, requested);
+        if (channelId < 0) {
+            logger.Error("No channel id for {GameIp} (instanced content: {Instanced}, asked for: {Requested})", gameIp, instancedContent, requested);
+            return (0, 0, -1);
         }
 
         int newGamePort = Target.BaseGamePort + channelId;
@@ -144,7 +167,9 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         GrpcChannel grpcChannel = GrpcChannel.ForAddress(grpcUri);
         var client = new ChannelClient(grpcChannel);
         var healthClient = new Health.HealthClient(grpcChannel);
-        var activeChannel = new Channel(ChannelStatus.Pending, channelId, instancedContent, gameEndpoint, client, healthClient, (ushort) newGamePort, newGrpcChannelPort);
+        var activeChannel = new Channel(ChannelStatus.Pending, channelId, instancedContent, gameEndpoint, client, healthClient, (ushort) newGamePort, newGrpcChannelPort) {
+            Instance = instance,
+        };
         if (!channels.TryAdd(channelId, activeChannel)) {
             logger.Error("Failed to add channel {Channel}", channelId);
             return (0, 0, -1);
@@ -282,6 +307,8 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
 
     private class Channel {
         public ChannelStatus Status { get; set; }
+        // Names the Game server process that holds this channel.
+        public string Instance { get; set; } = string.Empty;
 
         public readonly int Id;
         public readonly bool InstancedContent;

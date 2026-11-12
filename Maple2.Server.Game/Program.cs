@@ -55,6 +55,7 @@ Log.Logger = new LoggerConfiguration()
 bool overrideInstanced = args.Contains("--instanced");
 
 AddChannelResponse? response = null;
+string instance = Guid.NewGuid().ToString("N");
 const int maxRetries = 3;
 const int delayMs = 5000;
 int attempt = 0;
@@ -67,6 +68,7 @@ while (attempt < maxRetries) {
             GameIp = Target.GameIp.ToString(),
             GrpcGameIp = Target.GrpcGameIp,
             InstancedContent = overrideInstanced || Target.InstancedContent,
+            Instance = instance,
         });
         break; // Success
     } catch (RpcException e) {
@@ -110,6 +112,24 @@ builder.Services.AddSingleton<GameServer>(provider => new GameServer(
     response.GameChannel
 ));
 builder.Services.AddHostedService<GameServer>(provider => provider.GetService<GameServer>()!);
+
+// A World server that was restarted knows no channel and no player: this channel registers again under its own id
+// and reports its sessions.
+builder.Services.AddSingleton<WorldLink>(provider => {
+    var server = provider.GetRequiredService<GameServer>();
+    var world = provider.GetRequiredService<WorldClient>();
+    return new WorldLink(response.GameChannel, () => {
+        AddChannelResponse again = world.AddChannel(new AddChannelRequest {
+            GameIp = Target.GameIp.ToString(),
+            GrpcGameIp = Target.GrpcGameIp,
+            InstancedContent = overrideInstanced || Target.InstancedContent,
+            Channel = response.GameChannel,
+            Instance = instance,
+        }, deadline: DateTime.UtcNow.AddSeconds(5));
+        return (again.GameChannel, again.Known);
+    }, () => server.AnnounceSessions(world));
+});
+builder.Services.AddHostedService<WorldLinkService>();
 
 builder.Services.AddGrpcHealthChecks();
 builder.Services.Configure<HealthCheckPublisherOptions>(options => {

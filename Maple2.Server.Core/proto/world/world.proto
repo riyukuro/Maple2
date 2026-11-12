@@ -726,12 +726,18 @@ message AddChannelRequest {
   string game_ip = 1;
   string grpc_game_ip = 2;
   bool instanced_content = 3;
+  // The id of a Game server that already runs: it registers again with a World server that was restarted.
+  optional int32 channel = 4;
+  // Names the Game server process, so that another one on the same address does not take its id over.
+  string instance = 5;
 }
 
 message AddChannelResponse {
   int32 game_port = 1;
   int32 grpc_port = 2;
   int32 game_channel = 3;
+  // The World server already had this channel for this Game server.
+  bool known = 4;
 }
 
 message PlayerConfigRequest {

@@ -95,6 +95,23 @@ public class GameServer : Server<GameSession> {
         return sessions.Values.FirstOrDefault(session => session.AccountId == accountId);
     }
 
+    // Reports every session to a World server that was restarted: the player is online on this channel again
+    // and gets heartbeats again. A party the World server no longer has is ended for its member here.
+    // False when the World server stopped answering on the way.
+    public bool AnnounceSessions(Maple2.Server.World.Service.World.WorldClient world) {
+        foreach (GameSession session in sessions.Values) {
+            try {
+                if (!session.AnnounceToWorld(world)) {
+                    continue;
+                }
+            } catch (Grpc.Core.RpcException ex) {
+                Logger.Warning("Could not report {CharacterId} to the World server: {Status}", session.CharacterId, ex.StatusCode);
+                return false;
+            }
+        }
+        return true;
+    }
+
     public List<GameSession> GetSessions() {
         return sessions.Values.ToList();
     }

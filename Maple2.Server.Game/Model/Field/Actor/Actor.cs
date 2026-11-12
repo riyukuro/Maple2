@@ -255,6 +255,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         // Always skip the caster: when IncludeCaster is set, the attack also has a CubeMagicPathId
         // which handles splash placement independently — this loop must not create a duplicate.
         foreach (IActor target in record.Targets.Values) {
+            if (record.SplashPlaced) {
+                break;
+            }
             if (target.ObjectId == record.Caster.ObjectId) {
                 if (splashEffects.Length > 0 && record.Attack.CubeMagicPathId == 0) {
                     Logger.Warning("[TargetAttack] SkillId={SkillId} AttackPoint={AttackPoint} IncludeCaster={IncludeCaster} — caster skipped in splash loop but CubeMagicPathId=0. Splash may be lost.",

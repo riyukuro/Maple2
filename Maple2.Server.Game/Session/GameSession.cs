@@ -16,6 +16,7 @@ using Maple2.Model.Validators;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Helpers;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Core.Sync;
@@ -159,6 +160,39 @@ public sealed partial class GameSession : Core.Network.Session {
     public bool FindField(int mapId, [NotNullWhen(true)] out FieldManager? field) {
         field = server.GetField(mapId);
         return field is not null;
+    }
+
+    // Everything the World server keeps about this player.
+    private PlayerUpdateRequest WorldUpdate() {
+        var playerUpdate = new PlayerUpdateRequest {
+            AccountId = AccountId,
+            CharacterId = CharacterId,
+            LastOnlineTime = Player.Value.Character.LastOnlineTime,
+        };
+        playerUpdate.SetFields(UpdateField.All, Player.Value);
+        playerUpdate.Health = new HealthUpdate {
+            CurrentHp = Stats.Values[BasicAttribute.Health].Current,
+            TotalHp = Stats.Values[BasicAttribute.Health].Total,
+        };
+        return playerUpdate;
+    }
+
+    // Reports this session to a World server that was restarted. False for a session that is not in the game yet
+    // (its own login reports it). The party is asked for again: parties are not stored, so after a World restart
+    // there is none and the member gets the disband answer (chosen here).
+    public bool AnnounceToWorld(WorldClient world) {
+        if (Player == null || Stats == null || Party == null || State != SessionState.Connected) {
+            return false;
+        }
+
+        world.UpdatePlayer(WorldUpdate());
+        if (Party.Id != 0) {
+            PartyInfoResponse response = world.PartyInfo(new PartyInfoRequest { CharacterId = CharacterId });
+            if (ChannelRegisterRules.PartyGone(Party.Id, response.Party?.Id ?? 0)) {
+                Party.Disband(notify: true);
+            }
+        }
+        return true;
     }
 
     public bool EnterServer(long accountId, Guid machineId, MigrateInResponse migrateResponse) {
@@ -329,17 +363,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 break;
         }
 
-        var playerUpdate = new PlayerUpdateRequest {
-            AccountId = accountId,
-            CharacterId = characterId,
-            LastOnlineTime = Player.Value.Character.LastOnlineTime,
-        };
-        playerUpdate.SetFields(UpdateField.All, player);
-        playerUpdate.Health = new HealthUpdate {
-            CurrentHp = Stats.Values[BasicAttribute.Health].Current,
-            TotalHp = Stats.Values[BasicAttribute.Health].Total,
-        };
-        PlayerInfo.SendUpdate(playerUpdate);
+        PlayerInfo.SendUpdate(WorldUpdate());
 
         //session.Send(Packet.Of(SendOp.REQUEST_SYSTEM_INFO));
         Send(MigrationPacket.MoveResult(MigrationError.ok));
