@@ -335,6 +335,16 @@ public partial class GameStorage {
             }
             account.Password = dbAccount.Password;
 
+            // A request that already tracks these rows (SaveCurrency reads them tracked, and the Find above tracks
+            // too from then on) would refuse a second instance with the same key in Update.
+            foreach (EntityEntry tracked in Context.ChangeTracker.Entries().ToList()) {
+                if (tracked.Entity is Model.Account trackedAccount && trackedAccount.Id == account.Id
+                    || tracked.Entity is Model.Character trackedCharacter && trackedCharacter.Id == character.Id
+                    || tracked.Entity is CharacterUnlock trackedUnlock && trackedUnlock.CharacterId == character.Id) {
+                    tracked.State = EntityState.Detached;
+                }
+            }
+
             Context.Update(account);
             Context.Update(character);
 
