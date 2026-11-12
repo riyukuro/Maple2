@@ -235,6 +235,14 @@ public class InventoryManager {
                 add.Transfer?.Bind(session.Player.Value.Character);
             }
 
+            // A new item gets its row only when it fits: a row created first stayed with the character at slot -1
+            // when the bag was full, and the caller then mailed the item as another new row (a reward on a full
+            // bag existed twice in the database).
+            if (add.Uid == 0 && !items.Fits(add, stack: true)) {
+                session.Send(ItemInventoryPacket.Error(s_err_inventory));
+                return false;
+            }
+
             using GameStorage.Request db = session.GameStorage.Context();
 
             bool justCreated = false;

@@ -356,6 +356,29 @@ public class ItemCollectionTest {
         Assert.That(collection.Count, Is.EqualTo(4));
     }
 
+    // InventoryManager.Add creates a new item's row only when Fits is true, so Fits must say what Add does: on a
+    // full bag a dungeon reward that does not fit is mailed, and a row made first was a second copy of it.
+    [Test]
+    public void Fits_IsWhatAddTakes() {
+        var bag = new ItemCollection(2);
+        bag.Add(CreateItem(1000, amount: 50));
+        bag.Add(CreateItem(3000, amount: 100));
+
+        Model.Game.Item gear = CreateItem(2000);
+        Model.Game.Item fitsStack = CreateItem(1000, amount: 50);
+        Model.Game.Item overStack = CreateItem(1000, amount: 51);
+        Assert.Multiple(() => {
+            Assert.That(bag.Fits(gear, stack: true), Is.False);
+            Assert.That(bag.Add(gear, stack: true), Is.Empty);
+            Assert.That(bag.Fits(overStack, stack: true), Is.False);
+            Assert.That(bag.Add(overStack, stack: true), Is.Empty);
+            Assert.That(bag.Fits(fitsStack, stack: false), Is.False);
+            Assert.That(bag.Fits(fitsStack, stack: true), Is.True);
+            Assert.That(bag.Add(fitsStack, stack: true), Is.Not.Empty);
+            Assert.That(bag.Count, Is.EqualTo(2));
+        });
+    }
+
     private static Model.Game.Item CreateItem(int id, int rarity = 1, int amount = 1) {
         var fakeProperty = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
         var fakeCustomize = new ItemMetadataCustomize(0, 0);

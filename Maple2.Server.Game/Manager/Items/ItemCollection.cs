@@ -136,7 +136,7 @@ public class ItemCollection : IEnumerable<Item> {
     /// <param name="stack">Whether or not to attempt stacking the item to add</param>
     /// <returns>A list of items which were stacked on and their added amounts.</returns>
     public IList<(Item, int Added)> Add(Item add, bool stack = false) {
-        if (OpenSlots <= 0 && (!stack || GetStackResult(add) > 0)) {
+        if (!Fits(add, stack)) {
             return [];
         }
 
@@ -300,6 +300,11 @@ public class ItemCollection : IEnumerable<Item> {
         }
 
         return remaining;
+    }
+
+    // Whether Add(add, stack) takes the item: an open slot, or (with stack) stacks with room for all of it.
+    public bool Fits(Item add, bool stack = false) {
+        return OpenSlots > 0 || (stack && GetStackResult(add) <= 0);
     }
 
     private bool ValidSlot(short slot) => slot >= 0 && slot < Size;
