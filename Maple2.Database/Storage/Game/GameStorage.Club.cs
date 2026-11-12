@@ -119,6 +119,8 @@ public partial class GameStorage {
             IEnumerable<Model.ClubMember> existingMembers = Context.ClubMember
                 .Where(member => member.ClubId == club.Id)
                 .Select(member => new Model.ClubMember {
+                    // The key is (club, character): a row removed below needs both.
+                    ClubId = member.ClubId,
                     CharacterId = member.CharacterId,
                 });
 

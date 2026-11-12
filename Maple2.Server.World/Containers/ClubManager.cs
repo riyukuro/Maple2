@@ -184,19 +184,19 @@ public class ClubManager : IDisposable {
             ClubId = Club.Id,
         });
 
-        using GameStorage.Request db = GameStorage.Context();
-        if (!db.DeleteClubMember(Club.Id, member.CharacterId)) {
-            return ClubError.s_club_err_unknown;
-        }
-
         if (!Club.Members.TryRemove(member.CharacterId, out _)) {
             return ClubError.s_club_err_unknown;
         }
 
-        // The leader left: store the new leader, or the club row names a character who is no member, and loading
-        // the club (GetClub picks the leader among the members) fails after a restart.
+        using GameStorage.Request db = GameStorage.Context();
+        // The leader left: one SaveClub stores the new leader and drops the member row in one transaction, so the
+        // club row never names a character who is no member (loading the club picks the leader among the members).
         if (leaderLeft && Club.LeaderId != characterId) {
-            db.SaveClub(Club);
+            if (!db.SaveClub(Club)) {
+                return ClubError.s_club_err_unknown;
+            }
+        } else if (!db.DeleteClubMember(Club.Id, member.CharacterId)) {
+            return ClubError.s_club_err_unknown;
         }
 
         return ClubError.none;
