@@ -89,10 +89,12 @@ public class SelectBoxRowsTests {
         Assert.That(Rows(plain, JobCode.Wizard), Has.Length.EqualTo(11));
     }
 
+    // Picking the first row gives the first item only, the second row the second item only.
     [Test]
     public void ItemWithoutData_IsLeftOut_SecondItemIsARow() {
         IndividualDropItemTable.Entry[] box = [Group(1, false, Entry(49999999), Entry(41000011, 41000021), Entry(43000021))];
-        Assert.That(Rows(box, JobCode.Wizard), Is.EqualTo(new[] { 41000011, 41000011, 43000021 }));
+        Assert.That(Rows(box, JobCode.Wizard), Is.EqualTo(new[] { 41000011, 41000021, 43000021 }));
+        Assert.That(ItemDropManager.SelectBoxRows(box, id => Items.GetValueOrDefault(id), JobCode.Wizard, Gender.Male).Take(2).Select(item => item.Ids), Is.EqualTo(new[] { new[] { 41000011 }, new[] { 41000021 } }));
     }
 
     [TestCase("3", 1, new[] { 3 })]

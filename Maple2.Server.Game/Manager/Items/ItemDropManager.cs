@@ -129,7 +129,9 @@ public class ItemDropManager {
     // The rows the client's select box dialog lists (ItemDropTable::GetBoxItems with the player's job group and
     // gender), which the index it sends counts: every group in table order, each with its entries in order. An entry
     // whose item has no data is left out; a smart gender group leaves out the other gender's items, and a group with a
-    // smart drop rate the items not recommended for the player's job. An entry with a second item id is two rows.
+    // smart drop rate the items not recommended for the player's job. An entry with a second item id is two rows (the
+    // client lists the second item as a row of its own, with the entry's count, rank and enchant level); each row gives
+    // only the item it shows. A random open of the box gives both.
     // The group's drop counts and minimum level are not looked at.
     internal static List<IndividualDropItemTable.Item> SelectBoxRows(IEnumerable<IndividualDropItemTable.Entry> groups,
             Func<int, ItemMetadataLimit?> limit, JobCode job, Gender gender) {
@@ -147,8 +149,10 @@ public class ItemDropManager {
                     continue;
                 }
 
-                rows.Add(itemEntry);
                 if (itemEntry.Ids.Length > 1 && itemEntry.Ids[1] != 0) {
+                    rows.Add(itemEntry with { Ids = [itemEntry.Ids[0]] });
+                    rows.Add(itemEntry with { Ids = [itemEntry.Ids[1]] });
+                } else {
                     rows.Add(itemEntry);
                 }
             }

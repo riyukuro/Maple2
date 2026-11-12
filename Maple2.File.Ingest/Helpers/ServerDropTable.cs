@@ -41,6 +41,23 @@ public static class ServerDropTable {
         return Read(reader.GetXmlReader(entry));
     }
 
+    // The same read with the boxes the server's table has no available row for taken from the played client's copy
+    // of the table (ClientDropBoxes); counts is null without a client table.
+    public static IEnumerable<(int Id, IndividualItemDrop Box)> Read(M2dReader reader, string file, XmlDocument? client, out ClientDropBoxes.Counts? counts) {
+        counts = null;
+        if (client == null) {
+            return Read(reader, file);
+        }
+        PackFileEntry? entry = reader.Files.FirstOrDefault(e => e.Name.EndsWith(file));
+        if (entry == null) {
+            throw new FileNotFoundException($"The server pack has no {file}");
+        }
+        var server = new XmlDocument();
+        server.LoadXml(reader.GetString(entry));
+        counts = ClientDropBoxes.Add(server, client, ClientListedRows.Available);
+        return Read(new XmlNodeReader(server)).ToList();
+    }
+
     public static IEnumerable<(int Id, IndividualItemDrop Box)> Read(XmlReader xml) {
         var root = (IndividualItemDropRoot) Serializer.Deserialize(xml)!;
         foreach (IndividualItemDrop box in root.dropBox) {
