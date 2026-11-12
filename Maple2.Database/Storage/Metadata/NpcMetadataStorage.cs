@@ -81,6 +81,7 @@ public class NpcMetadataStorage : MetadataStorage<int, NpcMetadata>, ISearchable
             return null;
         }
 
+        animation = animation with { Sequences = AnimationMetadata.IgnoreCase(animation.Sequences) };
         AniCache.AddReplace(model, animation);
 
         return animation;
