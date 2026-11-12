@@ -55,6 +55,13 @@ public static class CharacterAbilityRules {
         return ResetStep.Reset;
     }
 
+    // The cool time reset stone (item function ResetAbilityCoolTime, @0x140d22b50): the client asks its confirm box
+    // only when the window is open (level and open quest, message 0xc63 otherwise). Chosen here: a stone is only
+    // used while a reset cool time runs, so a use with nothing to clear keeps it.
+    public static bool CanResetCoolTime(bool open, long wait) {
+        return open && wait > 0;
+    }
+
     // The effects of the learned abilities that the player does not have. They have no duration, so the
     // logout save does not keep them; the server gives them on learn and at every field entry.
     public static List<(int Id, short Level)> MissingEffects(IEnumerable<int> learned,

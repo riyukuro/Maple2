@@ -757,6 +757,22 @@ public class ConfigManager {
         return true;
     }
 
+    // The cool time reset stone (ResetAbilityCoolTime): consume runs only when the stone may be used; the reset time
+    // goes back to 0 ("never reset", CharacterAbilityRules.ResetWait) and the load packet carries it to the window.
+    public bool ResetCharacterAbilityCoolTime(Func<bool> consume) {
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        Character character = AbilityCharacter;
+        bool questDone = session.Quest.TryGetQuest(constants.CharacterAbilityOpenQuestID, out Quest? quest) && quest.State == QuestState.Completed;
+        long wait = CharacterAbilityRules.ResetWait(character.AbilityResetTime, DateTime.Now.ToEpochSeconds(), constants.CharacterAbilityResetCoolTimeMinute);
+        if (!CharacterAbilityRules.CanResetCoolTime(CharacterAbilityRules.IsOpen(character.Level, questDone), wait) || !consume()) {
+            return false;
+        }
+
+        character.AbilityResetTime = 0;
+        LoadCharacterAbilities();
+        return true;
+    }
+
     // Gives the effects of the learned abilities that the player does not have
     // (CharacterAbilityRules.MissingEffects). Called on learn and at every field entry.
     public void RefreshCharacterAbilityBuffs() {

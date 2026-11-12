@@ -184,6 +184,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.UGCMapPackage:
                 HandleUgcMapPackage(session, item, packet);
                 break;
+            case ItemFunction.ResetAbilityCoolTime:
+                HandleResetAbilityCoolTime(session, item);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -932,6 +935,12 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Config.UpdateDeathPenalty(0);
+    }
+
+    // The Rizeta Stone (ResetAbilityCoolTime, 40100028): the client's confirm box (0xc62, tag use_function_item)
+    // sends the plain item use. One stone clears the character ability reset cool time.
+    private static void HandleResetAbilityCoolTime(GameSession session, Item item) {
+        session.Config.ResetCharacterAbilityCoolTime(() => session.Item.Inventory.Consume(item.Uid, 1));
     }
 
     // The dungeon reward pouch (OpenDungeonItemBox @0x140d24e70): the client opens its confirm box only for a room
