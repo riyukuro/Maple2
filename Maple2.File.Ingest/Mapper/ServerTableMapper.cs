@@ -2654,13 +2654,17 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     }
 
     // A row of a locale replaces the row without a locale of the same round, in either order; rows the filter drops
-    // are left out.
+    // are left out. A second arcadeGame node with the same arcadeId adds its rows to the first one's (the shipped
+    // file has one node per arcade).
     public static ArcadeRewardTable MapArcadeReward(XmlDocument document, Func<XmlElement, bool> available) {
-        var results = new Dictionary<int, IReadOnlyDictionary<int, ArcadeRewardTable.Entry>>();
+        var games = new Dictionary<int, (Dictionary<int, ArcadeRewardTable.Entry> Rounds, HashSet<int> Localized)>();
         foreach (XmlElement game in document.SelectNodes("ms2/arcadeGame")!.OfType<XmlElement>()) {
             if (!int.TryParse(game.GetAttribute("arcadeId"), out int arcadeId)) continue;
-            var rounds = new Dictionary<int, ArcadeRewardTable.Entry>();
-            var localized = new HashSet<int>();
+            if (!games.TryGetValue(arcadeId, out var known)) {
+                known = (new Dictionary<int, ArcadeRewardTable.Entry>(), new HashSet<int>());
+                games[arcadeId] = known;
+            }
+            (Dictionary<int, ArcadeRewardTable.Entry> rounds, HashSet<int> localized) = known;
             foreach (XmlElement row in game.SelectNodes("reward")!.OfType<XmlElement>()) {
                 if (!available(row) || !int.TryParse(row.GetAttribute("round"), out int round)) continue;
                 bool hasLocale = row.GetAttribute("locale") != "";
@@ -2670,9 +2674,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 int.TryParse(row.GetAttribute("meso"), out int meso);
                 rounds[round] = new ArcadeRewardTable.Entry(round, expRate, meso);
             }
-            results[arcadeId] = rounds;
         }
-        return new ArcadeRewardTable(results);
+        return new ArcadeRewardTable(games.ToDictionary(game => game.Key,
+            game => (IReadOnlyDictionary<int, ArcadeRewardTable.Entry>) game.Value.Rounds));
     }
 
     private MonsterExpTable ParseMonsterExp() {

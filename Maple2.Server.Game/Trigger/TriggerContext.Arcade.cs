@@ -33,10 +33,11 @@ public partial class TriggerContext {
         }
     }
 
-    // The open type is the arcade id: the client places the score dialog apart only for type 3.
+    // The open type is the arcade id: the client places the score dialog apart only for type 3. The players in the
+    // field now are the game's (field 51000001 is a solo instance field, one field per entry).
     public void ArcadeSpringFarmStartGame(int lifeCount) {
         DebugLog("[ArcadeSpringFarmStartGame] lifeCount:{LifeCount}", lifeCount);
-        var game = new SpringFarmGame(lifeCount);
+        var game = new SpringFarmGame(lifeCount, Field.Players.Values.Select(player => player.Value.Character.Id));
         Field.SpringFarm = game;
         Field.Broadcast(ArcadePacket.Open(SpringFarmGame.ArcadeId));
         Field.Broadcast(ArcadePacket.LifeInit(1, game.Lives, game.LifeCount));

@@ -49,12 +49,12 @@ public class PlayArcadeHandler : FieldPacketHandler {
 
     // The game's field (arcadegame.xml targetField). A game the table does not list, one without a field and an
     // event arcade (open only while an arcade event names it, which our server does not run) are dropped, as are a
-    // dead player and one already in the field.
+    // dead player, a player in battle (the lobby's own check) and one already in the field.
     private static void HandleEnter(GameSession session, int arcadeId) {
         if (session.Field == null
             || !session.TableMetadata.ArcadeGameTable.Entries.TryGetValue(arcadeId, out ArcadeGameTable.Entry? game)
             || game.TargetField == 0 || game.IsEventArcade
-            || session.Player.IsDead || session.Field.MapId == game.TargetField) {
+            || session.Player.IsDead || session.Player.InBattle || session.Field.MapId == game.TargetField) {
             return;
         }
         session.Send(session.PrepareField(game.TargetField)

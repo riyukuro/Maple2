@@ -19,6 +19,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -41,6 +42,47 @@ public class SpringFarmGameTests {
         Assert.That(game.Interacted(10002), Is.False);
         Assert.That(game.Interacted(10003), Is.False);
         Assert.That(game.Score, Is.EqualTo(100));
+    }
+
+    // An object that keeps its state when used (Ui, Telescope) scores once per object in the game; another object of
+    // the same interact id scores too, and an object that resets (Mesh) scores on each use.
+    [Test]
+    public void Interact_KeepsStateScoresOncePerObject() {
+        var game = new SpringFarmGame(3);
+        game.SetInteractScore(10001, 50);
+
+        Assert.That(game.Interacted(10001, "a", keepsState: true), Is.True);
+        Assert.That(game.Interacted(10001, "a", keepsState: true), Is.False);
+        Assert.That(game.Interacted(10001, "b", keepsState: true), Is.True);
+        Assert.That(game.Interacted(10001, "c"), Is.True);
+        Assert.That(game.Interacted(10001, "c"), Is.True);
+        Assert.That(game.Score, Is.EqualTo(200));
+    }
+
+    // The game's players are the characters given at start_game.
+    [Test]
+    public void Players_OfTheStart() {
+        var game = new SpringFarmGame(3, [7, 8]);
+        Assert.That(game.Plays(7), Is.True);
+        Assert.That(game.Plays(8), Is.True);
+        Assert.That(game.Plays(9), Is.False);
+        Assert.That(new SpringFarmGame(3).Plays(7), Is.False);
+    }
+
+    // The arcade fields are solo instance fields (instancefield Type 1): each entry without an owner or a room is a
+    // field of its own, so two players entering get two fields. A room id, an owner's room (guild event), a home and
+    // the channel-scaled fields take their own paths.
+    [TestCase(InstanceType.solo, 0L, 0, true)]
+    [TestCase(InstanceType.solo, 0L, 5, false)]
+    [TestCase(InstanceType.GuildEvent, 3L, 0, false)]
+    [TestCase(InstanceType.GuildEvent, 0L, 0, true)]
+    [TestCase(InstanceType.ugcMap, 0L, 0, false)]
+    [TestCase(InstanceType.channelScale, 0L, 0, false)]
+    [TestCase(InstanceType.DungeonLobby, 0L, 0, false)]
+    public void NewFieldPerEntry(InstanceType type, long ownerId, int roomId, bool expected) {
+        Assert.That(FieldEntryRules.NewFieldPerEntry(type, ownerId, roomId), Is.EqualTo(expected));
+        // A second entry is a new field again.
+        Assert.That(FieldEntryRules.NewFieldPerEntry(type, ownerId, roomId), Is.EqualTo(expected));
     }
 
     // A spawn's score is given once, when its monsters are all dead; a spawn set again gives it again.
@@ -236,6 +278,37 @@ public class SpringFarmGameTests {
             new ArcadeRewardTable.Entry(1, 2f, 400),
         }));
     }
+
+    // A second node of the same arcade adds its rows to the first one's instead of replacing them; its row of a round
+    // the first has replaces it, with the same locale rule. The shipped file has one node per arcade (ids 1-5).
+    [Test]
+    public void ArcadeRewardRows_RepeatedArcade() {
+        var document = new XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <arcadeGame arcadeId="1">
+                <reward round="0" expRate="0.5" meso="100" />
+                <reward round="1" expRate="1" meso="200" locale="XX" />
+              </arcadeGame>
+              <arcadeGame arcadeId="2">
+                <reward round="0" expRate="3" meso="30" />
+              </arcadeGame>
+              <arcadeGame arcadeId="1">
+                <reward round="1" expRate="7" meso="700" />
+                <reward round="2" expRate="2" meso="300" />
+                <reward round="0" expRate="0.25" meso="50" />
+              </arcadeGame>
+            </ms2>
+            """);
+        ArcadeRewardTable table = ServerTableMapper.MapArcadeReward(document, row => row.GetAttribute("locale") is "" or "XX");
+        Assert.That(table.Entries.Keys, Is.EquivalentTo(new[] { 1, 2 }));
+        Assert.That(table.Entries[1].Values, Is.EquivalentTo(new[] {
+            new ArcadeRewardTable.Entry(0, 0.25f, 50),
+            new ArcadeRewardTable.Entry(1, 1f, 200),
+            new ArcadeRewardTable.Entry(2, 2f, 300),
+        }));
+        Assert.That(table.Entries[2].Values, Is.EquivalentTo(new[] { new ArcadeRewardTable.Entry(0, 3f, 30) }));
+    }
     #endregion
 }
 
@@ -387,11 +460,23 @@ public class SpringFarmSessionTests {
         Send(PlayArcadeHandler.Enter, 1);
         Assert.That(Sent(), Is.Empty);
     }
+
+    // In battle, as the client's lobby refuses it: dropped.
+    [Test]
+    public void Enter_RefusedInBattle() {
+        MapMetadata map = TestGameSession.Map(GameField, notInPlayedClient: true);
+        test.AddMap(map with { Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)) });
+        typeof(FieldPlayer).GetField("inBattle", Any)!.SetValue(session.Player, true);
+
+        Send(PlayArcadeHandler.Enter, 1);
+
+        Assert.That(Sent(), Is.Empty);
+    }
     #endregion
 
     #region Field
-    private SpringFarmGame StartGame(int lives = 2) {
-        var game = new SpringFarmGame(lives);
+    private SpringFarmGame StartGame(int lives = 2, long? player = null) {
+        var game = new SpringFarmGame(lives, [player ?? test.CharacterId]);
         session.Field!.SpringFarm = game;
         return game;
     }
@@ -466,6 +551,43 @@ public class SpringFarmSessionTests {
         Assert.That(Best()!.Score, Is.EqualTo(900));
     }
 
+    // The end pays only the game's players: a character in the field that was not in it at start_game gets no exp,
+    // no meso, no best and no result.
+    [Test]
+    public void End_PaysOnlyTheGamesPlayers() {
+        SpringFarmGame game = StartGame(player: test.CharacterId + 1);
+        game.SetInteractScore(10001, 500);
+        game.Interacted(10001);
+        long meso = session.Currency.Meso;
+        long exp = session.Player.Value.Character.Exp;
+        test.TakeSent();
+
+        session.Field!.EndSpringFarm();
+
+        Assert.That(game.Ended, Is.True);
+        Assert.That(Sent(), Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+        Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(exp));
+        Assert.That(Best(), Is.Null);
+    }
+
+    // Without an arcade season the end pays and shows the result, and keeps no best (season 0).
+    [Test]
+    public void End_NoSeasonKeepsNoBest() {
+        SetSeason(DateTime.Now.AddDays(-9), DateTime.Now.AddDays(-2));
+        SpringFarmGame game = StartGame();
+        game.SetInteractScore(10001, 500);
+        game.Interacted(10001);
+        test.TakeSent();
+
+        session.Field!.EndSpringFarm();
+
+        ByteReader reader = Arcade(test.TakeSent().Last(), 2);
+        Assert.That(new[] { reader.ReadInt(), reader.ReadInt() }, Is.EqualTo(new[] { 500, 0 }));
+        Assert.That(Best(0), Is.Null);
+        Assert.That(Best(), Is.Null);
+    }
+
     // A death sends the life bar; the last life ends the game with the result.
     [Test]
     public void Death_TakesALifeAndTheLastEndsTheGame() {
@@ -526,6 +648,7 @@ public class SpringFarmSessionTests {
         Run(context, """<action name="arcade_spring_farm_set_interact_score" id="10001" score="70" />""");
         Run(context, """<action name="arcade_spring_farm_start_round" round="1" ui_duration="3000" time_score_type="remain" time_score_rate="10" round_duration="60000" />""");
         SpringFarmGame game = session.Field!.SpringFarm!;
+        Assert.That(game.Plays(test.CharacterId), Is.True);
         Assert.That(game.Round, Is.EqualTo(1));
         session.Field.SpringFarmInteracted(10001);
         test.TakeSent();

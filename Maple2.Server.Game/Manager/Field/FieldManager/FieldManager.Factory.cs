@@ -521,7 +521,7 @@ public partial class FieldManager {
                         if (FieldEntryRules.HasOwnerRoom(metadata.Type, ownerId, roomId)) {
                             return GetOwnerRoom();
                         }
-                        if (ownerId == 0 && roomId == 0) {
+                        if (FieldEntryRules.NewFieldPerEntry(metadata.Type, ownerId, roomId)) {
                             return Create(mapId);
                         }
                         break;

@@ -167,6 +167,14 @@ public static class FieldEntryRules {
         return ownerId != 0 && roomId == 0 && type is InstanceType.GuildEvent or InstanceType.GuildHouse or InstanceType.WeddingHall;
     }
 
+    // An instance field entered without an owner or a room is a new field for each entry: a solo field (such as
+    // the arcade fields 51000001-51000006, instancefield Type 1) and every other type except homes (ugcMap), the
+    // dungeon lobby and the channel-scaled fields, which have their own paths.
+    public static bool NewFieldPerEntry(InstanceType type, long ownerId, int roomId) {
+        return ownerId == 0 && roomId == 0 && type is not (InstanceType.ugcMap or InstanceType.DungeonLobby or InstanceType.channelScale)
+               && !HasOwnerRoom(type, ownerId, roomId);
+    }
+
     public static string LogName(string? characterName) {
         return characterName ?? string.Empty;
     }

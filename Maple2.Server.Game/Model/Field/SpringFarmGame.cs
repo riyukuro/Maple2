@@ -27,15 +27,27 @@ public class SpringFarmGame {
 
     private readonly Dictionary<int, int> spawnScores = new();
     private readonly Dictionary<int, int> interactScores = new();
+    // The objects that keep their state when used (Ui, Telescope) that have scored in this game.
+    private readonly HashSet<string> scoredObjects = new();
+    // The characters in the field at start_game: the end pays only them.
+    private readonly HashSet<long> players = new();
     private string timeScoreType = string.Empty;
     private int timeScoreRate;
     private long roundEndTick;
     private bool roundOpen;
 
-    public SpringFarmGame(int lifeCount) {
+    public SpringFarmGame(int lifeCount, IEnumerable<long>? characterIds = null) {
         LifeCount = Math.Max(lifeCount, 0);
         Lives = LifeCount;
+        if (characterIds != null) {
+            players.UnionWith(characterIds);
+        }
     }
+
+    /// <summary>
+    /// Whether the character played this game (was in the field at start_game).
+    /// </summary>
+    public bool Plays(long characterId) => players.Contains(characterId);
 
     public void SetInteractScore(int interactId, int score) {
         interactScores[interactId] = score;
@@ -54,11 +66,15 @@ public class SpringFarmGame {
     }
 
     /// <summary>
-    /// A use of an interact object: its score is added each time.
+    /// A use of an interact object: its score is added each time it reacts. An object that keeps its state when used
+    /// (Ui, Telescope: no reset brings it back) scores once per object in the game.
     /// </summary>
     /// <returns>Whether the score changed.</returns>
-    public bool Interacted(int interactId) {
+    public bool Interacted(int interactId, string entityId = "", bool keepsState = false) {
         if (Ended || !interactScores.TryGetValue(interactId, out int score) || score == 0) {
+            return false;
+        }
+        if (keepsState && !scoredObjects.Add(entityId)) {
             return false;
         }
         Score += score;
