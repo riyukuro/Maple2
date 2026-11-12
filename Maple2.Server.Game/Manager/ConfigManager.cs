@@ -193,7 +193,8 @@ public class ConfigManager {
         }
     }
     public void SaveSkillCooldown(SkillMetadata skill, long startTick) {
-        if (!skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown) || startTick > cooldown.EndTick) {
+        // An item skill's accepted use always starts its cooldown again (it may come up to the slack early).
+        if (!skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown) || startTick > cooldown.EndTick || skill.Data.Consume.UseItem) {
             cooldown = new SkillCooldown(skill.Id, skill.Level) {
                 EndTick = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds) + startTick,
                 GroupId = skill.State.CooldownGroupId,
@@ -203,6 +204,11 @@ public class ConfigManager {
         if (skill.State.RechargeMaxCount > 0) {
             cooldown.Charges = Math.Clamp(cooldown.Charges + 1, cooldown.Charges, skill.State.RechargeMaxCount);
         }
+    }
+
+    // The cooldown, the skill's own or one of its cooldown group, that refuses a use at this tick; null when none.
+    public SkillCooldown? BlockingCooldown(SkillMetadata skill, long tick) {
+        return SkillCastRules.BlockingCooldown(skillCooldowns.Values, skill.Id, skill.State.CooldownGroupId, tick);
     }
 
     public SkillCooldown? GetSkillCooldown(int skillId) {

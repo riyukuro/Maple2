@@ -183,9 +183,22 @@ public class Buff : IUpdatable, IByteSerializable {
         ApplySplash();
 
         NextProcTick += IntervalTick;
-        if (NextProcTick > EndTick) {
+        if (NextProcTick > EndTick || ProcCount >= ProcLimit(Metadata.Property, EndTick - StartTick, IntervalTick)) {
             canProc = false;
         }
+    }
+
+    // A dotCondition-0 buff procs duration / interval times, cut to a whole number and at least once: in KMS2 a
+    // 100 ms buff with a 100 ms interval heals once, an 8 s dot with a 1 s interval hits 8 times (at 0 to 7 s) and a
+    // 25 s one with a 1.5 s interval 16 times. Other buffs have no count limit; their end tick stops them.
+    public static int ProcLimit(AdditionalEffectMetadataProperty property, long durationTick, long intervalTick) {
+        if (property.DotCondition != BuffDotCondition.Default) {
+            return int.MaxValue;
+        }
+        if (intervalTick <= 0) {
+            return 1;
+        }
+        return (int) Math.Clamp(durationTick / intervalTick, 1, int.MaxValue);
     }
 
     private void ApplySplash() {

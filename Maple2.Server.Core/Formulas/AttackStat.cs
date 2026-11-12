@@ -52,15 +52,15 @@ public static class AttackStat {
             case JobCode.Knight:
             case JobCode.Berserker:
             case JobCode.Striker:
+            case JobCode.Thief:
+            case JobCode.Archer:
                 // 0.35 int, at least 1.
                 return Math.Max(1, Scaled(3500, @int));
         }
 
-        // Chosen here: Archer, HeavyGunner, Thief and Assassin keep the older value.
+        // Chosen here: HeavyGunner and Assassin keep the older value.
         float intCoefficient = jobCode switch {
-            JobCode.Archer => PRIMARY,
             JobCode.HeavyGunner => PRIMARY,
-            JobCode.Thief => PRIMARY,
             JobCode.Assassin => PRIMARY,
             _ => 0.0f,
         };
@@ -84,7 +84,7 @@ public static class AttackStat {
             JobCode.Wizard or JobCode.Priest or JobCode.SoulBinder => Scaled(1100, @int),
             JobCode.RuneBlader => Scaled(2200, @int),
             // Chosen here: 0.55; the known values allow 0.539 to 0.555.
-            JobCode.Newbie or JobCode.Knight or JobCode.Berserker or JobCode.Striker => Scaled(5500, @int),
+            JobCode.Newbie or JobCode.Knight or JobCode.Berserker or JobCode.Striker or JobCode.Thief or JobCode.Archer => Scaled(5500, @int),
             // Not settled for the other jobs: none, as before.
             _ => 0,
         };

@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -116,11 +117,16 @@ public class SkillHandler : FieldPacketHandler {
             session.Send(NoticePacket.Message($"Skill.Use: {skillId}, {skillUid}; IsHold: false; UnkBool: {record.Unknown}"));
         }
 
-        if (!session.Player.SkillCastConsume(record)) {
+        long startTick = session.Field.FieldTick;
+        SkillCooldown? blocking = null;
+        if (!CastAllowed(session, record, startTick, out blocking) || !session.Player.SkillCastConsume(record)) {
+            // Nothing was paid. The client ends the cast and takes the cooldown from this answer
+            // (CSceneStateGame::OnSkillUseFailed, mode 5).
+            session.Send(SkillUseFailedPacket.Fail(record.CastUid, record.SkillId, record.Metadata.Data.Condition.CooldownTime,
+                blocking ?? session.Config.GetSkillCooldown(record.SkillId), startTick));
             return;
         }
 
-        long startTick = session.Field.FieldTick;
         session.Player.InBattle = record.Metadata.State.InBattle;
         session.Player.ActiveSkills.Add(record);
         session.Field.Broadcast(SkillPacket.Use(record));
@@ -132,6 +138,24 @@ public class SkillHandler : FieldPacketHandler {
 
         session.ConditionUpdate(ConditionType.skill, codeLong: skillId, targetLong: session.Field.MapId);
         session.Config.SaveSkillCooldown(record.Metadata, startTick);
+    }
+
+    // Checked before any cost is paid. A dead player casts only a skill that allows it. An item skill must also
+    // pass its own condition and be off cooldown, its own and its cooldown group's.
+    private static bool CastAllowed(GameSession session, SkillRecord record, long tick, out SkillCooldown? blocking) {
+        blocking = null;
+        BeginCondition condition = record.Metadata.Data.Condition;
+        if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
+            return false;
+        }
+        if (!record.Metadata.Data.Consume.UseItem) {
+            return true;
+        }
+        if (!condition.Check(session.Player, session.Player, session.Player)) {
+            return false;
+        }
+        blocking = session.Config.BlockingCooldown(record.Metadata, tick);
+        return blocking == null;
     }
 
     private void HandlePoint(GameSession session, IByteReader packet) {

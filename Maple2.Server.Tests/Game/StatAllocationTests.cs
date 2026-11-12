@@ -50,9 +50,18 @@ public class StatAllocationTests {
     [Test]
     public void OlderValuesKeptForUnsettledJobs() {
         Assert.That(AttackStat.PhysicalAtk(JobCode.Thief, 67, 27, 381), Is.EqualTo(252));
-        Assert.That(AttackStat.MagicalAtk(JobCode.Archer, 30), Is.EqualTo(19));
+        Assert.That(AttackStat.MagicalAtk(JobCode.HeavyGunner, 30), Is.EqualTo(19));
         Assert.That(AttackStat.PhysicalRes(JobCode.Thief, 67, 27), Is.EqualTo(0));
         Assert.That(AttackStat.MagicalRes(JobCode.Assassin, 25), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ThiefAndArcherMagicalValues() {
+        Assert.That(AttackStat.MagicalAtk(JobCode.Archer, 30), Is.EqualTo(10));
+        Assert.That(AttackStat.MagicalAtk(JobCode.Thief, 30), Is.EqualTo(10));
+        Assert.That(AttackStat.MagicalAtk(JobCode.Thief, 1), Is.EqualTo(1));
+        Assert.That(AttackStat.MagicalRes(JobCode.Archer, 30), Is.EqualTo(16));
+        Assert.That(AttackStat.MagicalRes(JobCode.Thief, 30), Is.EqualTo(16));
     }
 
     private static Stats Rebuild(int str, int health, int crit, int gearStr, int gearInt) {

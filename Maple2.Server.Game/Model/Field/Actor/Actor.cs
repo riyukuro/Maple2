@@ -377,6 +377,14 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
     public virtual void KeyframeEvent(string keyName) { }
 
     public virtual SkillRecord? CastSkill(int id, short level, long uid, int castTick, in Vector3 position = default, in Vector3 direction = default, in Vector3 rotation = default, float rotateZ = 0f, byte motionPoint = 0) {
+        SkillRecord? record = NewCast(id, level, uid, castTick, position, direction, rotation, rotateZ, motionPoint);
+        if (record != null) {
+            Field.Broadcast(SkillPacket.Use(record));
+        }
+        return record;
+    }
+
+    protected SkillRecord? NewCast(int id, short level, long uid, int castTick, in Vector3 position, in Vector3 direction, in Vector3 rotation, float rotateZ, byte motionPoint) {
         if (!Field.SkillMetadata.TryGet(id, level, out SkillMetadata? metadata)) {
             Logger.Error("Invalid skill use: {SkillId},{Level}", id, level);
             return null;
@@ -393,8 +401,6 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             Logger.Error("Invalid MotionPoint({MotionPoint}) for {Record}", motionPoint, record);
             return null;
         }
-
-        Field.Broadcast(SkillPacket.Use(record));
 
         return record;
     }

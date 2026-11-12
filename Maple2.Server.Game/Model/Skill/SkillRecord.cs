@@ -31,6 +31,7 @@ public class SkillRecord {
     public int HoldInt;
     public string HoldString = string.Empty;
     public long ItemUid;
+    public bool ItemConsumed; // the cast has taken its item
 
     public long StateNextTick; // Used for state skills only
 

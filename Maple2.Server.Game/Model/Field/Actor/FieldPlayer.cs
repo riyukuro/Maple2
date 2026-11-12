@@ -802,6 +802,12 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
+    // A player's cast is sent to the field once, by the handler, after the rest of the request is read and the
+    // cost is paid: KMS2 sends one SkillUse per cast.
+    public override SkillRecord? CastSkill(int id, short level, long uid, int castTick, in Vector3 position = default, in Vector3 direction = default, in Vector3 rotation = default, float rotateZ = 0f, byte motionPoint = 0) {
+        return NewCast(id, level, uid, castTick, position, direction, rotation, rotateZ, motionPoint);
+    }
+
     public override bool SkillCastConsume(SkillRecord record) {
         if (!base.SkillCastConsume(record)) {
             return false;
@@ -844,7 +850,8 @@ public class FieldPlayer : Actor<Player> {
             }
         }
 
-        if (metadata.Data.Consume.UseItem) {
+        // One item per cast: a tick sync of the same cast pays the other costs again, not the item.
+        if (SkillCastRules.ConsumesItem(metadata.Data.Consume.UseItem, record.ItemConsumed)) {
             if (record.ItemUid == 0) {
                 Logger.Error("Invalid item uid for skill: {SkillId},{Level}", metadata.Id, metadata.Level);
                 return false;
@@ -856,6 +863,7 @@ public class FieldPlayer : Actor<Player> {
                     Logger.Error("Failed to consume pet bag item {ItemUid} for skill: {SkillId},{Level}", record.ItemUid, metadata.Id, metadata.Level);
                     return false;
                 }
+                record.ItemConsumed = true;
                 return true;
             }
 
@@ -869,6 +877,7 @@ public class FieldPlayer : Actor<Player> {
                 Logger.Error("Failed to consume item {itemId} for skill: {SkillId},{Level}", item.Id, metadata.Id, metadata.Level);
                 return false;
             }
+            record.ItemConsumed = true;
         }
 
         return true;
