@@ -90,6 +90,15 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: grade, codeLong: achievementId), Is.EqualTo(expected));
     }
 
+    // An interact object counts for interact_object_rep with a target when its interact type is the target.
+    [TestCase(InteractType.Telescope, true)]
+    [TestCase(InteractType.Mesh, false)]
+    public void InteractObjectRep_CountsTheListedInteractType(InteractType type, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.interact_object_rep, 1,
+            null, new ConditionMetadata.Parameters(Integers: [2]));
+        Assert.That(condition.Check(null!, targetLong: (long) type, codeLong: 10000001), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]

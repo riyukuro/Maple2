@@ -87,7 +87,7 @@ public class InteractObjectHandler : FieldPacketHandler {
     private void End(GameSession session, string entityId) {
         if (session.Field?.TryGetInteract(entityId, out FieldInteract? interact) == true && interact.React()) {
             session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
-            session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id);
+            session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id, targetLong: (long) interact.Value.Type);
             session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnInvestigate);
 
             switch (interact.Value.Type) {

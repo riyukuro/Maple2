@@ -213,6 +213,12 @@ public static class ConditionUtil {
                 }
 
                 break;
+            case ConditionType.interact_object_rep:
+                // The interact type of the object (2 telescope: the binocular event quest 89050108).
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
             case ConditionType.item_exist:
             case ConditionType.spawner:
                 // item_exist: the map the item is collected on (quest drops of one map, 20001480 and others).
