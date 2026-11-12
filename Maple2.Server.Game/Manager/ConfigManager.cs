@@ -37,6 +37,10 @@ public class ConfigManager {
     private readonly IDictionary<int, SkillCooldown> skillCooldowns;
     private readonly IDictionary<int, SkillCastRules.LastCast> lastCasts;
     private SkillCastRules.LastMotion? lastMotion;
+    public readonly LagBudget Lag = new(); // casts and held-skill iterations that arrive early
+    public readonly LagBudget MoveLag = new(); // position syncs that arrive early
+    public readonly ClockRate CastClock = new(ClockRate.CastBoundMs);
+    public readonly ClockRate SyncClock = new(ClockRate.SyncBoundMs);
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;
@@ -218,14 +222,20 @@ public class ConfigManager {
         return SkillCastRules.BlockingCooldown(skillCooldowns.Values, skill.Id, skill.State.CooldownGroupId, tick);
     }
 
-    // Whether a cast of a job skill comes too early after the last accepted cast of it or of its cooldown group
-    // (SkillCastRules.CooldownRefuses). Not checked, because the server does not know the cooldown's length then:
-    // a skill with recharge uses, and a cast whose cooldown a buff or the caster's cooldown reduction shortens.
-    public bool CastTooEarly(SkillMetadata skill, int castTick, long tick) {
-        if (skill.State.RechargeMaxCount > 0 || CooldownReduced(skill)) {
-            return false;
-        }
-        return SkillCastRules.CooldownRefuses(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick, AttackSpeed);
+    // Why a cast comes too early, null when it does not (SkillCastRules.TimingRefusal): before the motion of the
+    // last accepted cast lets the next one in, or (cooldown: a job skill) before the cooldown of the last accepted
+    // cast of it or of its cooldown group ends. The cooldown is not checked when the server does not know its
+    // length: a skill with recharge uses, and a cast whose cooldown a buff or the caster's cooldown reduction
+    // shortens. A cast that only arrives early draws once from the session's lag budget, for the longer of the two.
+    // clockTurnedFast: this cast's tick is the first of a fast time of the client's clock (to be logged).
+    public string? CastTimingRefusal(SkillMetadata skill, bool cooldown, int castTick, long tick, out bool clockTurnedFast) {
+        clockTurnedFast = CastClock.Add(castTick, tick);
+        long motionMs = lastMotion is { } last
+            ? SkillCastRules.MotionShortfall(last, skill.Id, skill.Property.ImmediateActive, AttackSpeed, castTick, tick) : 0;
+        long cooldownMs = cooldown && skill.State.RechargeMaxCount <= 0 && !CooldownReduced(skill)
+            ? SkillCastRules.CooldownShortfall(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick, AttackSpeed) : 0;
+        string? reason = SkillCastRules.TimingRefusal(Math.Max(motionMs, cooldownMs), CastClock.IsFast(tick), Lag, tick);
+        return reason == null ? null : $"{(cooldownMs >= motionMs ? "cooldown" : "motion")}: {reason}";
     }
 
     private bool CooldownReduced(SkillMetadata skill) {
@@ -245,13 +255,6 @@ public class ConfigManager {
     }
 
     private long AttackSpeed => session.Player.Stats.Values[BasicAttribute.AttackSpeed].Total;
-
-    // Whether a cast comes before the motion of the last accepted cast lets the next one in
-    // (SkillCastRules.MotionRefuses).
-    public bool MotionTooEarly(SkillMetadata skill, int castTick, long tick) {
-        return lastMotion is { } last
-               && SkillCastRules.MotionRefuses(last, skill.Id, skill.Property.ImmediateActive, AttackSpeed, castTick, tick);
-    }
 
     // Keeps an accepted cast's motion for the next cast. A cast whose motion has no sequence on the player's rig
     // leaves the last kept motion as it is.

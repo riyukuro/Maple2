@@ -28,7 +28,9 @@ public static class SkillHitRules {
     public const long HeldIntervalSlackMs = 20;
     // Chosen here: an iteration may arrive this long before its time. The times are counted on from the first
     // iteration, one interval each, so a hold as a whole is not faster than its loop, and iterations that arrive
-    // together after a late one (a stall of the link or of the field) are still on time.
+    // together after a late one (a stall of the link or of the field) are still on time. An iteration that comes
+    // sooner still (the first one was held up, the next ones not) draws the rest from the session's LagBudget, and
+    // the times after it come sooner by what was drawn.
     public const long HeldArrivalAllowanceMs = 500;
     // KMS2 sends the last attack packet of a cast at most 3.55 s after the cast (99 in 100 within 0.82 s). A skill
     // that continues while held counts from its last taken attack point packet instead (SkillHitBudget).
@@ -65,7 +67,10 @@ public static class SkillHitRules {
     }
 
     // Whether an iteration arrives before its time.
-    public static bool IterationTooEarly(long tick, long dueTick) => tick < dueTick - HeldArrivalAllowanceMs;
+    public static bool IterationTooEarly(long tick, long dueTick) => IterationEarlyBy(tick, dueTick) > 0;
+
+    // The time an iteration arrives before its time by, past the allowance.
+    public static long IterationEarlyBy(long tick, long dueTick) => Math.Max(0, dueTick - HeldArrivalAllowanceMs - tick);
 }
 
 // What one cast may still hit. An attack point packet declares attacks by uid; a target packet pays damage for one
@@ -84,12 +89,24 @@ public sealed class SkillHitBudget {
 
     public bool TooLate(long tick) => SkillHitRules.TooLate(tick, windowTick);
 
+    // What the last taken attack point packet would have been refused for with enforce set; null when nothing.
+    public string? Unenforced { get; private set; }
+
     // maxCount: the most attacks the packet may declare (SkillHitRules.MaxAttacks). intervalMs: the shortest time
-    // between two iterations of a held skill (SkillHitRules.HeldInterval), 0 when not known.
+    // between two iterations of a held skill (SkillHitRules.HeldInterval), 0 when not known. lag: the session's
+    // budget for an iteration that arrives early, none when null. enforce: false takes a packet that declares too
+    // many attacks or whose iteration comes too early, and names the reason in Unenforced.
     public bool TakePoint(byte attackPoint, int iteration, bool held, int count, long tick,
-                          int maxCount = SkillHitRules.MaxPointAttacks, long intervalMs = 0) {
-        if (TooLate(tick) || count > maxCount) {
+                          int maxCount = SkillHitRules.MaxPointAttacks, long intervalMs = 0, LagBudget? lag = null, bool enforce = true) {
+        Unenforced = null;
+        if (TooLate(tick)) {
             return false;
+        }
+        if (count > maxCount) {
+            if (enforce) {
+                return false;
+            }
+            Unenforced = $"{count} attacks declared, at most {maxCount}";
         }
         long due = tick;
         bool early = false;
@@ -98,7 +115,15 @@ public sealed class SkillHitBudget {
                 return false;
             }
             due = dueTicks.GetValueOrDefault(attackPoint, tick);
-            early = SkillHitRules.IterationTooEarly(tick, due);
+            long earlyBy = SkillHitRules.IterationEarlyBy(tick, due);
+            if (earlyBy > 0 && lag != null && lag.TryDraw(earlyBy, tick)) {
+                due -= earlyBy;
+            } else if (earlyBy > 0 && !enforce) {
+                Unenforced = $"iteration {earlyBy} ms early";
+                due -= earlyBy;
+            } else {
+                early = earlyBy > 0;
+            }
         } else if (iteration != 0) {
             return false;
         }

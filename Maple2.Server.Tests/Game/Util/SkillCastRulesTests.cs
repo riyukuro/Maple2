@@ -168,17 +168,18 @@ public class SkillCastRulesTests {
     }
 
     [Test]
-    public void CastGapIsNotLengthenedByTheClientTick() {
-        // The client's tick says 8 s, the arrivals 1 s apart: the arrivals count, plus the allowance.
-        Assert.That(SkillCastRules.CastGap(58_000, 50_000, 101_000, 100_000), Is.EqualTo(1000 + SkillCastRules.ArrivalAllowanceMs));
-        // Arrivals bunched by up to the allowance do not shorten the client's own gap.
-        Assert.That(SkillCastRules.CastGap(58_000, 50_000, 107_600, 100_000), Is.EqualTo(8000));
-        // A tick that runs backwards is left out.
-        Assert.That(SkillCastRules.CastGap(40_000, 50_000, 108_000, 100_000), Is.EqualTo(8000 + SkillCastRules.ArrivalAllowanceMs));
-        // The 32-bit tick wraps.
-        Assert.That(SkillCastRules.CastGap(int.MinValue + 3999, int.MaxValue - 4000, 108_000, 100_000), Is.EqualTo(8000));
+    public void CooldownIsNotShortenedByTheClientTick() {
+        // Cooldown 8 s, taken from 7.5 s on. The client's tick says 8 s, the arrivals 1 s apart: 6.5 s early.
         SkillCastRules.LastCast[] casts = [new SkillCastRules.LastCast(10900061, 0, 8000, 100_000, 50_000)];
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 58_000, 101_000), Is.EqualTo(6500));
         Assert.That(SkillCastRules.CooldownRefuses(casts, 10900061, 0, 58_000, 101_000), Is.True);
+        // Arrivals 7.2 s apart: 300 ms early, for the lag budget.
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 58_000, 107_200), Is.EqualTo(300));
+        // The ticks too close as well.
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 57_000, 107_200), Is.EqualTo(SkillCastRules.ClientRefused));
+        // Long enough by the arrivals: taken whatever the tick says.
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 57_000, 107_500), Is.EqualTo(0));
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900062, 0, 50_001, 100_001), Is.EqualTo(0), "another skill");
     }
 
     [Test]
@@ -345,21 +346,23 @@ public class SkillCastRulesTests {
         // Attack speed 120 now: 0.6 / 1.2 = 500 ms, from 400 ms on.
         Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 120, 5400, 10400), Is.False);
         Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 120, 5399, 10399), Is.True);
-        // The client's tick cannot lengthen the time: the arrivals plus the allowance count.
-        Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 100, 9000, 10000), Is.False, "arrivals 0 ms apart plus 1000");
+        // The client's tick cannot lengthen the time: the arrivals count, the rest is for the lag budget.
+        Assert.That(SkillCastRules.MotionShortfall(last, 11, false, 100, 9000, 10000), Is.EqualTo(500), "arrivals 0 ms apart");
+        // On time by the arrivals is on time, whatever the ticks say.
+        Assert.That(SkillCastRules.MotionShortfall(last, 11, false, 100, 5001, 10500), Is.EqualTo(0));
         // A motion of move type 3 is not sped up: 0.6 s at attack speed 120, from 500 ms on.
         var unscaled = last with { MoveType = 3 };
         Assert.That(SkillCastRules.MotionRefuses(unscaled, 11, false, 120, 5499, 10499), Is.True);
         Assert.That(SkillCastRules.MotionRefuses(unscaled, 11, false, 120, 5500, 10500), Is.False);
         var slow = new SkillCastRules.LastMotion(10, 1.2f, 1.2f, 1f, 100, ServerTick: 10000, CastTick: 5000);
-        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 9000, 10000), Is.True);
-        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 9000, 10100), Is.False, "two casts held up together");
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 9000, 10000), Is.EqualTo(1100));
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 9000, 10100), Is.EqualTo(1000), "two casts held up together");
         // The attack speed fell since the last cast: the higher one counts.
         var fast = last with { AttackSpeed = 150 };
         Assert.That(SkillCastRules.MotionRefuses(fast, 11, false, 100, 5300, 10300), Is.False, "0.6 / 1.5 = 400 ms");
-        // Arriving in a burst is taken by the client's own ticks.
-        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 6099, 10600), Is.True);
-        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 6100, 10100), Is.False);
+        // Arriving in a burst: too early by the client's own ticks is refused outright.
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 6099, 10600), Is.EqualTo(SkillCastRules.ClientRefused));
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 6100, 10100), Is.EqualTo(1000));
     }
 
     [Test]

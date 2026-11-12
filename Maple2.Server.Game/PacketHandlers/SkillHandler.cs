@@ -153,15 +153,12 @@ public class SkillHandler : FieldPacketHandler {
     // Checked before any cost is paid. A dead player casts only a skill that allows it. A skill of a job's tree
     // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
     // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast.
-    // No cast comes before the motion of the last cast lets the next one in (SkillCastRules.MotionRefuses).
+    // No cast comes before the motion of the last cast lets the next one in. The two timing checks
+    // (ConfigManager.CastTimingRefusal) refuse only when CastCheckSetting says so, else they log.
     private bool CastAllowed(GameSession session, SkillRecord record, long tick, int castTick, out SkillCooldown? blocking) {
         blocking = null;
         BeginCondition condition = record.Metadata.Data.Condition;
         if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
-            return false;
-        }
-        if (session.Config.MotionTooEarly(record.Metadata, castTick, tick)) {
-            Logger.Debug("Cast refused, skill {SkillId} comes before the last cast's motion lets it in", record.SkillId);
             return false;
         }
         SkillInfo skillInfo = session.Config.Skill.SkillInfo;
@@ -170,11 +167,19 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Debug("Cast refused, skill {SkillId} level {Level} is not in the tree of {Job} at that level", record.SkillId, record.Level, skillInfo.Job);
             return false;
         }
-        if (!record.Metadata.Data.Consume.UseItem) {
-            if (SkillCastRules.IsJobSkill(record.SkillId, inAnyTree) && session.Config.CastTooEarly(record.Metadata, castTick, tick)) {
-                Logger.Debug("Cast refused, skill {SkillId} is on cooldown", record.SkillId);
+        bool useItem = record.Metadata.Data.Consume.UseItem;
+        string? early = session.Config.CastTimingRefusal(record.Metadata, !useItem && SkillCastRules.IsJobSkill(record.SkillId, inAnyTree), castTick, tick, out bool clockTurnedFast);
+        if (clockTurnedFast) {
+            Logger.Information("Fast clock: the cast ticks of {Player} ({CharacterId}) run ahead of the server's time", session.PlayerName, session.CharacterId);
+        }
+        if (early != null) {
+            if (CastCheckSetting.Enforce) {
+                Logger.Debug("Cast refused, skill {SkillId}, {Reason}", record.SkillId, early);
                 return false;
             }
+            Logger.Information("Cast not refused (log only), skill {SkillId} of {Player}, {Reason}", record.SkillId, session.PlayerName, early);
+        }
+        if (!useItem) {
             return true;
         }
         if (!condition.Check(session.Player, session.Player, session.Player)) {
@@ -218,13 +223,18 @@ public class SkillHandler : FieldPacketHandler {
         int iterations = packet.ReadInt();
 
         // An attack point packet outside what a cast sends (SkillHitRules) is dropped: nothing is declared or relayed.
-        if (SkillHitRules.PointMoved(position, record.CastPosition)
-            || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick,
+        bool taken = !SkillHitRules.PointMoved(position, record.CastPosition)
+            && record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick,
                 SkillHitRules.MaxAttacks(record.Attack.TargetCount, record.Attack.Arrow.NonTarget == SkillTargetType.Owner),
-                session.Config.HeldInterval(record.Motion.MotionProperty, record.CastUid))) {
+                session.Config.HeldInterval(record.Motion.MotionProperty, record.CastUid), session.Config.Lag, CastCheckSetting.Enforce);
+        if (!taken) {
             Logger.Debug("Attack point dropped: AttackPoint={AttackPoint} iteration={Iteration} count={Count} at {Position}: {Record}",
                 attackPoint, iterations, count, position, record);
             return;
+        }
+        if (record.Hits.Unenforced is { } unenforced) {
+            Logger.Information("Attack point not dropped (log only), {Reason}: AttackPoint={AttackPoint} iteration={Iteration} count={Count} of {Player}: {Record}",
+                unenforced, attackPoint, iterations, count, session.PlayerName, record);
         }
 
         record.Position = position;

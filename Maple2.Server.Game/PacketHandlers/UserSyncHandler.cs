@@ -52,7 +52,10 @@ public class UserSyncHandler : FieldPacketHandler {
         // Chosen here: a move further than a player goes in that time is only logged, nothing is refused or reset.
         long now = Environment.TickCount64;
         for (int i = 0; i < segments; i++) {
-            if (session.Player.Moves.Add(ticks[i], stateSyncs[i].Position, now) is { } from
+            if (session.Config.SyncClock.Add(ticks[i], now)) {
+                Logger.Information("Fast clock: the position ticks of {Player} ({CharacterId}) run ahead of the server's time", session.PlayerName, session.CharacterId);
+            }
+            if (session.Player.Moves.Add(ticks[i], stateSyncs[i].Position, now, session.Config.MoveLag, session.Config.SyncClock.IsFast(now)) is { } from
                 && session.Player.Moves.CountFast(now) is > 0 and int count) {
                 Logger.Information("Fast move: player {Player} ({CharacterId}) from {From} to {To} in state {State} ({Count} since the last line)",
                     session.PlayerName, session.CharacterId, from, stateSyncs[i].Position, stateSyncs[i].State, count);

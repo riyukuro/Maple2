@@ -45,8 +45,6 @@ public static class SkillCastRules {
     public const long JobCooldownSlackMs = 500;
     // Chosen here: a cooldown under 1 s refuses a cast that comes sooner than this share of it.
     public const float ShortCooldownShare = 0.75f;
-    // Chosen here: the time between two arrivals may be this much shorter than the time between the two casts.
-    public const long ArrivalAllowanceMs = 500;
 
     // The last accepted cast of a skill: the cooldown it started and when, by the server's clock and by the
     // tick the client sent with the cast.
@@ -66,27 +64,43 @@ public static class SkillCastRules {
         return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare / MotionSpeed(sequenceSpeed, attackSpeed, moveType));
     }
 
-    // The time between two casts: the shorter of the client's own ticks and the arrivals plus the allowance, so
-    // a client cannot lengthen it with its tick. A cast tick that runs backwards is not counted.
-    public static long CastGap(int castTick, int lastCastTick, long serverTick, long lastServerTick, long allowanceMs = ArrivalAllowanceMs) {
-        long arrival = serverTick - lastServerTick + allowanceMs;
+    // A cast that comes too early by the client's own ticks as well as by the arrivals.
+    public const long ClientRefused = long.MaxValue;
+
+    // The time a cast comes too early by. The time between the two arrivals at the server counts: a client cannot
+    // lengthen it with its ticks. 0 when that time is long enough, whatever the ticks say: the client sets its
+    // tick anew at every time sync (CMainSystem::SetServerTickBase, to the server's number as it arrives), so a
+    // sync held up by the link or by a stalled client moves the ticks after it back by that long.
+    // When the arrivals are closer (packets held up and delivered together), the client's own ticks must be far
+    // enough apart, else ClientRefused; the time missing between the arrivals is returned then, to be drawn from
+    // the session's LagBudget. A cast tick that runs backwards says nothing: the arrivals alone count.
+    public static long ArrivalShortfall(int castTick, int lastCastTick, long serverTick, long lastServerTick, long requiredMs) {
+        long shortfall = requiredMs - (serverTick - lastServerTick);
+        if (shortfall <= 0) {
+            return 0;
+        }
         long client = unchecked(castTick - lastCastTick);
-        return client < 0 ? arrival : Math.Min(client, arrival);
+        return client >= 0 && client < requiredMs ? ClientRefused : shortfall;
     }
 
-    // Whether a cast of the skill comes too early after its own last cast or after the last cast of a skill of
-    // the same cooldown group (group 0 is no group).
+    // The time a cast of the skill comes too early by (ArrivalShortfall) after its own last cast or after the last
+    // cast of a skill of the same cooldown group (group 0 is no group): the longest when several count.
     // The higher of the attack speed at the last cast and now counts.
-    public static bool CooldownRefuses(IEnumerable<LastCast> casts, int skillId, int groupId, int castTick, long serverTick, long attackSpeed = 100) {
+    public static long CooldownShortfall(IEnumerable<LastCast> casts, int skillId, int groupId, int castTick, long serverTick, long attackSpeed = 100) {
+        long shortfall = 0;
         foreach (LastCast last in casts) {
             if (last.SkillId != skillId && (groupId == 0 || last.GroupId != groupId)) {
                 continue;
             }
-            if (CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < RequiredGap(last.CooldownMs, Math.Max(last.AttackSpeed, attackSpeed), last.SequenceSpeed, last.MoveType)) {
-                return true;
-            }
+            long required = RequiredGap(last.CooldownMs, Math.Max(last.AttackSpeed, attackSpeed), last.SequenceSpeed, last.MoveType);
+            shortfall = Math.Max(shortfall, ArrivalShortfall(castTick, last.CastTick, serverTick, last.ServerTick, required));
         }
-        return false;
+        return shortfall;
+    }
+
+    // Whether the cast comes too early for a session with nothing left in its LagBudget.
+    public static bool CooldownRefuses(IEnumerable<LastCast> casts, int skillId, int groupId, int castTick, long serverTick, long attackSpeed = 100) {
+        return CooldownShortfall(casts, skillId, groupId, castTick, serverTick, attackSpeed) > 0;
     }
 
     // The time a cast's motion takes before the next cast. The client takes the next skill from the motion's
@@ -100,9 +114,6 @@ public static class SkillCastRules {
     // to one loop sooner: such a key is counted without the loop's length.
     // Chosen here: a cast is taken up to this long before that time.
     public const long MotionSlackMs = 100;
-    // Chosen here: the time between two arrivals may be this much shorter than the time between the two casts. It
-    // is longer than for cooldowns because this check is on every skill, and two casts held up together arrive at once.
-    public const long MotionArrivalAllowanceMs = 1000;
 
     // The rotation a cast carries: the one given with it, else (an npc's cast gives none) the caster's own. The client
     // takes the cast's facing from its z (CSceneStateGame::OnSkillUse).
@@ -157,16 +168,38 @@ public static class SkillCastRules {
         return (long) MathF.Round(keySeconds / speed * 1000) - MotionSlackMs;
     }
 
-    // Whether a cast comes before the last cast's motion lets the next one in. A skill that is active at once
-    // (ImmediateActive) is taken at any time, as in KMS2. The higher of the attack speed at the last cast and now
-    // counts.
-    public static bool MotionRefuses(LastMotion last, int skillId, bool immediateActive, long attackSpeed, int castTick, long serverTick) {
+    // The time a cast comes before the last cast's motion lets the next one in (ArrivalShortfall). A skill that is
+    // active at once (ImmediateActive) is taken at any time, as in KMS2. The higher of the attack speed at the last
+    // cast and now counts.
+    public static long MotionShortfall(LastMotion last, int skillId, bool immediateActive, long attackSpeed, int castTick, long serverTick) {
         if (immediateActive) {
-            return false;
+            return 0;
         }
         float key = last.SkillId == skillId ? last.SelfKey : last.NextKey;
         float speed = MotionSpeed(last.SequenceSpeed, Math.Max(last.AttackSpeed, attackSpeed), last.MoveType);
-        return CastGap(castTick, last.CastTick, serverTick, last.ServerTick, MotionArrivalAllowanceMs) < MotionRequiredGap(key, speed);
+        return ArrivalShortfall(castTick, last.CastTick, serverTick, last.ServerTick, MotionRequiredGap(key, speed));
+    }
+
+    // Whether the cast comes too early for a session with nothing left in its LagBudget.
+    public static bool MotionRefuses(LastMotion last, int skillId, bool immediateActive, long attackSpeed, int castTick, long serverTick) {
+        return MotionShortfall(last, skillId, immediateActive, attackSpeed, castTick, serverTick) > 0;
+    }
+
+    // What the timing of a cast comes to. needMs: the longer of its motion and cooldown shortfalls. A cast on time
+    // is taken. One that is early by the client's own ticks is refused. One that only arrives early is taken while
+    // the session's LagBudget holds the time it is early by, unless the client's clock runs fast (ClockRate): its
+    // ticks say nothing then, and the arrivals alone count.
+    public static string? TimingRefusal(long needMs, bool clockFast, LagBudget lag, long now) {
+        if (needMs <= 0) {
+            return null;
+        }
+        if (needMs == ClientRefused) {
+            return "too early by the client's own ticks";
+        }
+        if (clockFast) {
+            return $"arrives {needMs} ms early and the client's clock runs fast";
+        }
+        return lag.TryDraw(needMs, now) ? null : $"arrives {needMs} ms early, {lag.Level(now)} ms of lag allowance left";
     }
 
     // The skills whose cooldown is checked as a job skill's: those of a job's tree and the job skill ids.
