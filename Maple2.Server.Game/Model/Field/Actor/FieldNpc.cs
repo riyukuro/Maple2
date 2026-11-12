@@ -505,8 +505,12 @@ public class FieldNpc : Actor<Npc> {
         HandleDamageDealers();
         DarkStreamSpawnCleared();
         Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
-        if (Field is DungeonFieldManager dungeonField && GetLastAttacker() is FieldPlayer lastHitter) {
-            dungeonField.CountMissions(lastHitter, mission => mission.AddLastHit(Value.Metadata.Id));
+        if (GetLastAttacker() is FieldPlayer lastHitter) {
+            // The killing blow counts for npc_lasthit, with the NPC id as the code (field boss achievements).
+            lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit, codeLong: Value.Id, targetLong: Field.MapId);
+            if (Field is DungeonFieldManager dungeonField) {
+                dungeonField.CountMissions(lastHitter, mission => mission.AddLastHit(Value.Metadata.Id));
+            }
         }
 
         Remove(delay: TimeSpan.FromSeconds(Value.Metadata.Dead.Time));

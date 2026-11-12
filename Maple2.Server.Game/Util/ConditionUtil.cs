@@ -95,6 +95,7 @@ public static class ConditionUtil {
             case ConditionType.dialogue:
             case ConditionType.talk_in:
             case ConditionType.npc:
+            case ConditionType.npc_lasthit:
             case ConditionType.skill:
             case ConditionType.job:
             case ConditionType.job_change:

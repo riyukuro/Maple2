@@ -42,6 +42,15 @@ public class ConditionCountTests {
         Assert.That(noTarget.Check(null!, targetLong: mapId, codeLong: 30000285), Is.True);
     }
 
+    // The killing blow on an NPC counts for npc_lasthit when the NPC is one of the row's codes.
+    [TestCase(23000024, true)]
+    [TestCase(23000018, false)]
+    public void NpcLastHit_CountsTheListedNpc(int npcId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.npc_lasthit, 1,
+            new ConditionMetadata.Parameters(Integers: [23000024]), null);
+        Assert.That(condition.Check(null!, targetLong: MapId, codeLong: npcId), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
