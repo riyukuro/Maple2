@@ -38,14 +38,14 @@ public class SkillManager {
         session.Send(SkillBookPacket.Load(SkillBook));
     }
 
-    public void UpdatePassiveBuffs(bool notifyField = true) {
-        // TODO: Only remove buffs that have been unlearned.
-        /*foreach (Buff buff in session.Player.Buffs.Buffs.Values) {
-            if (buff.StartTick == buff.EndTick) {
-                buff.Remove();
-            }
-        }*/
+    // The passive buffs the skill tree gave last time (buff id, level). The client applies no passive itself: it
+    // shows what the server's buff packets say, so a passive that is unlearned or lowered (a reset, an apply with
+    // fewer points, an applied tab with another tree) is taken off here, before the tree's passives are put on.
+    private readonly Dictionary<int, short> passiveBuffs = [];
 
+    public void UpdatePassiveBuffs(bool notifyField = true) {
+        var wanted = new Dictionary<int, short>();
+        var effects = new List<(int SkillId, SkillEffectMetadata Effect)>();
         // Add job passive skills to Player.
         foreach (SkillInfo.Skill skill in session.Config.Skill.SkillInfo.GetSkills(SkillType.Passive, SkillRank.Both)) {
             if (skill.Level <= 0) {
@@ -57,14 +57,31 @@ public class SkillManager {
                 continue;
             }
 
-            logger.Information("Applying passive skill {Name}: {SkillId},{Level}", metadata.Name, metadata.Id, metadata.Level);
             foreach (SkillEffectMetadata effect in metadata.Data.Skills) {
                 if (effect.Condition is not { Target: SkillTargetType.Owner }) {
                     continue;
                 }
 
-                session.Player.ApplyEffect(session.Player, session.Player, effect, session.Player.Field.FieldTick, EventConditionType.Activate, skillId: metadata.Id, notifyField: notifyField);
+                effects.Add((metadata.Id, effect));
+                foreach (SkillEffectMetadata.Skill buff in effect.Skills) {
+                    wanted[buff.Id] = Math.Max(wanted.GetValueOrDefault(buff.Id), buff.Level);
+                }
             }
+        }
+
+        RemoveStalePassives(wanted);
+        foreach ((int skillId, SkillEffectMetadata effect) in effects) {
+            session.Player.ApplyEffect(session.Player, session.Player, effect, session.Player.Field.FieldTick, EventConditionType.Activate, skillId: skillId, notifyField: notifyField);
+        }
+    }
+
+    internal void RemoveStalePassives(IReadOnlyDictionary<int, short> wanted) {
+        foreach (int buffId in SkillBookRules.StalePassiveBuffs(passiveBuffs, wanted)) {
+            session.Player.Buffs.Remove(buffId, session.Player.ObjectId);
+        }
+        passiveBuffs.Clear();
+        foreach ((int buffId, short level) in wanted) {
+            passiveBuffs[buffId] = level;
         }
     }
 

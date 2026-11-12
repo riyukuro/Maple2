@@ -54,4 +54,17 @@ public static class SkillBookRules {
     public static bool TabCountAllowed(int count, int maxTabs) {
         return count >= 0 && count <= maxTabs;
     }
+
+    // The passive buffs held from the last tree that the new tree does not give at the same level: they come off
+    // before the new tree's passives go on (AddBuff keeps a held buff of a higher level, so a lowered passive
+    // would otherwise stay at its old level).
+    public static List<int> StalePassiveBuffs(IReadOnlyDictionary<int, short> held, IReadOnlyDictionary<int, short> wanted) {
+        var stale = new List<int>();
+        foreach ((int buffId, short level) in held) {
+            if (!wanted.TryGetValue(buffId, out short wantedLevel) || wantedLevel != level) {
+                stale.Add(buffId);
+            }
+        }
+        return stale;
+    }
 }
