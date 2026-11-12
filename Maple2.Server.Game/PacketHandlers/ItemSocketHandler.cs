@@ -516,7 +516,9 @@ public class ItemSocketHandler : FieldPacketHandler {
         if (!ItemSocketRules.TableAllowsTransfer(property.SocketId, row?.MaxCount, row?.InitialCount)) {
             return false;
         }
-        if (!ItemSocketRules.HasSocketSubtype(property.SubType, property.SkinType)) {
+        // The client's item data subtype (GearScoreRules.SubType: the id's digits), not the server pack's, which
+        // is 0 or 16 for most equipment (the Northern Fur Earrings 11200084: 0 there, 12 in the client).
+        if (!ItemSocketRules.HasSocketSubtype(GearScoreRules.SubType(item.Id), property.SkinType)) {
             return false;
         }
         return item.ExpiryTime <= 0 || property.SocketId != 0;

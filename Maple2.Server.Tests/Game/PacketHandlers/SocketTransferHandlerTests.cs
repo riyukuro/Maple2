@@ -129,6 +129,60 @@ public class SocketTransferHandlerTests {
         Assert.That(session.Item.Inventory.Get(crystals.Uid)!.Amount, Is.EqualTo(1000));
     }
 
+    // Two Northern Fur Earrings 11200084 (type 1, skin type 2, socketDataId 9001, two sockets) and 450 of each item
+    // the client tags SkinCrystal (40100027, 40100032, 40100053; type 15). The server pack gives the earring subtype 0
+    // where the client's item data gives 12, and the server asked its own subtype, so it refused what the client
+    // offered with invalid_target ("The selected target is not in your inventory."). The rule now asks the client's
+    // subtype, the id's digits (GearScoreRules.SubType).
+    private GameSession StartEarrings(int id = 11200084) {
+        test = new TestGameSession();
+        test.SetTable(Table);
+        source = test.Store(Outfit(id, skinType: 2, subType: 0));
+        target = test.Store(Outfit(id, skinType: 2, subType: 0));
+        foreach (int crystalId in new[] { 40100027, 40100032, 40100053 }) {
+            ItemMetadata crystal = TestGameSession.Metadata(crystalId, type: 15, slotMax: 99999);
+            test.Store(crystal with { Property = crystal.Property with { Tag = ItemTag.SkinCrystal } }, amount: 450);
+        }
+        GameSession session = test.Start();
+        test.TakeSent();
+        source = session.Item.Inventory.Get(source.Uid)!;
+        target = session.Item.Inventory.Get(target.Uid)!;
+        source.Socket = new ItemSocket(2, 2);
+        target.Socket = new ItemSocket(2, 0);
+        return session;
+    }
+
+    private static int Crystals(GameSession session) =>
+        session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.SkinCrystal).Sum(item => item.Amount);
+
+    [Test]
+    public void NorthernFurEarrings_MoveForFourHundredCrystals() {
+        GameSession session = StartEarrings();
+        Assert.That(source.Inventory, Is.EqualTo(InventoryType.Outfit));
+        Assert.That(target.Inventory, Is.EqualTo(InventoryType.Outfit));
+
+        Transfer(session, source.Uid, target.Uid);
+
+        Assert.That((source.Socket!.UnlockSlots, target.Socket!.UnlockSlots), Is.EqualTo(((byte) 0, (byte) 2)));
+        Assert.That(Crystals(session), Is.EqualTo(3 * 450 - 400));
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ItemSocketSystem).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(ItemSocketPacket.TransferSocket(source, target).ToArray()) }));
+    }
+
+    // An outfit whose id digits are no socket subtype (119xxxxx, a necklace: 19) is still refused, whatever the
+    // server pack's subtype; nothing moves and nothing is paid.
+    [Test]
+    public void OutfitNecklace_InvalidTarget() {
+        GameSession session = StartEarrings(11900084);
+
+        Transfer(session, source.Uid, target.Uid);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target).ToArray()) }));
+        Assert.That((source.Socket!.UnlockSlots, target.Socket!.UnlockSlots), Is.EqualTo(((byte) 2, (byte) 0)));
+        Assert.That(Crystals(session), Is.EqualTo(3 * 450));
+    }
+
     // FUN_140627e80 / FUN_140628050 and what they ask of the item (HasSkinType, CanTransferSocket, FUN_140529560).
     [Test]
     public void Rules() {
