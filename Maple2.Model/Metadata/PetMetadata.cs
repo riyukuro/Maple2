@@ -13,7 +13,10 @@ public record PetMetadata(
     PetMetadataSkill? Skill,
     PetMetadataEffect[] Effect,
     PetMetadataDistance Distance,
-    PetMetadataTime Time) : ISearchResult;
+    PetMetadataTime Time,
+    // petproperty collectGroupId: the pet's kind in the collection (petcollectgroupname: 2 Plant, 3 Beast .. 12
+    // Inanimate, 100 Special, 900 Other), the code of pet_catch_category. 0 on data ingested before it was kept.
+    int CollectGroup = 0) : ISearchResult;
 
 public record PetMetadataSkill(int Id, short Level);
 

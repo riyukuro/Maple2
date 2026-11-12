@@ -68,7 +68,8 @@ public class PetMapper : TypeMapper<PetMetadata> {
                     Bore: data.time.bore,
                     Summon: data.time.summonCast,
                     Tired: data.time.tired,
-                    Skill: data.time.skill)
+                    Skill: data.time.skill),
+                CollectGroup: property.collectGroupId
             );
         }
     }

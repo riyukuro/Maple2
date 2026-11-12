@@ -158,6 +158,8 @@ public sealed class FieldPet : FieldNpc {
             player.Session.ConditionUpdate(ConditionType.pet_catch_id, codeLong: pet.Id);
             // The pet's rarity (70600024 "Capture a normal pet" 1, 70600034 "Capture a rare pet" 2).
             player.Session.ConditionUpdate(ConditionType.pet_catch_grade, codeLong: pet.Rarity);
+            // The pet's collection group (70600035 "Capture $petCollectGroup:2$ pets").
+            player.Session.ConditionUpdate(ConditionType.pet_catch_category, codeLong: Metadata.CollectGroup);
             player.Session.Send(FieldPacket.DropItem(fieldItem));
         } else {
             Field.Broadcast(FieldPacket.DropItem(fieldItem));

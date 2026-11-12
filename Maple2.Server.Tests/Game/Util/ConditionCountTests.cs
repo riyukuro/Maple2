@@ -142,6 +142,15 @@ public class ConditionCountTests {
         Assert.That(new ConditionMetadata(ConditionType.pet_catch_grade, 15, null, null).Check(null!, codeLong: rarity), Is.True);
     }
 
+    // A captured pet counts for pet_catch_category when its collection group is the code (70600036: 3 Beast).
+    [TestCase(3, true)]
+    [TestCase(4, false)]
+    [TestCase(0, false)]
+    public void PetCatchCategory_CountsTheListedGroup(int group, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.pet_catch_category, 1, new ConditionMetadata.Parameters(Integers: [3]), null);
+        Assert.That(condition.Check(null!, codeLong: group), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
