@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 
@@ -108,4 +108,19 @@ public static class AttendanceRules {
             _ => true,
         };
     }
+
+    // The tab name of an AttendGift event: value2's string node names it with tabButton in every KR and NA row
+    // (none has name, read before). The client shows it as the event button's title (s_attendGift_title_name,
+    // GameEventAttendGiftCli::GetTitleWithPoints, gameeventcli.cpp:493) after CServerStringGroup::GetString,
+    // which gives a text that is not a $key$ back unchanged (serverstringtables.cpp:97).
+    public static string TabName(string? tabButton, string? name) => tabButton ?? name ?? string.Empty;
+
+    // An event without play time (its value2 has no Config node, 0 seconds) is not in the client's play time
+    // popup (GameEventAttendGiftCli::OnStart lists only m_i120 > 0, gameeventcli.cpp:409), and the client sends
+    // no claim for it: its only attendance packets are mode 1 at game start (WorldService::OnGameStart) and
+    // mode 0 from the popup or a user command. So the server attends it at mode 1 (chosen here).
+    public static bool AttendsAtGameStart(int requiredPlaySeconds) => requiredPlaySeconds <= 0;
+
+    // The day's attendance of the event is done: the completion time stored is today, or later.
+    public static bool AttendedToday(DateTime completeTime, DateTime now) => now < completeTime || completeTime.Date == now.Date;
 }

@@ -58,6 +58,9 @@ public class AttendanceHandler : FieldPacketHandler {
             return;
         }
 
+        // Each event is attended on its own: one already attended today does not hold back the others.
+        bool claimed = false;
+        bool alreadyUsed = false;
         foreach (GameEvent gameEvent in gameEvents) {
             if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift)) {
                 continue;
@@ -70,15 +73,28 @@ public class AttendanceHandler : FieldPacketHandler {
                 continue;
             }
 
-            DateTime completeTime = session.GameEvent.Get(GameEventUserValueType.AttendanceCompletedTimestamp, gameEvent.Id, gameEvent.EndTime).Long().FromEpochSeconds();
-            if (DateTime.Now < completeTime || completeTime.Date == DateTime.Now.Date) {
-                session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_item_attend_already_used));
-                return;
+            if (AttendedToday(session, gameEvent)) {
+                alreadyUsed = true;
+                continue;
             }
 
-            AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent),
-                () => session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds()));
+            claimed |= Attend(session, attendGift, gameEvent);
         }
+
+        if (!claimed && alreadyUsed) {
+            session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_item_attend_already_used));
+        }
+    }
+
+    private static bool AttendedToday(GameSession session, GameEvent gameEvent) {
+        DateTime completeTime = session.GameEvent.Get(GameEventUserValueType.AttendanceCompletedTimestamp, gameEvent.Id, gameEvent.EndTime).Long().FromEpochSeconds();
+        return AttendanceRules.AttendedToday(completeTime, DateTime.Now);
+    }
+
+    // Gives the day's gift and then marks the day attended; false when nothing was given.
+    private bool Attend(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
+        return AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent),
+            () => session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds()));
     }
 
     // The event's requirement, tested on the player's user values with id 0 as the client tests them.
@@ -96,6 +112,12 @@ public class AttendanceHandler : FieldPacketHandler {
             long expirationTime = session.GameEvent.Get(GameEventUserValueType.AttendanceAccumulatedTime, gameEvent.Id, DateTime.Now.AddDays(1).Date.ToEpochSeconds()).ExpirationTime;
             if (expirationTime < DateTime.Now.ToEpochSeconds()) {
                 session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceAccumulatedTime, 0);
+            }
+
+            // An event without play time is attended here: the client sends no claim for it (AttendsAtGameStart).
+            if (gameEvent.Metadata.Data is AttendGift attendGift && AttendanceRules.AttendsAtGameStart(attendGift.RequiredPlaySeconds)
+                && RequirementMet(session, attendGift) && !AttendedToday(session, gameEvent)) {
+                Attend(session, attendGift, gameEvent);
             }
         }
     }

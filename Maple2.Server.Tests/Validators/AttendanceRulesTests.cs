@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -177,5 +177,30 @@ public class AttendanceRulesTests {
         Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3001, 0), Lookup), Is.True);
         Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3002, 0), Lookup), Is.False);
         Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.ItemId, 20300001, 7), Lookup), Is.False);
+    }
+
+    [Test]
+    public void TabNameIsTheTabButton() {
+        // Every KR and NA AttendGift row names its tab with tabButton.
+        Assert.That(AttendanceRules.TabName("Gift", null), Is.EqualTo("Gift"));
+        Assert.That(AttendanceRules.TabName("Tab", "Old"), Is.EqualTo("Tab"));
+        Assert.That(AttendanceRules.TabName(null, "Old"), Is.EqualTo("Old"));
+        Assert.That(AttendanceRules.TabName(null, null), Is.EqualTo(string.Empty));
+    }
+
+    [Test]
+    public void OnlyEventsWithoutPlayTimeAttendAtGameStart() {
+        Assert.That(AttendanceRules.AttendsAtGameStart(0), Is.True);
+        Assert.That(AttendanceRules.AttendsAtGameStart(1), Is.False);
+        Assert.That(AttendanceRules.AttendsAtGameStart(1800), Is.False);
+    }
+
+    [Test]
+    public void AttendedToday() {
+        var now = new DateTime(2026, 11, 12, 10, 0, 0);
+        Assert.That(AttendanceRules.AttendedToday(new DateTime(2026, 11, 12, 0, 5, 0), now), Is.True);
+        Assert.That(AttendanceRules.AttendedToday(new DateTime(2026, 11, 13, 0, 0, 0), now), Is.True);
+        Assert.That(AttendanceRules.AttendedToday(new DateTime(2026, 11, 11, 23, 59, 0), now), Is.False);
+        Assert.That(AttendanceRules.AttendedToday(DateTime.UnixEpoch, now), Is.False);
     }
 }

@@ -1245,12 +1245,13 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 XmlNode? stringNode = value2Xml.FirstChild.SelectSingleNode("string");
                 XmlNode? configNode = value2Xml.FirstChild.SelectSingleNode("Config");
                 XmlNode? payNode = value2Xml.FirstChild.SelectSingleNode("payAttend");
-                // A pay-attend event has no Config node: no play time is asked.
-                if (stringNode == null || configNode == null && payNode == null) {
+                // An event without a Config node asks no play time (AttendanceRules.AttendsAtGameStart): KR has 15
+                // such rows and NA 16 besides the pay-attend ones, dropped before.
+                if (stringNode == null) {
                     return null;
                 }
 
-                string name = stringNode.Attributes?["name"]?.Value ?? string.Empty;
+                string name = AttendanceRules.TabName(stringNode.Attributes?["tabButton"]?.Value, stringNode.Attributes?["name"]?.Value);
                 string mailTitle = stringNode.Attributes?["mailTitle"]?.Value ?? string.Empty;
                 string mailContent = stringNode.Attributes?["mailContents"]?.Value ?? string.Empty;
                 string link = stringNode.Attributes?["detailUrl"]?.Value ?? string.Empty;
