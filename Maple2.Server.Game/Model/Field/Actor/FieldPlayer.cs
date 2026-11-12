@@ -722,6 +722,19 @@ public class FieldPlayer : Actor<Player> {
         SendHealth();
     }
 
+    // The killing blow on an npc gives back the killer's item option lines HpOnKill, SpiritOnKill and StaminaOnKill
+    // (special 13 to 15, killhprestore/killsprestore/killeprestore) as flat amounts, capped at the maximum. The client
+    // computes none of it (it only shows the stats the server sends); chosen here: the last hitter only, and only while
+    // alive. In the KR data only HpOnKill is on items: 7,151 random option lines of 1 to 15 health.
+    public void RestoreOnKill() {
+        if (IsDead) {
+            return;
+        }
+        RecoverHp((int) Stats.Values[SpecialAttribute.HpOnKill].Total);
+        RecoverSp((int) Stats.Values[SpecialAttribute.SpiritOnKill].Total);
+        RecoverStamina((int) Stats.Values[SpecialAttribute.StaminaOnKill].Total);
+    }
+
     /// <summary>
     /// Consumes health and starts regen if not already started.
     /// </summary>
