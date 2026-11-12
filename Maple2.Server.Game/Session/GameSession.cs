@@ -412,7 +412,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(ServerEnterPacket.Request(Player));
 
         // Ugc
-        // Cash
+        // The cash shop flag KMS2 sends at every login (1, the client's own default).
+        Send(CashPacket.Enabled(true));
         // Gvg
         // Pvp
         Send(StateSyncPacket.SyncNumber(0));
