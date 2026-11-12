@@ -96,7 +96,7 @@ public class NpcTalkHandler : FieldPacketHandler {
 
         int options = 0;
         var talkType = NpcTalkType.None;
-        int shopId = npc.Value.Metadata.Basic.ShopId;
+        int shopId = EventNpcRules.ShopId(npc.EventShopId, npc.Value.Metadata.Basic.ShopId);
         if (shopId > 0) {
             // A beauty NPC's ShopId names its beauty shop; the client opens that one itself from the
             // NPC's script with Beauty 0 (UITalkManager::OpenTalkDialog), so there is no normal shop to load.

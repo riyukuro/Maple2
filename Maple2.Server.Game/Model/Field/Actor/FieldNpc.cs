@@ -75,6 +75,9 @@ public class FieldNpc : Actor<Npc> {
     // The uid of the maid this npc is (FieldMaidPacket), 0 for other npcs.
     public long MaidUid { get; init; }
 
+    // The shop a SpawnNpc game event gives this npc instead of its own, 0 for none (EventNpcRules.ShopId).
+    public int EventShopId { get; set; }
+
     // Npcs this npc summoned with an AI summon node, by the node's group.
     private readonly List<(int Group, FieldNpc Npc, bool LeavesWithSummoner)> summons = [];
 

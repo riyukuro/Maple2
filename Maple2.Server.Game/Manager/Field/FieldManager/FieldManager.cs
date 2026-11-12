@@ -280,6 +280,21 @@ public partial class FieldManager : IField {
             }
         }
 
+        // The npcs a running SpawnNpc game event puts at a region spawn of this field. An event that starts or ends
+        // while the field runs is not followed: the field only reads them when it is made.
+        foreach (SpawnNpcEvent eventNpc in EventNpcRules.ForField(ServerTableMetadata.GameEventTable.Entries.Values, MapId, DateTime.Now)) {
+            if (!Entities.RegionSpawns.TryGetValue(eventNpc.SpawnPointId, out Ms2RegionSpawn? npcSpawn) ||
+                !NpcMetadata.TryGet(eventNpc.NpcId, out NpcMetadata? npcMetadata)) {
+                logger.Debug("[SpawnNpc] event npc {NpcId} at spawn {SpawnPointId} of {MapId} not found", eventNpc.NpcId, eventNpc.SpawnPointId, MapId);
+                continue;
+            }
+
+            FieldNpc? fieldNpc = SpawnNpc(npcMetadata, npcSpawn.Position, npcSpawn.Rotation);
+            if (fieldNpc != null) {
+                fieldNpc.EventShopId = eventNpc.ShopId;
+            }
+        }
+
         foreach (Ms2RegionSkill regionSkill in Entities.RegionSkills) {
             if (!SkillMetadata.TryGet(regionSkill.SkillId, regionSkill.Level, out SkillMetadata? skill)) {
                 continue;
