@@ -50,8 +50,8 @@ public sealed class GameEventManager {
 
         using GameStorage.Request db = session.GameStorage.Context();
         foreach (GameEventUserValue userValue in db.GetEventUserValues(session.CharacterId)) {
-            // A stamp card's claims are the account's (below); one stored for the character is not read.
-            if (StampValueTypes.Contains(userValue.Type)) {
+            // An account's value (below, a stamp card's claims) stored for the character is not read.
+            if (AccountValue(userValue.Type)) {
                 db.RemoveGameEventUserValue(userValue, session.CharacterId);
                 continue;
             }
@@ -108,7 +108,9 @@ public sealed class GameEventManager {
     }
 
     // The values stored for the account instead of the character.
-    public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type);
+    // Chosen here: an item collection's claim is the account's as well, so that one set of condition items, which
+    // stay with the player, is not claimed by every character of the account in turn.
+    public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type) || type == GameEventUserValueType.CollectItemGroup;
 
     private static readonly GameEventUserValueType[] StampValueTypes = [
         GameEventUserValueType.StampCompleteRewardClaimed,
@@ -116,7 +118,7 @@ public sealed class GameEventManager {
         GameEventUserValueType.StampSpecialRewardsClaimed,
     ];
 
-    // A long-term attendance value and a stamp card's claims last as long as their event. When the event's end has
+    // A long-term attendance value, a stamp card's claims and an item collection's claim last as long as their event. When the event's end has
     // moved since the value was stored (a replayed event is moved again by a later ingest), the value follows it:
     // stored at the first end it would run out while the event is still live, and every day or reward row claimed
     // so far could be claimed again. An event that is live again after its end is a new run, whose old values the
@@ -126,6 +128,7 @@ public sealed class GameEventManager {
             GameEventType.LongTermAttendGift => value.Type is GameEventUserValueType.LongTermAttendClaimedDays or GameEventUserValueType.LongTermAttendPoints
                 or GameEventUserValueType.LongTermAttendDays or GameEventUserValueType.LongTermAttendPointTime,
             GameEventType.StampEvent => StampValueTypes.Contains(value.Type),
+            GameEventType.CollectItemGroup => value.Type is GameEventUserValueType.CollectItemGroup,
             _ => false,
         };
         if (!follows || value.ExpirationTime == gameEvent.EndTime) {
@@ -278,6 +281,20 @@ public sealed class GameEventManager {
         string newValue = value.ToString() ?? throw new ArgumentException("Invalid value type.");
         gameEventUserValue.SetValue(newValue);
         return gameEventUserValue;
+    }
+
+    // Stores one value now instead of at logout: a claim whose reward is stored at once (a mailed item) must not
+    // be lost with the session. False when there is no such value or the database refused it.
+    public bool Store(int gameEventId, GameEventUserValueType type) {
+        GameEventUserValue? value;
+        lock (valuesLock) {
+            value = eventValues.GetValueOrDefault(gameEventId)?.GetValueOrDefault(type);
+        }
+        if (value == null) {
+            return false;
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        return AccountValue(type) ? db.SaveAccountEventValues(session.AccountId, [value]) : db.SaveGameEventUserValues(session.CharacterId, [value]);
     }
 
     public void Load() {

@@ -442,7 +442,7 @@ public class WorldServer {
         events = events.ToList();
         using GameStorage.Request db = gameStorage.Context();
         foreach (GameEvent gameEvent in events) {
-            if (gameEvent.Metadata.Type is not (GameEventType.StampEvent or GameEventType.LongTermAttendGift)) {
+            if (gameEvent.Metadata.Type is not (GameEventType.StampEvent or GameEventType.LongTermAttendGift or GameEventType.CollectItemGroup)) {
                 continue;
             }
             int[] quests = [];

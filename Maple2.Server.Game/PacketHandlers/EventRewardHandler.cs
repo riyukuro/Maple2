@@ -145,7 +145,7 @@ public class EventRewardHandler : FieldPacketHandler {
     }
 
     // Item collection. 19 + int event id (uicollectitemgroupeventdialog.cpp:415) claims the result of the running
-    // CollectItemGroup event of that id, once per character: the player has every condition item, in the bag or,
+    // CollectItemGroup event of that id, once per account: the player has every condition item, in the bag or,
     // for a count of 1, worn (EventSaleRules.CollectMissing, the test the window's button makes). The client has
     // no reply to it; its window refreshes when user value 2200 of the event changes, and shows the event as
     // received while that is above 0. Chosen here: the condition items stay with the player. The client only
@@ -182,6 +182,10 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CollectItemGroup, 1);
+        // Stored with the reward, not at logout: the result may sit in a stored mail already.
+        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.CollectItemGroup)) {
+            Logger.Error("ClaimCollectItemGroupReward: the claim of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
+        }
     }
 
     private void HandleClaimLongTermAttendReward(GameSession session, IByteReader packet) {

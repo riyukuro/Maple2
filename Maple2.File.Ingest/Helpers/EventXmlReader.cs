@@ -85,7 +85,10 @@ public static class EventXmlReader {
             || !int.TryParse(element.GetAttribute("count"), out int count) || count <= 0) {
             return null;
         }
-        short.TryParse(element.GetAttribute("grade"), out short grade);
+        // An item without a grade keeps the client's default rank 1 (ItemEntity, commonstruct_wa.cpp:41).
+        if (!short.TryParse(element.GetAttribute("grade"), out short grade)) {
+            grade = 1;
+        }
         return new RewardItem(itemId, Math.Max(grade, (short) 0), count);
     }
 

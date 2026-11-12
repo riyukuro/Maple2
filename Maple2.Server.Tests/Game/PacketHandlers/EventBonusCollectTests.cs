@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Extensions;
+using Maple2.Database.Storage;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -8,6 +10,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -215,6 +218,16 @@ public class EventBonusCollectTests {
         Assert.That(collect.Conditions, Is.EqualTo(new[] { new RewardItem(Piece, 2, 1), new RewardItem(Token, 1, 5) }));
     }
 
+    // A row without a grade has the client's default rank 1, the rank the bag is searched with.
+    [Test]
+    public void CollectReader_ReadsAnItemWithoutGradeAsRank1() {
+        CollectItemGroup? collect = EventXmlReader.CollectItemGroup("<ms2><info name=\"a\" /><result itemID=\"20000005\" count=\"1\" />"
+            + "<condition itemID=\"11300001\" count=\"1\" /><condition itemID=\"20000003\" count=\"5\" grade=\"x\" /></ms2>");
+
+        Assert.That(collect!.Result, Is.EqualTo(new RewardItem(Result, 1, 1)));
+        Assert.That(collect.Conditions, Is.EqualTo(new[] { new RewardItem(Piece, 1, 1), new RewardItem(Token, 1, 5) }));
+    }
+
     private const string Condition = "<condition itemID=\"20000003\" count=\"5\" grade=\"1\" />";
 
     [TestCase(null)]
@@ -338,6 +351,44 @@ public class EventBonusCollectTests {
         Assert.That(Held(other, Result), Is.EqualTo(0));
         Assert.That(Received(other), Is.Null.Or.Empty.Or.EqualTo("0"));
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The claim is stored with the reward, for the account: a crash before logout or another character of the
+    // account finds it.
+    [Test]
+    public void Claim_IsStoredAtOnceForTheAccount() {
+        GameSession session = Login();
+
+        Claim(session);
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetAccountEventValues(test.AccountId).Select(value => (value.Type, value.EventId, value.Value, value.ExpirationTime)),
+                Is.EqualTo(new[] { (GameEventUserValueType.CollectItemGroup, EventId, "1", gameEvent.EndTime) }));
+        }
+        Assert.That(test.StoredEventValues(EventId), Is.Empty);
+        Assert.That(GameEventManager.AccountValue(GameEventUserValueType.CollectItemGroup), Is.True);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A later ingest moves a replayed event again. The claim stored at the first end follows the moved end: after
+    // the first end, inside the moved run, it is still loaded, so the result is not given a second time.
+    [Test]
+    public void StoredClaim_FollowsTheMovedEventEnd() {
+        DateTime now = DateTime.Now;
+        var first = new GameEvent(new GameEventMetadata(EventId, GameEventType.CollectItemGroup, now.AddDays(-30), now.AddDays(-2), TimeSpan.Zero,
+            TimeSpan.Zero, [], Collect(), string.Empty, string.Empty, string.Empty, string.Empty));
+        var moved = new GameEvent(new GameEventMetadata(EventId, GameEventType.CollectItemGroup, now.AddDays(-20), now.AddDays(8), TimeSpan.Zero,
+            TimeSpan.Zero, [], Collect(), string.Empty, string.Empty, string.Empty, string.Empty));
+        var claimed = new GameEventUserValue(GameEventUserValueType.CollectItemGroup, first.EndTime, EventId);
+        claimed.SetValue("1");
+
+        GameEventUserValue? loaded = GameEventManager.LoadValue(claimed, [moved], now.ToEpochSeconds());
+
+        Assert.That(loaded, Is.Not.Null);
+        Assert.That((loaded!.Int(), loaded.ExpirationTime), Is.EqualTo((1, moved.EndTime)));
+        Assert.That(GameEventManager.Outdated(claimed, [moved], now.ToEpochSeconds()), Is.False);
+        // The same run that was not moved has ended: the value is not loaded.
+        Assert.That(GameEventManager.LoadValue(claimed, [first], now.ToEpochSeconds()), Is.Null);
     }
 
     [Test]
