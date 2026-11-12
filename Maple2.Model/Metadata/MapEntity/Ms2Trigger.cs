@@ -15,11 +15,13 @@ public record Ms2TriggerAgent(
     bool Visible)
 : Ms2Trigger(TriggerId, Visible);
 
+// Rotation is the box's placement rotation; the client turns the box about Z only (TriggerObject::Contains).
 public record Ms2TriggerBox(
     Vector3 Position,
     Vector3 Dimensions,
     int TriggerId,
-    bool Visible)
+    bool Visible,
+    Vector3 Rotation = default)
 : Ms2Trigger(TriggerId, Visible);
 
 public record Ms2TriggerCamera(

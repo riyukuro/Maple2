@@ -265,7 +265,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                 return null;
             case IMS2TriggerBox box:
                 return new MapEntity(xblock, new Guid(trigger.EntityId), trigger.EntityName) {
-                    Block = new Ms2TriggerBox(box.Position, box.ShapeDimensions, box.TriggerObjectID, box.IsVisible),
+                    Block = new Ms2TriggerBox(box.Position, box.ShapeDimensions, box.TriggerObjectID, box.IsVisible, box.Rotation),
                 };
             case IMS2TriggerCamera camera:
                 return new MapEntity(xblock, new Guid(trigger.EntityId), trigger.EntityName) {

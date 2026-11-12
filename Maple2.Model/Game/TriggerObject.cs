@@ -117,12 +117,22 @@ public class TriggerBox {
 
     private readonly Prism box;
 
+    // The client tests a point against the box in the box's own frame (TriggerObject::Contains): centred on Position,
+    // half Dimensions each way, turned by Rotation.Z degrees about Z (X and Y rotation are not used).
     public TriggerBox(Ms2TriggerBox metadata) {
         Metadata = metadata;
 
-        var min = new Vector2(metadata.Position.X - metadata.Dimensions.X / 2 - EXTRA_WIDTH, metadata.Position.Y - metadata.Dimensions.Y / 2 - EXTRA_WIDTH);
-        var max = new Vector2(metadata.Position.X + metadata.Dimensions.X / 2 + EXTRA_WIDTH, metadata.Position.Y + metadata.Dimensions.Y / 2 + EXTRA_WIDTH);
-        box = new Prism(new BoundingBox(min, max), metadata.Position.Z - metadata.Dimensions.Z / 2 - EXTRA_HEIGHT, metadata.Dimensions.Z + EXTRA_HEIGHT);
+        var center = new Vector2(metadata.Position.X, metadata.Position.Y);
+        float width = metadata.Dimensions.X + 2 * EXTRA_WIDTH;
+        float length = metadata.Dimensions.Y + 2 * EXTRA_WIDTH;
+        float angle = metadata.Rotation.Z % 360f;
+        IPolygon shape;
+        if (angle == 0) {
+            shape = new BoundingBox(center - new Vector2(width / 2, length / 2), center + new Vector2(width / 2, length / 2));
+        } else {
+            shape = new Rectangle(center, width, length, angle);
+        }
+        box = new Prism(shape, metadata.Position.Z - metadata.Dimensions.Z / 2 - EXTRA_HEIGHT, metadata.Dimensions.Z + EXTRA_HEIGHT);
     }
 
     public bool Contains(in Vector3 point) => box.Contains(point);
