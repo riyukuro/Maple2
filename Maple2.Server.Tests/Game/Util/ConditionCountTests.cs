@@ -264,6 +264,7 @@ public class ConditionCountTests {
     // The played quests of these types list no code or target, so every event counts.
     [TestCase(ConditionType.item_break)] // 74000011 "Dismantle 1 item"
     [TestCase(ConditionType.guild_join)] // 70300010 "Join a guild"
+    [TestCase(ConditionType.guild_attendance)] // 70300011 "Guild Check-In"
     public void CodelessQuestRow_CountsEveryEvent(ConditionType type) {
         var condition = new ConditionMetadata(type, 1, null, null);
         Assert.That(condition.Check(null!), Is.True);
