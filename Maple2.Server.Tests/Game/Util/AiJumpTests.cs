@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -50,6 +50,28 @@ public class AiJumpTests {
         Assert.Multiple(() => {
             Assert.That(AiJump.Height(Vector3.Zero, new Vector3(150, 150, 0), 1f), Is.EqualTo(150f).Within(0.01f));
             Assert.That(AiJump.Height(Left, Right, 0.7f), Is.EqualTo(150f / 212.132f * 809f * 0.7f).Within(0.01f));
+        });
+    }
+
+    // The server walks the npc along the client's arc: the ends, then the top at the middle.
+    [Test]
+    public void PointFollowsTheClientArc() {
+        float top = AiJump.Height(Left, Right, 0.7f);
+        Assert.Multiple(() => {
+            Assert.That(AiJump.Point(Left, Right, 0.7f, 0f), Is.EqualTo(Left));
+            Assert.That(AiJump.Point(Left, Right, 0.7f, 1f), Is.EqualTo(Right));
+            Vector3 middle = AiJump.Point(Left, Right, 0.7f, 0.5f);
+            Assert.That(middle.X, Is.EqualTo((Left.X + Right.X) / 2).Within(1e-3f));
+            Assert.That(middle.Z, Is.EqualTo(Left.Z + top).Within(1e-3f));
+            Assert.That(AiJump.Point(Left, Right, 0.7f, 0.25f).Z, Is.EqualTo(Left.Z + 0.75f * top).Within(1e-3f));
+        });
+    }
+
+    [Test]
+    public void PointClampsPastTheEnds() {
+        Assert.Multiple(() => {
+            Assert.That(AiJump.Point(Left, Right, 0.7f, -1f), Is.EqualTo(Left));
+            Assert.That(AiJump.Point(Left, Right, 0.7f, 2f), Is.EqualTo(Right));
         });
     }
 }

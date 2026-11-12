@@ -493,8 +493,9 @@ public class AiState {
         Push(passed);
     }
 
-    // The client flies the npc (see AiJump); the server puts it at the landing point at once, which the client does
-    // not show while the arc runs. The next node (the in-air skill in the files) runs during the arc.
+    // The client flies the npc (see AiJump), and the server moves its own position along the same arc over the same
+    // time (MovementState.StartJump). The next node (the in-air skill in the files, the landing skill after it) runs
+    // during the arc, as the files' order has it.
     private void ProcessNode(JumpNode node) {
         if (node.IsKeepBattle) {
             actor.BattleState.KeepBattle = true;
@@ -504,9 +505,10 @@ public class AiState {
             actor.Position = node.Pos;
         }
         Vector3 to = actor.Position;
+        float duration = AiJump.Duration(from, to, node.Speed);
+        actor.MovementState.StartJump(from, to, duration, node.HeightMultiplier);
         actor.SequenceCounter++;
-        actor.Field.Broadcast(NpcControlPacket.Jump(actor, AiJump.Sequence(node.Type), from, to,
-            AiJump.Duration(from, to, node.Speed), node.HeightMultiplier));
+        actor.Field.Broadcast(NpcControlPacket.Jump(actor, AiJump.Sequence(node.Type), from, to, duration, node.HeightMultiplier));
     }
 
     private void ProcessNode(SelectNode node) {

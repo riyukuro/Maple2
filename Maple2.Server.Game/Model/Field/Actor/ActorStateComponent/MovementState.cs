@@ -210,6 +210,8 @@ public partial class MovementState {
         Velocity = new Vector3(0, 0, 0);
 
         if (actor.IsDead) {
+            // The client lands a dead npc at the end of its arc.
+            JumpUpdate(tickCount);
             return;
         }
 
@@ -244,6 +246,9 @@ public partial class MovementState {
                 break;
         }
 
+        // After the state's own move, so a cast move of the in-air skill does not pull the npc off the arc.
+        JumpUpdate(tickCount);
+
         lastTick = tickCount;
 
         UpdateControl();
@@ -262,7 +267,8 @@ public partial class MovementState {
         actor.SendControl |= Math.Abs(Speed - lastSpeed) > 0.01f;
         actor.SendControl |= Velocity != lastVelocity;
         actor.SendControl |= State != lastState;
-        actor.SendControl |= actor.Position != lastPosition;
+        // The client does not place the npc from a sync packet while it flies the jump arc.
+        actor.SendControl |= actor.Position != lastPosition && !IsJumping;
         actor.SendControl |= actor.Transform.FrontAxis != lastFacing;
         actor.SendControl |= castSkill != lastCastSkill;
 
