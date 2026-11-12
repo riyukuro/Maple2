@@ -472,6 +472,15 @@ message TimeEventRequest {
     int32 event_id = 2;
   }
 
+  message AnnounceFieldWar {
+    int32 field_war_id = 1;
+    int64 event_id = 2;
+  }
+
+  message CloseFieldWar {
+    int64 event_id = 1;
+  }
+
   oneof TimeEvent {
     AnnounceGlobalPortal announce_global_portal = 1;
     CloseGlobalPortal close_global_portal = 2;
@@ -479,6 +488,8 @@ message TimeEventRequest {
     AnnounceWorldBoss announce_world_boss = 4;
     CloseWorldBoss close_world_boss = 5;
     WarnWorldBoss warn_world_boss = 6;
+    AnnounceFieldWar announce_field_war = 7;
+    CloseFieldWar close_field_war = 8;
   }
 }
 

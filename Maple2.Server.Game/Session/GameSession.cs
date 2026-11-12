@@ -671,6 +671,38 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
+    // The uid of the field war this player was last announced (FieldWarPacket.Announce): its SidePopup enter has no
+    // id. 0 when none was.
+    public long FieldWarUid;
+
+    public bool FieldWarEligible() {
+        ConstantsTable constants = ServerTableMetadata.ConstantsTable;
+        return FieldWarRules.Eligible(Player.Value.Character.Level, constants.FieldWarRequireLevel, constants.FieldWarRequireAchieveID,
+            id => Achievement.HasAchievement(id));
+    }
+
+    // A field war announce: to an eligible player in a field the global portal announce goes to, once a war.
+    public void AnnounceFieldWar(int fieldWarId, long uid) {
+        if (Field == null || FieldWarUid == uid || !TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type) || !FieldWarEligible()) {
+            return;
+        }
+        FieldWarUid = uid;
+        Send(FieldWarPacket.Announce(fieldWarId, uid));
+    }
+
+    // The field enter's field war announce, while the World server has a war open.
+    public void AnnounceOpenFieldWar() {
+        if (Field == null || !TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type)) {
+            return;
+        }
+        TimeEventResponse response = World.TimeEvent(new TimeEventRequest {
+            GetFieldWar = new TimeEventRequest.Types.GetFieldWar(),
+        });
+        if (response.Error == 0 && response.FieldWarInfo != null) {
+            AnnounceFieldWar(response.FieldWarInfo.FieldWarId, response.FieldWarInfo.EventId);
+        }
+    }
+
     public bool EnterField() {
         if (Field == null) return false;
 
@@ -746,6 +778,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Player.Buffs.LoadFieldBuffs();
 
         AnnounceOpenGlobalPortal();
+        AnnounceOpenFieldWar();
 
         Send(PremiumCubPacket.Activate(Player.ObjectId, Player.Value.Account.PremiumTime));
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));

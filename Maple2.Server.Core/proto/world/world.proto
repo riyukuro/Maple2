@@ -697,6 +697,14 @@ message TimeEventRequest {
 
   message GetActiveWorldBosses {}
 
+  // The SidePopup enter of a field war: the room the player goes to.
+  message JoinFieldWar {
+    int64 event_id = 1;
+  }
+
+  // The field war that is open, for the announce at a field enter.
+  message GetFieldWar {}
+
   message WorldBossKilled {
     int32 metadata_id = 1;
     int32 event_id = 2;
@@ -708,6 +716,8 @@ message TimeEventRequest {
     GetGlobalPortal get_global_portal = 2;
     GetActiveWorldBosses get_active_world_bosses = 3;
     WorldBossKilled world_boss_killed = 4;
+    JoinFieldWar join_field_war = 5;
+    GetFieldWar get_field_war = 6;
   }
 }
 
@@ -722,6 +732,7 @@ message TimeEventResponse {
 
   oneof Info {
     GlobalPortalInfo global_portal_info = 1;
+    FieldWarInfo field_war_info = 4;
   }
   int32 error = 2;
   repeated ActiveWorldBoss active_world_bosses = 3;
@@ -734,6 +745,14 @@ message GlobalPortalInfo {
   int32 room_id = 4;
   int32 map_id = 5;
   int32 portal_id = 6;
+}
+
+message FieldWarInfo {
+  int64 event_id = 1;
+  int32 field_war_id = 2;
+  int32 channel = 3;
+  int32 room_id = 4;
+  int32 map_id = 5;
 }
 
 message AddChannelRequest {

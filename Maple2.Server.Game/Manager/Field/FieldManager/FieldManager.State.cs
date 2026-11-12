@@ -1606,6 +1606,7 @@ public partial class FieldManager {
             dungeonField.StartRoomTimer();
         }
         RoomTimer?.Load(added);
+        StartFieldWarCountdown();
         // LOAD:
         foreach (FieldLiftable liftable in fieldLiftables.Values.Where(liftable => liftable.FinishTick > 0)) {
             added.Session.Send(LiftablePacket.Add(liftable));

@@ -82,6 +82,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
         .SingleInstance();
     autofac.RegisterType<WorldBossLookup>()
         .SingleInstance();
+    autofac.RegisterType<FieldWarLookup>()
+        .SingleInstance();
     autofac.RegisterType<PlayerConfigLookUp>()
         .SingleInstance();
     autofac.RegisterType<PvpLookup>()

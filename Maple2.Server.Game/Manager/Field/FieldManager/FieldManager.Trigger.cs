@@ -1,7 +1,9 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Model.Widget;
@@ -97,6 +99,22 @@ public partial class FieldManager {
     }
 
     public ICollection<FieldTrigger> EnumerateTrigger() => fieldTriggers.Values;
+
+    private int fieldWarCountdown;
+
+    // A field war room (map type FieldWar) takes players for FieldWarInstanceEnterableDurationSeconds from its first
+    // one; then its triggers get FieldGameStart (FieldWarRules.StartValue): 1 starts the war, 2 closes the room.
+    private void StartFieldWarCountdown() {
+        if (Metadata.Property.Type != MapType.FieldWar || Interlocked.Exchange(ref fieldWarCountdown, 1) != 0) {
+            return;
+        }
+        Scheduler.Schedule(() => {
+            int value = FieldWarRules.StartValue(Players.Count, Constants.FieldWarRequirePlayerCount);
+            foreach (FieldTrigger trigger in fieldTriggers.Values) {
+                UserValues.Set(trigger.Value.Id, FieldWarRules.StartKey, value);
+            }
+        }, TimeSpan.FromSeconds(Constants.FieldWarInstanceEnterableDurationSeconds));
+    }
 
     public bool TryGetTrigger(string name, [NotNullWhen(true)] out FieldTrigger? fieldTrigger) {
         return fieldTriggers.TryGetValue(name, out fieldTrigger);

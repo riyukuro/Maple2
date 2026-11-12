@@ -138,15 +138,22 @@ public sealed class TestGameSession {
             AccountId = account.Id;
             context.Home.Add(new Maple2.Database.Model.Home { AccountId = AccountId });
             context.UgcMap.Add(new Maple2.Database.Model.UgcMap {
-                OwnerId = AccountId, MapId = Constant.DefaultHomeMapId, Indoor = true,
+                OwnerId = AccountId,
+                MapId = Constant.DefaultHomeMapId,
+                Indoor = true,
                 Number = Constant.DefaultHomeNumber,
             });
             context.SaveChanges();
         }
         using GameStorage.Request db = Storage.Context();
         Character character = db.CreateCharacter(new Character {
-            AccountId = AccountId, Name = name, Gender = gender, Job = Job.Newbie, Mastery = new Mastery(),
-            MapId = 2000023, ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
+            AccountId = AccountId,
+            Name = name,
+            Gender = gender,
+            Job = Job.Newbie,
+            Mastery = new Mastery(),
+            MapId = 2000023,
+            ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
         }) ?? throw new InvalidOperationException("character row not created");
         CharacterId = character.Id;
         // A Debug build's CreateCharacter starts the character with mesos; the tests start from none in any build.
@@ -523,7 +530,10 @@ public sealed class TestGameSession {
         var field = NewField<HomeFieldManager>(Map(home.Indoor.MapId));
         typeof(HomeFieldManager).GetField("<Home>k__BackingField", Any)!.SetValue(field, home);
         var plot = new Plot(home.Indoor.Metadata) {
-            Number = home.Indoor.Number, OwnerId = AccountId, MapId = home.Indoor.MapId, Name = home.Indoor.Name,
+            Number = home.Indoor.Number,
+            OwnerId = AccountId,
+            MapId = home.Indoor.MapId,
+            Name = home.Indoor.Name,
         };
         field.Plots[plot.Number] = plot;
         Session.Field = field;
@@ -605,11 +615,15 @@ public sealed class TestGameSession {
         // The world's open global portal (the answer to GetGlobalPortal); none is open while it is null.
         public GlobalPortalInfo? OpenPortal;
         public int TimeEventError;
+        public FieldWarInfo? OpenFieldWar;
 
         public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
             var response = new TimeEventResponse { Error = TimeEventError };
             if (request.GetGlobalPortal != null && OpenPortal != null) {
                 response.GlobalPortalInfo = OpenPortal;
+            }
+            if (request.GetFieldWar != null && OpenFieldWar != null) {
+                response.FieldWarInfo = OpenFieldWar;
             }
             return response;
         }
@@ -627,8 +641,14 @@ public sealed class TestGameSession {
 
         public void AddPlayer(long accountId, long characterId, string name) {
             Players[characterId] = new PlayerInfoResponse {
-                AccountId = accountId, CharacterId = characterId, Name = name, Motto = "", Picture = "", GuildName = "",
-                Health = new HealthUpdate(), Trophy = new TrophyUpdate(),
+                AccountId = accountId,
+                CharacterId = characterId,
+                Name = name,
+                Motto = "",
+                Picture = "",
+                GuildName = "",
+                Health = new HealthUpdate(),
+                Trophy = new TrophyUpdate(),
                 Home = new HomeUpdate { Name = "", ExpiryTime = new Google.Protobuf.WellKnownTypes.Timestamp() },
             };
         }

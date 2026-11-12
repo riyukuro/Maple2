@@ -876,7 +876,27 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private TimeEventTable ParseTimeEventTable() {
         var globalPortals = new Dictionary<int, GlobalPortalMetadata>();
         var worldBosses = new Dictionary<int, WorldBossMetadata>();
+        var fieldWarEvents = new Dictionary<int, FieldWarEventMetadata>();
         foreach ((int id, TimeEventData data) in parser.ParseTimeEventData()) {
+            // Type 7: the field war (rows 85000 and 85001, every 2 hours, open 5 minutes). The parser keeps no
+            // feature for these rows; the wars of fieldwardata are filtered by theirs, so a locale without them opens none.
+            if ((int) data.type == FieldWarRules.TimeEventType) {
+                int[] startTimeArray = ParseTimeToArray(data.startTime);
+                int[] endTimeArray = ParseTimeToArray(data.endTime);
+                int[] cycleArray = string.IsNullOrEmpty(data.cycleTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.cycleTime);
+                int[] randomArray = string.IsNullOrEmpty(data.randomTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.randomTime);
+                int[] lifeArray = string.IsNullOrEmpty(data.lifeTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.lifeTime);
+                fieldWarEvents.Add(id, new FieldWarEventMetadata(
+                    Id: id,
+                    Probability: data.prob,
+                    StartTime: new DateTime(startTimeArray[0], startTimeArray[1], startTimeArray[2], startTimeArray[3], startTimeArray[4], startTimeArray[5]),
+                    EndTime: new DateTime(endTimeArray[0], endTimeArray[1], endTimeArray[2], endTimeArray[3], endTimeArray[4], endTimeArray[5]),
+                    CycleTime: new TimeSpan(cycleArray[2], cycleArray[3], cycleArray[4], cycleArray[5]),
+                    RandomTime: new TimeSpan(randomArray[2], randomArray[3], randomArray[4], randomArray[5]),
+                    LifeTime: new TimeSpan(lifeArray[2], lifeArray[3], lifeArray[4], lifeArray[5]),
+                    GroupId: data.fieldWarGroupID));
+                continue;
+            }
             switch (data.type) {
                 case TimeEventType.GlobalEvent: {
                         var entries = new GlobalPortalMetadata.Field[3]; // UI only supports 3 fields
@@ -937,7 +957,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     }
             }
         }
-        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses);
+        Dictionary<int, FieldWarMetadata> fieldWars = ParseFieldWarData();
+        Console.WriteLine($"timeEventData: {fieldWarEvents.Count} field war events, {fieldWars.Count} field wars");
+        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldWarEvent: fieldWarEvents, FieldWar: fieldWars);
 
         int[] ParseTimeToArray(string time) {
             string[] timeArray = time.Split('-');
@@ -947,6 +969,36 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
             return timeInt;
         }
+    }
+
+    // The client's table/fieldwardata.xml (the parser has no reader for it): fieldWarID, fieldWarGroupID, pickWeight,
+    // fieldID, rewardID, uiFieldID and feature. The client announces only a war it has in this table.
+    private Dictionary<int, FieldWarMetadata> ParseFieldWarData() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = clientReader?.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/fieldwardata.xml", StringComparison.OrdinalIgnoreCase));
+        return entry == null ? new Dictionary<int, FieldWarMetadata>()
+            : MapFieldWarData(clientReader!.GetXmlDocument(entry), row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")));
+    }
+
+    public static Dictionary<int, FieldWarMetadata> MapFieldWarData(XmlDocument document, Func<XmlElement, bool> available) {
+        var results = new Dictionary<int, FieldWarMetadata>();
+        if (document.DocumentElement == null) {
+            return results;
+        }
+        foreach (XmlNode node in document.DocumentElement.ChildNodes) {
+            if (node is not XmlElement { Name: "fieldWar" } row || !available(row)
+                || !int.TryParse(row.GetAttribute("fieldWarID"), out int id) || !int.TryParse(row.GetAttribute("fieldID"), out int mapId)) {
+                continue;
+            }
+            int.TryParse(row.GetAttribute("fieldWarGroupID"), out int groupId);
+            if (!int.TryParse(row.GetAttribute("pickWeight"), out int pickWeight)) {
+                pickWeight = 1;
+            }
+            int.TryParse(row.GetAttribute("rewardID"), out int rewardId);
+            int.TryParse(row.GetAttribute("uiFieldID"), out int uiMapId);
+            results.TryAdd(id, new FieldWarMetadata(id, groupId, pickWeight, mapId, rewardId, uiMapId));
+        }
+        return results;
     }
 
     private GameEventTable ParseGameEventTable() {

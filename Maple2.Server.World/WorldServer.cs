@@ -29,6 +29,7 @@ public class WorldServer {
     private readonly QuestMetadataStorage questMetadata;
     private readonly GlobalPortalLookup globalPortalLookup;
     private readonly WorldBossLookup worldBossLookup;
+    private readonly FieldWarLookup fieldWarLookup;
     private readonly PlayerInfoLookup playerInfoLookup;
     private readonly GuildLookup guildLookup;
     private ConstantsTable Constants => serverTableMetadata.ConstantsTable;
@@ -45,12 +46,13 @@ public class WorldServer {
 
     private readonly LoginClient login;
 
-    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, GuildLookup guildLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
+    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, FieldWarLookup fieldWarLookup, PlayerInfoLookup playerInfoLookup, GuildLookup guildLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
         this.gameStorage = gameStorage;
         this.channelClients = channelClients;
         this.serverTableMetadata = serverTableMetadata;
         this.globalPortalLookup = globalPortalLookup;
         this.worldBossLookup = worldBossLookup;
+        this.fieldWarLookup = fieldWarLookup;
         this.playerInfoLookup = playerInfoLookup;
         this.guildLookup = guildLookup;
         this.login = login;
@@ -156,11 +158,11 @@ public class WorldServer {
     // the meantime is kept.
     public void SetOfflineIfOn(PlayerInfo playerInfo, int channel) {
         if (playerInfoLookup.UpdateIfOn(channel, new PlayerUpdateRequest {
-                AccountId = playerInfo.AccountId,
-                CharacterId = playerInfo.CharacterId,
-                LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
-                Channel = -1,
-            })) {
+            AccountId = playerInfo.AccountId,
+            CharacterId = playerInfo.CharacterId,
+            LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+            Channel = -1,
+        })) {
             Migrations.End(playerInfo.CharacterId);
         }
     }
@@ -311,6 +313,38 @@ public class WorldServer {
             }
             scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - DateTime.Now);
         }
+
+        // Field War
+        foreach ((int _, FieldWarEventMetadata eventData) in serverTableMetadata.TimeEventTable.FieldWarEvent ?? new Dictionary<int, FieldWarEventMetadata>()) {
+            if (eventData.EndTime < DateTime.Now || eventData.CycleTime == TimeSpan.Zero) {
+                continue;
+            }
+            if (TimeEventRules.FirstRun(eventData.StartTime, eventData.CycleTime, eventData.EndTime, DateTime.Now) is not { } startTime) {
+                continue;
+            }
+            scheduler.Schedule(() => FieldWar(eventData, startTime), startTime - DateTime.Now);
+        }
+    }
+
+    // A run of a field war event: one war of its group (by pickWeight) opens for the event's lifeTime.
+    private void FieldWar(FieldWarEventMetadata data, DateTime startTime) {
+        IReadOnlyCollection<FieldWarMetadata> wars = (serverTableMetadata.TimeEventTable.FieldWar ?? new Dictionary<int, FieldWarMetadata>()).Values.ToList();
+        int total = FieldWarRules.TotalWeight(wars, data.GroupId);
+        if (total > 0 && TimeEventRules.Runs(data.Probability, Random.Shared.Next(100))
+            && FieldWarRules.Pick(wars, data.GroupId, Random.Shared.Next(total)) is { } war) {
+            long uid = fieldWarLookup.Open(war);
+            logger.Information("Field war {FieldWarId} (map {MapId}) open for {LifeTime}", war.Id, war.MapId, data.LifeTime);
+            scheduler.Schedule(() => fieldWarLookup.Close(uid), data.LifeTime);
+        }
+
+        DateTime nextRunTime = startTime + data.CycleTime;
+        if (data.RandomTime > TimeSpan.Zero) {
+            nextRunTime += TimeSpan.FromMilliseconds(Random.Shared.Next((int) data.RandomTime.TotalMilliseconds));
+        }
+        if (data.EndTime < nextRunTime) {
+            return;
+        }
+        scheduler.Schedule(() => FieldWar(data, nextRunTime), nextRunTime - DateTime.Now);
     }
 
     private void GlobalPortal(GlobalPortalMetadata data, DateTime startTime) {

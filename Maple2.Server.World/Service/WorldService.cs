@@ -17,6 +17,7 @@ public partial class WorldService : World.WorldBase {
     private readonly BlackMarketLookup blackMarketLookup;
     private readonly GlobalPortalLookup globalPortalLookup;
     private readonly WorldBossLookup worldBossLookup;
+    private readonly FieldWarLookup fieldWarLookup;
     private readonly PlayerConfigLookUp playerConfigLookUp;
     private readonly PvpLookup pvpLookup;
     private readonly ILogger logger = Log.Logger.ForContext<WorldService>();
@@ -26,7 +27,7 @@ public partial class WorldService : World.WorldBase {
         PlayerInfoLookup playerLookup, GuildLookup guildLookup, PartyLookup partyLookup,
         PartySearchLookup partySearchLookup, GroupChatLookup groupChatLookup, BlackMarketLookup blackMarketLookup,
         ClubLookup clubLookup, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerConfigLookUp playerConfigLookUp,
-        PvpLookup pvpLookup
+        PvpLookup pvpLookup, FieldWarLookup fieldWarLookup
         ) {
         this.tokenCache = tokenCache;
         this.worldServer = worldServer;
@@ -42,6 +43,7 @@ public partial class WorldService : World.WorldBase {
         this.worldBossLookup = worldBossLookup;
         this.playerConfigLookUp = playerConfigLookUp;
         this.pvpLookup = pvpLookup;
+        this.fieldWarLookup = fieldWarLookup;
     }
 
     public override Task<ChannelsResponse> Channels(ChannelsRequest request, ServerCallContext context) {

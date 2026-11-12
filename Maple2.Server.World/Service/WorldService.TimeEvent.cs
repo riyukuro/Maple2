@@ -16,6 +16,14 @@ public partial class WorldService {
                 return Task.FromResult(GetActiveWorldBosses());
             case TimeEventRequest.TimeEventOneofCase.WorldBossKilled:
                 return Task.FromResult(OnWorldBossKilled(request.WorldBossKilled));
+            case TimeEventRequest.TimeEventOneofCase.JoinFieldWar:
+                return Task.FromResult(new TimeEventResponse {
+                    FieldWarInfo = fieldWarLookup.Join(request.JoinFieldWar.EventId),
+                });
+            case TimeEventRequest.TimeEventOneofCase.GetFieldWar:
+                return Task.FromResult(new TimeEventResponse {
+                    FieldWarInfo = fieldWarLookup.Get(),
+                });
             default:
                 return Task.FromResult(new TimeEventResponse());
         }

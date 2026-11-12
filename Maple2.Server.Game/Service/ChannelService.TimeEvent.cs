@@ -31,6 +31,19 @@ public partial class ChannelService {
                 return Task.FromResult(CloseWorldBoss(request.CloseWorldBoss));
             case TimeEventRequest.TimeEventOneofCase.WarnWorldBoss:
                 return Task.FromResult(WarnWorldBoss(request.WarnWorldBoss));
+            case TimeEventRequest.TimeEventOneofCase.AnnounceFieldWar:
+                foreach (GameSession session in server.GetSessions()) {
+                    session.AnnounceFieldWar(request.AnnounceFieldWar.FieldWarId, request.AnnounceFieldWar.EventId);
+                }
+                return Task.FromResult(new TimeEventResponse());
+            case TimeEventRequest.TimeEventOneofCase.CloseFieldWar:
+                // The client has no close for the announce: a later enter finds the war gone at the World server.
+                foreach (GameSession session in server.GetSessions()) {
+                    if (session.FieldWarUid == request.CloseFieldWar.EventId) {
+                        session.FieldWarUid = 0;
+                    }
+                }
+                return Task.FromResult(new TimeEventResponse());
             default:
                 return Task.FromResult(new TimeEventResponse());
         }
