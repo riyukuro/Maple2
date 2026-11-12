@@ -17,7 +17,6 @@ namespace Maple2.Server.Game.Model;
 /// SpawnPoint on field with random NPCs.
 /// </summary>
 public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
-    private const int FORCE_SPAWN_MULTIPLIER = 2;
     private const int SPAWN_DISTANCE = 250;
     private const int PET_SPAWN_RATE_TOTAL = 10000;
 
@@ -26,7 +25,8 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
     private readonly List<int> spawnedMobs;
     private readonly List<int> spawnedPets;
     private readonly List<Vector3> validSpawns;
-    private long spawnTick;
+    private readonly RespawnQueue respawns = new();
+    private bool spawned;
     private int spawnId;
 
     public FieldMobSpawn(FieldManager field, int objectId, MapMetadataSpawn metadata, WeightedSet<NpcMetadata> npcs, WeightedSet<ItemMetadata> pets) : base(field, objectId, metadata) {
@@ -42,16 +42,12 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         validSpawns = new();
     }
 
-    public void Despawn(int objectId) {
+    // A mob of this spawn died: it alone comes back at its death + deadTime + Cooldown.
+    public void Despawn(int objectId, float deadTime) {
         // Pets do not impact spawn cycle.
         spawnedPets.Remove(objectId);
 
         if (!spawnedMobs.Remove(objectId)) {
-            return;
-        }
-
-        // No respawn without a non-zero cooldown.
-        if (Value.Cooldown <= 0) {
             return;
         }
 
@@ -62,11 +58,7 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         const int spawnRate = 1000;
 #endif
 
-        if (spawnedMobs.Count == 0) {
-            spawnTick = Math.Min(spawnTick, Environment.TickCount64 + Value.Cooldown * spawnRate);
-        } else if (spawnTick == long.MaxValue) {
-            spawnTick = Environment.TickCount64 + Value.Cooldown * spawnRate * FORCE_SPAWN_MULTIPLIER;
-        }
+        respawns.Died(Environment.TickCount64, deadTime, Value.Cooldown, spawnRate);
     }
 
     private List<Vector3> GetRandomSpawns(int count) {
@@ -117,16 +109,22 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
     }
 
     public override void Update(long tickCount) {
-        if (tickCount < spawnTick) {
+        int spawnMobCount;
+        if (!spawned) {
+            spawnMobCount = Value.Population - spawnedMobs.Count; // the whole group on field entry
+        } else {
+            spawnMobCount = respawns.Take(tickCount, Value.Population - spawnedMobs.Count);
+        }
+        if (spawnMobCount <= 0) {
             return;
         }
 
+        spawned = true;
         InitializeSpawns();
 
-        spawnTick = long.MaxValue;
-
-        int spawnMobCount = Value.Population - spawnedMobs.Count;
-        bool doSpawnPet = Random.Shared.Next(PET_SPAWN_RATE_TOTAL) < Value.PetSpawnRate;
+        int target = spawnedMobs.Count + spawnMobCount;
+        // One pet roll each time the group is full again (once per refill, as before the per-mob timers).
+        bool doSpawnPet = target >= Value.Population && Random.Shared.Next(PET_SPAWN_RATE_TOTAL) < Value.PetSpawnRate;
 
         if (doSpawnPet) {
             ++spawnMobCount;
@@ -134,9 +132,11 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
 
         List<Vector3> pickedSpawns = GetRandomSpawns(spawnMobCount);
         int spawnIndex = 0;
-        for (int i = spawnedMobs.Count; i < Value.Population; i++) {
+        for (int i = spawnedMobs.Count; i < target; i++) {
             FieldNpc? fieldNpc = Field.SpawnNpc(npcs.Get(), pickedSpawns[spawnIndex++], Rotation, owner: this);
             if (fieldNpc == null) {
+                // The place is tried again one Cooldown later (another npc of the set may be picked then).
+                respawns.Died(tickCount, 0, Value.Cooldown);
                 continue;
             }
 

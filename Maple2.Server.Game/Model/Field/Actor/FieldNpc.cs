@@ -488,7 +488,7 @@ public class FieldNpc : Actor<Npc> {
 
     protected override void OnDeath() {
         WorldBossDeathCallback?.Invoke(this);
-        Owner?.Despawn(ObjectId);
+        Owner?.Despawn(ObjectId, Value.Metadata.Dead.Time);
         RemoveSummons();
         SendControl = false;
 
