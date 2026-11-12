@@ -8,6 +8,9 @@ using Maple2.Server.Game.Packets;
 namespace Maple2.Server.Game.Util;
 
 public static class DamageCalculator {
+    // Npcs (not pets) use their own factor; players and pets keep the unconfirmed 4.
+    internal static double AttackDamageFactor(bool npcCaster) => npcCaster ? Constant.NpcAttackDamageFactor : Constant.AttackDamageFactor;
+
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
@@ -126,7 +129,7 @@ public static class DamageCalculator {
         }
 
         damageMultiplier *= attackTypeAmount * resistance * (finalDamage == 0 ? 1 : finalDamage);
-        attackDamage *= damageMultiplier * Constant.AttackDamageFactor + property.Value;
+        attackDamage *= damageMultiplier * AttackDamageFactor(caster is FieldNpc and not FieldPet) + property.Value;
 
         // Apply any shields
         foreach (Buff buff in target.Buffs.EnumerateBuffs().Where(buff => buff.Metadata.Shield != null)) {
