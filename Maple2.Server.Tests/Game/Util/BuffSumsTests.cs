@@ -10,10 +10,10 @@ namespace Maple2.Server.Tests.Game.Util;
 // The kept sums of the buffs held (BuffSums) equal a walk over the same buffs.
 public class BuffSumsTests {
     private static AdditionalEffectMetadata Effect(int id, Dictionary<BasicAttribute, float>? resistances = null,
-            AdditionalEffectMetadataInvokeEffect? invoke = null, bool invincible = false) {
+            AdditionalEffectMetadataInvokeEffect? invoke = null, bool invincible = false, bool reflect = false) {
         var status = new AdditionalEffectMetadataStatus(new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>(),
             new Dictionary<SpecialAttribute, float>(), new Dictionary<SpecialAttribute, float>(),
-            resistances ?? new Dictionary<BasicAttribute, float>(), false, null, null, 0, invincible);
+            resistances ?? new Dictionary<BasicAttribute, float>(), false, null, null, 0, invincible, reflect);
         return new AdditionalEffectMetadata(id, 1, null!, null!, null!, null!, null!, status, null, null!, null, invoke, [], [], []);
     }
 
@@ -72,6 +72,14 @@ public class BuffSumsTests {
         Assert.That(new BuffSums([.. Held, (Effect(6, invincible: true), 1)]).Invincible, Is.True);
         Assert.That(new BuffSums([]).Invincible, Is.False);
         Assert.That((byte) DamageType.Invincible, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void InvincibleReflectWhenAnInvincibleBuffHasValueTwo() {
+        Assert.That(new BuffSums([.. Held, (Effect(6, invincible: true), 1)]).InvincibleReflect, Is.False);
+        Assert.That(new BuffSums([.. Held, (Effect(6, invincible: true), 1), (Effect(7, invincible: true, reflect: true), 1)]).InvincibleReflect, Is.True);
+        Assert.That(new BuffSums([.. Held, (Effect(7, reflect: true), 1)]).InvincibleReflect, Is.False);
+        Assert.That((byte) DamageType.InvincibleReflection, Is.EqualTo(8));
     }
 
     [Test]

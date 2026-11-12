@@ -41,4 +41,11 @@ public static class SplashTiming {
         }
         return best;
     }
+
+    // The direction a region damage packet gives with a target: in KMS2 packets the unit vector from that point
+    // to the target, in all three axes, and zero when the target stands on the point.
+    public static Vector3 FireDirection(Vector3 point, Vector3 target) {
+        Vector3 offset = target - point;
+        return offset == Vector3.Zero ? Vector3.Zero : Vector3.Normalize(offset);
+    }
 }

@@ -83,7 +83,9 @@ public record AdditionalEffectMetadataStatus(
     AdditionalEffectMetadataStatus.CompulsionEvent? Compulsion,
     AdditionalEffectMetadataStatus.StatConversion? Conversion,
     int ImmuneBreak,
-    bool Invincible) {
+    bool Invincible,
+    // DefensiveProperty invincible is 2: a hit on the holder is sent as InvincibleReflection, not Invincible.
+    bool InvincibleReflect = false) {
 
     public record CompulsionEvent(BuffCompulsionEventType Type, float Rate, int[] SkillIds);
 

@@ -192,7 +192,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             Compulsion: compulsionEvent,
             Conversion: conversion,
             ImmuneBreak: offensive.hitImmuneBreak,
-            Invincible: defensive.invincible != 0);
+            Invincible: defensive.invincible != 0,
+            InvincibleReflect: defensive.invincible == 2);
     }
 
     private static AdditionalEffectMetadataRecovery? Convert(RecoveryProperty recovery) {

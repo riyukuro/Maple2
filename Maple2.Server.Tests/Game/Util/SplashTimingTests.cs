@@ -46,4 +46,12 @@ public class SplashTimingTests {
         Assert.That(SplashTiming.FirePoint(points, new Vector3(200, 40, 0), region), Is.EqualTo(points[1]), "the nearest of several");
         Assert.That(SplashTiming.FirePoint([], new Vector3(200, 40, 0), region), Is.EqualTo(region));
     }
+
+    [Test]
+    public void ATargetsDirectionLeadsFromThePointToIt() {
+        var point = new Vector3(100, 100, 100);
+        Assert.That(SplashTiming.FireDirection(point, new Vector3(100, 400, 500)), Is.EqualTo(new Vector3(0, 0.6f, 0.8f)), "height counts");
+        Assert.That(SplashTiming.FireDirection(point, new Vector3(-50, 100, 100)), Is.EqualTo(new Vector3(-1, 0, 0)));
+        Assert.That(SplashTiming.FireDirection(point, point), Is.EqualTo(Vector3.Zero), "no direction on the point itself");
+    }
 }

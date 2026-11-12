@@ -207,6 +207,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                         target.ApplyDamage(Caster, damage, attack);
                         if (Source != SkillSource.Cube && damage.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? fired)) {
                             fired.Position = SplashTiming.FirePoint(Points, target.Position, Position);
+                            fired.Direction = SplashTiming.FireDirection(fired.Position, target.Position);
                         }
                         // TODO: Set PrevUid?
                         targetRecords.Add(new TargetRecord {
