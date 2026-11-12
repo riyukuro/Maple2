@@ -610,16 +610,16 @@ public static class Lua {
         };
     }
 
+    // The client's calcKillCount: a kill 5 s or more after the last one starts a new count at 1; a sooner kill adds 1
+    // when the target is level 50 or above or within 5 levels of the player, and leaves the count as it is otherwise.
     public static int CalcKillCount(int myLevel, int targetLevel, int timeElapsed, int killCount) {
-        if (timeElapsed >= 5000) return killCount;
+        if (timeElapsed >= 5000) return 1;
 
-        int levelDiff = Math.Abs(myLevel - targetLevel);
-
-        if (targetLevel >= 50 || levelDiff <= 5) {
+        if (targetLevel >= 50 || Math.Abs(myLevel - targetLevel) <= 5) {
             return killCount + 1;
         }
 
-        return 1;
+        return killCount;
     }
     #endregion
 

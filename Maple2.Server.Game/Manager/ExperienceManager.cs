@@ -60,6 +60,7 @@ public sealed class ExperienceManager {
     public IList<int> PrestigeRewardsClaimed => session.Player.Value.Account.PrestigeRewardsClaimed;
 
     private int ChainKillCount { get; set; }
+    private long lastKillTick = -1;
 
     public ExperienceManager(GameSession session) {
         this.session = session;
@@ -74,27 +75,12 @@ public sealed class ExperienceManager {
         }
     }
 
-    public void ResetChainKill() => ChainKillCount = 0;
-
-    public void OnKill(IActor npc) {
-        if (npc is not FieldNpc) {
-            return;
-        }
-        FieldNpc fieldNpc = (npc as FieldNpc)!;
-        // TODO: Check if there are level requirements for Chain Kill Count to count ?
-        ChainKillCount++;
-        float expRate = Lua.CalcKillCountBonusExpRate(ChainKillCount);
-
-        // TODO: Using table ID 2. Need confirmation if particular maps (or dungeons) use a different table
-        long expGained = fieldNpc.Value.Metadata.Basic.CustomExp;
-        if (fieldNpc.Value.Metadata.Basic.CustomExp < 0) {
-            if (!session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, fieldNpc.Value.Metadata.Basic.Level, out expGained)) {
-                return;
-            }
-        }
-        expGained = SpendRest((long) (expGained * expRate), kill: true);
-        LevelUp();
-        session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, ExpMessageCode.s_msg_take_exp, npc.ObjectId));
+    // The kill streak (trophy 21210014, condition killcount): each kill reports the streak's length, and the trophy
+    // keeps the longest one. KillStreakRules has the rule.
+    public void OnKill(int npcLevel, long tickMs) {
+        ChainKillCount = KillStreakRules.Next(ChainKillCount, Level, npcLevel, lastKillTick < 0 ? long.MaxValue : tickMs - lastKillTick);
+        lastKillTick = tickMs;
+        session.ConditionUpdate(ConditionType.killcount, counter: ChainKillCount);
     }
 
     // Adds a gain and spends rest exp on it (RestExpRules); returns the gain with its bonus.
