@@ -101,6 +101,7 @@ public static class ConditionUtil {
             case ConditionType.dungeon_clear_group:
             case ConditionType.dungeon_rank_clear:
             case ConditionType.dungeon_rank:
+            case ConditionType.item_design:
             case ConditionType.buff:
             case ConditionType.enchant_result:
             case ConditionType.dialogue:

@@ -215,6 +215,17 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: (long) rank, codeLong: dungeonId), Is.EqualTo(expected));
     }
 
+    // A design made from a template counts for item_design with its kind (70400058 "Craft 1 template in the
+    // workshop": item, furniture and mount).
+    [TestCase(UgcType.Item, true)]
+    [TestCase(UgcType.Mount, true)]
+    [TestCase(UgcType.Banner, false)]
+    public void ItemDesign_CountsTheListedKinds(UgcType type, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.item_design, 1,
+            new ConditionMetadata.Parameters(Integers: [1, 2, 7]), null);
+        Assert.That(condition.Check(null!, codeLong: (long) type), Is.EqualTo(expected));
+    }
+
     // A completed daily quest counts for quest_daily when its id is one of the row's codes.
     [TestCase(30000359, true)]
     [TestCase(30000360, false)]

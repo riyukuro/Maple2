@@ -584,6 +584,9 @@ public class UgcHandler : FieldPacketHandler {
             }
 
             session.Send(UgcPacket.UpdateItem(session.Player.ObjectId, uid, item, ugcMetadata.CreatePrice, info.Type));
+            // A design made from a template counts with its kind (70400058 "Craft 1 template in the workshop":
+            // codes 1 item, 2 furniture, 7 mount, the three kinds made here).
+            session.ConditionUpdate(ConditionType.item_design, codeLong: (long) info.Type);
             session.Send(UgcPacket.UpdatePath(resource));
         }
 
