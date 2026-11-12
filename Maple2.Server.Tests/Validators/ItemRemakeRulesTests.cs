@@ -83,4 +83,16 @@ public class ItemRemakeRulesTests {
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionPet, pet, ItemTag.LockItemOptionPet, 3), Is.True);
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionPet, pet, ItemTag.LockItemOptionPet, 5), Is.True);
     }
+
+    // Only a lock item the character can use counts (PC::CanUseItem): not expired, premium club only with it, not
+    // bound to another character.
+    [Test]
+    public void LockItemUsable() {
+        Assert.That(ItemRemakeRules.LockItemUsable(false, false, false, 0, 7), Is.True);
+        Assert.That(ItemRemakeRules.LockItemUsable(false, false, false, 7, 7), Is.True);
+        Assert.That(ItemRemakeRules.LockItemUsable(true, false, false, 0, 7), Is.False);
+        Assert.That(ItemRemakeRules.LockItemUsable(false, true, false, 0, 7), Is.False);
+        Assert.That(ItemRemakeRules.LockItemUsable(false, true, true, 0, 7), Is.True);
+        Assert.That(ItemRemakeRules.LockItemUsable(false, false, false, 8, 7), Is.False);
+    }
 }

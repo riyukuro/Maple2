@@ -44,4 +44,10 @@ public static class ItemRemakeRules {
 
     public static bool IsLockItem(ItemTag lockTag, int lockRarity, ItemTag tag, int rarity) =>
         tag == lockTag && (lockRarity == 0 || rarity == lockRarity);
+
+    // The client counts only lock items the character can use (Unk_Inventory::FUN_140a5f7b0, inventory.cpp:835, with
+    // PC::CanUseItem): not expired, a premium-club item only for a premium-club account, not bound to another
+    // character. The same test as a worn set piece's (SetItemRules.Counted) without its level limit.
+    public static bool LockItemUsable(bool expired, bool requireVip, bool vip, long boundTo, long characterId) =>
+        SetItemRules.Counted(expired, requireVip, vip, boundTo, characterId, 0, 0);
 }

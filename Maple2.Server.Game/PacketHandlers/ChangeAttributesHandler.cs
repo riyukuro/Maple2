@@ -244,7 +244,8 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     }
 
     // The lock item the client asks for (ItemRemakeRules.LockTag): any inventory item with the lock tag of the
-    // item's kind and, for an equip, the equip's rarity. The first one found is taken.
+    // item's kind and, for an equip, the equip's rarity, that the character can use (ItemRemakeRules.LockItemUsable).
+    // The first one found is taken.
     public static Item? GetLockConsumeItem(GameSession session, Item changeItem) {
         if (!IsValidItem(changeItem)) {
             return null;
@@ -256,8 +257,9 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             return null;
         }
         int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsCombatPet, changeItem.Rarity);
-        return session.Item.Inventory.Filter(item => !item.IsExpired()
-            && ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity),
+        bool vip = session.Config.IsPremiumClubActive();
+        return session.Item.Inventory.Filter(item => ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity)
+            && ItemRemakeRules.LockItemUsable(item.IsExpired(), item.Metadata.Limit.RequireVip, vip, item.Binding?.CharacterId ?? 0, session.CharacterId),
             InventoryType.Misc).FirstOrDefault();
     }
 
