@@ -43,7 +43,8 @@ public static class MatrixExtensions {
         float sin1 = 0;
         float cos1 = 0;
 
-        float sin2 = -rotation.M32;
+        // Rounding can put the sine just past 1, where Asin gives NaN.
+        float sin2 = Math.Clamp(-rotation.M32, -1f, 1f);
 
         float sin3 = 0;
         float cos3 = 1;

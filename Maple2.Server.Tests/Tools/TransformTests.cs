@@ -1,4 +1,5 @@
 using System.Numerics;
+using Maple2.Tools.Extensions;
 using Maple2.Tools.VectorMath;
 
 namespace Maple2.Server.Tests.Tools;
@@ -49,5 +50,22 @@ public class TransformTests {
         transform.LookTo(new Vector3(-1, 0, 0));
         AssertFacing(transform, new Vector3(-1, 0, 0));
         Assert.That(float.IsFinite(transform.RotationAnglesDegrees.Z), Is.True);
+    }
+
+    // Rounding can put a rotation's sine just past 1; the angles stay finite.
+    [Test]
+    public void RotationAngles_AtTheGimbalLimit_AreFinite() {
+        var matrix = Matrix4x4.Identity;
+        matrix.M32 = -1.0000001f;
+        matrix.M22 = 0;
+        Vector3 angles = matrix.GetRotationAngles(normalize: false);
+        Assert.That(float.IsFinite(angles.X) && float.IsFinite(angles.Y) && float.IsFinite(angles.Z), Is.True);
+    }
+
+    // A zero vector has no direction to stretch along; it stays zero instead of turning NaN.
+    [Test]
+    public void ClampLength_OfZero_StaysZero() {
+        Assert.That(Vector3.Zero.ClampLength(1, 2), Is.EqualTo(Vector3.Zero));
+        Assert.That(new Vector3(0, 0, 0.5f).ClampLength(1, 2), Is.EqualTo(new Vector3(0, 0, 1)));
     }
 }

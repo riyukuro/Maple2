@@ -76,6 +76,9 @@ public static class VectorExtensions {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Vector3 ClampLength(this in Vector3 length, float min, float max) {
         float magnitude = length.Length();
+        if (magnitude == 0 || !float.IsFinite(magnitude)) {
+            return length; // no direction to scale along
+        }
         if (magnitude < min) {
             return min * Vector3.Normalize(length);
         }

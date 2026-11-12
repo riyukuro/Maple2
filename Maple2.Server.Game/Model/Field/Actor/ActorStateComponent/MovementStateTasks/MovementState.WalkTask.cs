@@ -40,7 +40,15 @@ public partial class MovementState {
             return;
         }
 
-        walkDirection = Vector3.Normalize(direction);
+        float length = direction.Length();
+        if (!float.IsFinite(length) || length == 0) {
+            // No direction to walk in: a zero or NaN one would move the npc to a NaN position each tick.
+            task.Cancel();
+
+            return;
+        }
+
+        walkDirection = direction / length;
         walkType = WalkType.Direction;
         walkTask = task;
 

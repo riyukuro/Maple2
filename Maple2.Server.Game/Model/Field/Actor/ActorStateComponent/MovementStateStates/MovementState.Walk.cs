@@ -98,7 +98,9 @@ public partial class MovementState {
             Vector3 target = walkTargetPosition;
             (Vector3 newPos, bool reachedFlying) = actor.Navigation.FlyAdvance(actor.Position, target, Speed, delta);
 
-            Velocity = (newPos - actor.Position) / delta;
+            if (delta > 0) {
+                Velocity = (newPos - actor.Position) / delta;
+            }
             actor.Position = newPos;
 
             if (walkLookWhenDone && (target - actor.Position).LengthSquared() > 0) {

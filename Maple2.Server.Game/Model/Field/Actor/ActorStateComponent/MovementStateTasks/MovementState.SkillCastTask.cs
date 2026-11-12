@@ -42,6 +42,10 @@ public partial class MovementState {
     private void SkillCastFaceTarget(SkillRecord cast, IActor target, int faceTarget) {
         Vector3 offset = target.Position - actor.Position;
         float distance = offset.LengthSquared();
+        // A target on the caster's own spot (the caster itself, or one standing on it) gives no direction: keep the facing.
+        if (!float.IsFinite(distance) || distance < 1e-5f) {
+            return;
+        }
 
         if (faceTarget != 1) {
             if (!cast.Motion.MotionProperty.FaceTarget || cast.Metadata.Data.AutoTargeting is null) {

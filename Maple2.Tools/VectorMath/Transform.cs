@@ -45,7 +45,7 @@ public class Transform {
 
             axis = Vector3.Normalize(axis);
 
-            float angle = (float) Math.Acos(quaternion.W) * 2;
+            float angle = (float) Math.Acos(Math.Clamp(quaternion.W, -1f, 1f)) * 2;
 
             return (axis, angle);
         }

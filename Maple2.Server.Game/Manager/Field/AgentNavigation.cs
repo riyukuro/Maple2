@@ -257,7 +257,11 @@ public sealed class AgentNavigation {
             timeLeft = distance * (1 - currentPathProgress) / speed;
         }
 
-        currentPathProgress += (float) timeSpan.TotalSeconds * speed / distance;
+        // A zero-length segment (a repeated path point) with no time left over, or no speed, adds nothing:
+        // dividing by its length gave a NaN progress and a NaN end point.
+        if (distance > 0 && speed > 0) {
+            currentPathProgress += (float) timeSpan.TotalSeconds * speed / distance;
+        }
         RcVec3f end = RcVec3f.Lerp(currentPath[currentPathIndex], currentPath[currentPathIndex + 1], currentPathProgress);
 
         return (start, DotRecastHelper.FromNavMeshSpace(end));
@@ -367,11 +371,16 @@ public sealed class AgentNavigation {
         // get distance in navmesh space
         float fDistance = distance * DotRecastHelper.MapRotation.GetRightAxis().Length();
 
-        // get direction from agent to target
-        RcVec3f direction = RcVec3f.Normalize(RcVec3f.Subtract(target, position));
+        // get direction from agent to target; on the goal's own spot there is no way away from it
+        RcVec3f offset = RcVec3f.Subtract(target, position);
+        float offsetLength = offset.Length();
+        if (!float.IsFinite(offsetLength) || offsetLength < 1e-4f) {
+            return false;
+        }
+        RcVec3f direction = offset * (1 / offsetLength);
 
         // get the point that is fDistance away from the target in the opposite direction
-        RcVec3f positionAway = RcVec3f.Add(position, RcVec3f.Normalize(direction) * -fDistance);
+        RcVec3f positionAway = RcVec3f.Add(position, direction * -fDistance);
 
         // find the nearest poly to the positionAway
         if (!field.FindNearestPoly(positionAway, out long awayRef, out RcVec3f positionAwayNavMesh)) {
