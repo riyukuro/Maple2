@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using M2dXmlGenerator;
 using Maple2.Database.Context;
 using Maple2.Database.Extensions;
 using Maple2.Database.Model.Metadata;
@@ -18,7 +19,6 @@ using Maple2.Tools.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 string language = "en";
-const string env = "Live";
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -50,6 +50,12 @@ language = languageEnv.ToLower();
 // The feature.xml / feature_setting.xml column the data is filtered by (Maple2.Tools.Locale, shared with the server).
 if (!Locale.TryRead(out string locale, out string localeError)) {
     Console.Error.WriteLine(localeError);
+    Environment.Exit(1);
+}
+
+// The feature_setting.xml row (server type) the features are read at: MS2_FEATURE_ENV, unset = Live.
+if (!FeatureLevels.TryReadEnv(Environment.GetEnvironmentVariable(FeatureLevels.EnvOption), out string env)) {
+    Console.Error.WriteLine($"{FeatureLevels.EnvOption} is not one of {string.Join(", ", FeatureLevels.Envs)} (unset or empty = {FeatureLevels.DefaultEnv})");
     Environment.Exit(1);
 }
 
@@ -197,6 +203,21 @@ Console.WriteLine("Starting data ingestion...");
 Filter.Load(xmlReader, locale, env);
 // The client turns off a feature with no level for the locale; the parser's filter keeps it (FeatureLevels).
 FeatureLevels.Apply();
+// With a played client, its own feature tables decide: the client reads feature.xml and feature_setting.xml from its
+// pack (CFeatureManager::Init), and its levels differ from the data folder's (KR Live is 78 there, 56 here).
+if (playedReader != null) {
+    Dictionary<string, int>? playedFeatures = FeatureLevels.PlayedEnabled(playedReader, locale, env, out int playedLevel);
+    if (playedFeatures == null) {
+        Console.WriteLine($"The played client's pack has no {FeatureLevels.FeatureTable}; features follow the data folder's.");
+    } else if (playedLevel == 0) {
+        Console.Error.WriteLine($"The played client's {FeatureLevels.FeatureSettingTable} has no {env} level for {locale}, so that client turns every feature off. " +
+                                "Run with the played client's LOCALE, or without MS2_PLAYED_CLIENT_XML.");
+        Environment.Exit(1);
+    } else {
+        FeatureLocaleFilter.Features = playedFeatures;
+        Console.WriteLine($"Features: the played client's tables at {env} {locale} = {playedLevel}, {playedFeatures.Count} on.");
+    }
+}
 PackTables.Load(xmlReader, locale);
 Console.WriteLine($"Rows filtered for {locale}; table/<region> files read from {PackTables.Locale}.");
 if (playedReader != null && PackTables.PlayedLocaleWarning(PackTables.RegionFolders(playedReader.Files.Select(file => file.Name)), locale) is { } playedLocaleWarning) {
