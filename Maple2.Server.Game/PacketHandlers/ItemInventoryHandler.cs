@@ -1,10 +1,12 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Session;
 
@@ -124,6 +126,15 @@ public class ItemInventoryHandler : FieldPacketHandler {
 
         if (drop.Metadata.Property.DisableDrop) {
             session.Send(NoticePacket.Notice(NoticePacket.Flags.MessageBox, StringCode.s_item_err_drop));
+            return;
+        }
+
+        // A black-market-only item passes CanDestroy by its trade bit, so the client sends mode 4 to drop it. When
+        // its data keeps it from another player the drop is refused and it stays in the bag: the client answers
+        // ItemInventory error 42 with s_item_err_drop (CSceneStateGame::OnItemInventory, mode 13). Only the
+        // destroy box (mode 5) destroys it.
+        if (amount > 0 && !TradeRules.IsHandTradeable(drop)) {
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_item_err_drop));
             return;
         }
 

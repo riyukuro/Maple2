@@ -4,12 +4,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -128,8 +130,8 @@ public class ItemDropHandlerTests {
     }
 
     // The client sends mode 4 for a black-market-only item (its trade bit passes CanDestroy). At its trade rarity
-    // with no trades left it may not go to another player, so it is destroyed and nothing lands; below that rarity
-    // the chosen count lands.
+    // with no trades left it may not go to another player: the drop is refused with error 42 (s_item_err_drop) and
+    // the stack stays whole. Below that rarity the chosen count lands. Mode 5 still destroys it.
     [TestCase(1, false)]
     [TestCase(2, true)]
     public void BlackMarketOnly_Drop(int tradeMaxRarity, bool lands) {
@@ -139,8 +141,20 @@ public class ItemDropHandlerTests {
 
         Drop(session, 2);
 
-        Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(lands ? 3 : null));
-        Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(lands ? new[] { 2 } : Array.Empty<int>()));
+        if (lands) {
+            Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(3));
+            Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(new[] { 2 }));
+            return;
+        }
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(ItemInventoryPacket.Error(ItemInventoryError.s_item_err_drop).ToArray()) }));
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
+        Assert.That(Ground(session), Is.Empty);
+
+        DropAll(session);
+
+        Assert.That(session.Item.Inventory.Get(stack.Uid), Is.Null);
+        Assert.That(Ground(session), Is.Empty);
     }
 
     // Mode 5 comes from the destroy box: the whole item goes and nothing lands, tradeable or not.
