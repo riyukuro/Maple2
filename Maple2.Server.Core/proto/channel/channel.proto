@@ -199,6 +199,10 @@ message GuildRequest {
     int32 grade = 3;
     bool last_grade = 4;
   }
+  // Guild 34: the guild's new name.
+  message Rename {
+    string name = 1;
+  }
 
   int64 guild_id = 1;
   repeated int64 receiver_ids = 2;
@@ -226,6 +230,7 @@ message GuildRequest {
     OpenEvent open_event = 23;
     Recall recall = 24;
     TrophyNotice trophy_notice = 25;
+    Rename rename = 26;
   }
 }
 

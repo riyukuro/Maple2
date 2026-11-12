@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
+using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
@@ -16,6 +17,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.World.Service;
 using static Maple2.Model.Error.CharacterCreateError;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -186,6 +188,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 break;
             case ItemFunction.ResetAbilityCoolTime:
                 HandleResetAbilityCoolTime(session, item);
+                break;
+            case ItemFunction.ChangeGuildName:
+                HandleChangeGuildName(session, item, packet);
                 break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
@@ -941,6 +946,50 @@ public class ItemUseHandler : FieldPacketHandler {
     // sends the plain item use. One stone clears the character ability reset cool time.
     private static void HandleResetAbilityCoolTime(GameSession session, Item item) {
         session.Config.ResetCharacterAbilityCoolTime(() => session.Item.Inventory.Consume(item.Uid, 1));
+    }
+
+    // The guild rename ticket (ChangeGuildName): the client's dispatch (@0x140d233d0) opens a name box only for the
+    // guild master (else notice 0x416), and its OK (UIMessageBox::HandleChangeGuildNameButton, uimessagebox.cpp:2159)
+    // checks the name (not empty, CheckGuildName) and sends the plain item use with the name. The server checks the
+    // master and the name as a new guild's, the World renames the guild (refused for a name another guild has), and
+    // the ticket is used only then. Each member gets Guild 34, the new name.
+    private void HandleChangeGuildName(GameSession session, Item item, IByteReader packet) {
+        string name = packet.ReadUnicodeString();
+        Guild? guild = session.Guild.Guild;
+        if (guild == null) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_guild));
+            return;
+        }
+        if (guild.LeaderCharacterId != session.CharacterId) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_master));
+            return;
+        }
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        if (!GuildRules.IsGuildName(name, constants.GuildNameLengthMin, constants.GuildNameLengthMax) || BanWordStorage.ContainsBannedWord(name)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
+            return;
+        }
+
+        GuildError error;
+        try {
+            GuildResponse response = session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                Rename = new GuildRequest.Types.Rename {
+                    GuildId = guild.Id,
+                    Name = name,
+                },
+            });
+            error = (GuildError) response.Error;
+        } catch (RpcException) {
+            error = GuildError.s_guild_err_unknown;
+        }
+        if (error != GuildError.none) {
+            session.Send(GuildPacket.Error(error));
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            Logger.Warning("Guild {GuildId} renamed, but rename ticket {ItemUid} was not used", guild.Id, item.Uid);
+        }
     }
 
     // The dungeon reward pouch (OpenDungeonItemBox @0x140d24e70): the client opens its confirm box only for a room

@@ -43,6 +43,8 @@ public partial class WorldService {
                 return Task.FromResult(UpdateGuildNotice(request.RequestorId, request.UpdateNotice));
             case GuildRequest.GuildOneofCase.UpdateEmblem:
                 return Task.FromResult(UpdateGuildEmblem(request.RequestorId, request.UpdateEmblem));
+            case GuildRequest.GuildOneofCase.Rename:
+                return Task.FromResult(RenameGuild(request.RequestorId, request.Rename));
             case GuildRequest.GuildOneofCase.UpdatePoster:
                 return Task.FromResult(UpdateGuildPoster(request.RequestorId, request.UpdatePoster));
             case GuildRequest.GuildOneofCase.UpdateRank:
@@ -287,6 +289,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = focus.GuildId };
+    }
+
+    private GuildResponse RenameGuild(long requestorId, GuildRequest.Types.Rename rename) {
+        if (!guildLookup.TryGet(rename.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.Rename(requestorId, rename.Name);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = rename.GuildId };
     }
 
     private GuildResponse UpdateGuildEmblem(long requestorId, GuildRequest.Types.UpdateEmblem emblem) {

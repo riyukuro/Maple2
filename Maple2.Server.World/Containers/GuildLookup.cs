@@ -47,14 +47,20 @@ public class GuildLookup : IDisposable {
         return guild != null;
     }
 
+    // Held while a guild name is checked and taken (a new guild, a rename), so two cannot take one name.
+    internal static readonly object NameLock = new();
+
     public GuildError Create(string name, long leaderId, out long guildId) {
         guildId = 0;
         using GameStorage.Request db = gameStorage.Context();
-        if (db.GuildExists(guildName: name)) {
-            return GuildError.s_guild_err_name_exist;
-        }
+        Guild? guild;
+        lock (NameLock) {
+            if (db.GuildExists(guildName: name)) {
+                return GuildError.s_guild_err_name_exist;
+            }
 
-        Guild? guild = db.CreateGuild(name, leaderId);
+            guild = db.CreateGuild(name, leaderId);
+        }
         if (guild == null) {
             return GuildError.s_guild_err_unknown;
         }

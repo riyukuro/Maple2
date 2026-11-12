@@ -348,6 +348,11 @@ message GuildRequest {
     int64 applicant_id = 2;
     bool accepted = 3;
   }
+  // A guild rename ticket (item function ChangeGuildName): the master gives the guild a new name.
+  message Rename {
+    int64 guild_id = 1;
+    string name = 2;
+  }
 
   int64 requestor_id = 4;
   oneof guild {
@@ -380,6 +385,7 @@ message GuildRequest {
     AddExpFund add_exp_fund = 29;
     SpendFund spend_fund = 30;
     TrophyNotice trophy_notice = 31;
+    Rename rename = 32;
   }
 }
 

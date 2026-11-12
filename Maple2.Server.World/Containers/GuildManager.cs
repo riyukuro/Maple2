@@ -1007,6 +1007,40 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // The guild rename ticket (item function ChangeGuildName): only the master may use it (the client checks this
+    // too, ItemFunctionDispatch ChangeGuildName), and the name must not be taken by any guild.
+    public GuildError Rename(long requestorId, string name) {
+        if (!Guild.Members.ContainsKey(requestorId)) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (Guild.LeaderCharacterId != requestorId) {
+            return GuildError.s_guild_err_no_master;
+        }
+
+        lock (GuildLookup.NameLock) {
+            using GameStorage.Request db = GameStorage.Context();
+            if (db.GuildExists(guildName: name)) {
+                return GuildError.s_guild_err_name_exist;
+            }
+            lock (guildLock) {
+                string old = Guild.Name;
+                Guild.Name = name;
+                if (!db.SaveGuild(Guild)) {
+                    Guild.Name = old;
+                    return GuildError.s_guild_err_unknown;
+                }
+            }
+        }
+
+        Broadcast(new GuildRequest {
+            Rename = new GuildRequest.Types.Rename {
+                Name = name,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     public GuildError AddOrUpdatePoster(int id, string picture, long ownerId, string ownerName, long resourceId) {
         // Any member: the client asks for no rank right before a poster upload, unlike the emblem (64).
         if (!Guild.Members.ContainsKey(ownerId)) {

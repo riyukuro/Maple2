@@ -604,6 +604,27 @@ public class GuildManager : IDisposable {
         return true;
     }
 
+    // The guild's new name (a rename ticket). Guild 34 (CGuildManager::OnPacketGuildRenamed) stores it, shows
+    // s_guild_notify_change_name and renames the own character's tag; the field is sent this member's tag (Guild 77)
+    // for everyone else, and the World's player info gets the name.
+    public bool Rename(string name) {
+        if (Guild == null) {
+            return false;
+        }
+
+        Guild.Name = name;
+        session.Player.Value.Character.GuildName = name;
+        session.Send(GuildPacket.UpdateName(name));
+        session.Field?.Broadcast(GuildPacket.AddTag(session.PlayerName, name), session);
+        session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+            AccountId = session.AccountId,
+            CharacterId = session.CharacterId,
+            Async = true,
+            GuildName = name,
+        });
+        return true;
+    }
+
     public bool UpdateEmblem(string requestorName, string emblem) {
         if (Guild == null) {
             return false;

@@ -213,21 +213,8 @@ public class GuildHandler : PacketHandler<GameSession> {
             return; // Already in a guild.
         }
 
-        if (string.IsNullOrWhiteSpace(guildName)) {
-            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
-            return;
-        }
-        if (guildName.Length < Constants.GuildNameLengthMin || guildName.Length > Constants.GuildNameLengthMax) {
-            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
-            return;
-        }
-
-        if (BanWordStorage.ContainsBannedWord(guildName)) {
-            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
-            return;
-        }
-
-        if (!NameValidator.ValidName(guildName)) {
+        if (!GuildRules.IsGuildName(guildName, Constants.GuildNameLengthMin, Constants.GuildNameLengthMax)
+            || BanWordStorage.ContainsBannedWord(guildName)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
             return;
         }

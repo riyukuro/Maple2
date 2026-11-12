@@ -5,6 +5,12 @@ using Maple2.Model.Metadata;
 namespace Maple2.Model.Validators;
 
 public static class GuildRules {
+    // A guild name a new guild or a rename takes (the ban words are checked apart): not blank, min to max letters
+    // (the constants GuildNameLengthMin and GuildNameLengthMax) and the letters a name may have.
+    public static bool IsGuildName(string name, int min, int max) {
+        return !string.IsNullOrWhiteSpace(name) && name.Length >= min && name.Length <= max && NameValidator.ValidName(name);
+    }
+
     // Rank 0 is the master's rank.
     public const byte MasterRank = 0;
 

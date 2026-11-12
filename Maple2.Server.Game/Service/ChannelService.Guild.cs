@@ -30,6 +30,8 @@ public partial class ChannelService {
                 return Task.FromResult(UpdateGuildNotice(request.ReceiverIds, request.UpdateNotice));
             case GuildRequest.GuildOneofCase.UpdateEmblem:
                 return Task.FromResult(UpdateGuildEmblem(request.ReceiverIds, request.UpdateEmblem));
+            case GuildRequest.GuildOneofCase.Rename:
+                return Task.FromResult(RenameGuild(request.ReceiverIds, request.Rename));
             case GuildRequest.GuildOneofCase.UpdatePoster:
                 return Task.FromResult(UpdateGuildPoster(request.ReceiverIds, request.UpdatePoster));
             case GuildRequest.GuildOneofCase.UpdateRank:
@@ -380,6 +382,18 @@ public partial class ChannelService {
                     session.ConditionUpdate(ConditionType.guild_join);
                 }
             } catch (RpcException) { /* the guild is loaded at the next login */ }
+        }
+
+        return new GuildResponse();
+    }
+
+    private GuildResponse RenameGuild(IEnumerable<long> receiverIds, GuildRequest.Types.Rename rename) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Guild.Rename(rename.Name);
         }
 
         return new GuildResponse();
