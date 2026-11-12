@@ -551,7 +551,7 @@ public sealed class QuestManager {
             exp = GuildRules.QuestRewardBonus(exp, guildFactor.UserExp);
         }
         if (exp > 0) {
-            session.Exp.AddExp(exp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message());
+            session.Exp.AddQuestExp(exp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type));
         }
 
         if (reward.Treva > 0) {

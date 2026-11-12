@@ -14,6 +14,7 @@ public class ExpReasonTests {
     [TestCase(ExpType.expDrop, 1062)]
     [TestCase(ExpType.dungeonRelative, 1085)]
     [TestCase(ExpType.miniGame, 3007)]
+    [TestCase(ExpType.userMiniGame, 3007)]
     [TestCase(ExpType.gathering, 3103)]
     [TestCase(ExpType.manufacturing, 3107)]
     [TestCase(ExpType.petTaming, 3200)]
@@ -63,10 +64,13 @@ public class ExpReasonTests {
     }
 
     // What an exp gain counts as for the adventure level: a gather, a craft and a pet capture name their life skill
-    // (the server pack's Exp_Gathering, Exp_Manufacturing and Exp_PetTaming rows); the other reasons are unchanged.
-    [TestCase(ExpMessageCode.monster, ExpType.none)]
-    [TestCase(ExpMessageCode.quest, ExpType.none)]
-    [TestCase(ExpMessageCode.miniGame, ExpType.none)]
+    // (the server pack's Exp_Gathering, Exp_Manufacturing and Exp_PetTaming rows); a kill, a quest (either reason)
+    // and a mini game round theirs (Exp_KillMonster, Exp_QuestETC, Exp_MiniGame).
+    [TestCase(ExpMessageCode.monster, ExpType.monster)]
+    [TestCase(ExpMessageCode.quest, ExpType.questEtc)]
+    [TestCase(ExpMessageCode.mission, ExpType.questEtc)]
+    [TestCase(ExpMessageCode.miniGame, ExpType.miniGame)]
+    [TestCase(ExpMessageCode.s_msg_take_assist_bonus_exp, ExpType.none)]
     [TestCase(ExpMessageCode.gathering, ExpType.gathering)]
     [TestCase(ExpMessageCode.masteryFarming, ExpType.gathering)]
     [TestCase(ExpMessageCode.manufacturing, ExpType.manufacturing)]

@@ -108,11 +108,21 @@ public sealed class ExperienceManager {
 
     public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) => AddExp(expGained, message, kill: false);
 
-    // A kill whose exp is the npc's own (customExp): the kill reason and the npc's object id, no rest exp bonus.
-    public long AddCustomKillExp(long expGained, int npcObjectId) => AddExp(expGained, ExpType.monster.Message(), kill: false, npcObjectId);
+    // A quest's complete reward: its reason (1010 or 1053) and the prestige type of its quest type.
+    public long AddQuestExp(long expGained, ExpMessageCode message, ExpType prestigeType) =>
+        AddExp(expGained, message, kill: false, prestigeType: prestigeType);
 
-    // A kill's ExpUp carries the npc's object id, as KMS2 sends it.
-    private long AddExp(long expGained, ExpMessageCode message, bool kill, int npcObjectId = 0) {
+    // A kill whose exp is the npc's own (customExp): the kill reason and the npc's object id, no rest exp bonus.
+    public long AddCustomKillExp(long expGained, int npcObjectId, int npcClass = 1) =>
+        AddExp(expGained, ExpType.monster.Message(), kill: false, npcObjectId, prestigeRate: KillPrestigeRate(npcClass));
+
+    private decimal KillPrestigeRate(int npcClass) =>
+        PrestigeRules.KillFactor(npcClass, Constants.AdventureExpFactorElite, Constants.AdventureExpFactorBoss);
+
+    // A kill's ExpUp carries the npc's object id, as KMS2 sends it. The prestige exp is the type's row (the reason's
+    // type unless one is given) times prestigeRate.
+    private long AddExp(long expGained, ExpMessageCode message, bool kill, int npcObjectId = 0, ExpType? prestigeType = null,
+                        decimal prestigeRate = 1m) {
         if (expGained <= 0) {
             return 0;
         }
@@ -120,7 +130,7 @@ public sealed class ExperienceManager {
         LevelUp();
         // KMS2 sends the exp first, then the prestige exp it brings.
         session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, message, npcObjectId));
-        AddPrestigeExp(message.Type());
+        AddPrestigeExp(prestigeType ?? message.Type(), prestigeRate);
         session.ConditionUpdate(ConditionType.exp, counter: expGained);
         return expGained;
     }
@@ -149,7 +159,10 @@ public sealed class ExperienceManager {
             return 0;
         }
 
-        return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message());
+        // A mini game round's prestige exp is its row times the round's exp rate, like its exp.
+        decimal prestigeRate = PrestigeRules.ScalesWithExpRate(expType) ? (decimal) modifier : 1m;
+        return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message(), kill: false,
+            prestigeRate: prestigeRate);
     }
 
     // The client's CExpTable::GetTypeValue at the character's level: the type's common exp curve, its base exp times its
@@ -182,7 +195,8 @@ public sealed class ExperienceManager {
             return;
         }
 
-        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message(), kill: true, npcObjectId);
+        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message(), kill: true, npcObjectId,
+            prestigeRate: KillPrestigeRate(npcClass));
     }
 
     // The monster exp table's value for a kill, 0 when neither table has the level.
@@ -235,7 +249,7 @@ public sealed class ExperienceManager {
         return startLevel != Level;
     }
 
-    private void AddPrestigeExp(ExpType expType) {
+    private void AddPrestigeExp(ExpType expType, decimal rate) {
         if (Level < Constants.AdventureLevelStartLevel) {
             return;
         }
@@ -244,8 +258,12 @@ public sealed class ExperienceManager {
             return;
         }
 
-        if (PrestigeCurrentExp - PrestigeExp + (PrestigeLevelsGained * Constants.AdventureLevelLvUpExp) >= Constants.AdventureLevelLvUpExp) {
-            amount = (long) (amount * Constants.AdventureLevelFactor);
+        amount = PrestigeRules.Scale(amount, rate);
+        // The day's first level's worth counts in full, the rest at AdventureLevelFactor (a gain that crosses it is split).
+        long gainedToday = PrestigeCurrentExp - PrestigeExp + (PrestigeLevelsGained * (long) Constants.AdventureLevelLvUpExp);
+        amount = PrestigeRules.Gain(amount, gainedToday, Constants.AdventureLevelLvUpExp, Constants.AdventureLevelFactor);
+        if (amount <= 0) {
+            return;
         }
 
         PrestigeCurrentExp = Math.Min(amount + PrestigeCurrentExp, long.MaxValue);

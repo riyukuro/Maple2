@@ -261,7 +261,8 @@ public static class ModelExtensions {
             ExpType.mission => ExpMessageCode.mission,
             ExpType.expDrop => ExpMessageCode.expDrop,
             ExpType.dungeonRelative => ExpMessageCode.dungeonRelative,
-            ExpType.miniGame => ExpMessageCode.miniGame,
+            // A massive user mini game (Crazy Runner) names the mini game reason too (KMS2).
+            ExpType.miniGame or ExpType.userMiniGame => ExpMessageCode.miniGame,
             ExpType.gathering => ExpMessageCode.gathering,
             ExpType.manufacturing => ExpMessageCode.manufacturing,
             ExpType.petTaming => ExpMessageCode.petTaming,
@@ -300,6 +301,12 @@ public static class ModelExtensions {
             ExpMessageCode.manufacturing or ExpMessageCode.masteryEngraving or ExpMessageCode.masteryAlchemist
                 or ExpMessageCode.masteryCooking => ExpType.manufacturing,
             ExpMessageCode.petTaming => ExpType.petTaming,
+            // A kill, a quest and a mini game round add their prestige rows: Exp_KillMonster, Exp_QuestETC (an epic
+            // quest names Exp_EpicQuest, QuestExpRules.PrestigeType) and Exp_MiniGame. KMS2 adds 15000 for every kind
+            // of quest, a mission's reason (1053) included, so neither Exp_Quest nor Exp_Mission (45000) is read.
+            ExpMessageCode.monster => ExpType.monster,
+            ExpMessageCode.quest or ExpMessageCode.mission => ExpType.questEtc,
+            ExpMessageCode.miniGame => ExpType.miniGame,
             _ => ExpType.none,
         };
     }

@@ -50,6 +50,11 @@ public static class QuestExpRules {
         };
     }
 
+    // The prestige row a completed quest's exp adds: Exp_EpicQuest for an epic quest, Exp_QuestETC for any other.
+    public static ExpType PrestigeType(QuestType type) {
+        return type == QuestType.EpicQuest ? ExpType.epicQuest : ExpType.questEtc;
+    }
+
     // The reward's exp: relativeExp is the curve value at the player's level (0 without a relativeExp).
     public static long Exp(int fixedExp, long relativeExp, QuestType type, int rank, int alliance) {
         long exp = Math.Max(fixedExp, relativeExp);

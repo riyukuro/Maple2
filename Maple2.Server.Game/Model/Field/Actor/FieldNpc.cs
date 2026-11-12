@@ -849,7 +849,7 @@ public class FieldNpc : Actor<Npc> {
             killExp = player.Session.Exp.MobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class);
             player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class, modifier: (float) Math.Max(0d, 1d + expRate), npcObjectId: ObjectId);
         } else {
-            player.Session.Exp.AddCustomKillExp(KillRate.Apply(killExp, expRate), ObjectId);
+            player.Session.Exp.AddCustomKillExp(KillRate.Apply(killExp, expRate), ObjectId, Value.Metadata.Basic.Class);
         }
 
         if (BossKillRules.FieldBoss(Value.Metadata.Basic.Class)) {
