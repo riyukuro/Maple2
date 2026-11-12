@@ -48,6 +48,12 @@ public static class DamageCalculator {
     // bonuses on them) raises its hits by that rate: the effect tooltips read 0.021 as "damage dealt +2.1 %".
     internal static double DamageRateFactor(double rate) => 1 + rate;
 
+    // The target's damage taken rate of the hit's attack type (a buff's DefensiveProperty papDamageR or mapDamageR,
+    // summed over the buffs held) takes that share of the hit away: the effect tooltips read 0.99 as "damage taken
+    // from enemies -99 %" and 1 as "blocks physical damage". A negative rate adds to the hit (-0.5 takes 1.5 times);
+    // a rate of 1 or more leaves nothing, so the hit keeps only its least.
+    internal static double DamageTakenFactor(double rate) => Math.Max(0, 1 - rate);
+
     // The part of a hit the target takes after its range and element reductions (rates, 0.022 for 2.2 %). Each
     // reduction takes its part of what is left, and one of 100 % or more takes the whole hit. The client never
     // computes damage, so the server chooses the formula.
@@ -187,16 +193,20 @@ public static class DamageCalculator {
         double attackTypeAmount = 0;
         double resistance = 0;
         double damageRate = 0;
+        // Physical or magical, for the target's damage taken rate; neither when the attack type is neither.
+        bool? physicalHit = null;
         switch (property.AttackType) {
             case AttackType.Physical:
                 resistance = Damage.CalculateResistance(target.Stats.Values[BasicAttribute.PhysicalRes].Total, caster.Stats.Values[SpecialAttribute.PhysicalPiercing].Multiplier());
                 attackTypeAmount = caster.Stats.Values[BasicAttribute.PhysicalAtk].Total;
                 damageRate = caster.Stats.Values[SpecialAttribute.OffensivePhysicalDamage].Multiplier();
+                physicalHit = true;
                 break;
             case AttackType.Magic:
                 resistance = Damage.CalculateResistance(target.Stats.Values[BasicAttribute.MagicalRes].Total, caster.Stats.Values[SpecialAttribute.MagicalPiercing].Multiplier());
                 attackTypeAmount = caster.Stats.Values[BasicAttribute.MagicalAtk].Total;
                 damageRate = caster.Stats.Values[SpecialAttribute.OffensiveMagicalDamage].Multiplier();
+                physicalHit = false;
                 break;
             // If all, calculate the higher of the two
             case AttackType.All:
@@ -212,12 +222,16 @@ public static class DamageCalculator {
                 attackTypeAmount = Math.Max(caster.Stats.Values[BasicAttribute.PhysicalAtk].Total, caster.Stats.Values[BasicAttribute.MagicalAtk].Total) * 0.5f;
                 resistance = Damage.CalculateResistance(target.Stats.Values[SkillCastRules.ResistanceOf(attackTypeAttribute)].Total, caster.Stats.Values[piercingAttribute].Multiplier());
                 damageRate = caster.Stats.Values[damageRateAttribute].Multiplier();
+                physicalHit = attackTypeAttribute == BasicAttribute.PhysicalAtk;
                 break;
         }
 
         damageMultiplier *= attackTypeAmount * resistance * DamageRateFactor(damageRate);
         attackDamage *= damageMultiplier * AttackDamageFactor(caster is FieldNpc and not FieldPet) + property.Value;
         attackDamage *= ReductionFactor(target, property.RangeType, property.Element);
+        if (physicalHit is bool physical) {
+            attackDamage *= DamageTakenFactor(target.Buffs.DamageTakenRate(physical));
+        }
 
         // Apply any shields
         foreach (Buff buff in BuffManager.Shields(target.Buffs.EnumerateBuffs())) {

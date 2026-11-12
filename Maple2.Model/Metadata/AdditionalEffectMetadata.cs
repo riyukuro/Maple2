@@ -91,7 +91,11 @@ public record AdditionalEffectMetadataStatus(
     int ImmuneBreak,
     bool Invincible,
     // DefensiveProperty invincible is 2: a hit on the holder is sent as InvincibleReflection, not Invincible.
-    bool InvincibleReflect = false) {
+    bool InvincibleReflect = false,
+    // DefensiveProperty papDamageR and mapDamageR: the share of physical and magical hits on the holder taken away
+    // (0.99 is "damage taken from enemies -99 %"; a negative one adds to the hit).
+    float PhysicalDamageTakenRate = 0,
+    float MagicalDamageTakenRate = 0) {
 
     public record CompulsionEvent(BuffCompulsionEventType Type, float Rate, int[] SkillIds);
 

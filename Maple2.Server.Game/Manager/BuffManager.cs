@@ -398,6 +398,9 @@ public class BuffManager : IUpdatable {
     // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
     public float GetResistance(BasicAttribute attribute) => Sums().Resistance(attribute);
 
+    // The damage taken rate of the buffs held for physical (true) or magical (false) hits.
+    public float DamageTakenRate(bool physical) => physical ? Sums().PhysicalDamageTaken : Sums().MagicalDamageTaken;
+
     public (int, float) GetInvokeValues(InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
         return Sums().Invokes(invokeType, skillId, skillGroup);
     }
