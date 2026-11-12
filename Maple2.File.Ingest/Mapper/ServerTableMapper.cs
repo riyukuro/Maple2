@@ -972,22 +972,35 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     }
 
     // The client's table/fieldwardata.xml (the parser has no reader for it): fieldWarID, fieldWarGroupID, pickWeight,
-    // fieldID, rewardID, uiFieldID and feature. The client announces only a war it has in this table.
+    // fieldID, rewardID, uiFieldID, feature and locale. The client announces only a war it has in this table.
+    // FieldWarDataTable::Load (commonfiles/fieldwardata.cpp) reads the rows FUN_14028faa0 (commonutil.cpp) keeps: the
+    // available ones (feature and locale), and of rows with one fieldWarID the one SelectFeatureElement picks.
     private Dictionary<int, FieldWarMetadata> ParseFieldWarData() {
         Maple2.File.IO.Crypto.Common.PackFileEntry? entry = clientReader?.Files.FirstOrDefault(file =>
             file.Name.Equals("table/fieldwardata.xml", StringComparison.OrdinalIgnoreCase));
         return entry == null ? new Dictionary<int, FieldWarMetadata>()
-            : MapFieldWarData(clientReader!.GetXmlDocument(entry), row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")));
+            : MapFieldWarData(clientReader!.GetXmlDocument(entry),
+                row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")),
+                (a, b) => PlayedNpcStats.SelectFeatureElement(a, b, feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale));
     }
 
-    public static Dictionary<int, FieldWarMetadata> MapFieldWarData(XmlDocument document, Func<XmlElement, bool> available) {
+    public static Dictionary<int, FieldWarMetadata> MapFieldWarData(XmlDocument document, Func<XmlElement, bool> available,
+            Func<XmlElement, XmlElement, XmlElement> select) {
         var results = new Dictionary<int, FieldWarMetadata>();
         if (document.DocumentElement == null) {
             return results;
         }
+        // Keyed by the fieldWarID text, as the client's.
+        var rows = new Dictionary<string, XmlElement>();
         foreach (XmlNode node in document.DocumentElement.ChildNodes) {
-            if (node is not XmlElement { Name: "fieldWar" } row || !available(row)
-                || !int.TryParse(row.GetAttribute("fieldWarID"), out int id) || !int.TryParse(row.GetAttribute("fieldID"), out int mapId)) {
+            if (node is not XmlElement { Name: "fieldWar" } row || !available(row)) {
+                continue;
+            }
+            string key = row.GetAttribute("fieldWarID");
+            rows[key] = rows.TryGetValue(key, out XmlElement? kept) ? select(kept, row) : row;
+        }
+        foreach (XmlElement row in rows.Values) {
+            if (!int.TryParse(row.GetAttribute("fieldWarID"), out int id) || !int.TryParse(row.GetAttribute("fieldID"), out int mapId)) {
                 continue;
             }
             int.TryParse(row.GetAttribute("fieldWarGroupID"), out int groupId);
@@ -996,7 +1009,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
             int.TryParse(row.GetAttribute("rewardID"), out int rewardId);
             int.TryParse(row.GetAttribute("uiFieldID"), out int uiMapId);
-            results.TryAdd(id, new FieldWarMetadata(id, groupId, pickWeight, mapId, rewardId, uiMapId));
+            results[id] = new FieldWarMetadata(id, groupId, pickWeight, mapId, rewardId, uiMapId);
         }
         return results;
     }

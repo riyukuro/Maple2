@@ -690,13 +690,15 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(FieldWarPacket.Announce(fieldWarId, uid));
     }
 
-    // The field enter's field war announce, while the World server has a war open.
+    // The field enter's field war announce, while the World server has a war open that this character did not join.
     public void AnnounceOpenFieldWar() {
         if (Field == null || !TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type)) {
             return;
         }
         TimeEventResponse response = World.TimeEvent(new TimeEventRequest {
-            GetFieldWar = new TimeEventRequest.Types.GetFieldWar(),
+            GetFieldWar = new TimeEventRequest.Types.GetFieldWar {
+                CharacterId = CharacterId,
+            },
         });
         if (response.Error == 0 && response.FieldWarInfo != null) {
             AnnounceFieldWar(response.FieldWarInfo.FieldWarId, response.FieldWarInfo.EventId);

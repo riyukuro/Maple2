@@ -49,14 +49,14 @@ public static class PlayedNpcStats {
             if (!available(environment)) {
                 continue;
             }
-            selected = selected == null ? environment : Select(selected, environment, featureLevel, locale);
+            selected = selected == null ? environment : SelectFeatureElement(selected, environment, featureLevel, locale);
         }
         return selected;
     }
 
     // CFeatureManager::SelectFeatureElement (featuremanager.cpp:1049) with SelectHigherLevelFeatureName (:1012) and
-    // FUN_14036dfa0 (:1032).
-    private static XmlElement Select(XmlElement a, XmlElement b, Func<string, int> featureLevel, string locale) {
+    // FUN_14036dfa0 (:1032): of two available rows with one key, the one the client keeps.
+    public static XmlElement SelectFeatureElement(XmlElement a, XmlElement b, Func<string, int> featureLevel, string locale) {
         string featureA = a.GetAttribute("feature");
         string featureB = b.GetAttribute("feature");
         if (featureA != featureB) {

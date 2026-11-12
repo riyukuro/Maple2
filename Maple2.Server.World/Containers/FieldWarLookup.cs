@@ -11,7 +11,9 @@ namespace Maple2.Server.World.Containers;
 
 // The open field war (one at a time; the two KR events run an hour apart for 5 minutes). Its rooms are on the
 // first channel; a room takes players for the constant FieldWarInstanceEnterableDurationSeconds from its first
-// join, and up to the map's instancefield maxCount (FieldWarRules.NeedsNewRoom).
+// join, and up to the map's instancefield maxCount (FieldWarRules.NeedsNewRoom). A character joins a war once: the
+// ids are kept here, not on the channel's session, so a player moved out of a room (a new session) is not announced
+// the war again and opens no new room with it.
 public class FieldWarLookup {
     private readonly ChannelClientLookup channelClients;
     private readonly ServerTableMetadataStorage serverTableMetadata;
@@ -29,6 +31,7 @@ public class FieldWarLookup {
         public int RoomId;
         public long OpenedTick;
         public int Joined;
+        public readonly HashSet<long> JoinedCharacters = [];
     }
 
     public FieldWarLookup(ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata) {
@@ -36,9 +39,10 @@ public class FieldWarLookup {
         this.serverTableMetadata = serverTableMetadata;
     }
 
-    public FieldWarInfo? Get() {
+    // The open war, for the announce at a field enter; null for a character that joined it.
+    public FieldWarInfo? Get(long characterId) {
         lock (mutex) {
-            return open == null ? null : new FieldWarInfo {
+            return open == null || open.JoinedCharacters.Contains(characterId) ? null : new FieldWarInfo {
                 EventId = open.Uid,
                 FieldWarId = open.Metadata.Id,
                 Channel = open.Channel,
@@ -89,10 +93,12 @@ public class FieldWarLookup {
         }
     }
 
-    // The room a SidePopup enter goes to; null when the war is not open (or not this one) or no room was made.
-    public FieldWarInfo? Join(long uid) {
+    // The room a SidePopup enter goes to; null when the war is not open (or not this one), the character joined it
+    // already, or no room was made.
+    public FieldWarInfo? Join(long uid, long characterId) {
         lock (mutex) {
-            if (open == null || open.Uid != uid || !channelClients.TryGetClient(open.Channel, out ChannelClient? client)) {
+            if (open == null || open.Uid != uid || open.JoinedCharacters.Contains(characterId)
+                || !channelClients.TryGetClient(open.Channel, out ChannelClient? client)) {
                 return null;
             }
 
@@ -121,6 +127,7 @@ public class FieldWarLookup {
             }
 
             open.Joined++;
+            open.JoinedCharacters.Add(characterId);
             return new FieldWarInfo {
                 EventId = open.Uid,
                 FieldWarId = open.Metadata.Id,

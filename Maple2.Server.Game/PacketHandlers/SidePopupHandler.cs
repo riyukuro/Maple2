@@ -53,6 +53,7 @@ public class SidePopupHandler : FieldPacketHandler {
             eventResponse = World.TimeEvent(new TimeEventRequest {
                 JoinFieldWar = new TimeEventRequest.Types.JoinFieldWar {
                     EventId = session.FieldWarUid,
+                    CharacterId = session.CharacterId,
                 },
             });
         } catch (RpcException ex) {
