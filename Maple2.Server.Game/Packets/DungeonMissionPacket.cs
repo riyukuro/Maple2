@@ -13,6 +13,7 @@ public static class DungeonMissionPacket {
     private enum Command : byte {
         Load = 0,
         Update = 1,
+        Stage = 3,
         SetAbandon = 4,
     }
 
@@ -34,6 +35,16 @@ public static class DungeonMissionPacket {
         foreach (DungeonMission mission in missions) {
             pWriter.WriteClass<DungeonMission>(mission);
         }
+
+        return pWriter;
+    }
+
+    // RoomStageDungeonCli::OnStage (mode 3) reads one byte. The party window offers the give-up vote only
+    // while it is 0 and the give-up flag (mode 4) is set (IsStageFlagSet); KMS2 sends 1 with a clear's result.
+    public static ByteWriter Stage(byte stage) {
+        var pWriter = Packet.Of(SendOp.DungeonMission);
+        pWriter.WriteByte((byte) Command.Stage);
+        pWriter.WriteByte(stage);
 
         return pWriter;
     }

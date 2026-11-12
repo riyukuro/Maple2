@@ -572,6 +572,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 newField = nextDungeonField;
             } else if (mapId == dungeonField.Lobby.MapId) {
                 newField = dungeonField.Lobby;
+                Dungeon.LeaveStage();
             } else {
                 Migrate(mapId);
                 newField = null;
@@ -995,6 +996,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 return;
             }
             beforeMove?.Invoke();
+            Dungeon?.LeaveStage();
             Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
 
             if (isInstanced) {

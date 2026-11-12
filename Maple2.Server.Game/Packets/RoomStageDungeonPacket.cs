@@ -7,7 +7,7 @@ namespace Maple2.Server.Game.Packets;
 public static class RoomStageDungeonPacket {
     private enum Command : byte {
         Set = 0,
-        Update = 1,
+        Clear = 1,
     }
 
     // OnRoomStageDungeon case 0 (networkservice.cpp:1085) reads an int, a byte and a bool, then calls CreateStage.
@@ -22,9 +22,9 @@ public static class RoomStageDungeonPacket {
     }
 
     // OnRoomStageDungeon case 1 (networkservice.cpp:1092) reads nothing more: it calls ClearStage.
-    public static ByteWriter Update() {
+    public static ByteWriter Clear() {
         var pWriter = Packet.Of(SendOp.RoomStageDungeon);
-        pWriter.WriteByte((byte) Command.Update);
+        pWriter.WriteByte((byte) Command.Clear);
 
         return pWriter;
     }

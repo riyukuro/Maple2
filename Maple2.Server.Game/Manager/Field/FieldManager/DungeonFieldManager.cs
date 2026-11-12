@@ -17,6 +17,8 @@ public class DungeonFieldManager : FieldManager {
     public readonly DungeonRoomMetadata DungeonMetadata;
     public DungeonFieldManager? Lobby { get; init; }
     public readonly ConcurrentDictionary<int, DungeonFieldManager> RoomFields = [];
+    // The give-up flag the field's script set (dungeon_enable_give_up), for players who enter after it.
+    public bool GiveUpEnabled;
     public required DungeonRoomRecord DungeonRoomRecord { get; init; }
     public int PartyId { get; init; }
 
@@ -75,6 +77,8 @@ public class DungeonFieldManager : FieldManager {
         }
         DungeonRoomRecord.State = state;
         DungeonRoomRecord.EndTick = FieldTick;
+        // The run is over: the client stops offering the give-up vote. KMS2 sends this first on a clear.
+        Broadcast(DungeonMissionPacket.Stage(1));
 
         var compiledResults = new Dictionary<long, DungeonUserResult>();
 

@@ -184,11 +184,28 @@ public class DungeonManager {
             session.Send(DungeonWaitingPacket.Set(Lobby.DungeonId, Lobby.Size));
         } else if (Metadata != null) {
             // The client makes its mission list (RoomStageDungeonCli) only on RoomStageDungeon mode 0 and
-            // registers the DungeonMission handler there; it clears the list when the player leaves the field.
+            // registers the DungeonMission handler there. It drops them only on mode 1 (LeaveStage).
             session.Send(RoomStageDungeonPacket.Set(Metadata.Id));
             if (UserRecord != null && UserRecord.Missions.Count > 0) {
                 session.Send(DungeonMissionPacket.Load(UserRecord.Missions));
             }
+            // The new stage starts without the give-up flag and with stage 0; a player who enters after the
+            // script set the flag, or after the result, gets them here.
+            if (session.Field is DungeonFieldManager { GiveUpEnabled: true }) {
+                session.Send(DungeonMissionPacket.SetAbandon(true));
+            }
+            if (Lobby.DungeonRoomRecord.State != DungeonState.None) {
+                session.Send(DungeonMissionPacket.Stage(1));
+            }
+        }
+    }
+
+    // The client keeps the dungeon stage (mission list, the party window's give-up state, the quest guide's
+    // field mission skip) until RoomStageDungeon mode 1; a field change alone does not clear it. KMS2 sends it
+    // as the player leaves a dungeon room field. A move to another room field of the dungeon keeps the stage.
+    public void LeaveStage() {
+        if (session.Field is DungeonFieldManager field && field.FieldInstance.Type != InstanceType.DungeonLobby) {
+            session.Send(RoomStageDungeonPacket.Clear());
         }
     }
 

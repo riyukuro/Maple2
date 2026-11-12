@@ -57,6 +57,9 @@ public partial class TriggerContext {
 
     public void DungeonEnableGiveUp(bool enabled) {
         DebugLog("[DungeonEnableGiveUp] enabled:{Enabled}", enabled);
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.GiveUpEnabled = enabled;
+        }
         Field.Broadcast(DungeonMissionPacket.SetAbandon(enabled));
     }
 
