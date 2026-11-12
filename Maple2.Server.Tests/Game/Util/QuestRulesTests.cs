@@ -156,4 +156,19 @@ public class QuestRulesTests {
         var goTo = new Maple2.Model.Metadata.QuestMetadataGoToNpc(enabled, gotoField, 1);
         Assert.That(QuestRules.CanGoToNpc(goTo, state, met, [200, 201], mapId), Is.EqualTo(expected));
     }
+
+    // The talk a quest's script opens with at an npc: the accept talk for a quest not held or one that can be
+    // started again, the progress talk for a started quest (also at its complete npc while a condition is open),
+    // the complete talk only with every condition met at the complete npc, none for a completed quest.
+    [TestCase(null, false, false, false, 100)]
+    [TestCase(QuestState.None, false, false, true, 100)]
+    [TestCase(QuestState.Started, false, false, false, 200)]
+    [TestCase(QuestState.Started, false, false, true, 200)]
+    [TestCase(QuestState.Started, false, true, false, 200)]
+    [TestCase(QuestState.Started, false, true, true, 300)]
+    [TestCase(QuestState.Completed, false, true, true, 0)]
+    [TestCase(QuestState.Completed, true, true, true, 100)]
+    public void TalkStateBase(QuestState? held, bool canStartAgain, bool conditionsMet, bool atCompleteNpc, int expected) {
+        Assert.That(QuestRules.TalkStateBase(held, canStartAgain, conditionsMet, atCompleteNpc), Is.EqualTo(expected));
+    }
 }

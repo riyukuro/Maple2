@@ -171,6 +171,12 @@ public sealed class TestGameSession {
         cache.AddReplace(script.Id, script);
     }
 
+    // Quest data the session's QuestMetadata finds (after Start).
+    public void Register(QuestMetadata quest) {
+        var cache = (LRUCache<int, QuestMetadata>) typeof(MetadataStorage<int, QuestMetadata>).GetField("Cache", Any)!.GetValue(Session.QuestMetadata)!;
+        cache.AddReplace(quest.Id, quest);
+    }
+
     // Pet data the session's ItemMetadata finds by pet id.
     public void RegisterPet(int petId, int type = 1) {
         var field = typeof(ItemMetadataStorage).GetField("petLookup", Any)!;
@@ -323,7 +329,10 @@ public sealed class TestGameSession {
         typeof(Maple2.Server.Game.GameServer).GetField("endedOpenPeriods", Any)!.SetValue(server, new List<GameEvent>());
         typeof(GameSession).GetField("server", Any)!.SetValue(session, server);
         var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        Set(session, nameof(GameSession.QuestMetadata), new QuestMetadataStorage(new MetadataContext(metadataOptions)));
+        var quests = new QuestMetadataStorage(new MetadataContext(metadataOptions));
+        Set(session, nameof(GameSession.QuestMetadata), quests);
+        // The storage reads a stored quest's data from the same place (a quest the session starts is stored).
+        typeof(GameStorage).GetField("questMetadata", Any)!.SetValue(Storage, quests);
         Set(session, nameof(GameSession.ScriptMetadata), scripts);
         // What placing a cube and a design upload read: no function cubes, and no upload fee held.
         Set(session, nameof(GameSession.FunctionCubeMetadata), new FunctionCubeMetadataStorage(new MetadataContext(metadataOptions)));
@@ -651,6 +660,7 @@ public sealed class TestGameSession {
         typeof(FieldManager).GetField("fieldInteracts", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldInteract>());
         typeof(FieldManager).GetField("fieldFunctionInteracts", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldFunctionInteract>());
         typeof(FieldManager).GetField("fieldItems", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldItem>());
+        typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
         return field;
     }
 

@@ -282,27 +282,7 @@ public sealed class NpcScriptManager {
     }
 
     private ScriptState? GetQuestScriptState(ScriptMetadata? scriptMetadata) {
-        if (scriptMetadata == null) {
-            return null;
-        }
-        session.Quest.TryGetQuest(scriptMetadata.Id, out Quest? quest);
-        QuestState questState = quest?.State ?? QuestState.None;
-
-        int stateId = questState switch {
-            QuestState.None => NpcTalkUtil.GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 100, 200),
-            QuestState.Started => NpcTalkUtil.GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 200, 300),
-            _ => 0,
-        };
-
-        if (quest != null && session.Quest.CanStart(quest.Metadata)) {
-            stateId = NpcTalkUtil.GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 200, 300);
-        }
-
-        if (quest != null && quest.Metadata.Basic.CompleteNpc == Npc?.Value.Id) {
-            stateId = NpcTalkUtil.GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 300, 400);
-        }
-
-        return scriptMetadata.States.TryGetValue(stateId, out ScriptState? scriptState) ? scriptState : null;
+        return NpcTalkUtil.GetQuestScriptState(session, scriptMetadata, Npc?.Value.Id ?? 0);
     }
 
     private NpcTalkButton GetButton() {

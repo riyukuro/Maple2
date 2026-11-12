@@ -269,27 +269,16 @@ public static class NpcTalkUtil {
             return null;
         }
         session.Quest.TryGetQuest(scriptMetadata.Id, out Quest? quest);
-        QuestState questState = quest?.State ?? QuestState.None;
-
-        int stateId = questState switch {
-            QuestState.None => GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 100, 200),
-            QuestState.Started => GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 200, 300),
-            _ => 0,
-        };
-
-        if (quest != null && session.Quest.CanStart(quest.Metadata)) {
-            stateId = GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 200, 300);
-        }
-
-        if (quest != null && quest.Metadata.Basic.CompleteNpc == npcId) {
-            stateId = GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 300, 400);
-        }
+        int stateBase = QuestRules.TalkStateBase(quest?.State, quest != null && QuestManager.CanStartAgain(quest),
+            quest != null && session.Quest.CanComplete(quest), quest != null && quest.Metadata.Basic.CompleteNpc == npcId);
+        int stateId = stateBase == 0 ? 0 : GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), stateBase, stateBase + 100);
 
         return scriptMetadata.States.TryGetValue(stateId, out ScriptState? scriptState) ? scriptState : null;
     }
 
     public static int GetFirstStateScript(IEnumerable<int> questStates, int lowerBound, int upperBound) {
-        IEnumerable<int> statesInRange = questStates.Where(id => id >= lowerBound && id <= upperBound);
-        return statesInRange.Min();
+        // 0 (no state) when the script has none in the range.
+        IEnumerable<int> statesInRange = questStates.Where(id => id >= lowerBound && id < upperBound);
+        return statesInRange.DefaultIfEmpty().Min();
     }
 }

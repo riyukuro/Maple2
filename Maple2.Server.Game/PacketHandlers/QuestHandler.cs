@@ -180,33 +180,48 @@ public class QuestHandler : FieldPacketHandler {
         int questId = packet.ReadInt();
         int npcObjectId = packet.ReadInt();
 
+        // A refusal is told with the client's own text (Quest 0): the accept talk has no other answer.
+        QuestError error = AcceptError(session, questId, npcObjectId);
+        if (error != QuestError.none) {
+            session.Send(QuestPacket.Error(error));
+        }
+    }
+
+    private static QuestError AcceptError(GameSession session, int questId, int npcObjectId) {
         if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata)) {
-            return;
+            return QuestError.s_quest_error_accept_fail;
         }
 
         if (metadata.RemoteAccept.Type != QuestRemoteType.None) {
             if (metadata.RemoteAccept.MapId != 0 && metadata.RemoteAccept.MapId != session.Player.Value.Character.MapId) {
-                return;
+                return QuestError.s_quest_error_accept_fail;
             }
 
-            session.Quest.Start(questId);
-            return;
+            return session.Quest.Start(questId);
         }
 
         bool isPostbox = npcObjectId == 0 && metadata.Basic.UsePostbox;
-        bool fieldNpcExists = session.Field.Npcs.TryGetValue(npcObjectId, out FieldNpc? _);
+        bool fieldNpcExists = session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? _);
 
         if (!isPostbox && !fieldNpcExists) {
-            return;
+            return QuestError.s_quest_error_accept_fail;
         }
 
-        session.Quest.Start(questId);
+        return session.Quest.Start(questId);
     }
 
     private void HandleComplete(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
+        // Then the talk npc's object id (0 without a talk) and an int that is 0 in every KMS2 request.
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest)) {
+        // A quest that is not held, is already completed or has an open condition: the client's own text (Quest 0),
+        // and nothing is given. A dead player gets its own text. A full bag is answered by Complete.
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !session.Quest.CanComplete(quest)) {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
+            return;
+        }
+        if (session.Player.IsDead) {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_fail_complete_by_dead));
             return;
         }
         if (!session.Quest.Complete(quest)) {

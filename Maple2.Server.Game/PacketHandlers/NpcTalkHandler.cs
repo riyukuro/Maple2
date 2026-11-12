@@ -90,6 +90,10 @@ public class NpcTalkHandler : FieldPacketHandler {
     /// for a Respond it did not ask for, UITalkManager::OnTalkPacket).
     /// </summary>
     public static void BeginTalk(GameSession session, FieldNpc npc) {
+        // Counted first: a quest whose last condition is this talk shows its complete talk at once.
+        session.ConditionUpdate(ConditionType.dialogue, codeLong: npc.Value.Id);
+        session.ConditionUpdate(ConditionType.talk_in, codeLong: npc.Value.Id);
+
         int options = 0;
         var talkType = NpcTalkType.None;
         int shopId = npc.Value.Metadata.Basic.ShopId;
@@ -176,11 +180,7 @@ public class NpcTalkHandler : FieldPacketHandler {
         session.NpcScript = new NpcScriptManager(session, npc, metadata, selectedState, talkType);
         if (!session.NpcScript.BeginNpcTalk()) {
             session.NpcScript = null;
-            return;
         }
-
-        session.ConditionUpdate(ConditionType.dialogue, codeLong: npc.Value.Id);
-        session.ConditionUpdate(ConditionType.talk_in, codeLong: npc.Value.Id);
     }
 
     private void HandleContinue(GameSession session, IByteReader packet) {

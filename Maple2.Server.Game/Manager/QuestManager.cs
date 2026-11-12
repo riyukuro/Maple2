@@ -188,6 +188,20 @@ public sealed class QuestManager {
             return QuestError.s_quest_error_accept_fail;
         }
 
+        // The quest's items must fit the bag: without them the quest could not be done.
+        List<Item> acceptItems = [];
+        foreach (QuestMetadataReward.Item acceptReward in metadata.AcceptReward.EssentialItem) {
+            Item? reward = session.Field?.ItemDrop.CreateItem(acceptReward.Id, acceptReward.Rarity, acceptReward.Amount);
+            if (reward == null) {
+                logger.Error("Failed to create quest reward {RewardId}", acceptReward.Id);
+                continue;
+            }
+            acceptItems.Add(reward);
+        }
+        if (acceptItems.Count > 0 && !session.Item.Inventory.CanAdd(acceptItems)) {
+            return QuestError.s_quest_error_inventory_full;
+        }
+
         Quest? quest;
         if (held != null) {
             // The stored row is reused: started again with fresh conditions, its completion count kept. The client
@@ -224,15 +238,9 @@ public sealed class QuestManager {
             Add(quest);
         }
 
-        // TODO: Confirm inventory can hold all the items.
-        foreach (QuestMetadataReward.Item acceptReward in metadata.AcceptReward.EssentialItem) {
-            Item? reward = session.Field?.ItemDrop.CreateItem(acceptReward.Id, acceptReward.Rarity, acceptReward.Amount);
-            if (reward == null) {
-                logger.Error("Failed to create quest reward {RewardId}", acceptReward.Id);
-                continue;
-            }
+        foreach (Item reward in acceptItems) {
             if (!session.Item.Inventory.Add(reward, true)) {
-                logger.Error("Failed to add quest reward {RewardId} to inventory", acceptReward.Id);
+                logger.Error("Failed to add quest reward {RewardId} to inventory", reward.Id);
             }
         }
 
@@ -493,6 +501,16 @@ public sealed class QuestManager {
             return false;
         }
 
+        // The order KMS2 sends: the quest's complete packet, the meso, the exp, the items, then what counts the quest.
+        quest.EndTime = DateTime.Now.ToEpochSeconds();
+        quest.State = QuestState.Completed;
+        quest.CompletionCount++;
+        session.Send(QuestPacket.Complete(quest));
+
+        if (reward.Meso > 0) {
+            session.Currency.Meso += reward.Meso;
+        }
+
         // The exp the reward line shows: the fixed exp or the relativeExp curve at the player's level, whichever is
         // larger, with the rank factor of field and alliance quests.
         QuestMetadataBasic basic = quest.Metadata.Basic;
@@ -502,10 +520,6 @@ public sealed class QuestManager {
         }
         if (exp > 0) {
             session.Exp.AddExp(exp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message());
-        }
-
-        if (reward.Meso > 0) {
-            session.Currency.Meso += reward.Meso;
         }
 
         if (reward.Treva > 0) {
@@ -560,10 +574,6 @@ public sealed class QuestManager {
             session.ConditionUpdate(ConditionType.quest_field, codeLong: (long) quest.Metadata.Basic.Alliance);
         }
 
-        quest.EndTime = DateTime.Now.ToEpochSeconds();
-        quest.State = QuestState.Completed;
-        quest.CompletionCount++;
-        session.Send(QuestPacket.Complete(quest));
         TryJobAdvance(quest.Id);
         CompleteChapter(quest.Id);
         // The quest that opens the alliance missions (the methods' reloadOnComplete) makes the lists again.

@@ -360,7 +360,8 @@ public class TrophyWiringTests {
 
         Assert.That(session.Quest.Complete(listed), Is.True);
         Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
-        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve, SendOp.Quest }));
+        // The quest's own packet first, as KMS2 sends it.
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Quest, SendOp.Achieve }));
 
         // A completed quest is not completed again.
         Assert.That(session.Quest.Complete(listed), Is.False);

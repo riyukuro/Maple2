@@ -46,6 +46,19 @@ public static class QuestRules {
                && (basic.ResetWeekday != 0 || basic.DurationMinutes != 0 || !string.IsNullOrEmpty(basic.EventTag));
     }
 
+    // The first state range of a quest's talk script at an npc: 100 the accept talk (a quest not held, or a completed
+    // one that can be started again), 200 the talk of a started quest, 300 the complete talk, only at the quest's
+    // complete npc once every condition is met (KMS2 sends a 200 state with the close button for a quest still in
+    // progress); 0 none.
+    public static int TalkStateBase(QuestState? held, bool canStartAgain, bool conditionsMet, bool atCompleteNpc) {
+        return held switch {
+            null or QuestState.None => 100,
+            QuestState.Started => conditionsMet && atCompleteNpc ? 300 : 200,
+            QuestState.Completed => canStartAgain ? 100 : 0,
+            _ => 0,
+        };
+    }
+
     // Quest 2 (Abandon): a forfeitable quest known to the played client that is not completed, for the same reason.
     public static bool CanForfeit(QuestMetadataBasic basic, QuestState state) {
         return basic.Forfeitable && state != QuestState.Completed && PlayedClientQuests.Known(basic);
