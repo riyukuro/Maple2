@@ -1625,6 +1625,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     return null;
                 }
                 return new DungeonEnterTimeLimit(DungeonEnterTimeReader.Parse(value1));
+            case GameEventType.DungeonOpenPeriod:
+                // No tag: the client's event does nothing.
+                return string.IsNullOrWhiteSpace(value1) ? null : new DungeonOpenPeriod(value1.Trim());
             case GameEventType.SaleUgcDesign:
                 return EventSaleReader.UgcDesign(value1);
             case GameEventType.SaleHousing:

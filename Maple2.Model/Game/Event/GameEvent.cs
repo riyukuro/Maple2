@@ -369,6 +369,14 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(time.EndSeconds);
                 }
                 break;
+            case DungeonOpenPeriod openPeriod:
+                // The tag, then the event's start and end: the client keeps the period by tag and its room page
+                // shows the two dates.
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(openPeriod.Tag);
+                writer.WriteLong(StartTime);
+                writer.WriteLong(EndTime);
+                break;
             case SaleUgcDesign saleUgcDesign:
                 writer.WriteInt(Id);
                 writer.WriteInt(saleUgcDesign.Rate);

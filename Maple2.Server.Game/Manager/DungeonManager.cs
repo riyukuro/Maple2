@@ -398,6 +398,14 @@ public class DungeonManager {
             return;
         }
 
+        DungeonRoomError? periodError = DungeonRoomRules.OpenPeriodError(metadata.Limit.OpenPeriodDate, metadata.Limit.OpenPeriodTag,
+            session.FindEvent(GameEventType.DungeonOpenPeriod).Select(gameEvent => gameEvent.Metadata.Data is DungeonOpenPeriod period ? period.Tag : ""),
+            DateTime.Now);
+        if (periodError != null) {
+            session.Send(DungeonRoomPacket.Error(periodError.Value));
+            return;
+        }
+
         // A limitEnter room is entered only while its reward record has a count left. The client's OnError 4
         // reads the room id and shows that room's record expire (dungeonrecordcli.cpp:338).
         // With useTicket (UIDungeonRoomInfo::AskExtraTicketEnter, uidungeonroomdialog.cpp:1675: the confirmed box of

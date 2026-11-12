@@ -382,6 +382,11 @@ public record LevelUpPackage(
 public record DungeonEnterTimeLimit(
     DungeonEnterTime[] Times) : GameEventData;
 
+// A dungeon open period (GameEventDungeonOpenPeriod, commonfiles/gameevent.cpp:1738): value1 is the tag; rooms whose
+// openPeriodTag is that tag are open while the event runs (DungeonRoomRules.OpenPeriodError).
+public record DungeonOpenPeriod(
+    string Tag) : GameEventData;
+
 // The design price sale (GameEventSaleUGCDesign, commonfiles/gameevent.cpp:2258): value1 is the rate out of 10000
 // taken off the price of making a design (CGameRule::GetSaleUgcDesignRate, EventSaleRules.UgcDesignPrice).
 public record SaleUgcDesign(
@@ -497,6 +502,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
 [JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]
+[JsonDerivedType(typeof(DungeonOpenPeriod), "DungeonOpenPeriod")]
 [JsonDerivedType(typeof(SaleUgcDesign), "SaleUgcDesign")]
 [JsonDerivedType(typeof(SaleHousing), "SaleHousing")]
 [JsonDerivedType(typeof(FindDungeonHelperBonus), "FindDungeonHelperBonus")]

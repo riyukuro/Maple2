@@ -114,4 +114,69 @@ public class EventListTypesTests {
         Assert.That(Enter(true, new DungeonEnterTime(RoomId, 0, 86399)), Has.None.EqualTo(NotAllowTime));
         Assert.That(Enter(false), Has.None.EqualTo(NotAllowTime));
     }
+
+    [Test]
+    public void DungeonOpenPeriod_WritesTagStartAndEnd() {
+        var test = new TestGameSession();
+        var start = new DateTime(2018, 8, 30, 7, 0, 0, DateTimeKind.Utc);
+        var end = new DateTime(2100, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        GameEvent gameEvent = test.AddEvent(EventId, GameEventType.DungeonOpenPeriod, new DungeonOpenPeriod("tag_a"), start, end);
+        var writer = new ByteWriter();
+        gameEvent.WriteTo(writer);
+        // id 7001, the tag, then start and end as seconds
+        Assert.That(Hex(writer), Is.EqualTo(Name("DungeonOpenPeriod") + "591B0000" + "0500" + "7400610067005F006100"
+                                              + "F095875B00000000" + "005786F400000000"));
+    }
+
+    [Test]
+    public void OpenPeriodError_DateFirstThenTag() {
+        var now = new DateTime(2020, 1, 10);
+        Assert.That(DungeonRoomRules.OpenPeriodError(null, "", [], now), Is.Null);
+        Assert.That(DungeonRoomRules.OpenPeriodError(null, "tag_a", ["tag_b"], now), Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period));
+        Assert.That(DungeonRoomRules.OpenPeriodError(null, "tag_a", ["tag_b", "tag_a"], now), Is.Null);
+        Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(1), "tag_a", ["tag_a"], now), Is.EqualTo(DungeonRoomError.s_room_dungeon_is_not_open_period_date));
+        // with a date that has passed the tag is not looked at
+        Assert.That(DungeonRoomRules.OpenPeriodError(now.AddDays(-1), "tag_a", [], now), Is.Null);
+    }
+
+    [Test]
+    public void ParseOpenPeriodDate_ReadsTheEventTimeForm() {
+        Assert.That(DungeonRoomRules.ParseOpenPeriodDate("2019-12-06-07-30"), Is.EqualTo(new DateTime(2019, 12, 6, 7, 30, 0)));
+        Assert.That(DungeonRoomRules.ParseOpenPeriodDate("2019-12-06-07-30-15"), Is.EqualTo(new DateTime(2019, 12, 6, 7, 30, 15)));
+        Assert.That(DungeonRoomRules.ParseOpenPeriodDate(""), Is.Null);
+        Assert.That(DungeonRoomRules.ParseOpenPeriodDate("soon"), Is.Null);
+    }
+
+    private static List<string> EnterTagged(string roomTag, DateTime? roomDate, string? eventTag, bool running = true) {
+        var test = new TestGameSession();
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(RoomId, LobbyId);
+        room = room with { Limit = room.Limit with { OpenPeriodTag = roomTag, OpenPeriodDate = roomDate } };
+        test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [RoomId] = room }));
+        if (eventTag != null) {
+            test.AddEvent(EventId, GameEventType.DungeonOpenPeriod, new DungeonOpenPeriod(eventTag),
+                end: running ? null : DateTime.Now.AddDays(-1));
+        }
+        GameSession session = test.Start();
+        test.TakeSent();
+        session.Dungeon.CreateDungeonRoom(RoomId, false);
+        return test.TakeSent().Select(Convert.ToHexString).ToList();
+    }
+
+    private static readonly string NotOpenPeriod = Hex(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_is_not_open_period));
+    private static readonly string NotOpenDate = Hex(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_is_not_open_period_date));
+
+    [Test]
+    public void CreateRoom_TaggedRoomWithoutItsRunningEvent_IsRefused() {
+        Assert.That(EnterTagged("tag_a", null, null), Is.EqualTo(new[] { NotOpenPeriod }));
+        Assert.That(EnterTagged("tag_a", null, "tag_b"), Is.EqualTo(new[] { NotOpenPeriod }));
+        Assert.That(EnterTagged("tag_a", null, "tag_a", running: false), Is.EqualTo(new[] { NotOpenPeriod }));
+        Assert.That(EnterTagged("", DateTime.Now.AddDays(1), null), Is.EqualTo(new[] { NotOpenDate }));
+    }
+
+    [Test]
+    public void CreateRoom_TaggedRoomInItsPeriodOrUntagged_IsNotRefusedForThePeriod() {
+        Assert.That(EnterTagged("tag_a", null, "tag_a"), Has.None.EqualTo(NotOpenPeriod));
+        Assert.That(EnterTagged("", null, null), Has.None.EqualTo(NotOpenPeriod).And.None.EqualTo(NotOpenDate));
+        Assert.That(EnterTagged("", DateTime.Now.AddDays(-1), null), Has.None.EqualTo(NotOpenDate));
+    }
 }

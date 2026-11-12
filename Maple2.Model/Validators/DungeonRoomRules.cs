@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 
@@ -170,6 +171,31 @@ public static class DungeonRoomRules {
         }
         int seconds = (int) timeOfDay.TotalSeconds;
         return times.Any(time => time.DungeonId == dungeonId && time.StartSeconds <= seconds && seconds <= time.EndSeconds);
+    }
+
+    // openPeriodDate and openPeriodTag (DungeonRoom, commonfiles/dungeonroom.cpp:422). A room with a date is closed
+    // before it, and the tag is then not looked at; else a room with a tag is open only while a DungeonOpenPeriod
+    // event of that tag runs, as the client's room page tells it (uidungeonroomdialog.cpp:752). The refusals are
+    // OnError 0x1c and 0x1d (dungeonrecordcli.cpp:419). Null when the room is open.
+    public static DungeonRoomError? OpenPeriodError(DateTime? openDate, string openTag, IEnumerable<string> runningTags, DateTime now) {
+        if (openDate != null) {
+            return now < openDate ? DungeonRoomError.s_room_dungeon_is_not_open_period_date : null;
+        }
+        if (!string.IsNullOrEmpty(openTag) && !runningTags.Contains(openTag)) {
+            return DungeonRoomError.s_room_dungeon_is_not_open_period;
+        }
+        return null;
+    }
+
+    // The table's openPeriodDate, written as the event times are ("yyyy-MM-dd-HH-mm", seconds optional); null for
+    // no date or one that does not read.
+    public static DateTime? ParseOpenPeriodDate(string? text) {
+        string[] formats = ["yyyy-MM-dd-HH-mm-ss", "yyyy-MM-dd-HH-mm", "yyyy-MM-dd-HH", "yyyy-MM-dd"];
+        if (string.IsNullOrWhiteSpace(text)) {
+            return null;
+        }
+        return DateTime.TryParseExact(text.Trim(), formats, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out DateTime date) ? date : null;
     }
 
     // A room's reward period. The client reads only cooldownValue and takes the type from it

@@ -82,5 +82,9 @@ public record DungeonRoomLimitMetadata(
     bool DisableMesoRevival,
     int MaxRevivalCount,
     // isLimitTime: the room is entered only inside the hours a DungeonEnterTimeLimit event gives it.
-    bool IsLimitTime = false
+    bool IsLimitTime = false,
+    // openPeriodTag: the room is open only while a DungeonOpenPeriod event of that tag runs.
+    string OpenPeriodTag = "",
+    // openPeriodDate: the room opens at that time; null without one.
+    DateTime? OpenPeriodDate = null
 );
