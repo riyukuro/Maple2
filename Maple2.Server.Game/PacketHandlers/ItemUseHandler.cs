@@ -192,6 +192,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.ChangeGuildName:
                 HandleChangeGuildName(session, item, packet);
                 break;
+            case ItemFunction.PetExtraction:
+                HandlePetExtraction(session, item, packet);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -990,6 +993,52 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!session.Item.Inventory.Consume(item.Uid, 1)) {
             Logger.Warning("Guild {GuildId} renamed, but rename ticket {ItemUid} was not used", guild.Id, item.Uid);
         }
+    }
+
+    // The pet skin badge a pet extraction makes: the client's gemPetSkinBaseItemID constant
+    // (unit_1402ab440_constantsblocks.cpp:1213), not in the server's constants.
+    public const int PetSkinBadgeItemId = 70100000;
+
+    // The pet extraction scroll (PetExtraction @0x140d21a10): the client opens UIPetExtractionScrollDialog. A pet
+    // dropped on it shows the badge it gives (FUN_140e71d40, uipetextractionscrolldialog.cpp:325: a pet item whose
+    // pet allows extraction, the gemPetSkinBaseItemID badge with that pet id), and the confirmed box sends the
+    // scroll's use with the pet's uid as text (OnConfirmUseScroll). The pet is kept: the answer names it, and the
+    // client shows its success notice only while it finds the pet. One scroll is used for the new badge.
+    private void HandlePetExtraction(GameSession session, Item item, IByteReader packet) {
+        if (session.Field is null) {
+            return;
+        }
+        string text = packet.ReadUnicodeString();
+        Item? pet = ulong.TryParse(text, out ulong petUid) ? session.Item.Inventory.Get((long) petUid) : null;
+        if (pet?.Pet == null || !session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? petMetadata)
+            || !petMetadata.EnableExtraction) {
+            session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_invalid));
+            return;
+        }
+
+        Item? badge = session.Field.ItemDrop.CreateItem(PetSkinBadgeItemId);
+        if (badge?.Badge is not { Type: BadgeType.PetSkin }) {
+            Logger.Warning("Pet skin badge {ItemId} could not be made", PetSkinBadgeItemId);
+            session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_invalid));
+            return;
+        }
+        badge.Badge.PetSkinId = pet.Metadata.Property.PetId;
+        if (!session.Item.Inventory.CanAdd(badge)) {
+            session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_inventoryfull));
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_invalid));
+            return;
+        }
+
+        Item? added = null;
+        if (!session.Item.Inventory.Add(badge, notifyNew: true, commit: true, onAdded: entry => added = entry) || added == null) {
+            Logger.Warning("Pet extraction used scroll {ItemUid}, but its badge was not added", item.Uid);
+            session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_invalid));
+            return;
+        }
+        session.Send(PetExtractionPacket.Extracted(pet.Uid, added.Uid, pet.Metadata.Property.PetId));
     }
 
     // The dungeon reward pouch (OpenDungeonItemBox @0x140d24e70): the client opens its confirm box only for a room
