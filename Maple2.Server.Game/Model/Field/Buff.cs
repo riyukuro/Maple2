@@ -54,10 +54,18 @@ public class Buff : IUpdatable, IByteSerializable {
         IntervalTick = metadata.Property.IntervalTick > 0 ? metadata.Property.IntervalTick : metadata.Property.DurationTick + 1000;
 
         Stack(stacks, true);
-        NextProcTick = startTick + Metadata.Property.DelayTick + IntervalTick;
+        NextProcTick = FirstProcTick(metadata.Property, startTick, IntervalTick);
         UpdateEnabled(false);
         canProc = metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration;
         canExpire = metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration && EndTick >= startTick;
+    }
+
+    // dotCondition 0 procs as soon as the delay is over (dots, recovery and splash land on the add), 1 waits one
+    // interval first. In KMS2 the first dot of every dotCondition-0 buff comes with its add, the first dot of
+    // a dotCondition-1 buff one interval later.
+    public static long FirstProcTick(AdditionalEffectMetadataProperty property, long startTick, long intervalTick) {
+        long first = startTick + property.DelayTick;
+        return property.DotCondition == BuffDotCondition.Default ? first : first + intervalTick;
     }
 
     public void ResetActor(IActor actor) {

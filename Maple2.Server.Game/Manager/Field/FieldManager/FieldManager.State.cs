@@ -795,6 +795,17 @@ public partial class FieldManager {
         return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore);
     }
 
+    // The client's bounce search: a cylinder of the arrow's bounce radius, 150 high, around the last hit; nearest first.
+    private const float BounceSearchHeight = 150f;
+
+    public IReadOnlyList<IActor> GetBounceTargets(SkillRecord record, IActor from) {
+        Vector3 origin = from.Position;
+        var prism = new Prism(new Circle(new Vector2(origin.X, origin.Y), record.Attack.Arrow.BounceRadius), origin.Z, BounceSearchHeight);
+        return GetTargetPool(record.Caster, [prism], record.Attack.Range.ApplyTarget, int.MaxValue, [record.Caster])
+            .OrderBy(target => Vector3.DistanceSquared(target.Position, origin))
+            .ToList();
+    }
+
     public void RemoveSkill(int objectId) {
         if (fieldSkills.Remove(objectId, out _)) {
             Broadcast(RegionSkillPacket.Remove(objectId));

@@ -250,12 +250,13 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         byte count = packet.ReadByte();
-        if (count > record.Attack.TargetCount) {
-            // Skills with BounceCount send all bounce targets in one packet but TargetCount is per-bounce.
-            // This may indicate an unimplemented bounce mechanic rather than a true exploit.
-            Logger.Warning("SkillId={SkillId} AttackPoint={AttackPoint} sent {Count} targets but TargetCount={TargetCount} — clamping. BounceCount={BounceCount}",
+        // The client sends every hit of a bounce chain in one packet: TargetCount first hits, each with up to
+        // BounceCount bounces.
+        int maxCount = record.Attack.TargetCount * (1 + Math.Max(0, record.Attack.Arrow.BounceCount));
+        if (count > maxCount) {
+            Logger.Warning("SkillId={SkillId} AttackPoint={AttackPoint} sent {Count} targets but TargetCount={TargetCount} BounceCount={BounceCount} — clamping.",
                 record.SkillId, attackPoint, count, record.Attack.TargetCount, record.Attack.Arrow.BounceCount);
-            count = (byte) record.Attack.TargetCount;
+            count = (byte) Math.Min(maxCount, byte.MaxValue);
         }
 
         int iterations = packet.ReadInt();
@@ -301,8 +302,18 @@ public class SkillHandler : FieldPacketHandler {
         }*/
 
         IEnumerable<IActor> targets = session.Field.GetTargets(record);
+        SkillMetadataArrow arrow = record.Attack.Arrow;
+        bool bounces = arrow.BounceCount > 0 && BounceChain.PicksAround(arrow.BounceType);
         foreach (IActor target in targets) {
-            record.Targets.TryAdd(target.ObjectId, target);
+            if (!bounces) {
+                record.Targets.TryAdd(target.ObjectId, target);
+                continue;
+            }
+            // One damage record per object: a chain that comes back to an object it already hit adds no hit.
+            foreach (IActor hit in BounceChain.Build(target, arrow.BounceCount, arrow.BounceType, arrow.BounceOverlap,
+                         last => session.Field.GetBounceTargets(record, last))) {
+                record.Targets.TryAdd(hit.ObjectId, hit);
+            }
         }
         session.Player.TargetAttack(record);
     }
