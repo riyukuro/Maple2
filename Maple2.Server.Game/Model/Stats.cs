@@ -28,8 +28,7 @@ public class Stats {
         // TODO: Remove when UserStat has rmsp
         this[BasicAttribute.MountSpeed].AddBase(100);
 
-        this[BasicAttribute.PhysicalAtk].AddBase(AttackStat.PhysicalAtk(jobCode, this[BasicAttribute.Strength].Base, this[BasicAttribute.Dexterity].Base, this[BasicAttribute.Luck].Base));
-        this[BasicAttribute.MagicalAtk].AddBase(AttackStat.MagicalAtk(jobCode, this[BasicAttribute.Intelligence].Base));
+        AddDerivedBase(jobCode);
     }
 
     public Stats(NpcMetadataStat npcStats) {
@@ -70,8 +69,7 @@ public class Stats {
         // TODO: Remove when UserStat has rmsp
         this[BasicAttribute.MountSpeed].AddBase(100);
 
-        this[BasicAttribute.PhysicalAtk].AddBase(AttackStat.PhysicalAtk(jobCode, this[BasicAttribute.Strength].Base, this[BasicAttribute.Dexterity].Base, this[BasicAttribute.Luck].Base));
-        this[BasicAttribute.MagicalAtk].AddBase(AttackStat.MagicalAtk(jobCode, this[BasicAttribute.Intelligence].Base));
+        AddDerivedBase(jobCode);
     }
 
     [Obsolete("Use Reset(UserStatMetadata, JobCode) instead.")]
@@ -115,6 +113,62 @@ public class Stats {
         this[BasicAttribute.JumpHeight].AddTotal(40);
         this[BasicAttribute.MountSpeed].AddTotal(60);
 #endif
+    }
+
+    // The attack and resistance that come from the base str, dex, int and luk (AttackStat).
+    private void AddDerivedBase(JobCode jobCode) {
+        (long patk, long matk, long pres, long mres) = Derived(jobCode, total: false);
+        this[BasicAttribute.PhysicalAtk].AddBase(patk);
+        this[BasicAttribute.MagicalAtk].AddBase(matk);
+        this[BasicAttribute.PhysicalRes].AddBase(pres);
+        this[BasicAttribute.MagicalRes].AddBase(mres);
+    }
+
+    /// <summary>
+    /// Adds what the attack and resistance gain from the str, dex, int and luk above the base (spent points, items,
+    /// buffs): in KMS2 their totals follow the total stats. Call after every stat source is added and before <see cref="Total"/>.
+    /// Chosen here: a rate bonus on str, dex, int or luk counts.
+    /// </summary>
+    public void AddDerivedTotal(JobCode jobCode) {
+        (long basePatk, long baseMatk, long basePres, long baseMres) = Derived(jobCode, total: false);
+        (long patk, long matk, long pres, long mres) = Derived(jobCode, total: true);
+        this[BasicAttribute.PhysicalAtk].AddTotal(patk - basePatk);
+        this[BasicAttribute.MagicalAtk].AddTotal(matk - baseMatk);
+        this[BasicAttribute.PhysicalRes].AddTotal(pres - basePres);
+        this[BasicAttribute.MagicalRes].AddTotal(mres - baseMres);
+    }
+
+    private (long PhysicalAtk, long MagicalAtk, long PhysicalRes, long MagicalRes) Derived(JobCode jobCode, bool total) {
+        long Value(BasicAttribute attribute) {
+            Stat stat = this[attribute];
+            return total ? stat.Total + (long) (stat.Rate * stat.Total) : stat.Base;
+        }
+        long str = Value(BasicAttribute.Strength);
+        long dex = Value(BasicAttribute.Dexterity);
+        long @int = Value(BasicAttribute.Intelligence);
+        long luk = Value(BasicAttribute.Luck);
+        return (AttackStat.PhysicalAtk(jobCode, str, dex, luk), AttackStat.MagicalAtk(jobCode, @int),
+            AttackStat.PhysicalRes(jobCode, str, dex), AttackStat.MagicalRes(jobCode, @int));
+    }
+
+    /// <summary>
+    /// Adds spent attribute points to the totals: 1 str, dex, int or luk, 10 health or 3 critical rate a point.
+    /// </summary>
+    public void AddAllocation(BasicAttribute attribute, int points) {
+        switch (attribute) {
+            case BasicAttribute.Strength:
+            case BasicAttribute.Dexterity:
+            case BasicAttribute.Intelligence:
+            case BasicAttribute.Luck:
+                this[attribute].AddTotal(points);
+                break;
+            case BasicAttribute.Health:
+                this[attribute].AddTotal(10L * points);
+                break;
+            case BasicAttribute.CriticalRate:
+                this[attribute].AddTotal(3L * points);
+                break;
+        }
     }
 
     /// <summary>

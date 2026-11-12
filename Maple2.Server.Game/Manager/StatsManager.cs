@@ -144,10 +144,13 @@ public class StatsManager {
             Values.Reset(character.Job.Code(), character.Level);
         }
 
+        // Spent attribute points come after the base and before the items, on every rebuild.
+        player.Session.Config.AddStatAllocation(Values);
         AddEquips(player);
         AddPet(player);
         AddSetBonuses(setBonuses);
         AddBuffs(player);
+        Values.AddDerivedTotal(character.Job.Code());
         Values.Total();
         StatConversion(player);
 

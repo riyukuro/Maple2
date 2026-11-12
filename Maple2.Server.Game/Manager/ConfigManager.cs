@@ -130,7 +130,6 @@ public class ConfigManager {
             } else {
                 foreach ((BasicAttribute attribute, int amount) in load.Allocation) {
                     statAttributes.Allocation[attribute] = amount;
-                    UpdateStatAttribute(attribute, amount, false);
                 }
             }
         }
@@ -496,40 +495,25 @@ public class ConfigManager {
         }
 
         session.Config.statAttributes.Allocation[type] += amount;
-        UpdateStatAttribute(type, amount);
+        // KMS2 sends the allocation, then the whole stat block: the spent point also moves the attack and resistance.
         session.Send(AttributePointPacket.Allocation(session.Config.statAttributes));
+        session.Stats.Refresh();
     }
 
     public void ResetStatPoints() {
         foreach (BasicAttribute type in session.Config.statAttributes.Allocation.Attributes) {
-            int points = session.Config.statAttributes.Allocation[type];
             session.Config.statAttributes.Allocation[type] = 0;
-            UpdateStatAttribute(type, -points);
         }
 
         session.Send(AttributePointPacket.Allocation(session.Config.statAttributes));
+        session.Stats.Refresh();
         session.Send(NoticePacket.Message("s_char_info_reset_stat_pointsuccess_msg"));
     }
 
-    private void UpdateStatAttribute(BasicAttribute type, int points, bool send = true) {
-        switch (type) {
-            case BasicAttribute.Strength:
-            case BasicAttribute.Dexterity:
-            case BasicAttribute.Intelligence:
-            case BasicAttribute.Luck:
-                session.Player.Stats.Values[type].AddTotal(1 * points);
-                break;
-            case BasicAttribute.Health:
-                session.Player.Stats.Values[BasicAttribute.Health].AddTotal(10 * points);
-                break;
-            case BasicAttribute.CriticalRate:
-                session.Player.Stats.Values[BasicAttribute.CriticalRate].AddTotal(3 * points);
-                break;
-        }
-
-        // Sends packet to notify client, skipped during loading.
-        if (send) {
-            session.Send(StatsPacket.Update(session.Player, type));
+    // The spent points are not kept in the stats: every rebuild (StatsManager.Refresh) adds them again.
+    public void AddStatAllocation(Maple2.Server.Game.Model.Stats values) {
+        foreach (BasicAttribute type in statAttributes.Allocation.Attributes) {
+            values.AddAllocation(type, statAttributes.Allocation[type]);
         }
     }
     #endregion
