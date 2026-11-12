@@ -202,6 +202,8 @@ public static class ConditionUtil {
             case ConditionType.unlimited_enchant:
             case ConditionType.quest_guide:
             case ConditionType.enter_otherhouse:
+            case ConditionType.playtime:
+            case ConditionType.shop_buy:
                 return true;
         }
         return false;
@@ -391,6 +393,8 @@ public static class ConditionUtil {
             case ConditionType.quest_daily:
             case ConditionType.quest_guide:
             case ConditionType.enter_otherhouse:
+            case ConditionType.playtime:
+            case ConditionType.shop_buy:
                 return true;
         }
         return false;

@@ -76,6 +76,12 @@ public class FieldPlayer : Actor<Player> {
     // The party buffs follow the party members in the field; checked once a second.
     private const int PartyBuffIntervalMs = 1000;
     private long partyBuffTick;
+
+    // The emotion skill of the last state sync (0: none), the tick its time was last counted at and the time not
+    // counted yet (see TrophyTimeRules).
+    private int emotionSkillId;
+    private long emotionTick;
+    private long emotionMs;
     private bool inBattle;
 
     // Key: Attribute, Value: RegenAttribute, RegenInterval
@@ -215,6 +221,8 @@ public class FieldPlayer : Actor<Player> {
             flagTick = (long) (tickCount + TimeSpan.FromSeconds(2).TotalMilliseconds);
         }
 
+        UpdateTimeConditions();
+
         if (tickCount >= partyBuffTick) {
             partyBuffTick = tickCount + PartyBuffIntervalMs;
             UpdatePartyBuffs();
@@ -304,7 +312,34 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
+    // Play time counts once a minute for the whole session, across maps. Emotion time counts while the last state
+    // sync holds the player in an emotion (sitting sends no further change), by the emotion's name.
+    private void UpdateTimeConditions() {
+        long now = Environment.TickCount64;
+        int minutes = TrophyTimeRules.PlayMinutes(ref Session.PlayTimeTick, now);
+        if (minutes > 0) {
+            Session.ConditionUpdate(ConditionType.playtime, counter: minutes);
+        }
+
+        if (emotionSkillId == 0) {
+            return;
+        }
+        long elapsed = now - emotionTick;
+        emotionTick = now;
+        int seconds = TrophyTimeRules.EmotionSeconds(ref emotionMs, elapsed);
+        if (seconds > 0 && Field.SkillMetadata.TryGet(emotionSkillId, 1, out SkillMetadata? emote) && !string.IsNullOrEmpty(emote.Property.Emotion)) {
+            Session.ConditionUpdate(ConditionType.emotiontime, counter: seconds, codeString: emote.Property.Emotion);
+        }
+    }
+
     public void OnStateSync(StateSync stateSync) {
+        int syncEmotion = TrophyTimeRules.EmotionSkillId(stateSync);
+        if (syncEmotion != emotionSkillId) {
+            emotionSkillId = syncEmotion;
+            emotionTick = Environment.TickCount64;
+            emotionMs = 0;
+        }
+
         if (Position != stateSync.Position) {
             Flag |= PlayerObjectFlag.Position;
         }
@@ -398,15 +433,6 @@ public class FieldPlayer : Actor<Player> {
             case ActorState.Ride:
                 if (UpdateStateSyncTracking()) {
                     Session.ConditionUpdate(ConditionType.riding, codeLong: Value.Character.MapId);
-                }
-                break;
-            case ActorState.EmotionIdle:
-                if (UpdateStateSyncTimeTracking()) {
-                    // Field.SkillMetadata.TryGet(stateSync.EmotionId, 1, out var emote);
-                    // if (emote == null) {
-                        // break;
-                    // }
-                    // Session.ConditionUpdate(ConditionType.emotiontime, codeString: emote.Property.Emotion);
                 }
                 break;
                 // TODO: Any more condition states?

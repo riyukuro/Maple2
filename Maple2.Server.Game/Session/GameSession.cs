@@ -742,6 +742,10 @@ public sealed partial class GameSession : Core.Network.Session {
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
 
+    // Environment.TickCount64 of the last minute counted for play time (ConditionType.playtime); the session's start
+    // at first.
+    public long PlayTimeTick = Environment.TickCount64;
+
     /// <summary>
     /// Updates game condition values for achievement and quest.
     /// </summary>

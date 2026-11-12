@@ -28,7 +28,7 @@ public static class AchievementPacket {
 
         foreach (Achievement achievement in achievements) {
             pWriter.WriteInt(achievement.Id);
-            pWriter.WriteInt(1); // Unknown
+            pWriter.WriteInt(achievement.CurrentGrade); // the grade the client sets the trophy's condition up from
             pWriter.WriteClass<Achievement>(achievement);
         }
 

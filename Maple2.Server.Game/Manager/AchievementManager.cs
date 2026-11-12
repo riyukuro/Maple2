@@ -282,7 +282,8 @@ public sealed class AchievementManager {
     }
 
     /// <summary>
-    /// Claims rewards from trophy grades. If there is no reward, it'll increment up on the reward grade. Loops until it catches up to the current grade + 1.
+    /// Claims the reward of one trophy grade, as KMS2 gives one reward for each claim request. The reward grade then
+    /// moves on over the finished grades whose reward needs no claim, and stops at the next item or title.
     /// </summary>
     /// <param name="achievementId"></param>
     public void ClaimReward(int achievementId) {
@@ -290,10 +291,13 @@ public sealed class AchievementManager {
             return;
         }
 
-        for (int startGrade = achievement.RewardGrade; startGrade <= achievement.CurrentGrade; startGrade++) {
-            GiveReward(achievement, true);
-            session.Send(AchievementPacket.Update(achievement));
+        int rewardGrade = achievement.RewardGrade;
+        GiveReward(achievement, true);
+        while (achievement.RewardGrade != rewardGrade) {
+            rewardGrade = achievement.RewardGrade;
+            GiveReward(achievement);
         }
+        session.Send(AchievementPacket.Update(achievement));
     }
 
     public bool HasAchievement(int achievementId, int grade = -1) {

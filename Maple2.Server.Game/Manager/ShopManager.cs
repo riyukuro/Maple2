@@ -515,6 +515,10 @@ public sealed class ShopManager {
 
         session.Item.Inventory.Add(item, true, commit: true);
         session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price));
+        // The mesos paid in an NPC shop count for shop_buy (trophy 23200004).
+        if (shopItem.Metadata.Cost.Type == ShopCurrencyType.Meso && price > 0) {
+            session.ConditionUpdate(ConditionType.shop_buy, counter: price);
+        }
 
         // Store the paid price and the bought stock now, not only at the next session save.
         if (shopItem.StockCount > 0 && TryGetSavedStockRow(activeShop.Id, shopItem.Id, out long stockOwnerId, out CharacterShopItemData? stockRow)) {
