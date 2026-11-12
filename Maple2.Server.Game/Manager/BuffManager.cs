@@ -26,14 +26,12 @@ public class BuffManager : IUpdatable {
     #endregion
     public IActor Actor { get; private set; }
     private readonly ConcurrentDictionary<int, List<Buff>> buffs = [];
-    public IDictionary<BuffCompulsionEventType, IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>> Compulsions { get; init; }
     public ConcurrentDictionary<int, long> CooldownTimes { get; } = new(); // TODO: Cache this
     public ReflectRecord? Reflect;
     private readonly ILogger logger = Log.ForContext<BuffManager>();
 
     public BuffManager(IActor actor) {
         Actor = actor;
-        Compulsions = new ConcurrentDictionary<BuffCompulsionEventType, IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>>();
     }
 
     public void Initialize() {
@@ -183,13 +181,12 @@ public class BuffManager : IUpdatable {
 
         // Set Reflect if applicable
         SetReflect(buff);
-        SetCompulsionEvent(buff);
         SetShield(buff);
         SetUpdates(buff);
         ModifyBuffStackCount(buff);
 
-        if (!additionalEffect.Condition.Check(caster, owner, Actor)) {
-            buff.Disable();
+        // The buff's constructor took its enabled flag from the condition; it keeps its procs for when it is enabled.
+        if (!buff.Enabled) {
             InvalidateSums();
         }
 
@@ -313,33 +310,30 @@ public class BuffManager : IUpdatable {
             || metadata.InvokeEffect?.Types.Any(type => type is InvokeEffectType.IncreaseOffensivePhysicalDamage or InvokeEffectType.IncreaseOffensiveMagicalDamage) == true;
     }
 
-    private void SetCompulsionEvent(Buff buff) {
-        if (buff.Metadata.Status.Compulsion == null) {
-            return;
-        }
+    // The compulsion rate of a type (block, evasion or critical override) over the enabled buffs held, each buff id once,
+    // those naming skills only for one of them. The client never reads these rates (they are loaded with the status,
+    // additionalactionadditional.cpp:1223), so the server chooses: a disabled buff gives none, as in the client's other
+    // sums. Before, a buff's rate counted from its add until a removal by id, enabled or not, and stayed after an expiry.
+    public float TotalCompulsionRate(BuffCompulsionEventType type, int skillId = 0) => CompulsionRate(EnumerateBuffs(), type, skillId);
 
-        BuffCompulsionEventType eventType = buff.Metadata.Status.Compulsion.Type;
-        if (Compulsions.TryGetValue(eventType, out IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>? nestedCompulsionDic)) {
-            Compulsions.RemoveAll(buff.Id);
-
-            if (!nestedCompulsionDic.TryAdd(buff.Id, buff.Metadata.Status.Compulsion)) {
-                logger.Error("Could not add compulsion event from {Id} to {Object}", buff.Id, Actor.ObjectId);
-            }
-            return;
-        }
-
-        Compulsions.Add(eventType, new ConcurrentDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent> {
-            [buff.Id] = buff.Metadata.Status.Compulsion,
-        });
+    public static float CompulsionRate(IEnumerable<Buff> held, BuffCompulsionEventType type, int skillId = 0) {
+        return held.Where(buff => buff.Enabled && buff.Metadata.Status.Compulsion?.Type == type)
+            .DistinctBy(buff => buff.Id)
+            .Select(buff => buff.Metadata.Status.Compulsion!)
+            .Where(compulsion => skillId == 0 || compulsion.SkillIds.Length == 0 || compulsion.SkillIds.Contains(skillId))
+            .Sum(compulsion => compulsion.Rate);
     }
 
-    public float TotalCompulsionRate(BuffCompulsionEventType type, int skillId = 0) {
-        if (!Compulsions.TryGetValue(type, out IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>? nestedCompulsionDic)) {
-            return 0;
-        }
+    // A revive in place is refused while an enabled buff has disableRevivalHere: the client takes the flag from enabled
+    // buffs only (AdditionalCliList::FUN_140972a00, additionalcli_2.cpp:1065).
+    public static bool BlocksRevival(IEnumerable<Buff> held) {
+        return RevivalRules.BuffBlocks(held.Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.DisableRevivalHere));
+    }
 
-        return skillId == 0 ? nestedCompulsionDic.Values.Sum(compulsion => compulsion.Rate) :
-            nestedCompulsionDic.Values.Where(compulsion => compulsion.SkillIds.Contains(skillId) || compulsion.SkillIds.Length == 0).Sum(compulsion => compulsion.Rate);
+    // The shields that take a hit, in the order held: an enabled buff's only, as the client's shield total
+    // (AdditionalCliList::GetTotalShieldValue) skips a buff without m_bEnabled.
+    public static IEnumerable<Buff> Shields(IEnumerable<Buff> held) {
+        return held.Where(buff => buff.Enabled && buff.Metadata.Shield != null);
     }
 
     // The sums are taken from the buffs held on the first read after a change (BuffSums). The version keeps a sum
@@ -380,6 +374,19 @@ public class BuffManager : IUpdatable {
     public bool SkillUseDisabled(int skillId) {
         return Util.SkillCastRules.DisabledByBuff(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
     }
+
+    // The skillUseDisable main-type masks of the enabled buffs held, OR'd (AdditionalCliList::FUN_140972a00).
+    public static int SkillUseDisableMask(IEnumerable<Buff> held) {
+        int mask = 0;
+        foreach (Buff buff in held) {
+            if (buff.Enabled) {
+                mask |= buff.Metadata.Property.SkillUseDisableMask;
+            }
+        }
+        return mask;
+    }
+
+    public int SkillUseDisableMask() => SkillUseDisableMask(EnumerateBuffs());
 
     // The share the enabled buffs held cut from the cooldowns of a cooldown group (SkillCastRules.GroupReduceRate).
     public float CooldownGroupRate(int groupId) {
@@ -689,9 +696,6 @@ public class BuffManager : IUpdatable {
         if (Reflect?.SourceBuffId == id) {
             Reflect = null;
         }
-
-
-        Compulsions.RemoveAll(id);
 
         foreach (Buff buff in buffsToRemove) {
             RemoveInternal(buff);

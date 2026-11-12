@@ -18,11 +18,12 @@ public class DisabledBuffTests {
     internal static AdditionalEffectMetadata Effect(int id, Dictionary<BasicAttribute, long>? values = null,
             Dictionary<SpecialAttribute, float>? specialRates = null, Dictionary<BasicAttribute, float>? resistances = null,
             AdditionalEffectMetadataInvokeEffect? invoke = null, bool invincible = false, AdditionalEffectMetadataProperty? property = null,
-            Dictionary<BasicAttribute, float>? rates = null) {
+            Dictionary<BasicAttribute, float>? rates = null, AdditionalEffectMetadataStatus.CompulsionEvent? compulsion = null,
+            AdditionalEffectMetadataShield? shield = null) {
         var status = new AdditionalEffectMetadataStatus(values ?? new Dictionary<BasicAttribute, long>(), rates ?? new Dictionary<BasicAttribute, float>(),
             new Dictionary<SpecialAttribute, float>(), specialRates ?? new Dictionary<SpecialAttribute, float>(),
-            resistances ?? new Dictionary<BasicAttribute, float>(), false, null, null, 0, invincible);
-        return new AdditionalEffectMetadata(id, 1, null!, property ?? Property, null!, null!, null!, status, null, null!, null, invoke, [], [], []);
+            resistances ?? new Dictionary<BasicAttribute, float>(), false, compulsion, null, 0, invincible);
+        return new AdditionalEffectMetadata(id, 1, null!, property ?? Property, null!, null!, null!, status, null, null!, shield, invoke, [], [], []);
     }
 
     // A held buff as the field keeps it, with only what the sums read: its data, stack count and enabled flag.
@@ -96,5 +97,76 @@ public class DisabledBuffTests {
         Assert.That(on.Invokes(InvokeEffectType.IncreaseSkillDamage, 10500001).Item2, Is.EqualTo(0.1f).Within(1e-6f));
         Assert.That(on.Invincible, Is.True);
         Assert.That(on.Stun, Is.True);
+    }
+
+    [Test]
+    public void ADisabledBuffGivesNoCompulsionRate() {
+        // 10300242: critical override 1 on three skills while the owner holds 10300250; 10300201: block 0.1 on every skill.
+        AdditionalEffectMetadata crit = Effect(10300242, compulsion: new AdditionalEffectMetadataStatus.CompulsionEvent(
+            BuffCompulsionEventType.CritChanceOverride, 1f, [10300222, 10300225, 10300226]));
+        AdditionalEffectMetadata block = Effect(10300201, compulsion: new AdditionalEffectMetadataStatus.CompulsionEvent(
+            BuffCompulsionEventType.BlockChance, 0.1f, []));
+
+        Buff[] on = [Held(crit, true), Held(block, true)];
+        Assert.That(BuffManager.CompulsionRate(on, BuffCompulsionEventType.CritChanceOverride, 10300222), Is.EqualTo(1f));
+        Assert.That(BuffManager.CompulsionRate(on, BuffCompulsionEventType.CritChanceOverride, 10300001), Is.EqualTo(0f));
+        Assert.That(BuffManager.CompulsionRate(on, BuffCompulsionEventType.BlockChance, 10300001), Is.EqualTo(0.1f).Within(1e-6f));
+
+        Buff[] off = [Held(crit, false), Held(block, true)];
+        Assert.That(BuffManager.CompulsionRate(off, BuffCompulsionEventType.CritChanceOverride, 10300222), Is.EqualTo(0f));
+        Assert.That(BuffManager.CompulsionRate(off, BuffCompulsionEventType.BlockChance), Is.EqualTo(0.1f).Within(1e-6f));
+
+        // One buff id counts once, from any number of casters.
+        Assert.That(BuffManager.CompulsionRate([Held(block, true), Held(block, true)], BuffCompulsionEventType.BlockChance), Is.EqualTo(0.1f).Within(1e-6f));
+    }
+
+    [Test]
+    public void ADisabledShieldTakesNoHit() {
+        // 61100121: a 1200 shield while the owner holds 61100120; 90060012: 30 % of the holder's health.
+        AdditionalEffectMetadata held = Effect(61100121, shield: new AdditionalEffectMetadataShield(1200, 0f));
+        AdditionalEffectMetadata share = Effect(90060012, shield: new AdditionalEffectMetadataShield(0, 0.3f));
+        AdditionalEffectMetadata plain = Effect(1);
+        Buff on = Held(held, true);
+        Buff offShare = Held(share, false);
+
+        Assert.That(BuffManager.Shields([on, offShare, Held(plain, true)]), Is.EqualTo(new[] { on }));
+        Assert.That(BuffManager.Shields([Held(held, false), offShare]), Is.Empty);
+    }
+
+    [Test]
+    public void ADisabledBuffDoesNotBlockARevive() {
+        // 50005500 (disableRevivalHere): the client takes the flag from enabled buffs only.
+        AdditionalEffectMetadata noRevive = Effect(50005500, property: Property with { DisableRevivalHere = true });
+        Assert.That(BuffManager.BlocksRevival([Held(noRevive, true)]), Is.True);
+        Assert.That(BuffManager.BlocksRevival([Held(noRevive, false)]), Is.False);
+        Assert.That(BuffManager.BlocksRevival([Held(Effect(1), true)]), Is.False);
+    }
+
+    [Test]
+    public void ABuffOrAFieldDisablesSkillMainTypes() {
+        // 50002100: skillUseDisable 4 (bit 2, the job skills, main type 2 as 10000001); field 51000001 lists 1, 2, 3, 5, 8, 9.
+        AdditionalEffectMetadata jobBlock = Effect(50002100, property: Property with { SkillUseDisableMask = 4 });
+        Assert.That(BuffManager.SkillUseDisableMask([Held(jobBlock, true), Held(Effect(1), true)]), Is.EqualTo(4));
+        Assert.That(BuffManager.SkillUseDisableMask([Held(jobBlock, false)]), Is.EqualTo(0));
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2), Is.True);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 4), Is.False);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(0, 0, 2), Is.False);
+
+        int field = Maple2.Server.Game.Util.SkillCastRules.FieldTypeMask([1, 2, 3, 5, 8, 9]);
+        Assert.That(field, Is.EqualTo(0b1100101110));
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(0, field, 2), Is.True);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(0, field, 4), Is.False);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.FieldTypeMask([]), Is.EqualTo(0));
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.FieldTypeMask(null), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ABuffEnabledLateProcsOnItsSchedule() {
+        // Due at 1000 every 500, back on at 2200: the next proc is 2500, the missed ones (1000 to 2000) are not paid.
+        Assert.That(Buff.ResumedProcTick(1000, 500, 2200), Is.EqualTo(2500));
+        Assert.That(Buff.ResumedProcTick(1000, 500, 2000), Is.EqualTo(2000));
+        // Not yet due, or a buff of one proc (no interval): unchanged, so it still procs once it is on.
+        Assert.That(Buff.ResumedProcTick(3000, 500, 2200), Is.EqualTo(3000));
+        Assert.That(Buff.ResumedProcTick(1000, 0, 2200), Is.EqualTo(1000));
     }
 }

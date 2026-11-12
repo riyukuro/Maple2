@@ -362,6 +362,25 @@ public static class SkillCastRules {
         return ArrivalShortfall(castTick, lastCastTick, serverTick, lastServerTick, (long) (gapSeconds * 1000 * ShortCooldownShare));
     }
 
+    // The main types the field's skillUseDisable lists, as the client keeps them: bit n for main type n
+    // (CFieldData load, fielddata.cpp:708). A value outside 0..31 sets no bit here (the client's shift is undefined there).
+    public static int FieldTypeMask(int[]? mainTypes) {
+        int mask = 0;
+        foreach (int type in mainTypes ?? []) {
+            if (type is >= 0 and < 32) {
+                mask |= 1 << type;
+            }
+        }
+        return mask;
+    }
+
+    // The client refuses a cast whose main type has its bit in the enabled buffs' skillUseDisable masks or the
+    // field's (PCBase::GetSkillUseDisableMask, CSkillSystem cast check answer 0x1e).
+    public static bool TypeDisabled(int buffMask, int fieldMask, int mainType) {
+        int mask = buffMask | fieldMask;
+        return mask != 0 && mainType is >= 0 and < 32 && (mask & (1 << mainType)) != 0;
+    }
+
     public static bool MapRefuses(int[] maps, int mapId) {
         return maps.Any(code => code != 0) && Array.IndexOf(maps, mapId) < 0;
     }

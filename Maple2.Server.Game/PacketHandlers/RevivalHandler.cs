@@ -7,6 +7,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
@@ -190,10 +191,10 @@ public class RevivalHandler : FieldPacketHandler {
     }
 
     // Client UIRevivalDialog::FUN_141abdab0 (uirevivaldialog.cpp:801), called by both revive-in-place buttons
-    // (:441 merets or coupon, :496 mesos): a buff with disableRevivalHere refuses with
+    // (:441 merets or coupon, :496 mesos): an enabled buff with disableRevivalHere refuses with
     // s_msg_revival_merat_cannot_here_debuff. The return-to-town revive (mode 0) has no such test.
     private static bool HasNoRevivalBuff(GameSession session) {
-        return RevivalRules.BuffBlocks(session.Player.Buffs.EnumerateBuffs().Select(buff => buff.Metadata.Property.DisableRevivalHere));
+        return BuffManager.BlocksRevival(session.Player.Buffs.EnumerateBuffs());
     }
 
     // Client StateSummonRevive: a dead summon owned by the player asks to revive; the fork has no summon revive state.

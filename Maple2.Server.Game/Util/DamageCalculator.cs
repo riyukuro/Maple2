@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Formulas;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
@@ -146,7 +147,7 @@ public static class DamageCalculator {
         attackDamage *= damageMultiplier * AttackDamageFactor(caster is FieldNpc and not FieldPet) + property.Value;
 
         // Apply any shields
-        foreach (Buff buff in target.Buffs.EnumerateBuffs().Where(buff => buff.Metadata.Shield != null)) {
+        foreach (Buff buff in BuffManager.Shields(target.Buffs.EnumerateBuffs())) {
             (long shieldLeft, double damageLeft, bool broken) = AbsorbShield(buff.ShieldHealth, attackDamage);
             if (!broken) {
                 buff.ShieldHealth = shieldLeft;

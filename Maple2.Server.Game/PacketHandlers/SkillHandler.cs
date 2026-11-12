@@ -165,6 +165,11 @@ public class SkillHandler : FieldPacketHandler {
         if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
             return false;
         }
+        if (SkillCastRules.TypeDisabled(session.Player.Buffs.SkillUseDisableMask(), SkillCastRules.FieldTypeMask(session.Field.Metadata.Limit.DisableSkills),
+                record.Metadata.Property.MainType)) {
+            Logger.Debug("Cast refused, skill {SkillId} of main type {MainType} is disabled by a buff held or the field", record.SkillId, record.Metadata.Property.MainType);
+            return false;
+        }
         if (session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
             Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);
             return false;

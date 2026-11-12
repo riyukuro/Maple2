@@ -215,13 +215,18 @@ public class Buff : IUpdatable, IByteSerializable {
             }
         }
 
-        if (canExpire && !canProc && tickCount > EndTick) {
+        // A disabled buff has no proc due, so its timer ends it as well.
+        if (canExpire && (!canProc || !Enabled) && tickCount > EndTick) {
             Owner.Buffs.Remove(Id, Caster.ObjectId);
             return;
         }
 
+        bool wasEnabled = Enabled;
         if (!UpdateEnabled()) {
             return;
+        }
+        if (!wasEnabled) {
+            NextProcTick = ResumedProcTick(NextProcTick, Metadata.Property.IntervalTick > 0 ? IntervalTick : 0, tickCount);
         }
 
         if (!canProc || tickCount < NextProcTick) {
@@ -246,11 +251,14 @@ public class Buff : IUpdatable, IByteSerializable {
         return enabled;
     }
 
-    public void Disable() {
-        Enabled = false;
-        canProc = false;
+    // A buff that comes back on does not pay the procs it missed while it was off (chosen here): its next proc is the
+    // first one of its schedule at or after now. A buff of one proc (no interval) still has it when it comes on.
+    internal static long ResumedProcTick(long nextProcTick, long intervalTick, long tickCount) {
+        if (intervalTick <= 0 || nextProcTick >= tickCount) {
+            return nextProcTick;
+        }
+        return nextProcTick + (tickCount - nextProcTick + intervalTick - 1) / intervalTick * intervalTick;
     }
-    public void Enable() => Enabled = true;
 
     private void Proc() {
         ProcCount++;

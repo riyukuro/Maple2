@@ -74,7 +74,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         DisableRevivalHere: data.BasicProperty.disableRevivalHere,
                         SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null,
                         CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level),
-                        InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0),
+                        InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0,
+                        SkillUseDisableMask: (int) data.MotionProperty.skillUseDisable),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),
