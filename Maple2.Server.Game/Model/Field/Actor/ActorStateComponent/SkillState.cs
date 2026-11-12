@@ -32,6 +32,10 @@ public class SkillState {
             attackTargets = Aim(attack, paths!, attackTargets);
         }
 
+        // The attack's shots are swept when every flying path of it sweeps; one that mixes in a curve keeps the hit
+        // in its range at the cast (chosen here), so no target is hit twice.
+        bool swept = flies && paths!.Where(NpcSplashRules.Flies).All(path => NpcProjectileRules.Sweeps(attack.Arrow, path));
+        var shots = new List<(MagicPath Path, IActor? Homing)>();
         if (attack.MagicPathId != 0) {
             if (actor.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths)) {
                 int targetIndex = 0;
@@ -75,6 +79,10 @@ public class SkillState {
                     }
 
                     actor.Field.Broadcast(SkillDamagePacket.Target(cast, targets));
+
+                    if (swept && NpcSplashRules.Flies(path)) {
+                        shots.Add((path, targetId != 0 ? attackTargets[targetIndex] : null));
+                    }
                 }
             }
         }
@@ -94,7 +102,12 @@ public class SkillState {
             LandSplashes(noTarget, paths!, attackTargets);
         }
 
-        if (resolvedTargets.Count > 0) {
+        foreach ((MagicPath path, IActor? homing) in shots) {
+            Fire(cast, path, homing);
+        }
+
+        // A swept shot hits what it passes (Fire), not the attack range at the caster.
+        if (resolvedTargets.Count > 0 && !swept) {
             int limit = attack.TargetCount > 0 ? attack.TargetCount : 1;
             for (int i = 0; i < resolvedTargets.Count && i < limit; i++) {
                 IActor target = resolvedTargets[i];
@@ -151,6 +164,97 @@ public class SkillState {
                 }
             }, NpcSplashRules.Flight(from, point, path));
         }
+    }
+
+    // Flies one shot along a straight path and hits the actors its arrow box sweeps (NpcProjectileRules), with a
+    // copy of the cast as it is now, so a later attack point of the cast does not change it.
+    private void Fire(SkillRecord cast, MagicPath path, IActor? homing) {
+        var shot = new SkillRecord(cast.Metadata, cast.CastUid, actor) {
+            TargetUid = cast.TargetUid,
+            ServerTick = cast.ServerTick,
+            Position = cast.Position,
+            CastPosition = cast.CastPosition,
+            Direction = cast.Direction,
+            Rotation = cast.Rotation,
+            SplashPlaced = cast.SplashPlaced,
+        };
+        if (!shot.TrySetMotionPoint(cast.MotionPoint) || !shot.TrySetAttackPoint(cast.AttackPoint)) {
+            return;
+        }
+
+        SkillMetadataAttack attack = shot.Attack;
+        SkillMetadataArrow arrow = attack.Arrow;
+        FieldManager field = actor.Field;
+        Vector3 forward = NpcProjectileRules.Forward(cast.Direction, path);
+        Vector3 start = NpcProjectileRules.Start(actor.Position, forward, path);
+        Vector3 end = NpcProjectileRules.End(start, forward, path);
+        var hits = new NpcProjectileRules.Hits(arrow, path);
+        var hitActors = new Dictionary<int, IActor>();
+        float seconds = (float) NpcProjectileRules.Step.TotalSeconds;
+        long lifeMs = path.LifeTime > 0 ? (long) (path.LifeTime * 1000) : long.MaxValue;
+        Vector3 current = start;
+        long elapsedMs = 0;
+
+        void Tick() {
+            if (actor.IsDead || actor.Field != field) {
+                return;
+            }
+
+            elapsedMs += (long) NpcProjectileRules.Step.TotalMilliseconds;
+            Vector3 goal = end;
+            if (homing != null) {
+                if (homing.IsDead || homing.Field != field) {
+                    return;
+                }
+                goal = NpcProjectileRules.AimPoint(homing.Position, HitHeight(homing));
+            }
+
+            (Vector3 next, bool arrived) = NpcProjectileRules.Move(current, goal, path.Velocity, seconds);
+            if (homing != null && NpcProjectileRules.PastDistance(start, next, path)) {
+                arrived = true;
+            }
+            bool last = arrived || elapsedMs >= lifeMs;
+
+            IReadOnlySet<int> excluded = hits.Excluded(elapsedMs);
+            Tools.Collision.Prism box = NpcProjectileRules.SweepBox(current, next, forward, arrow);
+            Vector3 from = current;
+            Vector3 travel = next - current;
+            Vector3 facing = travel.LengthSquared() > 1e-6f ? Vector3.Normalize(travel) : forward;
+            List<IActor> found = field.GetTargets(actor, [NpcProjectileRules.QueryBox(box)], attack.Range, int.MaxValue)
+                .Where(target => target.ObjectId != actor.ObjectId && !excluded.Contains(target.ObjectId))
+                .Where(target => box.Intersects(HitBox(target)))
+                .OrderBy(target => NpcProjectileRules.Along(from, facing, target.Position))
+                .ToList();
+            foreach (IActor target in found) {
+                hitActors[target.ObjectId] = target;
+            }
+            List<int> hit = hits.Take(found.Select(target => target.ObjectId).ToList(), last);
+            current = next;
+
+            if (hit.Count > 0) {
+                shot.Targets.Clear();
+                foreach (int id in hit) {
+                    shot.Targets.TryAdd(id, hitActors[id]);
+                }
+                shot.ImpactPosition = next;
+                actor.TargetAttack(shot);
+            }
+
+            if (!last && !hits.Done) {
+                field.Scheduler.Schedule(Tick, NpcProjectileRules.Step);
+            }
+        }
+
+        field.Scheduler.Schedule(Tick, NpcProjectileRules.Delay(path));
+    }
+
+    // An actor's hit box for a swept shot: a player's is the client's PC box, an npc's its shape.
+    private static Tools.Collision.IPrism HitBox(IActor target) {
+        return target is FieldPlayer ? NpcProjectileRules.PlayerBox(target.Position) : target.Shape;
+    }
+
+    private static float HitHeight(IActor target) {
+        return target is FieldPlayer ? NpcProjectileRules.PlayerHeight : target.Shape.Height.Max - target.Shape.Height.Min;
     }
 
     // The height band above and below the shot's start and end an aim is looked for in: chosen here.
