@@ -6,6 +6,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -26,7 +27,9 @@ public class ItemPickupHandler : FieldPacketHandler {
             return;
         }
 
+        // A refused pickup of a drop that stays is answered, so the client asks again later.
         if (fieldItem.ReceiverId != 0 && fieldItem.ReceiverId != session.CharacterId) {
+            session.Send(ItemPickupPacket.Refuse(objectId));
             return;
         }
 
@@ -48,6 +51,7 @@ public class ItemPickupHandler : FieldPacketHandler {
 
         lock (session.Item) {
             if (!session.Item.Inventory.CanAdd(fieldItem)) {
+                session.Send(ItemPickupPacket.Refuse(objectId));
                 return;
             }
 

@@ -5,6 +5,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -21,7 +22,13 @@ public class MesoPickupHandler : FieldPacketHandler {
         for (byte i = 0; i < count; i++) {
             int objectId = packet.ReadInt();
             // Check that the item being looted is mesos
-            if (!session.Field.TryGetItem(objectId, out FieldItem? fieldItem) || !fieldItem.Value.IsMeso()) {
+            if (!session.Field.TryGetItem(objectId, out FieldItem? fieldItem)) {
+                continue;
+            }
+
+            // A drop that stays (no meso, or another player's) is refused, so the client can ask for it again.
+            if (!fieldItem.Value.IsMeso() || (fieldItem.ReceiverId != 0 && fieldItem.ReceiverId != session.CharacterId)) {
+                session.Send(ItemPickupPacket.Refuse(objectId));
                 continue;
             }
 
