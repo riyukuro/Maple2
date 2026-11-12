@@ -38,4 +38,18 @@ public class ConditionCountTests {
             new ConditionMetadata.Parameters(Integers: [1, 2]), null);
         Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
     }
+
+    // Entering a home counts for enter_otherhouse only when another account owns it.
+    [TestCase(1001L, 1002L, true)]
+    [TestCase(1001L, 1001L, false)]
+    [TestCase(0L, 1001L, false)]
+    public void EnterOtherHouse_OnlyAnotherAccountsHome(long ownerId, long accountId, bool expected) {
+        Assert.That(FieldEntryRules.VisitsOtherHome(ownerId, accountId), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void EnterOtherHouse_ConditionWithoutCodesCounts() {
+        var condition = new ConditionMetadata(ConditionType.enter_otherhouse, 3, null, null);
+        Assert.That(condition.Check(null!), Is.True);
+    }
 }

@@ -19,6 +19,9 @@ public static class FieldEntryRules {
     // the default return field when the saved one is unknown, is a GM-only field for a plain account
     // (an account that lost its GM rights while its return field was one of those), or is a map the played
     // client does not have.
+    // A home field of another account: entering it counts for the enter_otherhouse condition.
+    public static bool VisitsOtherHome(long homeOwnerId, long accountId) => homeOwnerId != 0 && homeOwnerId != accountId;
+
     public static int ReturnMap(int returnMapId, bool known, int enterAdminLevel, bool gm, int defaultMapId, bool notInPlayedClient = false) {
         if (!known || notInPlayedClient || !AdminFieldAllowed(enterAdminLevel, gm)) {
             return defaultMapId;

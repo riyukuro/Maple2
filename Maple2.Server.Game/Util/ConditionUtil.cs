@@ -180,6 +180,7 @@ public static class ConditionUtil {
             case ConditionType.send_mail:
             case ConditionType.change_ugc_equip:
             case ConditionType.unlimited_enchant:
+            case ConditionType.enter_otherhouse:
                 return true;
         }
         return false;
@@ -341,6 +342,7 @@ public static class ConditionUtil {
             case ConditionType.send_mail:
             case ConditionType.change_ugc_equip:
             case ConditionType.unlimited_enchant:
+            case ConditionType.enter_otherhouse:
                 return true;
         }
         return false;

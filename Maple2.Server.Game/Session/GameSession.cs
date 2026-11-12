@@ -664,6 +664,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));
         ConditionUpdate(ConditionType.map, codeLong: Player.Value.Character.MapId);
         ConditionUpdate(ConditionType.job_change, codeLong: (int) Player.Value.Character.Job.Code());
+        if (Field is HomeFieldManager home && FieldEntryRules.VisitsOtherHome(home.OwnerId, AccountId)) {
+            ConditionUpdate(ConditionType.enter_otherhouse);
+        }
 
         SessionSave();
 
