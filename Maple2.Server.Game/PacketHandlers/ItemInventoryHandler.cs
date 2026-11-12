@@ -140,9 +140,10 @@ public class ItemInventoryHandler : FieldPacketHandler {
         session.Field.DropItem(session.Player, drop);
     }
 
-    // The item lands on the field (CItemTransfer::CanDestroy); anything else is destroyed.
+    // The item lands on the field (CItemTransfer::CanDestroy); anything else is destroyed. A black-market-only item
+    // lands only when its data lets it go hand to hand (TradeRules.IsHandTradeable).
     internal static bool IsFieldDrop(Item item) {
         return item.Transfer != null && !item.IsExpired() && item.Transfer.Flag.HasFlag(TransferFlag.Trade)
-               && item.Transfer.Binding == null;
+               && item.Transfer.Binding == null && TradeRules.IsHandTradeable(item);
     }
 }

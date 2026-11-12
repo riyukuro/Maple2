@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
@@ -21,10 +23,11 @@ public class TradeHandlerTests {
     private GameSession taker => takerTest.Session;
 
     [SetUp]
-    public void StartTrade() {
+    public void StartTrade() => StartTrade(TestGameSession.Metadata(20000001, type: 2));
+
+    private void StartTrade(ItemMetadata metadata) {
         giverTest = new TestGameSession();
         takerTest = new TestGameSession();
-        var metadata = TestGameSession.Metadata(20000001, type: 2);
         item = giverTest.Store(metadata, amount: 3);
         takerTest.Register(metadata);
         // The request's time-out is set far off: with the table's 0 seconds the timer can end the request before
@@ -212,6 +215,25 @@ public class TradeHandlerTests {
         Assert.That(giver.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(3));
         Send(giver, 7);
         Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
+    }
+
+    // A black-market-only item comes with the trade bit and the client offers it (FUN_140635590 reads only the
+    // rule). At its trade rarity with no trades left the server keeps it in the bag; below that rarity it goes.
+    [TestCase(1, false)]
+    [TestCase(2, true)]
+    public void AddItem_BlackMarketOnly(int tradeMaxRarity, bool offered) {
+        ItemMetadata metadata = TestGameSession.Metadata(20000001, type: 2);
+        StartTrade(metadata with { Limit = metadata.Limit with { TransferType = TransferType.BlackMarketOnly, TradeMaxRarity = tradeMaxRarity } });
+        Assert.That(giver.Item.Inventory.Get(item.Uid)!.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
+
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+
+        Assert.That(giver.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(offered ? null : 3));
+        Assert.That(takerTest.TakeSent(), offered ? Is.Not.Empty : Is.Empty);
     }
 
     // KMS2 order: a player who has locked is unlocked (mode 12) before the other player's change is shown.

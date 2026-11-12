@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -20,9 +21,11 @@ public class ItemDropHandlerTests {
     private readonly ItemInventoryHandler handler = new();
     private Item stack = null!;
 
-    private GameSession Start() {
+    private GameSession Start() => Start(TestGameSession.Metadata(20000001, type: 2));
+
+    private GameSession Start(ItemMetadata metadata) {
         test = new TestGameSession();
-        stack = test.Store(TestGameSession.Metadata(20000001, type: 2), amount: 5);
+        stack = test.Store(metadata, amount: 5);
         GameSession session = test.Start();
         test.TakeSent();
         return session;
@@ -122,6 +125,22 @@ public class ItemDropHandlerTests {
 
         Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(3));
         Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(new[] { 2 }));
+    }
+
+    // The client sends mode 4 for a black-market-only item (its trade bit passes CanDestroy). At its trade rarity
+    // with no trades left it may not go to another player, so it is destroyed and nothing lands; below that rarity
+    // the chosen count lands.
+    [TestCase(1, false)]
+    [TestCase(2, true)]
+    public void BlackMarketOnly_Drop(int tradeMaxRarity, bool lands) {
+        ItemMetadata metadata = TestGameSession.Metadata(20000001, type: 2);
+        GameSession session = Start(metadata with { Limit = metadata.Limit with { TransferType = TransferType.BlackMarketOnly, TradeMaxRarity = tradeMaxRarity } });
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
+
+        Drop(session, 2);
+
+        Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(lands ? 3 : null));
+        Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(lands ? new[] { 2 } : Array.Empty<int>()));
     }
 
     // Mode 5 comes from the destroy box: the whole item goes and nothing lands, tradeable or not.

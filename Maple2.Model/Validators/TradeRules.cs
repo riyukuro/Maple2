@@ -11,6 +11,22 @@ public static class TradeRules {
         return amount > 0;
     }
 
+    // Black-market-only items go out with the trade bit, as KMS2 sends them, and the client's own checks read only
+    // that bit (CItemTransfer FUN_140635590 for the trade slot, CanDestroy for the drop; neither asks the item's
+    // TransferType). So the server keeps the hand trade and the field drop to what the item's data allows: below
+    // its trade rarity, or with trades left. Every other transfer type is decided by the flag.
+    public static bool IsHandTradeable(TransferType type, int rarity, int tradeMaxRarity, int remainTrades) {
+        if (type != TransferType.BlackMarketOnly) {
+            return true;
+        }
+        return rarity < tradeMaxRarity || remainTrades > 0;
+    }
+
+    public static bool IsHandTradeable(Item item) {
+        return IsHandTradeable(item.Metadata.Limit.TransferType, item.Rarity, item.Metadata.Limit.TradeMaxRarity,
+            item.Transfer?.RemainTrades ?? 0);
+    }
+
     public static bool IsTradeable(TransferFlag flag, int remainTrades, bool bound) {
         if (bound) {
             return false;
