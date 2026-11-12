@@ -396,20 +396,12 @@ public class ItemUseHandler : FieldPacketHandler {
 
     // The gender voucher. KMS2: the voucher leaves the bag, hair, face, face decoration and ear
     // come off (ItemPutOff), a Notice 5 message box with common string 755 closes the game scene,
-    // and the character list then shows the other gender with new items in those four slots.
+    // and the character list then shows the other gender with new items in those slots. String 755
+    // is the worn-items refusal text (s_change_gender_err_equip_items); KMS2 sends it in the done
+    // notice too, so it is not replaced by s_change_gender_result_success here.
     private void HandleChangeGender(GameSession session, Item item) {
         Character character = session.Player.Value.Character;
         Gender gender = GenderChangeRules.Other(character.Gender);
-
-        // The client refuses this by itself with the same text.
-        foreach (ConcurrentDictionary<EquipSlot, Item> tab in new[] { session.Item.Equips.Gear, session.Item.Equips.Outfit, session.Item.Equips.Outfit2 }) {
-            foreach ((EquipSlot slot, Item worn) in tab) {
-                if (GenderChangeRules.BlocksChange(slot, worn.Metadata.Limit.Gender)) {
-                    session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_err_equip_items));
-                    return;
-                }
-            }
-        }
 
         var picks = new List<(EquipSlot Slot, ItemMetadata Metadata)>();
         foreach (EquipSlot slot in GenderChangeRules.LookSlots) {
@@ -426,31 +418,51 @@ public class ItemUseHandler : FieldPacketHandler {
                 picks.Add((slot, pick));
             }
         }
-        // Hair and face are needed to draw the character; taking a look item off needs a free outfit slot.
-        if (!picks.Exists(pick => pick.Slot == EquipSlot.HR) || !picks.Exists(pick => pick.Slot == EquipSlot.FA)
-            || session.Item.Inventory.FreeSlots(InventoryType.Outfit) == 0
-            || !session.Item.Inventory.Consume(item.Uid, 1)) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_result_failed));
-            return;
-        }
 
-        character.Gender = gender;
-        using (GameStorage.Request db = session.GameStorage.Context()) {
-            foreach ((EquipSlot slot, ItemMetadata pick) in picks) {
-                Item? old = session.Item.Equips.Get(slot);
-                var look = new Item(pick);
-                if (old?.Appearance != null && look.Appearance != null) {
-                    look.Appearance.Color = old.Appearance.Color;
-                }
-                if (old != null) {
-                    session.Item.Equips.Unequip(old.Uid);
-                }
-                Item? stored = db.CreateItem(session.CharacterId, look);
-                if (stored != null) {
-                    session.Item.Equips.EquipCosmetic(stored, slot);
+        // One lock over the checks and the change.
+        lock (session.Item) {
+            // The client refuses both by itself: the wedding state with its own text, the worn items with this one.
+            if (!GenderChangeRules.WeddingAllows(session.Marriage.Marriage.Status)) {
+                session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_result_failed));
+                return;
+            }
+            foreach (ConcurrentDictionary<EquipSlot, Item> tab in new[] { session.Item.Equips.Gear, session.Item.Equips.Outfit, session.Item.Equips.Outfit2 }) {
+                foreach ((EquipSlot slot, Item worn) in tab) {
+                    if (GenderChangeRules.BlocksChange(slot, worn.Metadata.Limit.Gender)) {
+                        session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_err_equip_items));
+                        return;
+                    }
                 }
             }
+
+            bool changed;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                changed = GenderChangeRules.Apply(character, session.Item.Equips.Outfit, picks,
+                    store: look => db.CreateItem(session.CharacterId, look),
+                    unstore: look => db.SaveItems(0, look),
+                    consume: () => session.Item.Inventory.Consume(item.Uid, 1),
+                    takeOff: old => {
+                        // As an unequip of a look item: discarded, never back to the bag.
+                        old.Group = ItemGroup.Default;
+                        old.Slot = -1;
+                        session.Item.Inventory.Discard(old);
+                        session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, old));
+                        session.Buffs.RemoveItemBuffs(old);
+                    });
+            }
+            if (!changed) {
+                session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_result_failed));
+                return;
+            }
         }
+
+        // Stored at once, so a crash before the logout save cannot give back the voucher and the old look
+        // next to the new look's rows.
+        session.SavePurchase(db => {
+            db.SavePlayer(session.Player);
+            session.Item.Equips.Save(db);
+            session.Item.Inventory.Save(db);
+        });
 
         session.Send(NoticePacket.Disconnect(StringCode.s_change_gender_err_equip_items));
     }
