@@ -341,6 +341,7 @@ public partial class ChannelService {
                 Maple2.Server.World.Service.GuildInfoResponse response = session.World.GuildInfo(new Maple2.Server.World.Service.GuildInfoRequest { GuildId = guildId });
                 if (response.Guild != null && session.Guild.SetGuild(response.Guild)) {
                     session.Guild.Load();
+                    session.ConditionUpdate(ConditionType.guild_join);
                 }
             } catch (RpcException) { /* the guild is loaded at the next login */ }
         }

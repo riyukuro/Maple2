@@ -264,6 +264,8 @@ public class GuildHandler : PacketHandler<GameSession> {
 
             session.Guild.Load();
             session.Send(GuildPacket.Created(guildName));
+            // The founder is the guild's first member: "Join a guild" (70300010) counts for it too.
+            session.ConditionUpdate(ConditionType.guild_join);
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to create guild: {Name}", guildName);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
@@ -369,6 +371,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 case GuildResponse.InfoOneofCase.Guild: // Accept
                     session.Guild.SetGuild(response.Guild);
                     session.Guild.Load();
+                    session.ConditionUpdate(ConditionType.guild_join);
                     break;
             }
         } catch (RpcException ex) {
