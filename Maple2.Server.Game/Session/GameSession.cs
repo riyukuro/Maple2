@@ -340,8 +340,10 @@ public sealed partial class GameSession : Core.Network.Session {
         }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
             // The saved field cannot be made (for one, its map has no navmesh file). A plain entry goes to the
-            // return field, then to the default one, so the character is not locked out of the game.
-            if (migrationType == MigrationType.Normal) {
+            // return field, then to the default one, so the character is not locked out of the game. So does a
+            // rank duel arrival whose match field went between the check above and here: it arrives as a plain entry.
+            if (FieldEntryRules.TakesFallback(migrationType)) {
+                migrationType = MigrationType.Normal;
                 foreach (int fallbackId in FieldEntryRules.Fallbacks(fieldId, player.Character.ReturnMaps.Peek(), Constant.DefaultReturnMapId)) {
                     if (!MapMetadata.TryGet(fallbackId, out MapMetadata? fallbackMap) || fallbackMap.Property.NotInPlayedClient) {
                         continue;

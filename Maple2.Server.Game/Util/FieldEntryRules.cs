@@ -104,6 +104,12 @@ public static class FieldEntryRules {
 
     // A dungeon arrival whose room is gone when the character gets there is entered as a plain arrival in the
     // return field: the client is already on its loading screen and an error there locks it out.
+    // Whether an arrival whose field cannot be made goes to the return field, then the default one: a plain entry,
+    // and a rank duel arrival (its match field can be gone by then).
+    public static bool TakesFallback(MigrationType type) {
+        return type is MigrationType.Normal or MigrationType.PvpMatch;
+    }
+
     public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {
         return type is MigrationType.Dungeon or MigrationType.PvpMatch && !roomRuns;
     }

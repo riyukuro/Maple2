@@ -88,7 +88,7 @@ public class PvpHandler : FieldPacketHandler {
     private static bool CanLeave(GameSession session) {
         InstanceFieldMetadata? instance = session.Field?.FieldInstance;
         return RankDuelField.CanLeaveFor(session.Player.IsDead, session.Field is DungeonFieldManager,
-            instance?.Type is not (null or InstanceType.none or InstanceType.ugcMap),
+            instance != null && RankDuelField.RefusesInstance(instance.Type),
             session.Field?.RankDuel != null);
     }
 

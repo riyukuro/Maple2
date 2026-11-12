@@ -120,6 +120,27 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(2000062, RankDuelField.Maps), Is.False);
     }
 
+    // A rank duel arrival whose field cannot be made goes to the fallback fields, as a plain entry does; a dungeon
+    // arrival does not (it has its own return path).
+    [Test]
+    public void RankDuelArrival_TakesTheFallback() {
+        Assert.That(FieldEntryRules.TakesFallback(MigrationType.Normal), Is.True);
+        Assert.That(FieldEntryRules.TakesFallback(MigrationType.PvpMatch), Is.True);
+        Assert.That(FieldEntryRules.TakesFallback(MigrationType.Dungeon), Is.False);
+        Assert.That(FieldEntryRules.TakesFallback(MigrationType.DecorPlanner), Is.False);
+    }
+
+    [Test]
+    public void RankDuel_RefusedInstanceTypes() {
+        foreach (InstanceType type in new[] { InstanceType.solo, InstanceType.DungeonLobby, InstanceType.massiveEvent, InstanceType.GuildPvp,
+                     InstanceType.RankingPvp, InstanceType.MapleSurvival, InstanceType.MapleSurvivalSquad, InstanceType.FieldWar }) {
+            Assert.That(RankDuelField.RefusesInstance(type), Is.True, type.ToString());
+        }
+        foreach (InstanceType type in new[] { InstanceType.none, InstanceType.channelScale, InstanceType.ugcMap, InstanceType.GuildHouse, InstanceType.WeddingHall }) {
+            Assert.That(RankDuelField.RefusesInstance(type), Is.False, type.ToString());
+        }
+    }
+
     // A rank duel room that is gone is not made again as a plain field; another map's room is.
     [Test]
     public void MissingRoom_NotMadeOnARankDuelMap() {

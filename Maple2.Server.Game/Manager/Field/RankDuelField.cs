@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Game.Pvp;
+﻿using Maple2.Model.Enum;
+using Maple2.Model.Game.Pvp;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Serilog;
@@ -23,6 +24,8 @@ public sealed class RankDuelField {
     private readonly RankDuelMatchState state;
     private readonly Action<int> onEnd;
     private readonly Dictionary<long, string> names = [];
+    // The duelists sent out on arrival after the result (Dismiss): the exit leaves them alone.
+    private readonly HashSet<long> dismissed = [];
 
     public int MatchId { get; }
     public RankDuelPhase Phase {
@@ -45,8 +48,16 @@ public sealed class RankDuelField {
     public static bool IsRunning(RankDuelPhase phase) => phase != RankDuelPhase.Closed;
 
     // Whether a character may leave its field for the rank duel (register or join). Chosen here (the client only
-    // checks death itself): not while dead, not from a dungeon or another instanced room (a home is allowed), not
-    // from a rank duel field.
+    // checks death itself): not while dead, not from a dungeon or a room it would lose by leaving
+    // (RefusesInstance), not from a rank duel field.
+    // The instance types left only by their own way out: solo rooms, dungeon lobbies, the event and game rooms, and
+    // the PvP and survival rooms. Open fields (none, channelScale), homes, guild houses and wedding halls are not.
+    public static bool RefusesInstance(InstanceType type) {
+        return type is InstanceType.solo or InstanceType.massiveEvent or InstanceType.GameMaker or InstanceType.GuildEvent
+            or InstanceType.GuildPvp or InstanceType.DungeonLobby or InstanceType.GuildVsGame or InstanceType.RankingPvp
+            or InstanceType.MapleSurvival or InstanceType.MapleSurvivalSquad or InstanceType.FieldWar;
+    }
+
     public static bool CanLeaveFor(bool dead, bool dungeon, bool instanced, bool rankDuel) {
         return !dead && !dungeon && !instanced && !rankDuel;
     }
@@ -158,6 +169,9 @@ public sealed class RankDuelField {
     // A duelist that came after the result: its client goes back to the idle state (Pvp 15) and it goes back to its
     // return field once its entry is done.
     private void Dismiss(long characterId) {
+        if (!dismissed.Add(characterId)) {
+            return;
+        }
         Send(characterId, PvpPacket.RankDuelUnregistered());
         field.Scheduler.Schedule(() => {
             if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
@@ -168,7 +182,7 @@ public sealed class RankDuelField {
 
     // After the result: the duelists still here go back to their return field.
     private void SendOut() {
-        foreach (long characterId in new[] { state.First, state.Second }) {
+        foreach (long characterId in new[] { state.First, state.Second }.Where(id => !dismissed.Contains(id))) {
             if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
                 player.Session.ReturnField();
             }
