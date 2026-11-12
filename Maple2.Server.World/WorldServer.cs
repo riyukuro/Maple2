@@ -300,27 +300,21 @@ public class WorldServer {
             if (eventData.CycleTime == TimeSpan.Zero) {
                 continue;
             }
-            DateTime startTime = eventData.StartTime;
-            if (DateTime.Now > startTime) {
-                // catch up to a time after the start time
-                while (startTime < DateTime.Now) {
-                    startTime += eventData.CycleTime;
-                }
-                if (startTime > eventData.EndTime) {
-                    continue;
-                }
-                scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - DateTime.Now);
+            // A row whose StartTime is still ahead waits for it (it was never scheduled).
+            if (TimeEventRules.FirstRun(eventData.StartTime, eventData.CycleTime, eventData.EndTime, DateTime.Now) is not { } startTime) {
+                continue;
             }
+            scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - DateTime.Now);
         }
     }
 
     private void GlobalPortal(GlobalPortalMetadata data, DateTime startTime) {
         // check probability
-        bool run = !(data.Probability < 100 && Random.Shared.Next(100) > data.Probability);
+        bool run = TimeEventRules.Runs(data.Probability, Random.Shared.Next(100));
 
         if (run) {
             DateTime now = DateTime.Now;
-            globalPortalLookup.Create(data, (long) (now.ToEpochSeconds() + data.LifeTime.TotalMilliseconds), out int eventId);
+            globalPortalLookup.Create(data, new DateTimeOffset(now).ToUnixTimeMilliseconds() + (long) data.LifeTime.TotalMilliseconds, out int eventId);
             if (!globalPortalLookup.TryGet(out GlobalPortalManager? manager)) {
                 logger.Error("Failed to create global portal");
                 return;
@@ -358,15 +352,8 @@ public class WorldServer {
                 continue;
             }
 
-            DateTime startTime = boss.StartTime;
-            if (DateTime.Now > startTime) {
-                // Catch up to the next scheduled spawn after now
-                while (startTime < DateTime.Now) {
-                    startTime += boss.CycleTime;
-                }
-                if (startTime > boss.EndTime) {
-                    continue;
-                }
+            if (TimeEventRules.FirstRun(boss.StartTime, boss.CycleTime, boss.EndTime, DateTime.Now) is not { } startTime) {
+                continue;
             }
 
             TimeSpan delay = startTime - DateTime.Now;
@@ -377,7 +364,7 @@ public class WorldServer {
     }
 
     private void SpawnWorldBoss(WorldBossMetadata metadata, DateTime spawnTime) {
-        bool shouldSpawn = !(metadata.Probability < 100 && Random.Shared.Next(100) >= metadata.Probability);
+        bool shouldSpawn = TimeEventRules.Runs(metadata.Probability, Random.Shared.Next(100));
 
         // Compute next spawn time before Create() so it can be broadcast with the announce
         DateTime nextSpawn = spawnTime + metadata.CycleTime;
@@ -402,8 +389,7 @@ public class WorldServer {
                 logger.Information("WorldBoss {Id} (NpcId: {NpcId}) spawned — eventId: {EventId}, alive for {LifeTime:mm\\:ss}, next spawn at {NextSpawn:HH:mm:ss} UTC",
                     metadata.Id, metadata.NpcIds.Length > 0 ? metadata.NpcIds[0] : 0, eventId, metadata.LifeTime, nextSpawn.ToUniversalTime());
 
-                TimeSpan warnDelay = metadata.LifeTime - TimeSpan.FromMinutes(1);
-                _ = MonitorWorldBossLifetimeAsync(metadata.Id, warnDelay, metadata.LifeTime, tokenSource.Token);
+                _ = MonitorWorldBossLifetimeAsync(metadata.Id, metadata.LifeTime, tokenSource.Token);
             }
         }
 
@@ -415,17 +401,14 @@ public class WorldServer {
         scheduler.Schedule(() => SpawnWorldBoss(metadata, nextSpawn), nextSpawn - DateTime.Now);
     }
 
-    private async Task MonitorWorldBossLifetimeAsync(int metadataId, TimeSpan warnDelay, TimeSpan lifeTime, CancellationToken token) {
+    // The warning when the LifeTime has passed, the boss leaves TimeEventRules.BossLeaveDelay later.
+    private async Task MonitorWorldBossLifetimeAsync(int metadataId, TimeSpan lifeTime, CancellationToken token) {
         try {
-            if (warnDelay > TimeSpan.Zero) {
-                await Task.Delay(warnDelay, token);
-                if (worldBossLookup.TryGet(metadataId, out WorldBossManager? warnManager)) {
-                    warnManager.WarnChannels();
-                }
-                await Task.Delay(TimeSpan.FromMinutes(1), token);
-            } else {
-                await Task.Delay(lifeTime, token);
+            await Task.Delay(lifeTime, token);
+            if (worldBossLookup.TryGet(metadataId, out WorldBossManager? warnManager)) {
+                warnManager.WarnChannels();
             }
+            await Task.Delay(TimeEventRules.BossLeaveDelay, token);
             worldBossLookup.Dispose(metadataId);
             logger.Information("WorldBoss {Id} lifetime expired — despawning", metadataId);
         } catch (OperationCanceledException) {

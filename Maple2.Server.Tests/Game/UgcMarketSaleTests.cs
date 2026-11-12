@@ -120,6 +120,39 @@ public class UgcMarketSaleTests {
         Assert.That(saved.CharacterName, Is.EqualTo(string.Empty));
     }
 
+    // A sale that cannot be stored (here: an entry without a name) leaves the listing's count, in the store and in
+    // the context that tried it: a later sale through the same context counts one.
+    [Test]
+    public void FailingSale_LeavesTheCount() {
+        var test = new TestGameSession();
+        long id = List(test, 3000).Id;
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            SoldUgcMarketItem? failed = db.AddUgcMarketSale(id, new SoldUgcMarketItem {
+                AccountId = test.AccountId,
+                Price = 3000,
+                Name = null!,
+                Profit = 2100,
+            });
+            Assert.That(failed, Is.Null);
+            Assert.That(StoredTotal(test), Is.EqualTo(0));
+
+            SoldUgcMarketItem? stored = db.AddUgcMarketSale(id, new SoldUgcMarketItem {
+                AccountId = test.AccountId,
+                Price = 3000,
+                Name = "Design",
+                Profit = 2100,
+            });
+            Assert.That(stored, Is.Not.Null);
+        }
+
+        using GameStorage.Request check = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(StoredTotal(test), Is.EqualTo(3000));
+            Assert.That(check.GetMySoldUgcListings(test.AccountId), Has.Count.EqualTo(1));
+        });
+    }
+
     // The sales tab (which saves) and taking the listing off the market leave the count, and the seller's own copy
     // follows the stored count.
     [Test]

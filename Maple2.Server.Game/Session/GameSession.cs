@@ -718,7 +718,8 @@ public sealed partial class GameSession : Core.Network.Session {
             GetGlobalPortal = new TimeEventRequest.Types.GetGlobalPortal(),
         });
 
-        if (globalEventResponse.Error != 0 && globalEventResponse.GlobalPortalInfo != null) {
+        if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null
+            && TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type)) {
             if (ServerTableMetadata.TimeEventTable.GlobalPortal.TryGetValue(globalEventResponse.GlobalPortalInfo.MetadataId, out GlobalPortalMetadata? portal)) {
                 Send(GlobalPortalPacket.Announce(portal, globalEventResponse.GlobalPortalInfo.EventId));
             }

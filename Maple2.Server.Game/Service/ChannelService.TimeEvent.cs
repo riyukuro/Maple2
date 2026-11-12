@@ -9,11 +9,14 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
 
 public partial class ChannelService {
     private readonly ConcurrentDictionary<int, byte> monitoringBossFields = new();
+    // KMS2 sends the two lifetime notices of a world boss with the flags 5.
+    private const NoticePacket.Flags LifetimeNotice = NoticePacket.Flags.Message | NoticePacket.Flags.Alert;
     public override Task<TimeEventResponse> TimeEvent(TimeEventRequest request, ServerCallContext context) {
         switch (request.TimeEventCase) {
             case TimeEventRequest.TimeEventOneofCase.AnnounceGlobalPortal:
@@ -38,7 +41,7 @@ public partial class ChannelService {
             return new TimeEventResponse();
         }
         foreach (GameSession session in server.GetSessions()) {
-            if (session.Field?.Metadata.Property.Type is >= MapType.None and <= MapType.Telescope or >= MapType.Alikar and <= MapType.Shelter) {
+            if (session.Field != null && TimeEventRules.PortalAnnouncedIn(session.Field.Metadata.Property.Type)) {
                 session.Send(GlobalPortalPacket.Announce(metadata, portal.EventId));
             }
         }
@@ -88,7 +91,10 @@ public partial class ChannelService {
             if (field == null) continue;
             FieldNpc? bossNpc = field.GetWorldBossNpc();
             if (bossNpc == null) continue; // Already dead on this channel
-            field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext1, npcId.ToString())));
+            if (!TimeEventRules.BossLeaves(bossNpc.LastDamageTick, Environment.TickCount64, Constant.WorldBossIdleWarningThreshold)) {
+                continue; // it stays: the idle monitor warns when it is about to leave
+            }
+            field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext1, npcId.ToString()), LifetimeNotice));
         }
 
         return new TimeEventResponse();
@@ -108,16 +114,12 @@ public partial class ChannelService {
             FieldNpc? bossNpc = field.GetWorldBossNpc();
             if (bossNpc == null) continue;
 
-            long idleMs = bossNpc.LastDamageTick > 0
-                ? Environment.TickCount64 - bossNpc.LastDamageTick
-                : long.MaxValue;
-
-            if (idleMs < (long) Constant.WorldBossIdleWarningThreshold.TotalMilliseconds) {
+            if (!TimeEventRules.BossLeaves(bossNpc.LastDamageTick, Environment.TickCount64, Constant.WorldBossIdleWarningThreshold)) {
                 if (monitoringBossFields.TryAdd(targetMapId, 0)) {
                     _ = MonitorExtendedBossLifetimeAsync(field, npcId, targetMapId);
                 }
             } else {
-                field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString())));
+                field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString()), LifetimeNotice));
                 field.DespawnWorldBoss();
             }
         }
@@ -139,12 +141,12 @@ public partial class ChannelService {
                     : Environment.TickCount64 - bossNpc.LastDamageTick;
 
                 if (!warningSent && idleMs >= (long) Constant.WorldBossIdleWarningThreshold.TotalMilliseconds) {
-                    field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext1, npcId.ToString())));
+                    field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext1, npcId.ToString()), LifetimeNotice));
                     warningSent = true;
                 }
 
                 if (idleMs >= (long) Constant.WorldBossDespawnThreshold.TotalMilliseconds) {
-                    field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString())));
+                    field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString()), LifetimeNotice));
                     field.DespawnWorldBoss();
                     return;
                 }
