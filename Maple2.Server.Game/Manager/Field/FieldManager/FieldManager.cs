@@ -853,6 +853,40 @@ public partial class FieldManager : IField {
         return true;
     }
 
+    // An object's npc spawn on its use (InteractRules.PickSpawn): Count npcs of the picked entry, each at a random
+    // spot within its Radius put on the navmesh, or at the object itself with no radius (the survival maps' boat
+    // docks stand on water, where the nearest navmesh point is ashore), removed after LifeTime.
+    public void SpawnInteractNpcs(FieldInteract interact) {
+        InteractObjectMetadataSpawn[] spawns = interact.Value.Spawn;
+        if (spawns.Length == 0) {
+            return;
+        }
+        int pick = InteractRules.PickSpawn(spawns.Select(spawn => spawn.Probability).ToArray(), Random.Shared.Next(InteractRules.SpawnRollRange));
+        if (pick < 0 || !NpcMetadata.TryGet(spawns[pick].Id, out NpcMetadata? metadata)) {
+            return;
+        }
+
+        InteractObjectMetadataSpawn picked = spawns[pick];
+        for (int i = 0; i < picked.Count; i++) {
+            Vector3 position = interact.Position;
+            if (picked.Radius > 0) {
+                position = StageSpot(AiSummon.Position(interact.Position, Vector3.Zero, Vector3.Zero, new Vector3(picked.Radius, picked.Radius, 0), Random.Shared));
+            }
+            FieldNpc? fieldNpc = SpawnNpc(metadata, position, interact.Rotation);
+            if (fieldNpc == null) {
+                continue;
+            }
+            Broadcast(FieldPacket.AddNpc(fieldNpc));
+            Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
+            fieldNpc.Update(Environment.TickCount64);
+
+            TimeSpan lifeTime = AiSummon.LifeTime(picked.LifeTime);
+            if (lifeTime > TimeSpan.Zero) {
+                RemoveNpc(fieldNpc.ObjectId, lifeTime);
+            }
+        }
+    }
+
     // moves: the players to send (patrol_condition_user); null sends every player.
     public void MovePlayerAlongPath(string pathName, Func<FieldPlayer, bool>? moves = null) {
         MS2PatrolData? patrolData = Entities.Patrols.FirstOrDefault(p => p.Name == pathName);

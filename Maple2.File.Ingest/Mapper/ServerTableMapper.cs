@@ -1245,8 +1245,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 XmlNode? stringNode = value2Xml.FirstChild.SelectSingleNode("string");
                 XmlNode? configNode = value2Xml.FirstChild.SelectSingleNode("Config");
                 XmlNode? payNode = value2Xml.FirstChild.SelectSingleNode("payAttend");
-                // An event without a Config node asks no play time (AttendanceRules.AttendsAtGameStart): KR has 15
-                // such rows and NA 16 besides the pay-attend ones, dropped before.
+                // An event without a Config node asks no play time (AttendanceRules.AttendsAtGameStart): KR and NA have 16
+                // such rows each (one the pay-attend row 170008), all ended, dropped before.
                 if (stringNode == null) {
                     return null;
                 }

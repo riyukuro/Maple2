@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Maple2.Model.Metadata;
@@ -118,5 +118,15 @@ public class TriggerLookupTests {
         Assert.That(TriggerContext.CanSpawnUnderLimit(200, 250), Is.False);
         // limit_count=0 turns the limit off.
         Assert.That(TriggerContext.CanSpawnUnderLimit(0, 5000), Is.True);
+    }
+
+    [Test]
+    public void NpcToPatrolInBox_SetsTheNpcOfThatIdOnce() {
+        // The survival maps' docks: boat 11400001 on MS2PatrolData_201, asked every 200 ms.
+        Assert.That(TriggerContext.PatrolInBoxSets(11400001, null, 11400001, "MS2PatrolData_201"), Is.True);
+        Assert.That(TriggerContext.PatrolInBoxSets(11400001, "MS2PatrolData_201", 11400001, "MS2PatrolData_201"), Is.False);
+        // A boat on another path is moved to this one; another npc in the box is left alone.
+        Assert.That(TriggerContext.PatrolInBoxSets(11400001, "MS2PatrolData_202", 11400001, "MS2PatrolData_201"), Is.True);
+        Assert.That(TriggerContext.PatrolInBoxSets(21000001, null, 11400001, "MS2PatrolData_201"), Is.False);
     }
 }

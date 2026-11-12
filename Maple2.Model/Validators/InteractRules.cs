@@ -91,4 +91,21 @@ public static class InteractRules {
         }
         return ends;
     }
+
+    // Server rule: an object's npc spawn list (interactobject spawn, which the client reads and never uses, so the
+    // spawn is the server's). One roll in [0, 10000) takes the first entry whose running sum of probabilities is
+    // above it; a list summing under 10000 spawns nothing for the rest (a single 3000 entry spawns 30% of uses).
+    // -1: nothing spawns.
+    public const int SpawnRollRange = 10000;
+
+    public static int PickSpawn(IReadOnlyList<int> probabilities, int roll) {
+        int sum = 0;
+        for (int i = 0; i < probabilities.Count; i++) {
+            sum += Math.Max(probabilities[i], 0);
+            if (roll < sum) {
+                return i;
+            }
+        }
+        return -1;
+    }
 }

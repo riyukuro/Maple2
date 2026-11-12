@@ -121,8 +121,28 @@ public partial class TriggerContext {
         }
     }
 
+    // Each npc of that id in the box goes on the path. spawn_id names where the npc came from (every use in the
+    // data says interactObject: the npc an object's use spawned) and picks nothing more. The survival maps run it
+    // every 200 ms on their boat docks: a boat already on the path keeps its place on it.
     public void NpcToPatrolInBox(int boxId, int npcId, string spawnId, string patrolName) {
-        ErrorLog("[NpcToPatrolInBox] boxId:{BoxId}, npcId:{NpcId}, spawnId:{SpawnId}, patrolName:{PatrolName}", spawnId, npcId, spawnId, patrolName);
+        DebugLog("[NpcToPatrolInBox] boxId:{BoxId}, npcId:{NpcId}, spawnId:{SpawnId}, patrolName:{PatrolName}", boxId, npcId, spawnId, patrolName);
+        if (boxId == 0) {
+            return;
+        }
+        MS2PatrolData? patrolData = Field.Entities.Patrols.FirstOrDefault(patrol => patrol.Name == patrolName);
+        if (patrolData is null) {
+            return;
+        }
+
+        foreach (FieldNpc npc in NpcsInBox(boxId).ToList()) {
+            if (PatrolInBoxSets(npc.Value.Metadata.Id, npc.Patrol?.Name, npcId, patrolName)) {
+                npc.SetPatrolData(patrolData, byScript: true);
+            }
+        }
+    }
+
+    public static bool PatrolInBoxSets(int npcIdInBox, string? currentPatrol, int npcId, string patrolName) {
+        return npcIdInBox == npcId && currentPatrol != patrolName;
     }
 
     public void SetAiExtraData(string key, int value, bool isModify, int boxId) {

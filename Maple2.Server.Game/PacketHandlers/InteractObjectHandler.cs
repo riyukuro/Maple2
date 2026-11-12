@@ -181,6 +181,7 @@ public class InteractObjectHandler : FieldPacketHandler {
         if (interact.Chest == MapChestRules.Kind.None) {
             DropItems(session, interact);
         }
+        session.Field.SpawnInteractNpcs(interact);
 
         foreach (InteractObjectMetadataEffect.InvokeEffect invokeEffect in interact.Value.AdditionalEffect.Invoke) {
             if (invokeEffect.Probability < 10000 && invokeEffect.Probability / 100 < Random.Shared.Next(100)) {

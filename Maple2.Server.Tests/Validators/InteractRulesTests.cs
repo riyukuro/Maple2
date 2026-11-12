@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Validators;
@@ -114,5 +114,21 @@ public class InteractRulesTests {
         foreach (InteractType type in new[] { InteractType.Web, InteractType.DisplayImage, InteractType.GuildPoster, InteractType.BillBoard, InteractType.WatchTower }) {
             Assert.That(InteractRules.Answer(type), Is.EqualTo((false, false)));
         }
+    }
+
+    [Test]
+    public void PickSpawn_RunningSumOfProbabilities() {
+        // Two entries summing to 10000: the roll picks the one its running sum passes.
+        int[] two = [7000, 3000];
+        Assert.That(InteractRules.PickSpawn(two, 0), Is.EqualTo(0));
+        Assert.That(InteractRules.PickSpawn(two, 6999), Is.EqualTo(0));
+        Assert.That(InteractRules.PickSpawn(two, 7000), Is.EqualTo(1));
+        Assert.That(InteractRules.PickSpawn(two, InteractRules.SpawnRollRange - 1), Is.EqualTo(1));
+        // A single 3000 entry spawns on 30% of rolls, nothing on the rest.
+        Assert.That(InteractRules.PickSpawn([3000], 2999), Is.EqualTo(0));
+        Assert.That(InteractRules.PickSpawn([3000], 3000), Is.EqualTo(-1));
+        // A list summing over 10000 never reaches the part past it; an empty list spawns nothing.
+        Assert.That(InteractRules.PickSpawn([6000, 6000], 9999), Is.EqualTo(1));
+        Assert.That(InteractRules.PickSpawn([], 0), Is.EqualTo(-1));
     }
 }
