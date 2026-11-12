@@ -501,7 +501,7 @@ public sealed class QuestManager {
             exp = GuildRules.QuestRewardBonus(exp, guildFactor.UserExp);
         }
         if (exp > 0) {
-            session.Exp.AddExp(exp, ExpType.quest.Message());
+            session.Exp.AddExp(exp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message());
         }
 
         if (reward.Meso > 0) {

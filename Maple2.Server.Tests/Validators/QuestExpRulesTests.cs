@@ -39,5 +39,26 @@ public class QuestExpRulesTests {
         Assert.That(QuestExpRules.Exp(fixedExp, 0, type, rank, alliance), Is.EqualTo(expected));
     }
 
+    // KMS2: exploration missions and epic quests of standard level 1 to 7 name 1053, the others 1010.
+    [TestCase(QuestType.FieldMission, 0, ExpType.mission)]
+    [TestCase(QuestType.FieldMission, 50, ExpType.mission)]
+    [TestCase(QuestType.EpicQuest, 1, ExpType.mission)]
+    [TestCase(QuestType.EpicQuest, 7, ExpType.mission)]
+    [TestCase(QuestType.EpicQuest, 10, ExpType.quest)]
+    [TestCase(QuestType.EpicQuest, 70, ExpType.quest)]
+    [TestCase(QuestType.WorldQuest, 12, ExpType.quest)]
+    [TestCase(QuestType.WorldQuest, 1, ExpType.quest)]
+    [TestCase(QuestType.FieldQuest, 50, ExpType.quest)]
+    [TestCase(QuestType.AllianceQuest, 50, ExpType.quest)]
+    public void Reason(QuestType type, int standardLevel, ExpType expected) {
+        Assert.That(QuestExpRules.Reason(type, standardLevel), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ReasonCodes() {
+        Assert.That((int) Maple2.Model.ModelExtensions.Message(ExpType.mission), Is.EqualTo(1053));
+        Assert.That((int) Maple2.Model.ModelExtensions.Message(ExpType.quest), Is.EqualTo(1010));
+    }
+
     private const int NoRankValue = QuestExpRules.NoRank;
 }

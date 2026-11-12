@@ -35,6 +35,21 @@ public static class QuestExpRules {
         return rates[index - 1];
     }
 
+    // The lowest standard level of an epic quest whose exp KMS2 names a quest's. Below it (standard levels 1 to 7
+    // are seen, 10 and up on the other side) the exp is named a mission's; 10 is chosen here for 8 and 9.
+    public const int QuestReasonLevel = 10;
+
+    // The reason KMS2 names for a completed quest's exp: 1053 (mission) for an exploration mission and for an
+    // epic quest of a standard level below 10, 1010 (quest) for every other quest seen (epic from level 10,
+    // world, field and alliance quests).
+    public static ExpType Reason(QuestType type, int standardLevel) {
+        return type switch {
+            QuestType.FieldMission => ExpType.mission,
+            QuestType.EpicQuest when standardLevel < QuestReasonLevel => ExpType.mission,
+            _ => ExpType.quest,
+        };
+    }
+
     // The reward's exp: relativeExp is the curve value at the player's level (0 without a relativeExp).
     public static long Exp(int fixedExp, long relativeExp, QuestType type, int rank, int alliance) {
         long exp = Math.Max(fixedExp, relativeExp);
