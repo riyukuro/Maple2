@@ -103,7 +103,7 @@ public class DungeonFieldManager : FieldManager {
             }
         }
 
-        if (showResult) {
+        if (showResult && DungeonRoomRules.SendsClosingPhoto(DungeonRoomRecord.State, compiledResults.Count)) {
             Broadcast(DungeonRoomPacket.DungeonResult(DungeonRoomRecord.State, compiledResults));
         }
 

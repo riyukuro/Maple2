@@ -29,7 +29,7 @@ public class TombstoneHandler : FieldPacketHandler {
             return;
         }
 
-        player.Tombstone.HitsRemaining = TombstoneRules.AfterHit(player.Tombstone.HitsRemaining);
+        player.Tombstone.Hit();
         session.ConditionUpdate(ConditionType.hit_tombstone);
     }
 }

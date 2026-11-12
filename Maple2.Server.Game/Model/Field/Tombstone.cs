@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Packets;
 using Maple2.Tools;
@@ -28,19 +29,35 @@ public class Tombstone : IByteSerializable {
         }
     }
     public byte TotalHitCount { get; }
-    public int Unknown1 { get; } = 1;
+    // 1 while the packet reports a hit by another player, 0 for the first packet and for a revive. With
+    // nothing left and this at 1 the client plays the tombstone hit effect and, for its own player, the
+    // event voice (PC::FUN_14165d300); KMS2 sends 0 when the player revives by the dialog.
+    public int Hitter { get; private set; }
     public bool Unknown2 { get; }
 
-    public Tombstone(FieldPlayer owner, int totalDeaths) {
+    public Tombstone(FieldPlayer owner, int deathStreak) {
         Owner = owner;
-        TotalHitCount = (byte) Math.Min(totalDeaths * Constants.hitPerDeadCount, Constants.hitPerDeadCount * Constants.maxDeadCount);
+        TotalHitCount = TombstoneRules.TotalHits(deathStreak, Constants.hitPerDeadCount, Constants.maxDeadCount);
         hitsRemaining = TotalHitCount;
     }
+
+    // One hit by another player.
+    public void Hit() {
+        Hitter = 1;
+        HitsRemaining = TombstoneRules.AfterHit(hitsRemaining);
+    }
+
+    // The owner revived without the last hit: the packet carries no hitter.
+    public void Clear() {
+        Hitter = 0;
+        HitsRemaining = 0;
+    }
+
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(ObjectId);
         writer.WriteByte(HitsRemaining);
         writer.WriteByte(TotalHitCount);
-        writer.WriteInt(Unknown1); // 1 if hit by a user?
+        writer.WriteInt(Hitter);
         writer.WriteBool(Unknown2); // true if revived by pet
     }
 }

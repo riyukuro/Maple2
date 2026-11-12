@@ -1,6 +1,39 @@
 ﻿namespace Maple2.Server.Game.Util;
 
+public enum MesoReviveRefusal {
+    None,
+    NotDead,
+    NoRevivalHere,
+    Buff,
+    NoVoucher,
+    DailyMax,
+    LackMeso,
+}
+
 public static class RevivalRules {
+    // The revive in place for mesos or a voucher (Revival mode 2). Every test comes before anything is
+    // taken: a request from a living player used to take the mesos or the voucher and raise the daily count.
+    // A voucher is not held to the daily count; mesos are.
+    public static MesoReviveRefusal MesoRevive(bool dead, bool noRevivalHere, bool buffBlocks, bool useVoucher,
+            bool hasVoucher, int usedToday, int dailyMax, long meso, long cost) {
+        if (!dead) {
+            return MesoReviveRefusal.NotDead;
+        }
+        if (noRevivalHere) {
+            return MesoReviveRefusal.NoRevivalHere;
+        }
+        if (buffBlocks) {
+            return MesoReviveRefusal.Buff;
+        }
+        if (useVoucher) {
+            return hasVoucher ? MesoReviveRefusal.None : MesoReviveRefusal.NoVoucher;
+        }
+        if (usedToday >= dailyMax) {
+            return MesoReviveRefusal.DailyMax;
+        }
+        return meso < cost || cost < 0 ? MesoReviveRefusal.LackMeso : MesoReviveRefusal.None;
+    }
+
     // A revive that stays in the field gives the lasting buffs back itself; one that sends the player to the
     // map's revivalReturnId gets them from the field entry there.
     public static bool RestoresLastingBuffs(bool instant, int revivalReturnId, int mapId) {

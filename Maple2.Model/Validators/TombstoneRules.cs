@@ -12,6 +12,22 @@ public static class TombstoneRules {
         return hitsRemaining > 0;
     }
 
+    // Deaths in a row: a death within timeResetDead seconds of the one before adds to the row, a later one
+    // starts a new row. The time runs from death to death, a revive in between does not move it.
+    public static int DeathStreak(int previousStreak, long previousDeathMs, long nowMs, int resetSeconds) {
+        if (previousStreak <= 0) {
+            return 1;
+        }
+        long gap = nowMs - previousDeathMs;
+        return gap >= 0 && gap < resetSeconds * 1000L ? previousStreak + 1 : 1;
+    }
+
+    // hitPerDeadCount hits for each death in the row, at most maxDeadCount deaths counted.
+    public static byte TotalHits(int deathStreak, int hitPerDeadCount, int maxDeadCount) {
+        int deaths = Math.Clamp(deathStreak, 1, Math.Max(maxDeadCount, 1));
+        return (byte) Math.Clamp(deaths * hitPerDeadCount, 0, byte.MaxValue);
+    }
+
     public static byte AfterHit(byte hitsRemaining) {
         return hitsRemaining > 0 ? (byte) (hitsRemaining - 1) : (byte) 0;
     }

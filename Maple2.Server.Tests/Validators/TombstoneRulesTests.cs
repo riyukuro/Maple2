@@ -35,4 +35,33 @@ public class TombstoneRulesTests {
     public void OneHitLess(byte remaining, byte expected) {
         Assert.That(TombstoneRules.AfterHit(remaining), Is.EqualTo(expected));
     }
+
+    // A death within timeResetDead (180 s) of the one before adds to the row; the time runs from death to death.
+    [TestCase(0, 0L, 1000L, 1)]            // the first death
+    [TestCase(1, 1000L, 15000L, 2)]        // 14 s later
+    [TestCase(2, 1000L, 176000L, 3)]       // 175 s later
+    [TestCase(5, 1000L, 100000L, 6)]       // the row goes on past the cap; the hit total holds it
+    [TestCase(3, 1000L, 181000L, 1)]       // 180 s: a new row
+    [TestCase(3, 1000L, 546000L, 1)]
+    [TestCase(2, 5000L, 1000L, 1)]         // a clock that went back starts a new row
+    public void DeathsInARow(int previous, long previousMs, long nowMs, int expected) {
+        Assert.That(TombstoneRules.DeathStreak(previous, previousMs, nowMs, 180), Is.EqualTo(expected));
+    }
+
+    // hitPerDeadCount 5, maxDeadCount 3: 5, 10, 15 and no more.
+    [TestCase(1, (byte) 5)]
+    [TestCase(2, (byte) 10)]
+    [TestCase(3, (byte) 15)]
+    [TestCase(4, (byte) 15)]
+    [TestCase(40, (byte) 15)]
+    [TestCase(0, (byte) 5)]
+    public void HitsOfATombstone(int streak, byte expected) {
+        Assert.That(TombstoneRules.TotalHits(streak, 5, 3), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void HitsOfATombstone_StayInAByte() {
+        Assert.That(TombstoneRules.TotalHits(100, 200, 100), Is.EqualTo((byte) 255));
+        Assert.That(TombstoneRules.TotalHits(2, 5, 0), Is.EqualTo((byte) 5));
+    }
 }

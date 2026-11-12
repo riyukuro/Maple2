@@ -10,6 +10,14 @@ namespace Maple2.Model.Validators;
 // count (or in its debug state) and the party button only for a party in a dungeon that holds
 // more than one user.
 public static class DungeonRoomRules {
+    // RoomDungeon mode 10 (UIDungeonClosingPhotoDialog::OnClosingPhotoPacket): the clear or fail banner, then
+    // the closing photo of the room's players with their records, which opens the reward window when it
+    // closes. The reward packet opens that window by itself, and KMS2 sends no mode 10 on a clear by a player
+    // alone. Chosen here: a clear with more than one player, and a fail, keep it (KMS2 unknown for both).
+    public static bool SendsClosingPhoto(DungeonState state, int players) {
+        return state == DungeonState.Fail || (state == DungeonState.Clear && players > 1);
+    }
+
     public enum CreateVerdict {
         Ok,
         UnderMinUserCount,

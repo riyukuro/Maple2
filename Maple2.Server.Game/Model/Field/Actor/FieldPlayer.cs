@@ -517,7 +517,9 @@ public class FieldPlayer : Actor<Player> {
 
         Session.HeldCube = null;
         InBattle = false;
-        Tombstone = new Tombstone(this, Session.Config.DeathCount + 1);
+        // The hits a tombstone takes grow with deaths in a row (each within timeResetDead of the one before),
+        // not with the death penalty count: KMS2 gives 5, 10, 15 to a character below the penalty level.
+        Tombstone = new Tombstone(this, DeathStreaks.Count(Value.Character.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Constants.timeResetDead));
         if (RideShare.DismountsOnDeath(Session.Ride.RideType)) {
             Session.Ride.Dismount(RideOffType.Dead);
         }
@@ -583,7 +585,7 @@ public class FieldPlayer : Actor<Player> {
         Session.ConditionUpdate(ConditionType.revival);
 
         // Mark tombstone as cleared
-        Tombstone.HitsRemaining = 0;
+        Tombstone.Clear();
 
         // Handle revival return to different map
         if (!instant && Field.Metadata.Property.RevivalReturnId != 0 && Field.Metadata.Property.RevivalReturnId != Field.Metadata.Id) {

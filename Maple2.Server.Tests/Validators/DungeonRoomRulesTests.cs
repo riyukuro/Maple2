@@ -355,4 +355,15 @@ public class DungeonRoomRulesTests {
             Assert.That(DungeonRoomRules.PeriodOver(new DungeonRecord(900602), 1), Is.True);
         });
     }
+
+    // DungeonRoom mode 10 (banner, then the closing photo): not for a clear with one player.
+    [TestCase(DungeonState.Clear, 1, false)]
+    [TestCase(DungeonState.Clear, 2, true)]
+    [TestCase(DungeonState.Clear, 4, true)]
+    [TestCase(DungeonState.Fail, 1, true)]
+    [TestCase(DungeonState.Fail, 4, true)]
+    [TestCase(DungeonState.None, 4, false)]
+    public void ClosingPhoto(DungeonState state, int players, bool expected) {
+        Assert.That(DungeonRoomRules.SendsClosingPhoto(state, players), Is.EqualTo(expected));
+    }
 }
