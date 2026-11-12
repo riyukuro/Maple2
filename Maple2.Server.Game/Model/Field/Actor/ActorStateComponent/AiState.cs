@@ -45,7 +45,11 @@ public class AiState {
             aiPath = Constant.DefaultAiPath;
         }
 
-        aiPath = AiPathRules.Resolve(aiPath, name => actor.Field.AiMetadata.TryGet(name, out _)) ?? aiPath;
+        string? resolved = AiPathRules.Resolve(aiPath, name => actor.Field.AiMetadata.TryGet(name, out _));
+        if (resolved != null && resolved != aiPath && resolved == AiPathRules.NormalFolder(aiPath)) {
+            Logger.Warning("{AiPath} could not be found for {ValueId}. using {Resolved}", aiPath, actor.Value.Id, resolved);
+        }
+        aiPath = resolved ?? aiPath;
         if (!actor.Field.AiMetadata.TryGet(aiPath, out AiMetadata? metadata)) {
             Logger.Error("{AiPath} could not be found for {ValueId}. setting as default AI", aiPath, actor.Value.Id);
             if (!actor.Field.AiMetadata.TryGet(Constant.DefaultAiPath, out metadata)) {

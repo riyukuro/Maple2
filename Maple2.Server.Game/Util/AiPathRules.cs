@@ -19,7 +19,25 @@ public static partial class AiPathRules {
                 return template;
             }
         }
+        string? normal = NormalFolder(aiPath);
+        if (normal != null && exists(normal)) {
+            return normal;
+        }
         return null;
+    }
+
+    // Some boss npc rows name a file in BossDungeon/<boss>/ that ships only in the copy folder
+    // BossDungeon/<boss>_Normal/: npc 23000114 (room 23021003) has "BossDungeon/SnowKing/AI_SnowKing_Chaos.xml",
+    // npc 23200067 "BossDungeon/Madria/AI_BigWingChimera_Chaos.xml", npcs 21500830-21500839
+    // "BossDungeon/Pinkbean/Chaos/AI_StatueHuman0*.xml". Each file both folders ship is the same in both, so the
+    // missing name falls back to the same path in the _Normal folder.
+    public static string? NormalFolder(string aiPath) {
+        string[] parts = aiPath.Split('/');
+        if (parts.Length < 3 || parts[0] != "BossDungeon" || parts[1].EndsWith("_Normal")) {
+            return null;
+        }
+        parts[1] += "_Normal";
+        return string.Join('/', parts);
     }
 
     [GeneratedRegex(@"^(.+)_\d+\.xml$")]
