@@ -19,6 +19,15 @@ public static class AttendanceRules {
 
     // The list index of the reward for the next claim: the first claim gives the first reward.
     // -1 when every reward of the list was claimed (or the stored count is bad).
+    // The seconds played today, as the client counts them for the gift's countdown
+    // (GameEventAttendGiftCli::FUN_140ce39a0, gameeventcli.cpp:530): the stored user value 106 plus the time since
+    // the play start the server sent (TimeSync 3). The client counts nothing once the day after that start has
+    // begun (CMainSystem::FUN_141473560, mainsystem.cpp:366), so the start never lies before today.
+    public static long PlaySeconds(long stored, DateTime playStart, DateTime now) {
+        DateTime from = playStart > now.Date ? playStart : now.Date;
+        return Math.Max(0, stored) + Math.Max(0, (long) (now - from).TotalSeconds);
+    }
+
     public static int RewardIndex(int claimed, int rewardCount) {
         return claimed >= 0 && claimed < rewardCount ? claimed : -1;
     }

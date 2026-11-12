@@ -153,6 +153,41 @@ public sealed class GameEventManager {
         }
     }
 
+    // When the play time of this login began: the time sent in TimeSync 3, from which the client counts the
+    // attendance gift's play seconds. Moved to the reset time at the daily reset.
+    public DateTime PlayStart { get; private set; } = DateTime.Now;
+
+    public void StartPlayTime(DateTime now) {
+        PlayStart = now;
+    }
+
+    // The daily reset: the new day's play time starts at now, and the old day's stored seconds (106) are replaced
+    // by 0 until the next midnight, sent to the client so that both count the new day from nothing.
+    public void ResetPlayTime(DateTime now) {
+        PlayStart = now;
+        var updates = new List<GameEventUserValue>();
+        lock (valuesLock) {
+            foreach ((int eventId, Dictionary<GameEventUserValueType, GameEventUserValue> values) in eventValues) {
+                if (!values.ContainsKey(GameEventUserValueType.AttendanceAccumulatedTime)) {
+                    continue;
+                }
+                var value = new GameEventUserValue(GameEventUserValueType.AttendanceAccumulatedTime, now.Date.AddDays(1).ToEpochSeconds(), eventId);
+                value.SetValue("0");
+                values[GameEventUserValueType.AttendanceAccumulatedTime] = value;
+                updates.Add(value);
+            }
+        }
+        foreach (GameEventUserValue value in updates) {
+            session.Send(GameEventUserValuePacket.Update(value));
+        }
+    }
+
+    // The seconds played today for an attendance gift: the day's stored seconds (106) plus this login's.
+    public long AttendancePlaySeconds(int eventId, DateTime now) {
+        long.TryParse(Peek(GameEventUserValueType.AttendanceAccumulatedTime, eventId), out long stored);
+        return AttendanceRules.PlaySeconds(stored, PlayStart, now);
+    }
+
     public void Set(int gameEventId, GameEventUserValueType type, object value) {
         GameEventUserValue gameEventUserValue;
         lock (valuesLock) {
@@ -218,17 +253,24 @@ public sealed class GameEventManager {
         return eventValues[eventId][type];
     }
 
+    // The 106 value to store at now: the unexpired seconds plus this login's, ending at the next midnight.
+    public static GameEventUserValue StoredPlayTime(GameEventUserValue value, DateTime playStart, DateTime now) {
+        long stored = value.ExpirationTime > now.ToEpochSeconds() ? value.Long() : 0;
+        var result = new GameEventUserValue(value.Type, now.Date.AddDays(1).ToEpochSeconds(), value.EventId);
+        result.SetValue(AttendanceRules.PlaySeconds(stored, playStart, now).ToString());
+        return result;
+    }
+
     public void Save(GameStorage.Request db) {
         List<GameEventUserValue> values;
         lock (valuesLock) {
-            // Update certain values upon log off
-            // TODO: Maybe update this to handle a list of other types that need to be updated upon logoff?
-            IEnumerable<GameEventUserValue> accumulatedTimeValues =
-                eventValues.Values.SelectMany(dict => dict.Values.Where(value => value.Type == GameEventUserValueType.AttendanceAccumulatedTime));
-            foreach (GameEventUserValue userValue in accumulatedTimeValues) {
-                userValue.SetValue((DateTime.Now.AddSeconds(userValue.Long()) - session.Player.Value.Character.LastModified).Seconds.ToString());
-            }
-            values = eventValues.Values.SelectMany(value => value.Values).ToList();
+            // The day's play seconds (106) are stored with this login's added, for the next login; the value kept
+            // here stays as the client has it, so both go on counting from the same play start. As in KMS2 it
+            // lasts until the next midnight.
+            DateTime now = DateTime.Now;
+            values = eventValues.Values.SelectMany(value => value.Values)
+                .Select(value => value.Type == GameEventUserValueType.AttendanceAccumulatedTime ? StoredPlayTime(value, PlayStart, now) : value)
+                .ToList();
         }
         db.SaveGameEventUserValues(session.CharacterId, values);
     }

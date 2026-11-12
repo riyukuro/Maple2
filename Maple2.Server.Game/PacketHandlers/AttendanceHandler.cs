@@ -63,10 +63,11 @@ public class AttendanceHandler : FieldPacketHandler {
                 continue;
             }
 
-            // Verify that the player meets the time requirements of event
-            long accumulatedTimeValue = session.GameEvent.Get(GameEventUserValueType.AttendanceAccumulatedTime, gameEvent.Id, DateTime.Now.AddDays(1).Date.ToEpochSeconds()).Long();
-            if ((DateTime.Now.AddSeconds(accumulatedTimeValue) - session.Player.Value.Character.LastModified).TotalSeconds < attendGift.RequiredPlaySeconds) {
-                return;
+            // The play time the event asks for, counted as the client counts it down: the client sends this
+            // claim by itself once its countdown is over (UIDTAttendPopup::Request, uidtattendpopup.cpp:97), and
+            // again every 5 seconds until the day's completion time (101) arrives.
+            if (session.GameEvent.AttendancePlaySeconds(gameEvent.Id, DateTime.Now) < attendGift.RequiredPlaySeconds) {
+                continue;
             }
 
             DateTime completeTime = session.GameEvent.Get(GameEventUserValueType.AttendanceCompletedTimestamp, gameEvent.Id, gameEvent.EndTime).Long().FromEpochSeconds();

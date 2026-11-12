@@ -392,7 +392,10 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(SurvivalPacket.UpdateStats(player.Account));
 
         Send(TimeSyncPacket.Reset(DateTimeOffset.UtcNow));
-        Send(TimeSyncPacket.Set(DateTimeOffset.UtcNow));
+        // The play start of this login; the attendance gift's play seconds are counted from it on both sides.
+        DateTime playStart = DateTime.Now;
+        GameEvent.StartPlayTime(playStart);
+        Send(TimeSyncPacket.Set(playStart));
 
         Stats.Refresh();
 
@@ -840,6 +843,11 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     public void DailyReset() {
+        // The new day's play time starts now, as KMS2 sends it at the reset; the client counts no play seconds
+        // from a start on an earlier day.
+        DateTime playStart = DateTime.Now;
+        GameEvent.ResetPlayTime(playStart);
+        Send(TimeSyncPacket.Set(playStart));
         // Gathering counts reset
         Config.GatheringCounts.Clear();
         Send(UserEnvPacket.GatheringCounts(Config.GatheringCounts));
