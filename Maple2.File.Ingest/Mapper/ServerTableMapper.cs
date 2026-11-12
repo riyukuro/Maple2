@@ -1650,6 +1650,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.TreeWatering(value1, value2, value3);
             case GameEventType.MiniGameBonusReward:
                 return EventXmlReader.MiniGameBonusReward(value1, value2);
+            case GameEventType.SpawnNpc:
+                return EventXmlReader.SpawnNpc(value1);
             case GameEventType.SAHotTime:
                 specialRates ??= ClientSpecialRates();
                 // Without a client pack every attribute counts as a rate: the 12 the KR rows name are rates.

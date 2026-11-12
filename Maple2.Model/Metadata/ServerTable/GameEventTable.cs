@@ -472,6 +472,16 @@ public record MiniGameBonusReward(
     string[] GameNames,
     RewardItem[] Items) : GameEventData;
 
+// An npc the event puts in a field: value1 <npc fieldID spawnPointID npcID shopID/>, its root read whatever its name
+// (the client's table export reads the root's npcID and fieldID and lists the npc in that field for the event's
+// time, tableexporter.cpp:906). spawnPointID is the id of a region spawn (MS2RegionSpawn) of the field, shopID the
+// shop the npc opens instead of its own (0: its own). The client has no class for this type, so it is not sent.
+public record SpawnNpcEvent(
+    int FieldId,
+    int SpawnPointId,
+    int NpcId,
+    int ShopId) : GameEventData;
+
 // Tree watering (GameEventTreeWatering::ReadTreeWateringData, commonfiles/gameevent.cpp:5664). value1 is
 // <ms2><tree_step><step step begin end/>...</tree_step><emotion_day><time begin end/>...</emotion_day></ms2>, value2
 // <ms2><watering_reward MaxRewardCountDaily itemID grade count/><emotion_reward .../></ms2>, value3
@@ -560,4 +570,5 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
 [JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
+[JsonDerivedType(typeof(SpawnNpcEvent), "SpawnNpc")]
 public abstract record GameEventData;

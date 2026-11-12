@@ -171,6 +171,23 @@ public static class EventXmlReader {
         return rewards.Length == 0 ? null : new MiniGameBonusReward(names, rewards);
     }
 
+    // value1 <npc fieldID spawnPointID npcID shopID/>; the root is read whatever its name, as the client reads it. A row
+    // without a field, a spawn point or an npc is not stored.
+    public static SpawnNpcEvent? SpawnNpc(string? value1) {
+        XmlElement? npc = AnyRoot(value1);
+        if (npc == null) {
+            return null;
+        }
+        int.TryParse(npc.GetAttribute("fieldID"), out int fieldId);
+        int.TryParse(npc.GetAttribute("spawnPointID"), out int spawnPointId);
+        int.TryParse(npc.GetAttribute("npcID"), out int npcId);
+        int.TryParse(npc.GetAttribute("shopID"), out int shopId);
+        if (fieldId <= 0 || spawnPointId <= 0 || npcId <= 0) {
+            return null;
+        }
+        return new SpawnNpcEvent(fieldId, spawnPointId, npcId, Math.Max(shopId, 0));
+    }
+
     private static IEnumerable<XmlElement> Children(XmlElement? parent, string name) {
         return parent?.ChildNodes.OfType<XmlElement>().Where(element => element.Name == name) ?? [];
     }
@@ -204,13 +221,17 @@ public static class EventXmlReader {
     }
 
     private static XmlElement? Root(string? text, string name = "ms2") {
+        return AnyRoot(text) is { } root && root.Name == name ? root : null;
+    }
+
+    private static XmlElement? AnyRoot(string? text) {
         if (string.IsNullOrWhiteSpace(text)) {
             return null;
         }
         try {
             var document = new XmlDocument();
             document.LoadXml(text);
-            return document.DocumentElement is { } root && root.Name == name ? root : null;
+            return document.DocumentElement;
         } catch (XmlException) {
             return null;
         }
