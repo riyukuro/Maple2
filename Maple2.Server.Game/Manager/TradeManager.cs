@@ -268,10 +268,11 @@ public class TradeManager : IDisposable {
             }
 
             if (self.Completed && other.Completed) {
-                // A bag that cannot take what it would receive refuses the finish: nothing moves, both offers stay
-                // locked, and either side may confirm again. The client shows error 8 (s_trade_error_slotcount,
-                // "The other player's inventory is full.") as a notice and keeps the trade window open; only
-                // EndTrade closes it.
+                // A bag that cannot take what it would receive refuses the finish: nothing moves. The client shows
+                // error 8 (s_trade_error_slotcount, "The other player's inventory is full.") as a notice and keeps the
+                // trade window open; only EndTrade closes it. Its confirm click greyed Confirm and Cancel, and only a
+                // latch of both sides (mode 11) brings Confirm back, so both sides are unlatched (mode 12, chosen here:
+                // KMS2 has no refused finish): each player locks again, may change the offer, then confirms.
                 bool senderTakes = sender.Session.Item.Inventory.TakesAll(receiver.Items);
                 bool receiverTakes = receiver.Session.Item.Inventory.TakesAll(sender.Items);
                 if (!senderTakes || !receiverTakes) {
@@ -282,8 +283,14 @@ public class TradeManager : IDisposable {
                         full.Session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
                         giver.Session.Send(TradePacket.Error(s_trade_error_slotcount));
                     }
-                    sender.Completed = false;
-                    receiver.Completed = false;
+                    foreach (Trader trader in new[] { sender, receiver }) {
+                        foreach (var packet in TradePacket.UnFinalizeBoth()) {
+                            trader.Session.Send(packet);
+                        }
+                        trader.Completed = false;
+                        trader.Finalized = false;
+                    }
+                    state = TradeState.Started;
                     return;
                 }
 

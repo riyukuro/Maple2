@@ -125,6 +125,10 @@ public static class TradePacket {
         return pWriter;
     }
 
+    // Both sides unlatched, sent to each trader: the dialog's unlatch shows the lock button again for the own side;
+    // its confirm button (greyed by the click) comes back only when both sides latch again.
+    public static ByteWriter[] UnFinalizeBoth() => [UnFinalize(true), UnFinalize(false)];
+
     public static ByteWriter Complete(bool isSelf) {
         var pWriter = Packet.Of(SendOp.Trade);
         pWriter.Write<Command>(Command.Complete);
