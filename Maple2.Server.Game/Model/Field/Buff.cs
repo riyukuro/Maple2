@@ -77,6 +77,36 @@ public class Buff : IUpdatable, IByteSerializable {
         }
     }
 
+    // The stack count a buff is added with, and the count one more application adds: at least 1, at most the
+    // buff's maxBuffCount. Every KMS2 add carries a count of 1 (the client starts at 1 too and multiplies the buff's
+    // status values by it, AdditionalCliList additionalcli_2.cpp:1110), and each further application of a buff with
+    // a higher maximum adds 1 until the maximum. A buff without a maximum keeps 0.
+    public static int AddStacks(int requested, int maxCount) {
+        return maxCount <= 0 ? 0 : Math.Clamp(requested, 1, maxCount);
+    }
+
+    // Applying a buff its owner already has restarts it when the reset condition is 0 or 2 and it has a duration:
+    // KMS2 then sends the update with a new start and a new end. Reset condition 1 keeps its ticks, 3 replaces the
+    // buff, and a buff without duration keeps its start.
+    public static bool RestartsOnReapply(AdditionalEffectMetadataProperty property, long durationTick) {
+        return durationTick > 0 && property.ResetCondition is BuffResetCondition.ResetEndTick or BuffResetCondition.Reset2;
+    }
+
+    // The restart: new start and end, and the procs run from the beginning, so a dotCondition-0 buff procs again
+    // at once (after its delay) and a dotCondition-1 buff one interval later, each with its full count. In KMS2
+    // a 1.1 s aura heal re-applied every second heals on every application.
+    public bool Refresh(long startTick, long endTick) {
+        if (startTick == StartTick && endTick == EndTick) {
+            return false;
+        }
+        StartTick = startTick;
+        EndTick = endTick;
+        ProcCount = 0;
+        NextProcTick = FirstProcTick(Metadata.Property, startTick, IntervalTick);
+        canProc = Metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration;
+        return true;
+    }
+
     public bool UpdateEndTime(long endTick) {
         if (endTick == EndTick) {
             return false;

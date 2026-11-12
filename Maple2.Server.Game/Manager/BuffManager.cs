@@ -103,7 +103,7 @@ public class BuffManager : IUpdatable {
         (int invokeValue, float invokeRate) = GetInvokeValues(InvokeEffectType.IncreaseEffectDuration, id, additionalEffect.Property.Group);
         durationMs = Math.Max(0, invokeValue + (int) ((1 + invokeRate) * durationMs));
 
-        stacks = additionalEffect.Property.MaxCount == 0 ? 0 : Math.Clamp(stacks, 0, additionalEffect.Property.MaxCount);
+        stacks = Buff.AddStacks(stacks, additionalEffect.Property.MaxCount);
 
         // Check if immune to any present buffs
         if (!CheckImmunity(id, additionalEffect.Property.Category)) {
@@ -139,7 +139,10 @@ public class BuffManager : IUpdatable {
                 // Technically in sniffs it should just update the buff level. This should still be the same?
                 Remove(existing.Id, existing.Caster.ObjectId);
             } else {
-                if (existing.UpdateEndTime(endTick) | existing.Stack(stacks)) {
+                bool timeChanged = Buff.RestartsOnReapply(additionalEffect.Property, durationMs)
+                    ? existing.Refresh(startTick, endTick)
+                    : existing.UpdateEndTime(endTick);
+                if (timeChanged | existing.Stack(stacks)) {
                     if (notifyField) {
                         owner.Field.Broadcast(BuffPacket.Update(existing));
                     }
