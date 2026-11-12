@@ -255,7 +255,7 @@ public static class TriggerFunctionMapping {
         { "score_board_score", attrs => new Trigger.ScoreBoardScore(ParseInt(attrs?["score"]?.Value), ParseOperatorType(attrs?["operator"]?.Value ?? attrs?["compare_op"]?.Value)) },
         { "shadow_expedition_points", attrs => new Trigger.ShadowExpeditionPoints(ParseInt(attrs?["score"]?.Value)) },
         { "time_expired", attrs => new Trigger.TimeExpired(attrs?["timer_id"]?.Value ?? string.Empty) },
-        { "user_detected", attrs => new Trigger.UserDetected(ParseIntArray(attrs?["box_ids"]?.Value), ParseJobCode(attrs?["job_code"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
+        { "user_detected", ParseUserDetected },
         { "user_value", attrs => new Trigger.UserValue(attrs?["key"]?.Value ?? string.Empty, ParseInt(attrs?["value"]?.Value), ParseUserValueOperator(attrs?["operator"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "wait_and_reset_tick", attrs => new Trigger.WaitAndResetTick(ParseInt(attrs?["wait_tick"]?.Value)) },
         { "wait_seconds_user_value", attrs => new Trigger.WaitSecondsUserValue(attrs?["key"]?.Value ?? string.Empty, attrs?["desc"]?.Value ?? string.Empty) },
@@ -326,6 +326,20 @@ public static class TriggerFunctionMapping {
     private static CompareType ParseCompareType(string? compareType) {
         if (string.IsNullOrEmpty(compareType)) return CompareType.higher;
         return (CompareType) Enum.Parse(typeof(CompareType), compareType, true);
+    }
+
+    // A box list written "!100" (51000001_dg tutorial) is the negated test on box 100: the scripts' own "!"
+    // marks "not in the box" in event UI box lists (EventUiBoxes), and every other arcade script ends a round with
+    // the negated condition name on the same box, which the client's trigger reader turns into the not flag
+    // (TriggerConditionCli::Create, triggeractioncli.cpp:273).
+    public static ICondition ParseUserDetected(XmlAttributeCollection? attrs) {
+        string? boxIds = attrs?["box_ids"]?.Value?.Trim();
+        bool negate = ParseBool(attrs?["negate"]?.Value);
+        if (boxIds is ['!', ..]) {
+            boxIds = boxIds[1..];
+            negate = !negate;
+        }
+        return new Trigger.UserDetected(ParseIntArray(boxIds), ParseJobCode(attrs?["job_code"]?.Value), negate);
     }
 
     public static int[] ParseIntArray(string? value) {

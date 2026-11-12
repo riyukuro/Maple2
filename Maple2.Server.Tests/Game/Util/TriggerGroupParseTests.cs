@@ -1,6 +1,4 @@
 using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Xml;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
@@ -10,11 +8,9 @@ namespace Maple2.Server.Tests.Game.Util;
 // all_of / any_one: the group's inner conditions are its own; the transition and actions sit on the outer node.
 public class TriggerGroupParseTests {
     private static Trigger Parse(string xml) {
-        var cache = (TriggerCache) RuntimeHelpers.GetUninitializedObject(typeof(TriggerCache));
         var document = new XmlDocument();
         document.LoadXml(xml);
-        MethodInfo parse = typeof(TriggerCache).GetMethod("ParseTrigger", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return (Trigger) parse.Invoke(cache, ["test", "test", document])!;
+        return TriggerCache.ParseTrigger("test", "test", document);
     }
 
     [Test]

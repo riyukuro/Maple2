@@ -266,6 +266,8 @@ public partial class Trigger {
 
     public class UserDetected(int[] boxIds, JobCode jobCode, bool negate) : ICondition {
         public string Name => "user_detected";
+        public int[] BoxIds => boxIds;
+        public bool Negate => negate;
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
         public bool Evaluate(TriggerContext context) => context.UserDetected(boxIds, jobCode, negate);
