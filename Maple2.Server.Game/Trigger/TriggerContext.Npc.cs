@@ -253,17 +253,16 @@ public partial class TriggerContext {
 
     public bool NpcDetected(int boxId, int[] spawnIds, bool negate) {
         DebugLog("[NpcDetected] boxId:{BoxId}, spawnIds:{SpawnIds}", boxId, string.Join(", ", spawnIds));
-        if (spawnIds.Length == 0 || spawnIds[0] == 0) {
-            return NpcsInBox(boxId).Any();
-        }
+        return AnyDetected(NpcsInBox(boxId).Select(npc => npc.SpawnPointId), spawnIds, negate);
+    }
 
-        foreach (FieldNpc mob in NpcsInBox(boxId)) {
-            if (mob.SpawnPointId > 0 && spawnIds.Contains(mob.SpawnPointId)) {
-                return !negate;
-            }
-        }
-
-        return negate;
+    // True when an npc in the box is of one of the spawn points (no spawn point named: any npc in the box);
+    // negate turns the answer around in both cases.
+    public static bool AnyDetected(IEnumerable<int> spawnPointIdsInBox, int[] spawnIds, bool negate) {
+        bool any = spawnIds.Length == 0 || spawnIds[0] == 0
+            ? spawnPointIdsInBox.Any()
+            : spawnPointIdsInBox.Any(id => id > 0 && spawnIds.Contains(id));
+        return any != negate;
     }
 
     public bool NpcIsDeadByStringId(string stringId) {

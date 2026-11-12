@@ -54,6 +54,22 @@ public class TriggerLookupTests {
     }
 
     [Test]
+    public void NpcDetected_NegateAlsoTurnsTheAnswerWithoutSpawnPoints() {
+        int[] inBox = [103, 0];
+        Assert.Multiple(() => {
+            Assert.That(TriggerContext.AnyDetected(inBox, [103], false), Is.True);
+            Assert.That(TriggerContext.AnyDetected(inBox, [103], true), Is.False);
+            Assert.That(TriggerContext.AnyDetected(inBox, [104], false), Is.False);
+            Assert.That(TriggerContext.AnyDetected(inBox, [104], true), Is.True);
+            // No spawn point named: any npc in the box counts, the one without a spawn point too.
+            Assert.That(TriggerContext.AnyDetected(inBox, [], false), Is.True);
+            Assert.That(TriggerContext.AnyDetected(inBox, [], true), Is.False);
+            Assert.That(TriggerContext.AnyDetected([], [0], false), Is.False);
+            Assert.That(TriggerContext.AnyDetected([], [0], true), Is.True);
+        });
+    }
+
+    [Test]
     public void InitNpcRotation_UsesTheSpawnPointRotation() {
         var list = new List<SpawnPointNPCListEntry> { new(21000001, 1) };
         var eventSpawn = new EventSpawnPointNPC("e", 101, Vector3.Zero, new Vector3(0, 0, 45), true, false, 0, 1, list, 0, 0, "");
