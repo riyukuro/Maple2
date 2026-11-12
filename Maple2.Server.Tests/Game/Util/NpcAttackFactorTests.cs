@@ -19,6 +19,15 @@ public class NpcAttackFactorTests {
     }
 
     [Test]
+    public void NpcHitIsSpreadOverItsTopFourPercent() {
+        Assert.That(DamageCalculator.NpcAttackRoll(0), Is.EqualTo(1));
+        Assert.That(DamageCalculator.NpcAttackRoll(0.5), Is.EqualTo(0.98).Within(1e-9));
+        Assert.That(DamageCalculator.NpcAttackRoll(1), Is.EqualTo(0.96).Within(1e-9));
+        // A full hit of 452 never falls below 433.
+        Assert.That(Math.Floor(452 * DamageCalculator.NpcAttackRoll(0.999999)), Is.EqualTo(433));
+    }
+
+    [Test]
     public void NpcHitScalesWithRatePapResistanceAndDefense() {
         Assert.That(Hit(true, 1.0, 1000, 100, 0), Is.EqualTo(28.5).Within(1e-9));
         Assert.That(Hit(false, 1.0, 1000, 100, 0), Is.EqualTo(40).Within(1e-9));

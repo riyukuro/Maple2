@@ -11,6 +11,9 @@ public static class DamageCalculator {
     // Npcs (not pets) use their own factor; players and pets keep the unconfirmed 4.
     internal static double AttackDamageFactor(bool npcCaster) => npcCaster ? Constant.NpcAttackDamageFactor : Constant.AttackDamageFactor;
 
+    // The part of its full hit an npc (not a pet) deals, for a roll in [0, 1): even between 0.96 and 1.
+    internal static double NpcAttackRoll(double roll) => 1 - Constant.NpcAttackDamageSpread * roll;
+
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
@@ -30,7 +33,9 @@ public static class DamageCalculator {
 
         var damageType = DamageType.Normal;
         (double minBonusAtkDamage, double maxBonusAtkDamage) = caster.Stats.GetBonusAttack(target.Buffs.GetResistance(BasicAttribute.BonusAtk), target.Buffs.GetResistance(BasicAttribute.MaxWeaponAtk));
-        double attackDamage = minBonusAtkDamage + (maxBonusAtkDamage - minBonusAtkDamage) * double.Lerp(Random.Shared.NextDouble(), Random.Shared.NextDouble(), Random.Shared.NextDouble());
+        double attackDamage = caster is FieldNpc and not FieldPet
+            ? NpcAttackRoll(Random.Shared.NextDouble())
+            : minBonusAtkDamage + (maxBonusAtkDamage - minBonusAtkDamage) * double.Lerp(Random.Shared.NextDouble(), Random.Shared.NextDouble(), Random.Shared.NextDouble());
 
         // change the NPCNormalDamage to be changed depending on target?
         double damageBonus = 1 + (caster.Stats.Values[SpecialAttribute.TotalDamage].Multiplier()) + (caster.Stats.Values[SpecialAttribute.NormalNpcDamage].Multiplier());

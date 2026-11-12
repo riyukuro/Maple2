@@ -86,6 +86,8 @@ public static class Constant {
     public const double AttackDamageFactor = 4; // Unconfirmed
     // An npc hitting a player: fitted to recorded KMS hits (max hit vs Rate x pap x res / defense) of ordinary field mobs.
     public const double NpcAttackDamageFactor = 2.85;
+    // An npc's hit is spread evenly from the full amount down to this much less.
+    public const double NpcAttackDamageSpread = 0.04;
     public const double CriticalConstant = 5.3;
     public const double CriticalPercentageConversion = 0.015;
     public const double MaxCriticalRate = 0.4;
