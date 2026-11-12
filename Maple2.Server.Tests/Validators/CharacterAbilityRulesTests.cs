@@ -108,16 +108,6 @@ public class CharacterAbilityRulesTests {
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 4 + 8 + 8 + 4));
     }
 
-    // s2c mode 1: no body.
-    [Test]
-    public void ResetBytes() {
-        ByteWriter writer = CharacterAbilityPacket.Reset();
-        var reader = new ByteReader(writer.Buffer, 0);
-        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.CharacterAbility));
-        Assert.That(reader.ReadByte(), Is.EqualTo(1));
-        Assert.That(writer.Length, Is.EqualTo(3));
-    }
-
     // s2c mode 2: i32 ability id.
     [Test]
     public void LearnBytes() {

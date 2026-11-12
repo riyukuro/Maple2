@@ -19,6 +19,7 @@ public class TreasureMapHandlerTests {
     private const int MapItemId = 30001025;
     private const int PaidReward = 30001026;
     private const int FreeReward = 20000756;
+    private const int SecondFreeReward = 20000757;
     private const int PaidBox = 330001748;
     private const int FreeBox = 330001824;
     private const string Parameters = "<v groupId=\"1\" dropId=\"330001748\" freeDropId=\"330001824\" />";
@@ -26,13 +27,19 @@ public class TreasureMapHandlerTests {
     private TestGameSession test = null!;
     private Item map = null!;
 
-    private GameSession Login(string parameters = Parameters, int amount = 2, ItemFunction function = ItemFunction.TreasureMap) {
+    private GameSession Login(string parameters = Parameters, int amount = 2, ItemFunction function = ItemFunction.TreasureMap,
+                              bool twoFreeGroups = false, short? miscSlots = null) {
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(PaidReward), TestGameSession.Metadata(FreeReward));
+        test.Register(TestGameSession.Metadata(PaidReward), TestGameSession.Metadata(FreeReward), TestGameSession.Metadata(SecondFreeReward));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
             [PaidBox] = TestGameSession.DropBox([(PaidReward, 1)]),
-            [FreeBox] = TestGameSession.DropBox([(FreeReward, 1)]),
+            [FreeBox] = twoFreeGroups
+                ? TestGameSession.DropBox([(FreeReward, 1)], [(SecondFreeReward, 2)])
+                : TestGameSession.DropBox([(FreeReward, 1)]),
         }));
+        if (miscSlots != null) {
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = [miscSlots.Value, 0] });
+        }
         test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
             new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
         map = test.Store(TestGameSession.Metadata(MapItemId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false)), amount: amount);
@@ -129,6 +136,47 @@ public class TreasureMapHandlerTests {
         Assert.That(Held(session, reward), Is.EqualTo(1));
         Assert.That(Held(session, reward == PaidReward ? FreeReward : PaidReward), Is.EqualTo(0));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A box of more than one group (the free box 330001824 in the KR data): every group's roll is given, the answer
+    // shows the first.
+    [Test]
+    public void Appraise_GivesTheRollOfEveryGroup() {
+        GameSession session = Login(twoFreeGroups: true);
+
+        Use(session, "free");
+
+        Assert.That(Convert.ToHexString(test.TakeSent()[^1]), Is.EqualTo(Hex(ItemScriptPacket.TreasureMapResult(FreeReward, 1))));
+        Assert.That(Held(session, MapItemId), Is.EqualTo(1));
+        Assert.That(Held(session, FreeReward), Is.EqualTo(1));
+        Assert.That(Held(session, SecondFreeReward), Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A full bag (the misc tab holds the maps alone): the map is kept and nothing is given.
+    [Test]
+    public void Appraise_WithAFullBag_KeepsTheMap() {
+        GameSession session = Login(miscSlots: 1);
+        Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Misc), Is.EqualTo(0));
+
+        Use(session, "");
+
+        Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)), Is.EqualTo(new[] { Hex(ItemScriptPacket.TreasureMapFailed()) }));
+        Assert.That(Held(session, MapItemId), Is.EqualTo(2));
+        Assert.That(Held(session, PaidReward), Is.EqualTo(0));
+    }
+
+    // Room for one of the two groups' items: refused whole, the map is kept.
+    [Test]
+    public void Appraise_WithRoomForPartOfTheRoll_KeepsTheMap() {
+        GameSession session = Login(twoFreeGroups: true, miscSlots: 2);
+        Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Misc), Is.EqualTo(1));
+
+        Use(session, "free");
+
+        Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)), Is.EqualTo(new[] { Hex(ItemScriptPacket.TreasureMapFailed()) }));
+        Assert.That(Held(session, MapItemId), Is.EqualTo(2));
+        Assert.That(Held(session, FreeReward) + Held(session, SecondFreeReward), Is.EqualTo(0));
     }
 
     [Test]

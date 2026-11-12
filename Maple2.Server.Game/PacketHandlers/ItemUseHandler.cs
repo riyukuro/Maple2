@@ -889,8 +889,10 @@ public class ItemUseHandler : FieldPacketHandler {
     }
 
     // UIItemTreasureMapDialog's submit: the item use with "free" when the npc opened the dialog free, else no text. One
-    // map leaves the bag, the cost is taken and one roll of the map's drop box is given; the answer shows the item.
-    // Without a box, a rolled item, the cost or the room, nothing is taken and the dialog goes back to its list.
+    // map leaves the bag, the cost is taken and one roll of every group of the map's drop box is given (the free box
+    // 330001824 has more than one group); the answer shows the first item, the dialog has room for one.
+    // Without a box, a rolled item, the cost or room for every rolled item, nothing is taken and the dialog goes back
+    // to its list.
     private static void HandleTreasureMap(GameSession session, IByteReader packet, Item item) {
         bool free = packet.ReadUnicodeString() == TreasureMapRules.FreeArgument;
         if (!TreasureMapRules.TryPick(item.Metadata.Function?.Parameters, free, out int boxId, out long cost)
@@ -899,8 +901,9 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        Item? reward = session.Field!.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).FirstOrDefault();
-        if (reward == null || !session.Item.Inventory.CanAdd(reward) || !session.Item.Inventory.Consume(item.Uid, 1)) {
+        ICollection<Item> rewards = session.Field!.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId);
+        // The room is checked for the whole roll before the map is taken, so an Add below takes all of it.
+        if (rewards.Count == 0 || !session.Item.Inventory.TakesAll(rewards) || !session.Item.Inventory.Consume(item.Uid, 1)) {
             session.Send(ItemScriptPacket.TreasureMapFailed());
             return;
         }
@@ -908,8 +911,11 @@ public class ItemUseHandler : FieldPacketHandler {
         if (cost > 0) {
             session.Currency.Meso -= cost;
         }
-        session.Item.Inventory.Add(reward, true);
-        session.Send(ItemScriptPacket.TreasureMapResult(reward.Id, reward.Rarity));
+        foreach (Item reward in rewards) {
+            session.Item.Inventory.Add(reward, true);
+        }
+        Item shown = rewards.First();
+        session.Send(ItemScriptPacket.TreasureMapResult(shown.Id, shown.Rarity));
     }
 
     // The client's QuestStart: parameter "questId[,level]", level 10 when it is absent or 0. The client checks the

@@ -682,18 +682,20 @@ public class ConfigManager {
             return false;
         }
 
+        // KMS2 order: the meso, the load packet with the empty list and the reset time, the trophy, then one
+        // buff removal per ability. It sends no mode 1 answer (the client's reader for it is empty).
         session.Currency.Meso -= price;
-        foreach (int abilityId in character.Abilities) {
-            if (session.TableMetadata.CharacterAbilityTable.Entries.TryGetValue(abilityId, out CharacterAbilityTable.Entry? entry) && entry.AdditionalEffectId > 0) {
-                session.Player.Buffs.Remove(entry.AdditionalEffectId, session.Player.ObjectId);
-            }
-        }
+        int[] effectIds = character.Abilities
+            .Select(abilityId => session.TableMetadata.CharacterAbilityTable.Entries.TryGetValue(abilityId, out CharacterAbilityTable.Entry? entry) ? entry.AdditionalEffectId : 0)
+            .Where(effectId => effectId > 0).ToArray();
         character.Abilities.Clear();
         character.AbilityResetTime = now;
         LoadCharacterAbilities();
-        session.Send(CharacterAbilityPacket.Reset());
         // Trophy 23100221: character_ability_reset, no target.
         session.ConditionUpdate(ConditionType.character_ability_reset);
+        foreach (int effectId in effectIds) {
+            session.Player.Buffs.Remove(effectId, session.Player.ObjectId);
+        }
         return true;
     }
 

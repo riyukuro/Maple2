@@ -8,7 +8,7 @@ namespace Maple2.Server.Game.Packets;
 public static class CharacterAbilityPacket {
     private enum Command : byte {
         Load = 0,
-        Reset = 1,
+        Reset = 1, // empty reader in the client; KMS2 does not send it
         Learn = 2,
     }
 
@@ -23,14 +23,6 @@ public static class CharacterAbilityPacket {
         }
         pWriter.WriteLong(resetTime);
         pWriter.WriteInt(bonusPoints);
-
-        return pWriter;
-    }
-
-    // No body; the client does nothing with it. The emptied list comes with Load.
-    public static ByteWriter Reset() {
-        var pWriter = Packet.Of(SendOp.CharacterAbility);
-        pWriter.WriteByte((byte) Command.Reset);
 
         return pWriter;
     }

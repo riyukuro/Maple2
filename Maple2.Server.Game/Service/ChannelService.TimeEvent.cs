@@ -111,20 +111,27 @@ public partial class ChannelService {
             FieldManager? field = server.GetField(targetMapId);
             if (field == null) continue;
 
-            FieldNpc? bossNpc = field.GetWorldBossNpc();
-            if (bossNpc == null) continue;
-
-            if (!TimeEventRules.BossLeavesAtClose(bossNpc.LastDamageTick, Environment.TickCount64, Constant.WorldBossIdleWarningThreshold, Constant.WorldBossLeaveDelay)) {
-                if (monitoringBossFields.TryAdd(targetMapId, 0)) {
-                    _ = MonitorExtendedBossLifetimeAsync(field, npcId, targetMapId);
-                }
-            } else {
-                field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString()), LifetimeNotice));
-                field.DespawnWorldBoss();
-            }
+            CloseWorldBoss(field, npcId, targetMapId, Environment.TickCount64);
         }
 
         return new TimeEventResponse();
+    }
+
+    // The close of one target field: a boss idle at the warning time leaves with the "disappeared" notice,
+    // one hit since then stays and the idle monitor takes over (one monitor per field).
+    internal void CloseWorldBoss(FieldManager field, int npcId, int targetMapId, long nowTick) {
+        FieldNpc? bossNpc = field.GetWorldBossNpc();
+        if (bossNpc == null) return;
+
+        if (!TimeEventRules.BossLeavesAtClose(bossNpc.LastDamageTick, nowTick, Constant.WorldBossIdleWarningThreshold, Constant.WorldBossLeaveDelay)) {
+            if (monitoringBossFields.TryAdd(targetMapId, 0)) {
+                _ = MonitorExtendedBossLifetimeAsync(field, npcId, targetMapId);
+            }
+            return;
+        }
+
+        field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString()), LifetimeNotice));
+        field.DespawnWorldBoss();
     }
 
     private async Task MonitorExtendedBossLifetimeAsync(FieldManager field, int npcId, int targetMapId) {
