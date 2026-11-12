@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
@@ -231,6 +232,50 @@ public class GuildApplicationRulesTests {
     public void Donate_CountOfAnEarlierDayDoesNotCarryOver() {
         Assert.That(GuildRules.DonationsToday(4, 999, 1000), Is.EqualTo(0));
         Assert.That(GuildRules.DonationsToday(4, 1000, 1000), Is.EqualTo(4));
+    }
+
+    // The day starts at midnight in the server's zone, the zone the client's own day test runs in.
+    [Test]
+    public void DayStart_IsLocalMidnight() {
+        TimeZoneInfo kst = TimeZoneInfo.CreateCustomTimeZone("t9", TimeSpan.FromHours(9), "t9", "t9");
+        long Kst(int day, int hour) => new DateTimeOffset(2026, 11, day, hour, 0, 0, TimeSpan.FromHours(9)).ToUnixTimeSeconds();
+
+        Assert.Multiple(() => {
+            Assert.That(GuildRules.DayStart(Kst(12, 1), kst), Is.EqualTo(Kst(12, 0)));
+            Assert.That(GuildRules.DayStart(Kst(12, 23), kst), Is.EqualTo(Kst(12, 0)));
+            Assert.That(GuildRules.DayStart(Kst(12, 0), kst), Is.EqualTo(Kst(12, 0)));
+            Assert.That(GuildRules.DayStart(Kst(12, 1), TimeZoneInfo.Utc),
+                Is.EqualTo(new DateTimeOffset(2026, 11, 11, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds()));
+        });
+    }
+
+    [Test]
+    public void CheckIn_DayChangesAtLocalMidnight() {
+        TimeZoneInfo kst = TimeZoneInfo.CreateCustomTimeZone("t9", TimeSpan.FromHours(9), "t9", "t9");
+        long Kst(int day, int hour) => new DateTimeOffset(2026, 11, day, hour, 0, 0, TimeSpan.FromHours(9)).ToUnixTimeSeconds();
+        long joined = Kst(1, 12);
+
+        Assert.Multiple(() => {
+            // Checked in at 23:00, again at 01:00 the next day: a new day for the client; the UTC day had not turned.
+            Assert.That(GuildRules.CanCheckIn(joined, Kst(11, 23), GuildRules.DayStart(Kst(12, 1), kst)), Is.True);
+            Assert.That(GuildRules.CanCheckIn(joined, Kst(11, 23), GuildRules.DayStart(Kst(12, 1), TimeZoneInfo.Utc)), Is.False);
+            // Checked in at 01:00, again at 10:00: the same local day, though the UTC day turned at 09:00.
+            Assert.That(GuildRules.CanCheckIn(joined, Kst(12, 1), GuildRules.DayStart(Kst(12, 10), kst)), Is.False);
+            Assert.That(GuildRules.CanCheckIn(joined, Kst(12, 1), GuildRules.DayStart(Kst(12, 10), TimeZoneInfo.Utc)), Is.True);
+            // Joined at 23:00, checking in at 01:00 the next day.
+            Assert.That(GuildRules.CanCheckIn(Kst(11, 23), 0, GuildRules.DayStart(Kst(12, 1), kst)), Is.True);
+        });
+    }
+
+    [Test]
+    public void Donate_CountResetsAtLocalMidnight() {
+        TimeZoneInfo kst = TimeZoneInfo.CreateCustomTimeZone("t9", TimeSpan.FromHours(9), "t9", "t9");
+        long Kst(int day, int hour) => new DateTimeOffset(2026, 11, day, hour, 0, 0, TimeSpan.FromHours(9)).ToUnixTimeSeconds();
+
+        Assert.Multiple(() => {
+            Assert.That(GuildRules.DonationsToday(3, Kst(11, 23), GuildRules.DayStart(Kst(12, 1), kst)), Is.EqualTo(0));
+            Assert.That(GuildRules.DonationsToday(3, Kst(12, 1), GuildRules.DayStart(Kst(12, 10), kst)), Is.EqualTo(3));
+        });
     }
 
     // joinTime, checkinTime, dayStart

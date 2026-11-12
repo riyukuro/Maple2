@@ -272,7 +272,7 @@ public class GuildManager : IDisposable {
         // (the channel tests its own copy of the member, which is behind until the update comes back) must
         // not both pay the guild and the member.
         lock (requestor) {
-            long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+            long dayStart = GuildRules.DayStart();
             if (!GuildRules.CanCheckIn(requestor.JoinTime, requestor.CheckinTime, dayStart)) {
                 return GuildError.s_guild_err_unknown;
             }
@@ -800,7 +800,7 @@ public class GuildManager : IDisposable {
         int guildExp;
         int guildFund;
         lock (member) {
-            long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+            long dayStart = GuildRules.DayStart();
             int today = GuildRules.DonationsToday(member.DailyDonationCount, member.DonationTime, dayStart);
             lock (guildLock) {
                 if (!GuildRules.CanDonate(count, member.JoinTime, dayStart, today, property.DonateMax, Guild.Funds, fund,

@@ -527,7 +527,7 @@ public class GuildHandler : PacketHandler<GameSession> {
         // The client sends no check-in on the day the member joined or after one today
         // (CGuildManager::SendGuildMode15, guildmanager.cpp:617, with its own texts), so a request that comes
         // anyway gets no answer. The World server tests the same again on its own member.
-        long dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+        long dayStart = GuildRules.DayStart();
         if (!GuildRules.CanCheckIn(self.JoinTime, self.CheckinTime, dayStart)) {
             return;
         }
