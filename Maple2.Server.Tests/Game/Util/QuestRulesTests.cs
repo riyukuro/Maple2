@@ -174,6 +174,7 @@ public class QuestRulesTests {
 
     // The complete request's npc: the quest's complete npc on the field (npc id 0: not on the field), or none for a
     // quest that is completed remotely or has no complete npc.
+    // A remote completion that names a field: on that field only; at the npc from any.
     [TestCase(11000001, QuestRemoteType.None, true, 11000001, true)]
     [TestCase(11000001, QuestRemoteType.None, true, 11000002, false)]
     [TestCase(11000001, QuestRemoteType.None, true, 0, false)]
@@ -182,12 +183,16 @@ public class QuestRulesTests {
     [TestCase(11000001, QuestRemoteType.None, false, 0, false)]
     [TestCase(11000001, QuestRemoteType.Popup, false, 0, true)]
     [TestCase(0, QuestRemoteType.None, false, 0, true)]
-    public void CanCompleteAt(int completeNpc, QuestRemoteType remote, bool named, int npcId, bool expected) {
+    [TestCase(11000001, QuestRemoteType.Popup, false, 0, true, 2000023)]
+    [TestCase(11000001, QuestRemoteType.Popup, false, 0, false, 2000001)]
+    [TestCase(11000001, QuestRemoteType.Popup, true, 11000001, true, 2000001)]
+    [TestCase(0, QuestRemoteType.None, false, 0, true, 2000001)]
+    public void CanCompleteAt(int completeNpc, QuestRemoteType remote, bool named, int npcId, bool expected, int remoteMap = 0) {
         Maple2.Model.Metadata.QuestMetadata data = Maple2.Server.Tests.Game.TestGameSession.QuestData(90000001);
         data = data with {
             Basic = data.Basic with { CompleteNpc = completeNpc },
-            RemoteComplete = new Maple2.Model.Metadata.QuestRemoteComplete(remote, 0, false),
+            RemoteComplete = new Maple2.Model.Metadata.QuestRemoteComplete(remote, remoteMap, false),
         };
-        Assert.That(QuestRules.CanCompleteAt(data, named, npcId), Is.EqualTo(expected));
+        Assert.That(QuestRules.CanCompleteAt(data, named, npcId, 2000023), Is.EqualTo(expected));
     }
 }

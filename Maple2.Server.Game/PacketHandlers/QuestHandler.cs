@@ -232,7 +232,7 @@ public class QuestHandler : FieldPacketHandler {
         if (npcObjectId != 0 && session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? npc)) {
             npcId = npc.Value.Id;
         }
-        if (!QuestRules.CanCompleteAt(quest.Metadata, npcObjectId != 0, npcId)) {
+        if (!QuestRules.CanCompleteAt(quest.Metadata, npcObjectId != 0, npcId, session.Player.Value.Character.MapId)) {
             session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
             return;
         }
@@ -249,10 +249,16 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        // A quest that was completed before and started again goes back to completed: its count and its last
-        // completion (which decide when it starts again) stay. The client drops it from its list either way.
+        // A quest that was completed before and started again goes back to what it was before that start: completed,
+        // with its count and the start and end time of its last completion (QuestManager.Start kept them). The
+        // client drops the quest from its list and offers it again, and with the old start time the server takes
+        // that accept as it took the one just abandoned.
         if (quest.CompletionCount > 0) {
             quest.State = QuestState.Completed;
+            quest.StartTime = quest.LastStartTime;
+            quest.EndTime = quest.LastEndTime;
+            quest.LastStartTime = 0;
+            quest.LastEndTime = 0;
             session.Send(QuestPacket.Abandon(quest.Id));
             return;
         }

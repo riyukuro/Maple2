@@ -1532,6 +1532,12 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("EndTime")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("LastEndTime")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LastStartTime")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("StartTime")
                         .HasColumnType("bigint");
 

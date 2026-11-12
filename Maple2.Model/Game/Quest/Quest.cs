@@ -13,6 +13,10 @@ public class Quest : IByteSerializable {
     public int CompletionCount;
     public long StartTime;
     public long EndTime;
+    // The start and end time of the last completion while the quest is started again (0 otherwise). Not sent: an
+    // abandon puts them back.
+    public long LastStartTime;
+    public long LastEndTime;
     public bool Track;
     public SortedDictionary<int, Condition> Conditions;
 

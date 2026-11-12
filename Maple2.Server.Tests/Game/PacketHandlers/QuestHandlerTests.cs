@@ -28,12 +28,12 @@ public class QuestHandlerTests {
     private QuestHandler handler = null!;
 
     // A quest of the popup talk: accepted and completed without an npc on the field.
-    private static QuestMetadata Data(bool acceptItem = false, bool remote = true) {
+    private static QuestMetadata Data(bool acceptItem = false, bool remote = true, int remoteMap = 0, int repeat = 0) {
         QuestMetadata data = TestGameSession.QuestData(QuestId);
         return data with {
-            Basic = data.Basic with { CompleteNpc = Npc, Forfeitable = true },
+            Basic = data.Basic with { CompleteNpc = Npc, Forfeitable = true, Repeat = repeat },
             RemoteAccept = new QuestRemoteAccept(QuestRemoteType.Popup, 0),
-            RemoteComplete = new QuestRemoteComplete(remote ? QuestRemoteType.Popup : QuestRemoteType.None, 0, false),
+            RemoteComplete = new QuestRemoteComplete(remote ? QuestRemoteType.Popup : QuestRemoteType.None, remoteMap, false),
             AcceptReward = data.AcceptReward with { EssentialItem = acceptItem ? [new QuestMetadataReward.Item(RewardId, 1, 1)] : [] },
             CompleteReward = data.CompleteReward with { Meso = 100, Exp = 10, EssentialItem = [new QuestMetadataReward.Item(RewardId, 1, 2)] },
             Conditions = [new ConditionMetadata(ConditionType.jump, 1, null, null)],
@@ -58,8 +58,8 @@ public class QuestHandlerTests {
     }
 
     // A started quest with its one condition met or open.
-    private Quest Started(bool met = true, bool remote = true) {
-        Quest quest = test.StartQuest(Data(remote: remote));
+    private Quest Started(bool met = true, bool remote = true, int remoteMap = 0) {
+        Quest quest = test.StartQuest(Data(remote: remote, remoteMap: remoteMap));
         quest.Conditions[0].Counter = met ? 1 : 0;
         return quest;
     }
@@ -111,6 +111,69 @@ public class QuestHandlerTests {
         });
     }
 
+    // An npc of the session's field with this object id (only its id is set).
+    private static void AddNpc(GameSession session, int objectId, int npcId) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var metadata = (NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata));
+        typeof(NpcMetadata).GetField("<Id>k__BackingField", any)!.SetValue(metadata, npcId);
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
+        session.Field!.Npcs[objectId] = npc;
+    }
+
+    // The talk names its npc by object id: the quest's complete npc on the field completes the quest.
+    [Test]
+    public void Complete_AtTheQuestsNpcOnTheField() {
+        GameSession session = Login();
+        Quest quest = Started(remote: false);
+        AddNpc(session, 55, Npc);
+
+        Complete(session, npcObjectId: 55);
+
+        Assert.Multiple(() => {
+            Assert.That(Convert.ToHexString(test.TakeSent()[0]), Is.EqualTo(Convert.ToHexString(QuestPacket.Complete(quest).ToArray())));
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(Held(session), Is.EqualTo(2));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // Another npc of the field is not the quest's.
+    [Test]
+    public void Complete_AtAnotherNpcOfTheFieldGivesNothing() {
+        GameSession session = Login();
+        Quest quest = Started(remote: false);
+        AddNpc(session, 55, Npc + 1);
+
+        Complete(session, npcObjectId: 55);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_consume_fail) }));
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(Held(session), Is.EqualTo(0));
+        });
+    }
+
+    // A remote completion that names a field is taken on that field only (the popup talk lists the quests of the
+    // field the player is in).
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    public void Complete_RemoteOnItsField(int mapOffset, bool expected) {
+        GameSession session = Login();
+        Quest quest = Started(remoteMap: session.Player.Value.Character.MapId + mapOffset);
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(expected ? QuestState.Completed : QuestState.Started));
+            Assert.That(Held(session), Is.EqualTo(expected ? 2 : 0));
+            if (!expected) {
+                Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_consume_fail) }));
+            }
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // Abandon (Quest 6 with the quest id, answered with the same): the quest is dropped; a second request and a
     // request for a completed quest have no answer and change nothing.
     [Test]
@@ -146,13 +209,26 @@ public class QuestHandlerTests {
         });
     }
 
-    // A quest that was completed before and is in progress again goes back to completed with its count.
+    // A daily quest completed on an earlier day, accepted again and abandoned goes back to the row it was: completed
+    // with its count and the times of that completion, so the accept the client offers again is taken again.
     [Test]
-    public void Abandon_OfAQuestStartedAgainKeepsItsCompletion() {
+    public void Abandon_OfAQuestStartedAgainPutsItsCompletionBack() {
         GameSession session = Login();
-        Quest quest = Started();
+        QuestMetadata daily = Data(repeat: 2);
+        test.Register(daily);
+        Quest quest = test.StartQuest(daily);
+        quest.State = QuestState.Completed;
         quest.CompletionCount = 3;
-        quest.EndTime = 1700000000;
+        quest.StartTime = 1700000000;
+        quest.EndTime = 1700000600;
+
+        Accept(session);
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(quest.StartTime, Is.GreaterThan(1700000600));
+            Assert.That(quest.EndTime, Is.EqualTo(0));
+        });
+        test.TakeSent();
 
         Abandon(session);
         Abandon(session);
@@ -160,9 +236,46 @@ public class QuestHandlerTests {
         Assert.Multiple(() => {
             Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { "5200" + "06" + "814A5D05" }));
             Assert.That(session.Quest.TryGetQuest(QuestId, out Quest? held), Is.True);
-            Assert.That(held?.State, Is.EqualTo(QuestState.Completed));
-            Assert.That(held?.CompletionCount, Is.EqualTo(3));
-            Assert.That(held?.EndTime, Is.EqualTo(1700000000));
+            Assert.That(held, Is.SameAs(quest));
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(quest.CompletionCount, Is.EqualTo(3));
+            Assert.That(quest.StartTime, Is.EqualTo(1700000000));
+            Assert.That(quest.EndTime, Is.EqualTo(1700000600));
+        });
+
+        // The client dropped the quest and offers it again.
+        Accept(session);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(QuestPacket.Start(quest).ToArray()) }));
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(quest.CompletionCount, Is.EqualTo(3));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A completion clears the kept times: they belong to the start it ended.
+    [Test]
+    public void Complete_OfAQuestStartedAgainDropsTheKeptTimes() {
+        GameSession session = Login();
+        QuestMetadata daily = Data(repeat: 2);
+        test.Register(daily);
+        Quest quest = test.StartQuest(daily);
+        quest.State = QuestState.Completed;
+        quest.CompletionCount = 1;
+        quest.StartTime = 1700000000;
+        quest.EndTime = 1700000600;
+        Accept(session);
+        Assert.That((quest.LastStartTime, quest.LastEndTime), Is.EqualTo((1700000000L, 1700000600L)));
+        quest.Conditions[0].Counter = 1;
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(quest.CompletionCount, Is.EqualTo(2));
+            Assert.That((quest.LastStartTime, quest.LastEndTime), Is.EqualTo((0L, 0L)));
+            Assert.That(quest.EndTime, Is.GreaterThan(1700000600));
         });
     }
 

@@ -206,8 +206,11 @@ public sealed class QuestManager {
         Quest? quest;
         if (held != null) {
             // The stored row is reused: started again with fresh conditions, its completion count kept. The client
-            // takes the Start packet as a new quest in place of the completed one.
+            // takes the Start packet as a new quest in place of the completed one. The times of the last completion
+            // are kept beside the new ones for an abandon.
             quest = held;
+            quest.LastStartTime = quest.StartTime;
+            quest.LastEndTime = quest.EndTime;
             quest.Track = true;
             quest.State = QuestState.Started;
             quest.StartTime = DateTime.Now.ToEpochSeconds();
@@ -504,6 +507,8 @@ public sealed class QuestManager {
 
         // The order KMS2 sends: the quest's complete packet, the meso, the exp, the items, then what counts the quest.
         quest.EndTime = DateTime.Now.ToEpochSeconds();
+        quest.LastStartTime = 0;
+        quest.LastEndTime = 0;
         quest.State = QuestState.Completed;
         quest.CompletionCount++;
         session.Send(QuestPacket.Complete(quest));

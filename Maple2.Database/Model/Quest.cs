@@ -14,6 +14,8 @@ internal class Quest {
     public int CompletionCount { get; set; }
     public long StartTime { get; set; }
     public long EndTime { get; set; }
+    public long LastStartTime { get; set; }
+    public long LastEndTime { get; set; }
     public bool Track { get; set; }
     public SortedDictionary<int, QuestCondition> Conditions { get; set; } = [];
 
@@ -28,6 +30,8 @@ internal class Quest {
             CompletionCount = other.CompletionCount,
             StartTime = other.StartTime,
             EndTime = other.EndTime,
+            LastStartTime = other.LastStartTime,
+            LastEndTime = other.LastEndTime,
             Track = other.Track,
             Conditions = new SortedDictionary<int, QuestCondition>(),
         };
@@ -46,6 +50,8 @@ internal class Quest {
             CompletionCount = CompletionCount,
             StartTime = StartTime,
             EndTime = EndTime,
+            LastStartTime = LastStartTime,
+            LastEndTime = LastEndTime,
             Track = Track,
         };
 
