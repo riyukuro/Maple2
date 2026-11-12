@@ -26,8 +26,9 @@ public static class SkillHitRules {
     // Chosen here: the share of the loop time and the time under it that an iteration may come early.
     public const float HeldIntervalShare = 0.9f;
     public const long HeldIntervalSlackMs = 20;
-    // Chosen here: an iteration may arrive this long before its time; the time it came early stays owed, so a
-    // hold as a whole is not faster than its loop.
+    // Chosen here: an iteration may arrive this long before its time. The times are counted on from the first
+    // iteration, one interval each, so a hold as a whole is not faster than its loop, and iterations that arrive
+    // together after a late one (a stall of the link or of the field) are still on time.
     public const long HeldArrivalAllowanceMs = 500;
     // KMS2 sends the last attack packet of a cast at most 3.55 s after the cast (99 in 100 within 0.82 s). A skill
     // that continues while held counts from its last taken attack point packet instead (SkillHitBudget).
@@ -63,7 +64,7 @@ public static class SkillHitRules {
         return Math.Max(0, (long) (loopSeconds / speed * 1000 * HeldIntervalShare) - HeldIntervalSlackMs);
     }
 
-    // Whether an iteration arrives before the time the one before it left for it.
+    // Whether an iteration arrives before its time.
     public static bool IterationTooEarly(long tick, long dueTick) => tick < dueTick - HeldArrivalAllowanceMs;
 }
 
@@ -91,20 +92,23 @@ public sealed class SkillHitBudget {
             return false;
         }
         long due = tick;
+        bool early = false;
         if (iterations.TryGetValue(attackPoint, out int last)) {
             if (!held || iteration != last + 1) {
                 return false;
             }
             due = dueTicks.GetValueOrDefault(attackPoint, tick);
-            if (SkillHitRules.IterationTooEarly(tick, due)) {
-                return false;
-            }
+            early = SkillHitRules.IterationTooEarly(tick, due);
         } else if (iteration != 0) {
             return false;
         }
 
+        // An iteration that only comes too early is counted and pays nothing: the ones after it go on.
         iterations[attackPoint] = iteration;
-        dueTicks[attackPoint] = Math.Max(tick, due) + intervalMs;
+        dueTicks[attackPoint] = due + intervalMs;
+        if (early) {
+            return false;
+        }
         if (held) {
             windowTick = tick;
         }

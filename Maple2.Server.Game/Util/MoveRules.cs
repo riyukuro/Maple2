@@ -13,6 +13,8 @@ public static class MoveRules {
     // After the server moves the player itself, positions are not measured for this long: the client still sends
     // from the old place for a moment.
     public const long ServerMoveGraceMs = 2000;
+    // A player's fast moves are logged once in this long, with their count.
+    public const long LogEveryMs = 10000;
 
     // The height is not counted: a fall is faster than any move on the ground.
     public static bool TooFar(Vector3 from, Vector3 to) {
@@ -20,22 +22,50 @@ public static class MoveRules {
     }
 }
 
-// The positions a client synced within the last MoveRules.WindowMs.
+// The positions a client synced within the last MoveRules.WindowMs. Locked: the server's own moves can come from
+// another thread than the syncs.
 public sealed class MoveWindow {
+    private readonly object mutex = new();
+    private long nextLog = long.MinValue;
+    private int unlogged;
+
     private readonly Queue<(int Tick, Vector3 Position)> samples = new();
     private int lastTick;
     private long graceUntil = long.MinValue;
 
     // The server moved the player: the positions kept are of the old place.
     public void ServerMoved(long now) {
-        samples.Clear();
-        graceUntil = now + MoveRules.ServerMoveGraceMs;
+        lock (mutex) {
+            samples.Clear();
+            graceUntil = now + MoveRules.ServerMoveGraceMs;
+        }
+    }
+
+    // Counts a fast move; returns how many to log now (those since the last line), 0 when a line was logged less
+    // than MoveRules.LogEveryMs ago.
+    public int CountFast(long now) {
+        lock (mutex) {
+            unlogged++;
+            if (now < nextLog) {
+                return 0;
+            }
+            nextLog = now + MoveRules.LogEveryMs;
+            int count = unlogged;
+            unlogged = 0;
+            return count;
+        }
     }
 
     // Takes a synced position. Returns the position of up to MoveRules.WindowMs before when this one is further
     // from it than MoveRules.MaxDistance, and starts again from this one then.
     // tick: the client's tick of the position. now: the server's clock.
     public Vector3? Add(int tick, Vector3 position, long now) {
+        lock (mutex) {
+            return AddLocked(tick, position, now);
+        }
+    }
+
+    private Vector3? AddLocked(int tick, Vector3 position, long now) {
         if (now < graceUntil) {
             samples.Clear();
             return null;

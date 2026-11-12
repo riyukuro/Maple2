@@ -61,8 +61,8 @@ public static class SkillCastRules {
 
     // The time between two casts: the shorter of the client's own ticks and the arrivals plus the allowance, so
     // a client cannot lengthen it with its tick. A cast tick that runs backwards is not counted.
-    public static long CastGap(int castTick, int lastCastTick, long serverTick, long lastServerTick) {
-        long arrival = serverTick - lastServerTick + ArrivalAllowanceMs;
+    public static long CastGap(int castTick, int lastCastTick, long serverTick, long lastServerTick, long allowanceMs = ArrivalAllowanceMs) {
+        long arrival = serverTick - lastServerTick + allowanceMs;
         long client = unchecked(castTick - lastCastTick);
         return client < 0 ? arrival : Math.Min(client, arrival);
     }
@@ -88,8 +88,13 @@ public static class SkillCastRules {
     // speed stat. The Lua body is not known: speed = motion speed x attack speed / 100 is fitted here over KMS2
     // casts at attack speed 100 to 121. The client does not scale a motion of move type 3; the server does not hold
     // the move type, so every motion is counted as scaled, which only shortens the time asked for.
+    // A motion with a loop (a held skill) leaves the loop when the hold ends, so a key after "loopend" can come up
+    // to one loop sooner: such a key is counted without the loop's length.
     // Chosen here: a cast is taken up to this long before that time.
     public const long MotionSlackMs = 100;
+    // Chosen here: the time between two arrivals may be this much shorter than the time between the two casts. It
+    // is longer than for cooldowns because this check is on every skill, and two casts held up together arrive at once.
+    public const long MotionArrivalAllowanceMs = 1000;
 
     // The last accepted cast that plays a motion: the times of its keys, its speed and when it came.
     public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick);
@@ -111,7 +116,14 @@ public static class SkillCastRules {
         if (next == null) {
             return null;
         }
-        return (next.Value, KeyTime(keys, "selfinputcombo") ?? next.Value);
+        float? loopStart = KeyTime(keys, "loopstart");
+        float? loopEnd = KeyTime(keys, "loopend");
+        float self = KeyTime(keys, "selfinputcombo") ?? next.Value;
+        if (loopStart == null || loopEnd == null || loopEnd <= loopStart) {
+            return (next.Value, self);
+        }
+        float loop = loopEnd.Value - loopStart.Value;
+        return (next > loopEnd ? next.Value - loop : next.Value, self > loopEnd ? self - loop : self);
     }
 
     // The fitted speed of a motion. An attack speed under 100 is counted as 100 (chosen here: no KMS2 cast has one).
@@ -120,7 +132,7 @@ public static class SkillCastRules {
     }
 
     public static long MotionRequiredGap(float keySeconds, float speed) {
-        return (long) (keySeconds / speed * 1000) - MotionSlackMs;
+        return (long) MathF.Round(keySeconds / speed * 1000) - MotionSlackMs;
     }
 
     // Whether a cast comes before the last cast's motion lets the next one in. A skill that is active at once
@@ -132,7 +144,7 @@ public static class SkillCastRules {
         }
         float key = last.SkillId == skillId ? last.SelfKey : last.NextKey;
         float speed = MotionSpeed(last.SequenceSpeed, Math.Max(last.AttackSpeed, attackSpeed));
-        return CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < MotionRequiredGap(key, speed);
+        return CastGap(castTick, last.CastTick, serverTick, last.ServerTick, MotionArrivalAllowanceMs) < MotionRequiredGap(key, speed);
     }
 
     // The skills whose cooldown is checked as a job skill's: those of a job's tree and the job skill ids.

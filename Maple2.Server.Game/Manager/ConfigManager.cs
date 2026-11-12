@@ -37,6 +37,8 @@ public class ConfigManager {
     private readonly IDictionary<int, SkillCooldown> skillCooldowns;
     private readonly IDictionary<int, SkillCastRules.LastCast> lastCasts;
     private SkillCastRules.LastMotion? lastMotion;
+    private long heldCastUid;
+    private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;
 
     public long DeathPenaltyEndTick {
@@ -262,9 +264,19 @@ public class ConfigManager {
         lastMotion = new SkillCastRules.LastMotion(skillId, keys.Next, keys.Self, motion.SequenceSpeed, AttackSpeed, tick, castTick);
     }
 
+    // A cancelled cast's motion ends there: the next cast is not measured against it.
+    public void ClearCastMotion(int skillId) {
+        if (lastMotion?.SkillId == skillId) {
+            lastMotion = null;
+        }
+    }
+
     // The shortest time between two iterations of a held skill with this motion (SkillHitRules.HeldInterval);
-    // 0 when the motion's sequence has no loop on the player's rig.
-    public long HeldInterval(SkillMetadataMotionProperty motion) {
+    // 0 when the motion's sequence has no loop on the player's rig. The highest attack speed seen during the cast
+    // counts: the client may keep the loop's speed when a buff ends.
+    public long HeldInterval(SkillMetadataMotionProperty motion, long castUid) {
+        heldAttackSpeed = castUid == heldCastUid ? Math.Max(heldAttackSpeed, AttackSpeed) : AttackSpeed;
+        heldCastUid = castUid;
         AnimationSequenceMetadata? sequence = null;
         session.Player.Animation.RigMetadata?.Sequences.TryGetValue(motion.SequenceName, out sequence);
         if (sequence == null) {
@@ -275,7 +287,7 @@ public class ConfigManager {
         if (start == null || end == null) {
             return 0;
         }
-        return SkillHitRules.HeldInterval(end.Value - start.Value, SkillCastRules.MotionSpeed(motion.SequenceSpeed, AttackSpeed));
+        return SkillHitRules.HeldInterval(end.Value - start.Value, SkillCastRules.MotionSpeed(motion.SequenceSpeed, heldAttackSpeed));
     }
 
     public SkillCooldown? GetSkillCooldown(int skillId) {

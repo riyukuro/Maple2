@@ -161,6 +161,32 @@ public class SkillHitRulesTests {
         }
         Assert.That(taken, Is.EqualTo(3)); // due at 430 x i, taken while 215 x i >= 430 x i - 500
 
+        // A 250 ms loop (interval 205): a stall of 1 s, then the iterations it held up arrive together and the
+        // hold goes on.
+        budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: true, count: 1, tick: 0, intervalMs: 205), Is.True);
+        Assert.That(budget.TakePoint(0, 1, held: true, count: 1, tick: 250, intervalMs: 205), Is.True);
+        for (int i = 2; i <= 6; i++) {
+            Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: 1500, intervalMs: 205), Is.True, $"burst {i}");
+        }
+        for (int i = 7; i < 20; i++) {
+            Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: 1500 + (i - 6) * 250, intervalMs: 205), Is.True, $"after the burst {i}");
+        }
+
+        // An iteration that comes too early pays nothing; the ones after it are counted on.
+        budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: true, count: 1, tick: 0, intervalMs: 430), Is.True);
+        Assert.That(budget.TakePoint(0, 1, held: true, count: 1, tick: 10, intervalMs: 430), Is.True, "430 - 500");
+        Assert.That(budget.TakePoint(0, 2, held: true, count: 1, tick: 20, intervalMs: 430), Is.False, "due at 860");
+        Assert.That(budget.TakePoint(0, 3, held: true, count: 1, tick: 790, intervalMs: 430), Is.True, "due at 1290");
+        Assert.That(budget.TakePoint(0, 5, held: true, count: 1, tick: 5000, intervalMs: 430), Is.False, "iteration 4 never came");
+
+        // A shorter interval at a higher speed is counted from then on.
+        budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: true, count: 1, tick: 0, intervalMs: 430), Is.True);
+        Assert.That(budget.TakePoint(0, 1, held: true, count: 1, tick: 300, intervalMs: 280), Is.True);
+        Assert.That(budget.TakePoint(0, 2, held: true, count: 1, tick: 600, intervalMs: 280), Is.True);
+
         // Not checked without a loop, and each attack point on its own.
         budget = new SkillHitBudget();
         for (int i = 0; i < 20; i++) {
@@ -169,6 +195,15 @@ public class SkillHitRulesTests {
         budget = new SkillHitBudget();
         Assert.That(budget.TakePoint(0, 0, held: true, count: 1, tick: 0, intervalMs: 430), Is.True);
         Assert.That(budget.TakePoint(1, 0, held: true, count: 1, tick: 10, intervalMs: 430), Is.True);
+    }
+
+    [Test]
+    public void FastMovesAreLoggedOnceInTenSeconds() {
+        var window = new MoveWindow();
+        Assert.That(window.CountFast(1000), Is.EqualTo(1));
+        Assert.That(window.CountFast(1100), Is.EqualTo(0));
+        Assert.That(window.CountFast(10999), Is.EqualTo(0));
+        Assert.That(window.CountFast(11000), Is.EqualTo(3));
     }
 
     [Test]

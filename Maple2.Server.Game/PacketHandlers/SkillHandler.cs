@@ -217,7 +217,7 @@ public class SkillHandler : FieldPacketHandler {
         if (SkillHitRules.PointMoved(position, record.CastPosition)
             || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick,
                 SkillHitRules.MaxAttacks(record.Attack.TargetCount, record.Attack.Arrow.NonTarget == SkillTargetType.Owner),
-                session.Config.HeldInterval(record.Motion.MotionProperty))) {
+                session.Config.HeldInterval(record.Motion.MotionProperty, record.CastUid))) {
             Logger.Debug("Attack point dropped: AttackPoint={AttackPoint} iteration={Iteration} count={Count} at {Position}: {Record}",
                 attackPoint, iterations, count, position, record);
             return;
@@ -525,6 +525,7 @@ public class SkillHandler : FieldPacketHandler {
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Cancel: {skillUid}"));
         }
+        session.Config.ClearCastMotion(record.SkillId);
 
         session.Animation.CancelSequence();
     }
