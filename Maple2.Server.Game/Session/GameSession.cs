@@ -571,11 +571,17 @@ public sealed partial class GameSession : Core.Network.Session {
 
         State = SessionState.ChangeMap;
         leftField = (Field?.MapId ?? 0, Field is HomeFieldManager leftHome ? leftHome.OwnerId : 0);
+        bool leftDead = Player.IsDead;
         LeaveField();
 
         Field = newField;
         Player.Dispose();
         Player = Field.SpawnPlayer(this, Player, portalId, position, rotation);
+        Stat health = Stats.Values[BasicAttribute.Health];
+        if (RevivalRules.FillsHpOnFieldEntry(leftDead, health.Current)) {
+            health.Current = health.Total;
+            Player.DeathState = DeathState.Alive;
+        }
         Config.Skill.UpdatePassiveBuffs();
         Player.Buffs.LoadFieldBuffs();
         Player.CheckRegen();

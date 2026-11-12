@@ -1,6 +1,18 @@
 ﻿namespace Maple2.Server.Game.Util;
 
 public static class RevivalRules {
+    // A revive that stays in the field gives the lasting buffs back itself; one that sends the player to the
+    // map's revivalReturnId gets them from the field entry there.
+    public static bool RestoresLastingBuffs(bool instant, int revivalReturnId, int mapId) {
+        return instant || revivalReturnId == 0 || revivalReturnId == mapId;
+    }
+
+    // A player who leaves a field dead (a GM warp, a trigger move) gets a new, living actor in the next field:
+    // without a fill it arrives at 0 HP, still drawn dead with no tombstone the revival dialog could use.
+    public static bool FillsHpOnFieldEntry(bool leftDead, long currentHp) {
+        return leftDead || currentHp <= 0;
+    }
+
     // A revive in place (meret, coupon or meso) is refused while any buff on the player has disableRevivalHere.
     public static bool BuffBlocks(IEnumerable<bool> disableRevivalHereOfBuffs) {
         foreach (bool flag in disableRevivalHereOfBuffs) {

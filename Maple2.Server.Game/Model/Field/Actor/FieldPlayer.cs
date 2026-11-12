@@ -470,9 +470,17 @@ public class FieldPlayer : Actor<Player> {
         autoReviveDelay = 0;
         autoReviveTick = 0;
 
-        // Restore health and update state
-        RecoverHp((int) Stats.Values[BasicAttribute.Health].Total);
         IsDead = false;
+        // OnDeath took every buff without keepOnDeath, the lasting ones too: passive skills, gear and set
+        // effects, character abilities, prestige, lapenshards, premium club, guild and insignia. A field entry
+        // gives them again; a revive must too, or the player keeps the lower stats (a character ability's +31 HP)
+        // until the next map. Before the HP fill, so the player comes back at the full total.
+        if (RevivalRules.RestoresLastingBuffs(instant, Field.Metadata.Property.RevivalReturnId, Field.Metadata.Id)) {
+            Session.Config.Skill.UpdatePassiveBuffs();
+            Buffs.LoadFieldBuffs();
+            Session.Stats.Refresh();
+        }
+        RecoverHp((int) Stats.Values[BasicAttribute.Health].Total);
 
         // Apply death penalty if field requires it
         if (Field.Metadata.Property.DeathPenalty) {
