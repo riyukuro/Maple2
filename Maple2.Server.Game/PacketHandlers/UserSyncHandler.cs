@@ -27,6 +27,7 @@ public class UserSyncHandler : FieldPacketHandler {
         }
 
         var stateSyncs = new StateSync[segments];
+        int[] ticks = new int[segments];
         for (int i = 0; i < segments; i++) {
             var playerState = packet.Peek<ActorState>();
             StateSync stateSync = playerState switch {
@@ -45,7 +46,16 @@ public class UserSyncHandler : FieldPacketHandler {
             }
             stateSyncs[i] = stateSync;
 
-            packet.ReadInt(); // ClientTicks
+            ticks[i] = packet.ReadInt(); // ClientTicks
+        }
+
+        // Chosen here: a move further than a player goes in that time is only logged, nothing is refused or reset.
+        long now = Environment.TickCount64;
+        for (int i = 0; i < segments; i++) {
+            if (session.Player.Moves.Add(ticks[i], stateSyncs[i].Position, now) is { } from) {
+                Logger.Information("Fast move: player {Player} ({CharacterId}) from {From} to {To} in state {State}",
+                    session.PlayerName, session.CharacterId, from, stateSyncs[i].Position, stateSyncs[i].State);
+            }
         }
 
         using (var buffer = new PoolByteWriter()) {

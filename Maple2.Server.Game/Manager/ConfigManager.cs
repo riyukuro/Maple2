@@ -36,6 +36,7 @@ public class ConfigManager {
     private readonly IDictionary<LapenshardSlot, int> lapenshards;
     private readonly IDictionary<int, SkillCooldown> skillCooldowns;
     private readonly IDictionary<int, SkillCastRules.LastCast> lastCasts;
+    private SkillCastRules.LastMotion? lastMotion;
     private readonly IDictionary<string, int> statLimits;
 
     public long DeathPenaltyEndTick {
@@ -239,6 +240,42 @@ public class ConfigManager {
     public void SaveCastTime(SkillMetadata skill, int castTick, long tick) {
         long cooldownMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
         lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick);
+    }
+
+    private long AttackSpeed => session.Player.Stats.Values[BasicAttribute.AttackSpeed].Total;
+
+    // Whether a cast comes before the motion of the last accepted cast lets the next one in
+    // (SkillCastRules.MotionRefuses).
+    public bool MotionTooEarly(SkillMetadata skill, int castTick, long tick) {
+        return lastMotion is { } last
+               && SkillCastRules.MotionRefuses(last, skill.Id, skill.Property.ImmediateActive, AttackSpeed, castTick, tick);
+    }
+
+    // Keeps an accepted cast's motion for the next cast. A cast whose motion has no sequence on the player's rig
+    // leaves the last kept motion as it is.
+    public void SaveCastMotion(SkillMetadataMotionProperty motion, int skillId, int castTick, long tick) {
+        AnimationSequenceMetadata? sequence = null;
+        session.Player.Animation.RigMetadata?.Sequences.TryGetValue(motion.SequenceName, out sequence);
+        if (sequence == null || SkillCastRules.MotionKeys(sequence.Keys) is not { } keys) {
+            return;
+        }
+        lastMotion = new SkillCastRules.LastMotion(skillId, keys.Next, keys.Self, motion.SequenceSpeed, AttackSpeed, tick, castTick);
+    }
+
+    // The shortest time between two iterations of a held skill with this motion (SkillHitRules.HeldInterval);
+    // 0 when the motion's sequence has no loop on the player's rig.
+    public long HeldInterval(SkillMetadataMotionProperty motion) {
+        AnimationSequenceMetadata? sequence = null;
+        session.Player.Animation.RigMetadata?.Sequences.TryGetValue(motion.SequenceName, out sequence);
+        if (sequence == null) {
+            return 0;
+        }
+        float? start = SkillCastRules.KeyTime(sequence.Keys, "loopstart");
+        float? end = SkillCastRules.KeyTime(sequence.Keys, "loopend");
+        if (start == null || end == null) {
+            return 0;
+        }
+        return SkillHitRules.HeldInterval(end.Value - start.Value, SkillCastRules.MotionSpeed(motion.SequenceSpeed, AttackSpeed));
     }
 
     public SkillCooldown? GetSkillCooldown(int skillId) {

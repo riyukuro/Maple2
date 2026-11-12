@@ -278,4 +278,45 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.TreeRefuses(true, 3, 3), Is.False);
         Assert.That(SkillCastRules.TreeRefuses(true, 3, 4), Is.True);
     }
+
+    [Test]
+    public void MotionKeysPickTheNextCastKey() {
+        var keys = new List<AnimationKey> { new("start", 0f), new("inputcombo", 0.3f), new("combo", 0.5f), new("selfinputcombo", 0.2f), new("end", 1.2f) };
+        Assert.That(SkillCastRules.MotionKeys(keys), Is.EqualTo((0.3f, 0.2f)));
+        keys = [new("combo", 0.5f), new("end", 1.2f)];
+        Assert.That(SkillCastRules.MotionKeys(keys), Is.EqualTo((0.5f, 0.5f)));
+        keys = [new("End", 1.2f)];
+        Assert.That(SkillCastRules.MotionKeys(keys), Is.EqualTo((1.2f, 1.2f)));
+        Assert.That(SkillCastRules.MotionKeys(new List<AnimationKey> { new("start", 0f) }), Is.Null);
+    }
+
+    [Test]
+    public void MotionSpeedIsFittedToTheAttackSpeed() {
+        Assert.That(SkillCastRules.MotionSpeed(1f, 100), Is.EqualTo(1f));
+        Assert.That(SkillCastRules.MotionSpeed(1.5f, 120), Is.EqualTo(1.8f).Within(0.0001f));
+        Assert.That(SkillCastRules.MotionSpeed(0f, 100), Is.EqualTo(1f), "no speed in the data");
+        Assert.That(SkillCastRules.MotionSpeed(1f, 80), Is.EqualTo(1f), "not slowed");
+        Assert.That(SkillCastRules.MotionRequiredGap(0.6f, 1.2f), Is.EqualTo(400));
+    }
+
+    [Test]
+    public void CastWaitsForTheLastMotion() {
+        // inputcombo 0.6 s, selfinputcombo 0.3 s, speed 1: another skill from 500 ms on, the same from 200 ms on.
+        var last = new SkillCastRules.LastMotion(10, 0.6f, 0.3f, 1f, 100, ServerTick: 10000, CastTick: 5000);
+        Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 100, 5499, 10499), Is.True);
+        Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 100, 5500, 10500), Is.False);
+        Assert.That(SkillCastRules.MotionRefuses(last, 10, false, 100, 5199, 10199), Is.True);
+        Assert.That(SkillCastRules.MotionRefuses(last, 10, false, 100, 5200, 10200), Is.False);
+        Assert.That(SkillCastRules.MotionRefuses(last, 11, true, 100, 5001, 10001), Is.False, "active at once");
+        // Attack speed 120 now: 0.6 / 1.2 = 500 ms, from 400 ms on.
+        Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 120, 5400, 10400), Is.False);
+        Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 120, 5399, 10399), Is.True);
+        // The client's tick cannot lengthen the time: the arrivals plus the allowance count.
+        Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 100, 9000, 10000), Is.False, "arrivals 0 ms apart plus 500");
+        var slow = new SkillCastRules.LastMotion(10, 1.2f, 1.2f, 1f, 100, ServerTick: 10000, CastTick: 5000);
+        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 9000, 10100), Is.True);
+        // Arriving in a burst is taken by the client's own ticks.
+        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 6100, 10100), Is.True);
+        Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 6100, 10600), Is.False);
+    }
 }

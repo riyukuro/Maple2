@@ -81,6 +81,60 @@ public static class SkillCastRules {
         return false;
     }
 
+    // The time a cast's motion takes before the next cast. The client takes the next skill from the motion's
+    // "inputcombo" key on (from "selfinputcombo" for the same skill again, when the motion has one); a motion
+    // without it is counted to its "combo" key, else to its "end" key. The key times are in seconds at speed 1.
+    // The client plays the motion at a speed its Lua (calc_pc_asiR) makes of the motion's own speed and the attack
+    // speed stat. The Lua body is not known: speed = motion speed x attack speed / 100 is fitted here over KMS2
+    // casts at attack speed 100 to 121. The client does not scale a motion of move type 3; the server does not hold
+    // the move type, so every motion is counted as scaled, which only shortens the time asked for.
+    // Chosen here: a cast is taken up to this long before that time.
+    public const long MotionSlackMs = 100;
+
+    // The last accepted cast that plays a motion: the times of its keys, its speed and when it came.
+    public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick);
+
+    // The earliest time of a key in a motion's sequence, null when the sequence lacks it.
+    public static float? KeyTime(IEnumerable<AnimationKey> keys, string name) {
+        float? time = null;
+        foreach (AnimationKey key in keys) {
+            if (string.Equals(key.Name, name, StringComparison.OrdinalIgnoreCase) && (time == null || key.Time < time)) {
+                time = key.Time;
+            }
+        }
+        return time;
+    }
+
+    // The key times after which another skill and the same skill are taken; null for a sequence with none.
+    public static (float Next, float Self)? MotionKeys(IReadOnlyCollection<AnimationKey> keys) {
+        float? next = KeyTime(keys, "inputcombo") ?? KeyTime(keys, "combo") ?? KeyTime(keys, "end");
+        if (next == null) {
+            return null;
+        }
+        return (next.Value, KeyTime(keys, "selfinputcombo") ?? next.Value);
+    }
+
+    // The fitted speed of a motion. An attack speed under 100 is counted as 100 (chosen here: no KMS2 cast has one).
+    public static float MotionSpeed(float sequenceSpeed, long attackSpeed) {
+        return (sequenceSpeed > 0 ? sequenceSpeed : 1f) * MathF.Max(1f, attackSpeed / 100f);
+    }
+
+    public static long MotionRequiredGap(float keySeconds, float speed) {
+        return (long) (keySeconds / speed * 1000) - MotionSlackMs;
+    }
+
+    // Whether a cast comes before the last cast's motion lets the next one in. A skill that is active at once
+    // (ImmediateActive) is taken at any time, as in KMS2. The higher of the attack speed at the last cast and now
+    // counts.
+    public static bool MotionRefuses(LastMotion last, int skillId, bool immediateActive, long attackSpeed, int castTick, long serverTick) {
+        if (immediateActive) {
+            return false;
+        }
+        float key = last.SkillId == skillId ? last.SelfKey : last.NextKey;
+        float speed = MotionSpeed(last.SequenceSpeed, Math.Max(last.AttackSpeed, attackSpeed));
+        return CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < MotionRequiredGap(key, speed);
+    }
+
     // The skills whose cooldown is checked as a job skill's: those of a job's tree and the job skill ids.
     public static bool IsJobSkill(int skillId, bool inAnyTree) => inAnyTree || skillId is >= 10000000 and <= 11999999;
 

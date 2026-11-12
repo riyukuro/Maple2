@@ -147,15 +147,21 @@ public class SkillHandler : FieldPacketHandler {
         session.ConditionUpdate(ConditionType.skill, codeLong: skillId, targetLong: session.Field.MapId);
         session.Config.SaveSkillCooldown(record.Metadata, startTick);
         session.Config.SaveCastTime(record.Metadata, serverTick, startTick);
+        session.Config.SaveCastMotion(record.Motion.MotionProperty, record.SkillId, serverTick, startTick);
     }
 
     // Checked before any cost is paid. A dead player casts only a skill that allows it. A skill of a job's tree
     // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
     // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast.
+    // No cast comes before the motion of the last cast lets the next one in (SkillCastRules.MotionRefuses).
     private bool CastAllowed(GameSession session, SkillRecord record, long tick, int castTick, out SkillCooldown? blocking) {
         blocking = null;
         BeginCondition condition = record.Metadata.Data.Condition;
         if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
+            return false;
+        }
+        if (session.Config.MotionTooEarly(record.Metadata, castTick, tick)) {
+            Logger.Debug("Cast refused, skill {SkillId} comes before the last cast's motion lets it in", record.SkillId);
             return false;
         }
         SkillInfo skillInfo = session.Config.Skill.SkillInfo;
@@ -209,7 +215,9 @@ public class SkillHandler : FieldPacketHandler {
 
         // An attack point packet outside what a cast sends (SkillHitRules) is dropped: nothing is declared or relayed.
         if (SkillHitRules.PointMoved(position, record.CastPosition)
-            || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick)) {
+            || !record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick,
+                SkillHitRules.MaxAttacks(record.Attack.TargetCount, record.Attack.Arrow.NonTarget == SkillTargetType.Owner),
+                session.Config.HeldInterval(record.Motion.MotionProperty))) {
             Logger.Debug("Attack point dropped: AttackPoint={AttackPoint} iteration={Iteration} count={Count} at {Position}: {Record}",
                 attackPoint, iterations, count, position, record);
             return;

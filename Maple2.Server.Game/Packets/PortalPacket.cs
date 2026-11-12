@@ -76,6 +76,7 @@ public static class PortalPacket {
     }
 
     public static ByteWriter MoveByPortal(IActor actor, Portal portal) {
+        (actor as FieldPlayer)?.Moves.ServerMoved(Environment.TickCount64);
         var pWriter = Packet.Of(SendOp.UserMoveByPortal);
         pWriter.WriteInt(actor.ObjectId);
         pWriter.Write<Vector3>(portal.Position + new Vector3(0, 0, 25)); // Always seems to be offset by 25
@@ -85,7 +86,9 @@ public static class PortalPacket {
         return pWriter;
     }
 
+    // The server moves the actor itself: a player's move check starts again (MoveWindow).
     public static ByteWriter MoveByPortal(IActor actor, Vector3 position, Vector3 rotation) {
+        (actor as FieldPlayer)?.Moves.ServerMoved(Environment.TickCount64);
         var pWriter = Packet.Of(SendOp.UserMoveByPortal);
         pWriter.WriteInt(actor.ObjectId);
         pWriter.Write<Vector3>(position + new Vector3(0, 0, 25)); // Always seems to be offset by 25

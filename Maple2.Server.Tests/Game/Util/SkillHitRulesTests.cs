@@ -116,4 +116,88 @@ public class SkillHitRulesTests {
         Assert.That(SkillHitRules.TooLate(15000, 10000), Is.False);
         Assert.That(SkillHitRules.TooLate(15001, 10000), Is.True);
     }
+
+    [Test]
+    public void PointDeclaresNoMoreThanTheAttackTargets() {
+        Assert.That(SkillHitRules.MaxAttacks(3, false), Is.EqualTo(3));
+        Assert.That(SkillHitRules.MaxAttacks(0, false), Is.EqualTo(0));
+        Assert.That(SkillHitRules.MaxAttacks(0, true), Is.EqualTo(1));
+        Assert.That(SkillHitRules.MaxAttacks(40, false), Is.EqualTo(SkillHitRules.MaxPointAttacks));
+
+        var budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 4, tick: 0, maxCount: 3), Is.False);
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 3, tick: 0, maxCount: 3), Is.True);
+        Assert.That(new SkillHitBudget().TakePoint(0, 0, held: false, count: 0, tick: 0, maxCount: 0), Is.True);
+    }
+
+    [Test]
+    public void HeldIntervalIsTheLoopAtTheMotionSpeed() {
+        Assert.That(SkillHitRules.HeldInterval(0.5f, 1f), Is.EqualTo(430)); // 500 x 0.9 - 20
+        Assert.That(SkillHitRules.HeldInterval(0.5f, 1.19f), Is.EqualTo(358));
+        Assert.That(SkillHitRules.HeldInterval(0f, 1f), Is.EqualTo(0), "no loop");
+        Assert.That(SkillHitRules.HeldInterval(0.01f, 1f), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void HeldIterationComesNoFasterThanItsLoop() {
+        // On time: every 500 ms on a 430 ms interval.
+        var budget = new SkillHitBudget();
+        for (int i = 0; i < 20; i++) {
+            Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: i * 500, intervalMs: 430), Is.True, $"iteration {i}");
+        }
+
+        // A late iteration and the next right behind it.
+        budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: true, count: 1, tick: 0, intervalMs: 430), Is.True);
+        Assert.That(budget.TakePoint(0, 1, held: true, count: 1, tick: 950, intervalMs: 430), Is.True);
+        Assert.That(budget.TakePoint(0, 2, held: true, count: 1, tick: 1000, intervalMs: 430), Is.True);
+        Assert.That(budget.TakePoint(0, 3, held: true, count: 1, tick: 1500, intervalMs: 430), Is.True);
+
+        // Twice as fast: the time owed runs out.
+        budget = new SkillHitBudget();
+        int taken = 0;
+        for (int i = 0; i < 20 && budget.TakePoint(0, i, held: true, count: 1, tick: i * 215, intervalMs: 430); i++) {
+            taken++;
+        }
+        Assert.That(taken, Is.EqualTo(3)); // due at 430 x i, taken while 215 x i >= 430 x i - 500
+
+        // Not checked without a loop, and each attack point on its own.
+        budget = new SkillHitBudget();
+        for (int i = 0; i < 20; i++) {
+            Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: i), Is.True);
+        }
+        budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: true, count: 1, tick: 0, intervalMs: 430), Is.True);
+        Assert.That(budget.TakePoint(1, 0, held: true, count: 1, tick: 10, intervalMs: 430), Is.True);
+    }
+
+    [Test]
+    public void FastMoveIsMeasuredOverOneSecondOnTheGround() {
+        var window = new MoveWindow();
+        Assert.That(window.Add(0, new Vector3(0, 0, 0), 0), Is.Null);
+        Assert.That(window.Add(500, new Vector3(900, 0, 0), 500), Is.Null);
+        Assert.That(window.Add(1000, new Vector3(1800, 0, 0), 1000), Is.Null, "1800 in 1 s");
+        Assert.That(window.Add(1400, new Vector3(2800, 0, 0), 1400), Is.EqualTo(new Vector3(900, 0, 0)), "1900 in 0.9 s");
+        Assert.That(window.Add(1500, new Vector3(2900, 0, 0), 1500), Is.Null, "starts again");
+
+        window = new MoveWindow();
+        Assert.That(window.Add(0, new Vector3(0, 0, 5000), 0), Is.Null);
+        Assert.That(window.Add(900, new Vector3(100, 0, 0), 900), Is.Null, "a fall");
+
+        window = new MoveWindow();
+        Assert.That(window.Add(0, new Vector3(0, 0, 0), 0), Is.Null);
+        Assert.That(window.Add(1100, new Vector3(1900, 0, 0), 1100), Is.Null, "over more than 1 s");
+        Assert.That(window.Add(1000, new Vector3(9000, 0, 0), 1200), Is.Null, "a tick that runs backwards starts again");
+    }
+
+    [Test]
+    public void ServerMoveIsNotMeasured() {
+        var window = new MoveWindow();
+        Assert.That(window.Add(0, new Vector3(0, 0, 0), 0), Is.Null);
+        window.ServerMoved(100);
+        Assert.That(window.Add(200, new Vector3(5000, 0, 0), 200), Is.Null);
+        Assert.That(window.Add(300, new Vector3(0, 0, 0), 2099), Is.Null, "still the old place");
+        Assert.That(window.Add(400, new Vector3(5000, 0, 0), 2100), Is.Null, "first position after the grace");
+        Assert.That(window.Add(500, new Vector3(7000, 0, 0), 2200), Is.EqualTo(new Vector3(5000, 0, 0)));
+    }
 }
