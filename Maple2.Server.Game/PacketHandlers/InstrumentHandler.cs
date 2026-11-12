@@ -176,7 +176,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
         session.ConditionUpdate(ConditionType.music_play_instrument_time, counter: totalTickTime / 1000, targetLong: session.Field.MapId, codeLong: session.Instrument.Value.Id);
         if (session.Instrument.Ensemble) {
-            session.ConditionUpdate(ConditionType.play_ensenble_time, counter: totalTickTime / 1000, targetLong: session.Field.MapId);
+            session.ConditionUpdate(ConditionType.play_ensenble_time, counter: totalTickTime / 1000, targetLong: session.Field.MapId, codeLong: session.Field.MapId);
         }
 
         session.Field.RemoveInstrument(session.Instrument.ObjectId);

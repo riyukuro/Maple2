@@ -70,6 +70,15 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: questId), Is.EqualTo(expected));
     }
 
+    // Ensemble play time counts for play_ensenble_time when the map played on is the row's code.
+    [TestCase(2000064, true)]
+    [TestCase(2000001, false)]
+    public void PlayEnsembleTime_CountsOnTheListedMap(int mapId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.play_ensenble_time, 300,
+            new ConditionMetadata.Parameters(Integers: [2000064]), null);
+        Assert.That(condition.Check(null!, targetLong: mapId, codeLong: mapId), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]

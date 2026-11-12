@@ -120,6 +120,7 @@ public static class ConditionUtil {
             case ConditionType.music_play_instrument_mastery:
             case ConditionType.music_play_instrument_time:
             case ConditionType.music_play_ensemble_in:
+            case ConditionType.play_ensenble_time:
             case ConditionType.music_play_score:
             case ConditionType.explore_continent:
             case ConditionType.continent:
