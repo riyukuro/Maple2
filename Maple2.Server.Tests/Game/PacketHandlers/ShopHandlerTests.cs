@@ -4,6 +4,7 @@ using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
@@ -95,6 +96,24 @@ public class ShopHandlerTests {
         Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(3));
         // Shop 4: the item id, the count, the price, the rarity, not to the guild storage.
         Assert.That(Convert.ToHexString(sent[3]), Does.EndWith("04" + "022D3101" + "03000000" + "5A000000" + "01" + "00"));
+    }
+
+    // A running NpcShopShowItem row that names the shop but not its product: the reloaded shop does not hold it,
+    // so a buy pays nothing and adds nothing.
+    [Test]
+    public void Buy_OfAnItemTheEventHidesDoesNothing() {
+        GameSession session = Login();
+        test.SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata> {
+            [1] = new(1, GameEventType.NpcShopShowItem, DateTime.Now.AddDays(-1), DateTime.Now.AddDays(1), TimeSpan.Zero, TimeSpan.Zero, [],
+                new NpcShopShowItem(ShopId, [ShopItemId]), "", "", "", ""),
+        }));
+        session.Shop.Load(ShopId);
+        test.TakeSent();
+
+        Buy(session, ProductId, 1);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+        Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
     }
 
     // A product with a stock count: Shop 2 (the product and the count bought) follows the bag add.

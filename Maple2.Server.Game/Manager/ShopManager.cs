@@ -211,9 +211,13 @@ public sealed class ShopManager {
     private SortedDictionary<int, ShopItem> GetShopItems(ShopMetadata metadata) {
         var items = new SortedDictionary<int, ShopItem>();
 
-        if (!session.ServerTableMetadata.ShopItemTable.Entries.TryGetValue(metadata.Id, out Dictionary<int, ShopItemMetadata>? shopItemMetadatas)) {
+        if (!session.ServerTableMetadata.ShopItemTable.Entries.TryGetValue(metadata.Id, out Dictionary<int, ShopItemMetadata>? allShopItems)) {
             return new SortedDictionary<int, ShopItem>();
         }
+
+        // A running NpcShopShowItem event keeps the shop to the items it names.
+        IReadOnlySet<int>? shown = ShopShowItemRules.Shown(session.ServerTableMetadata.GameEventTable.Entries.Values, metadata.Id, DateTime.Now);
+        List<ShopItemMetadata> shopItemMetadatas = ShopShowItemRules.Filter(allShopItems.Values, shown).ToList();
 
         if (metadata.EnableReset) {
             int minItemCount = metadata.RestockData.MinItemCount;
@@ -225,7 +229,7 @@ public sealed class ShopManager {
             const int maxIterations = 10;
 
             while (items.Count < minItemCount && failSafe < maxIterations) {
-                foreach (ShopItemMetadata shopItemMetadata in shopItemMetadatas.Values) {
+                foreach (ShopItemMetadata shopItemMetadata in shopItemMetadatas) {
                     if (items.Count >= metadata.RestockData.MaxItemCount) {
                         break;
                     }
@@ -254,7 +258,7 @@ public sealed class ShopManager {
                 logger.Warning("GetShopItems: Fail safe triggered after {MaxIterations} iterations for shop {ShopId}", maxIterations, metadata.Id);
             }
         } else {
-            foreach (ShopItemMetadata shopItemMetadata in shopItemMetadatas.Values) {
+            foreach (ShopItemMetadata shopItemMetadata in shopItemMetadatas) {
                 Item? item = session.Field?.ItemDrop.CreateItem(shopItemMetadata.ItemId, shopItemMetadata.Rarity, shopItemMetadata.SellUnit);
                 if (item == null) {
                     continue;

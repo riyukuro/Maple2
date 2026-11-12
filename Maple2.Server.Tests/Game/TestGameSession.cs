@@ -123,6 +123,8 @@ public sealed class TestGameSession {
         SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata>()));
         SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
         SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata>()));
+        // A shop load reads the running game events (NpcShopShowItem).
+        SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];
