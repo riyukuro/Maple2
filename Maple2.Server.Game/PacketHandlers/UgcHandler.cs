@@ -580,7 +580,7 @@ public class UgcHandler : FieldPacketHandler {
                 }
 
                 uid = newAdd.Uid;
-                session.Item.Inventory.Add(newAdd, notifyNew: true);
+                session.Item.AddOrMail(newAdd, notifyNew: true);
             }
 
             session.Send(UgcPacket.UpdateItem(session.Player.ObjectId, uid, item, ugcMetadata.CreatePrice, info.Type));

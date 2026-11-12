@@ -100,6 +100,17 @@ public class ItemManager {
         return true;
     }
 
+    // Adds the item to the inventory; when the bag does not take it, it goes by mail. A new item (no uid) becomes a
+    // mail row; an item that already has a row moves that row to the mail.
+    public bool AddOrMail(Item item, bool notifyNew = false, bool commit = false) {
+        lock (session.Item) {
+            if (Inventory.Add(item, notifyNew, commit)) {
+                return true;
+            }
+            return item.Uid == 0 ? MailItem(item) : MailHeldItem(item);
+        }
+    }
+
     // Mails an item row that another owner holds (a mannequin's item): the row moves to the mail as it is.
     public bool MailHeldItem(Item item) {
         lock (session.Item) {

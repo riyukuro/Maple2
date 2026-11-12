@@ -78,7 +78,7 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 if (saved == null) {
                     throw new InvalidOperationException($"Failed to create transfer output item: {output.Id}");
                 }
-                session.Item.Inventory.Add(saved, true);
+                session.Item.AddOrMail(saved, true);
             }
 
             session.Send(TransferEnchantPacket.Result());

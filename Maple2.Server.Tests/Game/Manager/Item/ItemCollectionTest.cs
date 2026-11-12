@@ -379,6 +379,27 @@ public class ItemCollectionTest {
         });
     }
 
+    // A failed Add changes nothing, so InventoryManager.Add can leave an item that already has a row where it was
+    // (a mail attachment collected into a full bag stays in the mail) instead of discarding it.
+    [Test]
+    public void FailedAdd_LeavesTheItemAndTheBagAsTheyWere() {
+        var bag = new ItemCollection(2);
+        Model.Game.Item stack = CreateItem(1000, amount: 90);
+        bag.Add(stack);
+        bag.Add(CreateItem(3000, amount: 100));
+
+        Model.Game.Item attachment = CreateItem(1000, amount: 20);
+        attachment.Slot = 1;
+        Assert.Multiple(() => {
+            Assert.That(bag.Add(attachment, stack: true), Is.Empty);
+            Assert.That(attachment.Amount, Is.EqualTo(20));
+            Assert.That(attachment.Slot, Is.EqualTo(1));
+            Assert.That(stack.Amount, Is.EqualTo(90));
+            Assert.That(bag.Contains(attachment.Uid), Is.False);
+            Assert.That(bag.Count, Is.EqualTo(2));
+        });
+    }
+
     private static Model.Game.Item CreateItem(int id, int rarity = 1, int amount = 1) {
         var fakeProperty = new ItemMetadataProperty(false, 0, 100, 18, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
         var fakeCustomize = new ItemMetadataCustomize(0, 0);

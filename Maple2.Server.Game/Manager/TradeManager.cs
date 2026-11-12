@@ -181,6 +181,14 @@ public class TradeManager : IDisposable {
 
         lock (mutex)
             lock (caller.Item) {
+                // The item goes back to the bag only when the bag takes it; otherwise it stays in the trade window.
+                Item? offered = self.Items[(short) tradeSlot];
+                if (offered == null || !caller.Item.Inventory.CanAdd(offered)) {
+                    if (offered != null) {
+                        caller.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
+                    }
+                    return;
+                }
                 if (!self.Items.RemoveSlot((short) tradeSlot, out Item? item)) {
                     return;
                 }
@@ -284,7 +292,7 @@ public class TradeManager : IDisposable {
                 if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
                     item.Transfer.RemainTrades--;
                 }
-                sender.Session.Item.Inventory.Add(item);
+                sender.Session.Item.AddOrMail(item);
             }
 
             // Clear just to be safe in case of multiple calls
@@ -297,7 +305,7 @@ public class TradeManager : IDisposable {
                 if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
                     item.Transfer.RemainTrades--;
                 }
-                receiver.Session.Item.Inventory.Add(item);
+                receiver.Session.Item.AddOrMail(item);
             }
 
             // Clear just to be safe in case of multiple calls

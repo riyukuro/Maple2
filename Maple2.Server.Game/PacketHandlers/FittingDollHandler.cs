@@ -111,7 +111,7 @@ public class FittingDollHandler : FieldPacketHandler {
                     // doll whose cube was removed (and saved) in another field instance of this home.
                     item.Group = ItemGroup.Default;
                     item.Slot = inventorySlot;
-                    if (!session.Item.Inventory.Add(item)) {
+                    if (!session.Item.AddOrMail(item)) {
                         Serilog.Log.Logger.Error("Failed to put item {ItemUid} back after a failed fitting doll save", item.Uid);
                     }
                     return moved == ItemMove.TargetGone ? FittingDollRules.Error.InvalidDoll : FittingDollRules.Error.InvalidItem;

@@ -182,7 +182,7 @@ public class LapenshardHandler : FieldPacketHandler {
         }
 
         Item upgradeLapenshard = lapenshard.Mutate(nextItem, Constant.LapenshardGrade);
-        if (!session.Item.Inventory.Add(upgradeLapenshard)) {
+        if (!session.Item.AddOrMail(upgradeLapenshard)) {
             Logger.Fatal("Failed to add upgraded lapenshard {ItemUid} to inventory", upgradeLapenshard.Uid);
             return false;
         }

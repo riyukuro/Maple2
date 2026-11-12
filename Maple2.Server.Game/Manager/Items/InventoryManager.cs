@@ -264,7 +264,12 @@ public class InventoryManager {
 
             IList<(Item, int Added)> result = items.Add(add, stack: true);
             if (result.Count == 0) {
-                Discard(add, commit);
+                // A failed add leaves an item that already had a row as it was (ItemCollection.Add changes nothing
+                // when it fails): its row stays with its owner, a mail or a storage, and the caller keeps it.
+                // Discarding it here moved the row to owner 0, so an attachment collected into a full bag was lost.
+                if (justCreated) {
+                    Discard(add, commit);
+                }
                 session.Send(ItemInventoryPacket.Error(s_err_inventory));
                 return false;
             }
