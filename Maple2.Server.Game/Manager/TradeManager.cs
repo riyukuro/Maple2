@@ -311,36 +311,45 @@ public class TradeManager : IDisposable {
             return;
         }
 
-        lock (sender.Session.Item) {
-            long fee = success ? (long) (Constants.TradeFeePercent / 100f * sender.Mesos) : 0;
-            sender.Session.Currency.Meso += sender.Mesos - fee;
-            foreach (Item item in sender.Items) {
-                if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
-                    item.Transfer.RemainTrades--;
-                }
-                sender.Session.Item.AddOrMail(item);
-            }
-
-            // Clear just to be safe in case of multiple calls
-            sender.Clear();
-        }
-        lock (receiver.Session.Item) {
-            long fee = success ? (long) (Constants.TradeFeePercent / 100f * receiver.Mesos) : 0;
-            receiver.Session.Currency.Meso += receiver.Mesos - fee;
-            foreach (Item item in receiver.Items) {
-                if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
-                    item.Transfer.RemainTrades--;
-                }
-                receiver.Session.Item.AddOrMail(item);
-            }
-
-            // Clear just to be safe in case of multiple calls
-            receiver.Clear();
-        }
+        // On success the sessions were swapped: each offer's giver is the other trader's session.
+        HandOver(sender, success ? receiver.Session : sender.Session, success);
+        HandOver(receiver, success ? sender.Session : receiver.Session, success);
 
         sender.Session.Send(TradePacket.EndTrade(success));
         receiver.Session.Send(TradePacket.EndTrade(success));
         state = TradeState.Completed;
+    }
+
+    // Hands |trader|'s offer to |trader.Session|, in the KMS2 order: the giver's window loses each item (RemoveItem);
+    // a player who receives an item gets it as an own offer (AddItem) and its removal; an item leaves the window
+    // before it enters the bag, and the mesos come after the items. No Meso is sent when no mesos move.
+    private void HandOver(Trader trader, GameSession giver, bool success) {
+        lock (trader.Session.Item) {
+            (Item Item, int Slot)[] items = trader.Items.Select(item => (item, (int) item.Slot)).ToArray();
+            if (success) {
+                foreach ((Item item, int slot) in items) {
+                    giver.Send(TradePacket.RemoveItem(true, slot, item.Uid));
+                }
+            }
+            foreach ((Item item, int slot) in items) {
+                if (success) {
+                    if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
+                        item.Transfer.RemainTrades--;
+                    }
+                    trader.Session.Send(TradePacket.AddItem(true, item));
+                }
+                trader.Session.Send(TradePacket.RemoveItem(true, slot, item.Uid));
+                trader.Session.Item.AddOrMail(item);
+            }
+
+            long fee = success ? (long) (Constants.TradeFeePercent / 100f * trader.Mesos) : 0;
+            if (trader.Mesos - fee != 0) {
+                trader.Session.Currency.Meso += trader.Mesos - fee;
+            }
+
+            // Clear just to be safe in case of multiple calls
+            trader.Clear();
+        }
     }
 
     // |mutex| Locking is done externally.

@@ -700,6 +700,9 @@ public class GuildManager : IDisposable {
 
         if (type == UpdateField.Map) {
             session.Send(GuildPacket.UpdateMemberMap(member.Name, member.Info.MapId));
+        } else if (type == UpdateField.GearScore) {
+            // KMS2 sends a gear score change alone, by the member's name.
+            session.Send(GuildPacket.UpdateMemberGearScore(member.Name, member.Info.GearScore));
         } else {
             session.Send(GuildPacket.UpdateMember(member.Info));
         }

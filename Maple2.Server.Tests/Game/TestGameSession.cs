@@ -120,7 +120,9 @@ public sealed class TestGameSession {
         string name = Guid.NewGuid().ToString("N")[..12];
         using (var context = new Ms2Context(Options)) {
             Maple2.Database.Model.Account account = new Account { Username = name };
-            account.Id = 0;
+            // In the in-memory store the account's id differs from the character's (both would be 1), so the rows
+            // an account owns (its storage) are not mixed up with the character's.
+            account.Id = options == null ? 1000 : 0;
             context.Account.Add(account);
             context.SaveChanges();
             AccountId = account.Id;

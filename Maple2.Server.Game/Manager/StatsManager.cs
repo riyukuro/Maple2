@@ -8,6 +8,7 @@ using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -176,6 +177,23 @@ public class StatsManager {
         });
     }
 
+    private int sentGearScore = -1;
+
+    // The gear score goes to the world when it changes, so the guild, club and party lists of the other players
+    // follow it. It was never sent: those lists showed 0.
+    public void SendGearScore(GameSession session, int gearScore) {
+        if (gearScore == sentGearScore) {
+            return;
+        }
+        sentGearScore = gearScore;
+        session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+            AccountId = session.AccountId,
+            CharacterId = session.CharacterId,
+            GearScore = gearScore,
+            Async = true,
+        });
+    }
+
     public void ResetActor(IActor actor) {
         Actor = actor;
     }
@@ -261,6 +279,7 @@ public class StatsManager {
         Log.Logger.Debug("Final Gearscore for {name} ({id}): {gearscore}", player.Value.Character.Name, player.Value.Character.Id, Values.GearScore);
         player.Session.Dungeon.UpdateDungeonEnterLimit();
         player.Session.ConditionUpdate(ConditionType.item_gear_score, counter: Values.GearScore);
+        SendGearScore(player.Session, Values.GearScore);
     }
 
     // The set-bonus parts that hold for the worn gear and the worn outfit (SetItemRules), and their effects:

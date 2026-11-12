@@ -23,7 +23,7 @@ public static class GuildPacket {
         UpdateMemberRank = 10,
         UpdateMemberMessage = 11,
         UpdateMemberName = 12,
-        Unknown14 = 14,
+        UpdateMemberGearScore = 14,
         CheckedIn = 15,
         Joined = 18,
         NotifyLeave = 19,
@@ -210,15 +210,6 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown14(string playerName) {
-        var pWriter = Packet.Of(SendOp.Guild);
-        pWriter.Write<Command>(Command.Unknown14);
-        pWriter.WriteUnicodeString(playerName);
-        pWriter.WriteInt(); // 3382
-
-        return pWriter;
-    }
-
     // s_guild_attend_complete
     // - You checked in.
     public static ByteWriter CheckedIn() {
@@ -380,6 +371,16 @@ public static class GuildPacket {
         pWriter.Write<Command>(Command.UpdateMemberMap);
         pWriter.WriteUnicodeString(playerName);
         pWriter.WriteInt(mapId);
+
+        return pWriter;
+    }
+
+    // The client stores the value as the named member's gear score (CGuildManager case 14).
+    public static ByteWriter UpdateMemberGearScore(string playerName, int gearScore) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.UpdateMemberGearScore);
+        pWriter.WriteUnicodeString(playerName);
+        pWriter.WriteInt(gearScore);
 
         return pWriter;
     }

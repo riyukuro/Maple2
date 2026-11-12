@@ -191,7 +191,7 @@ public class EquipManager {
             // Unequip from Gear.
             foreach ((EquipSlot slot, Item item) in Gear) {
                 if (itemUid == item.Uid) {
-                    if (UnequipInternal(slot, EquipKind.Gear)) {
+                    if (UnequipInternal(slot, EquipKind.Gear, takenOff: true)) {
                         session.Stats.Refresh();
                         return true;
                     }
@@ -201,7 +201,7 @@ public class EquipManager {
             // Unequip from Outfit.
             foreach ((EquipSlot slot, Item item) in Outfit) {
                 if (itemUid == item.Uid) {
-                    if (UnequipInternal(slot, EquipKind.Outfit)) {
+                    if (UnequipInternal(slot, EquipKind.Outfit, takenOff: true)) {
                         session.Stats.Refresh();
                         return true;
                     }
@@ -211,7 +211,7 @@ public class EquipManager {
             // Unequip from the second outfit tab.
             foreach ((EquipSlot slot, Item item) in Outfit2) {
                 if (itemUid == item.Uid) {
-                    if (UnequipInternal(slot, EquipKind.Outfit2)) {
+                    if (UnequipInternal(slot, EquipKind.Outfit2, takenOff: true)) {
                         session.Stats.Refresh();
                         return true;
                     }
@@ -347,7 +347,9 @@ public class EquipManager {
         };
     }
 
-    private bool UnequipInternal(EquipSlot slot, byte kind, short inventorySlot = -1) {
+    // KMS2 order: an item that is taken off is sent as ItemPutOff and then added to the bag; an item that makes
+    // room for another is added to the bag first (takenOff false).
+    private bool UnequipInternal(EquipSlot slot, byte kind, short inventorySlot = -1, bool takenOff = false) {
         bool isSkin = kind != EquipKind.Gear;
         ConcurrentDictionary<EquipSlot, Item> equips = Tab(kind);
         if (!equips.TryRemove(slot, out Item? unequipItem)) {
@@ -360,6 +362,9 @@ public class EquipManager {
 
         unequipItem.Group = ItemGroup.Default;
         unequipItem.Slot = inventorySlot;
+        if (takenOff) {
+            session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, unequipItem));
+        }
 
         bool success;
         if (slot is EquipSlot.HR or EquipSlot.ER or EquipSlot.FA or EquipSlot.FD) {
@@ -373,7 +378,9 @@ public class EquipManager {
             throw new InvalidOperationException($"Failed to unequip item: {unequipItem.Uid}");
         }
 
-        session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, unequipItem));
+        if (!takenOff) {
+            session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, unequipItem));
+        }
         session.Buffs.RemoveItemBuffs(unequipItem);
         return true;
     }
