@@ -171,12 +171,20 @@ public class EventRewardHandler : FieldPacketHandler {
             items.Add(item);
         }
 
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendClaimedDays, LongTermAttendRules.AddClaimedDay(claimed.Value, day));
+        // Each item goes to the bag, or by mail when the bag does not take it. The day is marked once an item
+        // has landed; when the first one lands nowhere the day stays open and there is no reply.
+        int given = 0;
         foreach (Item item in items) {
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
+            if (session.Item.AddOrMail(item, true)) {
+                given++;
+                continue;
+            }
+            Logger.Error("ClaimLongTermAttendReward: event {EventId} day {Day} item {ItemId} went to neither bag nor mail", gameEvent.Id, day, item.Id);
+            if (given == 0) {
+                return;
             }
         }
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendClaimedDays, LongTermAttendRules.AddClaimedDay(claimed.Value, day));
         session.Send(EventRewardPacket.ClaimLongTermAttendReward());
     }
 

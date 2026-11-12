@@ -7,10 +7,19 @@ namespace Maple2.File.Ingest.Helpers;
 // A LongTermAttendGift row: value1 is <ms><info title maxattendance merat eventTag/></ms>, value2 is
 // <ms><reward count item01 item02/>...</ms>.
 public static class LongTermAttendGiftReader {
+    // Null when the row cannot be read; text that is not XML is such a row, it does not stop the ingest.
     public static LongTermAttendGift? Parse(string value1, string value2) {
         if (string.IsNullOrEmpty(value1) || string.IsNullOrEmpty(value2)) {
             return null;
         }
+        try {
+            return ParseXml(value1, value2);
+        } catch (XmlException) {
+            return null;
+        }
+    }
+
+    private static LongTermAttendGift? ParseXml(string value1, string value2) {
 
         var value1Xml = new XmlDocument();
         value1Xml.LoadXml(value1);

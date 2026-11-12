@@ -1565,7 +1565,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                         amount: timerunEventItemCount,
                         rarity: timerunEventItemGrade));
             case GameEventType.LongTermAttendGift:
-                return LongTermAttendGiftReader.Parse(value1, value2);
+                // Read only for the replay: with the switch off the type is not stored, as before.
+                return replayAttendGift ? LongTermAttendGiftReader.Parse(value1, value2) : null;
             case GameEventType.MapleSurvivalOpenPeriod:
                 return new MapleSurvivalOpenPeriod();
             case GameEventType.ShutdownMapleSurvival:

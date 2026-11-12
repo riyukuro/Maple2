@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Validators;
@@ -195,6 +196,44 @@ public class LongTermAttendRulesTests {
         };
         Assert.That(AttendGiftReplay.Pick([known, unknown], now, GameEventType.LongTermAttendGift)?.Id, Is.EqualTo(990021));
         Assert.That(AttendGiftReplay.Pick([known, unknown], now, GameEventType.LongTermAttendGift, ClientRank)?.Id, Is.EqualTo(990020));
+    }
+
+    // Text that is not XML is a row that cannot be read, not an error that stops the ingest.
+    [Test]
+    public void Reader_ReturnsNullForTextThatIsNotXml() {
+        const string info = "<ms><info title=\"t\" maxattendance=\"30\" merat=\"120\" /></ms>";
+        Assert.That(LongTermAttendGiftReader.Parse("<ms><info", "<ms></ms>"), Is.Null);
+        Assert.That(LongTermAttendGiftReader.Parse(info, "<ms><reward count=\"1\""), Is.Null);
+        Assert.That(LongTermAttendGiftReader.Parse(info, "<ms></ms>"), Is.Not.Null);
+    }
+
+    // A later ingest moves a replayed event again. The values stored for the first run follow the moved end, so
+    // they do not run out while the event is live and a claimed day stays claimed.
+    [Test]
+    public void StoredValues_FollowTheMovedEventEnd() {
+        var first = new GameEvent(Event(990030, GameEventType.LongTermAttendGift, "2030-06-15-08-00", "2030-07-23-00-00-00"));
+        var moved = new GameEvent(Event(990030, GameEventType.LongTermAttendGift, "2030-06-25-08-00", "2030-08-02-00-00-00"));
+        var claimed = new GameEventUserValue(GameEventUserValueType.LongTermAttendClaimedDays, first.EndTime, 990030);
+        claimed.SetValue("1,5");
+        var days = new GameEventUserValue(GameEventUserValueType.LongTermAttendDays, first.EndTime, 990030);
+        days.SetValue("10");
+
+        GameEventUserValue claimedNow = GameEventManager.FollowEventEnd(claimed, moved);
+        GameEventUserValue daysNow = GameEventManager.FollowEventEnd(days, moved);
+        Assert.Multiple(() => {
+            Assert.That((claimedNow.Type, claimedNow.EventId, claimedNow.Value, claimedNow.ExpirationTime),
+                Is.EqualTo((GameEventUserValueType.LongTermAttendClaimedDays, 990030, "1,5", moved.EndTime)));
+            Assert.That((daysNow.Int(), daysNow.ExpirationTime), Is.EqualTo((10, moved.EndTime)));
+            // After the first end, still inside the moved run: the claimed rows stay refused.
+            Assert.That(LongTermAttendRules.CheckClaim(Gift, 1, daysNow.Int(), claimedNow.Value), Is.Null);
+            Assert.That(LongTermAttendRules.CheckClaim(Gift, 5, daysNow.Int(), claimedNow.Value), Is.Null);
+            // An end that did not move, another value type and another event type are left as they are.
+            Assert.That(GameEventManager.FollowEventEnd(claimed, first), Is.SameAs(claimed));
+            var other = new GameEventUserValue(GameEventUserValueType.GalleryCardFlipCount, first.EndTime - 500, 990030);
+            Assert.That(GameEventManager.FollowEventEnd(other, moved), Is.SameAs(other));
+            var gallery = new GameEvent(Event(990031, GameEventType.Gallery, "2030-06-25-08-00", "2030-08-02-00-00"));
+            Assert.That(GameEventManager.FollowEventEnd(claimed, gallery), Is.SameAs(claimed));
+        });
     }
 
     private static GameEventMetadata Event(int id, GameEventType type, string start, string end) {

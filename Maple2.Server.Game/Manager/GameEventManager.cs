@@ -55,14 +55,29 @@ public sealed class GameEventManager {
                 continue;
             }
 
-            if (!eventValues.TryGetValue(userValue.EventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
-                eventValues.Add(userValue.EventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {
-                    { userValue.Type, userValue },
+            GameEventUserValue loaded = FollowEventEnd(userValue, events.First(gameEvent => gameEvent.Id == userValue.EventId));
+            if (!eventValues.TryGetValue(loaded.EventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
+                eventValues.Add(loaded.EventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {
+                    { loaded.Type, loaded },
                 });
             } else {
-                valueDict.TryAdd(userValue.Type, userValue);
+                valueDict.TryAdd(loaded.Type, loaded);
             }
         }
+    }
+
+    // A long-term attendance value lasts as long as its event. When the event's end has moved since the value was
+    // stored (a replayed event is moved again by a later ingest), the value follows it: stored at the first end it
+    // would run out while the event is still live, and every day claimed so far could be claimed again.
+    public static GameEventUserValue FollowEventEnd(GameEventUserValue value, GameEvent gameEvent) {
+        if (gameEvent.Metadata.Type != GameEventType.LongTermAttendGift || value.ExpirationTime == gameEvent.EndTime
+            || value.Type is not (GameEventUserValueType.LongTermAttendClaimedDays or GameEventUserValueType.LongTermAttendPoints
+                or GameEventUserValueType.LongTermAttendDays or GameEventUserValueType.LongTermAttendPointTime)) {
+            return value;
+        }
+        var moved = new GameEventUserValue(value.Type, gameEvent.EndTime, value.EventId);
+        moved.SetValue(value.Value);
+        return moved;
     }
 
     private void UpdateDtReward() {
