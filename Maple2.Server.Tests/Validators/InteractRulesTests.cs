@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -100,5 +101,18 @@ public class InteractRulesTests {
             names.Add("n" + i);
         }
         Assert.That(InteractRules.TakeEnds(new HashSet<string>(), names, _ => (false, true)), Has.Count.EqualTo(InteractRules.MaxStarted));
+    }
+
+    // The answers KMS2 gives per kind: a mesh object the result alone, a telescope, a UI object and a gathered
+    // object the interaction and the result, the rest neither.
+    [Test]
+    public void AnswerPerKind() {
+        Assert.That(InteractRules.Answer(InteractType.Mesh), Is.EqualTo((false, true)));
+        Assert.That(InteractRules.Answer(InteractType.Telescope), Is.EqualTo((true, true)));
+        Assert.That(InteractRules.Answer(InteractType.Ui), Is.EqualTo((true, true)));
+        Assert.That(InteractRules.Answer(InteractType.Gathering), Is.EqualTo((true, true)));
+        foreach (InteractType type in new[] { InteractType.Web, InteractType.DisplayImage, InteractType.GuildPoster, InteractType.BillBoard, InteractType.WatchTower }) {
+            Assert.That(InteractRules.Answer(type), Is.EqualTo((false, false)));
+        }
     }
 }

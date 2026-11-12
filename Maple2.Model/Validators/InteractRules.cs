@@ -39,6 +39,17 @@ public static class InteractRules {
 
     // FunctionCube 0x002E: the client's farming state sends mode 4 (begin) for the cubes in reach and mode 5
     // (use) for the same cubes when the cast completes. Furniture and nurturing uses send mode 5 alone.
+    // What KMS2 answers the end of an interaction with, after the object's state update if its state changes:
+    // InteractObject 5 (the interaction) and 13 (the result). A mesh object gets the result alone; a telescope,
+    // a UI object and a gathered object get both; the other kinds get neither.
+    public static (bool Interact, bool Result) Answer(InteractType type) {
+        return type switch {
+            InteractType.Mesh => (false, true),
+            InteractType.Telescope or InteractType.Ui or InteractType.Gathering => (true, true),
+            _ => (false, false),
+        };
+    }
+
     public static bool NeedsBegin(InteractCubeControlType type) {
         return type is InteractCubeControlType.Farming or InteractCubeControlType.Breeding;
     }

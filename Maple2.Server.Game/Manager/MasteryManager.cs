@@ -145,24 +145,35 @@ public class MasteryManager {
         return (short) Math.Max(1, masteryRewardEntries.OrderByDescending(mastery => mastery.Key).FirstOrDefault(mastery => session.Mastery[type] >= mastery.Value.Value).Key);
     }
 
+    // KMS2 order for a gathered object: the mastery, the drops, InteractObject 5 and 13, then the experience.
     public void Gather(FieldInteract fieldInteract) {
-        if (GatherCommon(fieldInteract.Value.Item.RecipeId, fieldInteract.Position, fieldInteract.Rotation)) {
-            session.Send(InteractObjectPacket.Interact(fieldInteract, decreaseAmount: 1));
-        } else {
-            session.Send(InteractObjectPacket.Interact(fieldInteract, GatherResult.Fail, decreaseAmount: 0));
-        }
+        bool success = GatherCommon(fieldInteract.Value.Item.RecipeId, fieldInteract.Position, fieldInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
+        session.Send(success
+            ? InteractObjectPacket.Interact(fieldInteract, decreaseAmount: 1)
+            : InteractObjectPacket.Interact(fieldInteract, GatherResult.Fail, decreaseAmount: 0));
+        session.Send(InteractObjectPacket.Result(InteractResult.none, fieldInteract));
+        GatherExp(success, recipeMetadata);
     }
 
+    // KMS2 order for a farming or breeding cube: the mastery, the drops, the cube's update, the success or
+    // failure, then the experience.
     public void Gather(FieldFunctionInteract fieldFunctionInteract) {
-        if (GatherCommon(fieldFunctionInteract.Value.RecipeId, fieldFunctionInteract.Position, fieldFunctionInteract.Rotation)) {
-            session.Send(FunctionCubePacket.SuccessLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube));
-        } else {
-            session.Send(FunctionCubePacket.FailLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube));
+        bool success = GatherCommon(fieldFunctionInteract.Value.RecipeId, fieldFunctionInteract.Position, fieldFunctionInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
+        session.Send(FunctionCubePacket.UpdateFunctionCube(fieldFunctionInteract.InteractCube));
+        session.Send(success
+            ? FunctionCubePacket.SuccessLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube)
+            : FunctionCubePacket.FailLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube));
+        GatherExp(success, recipeMetadata);
+    }
+
+    private void GatherExp(bool success, MasteryRecipeTable.Entry? recipeMetadata) {
+        if (success && recipeMetadata is { NoRewardExp: false }) {
+            session.Exp.AddExp(ExpType.gathering);
         }
     }
 
-    private bool GatherCommon(int recipeId, Vector3 position, Vector3 rotation) {
-        if (!session.TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out MasteryRecipeTable.Entry? recipeMetadata)) {
+    private bool GatherCommon(int recipeId, Vector3 position, Vector3 rotation, out MasteryRecipeTable.Entry? recipeMetadata) {
+        if (!session.TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out recipeMetadata)) {
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
             return false;
         }
@@ -178,14 +189,11 @@ public class MasteryManager {
             return false;
         }
 
-        Gather(recipeMetadata, position, rotation);
-        if (!recipeMetadata.NoRewardExp) {
-            session.Exp.AddExp(ExpType.gathering);
-        }
         int reward = GatherReward(recipeMetadata);
         if (reward > 0) {
             this[recipeMetadata.Type] += reward;
         }
+        Gather(recipeMetadata, position, rotation);
         return true;
     }
 

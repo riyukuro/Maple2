@@ -84,6 +84,17 @@ public class InteractObjectHandler : FieldPacketHandler {
         }
     }
 
+    // The interaction (5) and the result (13) as KMS2 sends them for the object's kind.
+    private static void SendAnswer(GameSession session, FieldInteract interact) {
+        (bool sendInteract, bool sendResult) = InteractRules.Answer(interact.Value.Type);
+        if (sendInteract) {
+            session.Send(InteractObjectPacket.Interact(interact));
+        }
+        if (sendResult) {
+            session.Send(InteractObjectPacket.Result(InteractResult.none, interact));
+        }
+    }
+
     private void End(GameSession session, string entityId) {
         if (session.Field?.TryGetInteract(entityId, out FieldInteract? interact) != true) {
             return;
@@ -107,18 +118,15 @@ public class InteractObjectHandler : FieldPacketHandler {
 
         switch (interact.Value.Type) {
             case InteractType.Mesh:
-                session.Send(InteractObjectPacket.Interact(interact));
+            case InteractType.Ui:
+                SendAnswer(session, interact);
                 break;
             case InteractType.Telescope:
-                session.Send(InteractObjectPacket.Interact(interact));
-                session.Send(InteractObjectPacket.Result(InteractResult.s_interact_find_new_telescope, interact));
+                SendAnswer(session, interact);
 
                 if (session.Player.Value.Unlock.InteractedObjects.Add(interact.Object.Id)) {
                     session.Exp.AddExp(ExpType.telescope);
                 }
-                break;
-            case InteractType.Ui:
-                session.Send(InteractObjectPacket.Interact(interact));
                 break;
             case InteractType.Web:
             case InteractType.DisplayImage:
@@ -129,8 +137,8 @@ public class InteractObjectHandler : FieldPacketHandler {
                 session.Send(PlayerHostPacket.AdBalloonWindow((interact.Object as InteractBillBoardObject)!));
                 break;
             case InteractType.Gathering:
+                // The mastery, the drops, the interaction and its result, then the experience.
                 session.Mastery.Gather(interact);
-                session.Send(InteractObjectPacket.Result(InteractResult.none, interact));
                 if (session.Field.MapId != Constant.DefaultHomeMapId) {
                     session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnLifeSkillGather);
                 }

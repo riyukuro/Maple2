@@ -123,8 +123,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 }
                 FieldFunctionInteract? fieldFunctionInteract = session.Field?.TryGetFieldFunctionInteract(fieldInteract.InteractCube.Id);
                 if (fieldFunctionInteract != null && fieldFunctionInteract.Use()) {
-                    session.Send(FunctionCubePacket.UpdateFunctionCube(fieldFunctionInteract.InteractCube));
-
+                    // The mastery, the drops, the cube's update, the result, then the experience.
                     session.Mastery.Gather(fieldFunctionInteract);
                 }
                 break;
