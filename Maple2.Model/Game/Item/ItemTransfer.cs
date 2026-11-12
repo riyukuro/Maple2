@@ -34,8 +34,9 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
             return false;
         }
 
+        // KMS2 keeps the trade count on a bound item (about 400 bound items of bind-on-equip, -use and pet ids go out
+        // with 1 trade left); the client tests the binding first, so the count only comes back with the binding gone.
         Binding = new ItemBinding(character.Id, character.Name);
-        RemainTrades = 0;
         return true;
     }
 

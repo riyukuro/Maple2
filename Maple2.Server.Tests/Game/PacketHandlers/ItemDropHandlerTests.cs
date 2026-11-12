@@ -1,6 +1,13 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 
@@ -95,6 +102,53 @@ public class ItemDropHandlerTests {
         Drop(session, 6);
 
         Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
+    }
+
+    private static ICollection<FieldItem> Ground(GameSession session) {
+        var items = (ConcurrentDictionary<int, FieldItem>) typeof(FieldManager)
+            .GetField("fieldItems", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Field)!;
+        return items.Values;
+    }
+
+    // Mode 4 comes only for an item the client lets land on the field (CItemTransfer::CanDestroy): the count it
+    // chose lands, the rest stays. The server's own Split flag is not asked.
+    [TestCase(TransferFlag.Trade | TransferFlag.Split)]
+    [TestCase(TransferFlag.Trade)]
+    public void TradeableItem_DropsTheChosenCount(TransferFlag flag) {
+        GameSession session = Start();
+        session.Item.Inventory.Get(stack.Uid)!.Transfer = new ItemTransfer(flag);
+
+        Drop(session, 2);
+
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(3));
+        Assert.That(Ground(session).Select(item => item.Value.Amount), Is.EqualTo(new[] { 2 }));
+    }
+
+    // Mode 5 comes from the destroy box: the whole item goes and nothing lands, tradeable or not.
+    [TestCase(TransferFlag.Trade)]
+    [TestCase(TransferFlag.None)]
+    public void DropAll_DestroysTheItem(TransferFlag flag) {
+        GameSession session = Start();
+        session.Item.Inventory.Get(stack.Uid)!.Transfer = new ItemTransfer(flag);
+
+        DropAll(session);
+
+        Assert.That(session.Item.Inventory.Get(stack.Uid), Is.Null);
+        Assert.That(Ground(session), Is.Empty);
+    }
+
+    // A bound item or one with no trade bit never lands on the field.
+    [Test]
+    public void IsFieldDrop() {
+        var item = new Item(TestGameSession.Metadata(20000001, type: 2));
+        item.Transfer = new ItemTransfer(TransferFlag.Trade);
+        Assert.That(ItemInventoryHandler.IsFieldDrop(item), Is.True);
+        item.Transfer = new ItemTransfer(TransferFlag.LimitTrade, 1);
+        Assert.That(ItemInventoryHandler.IsFieldDrop(item), Is.False);
+        item.Transfer = new ItemTransfer(TransferFlag.Trade | TransferFlag.Bind, binding: new ItemBinding(1, "a"));
+        Assert.That(ItemInventoryHandler.IsFieldDrop(item), Is.False);
+        item.Transfer = null;
+        Assert.That(ItemInventoryHandler.IsFieldDrop(item), Is.False);
     }
 
     [TestCase(false, true, 7, 0, 0, true)]

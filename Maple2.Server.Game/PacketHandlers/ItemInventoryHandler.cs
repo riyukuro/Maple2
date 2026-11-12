@@ -98,11 +98,11 @@ public class ItemInventoryHandler : FieldPacketHandler {
     }
 
     /// <summary>
-    /// Common util to handle item dropping from inventory.
+    /// Drop (mode 4) and destroy (mode 5). The client sends mode 4 with the count it chose only for an item it may
+    /// drop (CItemTransfer::CanDestroy: trade bit, no binding, not locked; no gem; InvenSlot::vfunc_26), and mode 5
+    /// from the destroy box it shows for every other item (UIMessageBox::HandleDestroyItemButton).
     /// </summary>
-    /// <param name="session"></param>
-    /// <param name="uid">Uid of the item to drop</param>
-    /// <param name="amount">The amount to drop. -1 drops the entire stack.</param>
+    /// <param name="amount">The amount to drop; -1 destroys the whole item.</param>
     private void DropItem(GameSession session, long uid, int amount = -1) {
         if (session.Field is null) return;
         Item? drop = session.Item.Inventory.Get(uid);
@@ -127,20 +127,22 @@ public class ItemInventoryHandler : FieldPacketHandler {
             return;
         }
 
-        // If item is not splittable, force drop all.
-        if (drop.Transfer?.Flag.HasFlag(TransferFlag.Split) != true) {
-            amount = -1;
-        }
-
-        if (!session.Item.Inventory.Remove(uid, out drop, amount)) {
+        bool toField = amount > 0 && IsFieldDrop(drop);
+        if (!session.Item.Inventory.Remove(uid, out drop, toField ? amount : -1)) {
             return;
         }
 
-        if (drop.Transfer == null || drop.IsExpired() || !drop.Transfer.Flag.HasFlag(TransferFlag.Trade) || !drop.Transfer.Flag.HasFlag(TransferFlag.Split) || drop.Transfer.Binding != null) {
+        if (!toField) {
             session.Item.Inventory.Discard(drop);
             return;
         }
 
         session.Field.DropItem(session.Player, drop);
+    }
+
+    // The item lands on the field (CItemTransfer::CanDestroy); anything else is destroyed.
+    internal static bool IsFieldDrop(Item item) {
+        return item.Transfer != null && !item.IsExpired() && item.Transfer.Flag.HasFlag(TransferFlag.Trade)
+               && item.Transfer.Binding == null;
     }
 }

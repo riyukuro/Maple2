@@ -25,8 +25,9 @@ public static class BlackMarketRules {
         return price > 0 && count > 0 && price <= long.MaxValue / count;
     }
 
-    public static bool CanList(bool locked, bool hasTransfer, TransferFlag flag, int remainTrades, bool bound) {
-        if (locked) {
+    // filledScore: a custom music score that has been written (CItem::FUN_140525790; CanListOnBlackMarket refuses it).
+    public static bool CanList(bool locked, bool hasTransfer, TransferFlag flag, int remainTrades, bool bound, bool filledScore = false) {
+        if (locked || filledScore) {
             return false;
         }
         return !hasTransfer || TradeRules.IsTradeable(flag, remainTrades, bound);

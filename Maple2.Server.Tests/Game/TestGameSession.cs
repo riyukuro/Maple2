@@ -705,6 +705,8 @@ public sealed class TestGameSession {
         typeof(FieldManager).GetField("<MapId>k__BackingField", Any)!.SetValue(field, map.Id);
         typeof(FieldManager).GetField(nameof(FieldManager.Plots), Any)!.SetValue(field, new ConcurrentDictionary<int, Plot>());
         typeof(FieldManager).GetField("<ItemMetadata>k__BackingField", Any)!.SetValue(field, itemMetadata);
+        // An item a player drops is saved before it lands (SpawnItem).
+        typeof(FieldManager).GetField("<GameStorage>k__BackingField", Any)!.SetValue(field, Storage);
         typeof(FieldManager).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(field, TableMetadata);
         typeof(FieldManager).GetField("<ServerTableMetadata>k__BackingField", Any)!.SetValue(field, ServerTableMetadata);
         typeof(FieldManager).GetField("<ItemStatsCalc>k__BackingField", Any)!.SetValue(field, stats);

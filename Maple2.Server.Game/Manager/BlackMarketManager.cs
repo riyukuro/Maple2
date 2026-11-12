@@ -57,7 +57,11 @@ public sealed class BlackMarketManager {
             return;
         }
         if (!BlackMarketRules.CanList(item.IsLocked, item.Transfer != null, item.Transfer?.Flag ?? TransferFlag.None,
-                item.Transfer?.RemainTrades ?? 0, item.Transfer?.Binding != null)) {
+                item.Transfer?.RemainTrades ?? 0, item.Transfer?.Binding != null, item.Music != null && item.Music.Author != string.Empty)
+            // A gem that may not go with the item (CItemSocket FUN_1406227f0); the client's own gem line has no
+            // known error code here, so the generic refusal.
+            || !TradeRules.AreGemsTradeable(item.Socket, id => session.ItemMetadata.TryGet(id, out ItemMetadata? gem) ? gem.Limit.TransferType : null,
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2));
             return;
         }

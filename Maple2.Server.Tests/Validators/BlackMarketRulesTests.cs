@@ -51,6 +51,13 @@ public class BlackMarketRulesTests {
         Assert.That(BlackMarketRules.CanList(false, false, TransferFlag.None, 0, false), Is.True);
     }
 
+    // A written music score is not listed (CanListOnBlackMarket asks the score's text).
+    [Test]
+    public void FilledScoreIsNotListed() {
+        Assert.That(BlackMarketRules.CanList(false, true, TransferFlag.Trade, 0, false, filledScore: true), Is.False);
+        Assert.That(BlackMarketRules.CanList(false, true, TransferFlag.Trade, 0, false, filledScore: false), Is.True);
+    }
+
     // BlackMarket 0x005F mode 5: i64 listing id, i32 count.
     [TestCase(1, 5, true)]
     [TestCase(5, 5, true)]

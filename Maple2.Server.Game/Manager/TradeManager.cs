@@ -177,6 +177,11 @@ public class TradeManager : IDisposable {
                 if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
                     return;
                 }
+                // Nor one holding a gem that may not go with it (CItemSocket FUN_140622790).
+                if (!TradeRules.AreGemsTradeable(offered.Socket, id => caller.ItemMetadata.TryGet(id, out ItemMetadata? gem) ? gem.Limit.TransferType : null,
+                        DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+                    return;
+                }
                 if (!caller.Item.Inventory.Remove(itemUid, out Item? item, amount)) {
                     return;
                 }

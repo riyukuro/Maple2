@@ -172,10 +172,9 @@ public class Item : IByteSerializable, IByteDeserializable {
                 }
                 return result;
             case TransferType.BlackMarketOnly:
-                if (!zeroTrades || belowRarity) {
-                    return TransferFlag.Trade;
-                }
-                return zeroTrades ? TransferFlag.None : TransferFlag.LimitTrade;
+                // KMS2 sends every black-market-only item as 4, whatever its rarity (TradeMaxRarity 4, rarity 4: 1306
+                // items of 20 ids across builds 2502-2549).
+                return TransferFlag.Trade;
             default:
                 return TransferFlag.None;
         }
