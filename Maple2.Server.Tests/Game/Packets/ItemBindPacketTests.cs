@@ -32,4 +32,24 @@ public class ItemBindPacketTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(0x1122334455667788));
         Assert.That(packet[10..], Is.EqualTo(stream.ToArray()));
     }
+
+    // A bag item: ItemInventory mode 14 (uid, stream). Any other item: BindItem.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void PacketByPlace(bool inBag) {
+        Item item = ItemOf(TransferType.BindOnEquip);
+        var stream = new ByteWriter();
+        stream.WriteClass<Item>(item);
+
+        byte[] packet = ItemBindPacket.For(item, inBag).ToArray();
+        var reader = new ByteReader(packet, 0);
+        if (inBag) {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ItemInventory));
+            Assert.That(reader.ReadByte(), Is.EqualTo(14));
+        } else {
+            Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.BindItem));
+        }
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x1122334455667788));
+        Assert.That(packet[(inBag ? 11 : 10)..], Is.EqualTo(stream.ToArray()));
+    }
 }

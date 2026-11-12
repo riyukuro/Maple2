@@ -59,7 +59,7 @@ public class ItemManager {
 
     public void Bind(Item item) {
         if (item.Transfer?.Bind(session.Player.Value.Character) == true) {
-            session.Send(ItemBindPacket.Bind(item));
+            session.Send(ItemBindPacket.For(item, inBag: Inventory.Get(item.Uid) != null));
         }
     }
 

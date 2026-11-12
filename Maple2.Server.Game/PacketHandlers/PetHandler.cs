@@ -416,8 +416,9 @@ public class PetHandler : FieldPacketHandler {
             }
 
             // A pet binds to the character that first summons it; KMS2 sends BindItem just before the pet appears.
-            if (pet.Metadata.Limit.TransferType == TransferType.BindPet) {
-                session.Item.Bind(pet);
+            if (pet.Metadata.Limit.TransferType == TransferType.BindPet
+                && pet.Transfer?.Bind(session.Player.Value.Character) == true) {
+                session.Send(ItemBindPacket.Bind(pet));
             }
 
             session.Field.Broadcast(FieldPacket.AddPet(fieldPet));
