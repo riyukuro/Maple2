@@ -11,4 +11,13 @@ public static class ItemEnchantRules {
     public static bool CanEnchant(bool enableEnchant, int enchants, int limitBreakLevel) {
         return enableEnchant && limitBreakLevel <= 0 && enchants is >= 0 and < MaxGrade;
     }
+
+    // Mesos per Crystal Fragment the player is short of. The client's ingredient list
+    // (uiitemenchantdialog.cpp:1617) shows the missing fragments as a meso cost, s_itemenchant_fee.
+    public const long CrystalFragmentFee = 1000;
+
+    // The client's fee for the Crystal Fragment line: (need - have) x 1000 when short, else nothing.
+    public static long CrystalFragmentShortfallFee(int need, int have) {
+        return need > have ? (long) (need - have) * CrystalFragmentFee : 0;
+    }
 }

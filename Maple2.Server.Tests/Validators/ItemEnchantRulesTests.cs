@@ -15,6 +15,15 @@ public class ItemEnchantRulesTests {
         Assert.That(ItemEnchantRules.CanEnchant(enable, enchants, limitBreak), Is.EqualTo(expected));
     }
 
+    [TestCase(20, 20, 0L)]
+    [TestCase(20, 25, 0L)]
+    [TestCase(20, 0, 20000L)]
+    [TestCase(84, 70, 14000L)]
+    [TestCase(0, 0, 0L)]
+    public void CrystalFragmentShortfallFee(int need, int have, long expected) {
+        Assert.That(ItemEnchantRules.CrystalFragmentShortfallFee(need, have), Is.EqualTo(expected));
+    }
+
     // Mode 1: u8 kind, i64 item uid. Mode 4: i64 item uid, i64 (unused by the server).
     [Test]
     public void Bytes() {

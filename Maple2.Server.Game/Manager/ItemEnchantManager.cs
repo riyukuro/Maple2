@@ -378,10 +378,34 @@ public class ItemEnchantManager {
                 }
             }
 
-            // Note: All validation should be above this point.
-            if (!session.Item.Inventory.Consume(catalysts)) {
+            // Missing Crystal Fragments are paid in mesos, as the client's ingredient list shows (s_itemenchant_fee).
+            long fee = 0;
+            List<IngredientInfo> consume = new(catalysts.Count);
+            foreach (IngredientInfo catalyst in catalysts) {
+                int amount = catalyst.Amount;
+                if (catalyst.Tag == ItemTag.CrystalPiece) {
+                    int held = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(item => item.Amount);
+                    fee = ItemEnchantRules.CrystalFragmentShortfallFee(amount, held);
+                    if (fee > 0) {
+                        amount = held;
+                    }
+                }
+                if (amount > 0) {
+                    consume.Add(new IngredientInfo(catalyst.Tag, amount));
+                }
+            }
+            if (fee > 0 && (!LimitBreakRules.CanPay(session.Currency.Meso, fee) || session.Currency.CanAddMeso(-fee) != -fee)) {
                 session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
                 return false;
+            }
+
+            // Note: All validation should be above this point.
+            if (!session.Item.Inventory.Consume(consume)) {
+                session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
+                return false;
+            }
+            if (fee > 0) {
+                session.Currency.Meso -= fee;
             }
 
             foreach ((long fodderUid, _) in fodders) {

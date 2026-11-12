@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-﻿using Maple2.Server.Game.Util;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
 
