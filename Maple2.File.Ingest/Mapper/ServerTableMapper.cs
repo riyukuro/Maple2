@@ -1635,6 +1635,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.Remake(value1, value2);
             case GameEventType.SaleBeautyShop:
                 return EventSaleReader.BeautyShop(value1, value2, value3);
+            case GameEventType.DungeonBonusReward:
+                return EventXmlReader.DungeonBonus(value1);
+            case GameEventType.CollectItemGroup:
+                return EventXmlReader.CollectItemGroup(value1);
             case GameEventType.SAHotTime:
                 specialRates ??= ClientSpecialRates();
                 // Without a client pack every attribute counts as a rate: the 12 the KR rows name are rates.

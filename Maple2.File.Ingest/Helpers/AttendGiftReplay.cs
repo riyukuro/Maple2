@@ -9,9 +9,9 @@ namespace Maple2.File.Ingest.Helpers;
 // attendance calendar or the stamp card. MS2_REPLAY_ATTEND_GIFT=1 keeps one ended event of each type and moves it
 // to start on the ingest day with its original length. Unset, the ingest is unchanged. The same holds for the
 // design price sale (SaleUgcDesign), the cube price sale (SaleHousing) and the dungeon helper bonus
-// (FindDungeonHelperBonus), the change of attributes sale (SaleRemake), the beauty fee sale (SaleBeautyShop) and
-// the special attribute bonus (SAHotTime):
-// every row has ended, and the switch replays one of each.
+// (FindDungeonHelperBonus), the change of attributes sale (SaleRemake), the beauty fee sale (SaleBeautyShop), the
+// special attribute bonus (SAHotTime), the dungeon clear bonus (DungeonBonusReward) and the item collection
+// (CollectItemGroup): every row has ended, and the switch replays one of each.
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -20,6 +20,7 @@ public static class AttendGiftReplay {
         GameEventType.AttendGift, GameEventType.LongTermAttendGift, GameEventType.StampEvent,
         GameEventType.SaleUgcDesign, GameEventType.SaleHousing, GameEventType.FindDungeonHelperBonus,
         GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
+        GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup,
     ];
 
     private static readonly string[] TimeFormats = ["yyyy-MM-dd-HH-mm", "yyyy-MM-dd-HH-mm-ss"];
@@ -76,7 +77,8 @@ public static class AttendGiftReplay {
     // an item id. KR AttendGift rows list items the KR item data does not have (99000056's four), so such an
     // event cannot be shown. A LongTermAttendGift reward is a plain ItemEntity shown with the rank sent, so an
     // unknown item there does not assert, but it has no icon or name; such a calendar is passed over too (an empty
-    // slot, item 0, is not an item). The same holds for a StampEvent's reward rows and complete reward.
+    // slot, item 0, is not an item). The same holds for a StampEvent's reward rows and complete reward, and for a
+    // CollectItemGroup's condition items and result.
     public static bool ClientHasRewards(GameEventMetadata gameEvent, Func<int, int> clientRank) {
         return gameEvent.Data switch {
             AttendGift attendGift => attendGift.Items.All(item => clientRank(item.ItemId) > 0),
@@ -87,6 +89,9 @@ public static class AttendGiftReplay {
                 .SelectMany(reward => new[] { reward.Item01, reward.Item02 })
                 .Append(stampEvent.CompleteReward)
                 .All(item => item.ItemId == 0 || clientRank(item.ItemId) > 0),
+            CollectItemGroup collect => collect.Conditions
+                .Append(collect.Result)
+                .All(item => clientRank(item.ItemId) > 0),
             _ => true,
         };
     }

@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 
@@ -97,6 +98,66 @@ public static class EventSaleRules {
         }
         return sum;
     }
+
+    // The bonus of the running DungeonBonusReward events for a clear of the room: the events that name the room
+    // or its group, merged as the client merges them (DungeonBonusRewardCtx::Merge, gameeventcontext.cpp:786: the
+    // rolls and the two rates summed, the boxes one after the other). Null when no event is for the room. Chosen
+    // here: an event that names both the room and its group counts once.
+    public static DungeonBonusReward? DungeonBonus(IEnumerable<DungeonBonusReward> events, int dungeonId, DungeonGroupType groupType) {
+        DungeonBonusReward? merged = null;
+        foreach (DungeonBonusReward bonus in events) {
+            bool room = bonus.DungeonId != 0 && bonus.DungeonId == dungeonId;
+            bool group = bonus.GroupType != DungeonGroupType.none && bonus.GroupType == groupType;
+            if (!room && !group) {
+                continue;
+            }
+            merged = merged == null
+                ? bonus with { DungeonId = dungeonId, GroupType = groupType }
+                : merged with {
+                    MesoRate = merged.MesoRate + bonus.MesoRate,
+                    ExpRate = merged.ExpRate + bonus.ExpRate,
+                    ItemRolls = (int) Math.Min((long) merged.ItemRolls + bonus.ItemRolls, MaxDungeonBonusRolls),
+                    DropBoxIds = merged.DropBoxIds.Concat(bonus.DropBoxIds).ToArray(),
+                };
+        }
+        return merged == null ? null : merged with { ItemRolls = Math.Clamp(merged.ItemRolls, 0, MaxDungeonBonusRolls) };
+    }
+
+    // Chosen here: the most times a clear's boxes are rolled again, so a wrong row cannot roll without end.
+    public const int MaxDungeonBonusRolls = 10;
+
+    // What a rate of the bonus adds to an amount (DungeonBonusRewardCtx::ApplyMesoRate and ApplyExpRate,
+    // gameeventcontext.cpp:799): (amount * rate + 0.001) in doubles, cut to a whole number. A rate of 1 doubles.
+    // Chosen here: nothing for a rate or an amount of 0 or less, and no more than int.MaxValue.
+    public static int DungeonBonusAmount(long amount, float rate) {
+        if (amount <= 0 || !(rate > 0f)) {
+            return 0;
+        }
+        return (int) Math.Min((double) amount * rate + 0.001, int.MaxValue);
+    }
+
+    // The first condition item of a CollectItemGroup the player lacks, null when none: an item counts when the
+    // bag holds its count of the id and rank, or, for a count of 1, when the id is worn
+    // (UICollectItemGroupEventDialog::HasItem, uicollectitemgroupeventdialog.cpp:292). The client shows the event
+    // with 2 to 5 conditions only, and such an event alone can be claimed.
+    public static RewardItem? CollectMissing(CollectItemGroup collect, Func<int, int, int> bagCount, Func<int, bool> worn) {
+        if (collect.Conditions.Length is < MinCollectConditions or > MaxCollectConditions) {
+            return collect.Conditions.FirstOrDefault();
+        }
+        foreach (RewardItem condition in collect.Conditions) {
+            if (bagCount(condition.ItemId, condition.Rarity) >= condition.Amount) {
+                continue;
+            }
+            if (condition.Amount == 1 && worn(condition.ItemId)) {
+                continue;
+            }
+            return condition;
+        }
+        return null;
+    }
+
+    public const int MinCollectConditions = 2;
+    public const int MaxCollectConditions = 5;
 
     // The rate a shop's beauty fees are lowered by. The client keeps one rate per shop in each of two slots, picked
     // by the row's value3 (gameevent.cpp:799), and a later event of the list overwrites the slot's rate

@@ -722,8 +722,19 @@ public class DungeonManager {
             if (rewardMetadata.ExpRate > 0f) {
                 exp = (int) (rewardMetadata.Exp * rewardMetadata.ExpRate);
             }
+            int meso = (int) rewardMetadata.Meso;
+            // The running DungeonBonusReward events for the room or its group: more exp and meso, the boxes
+            // rolled again, the events' own boxes, and the result dialog's event line (DungeonBonusFlag.Event).
+            DungeonBonusReward? bonus = EventSaleRules.DungeonBonus(
+                session.FindEvent(GameEventType.DungeonBonusReward).Select(gameEvent => gameEvent.Metadata.Data).OfType<DungeonBonusReward>(),
+                Metadata.Id, Metadata.GroupType);
+            if (bonus != null) {
+                exp = (int) Math.Min((long) exp + EventSaleRules.DungeonBonusAmount(exp, bonus.ExpRate), int.MaxValue);
+                meso = (int) Math.Min((long) meso + EventSaleRules.DungeonBonusAmount(meso, bonus.MesoRate), int.MaxValue);
+                UserRecord.Flag |= DungeonBonusFlag.Event;
+            }
             UserRecord.Rewards[DungeonRewardType.Exp] = exp;
-            UserRecord.Rewards[DungeonRewardType.Meso] = (int) rewardMetadata.Meso;
+            UserRecord.Rewards[DungeonRewardType.Meso] = meso;
             session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp]);
             session.Currency.Meso += UserRecord.Rewards[DungeonRewardType.Meso];
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
@@ -731,7 +742,12 @@ public class DungeonManager {
             ICollection<Item> items = [];
             // Each box is rolled for the player as an opened item box is (drop count, smart drop by job, gender, level):
             // a room box such as 21001001 holds every job's gear, and gave all 55 entries at once unrolled.
-            foreach (int boxId in DungeonRoomRules.ClearDropBoxIds(rewardMetadata)) {
+            IEnumerable<int> boxIds = DungeonRoomRules.ClearDropBoxIds(rewardMetadata).ToArray();
+            if (bonus != null) {
+                // The room's boxes once more per roll of the bonus, then the bonus' own boxes once.
+                boxIds = Enumerable.Repeat(boxIds, 1 + bonus.ItemRolls).SelectMany(ids => ids).Concat(bonus.DropBoxIds).ToArray();
+            }
+            foreach (int boxId in boxIds) {
                 items = items.Concat(Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)).ToList();
                 items = items.Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level)).ToList();
             }

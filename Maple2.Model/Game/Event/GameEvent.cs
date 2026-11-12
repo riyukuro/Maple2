@@ -405,6 +405,31 @@ public class GameEvent : IByteSerializable {
                 writer.WriteUnicodeString(Metadata.Value3);
                 writer.WriteUnicodeString(Metadata.Value4);
                 break;
+            case DungeonBonusReward dungeonBonus:
+                // DungeonBonusRewardCtx::Read (gameeventcontext.cpp:774): the room, the group, the two rates,
+                // the rolls and the boxes.
+                writer.WriteInt(Id);
+                writer.WriteInt(dungeonBonus.DungeonId);
+                writer.WriteByte((byte) dungeonBonus.GroupType);
+                writer.WriteFloat(dungeonBonus.MesoRate);
+                writer.WriteFloat(dungeonBonus.ExpRate);
+                writer.WriteInt(dungeonBonus.ItemRolls);
+                writer.WriteInt(dungeonBonus.DropBoxIds.Length);
+                foreach (int boxId in dungeonBonus.DropBoxIds) {
+                    writer.WriteInt(boxId);
+                }
+                break;
+            case CollectItemGroup collect:
+                // CollectItemGroupContext::Read (gameeventcontext.cpp:2180): the id again, the name, begin and
+                // end, the condition items and the result.
+                writer.WriteInt(Id);
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(collect.Name);
+                writer.WriteLong(StartTime);
+                writer.WriteLong(EndTime);
+                WriteItemEntities(writer, collect.Conditions);
+                WriteItemEntity(writer, collect.Result);
+                break;
             case SaleAutoPlayInstrument instrument:
                 writer.WriteInt(Id);
                 writer.WriteInt();

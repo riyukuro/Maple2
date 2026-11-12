@@ -78,11 +78,14 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimStampReward:
                 HandleClaimStampReward(session, packet);
                 return;
+            case Command.ClaimCollectItemGroupReward:
+                HandleClaimCollectItemGroupReward(session, packet);
+                return;
             case Command.ClaimStampCompleteReward:
                 HandleClaimStampCompleteReward(session);
                 return;
             // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
-            // item box, snowman, level-up package, burning level-up and item collection events, and
+            // item box, snowman, level-up package and burning level-up events, and
             // GameEvent writes none of them), so the client's dialogs have no event to show and
             // there is nothing to pay out. The client has no refusal text for them: read and logged.
             // Client writers:
@@ -91,7 +94,6 @@ public class EventRewardHandler : FieldPacketHandler {
             //   12, 13 uisnowmaneventdialog.cpp:343, :365
             //   15     uileveluppackagewidgetdialog.cpp:580
             //   16     uicharacterlistdialog.cpp:2093
-            //   19     uicollectitemgroupeventdialog.cpp:415
             case Command.OpenEventBox: // the event box dialog's open button; no body
                 Logger.Debug("EventReward {Command} from {CharacterId}", command, session.CharacterId);
                 return;
@@ -101,7 +103,6 @@ public class EventRewardHandler : FieldPacketHandler {
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
                 return;
             case Command.ClaimLevelUpEventReward: // event id
-            case Command.ClaimCollectItemGroupReward: // event id
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 return;
             case Command.SetEventCharacter: // character id picked in the character list
@@ -141,6 +142,46 @@ public class EventRewardHandler : FieldPacketHandler {
 
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendDays, attended + 1);
         session.Send(EventRewardPacket.LongTermAttend());
+    }
+
+    // Item collection. 19 + int event id (uicollectitemgroupeventdialog.cpp:415) claims the result of the running
+    // CollectItemGroup event of that id, once per character: the player has every condition item, in the bag or,
+    // for a count of 1, worn (EventSaleRules.CollectMissing, the test the window's button makes). The client has
+    // no reply to it; its window refreshes when user value 2200 of the event changes, and shows the event as
+    // received while that is above 0. Chosen here: the condition items stay with the player. The client only
+    // tests that they are there, counts a worn piece and shows no cost.
+    private void HandleClaimCollectItemGroupReward(GameSession session, IByteReader packet) {
+        int eventId = packet.ReadInt();
+        GameEvent? gameEvent = session.FindEvent(GameEventType.CollectItemGroup).FirstOrDefault(found => found.Id == eventId);
+        if (gameEvent?.Metadata.Data is not CollectItemGroup collect || session.Field == null) {
+            Logger.Debug("ClaimCollectItemGroupReward from {CharacterId} refused: no event {EventId}", session.CharacterId, eventId);
+            return;
+        }
+
+        if (session.GameEvent.Get(GameEventUserValueType.CollectItemGroup, gameEvent.Id, gameEvent.EndTime).Int() > 0) {
+            Logger.Debug("ClaimCollectItemGroupReward from {CharacterId} refused: event {EventId} received", session.CharacterId, eventId);
+            return;
+        }
+
+        RewardItem? missing = EventSaleRules.CollectMissing(collect,
+            (itemId, rarity) => session.Item.Inventory.Find(itemId, rarity).Sum(item => item.Amount),
+            itemId => session.Item.Equips.Gear.Values.Concat(session.Item.Equips.Outfit.Values).Concat(session.Item.Equips.Badge.Values)
+                .Any(item => item.Id == itemId));
+        if (missing != null) {
+            Logger.Debug("ClaimCollectItemGroupReward from {CharacterId} refused: event {EventId} item {ItemId}", session.CharacterId, eventId, missing.Value.ItemId);
+            return;
+        }
+
+        Item? result = session.Field.ItemDrop.CreateItem(collect.Result.ItemId, collect.Result.Rarity, collect.Result.Amount);
+        if (result == null) {
+            Logger.Error("ClaimCollectItemGroupReward: event {EventId} item {ItemId} could not be made", gameEvent.Id, collect.Result.ItemId);
+            return;
+        }
+        if (!session.Item.AddOrMail(result, true)) {
+            Logger.Error("ClaimCollectItemGroupReward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, result.Id);
+            return;
+        }
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CollectItemGroup, 1);
     }
 
     private void HandleClaimLongTermAttendReward(GameSession session, IByteReader packet) {

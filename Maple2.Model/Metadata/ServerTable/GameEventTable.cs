@@ -428,6 +428,27 @@ public record SAHotTimeBonus(
     SpecialAttribute Attribute,
     int Value);
 
+// The dungeon clear bonus (GameEventDungeonBonusReward, commonfiles/gameevent.cpp:976): value1 is
+// <ms2><v dungeonID groupType mesoRate expRate itemRolls customDropBoxIds/></ms2>, of which the client reads the
+// first element. The event is for a room (DungeonId) or for every room of a group (GroupType), 0 when not named.
+// The client only shows the items of DropBoxIds in the room's reward preview; ItemRolls, MesoRate and ExpRate are
+// the server's (EventSaleRules.DungeonBonus).
+public record DungeonBonusReward(
+    int DungeonId,
+    DungeonGroupType GroupType,
+    float MesoRate,
+    float ExpRate,
+    int ItemRolls,
+    int[] DropBoxIds) : GameEventData;
+
+// The item collection (GameEventCollectItemGroup, commonfiles/gameevent.cpp:6474): value1 is
+// <ms2><info name/><result itemID count grade/><condition itemID count grade/>...</ms2>. A player who has every
+// condition item claims the result once (EventSaleRules.CollectMissing). Name is the key of the tab's title.
+public record CollectItemGroup(
+    string Name,
+    RewardItem[] Conditions,
+    RewardItem Result) : GameEventData;
+
 // Start and end as seconds of the day, both inside the range (Unk_DayTimeRange::Contains).
 public record DungeonEnterTime(
     int DungeonId,
@@ -482,4 +503,6 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(SaleRemake), "SaleRemake")]
 [JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
 [JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
+[JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
+[JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
 public abstract record GameEventData;
