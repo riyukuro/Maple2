@@ -137,9 +137,13 @@ public sealed class ShopManager {
 
     private Shop GetInstancedShop(ShopMetadata metadata) {
         if (instancedShops.TryGetValue(metadata.Id, out Shop? instancedShop)) {
-            if (instancedShop.RestockTime < DateTime.Now.ToEpochSeconds()) {
+            // A shop on a restock schedule that ran out while it was cached is made anew below, as on a login
+            // after that time. A shop with a fixed time in its data keeps its list (chosen here: its time does
+            // not move, so it would be made anew on every opening).
+            if (!ShopRules.RestockDue(metadata.RestockTime, instancedShop.RestockTime, DateTime.Now.ToEpochSeconds())) {
+                return instancedShop;
             }
-            return instancedShop;
+            instancedShops.Remove(metadata.Id);
         }
 
         if (!TryGetShopData(metadata.Id, out CharacterShopData? data)) {
@@ -574,12 +578,19 @@ public sealed class ShopManager {
         }
 
         Item? item = session.Item.Inventory.Get(itemUid);
-        if (item == null || !item.Metadata.Limit.ShopSell) {
+        if (item == null) {
+            return;
+        }
+
+        bool hasGem = item.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) ?? false;
+        if (!ShopRules.CanSell(item.Metadata.Limit.ShopSell, item.IsLocked, item.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), hasGem)) {
+            // In KMS2 a refused sale is answered with code 5 and the sell command's number.
+            session.Send(ShopPacket.Error(ShopError.s_err_cannot_sell_item, 5));
             return;
         }
 
         // The price is fixed and checked before the item leaves the inventory.
-        long unitPrice = Core.Formulas.Shop.SellPrice(item.Metadata, item.Type, item.Rarity);
+        long unitPrice = Core.Formulas.Shop.SellPrice(item.Metadata, item.Rarity, session.ServerTableMetadata.ConstantsTable);
         if (!ShopRules.TrySellTotal(unitPrice, quantity, item.Amount, out long sellPrice)) {
             session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
             return;
@@ -636,7 +647,7 @@ public sealed class ShopManager {
                     return false;
                 }
 
-                session.Currency.Meret -= price;
+                session.Currency.GameMeret -= price;
                 break;
             case ShopCurrencyType.Item:
                 var ingredient = new ItemComponent(cost.ItemId, -1, price, ItemTag.None);
@@ -662,10 +673,13 @@ public sealed class ShopManager {
 
                 };
                 if (currencyType == CurrencyType.None || session.Currency[currencyType] < price) {
+                    // Code 11 shows the lack notice of the currency kind in the last int (0: mesos). Chosen
+                    // here: the kind is the payment type's number.
+                    session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, 0, (int) cost.Type));
                     return false;
                 }
 
-                session.Currency[currencyType] -= cost.Amount;
+                session.Currency[currencyType] -= price;
                 break;
         }
         return true;

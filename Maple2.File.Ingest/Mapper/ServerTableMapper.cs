@@ -2571,7 +2571,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         foreach ((string key, string value) in serverRows) {
             rowLookup[key] = value; // a key that is there twice: the last row, as for the single fields above
         }
-        constants = constants with { WarpOpenContinents = ConstantsTable.ReadList(rowLookup, "WarpOpenContinent") };
+        constants = constants with {
+            WarpOpenContinents = ConstantsTable.ReadList(rowLookup, "WarpOpenContinent"),
+            EquipmentSellPriceFactors = ConstantsTable.ReadMultiControl(MultiControlRows(), "equipmentSellPrice"),
+        };
 
         // Prices: the client's own row for this locale wins, so the server takes what the client's box shows.
         foreach (ClientPriceConstants.Override price in ClientPriceConstants.Differences(ClientPriceConstants.Select(serverRows), ClientPriceRows())) {
@@ -2580,6 +2583,26 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             GenericHelper.SetValue(property, constants, CleanInput(price.ClientValue, property.Name, property.PropertyType));
         }
         return constants;
+
+        // The multicontrol table of LOCALE's own folder: the played client's pack, else the data folder's client
+        // pack, else the server pack. A pack of another region has no such file, so its factors do not apply.
+        List<(string, string, string)> MultiControlRows() {
+            var rows = new List<(string, string, string)>();
+            string name = $"table/{FeatureLocaleFilter.Locale.ToLowerInvariant()}/multicontrol.xml";
+            foreach (M2dReader? reader in new[] { playedReader, clientReader, xmlReader }) {
+                Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == name);
+                if (reader == null || entry == null) {
+                    continue;
+                }
+                foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/multi")!) {
+                    if (node is not XmlElement row) continue;
+                    if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
+                    rows.Add((row.GetAttribute("type"), row.GetAttribute("key"), row.GetAttribute("value")));
+                }
+                break;
+            }
+            return rows;
+        }
 
         Dictionary<string, string> ClientPriceRows() {
             // The data folder's pack first, then the played client's: a later row replaces an earlier one, so

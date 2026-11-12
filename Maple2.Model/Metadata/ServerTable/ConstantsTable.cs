@@ -957,8 +957,43 @@ public record ConstantsTable(
     int HoldAttackSkillID = 10700252,
     string DiscordAppID = "",
     // The whole WarpOpenContinent list, read as the client reads it. Null in a table made before this field.
-    IReadOnlyList<int>? WarpOpenContinents = null
+    IReadOnlyList<int>? WarpOpenContinents = null,
+    // The multicontrol equipmentSellPrice factors of the locale by rarity. Null in a table made before this field.
+    IReadOnlyDictionary<int, float>? EquipmentSellPriceFactors = null
 ) : ServerTable {
+    // Client: the multicontrol table (table/<locale>/multicontrol.xml), rows <multi type key value>: per type a
+    // map of key to factor; the first row of a key stays, a row without a value is 1.
+    public static Dictionary<int, float> ReadMultiControl(IEnumerable<(string Type, string Key, string Value)> rows, string type) {
+        var factors = new Dictionary<int, float>();
+        foreach ((string rowType, string key, string value) in rows) {
+            if (rowType != type || !int.TryParse(key.Trim(), out int number)) {
+                continue;
+            }
+
+            float factor = float.TryParse(value.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsed) ? parsed : 1f;
+            factors.TryAdd(number, factor);
+        }
+
+        return factors;
+    }
+
+    // A rarity without a row is not changed (factor 1).
+    public float EquipmentSellPriceFactor(int rarity) {
+        return EquipmentSellPriceFactors != null && EquipmentSellPriceFactors.TryGetValue(rarity, out float factor) ? factor : 1f;
+    }
+
+    public int SellPriceMax(int rarity) {
+        return rarity switch {
+            1 => SellPriceNormalMax,
+            2 => SellPriceRareMax,
+            3 => SellPriceEliteMax,
+            4 => SellPriceExcellentMax,
+            5 => SellPriceLegendaryMax,
+            6 => SellPriceArtifactMax,
+            _ => 0,
+        };
+    }
+
     // Client: Constants::Values<T>::Define (unit_1402ab440_constantsblocks.cpp:399): a list constant is the rows
     // key0, key1, ... up to the first number that has no row.
     public static List<int> ReadList(IReadOnlyDictionary<string, string> rows, string key) {

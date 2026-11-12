@@ -9,6 +9,9 @@ namespace Maple2.Model.Error;
 public enum ShopError {
     [Description("Not enough supplies.")]
     s_err_lack_shopitem = 2,
+    // Codes 4, 5 and 6 show one notice; KMS2 answers a refused sale with 5. The name is chosen here.
+    [Description("This item cannot be sold.")]
+    s_err_cannot_sell_item = 5,
     [Description("Item not found.")]
     s_err_invalid_item = 7,
     [Description("Cannot be sold.")]

@@ -32,7 +32,7 @@ public class Shop : IByteSerializable {
         writer.Write<ShopFrameType>(Metadata.FrameType);
         writer.WriteBool(Metadata.DisplayOnlyUsable);
         writer.WriteBool(Metadata.HideStats);
-        writer.WriteBool(false);
+        writer.WriteBool(Metadata.DisplayProbability);
         writer.WriteBool(Metadata.DisplayNew);
         writer.WriteString(Metadata.Name);
         if (Metadata.EnableReset) {

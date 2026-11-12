@@ -379,8 +379,7 @@ public sealed class BlackMarketManager {
         if (!session.ItemMetadata.TryGet(itemId, out ItemMetadata? metadata)) {
             return;
         }
-        var type = new ItemType(metadata.Id);
-        long sellPrice = Core.Formulas.Shop.SellPrice(metadata, type, rarity);
+        long sellPrice = Core.Formulas.Shop.SellPrice(metadata, rarity, Constants);
 
         session.Send(BlackMarketPacket.Preview(itemId, rarity, sellPrice));
     }
