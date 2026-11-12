@@ -81,8 +81,9 @@ public class CastTimingTests {
         Assert.That(SkillCastRules.ArrivalShortfall(50_500, 50_000, 100_100, 100_000, Required), Is.EqualTo(400));
         // The client's tick does not lengthen the time.
         Assert.That(SkillCastRules.ArrivalShortfall(58_000, 50_000, 100_000, 100_000, Required), Is.EqualTo(500));
-        // A tick that runs backwards says nothing.
-        Assert.That(SkillCastRules.ArrivalShortfall(40_000, 50_000, 100_100, 100_000, Required), Is.EqualTo(400));
+        // A tick that runs backwards draws nothing; on time by the arrivals it is taken.
+        Assert.That(SkillCastRules.ArrivalShortfall(40_000, 50_000, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
+        Assert.That(SkillCastRules.ArrivalShortfall(40_000, 50_000, 100_500, 100_000, Required), Is.EqualTo(0));
         // The 32-bit tick wraps.
         Assert.That(SkillCastRules.ArrivalShortfall(int.MinValue + 250, int.MaxValue - 250, 100_100, 100_000, Required), Is.EqualTo(400));
         Assert.That(SkillCastRules.ArrivalShortfall(int.MinValue + 200, int.MaxValue - 200, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
@@ -192,6 +193,59 @@ public class CastTimingTests {
     }
 
     [Test]
+    public void ClockRateCountsATickThatJumpsBack() {
+        var clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+        clock.Start(0, 0);
+        Assert.That(clock.Add(6000, 6000), Is.False);
+        // A time sync answer held up for 2 s moves the ticks back by that much.
+        Assert.That(clock.Add(4500, 6500), Is.False);
+        Assert.That(clock.IsFast(6500), Is.False);
+        // Further back than that: named once, and nothing is drawn for a window.
+        Assert.That(clock.Add(2000, 7000), Is.True);
+        Assert.That(clock.Add(-1000, 7500), Is.False);
+        Assert.That(clock.IsFast(37_499), Is.True);
+        Assert.That(clock.IsFast(37_500), Is.False);
+        var lag = new LagBudget();
+        Assert.That(SkillCastRules.TimingRefusal(SkillCastRules.ArrivalShortfall(-2000, -1000, 7600, 7500, Required), clock.IsFast(7600), lag, 7600), Is.Not.Null);
+        Assert.That(lag.Level(7600), Is.EqualTo(LagBudget.CapacityMs), "a backward tick draws nothing");
+        // The position syncs' measure has no such rule.
+        clock = new ClockRate(ClockRate.SyncBoundMs);
+        clock.Add(0, 0);
+        clock.Add(9000, 6000);
+        Assert.That(clock.Add(1000, 6500), Is.False);
+    }
+
+    [Test]
+    public void ClockRateIsMeasuredFromTheSessionStart() {
+        // The first cast comes 20 s into the session and 3 s late (a stall); the next ones come on time.
+        var clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+        clock.Start(1000, 0);
+        Assert.That(clock.Add(21_000, 23_000), Is.False);
+        for (int t = 21_500; t < 120_000; t += 500) {
+            Assert.That(clock.Add(t, t - 1000), Is.False);
+        }
+        Assert.That(clock.IsFast(120_000), Is.False);
+        // Measured from the first cast instead, the ticks after it look 3 s fast.
+        clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+        clock.Add(21_000, 23_000);
+        Assert.That(clock.Add(29_500, 28_500), Is.True);
+        // A clock that is fast from the start is found once the first 5 s of the session are over.
+        clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+        clock.Start(1000, 0);
+        Assert.That(clock.Add(1000 + 20_000 + 4000, 20_000), Is.True);
+    }
+
+    [Test]
+    public void LogGateHoldsALineToOneInTenSeconds() {
+        var gate = new LogGate();
+        Assert.That(gate.Count(-5000), Is.EqualTo(1));
+        Assert.That(gate.Count(-4000), Is.EqualTo(0));
+        Assert.That(gate.Count(4999), Is.EqualTo(0));
+        Assert.That(gate.Count(5000), Is.EqualTo(3));
+        Assert.That(gate.Count(15_000), Is.EqualTo(1));
+    }
+
+    [Test]
     public void HeldIterationDrawsFromTheBudget() {
         // Loop 500 ms. The first iteration was held up 1.5 s, the next ones come on time: 1 s under the allowance.
         var lag = new LagBudget();
@@ -224,7 +278,10 @@ public class CastTimingTests {
         Assert.That(budget.Unenforced, Is.Null, "inside the allowance");
         Assert.That(budget.TakePoint(0, 3, held: true, count: 1, tick: 502, maxCount: 3, intervalMs: 2000, enforce: false), Is.True);
         Assert.That(budget.Unenforced, Does.Contain("early"));
-        // The packet order is refused in either mode.
+        // More than 20 attacks, and the packet order, are refused in either mode.
+        Assert.That(budget.TakePoint(1, 0, held: true, count: SkillHitRules.MaxPointAttacks + 1, tick: 600, maxCount: 3, enforce: false), Is.False);
+        Assert.That(budget.TakePoint(1, 0, held: true, count: 255, tick: 600, maxCount: 40, enforce: false), Is.False);
+        Assert.That(budget.TakePoint(1, 0, held: true, count: SkillHitRules.MaxPointAttacks, tick: 600, maxCount: 3, enforce: false), Is.True);
         Assert.That(budget.TakePoint(0, 7, held: true, count: 1, tick: 9000, maxCount: 3, intervalMs: 500, enforce: false), Is.False);
     }
 

@@ -391,6 +391,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Send(SurvivalPacket.UpdateStats(player.Account));
 
+        // The cast ticks are measured from the tick this first time sync carries (ClockRate.Start).
+        Config.CastClock.Start(Environment.TickCount, Environment.TickCount64);
         Send(TimeSyncPacket.Reset(DateTimeOffset.UtcNow));
         // The play start of this login; the attendance gift's play seconds are counted from it on both sides.
         DateTime playStart = DateTime.Now;

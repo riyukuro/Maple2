@@ -170,14 +170,16 @@ public class SkillHandler : FieldPacketHandler {
         bool useItem = record.Metadata.Data.Consume.UseItem;
         string? early = session.Config.CastTimingRefusal(record.Metadata, !useItem && SkillCastRules.IsJobSkill(record.SkillId, inAnyTree), castTick, tick, out bool clockTurnedFast);
         if (clockTurnedFast) {
-            Logger.Information("Fast clock: the cast ticks of {Player} ({CharacterId}) run ahead of the server's time", session.PlayerName, session.CharacterId);
+            Logger.Information("Fast clock: the cast ticks of {Player} ({CharacterId}) run ahead of the server's time or jump back", session.PlayerName, session.CharacterId);
         }
         if (early != null) {
             if (CastCheckSetting.Enforce) {
                 Logger.Debug("Cast refused, skill {SkillId}, {Reason}", record.SkillId, early);
                 return false;
             }
-            Logger.Information("Cast not refused (log only), skill {SkillId} of {Player}, {Reason}", record.SkillId, session.PlayerName, early);
+            if (session.Config.CastLog.Count(tick) is > 0 and int unlogged) {
+                Logger.Information("Cast not refused (log only), skill {SkillId} of {Player}, {Reason} ({Count} since the last line)", record.SkillId, session.PlayerName, early, unlogged);
+            }
         }
         if (!useItem) {
             return true;
@@ -232,9 +234,9 @@ public class SkillHandler : FieldPacketHandler {
                 attackPoint, iterations, count, position, record);
             return;
         }
-        if (record.Hits.Unenforced is { } unenforced) {
-            Logger.Information("Attack point not dropped (log only), {Reason}: AttackPoint={AttackPoint} iteration={Iteration} count={Count} of {Player}: {Record}",
-                unenforced, attackPoint, iterations, count, session.PlayerName, record);
+        if (record.Hits.Unenforced is { } unenforced && session.Config.PointLog.Count(session.Field.FieldTick) is > 0 and int unlogged) {
+            Logger.Information("Attack point not dropped (log only), {Reason}: AttackPoint={AttackPoint} iteration={Iteration} count={Count} of {Player} ({Unlogged} since the last line): {Record}",
+                unenforced, attackPoint, iterations, count, session.PlayerName, unlogged, record);
         }
 
         record.Position = position;

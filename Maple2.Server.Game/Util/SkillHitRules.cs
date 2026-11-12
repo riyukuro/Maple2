@@ -94,12 +94,17 @@ public sealed class SkillHitBudget {
 
     // maxCount: the most attacks the packet may declare (SkillHitRules.MaxAttacks). intervalMs: the shortest time
     // between two iterations of a held skill (SkillHitRules.HeldInterval), 0 when not known. lag: the session's
-    // budget for an iteration that arrives early, none when null. enforce: false takes a packet that declares too
-    // many attacks or whose iteration comes too early, and names the reason in Unenforced.
+    // budget for an iteration that arrives early, none when null. enforce: false takes a packet that declares more
+    // attacks than maxCount (never more than SkillHitRules.MaxPointAttacks) or whose iteration comes too early, and
+    // names the reason in Unenforced.
     public bool TakePoint(byte attackPoint, int iteration, bool held, int count, long tick,
                           int maxCount = SkillHitRules.MaxPointAttacks, long intervalMs = 0, LagBudget? lag = null, bool enforce = true) {
         Unenforced = null;
         if (TooLate(tick)) {
+            return false;
+        }
+        // More than any attack point declares: not a matter of timing, refused whatever enforce says.
+        if (count > SkillHitRules.MaxPointAttacks) {
             return false;
         }
         if (count > maxCount) {

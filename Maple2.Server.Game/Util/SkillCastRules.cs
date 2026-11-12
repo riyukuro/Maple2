@@ -73,14 +73,15 @@ public static class SkillCastRules {
     // sync held up by the link or by a stalled client moves the ticks after it back by that long.
     // When the arrivals are closer (packets held up and delivered together), the client's own ticks must be far
     // enough apart, else ClientRefused; the time missing between the arrivals is returned then, to be drawn from
-    // the session's LagBudget. A cast tick that runs backwards says nothing: the arrivals alone count.
+    // the session's LagBudget. A cast tick that runs backwards shows no wait and draws nothing: ClientRefused.
+    // (ClockRate counts a tick that jumps back far as clock trouble.)
     public static long ArrivalShortfall(int castTick, int lastCastTick, long serverTick, long lastServerTick, long requiredMs) {
         long shortfall = requiredMs - (serverTick - lastServerTick);
         if (shortfall <= 0) {
             return 0;
         }
         long client = unchecked(castTick - lastCastTick);
-        return client >= 0 && client < requiredMs ? ClientRefused : shortfall;
+        return client < requiredMs ? ClientRefused : shortfall;
     }
 
     // The time a cast of the skill comes too early by (ArrivalShortfall) after its own last cast or after the last

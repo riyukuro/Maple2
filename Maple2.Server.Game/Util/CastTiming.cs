@@ -77,6 +77,11 @@ public sealed class LagBudget {
 // minus the client's ticks passed) of an honest client stays where it is or rises when a packet is late; it falls
 // only as far as the client's clock is fast. The lowest offset seen is kept, and follows a fall of up to the bound
 // in each window; a tick whose offset lies more than the bound under it is a fast clock for the next window.
+// A tick that lies more than backMs before the last one counts the same way (clock trouble): a time sync answer
+// that was held up moves an honest client's ticks back by no more than the time it was held.
+// Start gives the tick the server sent with its first time sync and the time it sent it at: the client sets its
+// ticks to that number when it arrives, so an honest client's offset is never under 0 from there, however late
+// its first tick comes. Without Start the first tick taken stands in for it.
 public sealed class ClockRate {
     public const long WindowMs = 30000;
     // Chosen here. In KMS2 sessions the offset of a cast tick falls at most 341 ms under the lowest one kept, and
@@ -86,9 +91,12 @@ public sealed class ClockRate {
     // The first ticks of a session are not measured: in KMS2 the ticks of the first position syncs jump ahead by
     // up to 9.7 s within the first 5 s.
     public const long SettleMs = 5000;
+    // Chosen here, the size of the LagBudget: no KMS2 cast tick lies before the one before it.
+    public const long CastBackMs = LagBudget.CapacityMs;
 
     private readonly object mutex = new();
     private readonly long boundMs;
+    private readonly long backMs;
     private bool started;
     private int lastTick;
     private long lastNow;
@@ -99,8 +107,28 @@ public sealed class ClockRate {
     private long settledAt;
     private long fastUntil = long.MinValue;
 
-    public ClockRate(long boundMs) {
+    public ClockRate(long boundMs, long backMs = long.MaxValue) {
         this.boundMs = boundMs;
+        this.backMs = backMs;
+    }
+
+    // The session's start: the tick sent to the client and the server's time then. Only the first call counts.
+    public void Start(int tick, long now) {
+        lock (mutex) {
+            Begin(tick, now);
+        }
+    }
+
+    private bool Begin(int tick, long now) {
+        if (started) {
+            return false;
+        }
+        started = true;
+        lastTick = tick;
+        lastNow = now;
+        windowEnd = now + WindowMs;
+        settledAt = now + SettleMs;
+        return true;
     }
 
     public bool IsFast(long now) {
@@ -113,15 +141,12 @@ public sealed class ClockRate {
     // (once for the time; to be logged).
     public bool Add(int tick, long now) {
         lock (mutex) {
-            if (!started) {
-                started = true;
-                lastTick = tick;
-                lastNow = now;
-                windowEnd = now + WindowMs;
-                settledAt = now + SettleMs;
+            if (Begin(tick, now)) {
                 return false;
             }
-            offset += now - lastNow - unchecked(tick - lastTick);
+            long step = unchecked(tick - lastTick);
+            bool back = step < -backMs;
+            offset += now - lastNow - step;
             lastTick = tick;
             lastNow = now;
             if (now >= windowEnd) {
@@ -134,16 +159,42 @@ public sealed class ClockRate {
                 floor = Math.Min(floor, offset);
                 return false;
             }
-            if (offset >= floor - boundMs) {
-                return false;
+            if (!back) {
+                if (offset >= floor - boundMs) {
+                    return false;
+                }
+                // Counted on from here, with a new window: only a clock that stays fast is found again.
+                floor = offset;
+                windowMin = offset;
+                windowEnd = now + WindowMs;
             }
-            // Counted on from here, with a new window: only a clock that stays fast is found again.
-            floor = offset;
-            windowMin = offset;
-            windowEnd = now + WindowMs;
             bool wasFast = now < fastUntil;
             fastUntil = now + WindowMs;
             return !wasFast;
+        }
+    }
+}
+
+// Holds a log line that can come with every packet to one per EveryMs (chosen here).
+public sealed class LogGate {
+    public const long EveryMs = 10000;
+
+    private readonly object mutex = new();
+    private int unlogged;
+    private long nextLog = long.MinValue;
+
+    // Counts one; returns how many to log now (those since the last line), 0 when a line was logged less than
+    // EveryMs ago.
+    public int Count(long now) {
+        lock (mutex) {
+            unlogged++;
+            if (now < nextLog) {
+                return 0;
+            }
+            nextLog = now + EveryMs;
+            int count = unlogged;
+            unlogged = 0;
+            return count;
         }
     }
 }
