@@ -668,4 +668,32 @@ public class QuestHandlerTests {
             Assert.That(quest.State, Is.EqualTo(expired ? QuestState.Started : QuestState.Completed));
         });
     }
+
+    // Quest 26 (the world map's exploration reward): the round's item, "id,grade,count" of fieldMission.xml as the
+    // client reads it (ItemEntity), is given in its count, once, after that many field missions are completed.
+    // Made-up round and count.
+    [TestCase(5, 10)]
+    [TestCase(4, 0)]
+    public void FieldMission_GivesTheRoundsItemCount(int completed, int expected) {
+        GameSession session = Login();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [5] = new(5, new ItemComponent(RewardId, 1, 10, ItemTag.None), 0),
+        }));
+        for (int i = 0; i < completed; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+
+        for (int i = 0; i < 2; i++) {
+            handler.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(26);
+                writer.WriteInt(5);
+            }));
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session), Is.EqualTo(expected));
+            Assert.That(session.Config.ExplorationProgress, Is.EqualTo(expected > 0 ? 5 : 0));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

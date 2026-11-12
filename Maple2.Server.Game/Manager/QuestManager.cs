@@ -939,7 +939,7 @@ public sealed class QuestManager {
         session.Send(QuestPacket.UpdateExploration(session.Config.ExplorationProgress));
 
         if (metadata.Item != null) {
-            Item? item = session.Field?.ItemDrop.CreateItem(metadata.Item.ItemId, metadata.Item.Rarity, metadata.Item.Rarity);
+            Item? item = session.Field?.ItemDrop.CreateItem(metadata.Item.ItemId, metadata.Item.Rarity, metadata.Item.Amount);
             if (item != null) {
                 if (!session.Item.Inventory.Add(item, true)) {
                     session.Item.MailItem(item);
