@@ -22,7 +22,7 @@ public interface ITriggerContext {
     public void ArcadeSpringFarmSetInteractScore(int id, int score);
     public void ArcadeSpringFarmSpawnMonster(int[] spawnIds, int score);
     public void ArcadeSpringFarmStartGame(int lifeCount);
-    public void ArcadeSpringFarmStartRound(int uiDuration, int round, string timeScoreType, int timeScoreRate, int roundDuration);
+    public void ArcadeSpringFarmStartRound(int round, int uiDuration, string timeScoreType, int timeScoreRate, int roundDuration);
     public void ArcadeThreeTwoOneClearRound(int round);
     public void ArcadeThreeTwoOneEndGame();
     public void ArcadeThreeTwoOneResultRound(int resultDirection);

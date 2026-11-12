@@ -14,6 +14,7 @@ public class TableMetadataStorage {
     private readonly Lazy<ClubBuffTable> clubBuffTable;
     private readonly Lazy<FameTable> fameTable;
     private readonly Lazy<DarkStreamTable> darkStreamTable;
+    private readonly Lazy<ArcadeGameTable> arcadeGameTable;
     private readonly Lazy<DungeonSeasonTable> dungeonSeasonTable;
     private readonly Lazy<PetEvolutionTable> petEvolutionTable;
     private readonly Lazy<PetExpTable> petExpTable;
@@ -96,6 +97,7 @@ public class TableMetadataStorage {
     public ClubBuffTable ClubBuffTable => clubBuffTable.Value;
     public FameTable FameTable => fameTable.Value;
     public DarkStreamTable DarkStreamTable => darkStreamTable.Value;
+    public ArcadeGameTable ArcadeGameTable => arcadeGameTable.Value;
     public DungeonSeasonTable DungeonSeasonTable => dungeonSeasonTable.Value;
     public PetEvolutionTable PetEvolutionTable => petEvolutionTable.Value;
     public PetExpTable PetExpTable => petExpTable.Value;
@@ -179,6 +181,7 @@ public class TableMetadataStorage {
         clubBuffTable = Retrieve<ClubBuffTable>(context, TableNames.CLUB_BUFF);
         fameTable = Retrieve<FameTable>(context, TableNames.FAME);
         darkStreamTable = Retrieve<DarkStreamTable>(context, TableNames.DARK_STREAM);
+        arcadeGameTable = Retrieve<ArcadeGameTable>(context, TableNames.ARCADE_GAME);
         dungeonSeasonTable = Retrieve<DungeonSeasonTable>(context, TableNames.DUNGEON_SEASON);
         petEvolutionTable = Retrieve<PetEvolutionTable>(context, TableNames.PET_EVOLUTION);
         petExpTable = Retrieve<PetExpTable>(context, TableNames.PET_EXP);

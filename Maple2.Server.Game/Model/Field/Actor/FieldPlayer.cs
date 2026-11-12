@@ -581,6 +581,8 @@ public class FieldPlayer : Actor<Player> {
         // A duelist who dies in the rank duel's fight loses it; a PvP zone counts the death and the kill.
         Field.RankDuel?.Death(this);
         Field.PvpZone?.Death(this);
+        // Spring Farm: a death takes one of the game's lives.
+        Field.SpringFarmDied();
 
         int autoReviveMs = AutoReviveDelayMs(Session.Field.Metadata.Property);
         if (autoReviveMs > 0) {

@@ -23,7 +23,7 @@ public static class TriggerFunctionMapping {
         { "arcade_spring_farm_set_interact_score", attrs => new Trigger.ArcadeSpringFarmSetInteractScore(ParseInt(attrs?["id"]?.Value), ParseInt(attrs?["score"]?.Value)) },
         { "arcade_spring_farm_spawn_monster", attrs => new Trigger.ArcadeSpringFarmSpawnMonster(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseInt(attrs?["score"]?.Value)) },
         { "arcade_spring_farm_start_game", attrs => new Trigger.ArcadeSpringFarmStartGame(ParseInt(attrs?["life_count"]?.Value)) },
-        { "arcade_spring_farm_start_round", attrs => new Trigger.ArcadeSpringFarmStartRound(ParseInt(attrs?["ui_duration"]?.Value), ParseInt(attrs?["round"]?.Value), attrs?["time_score_type"]?.Value ?? string.Empty, ParseInt(attrs?["time_score_rate"]?.Value), ParseInt(attrs?["round_duration"]?.Value)) },
+        { "arcade_spring_farm_start_round", attrs => new Trigger.ArcadeSpringFarmStartRound(ParseInt(attrs?["round"]?.Value), ParseInt(attrs?["ui_duration"]?.Value), attrs?["time_score_type"]?.Value ?? string.Empty, ParseInt(attrs?["time_score_rate"]?.Value), ParseInt(attrs?["round_duration"]?.Value)) },
         { "arcade_three_two_one_clear_round", attrs => new Trigger.ArcadeThreeTwoOneClearRound(ParseInt(attrs?["round"]?.Value)) },
         { "arcade_three_two_one_end_game", _ => new Trigger.ArcadeThreeTwoOneEndGame() },
         { "arcade_three_two_one_result_round", attrs => new Trigger.ArcadeThreeTwoOneResultRound(ParseInt(attrs?["result_direction"]?.Value)) },

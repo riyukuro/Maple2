@@ -12,6 +12,7 @@ public static class TableNames {
     public const string CLUB_BUFF = "clubbuff.xml";
     public const string FAME = "famepickmethod.xml";
     public const string DARK_STREAM = "darkstream.xml";
+    public const string ARCADE_GAME = "arcadegame.xml";
     public const string PET_EVOLUTION = "petevolution.xml";
     public const string PET_EXP = "petexp.xml";
     public const string REACTOR = "reactor.xml";

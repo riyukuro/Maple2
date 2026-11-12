@@ -51,4 +51,5 @@ public class ServerTableMetadata {
 [JsonDerivedType(typeof(RoomRandomTable), typeDiscriminator: "roomRandom")]
 [JsonDerivedType(typeof(NpcStatFactorTable), typeDiscriminator: "npcStatFactor")]
 [JsonDerivedType(typeof(MonsterExpTable), typeDiscriminator: "monsterExp")]
+[JsonDerivedType(typeof(ArcadeRewardTable), typeDiscriminator: "arcadeReward")]
 public abstract record ServerTable;

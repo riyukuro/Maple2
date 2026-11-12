@@ -174,6 +174,30 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("achievement", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.ArcadeRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ArcadeId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SeasonId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SetTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("CharacterId", "ArcadeId", "SeasonId");
+
+                    b.HasIndex("ArcadeId", "SeasonId", "Score");
+
+                    b.ToTable("arcade-record", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Ban", b =>
                 {
                     b.Property<long>("Id")
@@ -2017,6 +2041,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Account", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.ArcadeRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

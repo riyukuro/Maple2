@@ -548,6 +548,7 @@ public class FieldNpc : Actor<Npc> {
 
         HandleDamageDealers();
         DarkStreamSpawnCleared();
+        SpringFarmSpawnCleared();
         Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
         Field.AddScoreBoardScore(TriggerScore);
         if (GetLastAttacker() is FieldPlayer lastHitter) {
@@ -571,6 +572,19 @@ public class FieldNpc : Actor<Npc> {
         }
         if (game.SpawnCleared(SpawnPointId)) {
             Field.Broadcast(DarkStreamPacket.Score(game.Score));
+        }
+    }
+
+    // Spring Farm: the last monster of a scored spawn point died, so the game gets the spawn's score.
+    private void SpringFarmSpawnCleared() {
+        if (Field.SpringFarm is not { } game || SpawnPointId == 0) {
+            return;
+        }
+        if (Field.Mobs.Values.Any(mob => mob != this && mob.SpawnPointId == SpawnPointId && !mob.IsDead)) {
+            return;
+        }
+        if (game.SpawnCleared(SpawnPointId)) {
+            Field.SpringFarmScoreChanged();
         }
     }
 

@@ -74,6 +74,8 @@ public partial class FieldManager {
     public RoomTimer? RoomTimer { get; private set; }
     // The Dark Stream run of the field, from the script's start_game on.
     public DarkStreamGame? DarkStream { get; set; }
+    // The Spring Farm arcade game of the field, from the script's start_game on.
+    public SpringFarmGame? SpringFarm { get; set; }
 
 
     #region Helpers

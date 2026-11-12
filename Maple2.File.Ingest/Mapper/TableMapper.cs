@@ -72,6 +72,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
         yield return new TableMetadata { Name = TableNames.FAME, Table = ParseFame() };
         yield return new TableMetadata { Name = TableNames.DARK_STREAM, Table = ParseDarkStream() };
+        yield return new TableMetadata { Name = TableNames.ARCADE_GAME, Table = ParseArcadeGame() };
         yield return new TableMetadata { Name = TableNames.DUNGEON_SEASON, Table = ParseDungeonSeason() };
         yield return new TableMetadata { Name = TableNames.PET_EVOLUTION, Table = ParsePetEvolution() };
         yield return new TableMetadata { Name = TableNames.PET_EXP, Table = ParsePetExp() };
@@ -457,6 +458,27 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // one, with the feature and locale filter the other tables use. items holds the reward items as
     // id,rank,count (the order of ItemEntity's itemID, grade and count, which the result packet sends); the
     // shipped rows hold one item each, so more items are read as further triples in the same list.
+    private ArcadeGameTable ParseArcadeGame() {
+        ArcadeGameTable table = new ArcadeGameTable(ReadArcadeGames(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/arcadegame.xml"))));
+        Console.WriteLine($"arcadegame: {table.Entries.Count} games after the feature filter");
+        return table;
+    }
+
+    // <arcadeGame id feature sortingOrder arcadeBanner targetField [isEventArcade]/>, filtered by feature and locale.
+    public static Dictionary<int, ArcadeGameTable.Entry> ReadArcadeGames(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var results = new Dictionary<int, ArcadeGameTable.Entry>();
+        foreach (XmlElement node in document.SelectNodes("/ms2/arcadeGame")!.OfType<XmlElement>()) {
+            if (!available(node) || !int.TryParse(node.GetAttribute("id"), out int id)) {
+                continue;
+            }
+            int.TryParse(node.GetAttribute("sortingOrder"), out int sortingOrder);
+            int.TryParse(node.GetAttribute("targetField"), out int targetField);
+            results[id] = new ArcadeGameTable.Entry(id, sortingOrder, targetField, node.GetAttribute("isEventArcade") == "1");
+        }
+        return results;
+    }
+
     private DarkStreamTable ParseDarkStream() {
         return new DarkStreamTable(ReadDarkStreamRewards(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/darkstream.xml"))));
     }

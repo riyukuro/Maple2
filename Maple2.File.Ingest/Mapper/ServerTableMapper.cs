@@ -169,6 +169,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.MONSTER_EXP,
             Table = ParseMonsterExp(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.ARCADE_REWARD,
+            Table = ParseArcadeReward(),
+        };
 
     }
 
@@ -2638,6 +2642,37 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
         Console.WriteLine($"npcStatFactorByPlayerCount: {table.Entries.Values.Sum(classes => classes.Values.Sum(counts => counts.Count))} rows after the feature filter");
         return table;
+    }
+
+    private ArcadeRewardTable ParseArcadeReward() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/arcadeReward.xml", StringComparison.OrdinalIgnoreCase));
+        ArcadeRewardTable table = entry == null ? new ArcadeRewardTable(new Dictionary<int, IReadOnlyDictionary<int, ArcadeRewardTable.Entry>>())
+            : MapArcadeReward(xmlReader.GetXmlDocument(entry), row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
+        Console.WriteLine($"arcadeReward: {table.Entries.Values.Sum(rounds => rounds.Count)} rounds of {table.Entries.Count} arcades");
+        return table;
+    }
+
+    // A row of a locale replaces the row without a locale of the same round, in either order; rows the filter drops
+    // are left out.
+    public static ArcadeRewardTable MapArcadeReward(XmlDocument document, Func<XmlElement, bool> available) {
+        var results = new Dictionary<int, IReadOnlyDictionary<int, ArcadeRewardTable.Entry>>();
+        foreach (XmlElement game in document.SelectNodes("ms2/arcadeGame")!.OfType<XmlElement>()) {
+            if (!int.TryParse(game.GetAttribute("arcadeId"), out int arcadeId)) continue;
+            var rounds = new Dictionary<int, ArcadeRewardTable.Entry>();
+            var localized = new HashSet<int>();
+            foreach (XmlElement row in game.SelectNodes("reward")!.OfType<XmlElement>()) {
+                if (!available(row) || !int.TryParse(row.GetAttribute("round"), out int round)) continue;
+                bool hasLocale = row.GetAttribute("locale") != "";
+                if (!hasLocale && localized.Contains(round)) continue;
+                if (hasLocale) localized.Add(round);
+                float.TryParse(row.GetAttribute("expRate"), NumberStyles.Float, CultureInfo.InvariantCulture, out float expRate);
+                int.TryParse(row.GetAttribute("meso"), out int meso);
+                rounds[round] = new ArcadeRewardTable.Entry(round, expRate, meso);
+            }
+            results[arcadeId] = rounds;
+        }
+        return new ArcadeRewardTable(results);
     }
 
     private MonsterExpTable ParseMonsterExp() {

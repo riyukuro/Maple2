@@ -71,8 +71,8 @@ public partial class Trigger {
         public void Execute(TriggerContext context) => context.ArcadeSpringFarmStartGame(lifeCount);
     }
 
-    public class ArcadeSpringFarmStartRound(int uiDuration, int round, string timeScoreType, int timeScoreRate, int roundDuration) : IAction {
-        public void Execute(TriggerContext context) => context.ArcadeSpringFarmStartRound(uiDuration, round, timeScoreType, timeScoreRate, roundDuration);
+    public class ArcadeSpringFarmStartRound(int round, int uiDuration, string timeScoreType, int timeScoreRate, int roundDuration) : IAction {
+        public void Execute(TriggerContext context) => context.ArcadeSpringFarmStartRound(round, uiDuration, timeScoreType, timeScoreRate, roundDuration);
     }
 
     public class ArcadeThreeTwoOneClearRound(int round) : IAction {
