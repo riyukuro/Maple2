@@ -74,6 +74,19 @@ public static class SkillCastRules {
         return (endTick, uses);
     }
 
+    // A recharge chain's length when the cooldown the client would start now (CooldownMs) is shorter than the one
+    // kept: the client starts each recharge cooldown again at the reductions held at that moment (FUN_1417664e0
+    // from FUN_1417687e0), and the server, which settles the chain only when it looks at it, does not know when a
+    // reduction came. Chosen here: the shorter length counts from then on and for the step that runs (its end moves
+    // closer by the difference), so a reduction gained mid-chain never gets a cast refused; a longer one (a
+    // reduction lost) leaves the kept length. Returns the end tick and length to keep.
+    public static (long EndTick, long LengthMs) ShortenRecharge(long endTick, long keptMs, long nowMs) {
+        if (nowMs >= keptMs || nowMs < 0) {
+            return (endTick, keptMs);
+        }
+        return (endTick - (keptMs - nowMs), nowMs);
+    }
+
     // A cast takes its item once, however often its cost is asked for.
     public static bool ConsumesItem(bool useItem, bool itemConsumed) => useItem && !itemConsumed;
 

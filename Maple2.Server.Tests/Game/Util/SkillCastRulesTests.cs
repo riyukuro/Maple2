@@ -452,6 +452,20 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void RechargeTakesAShorterLengthGainedMidChain() {
+        Assert.That(SkillCastRules.ShortenRecharge(10_000, 10_000, 10_000), Is.EqualTo((10_000L, 10_000L)), "same length: unchanged");
+        Assert.That(SkillCastRules.ShortenRecharge(10_000, 10_000, 12_000), Is.EqualTo((10_000L, 10_000L)), "a reduction lost keeps the kept length");
+        Assert.That(SkillCastRules.ShortenRecharge(10_000, 10_000, 8_000), Is.EqualTo((8_000L, 8_000L)), "the running step ends sooner by the difference");
+        Assert.That(SkillCastRules.ShortenRecharge(10_000, 10_000, 0), Is.EqualTo((0L, 0L)));
+
+        // Three uses out on a 10 s cooldown from 0; at 5000 a 20 % group reduction makes it 8 s. The client's next
+        // steps run 8 s; the kept 10 s would hold a use back until 20000 that the client has at 16000.
+        (long end, long length) = SkillCastRules.ShortenRecharge(10_000, 10_000, 8_000);
+        Assert.That(SkillCastRules.SettleRecharge(end, 3, length, 16_000), Is.EqualTo((24_000L, 1)));
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 3, 10_000, 16_000), Is.EqualTo((20_000L, 2)), "without it: one use fewer");
+    }
+
+    [Test]
     public void GroupReductionIsReadFromTheSpecialEffect() {
         // Made-up rows: type 4 with probability 1 is taken; another type or a rolled one is not.
         const string values = "<v groupID=\"90000001\" reduceRate=\"0.20\" />";

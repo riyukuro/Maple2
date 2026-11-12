@@ -213,6 +213,7 @@ public class ConfigManager {
         bool recharge = skill.State.RechargeMaxCount > 0 && !skill.Data.Consume.UseItem;
         skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown);
         if (recharge && cooldown != null) {
+            ShortenRecharge(cooldown, lengthMs);
             (cooldown.EndTick, cooldown.Charges) = SkillCastRules.SettleRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs, startTick);
         }
         if (cooldown == null || !recharge || cooldown.Charges <= 0) {
@@ -233,6 +234,14 @@ public class ConfigManager {
         return SkillCastRules.CooldownMs(skill.Data.Condition.CooldownTime, skill.State.IgnoreReduceCooldown,
             session.Player.Buffs.CooldownGroupRate(skill.State.CooldownGroupId),
             session.Player.Stats.Values[SpecialAttribute.ReduceCooldown].Multiplier());
+    }
+
+    // Takes the length the client would start a recharge cooldown at now when it is shorter than the kept one
+    // (SkillCastRules.ShortenRecharge).
+    private static void ShortenRecharge(SkillCooldown cooldown, long lengthMs) {
+        if (cooldown.RechargeMs > 0 && cooldown.Charges > 0) {
+            (cooldown.EndTick, cooldown.RechargeMs) = SkillCastRules.ShortenRecharge(cooldown.EndTick, cooldown.RechargeMs, lengthMs);
+        }
     }
 
     // Brings the recharge uses of the kept cooldowns up to this tick.
@@ -278,6 +287,7 @@ public class ConfigManager {
         if (!skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown) || cooldown.RechargeMs <= 0) {
             return 0;
         }
+        ShortenRecharge(cooldown, CooldownMs(skill));
         (long endTick, int usesOut) = SkillCastRules.SettleRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs, tick);
         if (usesOut <= 0) {
             return 0;
