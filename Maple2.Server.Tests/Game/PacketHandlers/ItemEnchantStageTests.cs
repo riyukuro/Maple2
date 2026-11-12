@@ -58,4 +58,34 @@ public class ItemEnchantStageTests {
             Assert.That(session.ItemEnchant.Type, Is.EqualTo(EnchantType.Ophelia));
         });
     }
+
+    // Enchant pressed without the copies the grade asks for: error 3 (lack of ingredient), which the client shows
+    // as a notice, then the smith's line; the item keeps its grade.
+    [Test]
+    public void EnchantWithoutTheCopies_AnswersError3() {
+        var test = new TestGameSession();
+        Item gear = test.Store(TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1));
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>> {
+            [ScriptEventType.EnchantSelect] = new() {
+                [1] = new ScriptEventConditionMetadata(1, ScriptEventType.EnchantSelect, ItemEnchantError.s_itemenchant_unknown_err, 0, [0], 0,
+                    EnchantDamageType.None, EnchantResult.None),
+            },
+        }));
+        GameSession session = test.Start();
+        session.NpcScript = new NpcScriptManager(session, [new CinematicEventScript(1, [new ScriptContent("select", "", "")])]);
+        Item staged = session.Item.GetGear(gear.Uid)!;
+        staged.Enchant = new ItemEnchant(enchants: 10);
+        session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            Assert.That(System.Convert.ToHexString(sent[0]),
+                Is.EqualTo(System.Convert.ToHexString(Maple2.Server.Game.Packets.ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient).ToArray())));
+            Assert.That(staged.Enchant!.Enchants, Is.EqualTo(10));
+        });
+    }
 }

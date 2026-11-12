@@ -405,6 +405,9 @@ public class ItemCollection : IEnumerable<Item> {
                && Equals(item.Transfer, stack.Transfer)
                // A merge keeps one item's lock state, so a locked and an unlocked item never merge.
                && item.IsLocked == stack.IsLocked && item.UnlockTime == stack.UnlockTime
+               // A merge keeps one item's storage record (the character that stored a moveDisable item), so items
+               // stored by two characters, or one with a record and one without, never merge.
+               && Equals(item.Binding, stack.Binding)
                && item.ExpiryTime / 60 == stack.ExpiryTime / 60; // Expiry time is in seconds, convert to minutes
     }
 

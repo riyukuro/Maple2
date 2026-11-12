@@ -382,10 +382,13 @@ public class StatsManager {
         if (Actor is not FieldPlayer player) {
             return;
         }
-        if (ExpiredWorn(player, DateTime.Now.ToEpochSeconds()) != expiredWorn) {
+        if (ExpiryChanged(expiredWorn, ExpiredWorn(player, DateTime.Now.ToEpochSeconds()))) {
             Refresh();
         }
     }
+
+    // The tick rebuilds when the count of worn items past their time is not the one the totals were built with.
+    internal static bool ExpiryChanged(int built, int expiredNow) => built != expiredNow;
 
     // An event that starts or stops (its dates, its days of the week, its part of the day) changes the bonus
     // without anything else rebuilding the stats: rebuild when the sums are not the ones the totals hold.

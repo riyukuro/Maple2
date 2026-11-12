@@ -94,8 +94,16 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
+            // A moveDisable item carries the character that stored it: the client shows the name and lets only
+            // that character take it out. It stacks only with what the same character stored.
+            ItemBinding? storedBy = deposit.Metadata.Property.MoveDisable
+                ? new ItemBinding(session.CharacterId, session.Player.Value.Character.Name)
+                : null;
             if (items.OpenSlots == 0) {
+                ItemBinding? held = deposit.Binding;
+                deposit.Binding = storedBy;
                 int remaining = items.GetStackResult(deposit, amount);
+                deposit.Binding = held;
                 if (amount == remaining) {
                     session.Send(StorageInventoryPacket.Error(s_item_err_store_full));
                     return;
@@ -110,11 +118,7 @@ public sealed class StorageManager : IDisposable {
             }
 
             deposit.Slot = slot;
-            // A moveDisable item carries the character that stored it: the client shows the name and lets only
-            // that character take it out.
-            if (deposit.Metadata.Property.MoveDisable) {
-                deposit.Binding = new ItemBinding(session.CharacterId, session.Player.Value.Character.Name);
-            }
+            deposit.Binding = storedBy;
             IList<(Item, int Added)> result = items.Add(deposit, true);
 
             foreach ((Item item, int _) in result) {

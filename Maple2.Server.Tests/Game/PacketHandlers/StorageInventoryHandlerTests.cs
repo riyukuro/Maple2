@@ -206,6 +206,62 @@ public class StorageInventoryHandlerTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // Two characters store the same stackable moveDisable item: the copies stay on two stacks with their own
+    // record, so each character takes out only its own and the other's copies stay stored.
+    [Test]
+    public void MoveDisableStacks_KeepTheirOwnRecord() {
+        GameSession session = Open();
+        Maple2.Model.Metadata.ItemMetadata metadata = TestGameSession.Metadata(20000003, type: 2, slotMax: 10);
+        metadata = metadata with { Property = metadata.Property with { MoveDisable = true } };
+        Item other = test.Store(metadata, amount: 3);
+        Item mine = test.Store(metadata, amount: 3);
+        session.Item.Inventory.Add(other);
+        Item(session, 0, other.Uid, 3);
+        typeof(ItemBinding).GetProperty(nameof(ItemBinding.CharacterId))!.SetValue(other.Binding, test.CharacterId + 1);
+        session.Item.Inventory.Add(mine);
+        test.TakeSent();
+
+        Item(session, 0, mine.Uid, 3);
+
+        Assert.That(other.Amount, Is.EqualTo(3));
+        Assert.That(other.Binding!.CharacterId, Is.EqualTo(test.CharacterId + 1));
+        Assert.That(mine.Binding!.CharacterId, Is.EqualTo(test.CharacterId));
+        Item(session, 1, other.Uid, 3);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(
+            Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_item_err_moveDisableitem_store_out))));
+        Item(session, 1, mine.Uid, 3);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(mine.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(session.Item.Inventory.Get(other.Uid), Is.Null);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A dead player's destroy request of a stored item (10) is not answered and the item stays stored; the client
+    // shows its own text and never sends it.
+    [Test]
+    public void Delete_WhileDeadIsIgnored() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, stack.Amount);
+        // The death itself needs a field's data; the flag alone is what the handler reads.
+        System.Reflection.FieldInfo dead = typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        dead.SetValue(session.Player, true);
+        Assert.That(session.Player.IsDead, Is.True);
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(10);
+            writer.WriteLong(stack.Uid);
+        }));
+
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.StorageInventory), Is.Empty);
+        dead.SetValue(session.Player, false);
+        test.TakeSent();
+        Item(session, 1, stack.Uid, stack.Amount);
+        Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(5));
+    }
+
     // An expansion: the merets, then the new count of added slots and nothing else; no further than the constant.
     [Test]
     public void Expand_AnswersWithTheAddedSlots() {

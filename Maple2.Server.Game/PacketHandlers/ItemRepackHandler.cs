@@ -67,7 +67,7 @@ public class ItemRepackHandler : FieldPacketHandler {
                 transferTypeOk: ScrollRules.RepackTransferTypeAllowed((int) targetItem.Metadata.Limit.TransferType),
                 hasTransfer: targetItem.Transfer != null,
                 tradesLeft: targetItem.Transfer?.RemainTrades ?? 0,
-                bound: targetItem.Binding != null,
+                bound: targetItem.Transfer?.Binding != null,
                 repackLeft: ScrollRules.HasRepackLeft(targetItem.Metadata.Property.RepackCount, targetItem.Transfer?.RepackageCount ?? 0),
                 locked: targetItem.IsLocked || targetItem.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             if (code != 0 || targetItem.Transfer == null) {
