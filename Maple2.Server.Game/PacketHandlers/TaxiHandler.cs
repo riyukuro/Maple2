@@ -8,6 +8,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -184,6 +185,13 @@ public class TaxiHandler : FieldPacketHandler {
         }
 
         if (!mapMetadataStorage.TryGet(mapId, out MapMetadata? map)) {
+            return false;
+        }
+
+        // A field without its navmesh file cannot be created (FieldManager.Factory.Create): refuse the ride before the
+        // fare is taken, with the move error the failed field would give.
+        if (!Navigation.Exists(map.XBlock)) {
+            session.Send(FieldEnterPacket.Error(s_move_err_default));
             return false;
         }
 
