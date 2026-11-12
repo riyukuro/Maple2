@@ -158,25 +158,29 @@ public class Stats {
     // passes through 0 (ClearStats) on its way to the new totals. A held stat keeps its Current through the rebuild.
     private void HoldCurrent() {
         foreach (Stat stat in basicValues.Values) {
-            stat.Held = true;
+            stat.Hold();
         }
         foreach (Stat stat in specialValues.Values) {
-            stat.Held = true;
+            stat.Hold();
         }
     }
 
     /// <summary>
-    /// Ends a rebuild: each Current goes straight from its held value to the new Total, as the rebuild gave before;
-    /// Health goes to 0 instead when <paramref name="dead"/>.
+    /// Ends a rebuild: each Current keeps its share of the Total, as KMS2 does when a buff, equip or pet changes the
+    /// maximum (Current x new Total / old Total, rounded down); Health goes to 0 instead when <paramref name="dead"/>.
+    /// On a <paramref name="levelUp"/> a living actor's Health and Spirit fill to the new Total, as KMS2 sends after a level up.
     /// </summary>
-    public void EndReset(bool dead) {
+    public void EndReset(bool dead, bool levelUp = false) {
         foreach ((BasicAttribute attribute, Stat stat) in basicValues) {
-            stat.Current = dead && attribute == BasicAttribute.Health ? 0 : stat.Total;
-            stat.Held = false;
+            stat.EndHold();
+            if (dead && attribute == BasicAttribute.Health) {
+                stat.Current = 0;
+            } else if (levelUp && !dead && attribute is BasicAttribute.Health or BasicAttribute.Spirit) {
+                stat.Current = stat.Total;
+            }
         }
         foreach (Stat stat in specialValues.Values) {
-            stat.Current = stat.Total;
-            stat.Held = false;
+            stat.EndHold();
         }
     }
 
@@ -206,6 +210,7 @@ public sealed class Stat {
     public float Rate { get; set; }
     // Set during a Stats rebuild: Base and Total change, Current waits for Stats.EndReset.
     internal bool Held;
+    private long heldTotal;
 
     public Stat(long value) : this(value, value, value) { }
 
@@ -242,6 +247,22 @@ public sealed class Stat {
 
     public void AddRate(float rate) {
         Rate += rate;
+    }
+
+    internal void Hold() {
+        // A stat held twice (a rebuild that did not end) keeps the Total it had when the first one started.
+        if (!Held) {
+            heldTotal = Total;
+            Held = true;
+        }
+    }
+
+    internal void EndHold() {
+        if (Held) {
+            // A stat that had no Total before (new to this actor) starts full.
+            Current = heldTotal <= 0 ? Total : Math.Clamp((long) ((Int128) Current * Total / heldTotal), 0, Total);
+            Held = false;
+        }
     }
 
     public void Add(long amount) {

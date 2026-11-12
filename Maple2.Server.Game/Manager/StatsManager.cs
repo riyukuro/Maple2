@@ -122,7 +122,8 @@ public class StatsManager {
         return Random.Shared.NextDouble() < Math.Max(criticalChance, casterCriticalOverride) ? DamageType.Critical : DamageType.Normal;
     }
 
-    public void Refresh() {
+    /// <param name="levelUp">A level change: KMS2 fills HP and SP on a level up (one Stat packet with both after it).</param>
+    public void Refresh(bool levelUp = false) {
         if (Actor is not FieldPlayer player) {
             return;
         }
@@ -150,8 +151,8 @@ public class StatsManager {
         Values.Total();
         StatConversion(player);
 
-        // Current was held through the rebuild; it now goes to the new Total, but a dead player stays at 0 HP until revived.
-        Values.EndReset(player.IsDead);
+        // Current was held through the rebuild; it now keeps its share of the new Total, and a dead player stays at 0 HP until revived.
+        Values.EndReset(player.IsDead, levelUp);
 
         player.Session.Send(StatsPacket.Init(player));
         Actor.Field.Broadcast(StatsPacket.Update(player), player.Session);

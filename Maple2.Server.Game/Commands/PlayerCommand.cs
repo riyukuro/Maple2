@@ -140,7 +140,7 @@ public class PlayerCommand : GameCommand {
 
                 session.Player.Value.Character.Level = level;
                 session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
-                session.Stats.Refresh();
+                session.Stats.Refresh(levelUp: true);
 
                 session.ConditionUpdate(ConditionType.level, targetLong: level);
                 session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: level);
