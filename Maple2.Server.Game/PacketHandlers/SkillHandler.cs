@@ -146,7 +146,7 @@ public class SkillHandler : FieldPacketHandler {
 
         session.ConditionUpdate(ConditionType.skill, codeLong: skillId, targetLong: session.Field.MapId);
         session.Config.SaveSkillCooldown(record.Metadata, startTick);
-        session.Config.SaveCastTime(record.Metadata, serverTick, startTick);
+        session.Config.SaveCastTime(record.Metadata, record.Motion.MotionProperty, serverTick, startTick);
         session.Config.SaveCastMotion(record.Motion.MotionProperty, record.SkillId, serverTick, startTick);
     }
 

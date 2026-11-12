@@ -144,6 +144,21 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.RequiredGap(450, 140), Is.EqualTo(241));
         Assert.That(SkillCastRules.RequiredGap(450, 50), Is.EqualTo(337), "under 100 counts as 100");
         Assert.That(SkillCastRules.RequiredGap(8000, 140), Is.EqualTo(7500), "1 s or more is not cut");
+        // 10500001 (0.45 s, motion speed 1): the client's cooldown is 450 ms at 100 and 412 ms at 109.
+        Assert.That(SkillCastRules.RequiredGap(450, 100), Is.EqualTo(337));
+        Assert.That(SkillCastRules.RequiredGap(450, 109), Is.EqualTo(309));
+        SkillCastRules.LastCast[] at109 = [new SkillCastRules.LastCast(10500001, 0, 450, 100_000, 50_000, 109)];
+        Assert.That(SkillCastRules.CooldownRefuses(at109, 10500001, 0, 50_412, 100_412, 109), Is.False, "the client's own cooldown end");
+        Assert.That(SkillCastRules.CooldownRefuses(at109, 10500001, 0, 50_309, 100_309, 109), Is.False);
+        Assert.That(SkillCastRules.CooldownRefuses(at109, 10500001, 0, 50_308, 100_308, 109), Is.True);
+        // The cast motion's own speed cuts it too: 0.25 s at motion speed 1.5 is 166 ms in the client.
+        Assert.That(SkillCastRules.RequiredGap(250, 100, 1.5f), Is.EqualTo(125));
+        Assert.That(SkillCastRules.RequiredGap(250, 109, 1.5f), Is.EqualTo(114));
+        Assert.That(SkillCastRules.RequiredGap(450, 100, 0.8f), Is.EqualTo(421), "a slower motion lengthens it");
+        Assert.That(SkillCastRules.RequiredGap(450, 140, 1f, SkillCastRules.UnscaledMoveType), Is.EqualTo(337), "move type 3: the motion's own speed only");
+        SkillCastRules.LastCast[] quick = [new SkillCastRules.LastCast(10500173, 0, 250, 100_000, 50_000, 100, 1.5f)];
+        Assert.That(SkillCastRules.CooldownRefuses(quick, 10500173, 0, 50_166, 100_166), Is.False);
+        Assert.That(SkillCastRules.CooldownRefuses(quick, 10500173, 0, 50_124, 100_124), Is.True);
         SkillCastRules.LastCast[] strafe = [new SkillCastRules.LastCast(10500001, 0, 450, 100_000, 50_000)];
         Assert.That(SkillCastRules.CooldownRefuses(strafe, 10500001, 0, 50_300, 100_300), Is.True);
         Assert.That(SkillCastRules.CooldownRefuses(strafe, 10500001, 0, 50_300, 100_300, 140), Is.False);

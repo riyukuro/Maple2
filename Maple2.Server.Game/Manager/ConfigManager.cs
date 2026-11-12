@@ -239,9 +239,9 @@ public class ConfigManager {
         return value != 0 || rate != 0;
     }
 
-    public void SaveCastTime(SkillMetadata skill, int castTick, long tick) {
+    public void SaveCastTime(SkillMetadata skill, SkillMetadataMotionProperty motion, int castTick, long tick) {
         long cooldownMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
-        lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick, AttackSpeed);
+        lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick, AttackSpeed, motion.SequenceSpeed, motion.MoveType);
     }
 
     private long AttackSpeed => session.Player.Stats.Values[BasicAttribute.AttackSpeed].Total;

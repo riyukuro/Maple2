@@ -50,16 +50,20 @@ public static class SkillCastRules {
 
     // The last accepted cast of a skill: the cooldown it started and when, by the server's clock and by the
     // tick the client sent with the cast.
-    public readonly record struct LastCast(int SkillId, int GroupId, long CooldownMs, long ServerTick, int CastTick, long AttackSpeed = 100);
+    public readonly record struct LastCast(int SkillId, int GroupId, long CooldownMs, long ServerTick, int CastTick, long AttackSpeed = 100, float SequenceSpeed = 1f, int MoveType = 0);
 
-    // The shortest time after a cast at which the next one is taken. A cooldown under 1 s is cut by the attack
-    // speed (chosen here: divided by it, as a motion is; an attack speed under 100 counts as 100). Not proven: that
-    // a refusal seen at a 450 ms cooldown came from the attack speed; KMS2 has no cast above attack speed 121.
-    public static long RequiredGap(long cooldownMs, long attackSpeed = 100) {
+    // The shortest time after a cast at which the next one is taken. The client starts the cooldown of a skill whose
+    // cooldown is not shown in the UI (beginCondition useCoolDownShowUI 0) at cooldown / the cast motion's speed
+    // (MyPC::FUN_141525ff0 with StateSkill::GetMotionSpeedScale: the motion's own speed x the attack speed, the
+    // motion's own speed alone for move type 3) and applies no cooldown reduction to it; a shown cooldown runs in
+    // full. The flag is not ingested. Chosen here: a cooldown under 1 s stands in for it (in the KR data the skills
+    // with a cooldown under 1 s have the flag 0 but for four with 0.4 s, which are only taken sooner by this), and
+    // the cast is taken from ShortCooldownShare of that time on; an attack speed under 100 counts as 100.
+    public static long RequiredGap(long cooldownMs, long attackSpeed = 100, float sequenceSpeed = 1f, int moveType = 0) {
         if (cooldownMs <= 0) {
             return 0;
         }
-        return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare / MathF.Max(1f, attackSpeed / 100f));
+        return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare / MotionSpeed(sequenceSpeed, attackSpeed, moveType));
     }
 
     // The time between two casts: the shorter of the client's own ticks and the arrivals plus the allowance, so
@@ -78,7 +82,7 @@ public static class SkillCastRules {
             if (last.SkillId != skillId && (groupId == 0 || last.GroupId != groupId)) {
                 continue;
             }
-            if (CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < RequiredGap(last.CooldownMs, Math.Max(last.AttackSpeed, attackSpeed))) {
+            if (CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < RequiredGap(last.CooldownMs, Math.Max(last.AttackSpeed, attackSpeed), last.SequenceSpeed, last.MoveType)) {
                 return true;
             }
         }
