@@ -119,4 +119,11 @@ public class GuildRulesTests {
         Assert.That(GuildRules.IsSearchName("ab"), Is.True);
         Assert.That(GuildRules.IsSearchName(new string('a', 51)), Is.False);
     }
+
+    [TestCase(1001, 1001, 500, 620, 120)] // own check-in or donation: the rise counts
+    [TestCase(1001, 1002, 500, 620, 0)] // another member's contribution
+    [TestCase(1001, 1001, 620, 620, 0)] // funds only, no exp
+    public void ContributedExp_CountsOnlyTheContributorsRise(long characterId, long contributorId, int oldExp, int newExp, long expected) {
+        Assert.That(GuildRules.ContributedExp(characterId, contributorId, oldExp, newExp), Is.EqualTo(expected));
+    }
 }

@@ -261,6 +261,7 @@ public class GuildManager : IDisposable {
             return false;
         }
 
+        long contributedExp = GuildRules.ContributedExp(session.CharacterId, contributorId, Guild.Experience, exp);
         int addExp = exp - Guild.Experience;
         int addFunds = funds - Guild.Funds;
         Guild.Experience = exp;
@@ -270,6 +271,9 @@ public class GuildManager : IDisposable {
         session.Send(GuildPacket.GuildFunds(Guild.Funds));
         if (session.CharacterId == contributorId) {
             session.Send(GuildPacket.AddContribution(addExp, addFunds));
+        }
+        if (contributedExp > 0) {
+            session.ConditionUpdate(ConditionType.guild_exp, counter: contributedExp);
         }
         return true;
     }

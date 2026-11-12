@@ -423,4 +423,10 @@ public static class GuildRules {
     public static bool CanChangeRankOf(byte memberRank) {
         return memberRank != MasterRank;
     }
+
+    // guild_exp ("Obtain 100 guild experience", 70300016): the guild exp a member's own action added. Every
+    // member gets the new total; only the contributor counts the rise, and a total that did not rise counts nothing.
+    public static long ContributedExp(long characterId, long contributorId, int oldExp, int newExp) {
+        return characterId == contributorId && newExp > oldExp ? newExp - oldExp : 0;
+    }
 }
