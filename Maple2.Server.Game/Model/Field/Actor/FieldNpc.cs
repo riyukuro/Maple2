@@ -217,6 +217,7 @@ public class FieldNpc : Actor<Npc> {
     private int lastAttackerObjectId;
 
     public MS2PatrolData? Patrol { get; private set; }
+    private bool scriptPatrol;
     private int currentWaypointIndex;
 
     private bool hasBeenBattling;
@@ -376,6 +377,11 @@ public class FieldNpc : Actor<Npc> {
             idleTask = null;
 
             return;
+        }
+
+        // Back on a script's path: walk on along it, not back to the spawn first.
+        if (hasBeenBattling && NpcTargetRules.HoldsScriptPath(Value.Metadata.Basic.Friendly, OnScriptPath)) {
+            hasBeenBattling = false;
         }
 
         if (hasBeenBattling && idleTask is null && MovementState.CastTask is null) {
@@ -872,10 +878,15 @@ public class FieldNpc : Actor<Npc> {
         }
     }
 
-    public void SetPatrolData(MS2PatrolData newPatrolData) {
+    // byScript: a trigger's MoveNpc set the path (NpcTargetRules.HoldsScriptPath).
+    public void SetPatrolData(MS2PatrolData newPatrolData, bool byScript = false) {
         Patrol = newPatrolData;
         currentWaypointIndex = 0;
+        scriptPatrol = byScript;
     }
+
+    // On a path a script set that has not ended (a path that is not a loop ends at its last waypoint).
+    public bool OnScriptPath => scriptPatrol && Patrol != null;
 
     public void ClearPatrolData() {
         if (Patrol is null) {

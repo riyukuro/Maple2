@@ -40,6 +40,14 @@ public static class NpcTargetRules {
         return targetGone || (outOfSightOrNoBattle && !keepBattle);
     }
 
+    // A friendly npc (friendly 1 or 2) that a script walks along a path (trigger MoveNpc) keeps to the path until
+    // it ends: it takes no monster as a new target and lets go of one it has. Scripts wait on its arrival (a box's
+    // npc_detected: in the KR data 29 maps move a friendly npc where monsters spawn, 13 of them wait on its arrival), which a fight off the path would hold back or, for an ally that
+    // dies, never let come. The client walks the npc where the server's control packets put it; the fight between
+    // npcs is the server's, so this is chosen here. A monster on a script's path still fights, and a path the npc
+    // spawns with (its own patrol) does not hold it.
+    public static bool HoldsScriptPath(int ownFriendly, bool onScriptPath) => ownFriendly != 0 && onScriptPath;
+
     // A walk to or from an actor is over once that actor is no longer the npc's battle target.
     public static bool ChaseEnds(int chasedObjectId, int targetObjectId) => chasedObjectId != targetObjectId;
 }

@@ -64,4 +64,14 @@ public class NpcTargetRulesTests {
     public void ChaseEnds_WhenTheChasedActorIsNoLongerTheTarget(int chased, int target, bool expected) {
         Assert.That(NpcTargetRules.ChaseEnds(chased, target), Is.EqualTo(expected));
     }
+
+    // A friendly npc a script walks along a path keeps to it; a monster on one, or an npc off one, fights.
+    [TestCase(1, true, true)]
+    [TestCase(2, true, true)]
+    [TestCase(1, false, false)]
+    [TestCase(0, true, false)]
+    [TestCase(0, false, false)]
+    public void HoldsScriptPath_OnlyForAFriendlyNpcOnAScriptsPath(int friendly, bool onScriptPath, bool expected) {
+        Assert.That(NpcTargetRules.HoldsScriptPath(friendly, onScriptPath), Is.EqualTo(expected));
+    }
 }

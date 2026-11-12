@@ -76,6 +76,12 @@ public class BattleState {
             }
         }
 
+        bool holdsPath = actor is FieldNpc { OnScriptPath: true } && NpcTargetRules.HoldsScriptPath(actor.Value.Metadata.Basic.Friendly, true);
+        if (holdsPath && Target is FieldNpc) {
+            actor.AppendDebugMessage($"Lost target '{GetTargetName()}' (script path)\n");
+            Target = null;
+        }
+
         if (CanBattle && TargetId == 0 && nextTargetSearchTick <= tickCount) {
             if (actor is FieldPet { OwnerId: 0, TamingPoint: <= 0 }) {
                 return;
@@ -296,7 +302,9 @@ public class BattleState {
 
         // The monsters' side: a friendly npc's enemies, a monster's allies. The field keeps the monsters in Mobs
         // (Npcs holds the friendly npcs only).
-        if (friendlyType == 1) {
+        // A friendly npc on a script's path does not leave it for a monster (NpcTargetRules.HoldsScriptPath).
+        bool holdsPath = actor is FieldNpc { OnScriptPath: true } && NpcTargetRules.HoldsScriptPath(ownFriendly, true);
+        if (friendlyType == 1 && !holdsPath) {
             foreach (FieldNpc npc in actor.Field.Mobs.Values) {
                 if (npc == actor || (ownFriendly != 0 && !FightsNpc(npc)) || !NpcTargetRules.CanTarget(npc.IsDead, invisibleFromNpc: false)) {
                     continue;
