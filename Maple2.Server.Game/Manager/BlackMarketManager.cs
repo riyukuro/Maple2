@@ -176,7 +176,10 @@ public sealed class BlackMarketManager {
         using (GameStorage.Request db = session.GameStorage.Context()) {
             listing = db.GetBlackMarketListing(listingId);
         }
-        if (listing == null) {
+        // This look takes no lock, so it can fall between the two saves of another buyer's transaction. A database
+        // without transactions (the in-memory one of the tests) then shows the row with nothing left before it is
+        // removed: that is a sold listing, the same as no row.
+        if (listing == null || listing.Quantity <= 0) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_itemcount, 5, listingId));
             return;
         }

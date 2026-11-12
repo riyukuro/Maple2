@@ -11,6 +11,12 @@ public static class MasteryRules {
         return type is >= MasteryType.Mining and <= MasteryType.Cooking ? (ExpMessageCode) (3100 + (int) type) : null;
     }
 
+    // The id of a mastery grade's reward as the client makes it (CMasteryTable::MakeID, TypeFromID, GradeFromID):
+    // type * 1000 + grade. Every id has one type and one grade, so a claimed grade has one key.
+    public static (int Type, int Grade) RewardStep(int id) {
+        return id < 0 ? (-1, -1) : (id / 1000, id % 1000);
+    }
+
     // The client checks a recipe in this order before it sends the craft: mastery, quest, meso (items come after).
     // A recipe with required quests needs one of them, not all. 0 means the recipe may be crafted.
     public static MasteryError CraftError(int mastery, int requiredMastery, int requiredQuestCount, bool hasAnyRequiredQuest, long meso, long requiredMeso) {

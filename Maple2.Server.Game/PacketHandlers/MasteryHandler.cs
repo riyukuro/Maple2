@@ -41,16 +41,19 @@ public class MasteryHandler : FieldPacketHandler {
     }
 
     private void HandleReward(GameSession session, IByteReader packet) {
+        // The client's id of a grade (CMasteryTable::MakeID): type * 1000 + grade.
         int rewardBoxDetails = packet.ReadInt();
-        var type = (MasteryType) (rewardBoxDetails / 1000);
-        int level = rewardBoxDetails % 100;
+        (int typeId, int level) = MasteryRules.RewardStep(rewardBoxDetails);
+        var type = (MasteryType) typeId;
 
         if (session.Player.Value.Unlock.MasteryRewardsClaimed.TryGetValue(rewardBoxDetails, out bool isClaimed) && isClaimed) {
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
             return;
         }
 
-        if (!TableMetadata.MasteryRewardTable.Entries.TryGetValue(type, level, out MasteryRewardTable.Entry? entry)) {
+        // The client offers only a grade of its table that has a reward item; anything else was not asked there.
+        if (!TableMetadata.MasteryRewardTable.Entries.TryGetValue(type, level, out MasteryRewardTable.Entry? entry) || entry.ItemId == 0) {
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
             return;
         }
 
@@ -61,6 +64,7 @@ public class MasteryHandler : FieldPacketHandler {
 
         Item? rewardItem = session.Field?.ItemDrop.CreateItem(entry.ItemId, entry.ItemRarity, entry.ItemAmount);
         if (rewardItem == null) {
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
             return;
         }
 
@@ -79,6 +83,7 @@ public class MasteryHandler : FieldPacketHandler {
         int recipeId = packet.ReadInt();
 
         if (!TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out MasteryRecipeTable.Entry? entry)) {
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
             return;
         }
 

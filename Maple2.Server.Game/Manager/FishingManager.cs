@@ -5,6 +5,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -60,6 +61,11 @@ public class FishingManager {
     }
 
     public FishingError Prepare(long fishingRodUid) {
+        // The client does not ask from inside a house: it shows this refusal by itself (CFishingManager, the
+        // check before Fishing 0).
+        if (session.Field is HomeFieldManager) {
+            return FishingError.s_fishing_error_ugcmap;
+        }
         if (session.GuideObject != null || session.Field?.AccelerationStructure == null) {
             return FishingError.s_fishing_error_system_error;
         }

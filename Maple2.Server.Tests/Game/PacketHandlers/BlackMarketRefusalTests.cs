@@ -188,6 +188,25 @@ public class BlackMarketRefusalTests {
         Assert.That(test.Errors.Concat(buyerTest.Errors), Is.Empty);
     }
 
+    // A row with nothing left is what another buyer's transaction shows between its two saves on a database
+    // without transactions: it is a sold listing, so the answer is the one for no row.
+    [Test]
+    public void Purchase_OfARowWithNothingLeftIsGone() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        using (var context = new Ms2Context(test.Options)) {
+            context.BlackMarketListing.Find(listing.Id)!.Quantity = 0;
+            context.SaveChanges();
+        }
+        GameSession session = Login(test, 5000);
+
+        Send(test, session, 5, listing.Id, 4);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(BlackMarketPacket.Error(BlackMarketError.s_err_lack_itemcount, 5, listing.Id)) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(0));
+    }
+
     // Two buyers at once on one listing, each asking for count of its 4: with 4 one gets it all and the other is
     // refused; with 3 one gets 3 and 1 stays listed; with 2 both are served. Only served buyers pay, and the item
     // rows always add up to the 4 that were listed.

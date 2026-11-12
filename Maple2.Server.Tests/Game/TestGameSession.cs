@@ -661,6 +661,7 @@ public sealed class TestGameSession {
         typeof(FieldManager).GetField("fieldFunctionInteracts", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldFunctionInteract>());
         typeof(FieldManager).GetField("fieldItems", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldItem>());
         typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
+        typeof(FieldManager).GetField("fieldInstruments", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldInstrument>());
         return field;
     }
 

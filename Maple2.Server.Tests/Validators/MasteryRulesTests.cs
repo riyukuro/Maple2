@@ -128,4 +128,14 @@ public class MasteryRulesTests {
     public void OtherTypesGetTheWholeReward(MasteryType type) {
         Assert.That(MasteryRules.Reward(type, 5, 0, 99999, Grades, _ => 0), Is.EqualTo(5));
     }
+
+    // The client's id of a grade: type * 1000 + grade.
+    [TestCase(3002, 3, 2)]
+    [TestCase(3102, 3, 102)]
+    [TestCase(11010, 11, 10)]
+    [TestCase(2, 0, 2)]
+    [TestCase(-1, -1, -1)]
+    public void RewardStep_SplitsTheClientId(int id, int type, int grade) {
+        Assert.That(MasteryRules.RewardStep(id), Is.EqualTo((type, grade)));
+    }
 }

@@ -1539,12 +1539,15 @@ public partial class FieldManager {
         return true;
     }
 
-    public bool RemoveInstrument(int objectId) {
+    // broadcast: false for an improvisation, whose end (PlayInstrument 2) the handler has told already.
+    public bool RemoveInstrument(int objectId, bool broadcast = true) {
         if (!fieldInstruments.TryRemove(objectId, out FieldInstrument? instrument)) {
             return false;
         }
 
-        Broadcast(InstrumentPacket.StopScore(instrument));
+        if (broadcast) {
+            Broadcast(InstrumentPacket.StopScore(instrument));
+        }
         return true;
     }
     #endregion

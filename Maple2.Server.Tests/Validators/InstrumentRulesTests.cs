@@ -39,4 +39,34 @@ public class InstrumentRulesTests {
     public void ComposeChecks(string title, string mml, int length, int noteLengthMax, bool expected) {
         Assert.That(Compose(title, mml, length, noteLengthMax), Is.EqualTo(expected));
     }
+
+    // A played score counts from the start to the stop, and no longer than the score.
+    [TestCase(-5, 60000, 0)]
+    [TestCase(0, 60000, 0)]
+    [TestCase(30000, 60000, 30000)]
+    [TestCase(90000, 60000, 60000)]
+    [TestCase(90000, 0, 90000)] // a score without a length
+    public void PlayedMs_StopsAtTheScoreLength(long elapsed, int length, long expected) {
+        Assert.That(InstrumentRules.PlayedMs(elapsed, length), Is.EqualTo(expected));
+    }
+
+    // masteryValue per second, up to masteryValueMax.
+    [TestCase(0, 1, 60, 0)]
+    [TestCase(999, 1, 60, 0)]
+    [TestCase(30000, 1, 60, 30)]
+    [TestCase(90000, 1, 60, 60)]
+    [TestCase(10000, 3, 100, 30)]
+    [TestCase(10000, 1, -1, 0)]
+    public void Mastery_IsPerSecondUpToTheMax(long played, int value, int max, int expected) {
+        Assert.That(InstrumentRules.Mastery(played, value, max), Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 0f)]
+    [TestCase(300, 0f)]
+    [TestCase(500, 0f)]
+    [TestCase(1500, 2f)]
+    [TestCase(60500, 120f)]
+    public void ExpTicks_AreNeverNegative(long played, float expected) {
+        Assert.That(InstrumentRules.ExpTicks(played), Is.EqualTo(expected));
+    }
 }

@@ -120,6 +120,7 @@ public class InstrumentHandler : FieldPacketHandler {
         }
 
         session.Field.Broadcast(InstrumentPacket.StopImprovise(session.Instrument));
+        session.Field.RemoveInstrument(session.Instrument.ObjectId, broadcast: false);
         session.Instrument = null;
     }
 
@@ -155,16 +156,21 @@ public class InstrumentHandler : FieldPacketHandler {
     }
 
     private void HandleStopScore(GameSession session) {
-        if (session.Field == null || session.Instrument == null) {
+        // The client sends this for a score it plays (alone or in an ensemble); an improvisation ends with 2 and
+        // gives nothing.
+        if (session.Field == null || session.Instrument == null || session.Instrument.Improvising) {
             return;
         }
 
-        int masteryValue = session.Instrument.Score?.Metadata.Music?.MasteryValue ?? 1;
-        int masteryValueMax = session.Instrument.Score?.Metadata.Music?.MasteryValueMax ?? 1;
+        Item? score = session.Instrument.Score;
+        int masteryValue = score?.Metadata.Music?.MasteryValue ?? 1;
+        int masteryValueMax = score?.Metadata.Music?.MasteryValueMax ?? 1;
 
         // TODO: Prestige exp
-        long totalTickTime = Environment.TickCount64 - session.Instrument.StartTick;
-        session.Mastery[MasteryType.Music] += (int) Math.Min(totalTickTime * masteryValue / 1000, masteryValueMax);
+        // The time counts up to the score's own length: a stop that comes late gives no more than the whole score.
+        int scoreLength = score?.Music?.Length > 0 ? score.Music.Length : score?.Metadata.Music?.PlayTime ?? 0;
+        long totalTickTime = InstrumentRules.PlayedMs(Environment.TickCount64 - session.Instrument.StartTick, scoreLength);
+        session.Mastery[MasteryType.Music] += InstrumentRules.Mastery(totalTickTime, masteryValue, masteryValueMax);
 
         short masteryLevel = session.Mastery.GetLevel(MasteryType.Music);
         ExpType expType = masteryLevel switch {
@@ -177,7 +183,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
         // Subtracting 500ms to account for the delay between the client and server and exp abuse.
         // Modifier is the number of 500ms ticks that have passed.
-        session.Exp.AddExp(expType, (float) (totalTickTime - 500) / 500);
+        session.Exp.AddExp(expType, InstrumentRules.ExpTicks(totalTickTime));
 
         ReportPlayTime(session, session.Instrument.Value, totalTickTime);
         if (session.Instrument.Ensemble) {
@@ -210,11 +216,15 @@ public class InstrumentHandler : FieldPacketHandler {
         // Store tick to ensure all members instruments have the same start tick
         long startTick = Environment.TickCount64;
         foreach ((long characterId, PartyMember member) in session.Party.Party.Members) {
+            // The staged score was checked when the member got ready; it may have been played out since.
             if (!session.FindSession(characterId, out GameSession? memberSession) ||
                 memberSession.Field == null ||
                 !memberSession.EnsembleReady ||
+                memberSession.Instrument != null ||
                 memberSession.StagedInstrumentItem == null ||
                 memberSession.StagedScoreItem == null ||
+                !TryGetScore(memberSession, memberSession.StagedScoreItem.Uid, out Item? stagedScore) ||
+                stagedScore != memberSession.StagedScoreItem ||
                 memberSession.Player.Value.Character.MapId != session.Player.Value.Character.MapId ||
                 memberSession.Player.Value.Character.RoomId != session.Player.Value.Character.RoomId) {
                 continue;
@@ -224,6 +234,10 @@ public class InstrumentHandler : FieldPacketHandler {
                 continue;
             }
 
+            // The score in play: a player who enters the field is sent it, and it gives its own mastery at the stop.
+            memberSession.Instrument.Score = memberSession.StagedScoreItem;
+            // One start per ready: the next ensemble needs a new request of the member.
+            memberSession.EnsembleReady = false;
             memberSession.StagedScoreItem.RemainUses--;
             memberSession.Field.Broadcast(InstrumentPacket.StartScore(memberSession.Instrument, memberSession.StagedScoreItem));
             memberSession.Send(InstrumentPacket.RemainUses(memberSession.StagedScoreItem.Uid, memberSession.StagedScoreItem.RemainUses));
