@@ -123,6 +123,7 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve_grade:
             case ConditionType.stay_map:
             case ConditionType.stay_cube:
+            case ConditionType.spawner:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
                 }
@@ -201,6 +202,16 @@ public static class ConditionUtil {
                     return true;
                 }
 
+                break;
+            case ConditionType.spawner:
+                // The map of the spawn: a region spawn id names a spawn of one map only.
+                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
+                    return true;
+                }
+
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
                 break;
             case ConditionType.fish:
             case ConditionType.fish_big:

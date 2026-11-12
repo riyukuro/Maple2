@@ -696,6 +696,7 @@ public class FieldNpc : Actor<Npc> {
                 foreach (string tag in Value.Metadata.Basic.MainTags) {
                     player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
                 }
+                UpdateSpawner(player);
             }
         } else {
             // Regular mob: first attacker is tagged and receives all drops.
@@ -718,8 +719,18 @@ public class FieldNpc : Actor<Npc> {
                 foreach (string tag in Value.Metadata.Basic.MainTags) {
                     player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
                 }
+                UpdateSpawner(player);
             }
         }
+    }
+
+    // A kill of a mob of the field's region spawns (MS2RegionSpawn) counts for the spawner condition: its code is the
+    // region spawn id, its target the map. NPCs a trigger spawned have no region spawn.
+    private void UpdateSpawner(FieldPlayer player) {
+        if (Owner == null) {
+            return;
+        }
+        player.Session.ConditionUpdate(ConditionType.spawner, codeLong: Owner.Value.Id, targetLong: Field.MapId);
     }
 
     private void GiveExp(FieldPlayer player) {
