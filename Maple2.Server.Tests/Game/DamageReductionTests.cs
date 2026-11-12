@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
@@ -29,9 +29,10 @@ public class DamageReductionTests {
         Assert.That(DamageCalculator.ReductionFactor(0, 0), Is.EqualTo(1));
         Assert.That(DamageCalculator.ReductionFactor(0.022, 0), Is.EqualTo(0.978).Within(1e-9));
         Assert.That(DamageCalculator.ReductionFactor(0.2, 0.5), Is.EqualTo(0.4).Within(1e-9));
-        // 100 % or more takes the whole hit; a negative rate adds nothing.
+        // 100 % or more takes the whole hit; a negative rate adds to it (a boss shield's weak element, -5: 6 times).
         Assert.That(DamageCalculator.ReductionFactor(1.5, 0), Is.EqualTo(0));
-        Assert.That(DamageCalculator.ReductionFactor(-0.3, 0), Is.EqualTo(1));
+        Assert.That(DamageCalculator.ReductionFactor(-0.3, 0), Is.EqualTo(1.3).Within(1e-9));
+        Assert.That(DamageCalculator.ReductionFactor(0, -5), Is.EqualTo(6).Within(1e-9));
     }
 
     [Test]

@@ -46,7 +46,8 @@ public static class DamageCalculator {
 
     // The caster's physical or magical damage rate (a buff's OffensiveProperty papDamageR or mapDamageR plus the invoke
     // bonuses on them) raises its hits by that rate: the effect tooltips read 0.021 as "damage dealt +2.1 %".
-    internal static double DamageRateFactor(double rate) => 1 + rate;
+    // A rate of -1 or below (70000095's -1) leaves nothing, so the hit keeps only its least.
+    internal static double DamageRateFactor(double rate) => Math.Max(0, 1 + rate);
 
     // The target's damage taken rate of the hit's attack type (a buff's DefensiveProperty papDamageR or mapDamageR,
     // summed over the buffs held) takes that share of the hit away: the effect tooltips read 0.99 as "damage taken
@@ -55,10 +56,13 @@ public static class DamageCalculator {
     internal static double DamageTakenFactor(double rate) => Math.Max(0, 1 - rate);
 
     // The part of a hit the target takes after its range and element reductions (rates, 0.022 for 2.2 %). Each
-    // reduction takes its part of what is left, and one of 100 % or more takes the whole hit. The client never
-    // computes damage, so the server chooses the formula.
+    // reduction takes its part of what is left, and one of 100 % or more takes the whole hit. A negative one adds to
+    // the hit: the boss shields of Zakum and Turka (50006000 to 50006005, 50006007 to 50006012, 50006014 to 50006019)
+    // cut every element by 0.99 but one, which they take -5, -4 or -3 of (6, 5 or 4 times the hit); the tooltip of
+    // 50006000 reads "damage -99 % by the protection, but very weak to fire attacks". The client
+    // never computes damage, so the server chooses the formula.
     internal static double ReductionFactor(double rangeReduction, double elementReduction) {
-        return (1 - Math.Clamp(rangeReduction, 0, 1)) * (1 - Math.Clamp(elementReduction, 0, 1));
+        return (1 - Math.Min(rangeReduction, 1)) * (1 - Math.Min(elementReduction, 1));
     }
 
     internal static double ReductionFactor(IActor target, RangeType rangeType, Element element) {

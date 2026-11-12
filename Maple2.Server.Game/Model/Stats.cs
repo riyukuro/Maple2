@@ -211,7 +211,7 @@ public class Stats {
     public Stat this[SpecialAttribute attribute] {
         get {
             if (!specialValues.ContainsKey(attribute)) {
-                specialValues[attribute] = new Stat(0, 0, 0);
+                specialValues[attribute] = new Stat(0, 0, 0) { Signed = true };
             }
 
             return specialValues[attribute];
@@ -278,6 +278,10 @@ public sealed class Stat {
     public long Base { get; set; }
     public long Current { get; set; }
     public float Rate { get; set; }
+    // A special attribute's stat: its Total is the plain sum of its lines and may go below 0, as the client sums them
+    // (CEquipment::GetAbilityTotal adds the items', the buffs', the game rule's and the set items' lines with no floor;
+    // a use clamps where it needs to). Its Current follows its Total. A basic stat stops at 0 on each add.
+    public bool Signed { get; init; }
     // Set during a Stats rebuild: Base and Total change, Current waits for Stats.EndReset.
     internal bool Held;
     private long heldTotal;
@@ -291,6 +295,11 @@ public sealed class Stat {
     }
 
     public void AddBase(long amount) {
+        if (Signed) {
+            Base += amount;
+            AddTotal(amount);
+            return;
+        }
         Total = Math.Max(0, Total + amount);
         Base = Math.Max(0, Base + amount);
         if (!Held) {
@@ -299,6 +308,11 @@ public sealed class Stat {
     }
 
     public void AddTotal(long amount) {
+        if (Signed) {
+            Total += amount;
+            Current = Total;
+            return;
+        }
         Total = Math.Max(0, Total + amount);
         if (!Held) {
             Current = Math.Max(0, Current + amount);
@@ -328,7 +342,10 @@ public sealed class Stat {
     }
 
     internal void EndHold() {
-        if (Held) {
+        if (Held && Signed) {
+            Current = Total;
+            Held = false;
+        } else if (Held) {
             // A stat that had no Total before (new to this actor) starts full.
             Current = heldTotal <= 0 ? Total : Math.Clamp((long) ((Int128) Current * Total / heldTotal), 0, Total);
             Held = false;
@@ -336,6 +353,9 @@ public sealed class Stat {
     }
 
     public void Add(long amount) {
+        if (Signed) {
+            return;
+        }
         // During a rebuild Total is not final yet, so it is no cap.
         Current = Held ? Math.Max(0, Current + amount) : Math.Clamp(Current + amount, 0, Total);
     }
