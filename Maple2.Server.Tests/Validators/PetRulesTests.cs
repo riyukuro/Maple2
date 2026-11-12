@@ -85,4 +85,11 @@ public class PetRulesTests {
     public void ShownPet_IsTheSummonedOne(long? summoned, long requested, bool expected) {
         Assert.That(PetRules.IsShownPet(summoned, requested), Is.EqualTo(expected));
     }
+
+    [TestCase(8000, 10000, 10000, true)] // the feeding that fills the gauge
+    [TestCase(5000, 8000, 10000, false)] // still hungry
+    [TestCase(10000, 10000, 10000, false)] // already full
+    public void Pacified_CountsTheFeedingThatFillsTheGauge(int before, int after, int max, bool expected) {
+        Assert.That(PetRules.Pacified(before, after, max), Is.EqualTo(expected));
+    }
 }

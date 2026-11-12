@@ -43,4 +43,10 @@ public static class PetRules {
     public static int RenameCost(short renameRemaining, int price) {
         return renameRemaining > 0 ? 0 : price;
     }
+
+    // pet_taming ("Pacify a hungry monster", 70600025): the feeding that fills a wild pet's taming gauge. The
+    // capture is its own step (a trap, pet_catch_*), so a gauge that was already full counts no more.
+    public static bool Pacified(int pointBefore, int pointAfter, int maxPoint) {
+        return pointBefore < maxPoint && pointAfter >= maxPoint;
+    }
 }

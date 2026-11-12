@@ -4,6 +4,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
@@ -76,9 +77,14 @@ public sealed class FieldPet : FieldNpc {
         }
 
         var targetRecord = new DamageRecordTarget(this);
+        int pointBefore = TamingPoint;
         int damageAmount = TamingPoint - Math.Min(TamingPoint + attack.Pet.TamingPoint, Constants.TamingPetMaxPoint);
         TamingPoint -= damageAmount;
         targetRecord.AddDamage(damageAmount == 0 ? DamageType.Miss : DamageType.Normal, damageAmount);
+        if (caster is FieldPlayer feeder && PetRules.Pacified(pointBefore, TamingPoint, Constants.TamingPetMaxPoint)) {
+            // 90000792 names the pet's item id ("Pacify a hungry $item:61000002$").
+            feeder.Session.ConditionUpdate(ConditionType.pet_taming, codeLong: Pet.Id);
+        }
 
         if (attack.Pet.TrapLevel > 0) {
             if (attack.Pet.ForcedTaming) {

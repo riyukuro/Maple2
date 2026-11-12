@@ -94,6 +94,7 @@ public static class ConditionUtil {
             case ConditionType.pet_catch_grade:
             case ConditionType.pet_catch_category:
             case ConditionType.pet_enchant:
+            case ConditionType.pet_taming:
             case ConditionType.openItemBox:
             case ConditionType.dungeon_clear:
             case ConditionType.dungeon_clear_group:
