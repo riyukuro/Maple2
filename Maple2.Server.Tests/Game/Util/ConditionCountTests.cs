@@ -124,6 +124,14 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: mapId, codeLong: 21000063), Is.EqualTo(expected));
     }
 
+    // A captured pet counts for pet_catch_id when its item id is the code (94000006: capture 2 of 61000153).
+    [TestCase(61000153, true)]
+    [TestCase(61000158, false)]
+    public void PetCatchId_CountsTheListedPet(int petId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.pet_catch_id, 2, new ConditionMetadata.Parameters(Integers: [61000153]), null);
+        Assert.That(condition.Check(null!, codeLong: petId), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
