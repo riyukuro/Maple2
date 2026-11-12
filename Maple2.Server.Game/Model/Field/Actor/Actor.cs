@@ -137,8 +137,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 // KMS2 sends each hit on a holder of an invincible buff as type 4 or 8 (by the buff) with amount 0.
                 targetRecord.AddDamage(Buffs.InvincibleHitType, 0);
             } else if (attack.Damage.DamageByTargetMaxHp > 0) {
-                targetRecord.AddDamage(DamageType.Normal, (long) (Stats.Values[BasicAttribute.Health].Total * attack.Damage.DamageByTargetMaxHp));
-                damageAmount -= (long) (Stats.Values[BasicAttribute.Health].Total * attack.Damage.DamageByTargetMaxHp);
+                long share = DamageCalculator.TargetMaxHpDamage(caster, this, attack.Damage.DamageByTargetMaxHp);
+                targetRecord.AddDamage(DamageType.Normal, share);
+                damageAmount -= share;
             } else if (attack.Damage.IsConstDamage) {
                 targetRecord.AddDamage(DamageType.Normal, attack.Damage.Value);
                 damageAmount -= attack.Damage.Value;

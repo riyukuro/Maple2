@@ -56,6 +56,20 @@ public static class DamageCalculator {
         return ReductionFactor(Rate(RangeReductionOf(rangeType)), Rate(ElementReductionOf(element)));
     }
 
+    // The part of the target's maximum health a hit by target max hp (a skill attack's or a dot's
+    // damageByTargetMaxHP) takes, cut by the caster's Reduce Damage By Target Max HP line (reduce_damage_by_
+    // targetmaxhp). Intimidation's debuffs (10200061, 10200064: 9 % to 42 %, with the same cut to attack) and
+    // 10200184 (50 %) put it on the monsters a Berserker hits, so their health-share hits weaken with their attack;
+    // nothing read it before. 100 % or more leaves nothing; a negative rate adds nothing. The client never computes
+    // damage, so the server chooses the formula.
+    internal static long TargetMaxHpDamage(IActor caster, IActor target, float rate) {
+        if (rate <= 0) {
+            return 0;
+        }
+        double cut = Math.Clamp(caster.Stats.Values[SpecialAttribute.ReduceDamageByTargetMaxHp].Multiplier(), 0, 1);
+        return (long) (target.Stats.Values[BasicAttribute.Health].Total * rate * (1 - cut));
+    }
+
     // The caster's bonus against an npc of the target's rank: Common Monster Damage (s_item_opt_sa_improve_damage_
     // normalNpc), Elite Monster Damage (_namedNpc) or Bonus Boss Damage (_bossNpc). The ranks are those of the server
     // table monsterExpTable's columns (MonsterExpMetadata.ForClass): class 3 elite and 7 dungeon elite, 4 boss and 6

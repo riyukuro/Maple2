@@ -46,7 +46,7 @@ public class DotDamageRecord {
                     hpAmount = 0; // Fallback to 0 if calculation fails
                 }
             }
-            hpAmount += (long) (dotDamage.DamageByTargetMaxHp * Target.Stats.Values[BasicAttribute.Health].Total);
+            hpAmount += DamageCalculator.TargetMaxHpDamage(caster, target, dotDamage.DamageByTargetMaxHp);
         }
         hpAmount = Buff.AmountByStacks(hpAmount, stacks);
         if (hpAmount > 0 && target.Buffs.Invincible) {
