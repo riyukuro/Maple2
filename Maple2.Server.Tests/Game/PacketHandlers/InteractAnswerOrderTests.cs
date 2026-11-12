@@ -157,6 +157,26 @@ public class InteractAnswerOrderTests {
         }));
     }
 
+    // A gathered field object drops the count the client's recipe list shows: the recipe's count raised by the type's
+    // ability, the rate capped at 100%.
+    [TestCase(MasteryType.Mining, SpecialAttribute.MiningRewardItem, 1000, 2)]
+    [TestCase(MasteryType.Gathering, SpecialAttribute.GatheringRewardItem, 3000, 2)]
+    [TestCase(MasteryType.Gathering, SpecialAttribute.GatheringRewardItem, 500, 1)]
+    [TestCase(MasteryType.Mining, SpecialAttribute.FarmingRewardItem, 1000, 1)]
+    public void FieldGather_ItemCountIsRaisedByTheTypesAbility(MasteryType type, SpecialAttribute ability, int total, int expected) {
+        GameSession session = StartWithRecipe(type);
+        session.Stats.Values[ability].AddTotal(total);
+        test.AddInteract(Row(13, InteractType.Gathering, RecipeId, reset: 1000), new InteractGatheringObject("ab", new Ms2InteractActor(13, Vector3.Zero, Vector3.Zero)));
+        Send(session, 11, "ab");
+        test.TakeSent();
+
+        Send(session, 12, "ab");
+
+        Assert.That(test.Errors, Is.Empty);
+        byte[] drop = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem);
+        Assert.That((BitConverter.ToInt32(drop, 6), BitConverter.ToInt32(drop, 10)), Is.EqualTo((RewardItemId, expected)));
+    }
+
     // A harvested cube: the mastery, the drop, the cube's update (3) and the success (9), then the experience.
     [Test]
     public void CubeHarvest_SendsMasteryDropUpdateSuccessExp() {

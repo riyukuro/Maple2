@@ -214,8 +214,15 @@ public class MasteryManager {
     }
 
     public void Gather(MasteryRecipeTable.Entry recipeMetadata, Vector3 position, Vector3 rotation) {
+        // The count the client's recipe list shows: the recipe's count raised by the type's ability.
+        SpecialAttribute? bonus = MasteryRules.GatherBonus(recipeMetadata.Type);
+        int bonusTotal = bonus == null ? 0 : (int) session.Player.Stats.Values[bonus.Value].Total;
         foreach (ItemComponent itemReward in recipeMetadata.RewardItems) {
-            Item? item = session.Field?.ItemDrop.CreateItem(itemReward.ItemId, itemReward.Rarity, itemReward.Amount);
+            int amount = MasteryRules.GatherItemCount(itemReward.Amount, bonusTotal);
+            if (amount < 1) {
+                continue;
+            }
+            Item? item = session.Field?.ItemDrop.CreateItem(itemReward.ItemId, itemReward.Rarity, amount);
             if (item == null || session.Field is null) {
                 continue;
             }

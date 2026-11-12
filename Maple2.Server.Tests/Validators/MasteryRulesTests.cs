@@ -178,6 +178,28 @@ public class MasteryRulesTests {
         Assert.That(MasteryRules.CraftBonus(type), Is.EqualTo(expected));
     }
 
+    // A gathered item's count: the recipe's count scaled by 1 + the ability's rate, the rate capped at 1, truncated.
+    [TestCase(1, 0, 1)]
+    [TestCase(1, 500, 1)]
+    [TestCase(3, 500, 4)]
+    [TestCase(1, 1000, 2)]
+    [TestCase(3, 2000, 6)]
+    [TestCase(10, 333, 13)]
+    [TestCase(2, -1000, 0)]
+    public void GatherItemCount_ScalesByTheCappedAbilityRate(int count, int bonusTotal, int expected) {
+        Assert.That(MasteryRules.GatherItemCount(count, bonusTotal), Is.EqualTo(expected));
+    }
+
+    [TestCase(MasteryType.Mining, SpecialAttribute.MiningRewardItem)]
+    [TestCase(MasteryType.Breeding, SpecialAttribute.BreedingRewardItem)]
+    [TestCase(MasteryType.Gathering, SpecialAttribute.GatheringRewardItem)]
+    [TestCase(MasteryType.Farming, SpecialAttribute.FarmingRewardItem)]
+    [TestCase(MasteryType.Cooking, null)]
+    [TestCase(MasteryType.Fishing, null)]
+    public void GatherBonus_OfEachType(MasteryType type, SpecialAttribute? expected) {
+        Assert.That(MasteryRules.GatherBonus(type), Is.EqualTo(expected));
+    }
+
     // The client's id of a grade: type * 1000 + grade.
     [TestCase(3002, 3, 2)]
     [TestCase(3102, 3, 102)]

@@ -115,4 +115,23 @@ public static class MasteryRules {
         float rate = 1.0f + bonusTotal / 1000.0f;
         return (int) (long) ((uint) reward * (double) rate + 1e-06);
     }
+
+    // The special ability that raises a gather's item count (UIMasteryDialog::CalcAdjustedItemCount, uimasterydialog.cpp):
+    // mining, ranching, foraging and farming each have one; the other types have none.
+    public static SpecialAttribute? GatherBonus(MasteryType type) {
+        return type switch {
+            MasteryType.Mining => SpecialAttribute.MiningRewardItem,
+            MasteryType.Breeding => SpecialAttribute.BreedingRewardItem,
+            MasteryType.Gathering => SpecialAttribute.GatheringRewardItem,
+            MasteryType.Farming => SpecialAttribute.FarmingRewardItem,
+            _ => null,
+        };
+    }
+
+    // A gathered item's count: the recipe's count (the client script's calcGatheringReceipeRewardItemCount returns it
+    // unchanged) scaled by 1 + the ability's rate, the rate capped at 1, truncated (FUN_1406198a0, itemremakescrolldata.cpp).
+    public static int GatherItemCount(int count, int bonusTotal) {
+        float rate = 1.0f + Math.Min(bonusTotal / 1000.0f, 1.0f);
+        return (int) (count * (double) rate + 1e-06);
+    }
 }
