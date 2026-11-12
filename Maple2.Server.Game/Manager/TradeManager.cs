@@ -58,12 +58,13 @@ public class TradeManager : IDisposable {
         sender.Session.Trade = null;
         receiver.Session.Trade = null;
 
-        // Nothing to cancel if not started.
-        if (state < TradeState.Started) {
-            return;
-        }
-
         lock (mutex) {
+            // Nothing to cancel if not started. The request is over, so the request timer has nothing to report.
+            if (state < TradeState.Started) {
+                state = TradeState.Completed;
+                return;
+            }
+
             EndTrade(false);
         }
     }
@@ -132,6 +133,11 @@ public class TradeManager : IDisposable {
 
         lock (mutex)
             lock (caller.Item) {
+                // The state is tested again under the lock: a cancel that ended the trade since the test above
+                // would otherwise let the item leave the bag for a window nobody gets back.
+                if (state != TradeState.Started || self.Finalized) {
+                    return;
+                }
                 if (self.Items.OpenSlots <= 0) {
                     caller.Send(TradePacket.Error(s_trade_error_itemcount));
                     return;
@@ -159,12 +165,12 @@ public class TradeManager : IDisposable {
                     throw new InvalidOperationException("AddItem: Trade consistency error");
                 }
 
+                // KMS2 order: a locked side is unlocked before the change it is shown.
+                OnTradeModified();
                 foreach ((Item Item, int) result in results) {
                     self.Session.Send(TradePacket.AddItem(true, result.Item));
                     other.Session.Send(TradePacket.AddItem(false, result.Item));
                 }
-
-                OnTradeModified();
             }
     }
 
@@ -181,6 +187,9 @@ public class TradeManager : IDisposable {
 
         lock (mutex)
             lock (caller.Item) {
+                if (state != TradeState.Started || self.Finalized) {
+                    return;
+                }
                 // The item goes back to the bag only when the bag takes it; otherwise it stays in the trade window.
                 Item? offered = self.Items[(short) tradeSlot];
                 if (offered == null || !caller.Item.Inventory.CanAdd(offered)) {
@@ -193,11 +202,10 @@ public class TradeManager : IDisposable {
                     return;
                 }
 
+                OnTradeModified();
                 self.Session.Send(TradePacket.RemoveItem(true, tradeSlot, itemUid));
                 other.Session.Send(TradePacket.RemoveItem(false, tradeSlot, itemUid));
                 caller.Item.Inventory.Add(item);
-
-                OnTradeModified();
             }
     }
 
@@ -219,6 +227,11 @@ public class TradeManager : IDisposable {
         }
 
         lock (mutex) {
+            // Tested again under the lock, or mesos could be taken for a trade a cancel has just ended.
+            if (state != TradeState.Started || self.Finalized) {
+                return;
+            }
+
             long diff = amount - self.Mesos;
             if (self.Session.Currency.Meso < diff) {
                 caller.Send(TradePacket.Error(s_trade_error_meso));
@@ -228,10 +241,9 @@ public class TradeManager : IDisposable {
             self.Session.Currency.Meso -= diff;
             self.Mesos = amount;
 
+            OnTradeModified();
             self.Session.Send(TradePacket.SetMesos(true, amount));
             other.Session.Send(TradePacket.SetMesos(false, amount));
-
-            OnTradeModified();
         }
     }
 
@@ -242,6 +254,9 @@ public class TradeManager : IDisposable {
 
         (Trader self, Trader other) = GetTraders(caller);
         lock (mutex) {
+            if (state != TradeState.Started) {
+                return;
+            }
             if (!self.Finalized) {
                 self.Session.Send(TradePacket.Finalize(true));
                 other.Session.Send(TradePacket.Finalize(false));
@@ -261,6 +276,9 @@ public class TradeManager : IDisposable {
 
         (Trader self, Trader other) = GetTraders(caller);
         lock (mutex) {
+            if (state != TradeState.Finalized) {
+                return;
+            }
             if (!self.Completed) {
                 self.Session.Send(TradePacket.Complete(true));
                 other.Session.Send(TradePacket.Complete(false));
@@ -322,9 +340,14 @@ public class TradeManager : IDisposable {
 
     // Hands |trader|'s offer to |trader.Session|, in the KMS2 order: the giver's window loses each item (RemoveItem);
     // a player who receives an item gets it as an own offer (AddItem) and its removal; an item leaves the window
-    // before it enters the bag, and the mesos come after the items. No Meso is sent when no mesos move.
+    // before it enters the bag, and the mesos come after the items; on a cancel the mesos come back first. No Meso is
+    // sent when no mesos move.
     private void HandOver(Trader trader, GameSession giver, bool success) {
         lock (trader.Session.Item) {
+            if (!success && trader.Mesos != 0) {
+                trader.Session.Currency.Meso += trader.Mesos;
+                trader.Mesos = 0;
+            }
             (Item Item, int Slot)[] items = trader.Items.Select(item => (item, (int) item.Slot)).ToArray();
             if (success) {
                 foreach ((Item item, int slot) in items) {

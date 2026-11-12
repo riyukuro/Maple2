@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -280,5 +281,85 @@ public class MesoMarketHandlerTests {
         Assert.That(Sent(), Is.EqualTo(new[] { limits, "00" + Int(16) }));
         Send(session, 5, BASE, 190);
         Assert.That(OwnListings(session), Has.Count.EqualTo(1));
+    }
+
+    // A second player on the same database, with its own handler.
+    private (TestGameSession Test, GameSession Session, MesoMarketHandler Handler) Second(long tokens) {
+        var second = new TestGameSession(test.Options);
+        second.SetServerTable(test.ServerTableMetadata.ConstantsTable);
+        GameSession session = second.Start();
+        session.Currency[CurrencyType.MesoToken] = tokens;
+        second.TakeSent();
+        return (second, session, new MesoMarketHandler { ServerTableMetadata = second.ServerTableMetadata });
+    }
+
+    private static void Buy(MesoMarketHandler handler, GameSession session, long listingId) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(8);
+            writer.WriteLong(listingId);
+        }));
+    }
+
+    // Two buyers at once on one listing: one pays and gets the one mail, the other gets the sold-out answer and
+    // keeps its tokens; the seller is paid once.
+    [Test]
+    public void Buy_TwoBuyersRacing() {
+        for (int round = 0; round < 40; round++) {
+            GameSession first = Login(tokens: 500);
+            (TestGameSession otherTest, GameSession other, MesoMarketHandler otherHandler) = Second(500);
+            MesoListing listing = OtherListing(BASE, 200);
+            MesoMarketHandler firstHandler = handler;
+
+            Parallel.Invoke(
+                () => Buy(firstHandler, first, listing.Id),
+                () => Buy(otherHandler, other, listing.Id));
+
+            long[] paid = [500 - first.Currency[CurrencyType.MesoToken], 500 - other.Currency[CurrencyType.MesoToken]];
+            Assert.That(paid.OrderBy(tokens => tokens), Is.EqualTo(new[] { 0L, 200L }), $"round {round}");
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.GetMesoListing(listing.Id), Is.Null, $"round {round}");
+            long[] mailed = [db.GetAllMail(first.CharacterId).Sum(mail => mail.Meso), db.GetAllMail(other.CharacterId).Sum(mail => mail.Meso)];
+            Assert.That(mailed, Is.EqualTo(paid.Select(tokens => tokens == 0 ? 0 : BASE)), $"round {round}");
+            Assert.That(db.GetAllMail(OTHER_CHARACTER).Count, Is.EqualTo(1), $"round {round}");
+            string soldOut = "08" + Int(17) + Long(listing.Id) + Int(0);
+            List<string> loser = paid[0] == 0
+                ? Sent()
+                : otherTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket).Select(packet => Convert.ToHexString(packet)[4..]).ToList();
+            Assert.That(loser, Is.EqualTo(new[] { soldOut }), $"round {round}");
+            Assert.That((paid[0] == 0 ? first : other).Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0), $"round {round}");
+            Assert.That(test.Errors.Concat(otherTest.Errors), Is.Empty, $"round {round}");
+        }
+    }
+
+    // A buyer and the owner's take-back at once: the mesos go to the buyer's mail or back to the owner, never
+    // both, and the buyer pays only when it got them.
+    [Test]
+    public void Buy_RacingTheTakeBack() {
+        for (int round = 0; round < 40; round++) {
+            GameSession owner = Login();
+            (TestGameSession buyerTest, GameSession buyer, MesoMarketHandler buyerHandler) = Second(500);
+            MesoListing listing;
+            using (GameStorage.Request create = test.Storage.Context()) {
+                listing = create.CreateMesoListing(new MesoListing(TimeSpan.FromDays(2)) {
+                    AccountId = owner.AccountId,
+                    CharacterId = owner.CharacterId,
+                    Amount = BASE,
+                    Price = 200,
+                })!;
+            }
+
+            Parallel.Invoke(
+                () => Buy(buyerHandler, buyer, listing.Id),
+                () => Send(owner, 6, listing.Id));
+
+            long paid = 500 - buyer.Currency[CurrencyType.MesoToken];
+            Assert.That(paid, Is.EqualTo(0).Or.EqualTo(200), $"round {round}");
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.GetMesoListing(listing.Id), Is.Null, $"round {round}");
+            Assert.That(db.GetAllMail(buyer.CharacterId).Sum(mail => mail.Meso), Is.EqualTo(paid == 0 ? 0 : BASE), $"round {round}");
+            Assert.That(owner.Currency.Meso, Is.EqualTo(paid == 0 ? BASE : 0), $"round {round}");
+            Assert.That(db.GetAllMail(owner.CharacterId).Sum(mail => mail.Meret), Is.EqualTo(paid == 0 ? 0 : 190), $"round {round}");
+            Assert.That(test.Errors.Concat(buyerTest.Errors), Is.Empty, $"round {round}");
+        }
     }
 }

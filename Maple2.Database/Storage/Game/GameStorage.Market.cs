@@ -3,6 +3,8 @@ using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using BlackMarketListing = Maple2.Model.Game.BlackMarketListing;
 using Item = Maple2.Model.Game.Item;
 using MesoListing = Maple2.Model.Game.MesoListing;
@@ -62,8 +64,9 @@ public partial class GameStorage {
             return Context.TrySaveChanges() ? model : null;
         }
 
-        // A sale in one save: the listing moves to the sold table and both mails are made, or nothing changes
-        // (the listing is gone, another buyer or its owner was first, or the save failed).
+        // A sale in one transaction: the listing moves to the sold table and both mails are made, or nothing
+        // changes (the listing is gone, another buyer or its owner was first, or a save failed). The listing's
+        // row is deleted first, so the request that loses a race stops before it has written anything.
         public (Maple2.Model.Game.Mail Buyer, Maple2.Model.Game.Mail Seller)? SellMesoListing(long listingId, Maple2.Model.Game.Mail buyerMail, Maple2.Model.Game.Mail sellerMail) {
             Model.MesoListing? listing = Context.MesoMarket.Find(listingId);
             if (listing == null) {
@@ -79,13 +82,18 @@ public partial class GameStorage {
             seller.Id = 0;
 
             SoldMesoListing soldListing = listing;
+            using IDbContextTransaction transaction = Context.Database.BeginTransaction();
             Context.MesoMarket.Remove(listing);
+            if (!Context.TrySaveChanges()) {
+                return null; // the transaction is rolled back when it is disposed
+            }
             Context.MesoMarketSold.Add(soldListing);
             Context.Mail.Add(buyer);
             Context.Mail.Add(seller);
             if (!Context.TrySaveChanges()) {
                 return null;
             }
+            transaction.Commit();
             return (buyer!, seller!);
         }
 
@@ -374,6 +382,123 @@ public partial class GameStorage {
 
             Context.BlackMarketListing.Update(model);
             return Context.TrySaveChanges();
+        }
+
+        // One buy or take-back at a time in this process; the conditional row change below covers other channels.
+        private static readonly object BlackMarketLock = new();
+
+        // Buys quantity of a listing at price and mails it to the buyer, all in one transaction: the listing's
+        // count is lowered only while it still holds quantity at that price, so of two buyers racing on the last
+        // of a listing one gets it and the other gets null (gone: the listing no longer exists). The whole stack
+        // moves to the mail and the listing row is deleted when nothing is left; else the stack is split.
+        // Returns the listing as it is after the buy; mail is the stored mail holding the bought item.
+        public BlackMarketListing? BuyBlackMarketListing(long listingId, int quantity, long price, Maple2.Model.Game.Mail buyerMail, out Maple2.Model.Game.Mail? mail, out bool gone) {
+            mail = null;
+            gone = false;
+            if (quantity <= 0) {
+                return null;
+            }
+
+            // The context does not track queries by default; the rows changed below are loaded tracked.
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            lock (BlackMarketLock) {
+                try {
+                    using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                    Model.BlackMarketListing? model;
+                    if (Context.Database.IsRelational()) {
+                        int rows = Context.BlackMarketListing
+                            .Where(row => row.Id == listingId && row.Quantity >= quantity && row.Price == price)
+                            .ExecuteUpdate(update => update.SetProperty(row => row.Quantity, row => row.Quantity - quantity));
+                        model = rows == 1 ? Context.BlackMarketListing.Find(listingId) : null;
+                    } else {
+                        model = Context.BlackMarketListing.Find(listingId);
+                        if (model != null && model.Quantity >= quantity && model.Price == price) {
+                            model.Quantity -= quantity;
+                        } else {
+                            model = null;
+                        }
+                    }
+                    if (model == null) {
+                        gone = !Context.BlackMarketListing.Any(row => row.Id == listingId);
+                        return null;
+                    }
+
+                    Model.Item? itemModel = Context.Item.Find(model.ItemUid);
+                    if (itemModel == null || ToItem(itemModel) == null) {
+                        Context.ChangeTracker.Clear();
+                        return null; // the transaction is rolled back when it is disposed
+                    }
+
+                    buyerMail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                    Model.Mail mailModel = buyerMail!;
+                    mailModel.Id = 0;
+                    Context.Mail.Add(mailModel);
+                    Context.SaveChanges();
+
+                    Model.Item soldModel;
+                    if (model.Quantity == 0) {
+                        itemModel.OwnerId = mailModel.Id;
+                        soldModel = itemModel;
+                        Context.BlackMarketListing.Remove(model);
+                    } else {
+                        Item sold = ToItem(itemModel)!.Clone();
+                        sold.Amount = quantity;
+                        soldModel = sold;
+                        soldModel.OwnerId = mailModel.Id;
+                        soldModel.Id = 0;
+                        Context.Item.Add(soldModel);
+                        itemModel.Amount = model.Quantity;
+                    }
+                    Context.SaveChanges();
+                    transaction.Commit();
+
+                    Maple2.Model.Game.Mail created = mailModel!;
+                    created.Items.Add(ToItem(soldModel)!);
+                    mail = created;
+                    return model.Convert(ToItem(itemModel)!);
+                } catch (Exception ex) {
+                    Logger.LogError(ex, "Failed to buy {Quantity} of black market listing {ListingId}", quantity, listingId);
+                    return null;
+                }
+            }
+        }
+
+        // Takes a listing off the market for its seller: the row is deleted, and only then is the item read, so
+        // what a buyer took just before is not handed back as well. Null when the listing is gone or not
+        // characterId's. The returned count is what is left of the item.
+        public BlackMarketListing? TakeBlackMarketListing(long listingId, long characterId) {
+            lock (BlackMarketLock) {
+                try {
+                    Model.BlackMarketListing? model = Context.BlackMarketListing.AsNoTracking()
+                        .FirstOrDefault(row => row.Id == listingId && row.CharacterId == characterId);
+                    if (model == null) {
+                        return null;
+                    }
+
+                    using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                    if (Context.Database.IsRelational()) {
+                        if (Context.BlackMarketListing.Where(row => row.Id == listingId && row.CharacterId == characterId).ExecuteDelete() != 1) {
+                            return null;
+                        }
+                    } else {
+                        Context.BlackMarketListing.Remove(model);
+                        Context.SaveChanges();
+                    }
+
+                    Model.Item? itemModel = Context.Item.AsNoTracking().FirstOrDefault(row => row.Id == model.ItemUid);
+                    Item? item = itemModel == null ? null : ToItem(itemModel);
+                    if (item == null) {
+                        return null; // the transaction is rolled back when it is disposed
+                    }
+
+                    transaction.Commit();
+                    model.Quantity = item.Amount;
+                    return model.Convert(item);
+                } catch (Exception ex) {
+                    Logger.LogError(ex, "Failed to take black market listing {ListingId} off the market", listingId);
+                    return null;
+                }
+            }
         }
 
         private BlackMarketListing? ToBlackMarketingListing(Model.BlackMarketListing? model) {

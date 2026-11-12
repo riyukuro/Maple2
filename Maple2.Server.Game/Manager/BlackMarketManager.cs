@@ -118,22 +118,23 @@ public sealed class BlackMarketManager {
     public void Remove(long listingId) {
         using GameStorage.Request db = session.GameStorage.Context();
 
-        BlackMarketListing? listing = db.GetBlackMarketListing(listingId);
-        if (listing == null || listing.CharacterId != session.CharacterId) {
+        // The row is taken first, and the item read after it: a buyer racing with the take-back either finds the
+        // listing gone or has its part out of the item before the rest is mailed back.
+        BlackMarketListing? listing = db.TakeBlackMarketListing(listingId, session.CharacterId);
+        if (listing == null) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
             return;
         }
 
-        BlackMarketResponse response = session.World.BlackMarket(new BlackMarketRequest {
-            Remove = new BlackMarketRequest.Types.Remove {
-                ListingId = listingId,
-            },
-        });
-
-        var error = (BlackMarketError) response.Error;
-        if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error, 3));
-            return;
+        // The world drops it from the search; its answer is not used, the row is already gone.
+        try {
+            session.World.BlackMarket(new BlackMarketRequest {
+                Remove = new BlackMarketRequest.Types.Remove {
+                    ListingId = listingId,
+                },
+            });
+        } catch (Exception ex) {
+            logger.Error(ex, "Failed to drop black market listing {ListingId} from the search", listingId);
         }
 
         long deposit = listing.ExpiryTime < DateTime.Now.ToEpochSeconds() ? listing.Deposit : 0;
@@ -175,8 +176,10 @@ public sealed class BlackMarketManager {
     }
 
     public void Purchase(long listingId, int quantity) {
-        using GameStorage.Request db = session.GameStorage.Context();
-        BlackMarketListing? listing = db.GetBlackMarketListing(listingId);
+        BlackMarketListing? listing;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            listing = db.GetBlackMarketListing(listingId);
+        }
         if (listing == null) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_itemcount, 5, listingId));
             return;
@@ -196,56 +199,37 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        if (listing.Price * quantity > session.Currency.Meso) {
+        long cost = listing.Price * quantity;
+        if (cost > session.Currency.Meso) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 5, listingId));
             return;
         }
 
-        session.Currency.Meso -= listing.Price * quantity;
-
-        Mail? receivingMail = CreateBuyerMail(listing, quantity);
-        if (receivingMail == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 5, listingId));
-            session.Currency.Meso += listing.Price * quantity;
-            logger.Error("Failed to create black market purchase mail for {CharacterId}", session.CharacterId);
+        // The listing above is only a look. The buy itself is one transaction that takes the count from the row
+        // while it still holds it at this price, so two buyers cannot both get the last of a listing; the one
+        // that comes second pays nothing and is told the count is short.
+        Mail? receivingMail;
+        bool gone;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity), out receivingMail, out gone);
+        }
+        if (listing == null || receivingMail == null) {
+            session.Send(BlackMarketPacket.Error(gone ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }
 
-        listing.Quantity -= quantity;
-        if (quantity == listing.Item.Amount) {
-            db.SaveItems(receivingMail.Id, listing.Item);
-            receivingMail.Items.Add(listing.Item);
-            db.DeleteBlackMarketListing(listingId);
-        } else {
-            listing.Item.Amount -= quantity;
-            db.SaveItems(listing.Id, listing.Item);
-            Item? item = listing.Item.Clone();
-            item.Amount = quantity;
+        session.Currency.Meso -= cost;
 
-            item = db.CreateItem(receivingMail.Id, item);
-            if (item is null) {
-                session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 5, listingId));
-                session.Currency.Meso += listing.Price * quantity;
-                logger.Error("Failed to create item for black market purchase mail for {CharacterId}", session.CharacterId);
-                return;
-            }
-            receivingMail.Items.Add(item);
-            db.SaveBlackMarketListing(listing);
-        }
-
-        BlackMarketResponse response = session.World.BlackMarket(new BlackMarketRequest {
-            Purchase = new BlackMarketRequest.Types.Purchase {
-                ListingId = listingId,
-                SellerId = listing.CharacterId,
-            },
-        });
-
-        var error = (BlackMarketError) response.Error;
-        if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error, 5, listingId));
-            session.Currency.Meso += listing.Price * quantity;
-
-            return;
+        // The world refreshes its search copy and tells the seller. The buy is done, so a failure here is logged.
+        try {
+            session.World.BlackMarket(new BlackMarketRequest {
+                Purchase = new BlackMarketRequest.Types.Purchase {
+                    ListingId = listingId,
+                    SellerId = listing.CharacterId,
+                },
+            });
+        } catch (Exception ex) {
+            logger.Error(ex, "Failed to report the purchase of black market listing {ListingId}", listingId);
         }
 
         // KMS2 order: Meso, the purchase answer, then the mail notice. The buyer's side is done here, so a
@@ -268,7 +252,7 @@ public sealed class BlackMarketManager {
         } catch { /*ignored*/ }
     }
 
-    private Mail? CreateBuyerMail(BlackMarketListing listing, int quantity) {
+    private Mail BuyerMail(BlackMarketListing listing, int quantity) {
         var receivingMail = new Mail {
             ReceiverId = session.CharacterId,
             Type = MailType.BlackMarketSale,
@@ -287,8 +271,7 @@ public sealed class BlackMarketManager {
         receivingMail.SetContent(StringCode.s_blackmarket_mail_to_buyer_content);
         receivingMail.SetSenderName(StringCode.s_blackmarket_mail_to_sender);
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        return db.CreateMail(receivingMail);
+        return receivingMail;
     }
 
     private Mail? CreateSellerMail(BlackMarketListing listing, int quantity) {

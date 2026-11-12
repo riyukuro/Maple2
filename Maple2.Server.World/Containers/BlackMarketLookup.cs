@@ -171,10 +171,7 @@ public class BlackMarketLookup : IDisposable {
         return BlackMarketError.none;
     }
 
-    public void Dispose() {
-        foreach (BlackMarketListing listing in listings.Values) {
-            using GameStorage.Request db = gameStorage.Context();
-            db.SaveItems(listing.Id, listing.Item);
-        }
-    }
+    // Nothing is written back: the copies here are only for the search, and may be behind the rows (a buy whose
+    // report did not arrive), so saving them could undo a sale.
+    public void Dispose() { }
 }
