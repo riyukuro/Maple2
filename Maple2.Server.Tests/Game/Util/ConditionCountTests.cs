@@ -39,12 +39,23 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
     }
 
+    private const int HomeMapId = 62000000;
+
     // Entering a home counts for enter_otherhouse only when another account owns it.
     [TestCase(1001L, 1002L, true)]
     [TestCase(1001L, 1001L, false)]
     [TestCase(0L, 1001L, false)]
     public void EnterOtherHouse_OnlyAnotherAccountsHome(long ownerId, long accountId, bool expected) {
-        Assert.That(FieldEntryRules.VisitsOtherHome(ownerId, accountId), Is.EqualTo(expected));
+        Assert.That(FieldEntryRules.VisitsOtherHome(ownerId, HomeMapId, accountId, MapId, 0), Is.EqualTo(expected));
+    }
+
+    // Coming from that same home is no new visit; from another map, another home or no field (a new session) it is.
+    [TestCase(HomeMapId, 1001L, false)]
+    [TestCase(HomeMapId, 1003L, true)]
+    [TestCase(MapId, 0L, true)]
+    [TestCase(0, 0L, true)]
+    public void EnterOtherHouse_NotFromTheSameHome(int fromMapId, long fromOwnerId, bool expected) {
+        Assert.That(FieldEntryRules.VisitsOtherHome(1001, HomeMapId, 1002, fromMapId, fromOwnerId), Is.EqualTo(expected));
     }
 
     [Test]

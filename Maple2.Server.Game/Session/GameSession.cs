@@ -517,6 +517,10 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
+    // The field this session left for the one it enters (map 0: none, the session arrived from elsewhere), and
+    // the owner when it was a home.
+    private (int MapId, long OwnerId) leftField;
+
     public bool PrepareField(int mapId, int portalId = -1, long ownerId = 0, int roomId = 0, in Vector3 position = default, in Vector3 rotation = default) {
         return PrepareFieldInternal(mapId, out _, portalId, ownerId, roomId, position, rotation);
     }
@@ -566,6 +570,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         State = SessionState.ChangeMap;
+        leftField = (Field?.MapId ?? 0, Field is HomeFieldManager leftHome ? leftHome.OwnerId : 0);
         LeaveField();
 
         Field = newField;
@@ -664,7 +669,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));
         ConditionUpdate(ConditionType.map, codeLong: Player.Value.Character.MapId);
         ConditionUpdate(ConditionType.job_change, codeLong: (int) Player.Value.Character.Job.Code());
-        if (Field is HomeFieldManager home && FieldEntryRules.VisitsOtherHome(home.OwnerId, AccountId)) {
+        if (Field is HomeFieldManager home
+            && FieldEntryRules.VisitsOtherHome(home.OwnerId, home.MapId, AccountId, leftField.MapId, leftField.OwnerId)) {
             ConditionUpdate(ConditionType.enter_otherhouse);
         }
 

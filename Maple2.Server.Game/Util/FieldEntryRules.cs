@@ -19,14 +19,22 @@ public static class FieldEntryRules {
     // the default return field when the saved one is unknown, is a GM-only field for a plain account
     // (an account that lost its GM rights while its return field was one of those), or is a map the played
     // client does not have.
-    // A home field of another account: entering it counts for the enter_otherhouse condition.
-    public static bool VisitsOtherHome(long homeOwnerId, long accountId) => homeOwnerId != 0 && homeOwnerId != accountId;
-
     public static int ReturnMap(int returnMapId, bool known, int enterAdminLevel, bool gm, int defaultMapId, bool notInPlayedClient = false) {
         if (!known || notInPlayedClient || !AdminFieldAllowed(enterAdminLevel, gm)) {
             return defaultMapId;
         }
         return returnMapId;
+    }
+
+    // Entering a home field of another account counts for the enter_otherhouse condition, unless the player
+    // comes from that same home (the session left it for the same field). A new session (a move from another
+    // channel or game server) comes from no field (map 0): a channel change or relog never lands in a home,
+    // as both go to the saved field and a home is not saved.
+    public static bool VisitsOtherHome(long homeOwnerId, int homeMapId, long accountId, int fromMapId, long fromOwnerId) {
+        if (homeOwnerId == 0 || homeOwnerId == accountId) {
+            return false;
+        }
+        return fromMapId != homeMapId || fromOwnerId != homeOwnerId;
     }
 
     // The answer to "Enter Dungeon" for a room that is gone (closed after everyone left it): error 0x1D, which
