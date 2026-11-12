@@ -1,10 +1,13 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
 using System.Text.RegularExpressions;
+using System.Xml;
 using M2dXmlGenerator;
 using Maple2.File.IO;
 using Maple2.File.IO.Crypto.Common;
+using Maple2.File.Ingest.Utils;
 using Maple2.File.Parser;
+using Maple2.File.Parser.Xml.Common;
 using Maple2.File.Parser.Xml.Npc;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -60,13 +63,16 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
         // The NPCs the played client has NPC data for (PlayedClientNpcs); null without a played client or when its
         // pack has no NPC data, and then no NPC is marked.
         HashSet<int>? known = null;
+        // The played client's stat block of each of its NPCs (PlayedNpcStats); empty without a played client.
+        Dictionary<int, Stat> playedStats = new();
         if (playedReader != null) {
-            known = PlayedClientNpcs.Ids(
-                playedReader.Files.Where(file => PlayedClientNpcs.IsNpcFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
-                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
+            List<XmlDocument> npcFiles = playedReader.Files.Where(file => PlayedClientNpcs.IsNpcFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)).ToList();
+            known = PlayedClientNpcs.Ids(npcFiles, EnvironmentAvailable);
             if (known.Count == 0) {
                 known = null;
             }
+            playedStats = PlayedNpcStats.Read(npcFiles, EnvironmentAvailable, feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale);
         }
         int notInPlayed = 0, inPlayed = 0;
         foreach ((int id, string name, NpcData data, List<EffectDummy> _) in parser.Parse()) {
@@ -99,7 +105,7 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                         new NpcMetadataSkill.Entry(skillId, data.skill.levels[i])).ToArray(),
                     Cooldown: data.skill.coolDown
                 ),
-                Stat: new NpcMetadataStat(Stats: MapStats(data.stat),
+                Stat: new NpcMetadataStat(Stats: MapStats(data.stat, playedStats.GetValueOrDefault(id)),
                     ScaleStatRate: [
                         data.stat.scaleStatRate_1,
                         data.stat.scaleStatRate_2,
@@ -197,9 +203,23 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
         if (known != null) {
             Console.WriteLine($"npcs: {notInPlayed} not in the played client's NPC data (the server does not spawn them), {inPlayed} in it");
         }
+        if (playedStats.Count > 0) {
+            Console.WriteLine($"npcs: {playedStats.Count} stat blocks taken from the played client's NPC data (no hidden stat added)");
+        }
     }
 
-    private static IReadOnlyDictionary<BasicAttribute, long> MapStats(Stat stat) {
+    private static bool EnvironmentAvailable(XmlElement node) =>
+        FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+
+    // The NPC's stats. With the played client's stat block (played) they are that block as it is: the client adds no
+    // hidden stat to it, and its data has the adds of its own region baked in (KR npcdata holds base + the
+    // HiddenStatAdd01/02 values of the NA pack, and no HiddenStatAdd03/04 one), so adding the ingested pack's adds
+    // would stack another region's tuning on top. Without it (no played client given, or an NPC the played client
+    // does not have) they are the ingested pack's base plus the hidden adds of the features on for the locale.
+    public static IReadOnlyDictionary<BasicAttribute, long> MapStats(Stat stat, StatValue? played = null) {
+        if (played != null) {
+            return played.ToDictionary();
+        }
         Dictionary<BasicAttribute, long> stats = stat.ToDictionary();
 
         if (FeatureLocaleFilter.FeatureEnabled("HiddenStatAdd01")) {
