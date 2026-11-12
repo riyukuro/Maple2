@@ -450,6 +450,14 @@ public sealed class QuestManager {
             rewards.Add(item);
         }
 
+        // completeReward guildCoin: the guild coin item, as the check-in gives it.
+        if (reward.GuildCoin > 0) {
+            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, reward.GuildCoin);
+            if (guildCoin != null) {
+                rewards.Add(guildCoin);
+            }
+        }
+
         if (!session.Item.Inventory.CanAdd(rewards) && !Constant.MailQuestItems) {
             session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
             return false;
@@ -482,7 +490,7 @@ public sealed class QuestManager {
             }
         }
 
-        // TODO: Guild rewards
+        session.Guild.AddQuestReward(reward.GuildExp, reward.GuildFund);
 
         int missionPoints = MissionPointRules.PointsCounted(reward.MissionPoint);
         if (missionPoints > 0) {

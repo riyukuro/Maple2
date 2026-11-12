@@ -44,6 +44,11 @@ public class RecallScrollHandler : FieldPacketHandler {
                     return;
                 }
                 break;
+            case RecallScrollType.Guild:
+                if (session.Guild.Guild?.Members.ContainsKey(recall.CallerId) != true) {
+                    return;
+                }
+                break;
             case RecallScrollType.Wedding:
                 if (!MarriageManager.CanRecall(session.Marriage.Marriage.Status) || session.Marriage.Partner.CharacterId != recall.CallerId) {
                     return;

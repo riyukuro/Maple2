@@ -126,4 +126,15 @@ public class GuildRulesTests {
     public void ContributedExp_CountsOnlyTheContributorsRise(long characterId, long contributorId, int oldExp, int newExp, long expected) {
         Assert.That(GuildRules.ContributedExp(characterId, contributorId, oldExp, newExp), Is.EqualTo(expected));
     }
+
+    // A guild quest's guildFund: added up to the level's fundMax, never past int.MaxValue, and a fund already at
+    // or over the ceiling stays as it is.
+    [TestCase(100, 50, 1000L, 150)]
+    [TestCase(980, 50, 1000L, 1000)]
+    [TestCase(1200, 50, 1000L, 1200)]
+    [TestCase(100, 0, 1000L, 100)]
+    [TestCase(int.MaxValue - 5, 50, 5_000_000_000L, int.MaxValue)]
+    public void AddFund_StopsAtTheFundMax(int funds, int add, long fundMax, int expected) {
+        Assert.That(GuildRules.AddFund(funds, add, fundMax), Is.EqualTo(expected));
+    }
 }

@@ -67,6 +67,10 @@ public partial class WorldService {
                 return Task.FromResult(UseGuildBuff(request.RequestorId, request.UseBuff));
             case GuildRequest.GuildOneofCase.OpenEvent:
                 return Task.FromResult(OpenGuildEvent(request.RequestorId, request.OpenEvent));
+            case GuildRequest.GuildOneofCase.Recall:
+                return Task.FromResult(RecallGuild(request.RequestorId, request.Recall));
+            case GuildRequest.GuildOneofCase.AddExpFund:
+                return Task.FromResult(AddGuildExpFund(request.RequestorId, request.AddExpFund));
             case GuildRequest.GuildOneofCase.TakeMailTurn:
                 return Task.FromResult(TakeGuildMailTurn(request.RequestorId, request.TakeMailTurn));
             case GuildRequest.GuildOneofCase.Donate:
@@ -510,6 +514,32 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = open.GuildId };
+    }
+
+    private GuildResponse RecallGuild(long requestorId, GuildRequest.Types.Recall recall) {
+        if (!guildLookup.TryGet(recall.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.Recall(requestorId, recall.MapId, recall.EndTime);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = recall.GuildId };
+    }
+
+    private GuildResponse AddGuildExpFund(long requestorId, GuildRequest.Types.AddExpFund add) {
+        if (!guildLookup.TryGet(add.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.AddExpFund(requestorId, add.Exp, add.Fund);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = add.GuildId };
     }
 
     private GuildResponse TakeGuildMailTurn(long requestorId, GuildRequest.Types.TakeMailTurn take) {

@@ -165,6 +165,13 @@ message GuildRequest {
     int32 id = 2;
     int32 time = 3;
   }
+  // A guild recall scroll: the caller and the map, offered to the members but the caller (RecallScroll type 1).
+  message Recall {
+    int64 character_id = 1;
+    string name = 2;
+    int32 map_id = 3;
+    int64 end_time = 4;
+  }
   // Guild 57: the guild house at its new level and theme.
   message UpdateHouse {
     string requestor_name = 1;
@@ -208,6 +215,7 @@ message GuildRequest {
     UpdateHouse update_house = 21;
     UseBuff use_buff = 22;
     OpenEvent open_event = 23;
+    Recall recall = 24;
   }
 }
 

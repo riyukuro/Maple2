@@ -442,6 +442,53 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // A guild quest's reward for the guild (completeReward guildExp and guildFund), from the member who completed it.
+    // As a check-in's, it is added under the guild lock and saved with the guild; the fund stops at the level's
+    // fundMax (GuildRules.AddFund), the ceiling the client's donation check keeps it under.
+    public GuildError AddExpFund(long requestorId, int exp, int fund) {
+        if (!Guild.Members.ContainsKey(requestorId)) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (exp <= 0 && fund <= 0) {
+            return GuildError.none;
+        }
+
+        int guildExp;
+        int guildFund;
+        lock (guildLock) {
+            Guild.Experience += Math.Max(exp, 0);
+            Guild.Funds = GuildRules.AddFund(Guild.Funds, fund, GuildProperty().FundMax);
+            guildExp = Guild.Experience;
+            guildFund = Guild.Funds;
+        }
+
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = requestorId,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
+            },
+        });
+        return GuildError.none;
+    }
+
+    // A guild recall scroll: every member's channel offers the recall to its members but the requestor.
+    public GuildError Recall(long requestorId, int mapId, long endTime) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        Broadcast(new GuildRequest {
+            Recall = new GuildRequest.Types.Recall {
+                CharacterId = requestorId,
+                Name = requestor.Name,
+                MapId = mapId,
+                EndTime = endTime,
+            },
+        }, member => member.CharacterId != requestorId && member.Info.Online);
+        return GuildError.none;
+    }
+
     // Guild 99. The time of opening is kept in memory only: an event is open for 30 seconds
     // (GuildRules.EventOpenSeconds), so nothing is lost when World stops.
     public GuildError OpenEvent(long requestorId, int eventId) {

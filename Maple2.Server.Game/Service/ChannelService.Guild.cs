@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Channel.Service;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
@@ -49,6 +50,8 @@ public partial class ChannelService {
                 return Task.FromResult(UseGuildBuff(request.ReceiverIds, request.UseBuff));
             case GuildRequest.GuildOneofCase.OpenEvent:
                 return Task.FromResult(OpenGuildEvent(request.ReceiverIds, request.OpenEvent));
+            case GuildRequest.GuildOneofCase.Recall:
+                return Task.FromResult(RecallGuild(request.GuildId, request.ReceiverIds, request.Recall));
             case GuildRequest.GuildOneofCase.UpgradeBuff:
                 return Task.FromResult(UpgradeGuildBuff(request.ReceiverIds, request.UpgradeBuff));
             case GuildRequest.GuildOneofCase.ApplicationResult:
@@ -198,6 +201,25 @@ public partial class ChannelService {
             }
 
             session.Guild.OpenEvent(update.RequestorName, new GuildEvent(update.Id, update.Time));
+        }
+
+        return new GuildResponse();
+    }
+
+    // The guild recall: stored for the answer (RecallScrollHandler) and shown as RecallScroll type 1.
+    private GuildResponse RecallGuild(long guildId, IEnumerable<long> receiverIds, GuildRequest.Types.Recall recall) {
+        foreach (long characterId in receiverIds) {
+            if (characterId == recall.CharacterId || !server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+            if (session.Guild.Id != guildId) {
+                continue;
+            }
+
+            lock (session.Recalls) {
+                session.Recalls[(int) RecallScrollType.Guild] = new PendingRecall(recall.CharacterId, recall.Name, recall.MapId, recall.EndTime);
+            }
+            session.Send(RecallScrollPacket.Notify(RecallScrollType.Guild, recall.Name, recall.MapId, recall.EndTime));
         }
 
         return new GuildResponse();

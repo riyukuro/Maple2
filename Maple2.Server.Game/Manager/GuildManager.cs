@@ -390,6 +390,71 @@ public class GuildManager : IDisposable {
         }
     }
 
+    // How long a guild recall offer stays open; as for the party recall, the server pack has no keep-time row for it.
+    private const int RecallKeepSeconds = 300;
+
+    /// <summary>
+    /// The members a guild recall scroll calls, as the client counts them before it casts the recall
+    /// (CGuildInfo::FUN_1404d3400, commonfiles/guilddef_1.cpp:2232): online and in a field that is not a tutorial.
+    /// The caller is left out (the client takes one off its count).
+    /// </summary>
+    public static int CountRecallable(IEnumerable<GuildMember> members, long callerId, Func<int, bool> isTutorialMap) {
+        return members.Count(member => member.CharacterId != callerId && member.Info.Online && !isTutorialMap(member.Info.MapId));
+    }
+
+    /// <summary>
+    /// Offers a guild recall to the other members (s2c RecallScroll type 1 on their channels).
+    /// False when there is no one to call, the field forbids recalls or the World refuses.
+    /// </summary>
+    public bool Recall() {
+        if (Guild == null || session.Field == null || !session.Field.Metadata.CashCall.Recall) {
+            return false;
+        }
+        bool IsTutorialMap(int mapId) => session.MapMetadata.TryGet(mapId, out MapMetadata? map) && map.Property.TutorialType != 0;
+        if (CountRecallable(Guild.Members.Values, session.CharacterId, IsTutorialMap) <= 0) {
+            return false;
+        }
+
+        try {
+            GuildResponse response = session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                Recall = new GuildRequest.Types.Recall {
+                    GuildId = Guild.Id,
+                    MapId = session.Field.MapId,
+                    EndTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + RecallKeepSeconds,
+                },
+            });
+            return response.Error == (int) GuildError.none;
+        } catch (Grpc.Core.RpcException ex) {
+            logger.Error(ex, "Guild recall by {CharacterId} failed", session.CharacterId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A completed quest's guild reward (completeReward guildExp and guildFund, the guild quests 73000001 and on)
+    /// for the guild; the World adds it and every member gets the new values (Guild 53), the player also the
+    /// contribution notice (97). Nothing without a guild.
+    /// </summary>
+    public void AddQuestReward(int exp, int fund) {
+        if (Guild == null || (exp <= 0 && fund <= 0)) {
+            return;
+        }
+
+        try {
+            session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                AddExpFund = new GuildRequest.Types.AddExpFund {
+                    GuildId = Guild.Id,
+                    Exp = Math.Max(exp, 0),
+                    Fund = Math.Max(fund, 0),
+                },
+            });
+        } catch (Grpc.Core.RpcException ex) {
+            logger.Error(ex, "Guild quest reward of {CharacterId} failed", session.CharacterId);
+        }
+    }
+
     // Guild 56 (CGuildManager::FUN_1413c3780, guildmanager.cpp:2533): the client copies the event over the
     // one it holds and prints s_guild_notify_open_event_user.
     public bool OpenEvent(string requestorName, GuildEvent opened) {

@@ -132,6 +132,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.RecallParty:
                 HandleRecallParty(session, item);
                 break;
+            case ItemFunction.RecallGuild:
+                HandleRecallGuild(session, item);
+                break;
             case ItemFunction.RecallWedding:
                 HandleRecallWedding(session, item);
                 break;
@@ -711,6 +714,15 @@ public class ItemUseHandler : FieldPacketHandler {
     // UIPartyDialog onPartyRecall: the party window's recall button casts StateRecall, then uses the scroll.
     private void HandleRecallParty(GameSession session, Item item) {
         if (!session.Party.Recall()) {
+            return;
+        }
+
+        session.Item.Inventory.Consume(item.Uid, 1);
+    }
+
+    // RecallGuild (unnamed/unit_140d1ae30_itemfunctiondispatch.cpp): the client casts StateRecall, then uses the scroll.
+    private void HandleRecallGuild(GameSession session, Item item) {
+        if (!session.Guild.Recall()) {
             return;
         }
 

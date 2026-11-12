@@ -287,6 +287,18 @@ message GuildRequest {
     int64 guild_id = 1;
     int32 event_id = 2;
   }
+  // A guild recall scroll: call the other members to the requestor.
+  message Recall {
+    int64 guild_id = 1;
+    int32 map_id = 2;
+    int64 end_time = 3;
+  }
+  // A quest reward of the requestor for the guild (completeReward guildExp and guildFund).
+  message AddExpFund {
+    int64 guild_id = 1;
+    int32 exp = 2;
+    int32 fund = 3;
+  }
   // Guild 101: the master raises the guild house by one level, with the theme chosen for it.
   message UpgradeHouse {
     int64 guild_id = 1;
@@ -349,6 +361,8 @@ message GuildRequest {
     TakeMailTurn take_mail_turn = 25;
     UseBuff use_buff = 26;
     OpenEvent open_event = 27;
+    Recall recall = 28;
+    AddExpFund add_exp_fund = 29;
   }
 }
 

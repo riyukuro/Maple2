@@ -167,6 +167,19 @@ public static class GuildRules {
         return (long) donationsToday + count <= donateMax && funds + addFunds <= fundMax;
     }
 
+    // A guild quest's guildFund added to the fund: it stops at the level's fundMax (and at int.MaxValue, the
+    // fund's width); a fund already over the ceiling is not cut down.
+    public static int AddFund(int funds, int addFunds, long fundMax) {
+        if (addFunds <= 0) {
+            return funds;
+        }
+        long ceiling = Math.Min(fundMax, int.MaxValue);
+        if (funds >= ceiling) {
+            return funds;
+        }
+        return (int) Math.Min((long) funds + addFunds, ceiling);
+    }
+
     // Guild 92 (CGuildManager::FUN_1413b9ac0): the master raises a guild skill by one level. The client asks
     // for the row of the current level and of the next one (none: s_guild_err_max_level, which has no code in
     // the error packet), the guild level of the next row, and the upgrade cost of the next row in the fund.
