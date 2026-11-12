@@ -95,4 +95,10 @@ public class ItemRemakeRulesTests {
         Assert.That(ItemRemakeRules.LockItemUsable(false, true, true, 0, 7), Is.True);
         Assert.That(ItemRemakeRules.LockItemUsable(false, false, false, 8, 7), Is.False);
     }
+
+    [Test]
+    public void RemakeCondition_KeepsGearAndPetsApart() {
+        Assert.That(ItemRemakeRules.RemakeCondition(false), Is.EqualTo(ConditionType.item_remake_option));
+        Assert.That(ItemRemakeRules.RemakeCondition(true), Is.EqualTo(ConditionType.pet_remake_option));
+    }
 }

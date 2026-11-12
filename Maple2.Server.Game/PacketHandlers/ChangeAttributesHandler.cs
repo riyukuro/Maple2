@@ -163,6 +163,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             changeItem.TimeChangedOption++;
             session.ChangeAttributesItem = changeItem;
             session.Send(ChangeAttributesPacket.PreviewItem(session.ChangeAttributesItem));
+            session.ConditionUpdate(ItemRemakeRules.RemakeCondition(item.Type.IsPet));
         }
     }
 

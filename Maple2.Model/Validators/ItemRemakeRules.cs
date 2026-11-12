@@ -50,4 +50,10 @@ public static class ItemRemakeRules {
     // character. The same test as a worn set piece's (SetItemRules.Counted) without its level limit.
     public static bool LockItemUsable(bool expired, bool requireVip, bool vip, long boundTo, long characterId) =>
         SetItemRules.Counted(expired, requireVip, vip, boundTo, characterId, 0, 0);
+
+    // The client keeps an attribute change of gear and one of a pet apart (conditionutil.cpp registers
+    // item_remake_option 0xe1 and pet_remake_option 0xe3): "Attempt to change an item's attributes through
+    // Ophelia" (70600029) counts each paid change of gear.
+    public static ConditionType RemakeCondition(bool isPet) =>
+        isPet ? ConditionType.pet_remake_option : ConditionType.item_remake_option;
 }
