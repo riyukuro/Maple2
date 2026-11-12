@@ -680,6 +680,9 @@ public class DungeonManager {
 
         if (UserRecord.Flag.HasFlag(DungeonBonusFlag.Clear)) {
             GetClearDungeonRewards();
+            // "Collect a reward from any dungeon" (70700002): a clear that still had a reward count left. The dungeon id
+            // goes along as the code; the achievement rows that name a dungeon have no code case yet and stay uncounted.
+            session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: Lobby.DungeonId);
         }
 
         foreach (int rewardId in rewardIds) {

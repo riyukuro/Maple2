@@ -265,6 +265,7 @@ public class ConditionCountTests {
     [TestCase(ConditionType.item_break)] // 74000011 "Dismantle 1 item"
     [TestCase(ConditionType.guild_join)] // 70300010 "Join a guild"
     [TestCase(ConditionType.guild_attendance)] // 70300011 "Guild Check-In"
+    [TestCase(ConditionType.dungeon_reward)] // 70700002 "Collect a reward from any dungeon"
     public void CodelessQuestRow_CountsEveryEvent(ConditionType type) {
         var condition = new ConditionMetadata(type, 1, null, null);
         Assert.That(condition.Check(null!), Is.True);
