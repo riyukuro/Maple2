@@ -2,6 +2,7 @@
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Util;
 using System.Numerics;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
@@ -52,26 +53,13 @@ public partial class MovementState {
                 return;
             }
 
-            var autoTargeting = cast.Metadata.Data.AutoTargeting;
-
-            bool shouldFaceTarget = autoTargeting.MaxDistance == 0 || distance <= autoTargeting.MaxDistance;
-            shouldFaceTarget |= autoTargeting.MaxHeight == 0 || offset.Y <= autoTargeting.MaxHeight;
-
-            if (!shouldFaceTarget) {
+            SkillMetadataAutoTargeting autoTargeting = cast.Metadata.Data.AutoTargeting;
+            if (!AutoTargetFace.Passes(offset, actor.Transform.FrontAxis, autoTargeting.MaxDegree, autoTargeting.MaxDistance, autoTargeting.MaxHeight)) {
                 return;
             }
 
             distance = (float) Math.Sqrt(distance);
             offset *= (1 / distance);
-
-            float degreeCosine = (float) Math.Cos(autoTargeting.MaxDegree / 2);
-            float dot = Vector3.Dot(offset, actor.Transform.FrontAxis);
-
-            shouldFaceTarget = autoTargeting.MaxDegree == 0 || dot >= degreeCosine;
-
-            if (!shouldFaceTarget) {
-                return;
-            }
         } else {
             distance = (float) Math.Sqrt(distance);
             offset *= (1 / distance);
