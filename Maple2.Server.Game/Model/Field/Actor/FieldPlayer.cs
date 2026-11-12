@@ -619,7 +619,8 @@ public class FieldPlayer : Actor<Player> {
     }
 
     /// <summary>
-    /// Consumes stamina.
+    /// Consumes stamina. The first refill comes one StaminaRegenInterval after the use, with no wait tick on top
+    /// (chosen here: RecoveryEPWaitTick is not applied to a use). See <see cref="RegenClock"/>.
     /// </summary>
     /// <param name="amount">The amount</param>
     /// <param name="noRegen">If regen shouldn't be started</param>
@@ -629,10 +630,17 @@ public class FieldPlayer : Actor<Player> {
         }
 
         Stats.Values[BasicAttribute.Stamina].Add(-amount);
-        if (!IsDead) {
-            regenClock.Hit(BasicAttribute.Stamina, Field.FieldTick, Constants.RecoveryEPWaitTick);
-        }
+        DelayStaminaRegen();
         Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Stamina));
+    }
+
+    /// <summary>
+    /// The player used stamina: the next stamina regen tick comes one StaminaRegenInterval later.
+    /// </summary>
+    public void DelayStaminaRegen() {
+        if (!IsDead) {
+            regenClock.Hit(BasicAttribute.Stamina, Field.FieldTick, 0);
+        }
     }
 
     /// <summary>
