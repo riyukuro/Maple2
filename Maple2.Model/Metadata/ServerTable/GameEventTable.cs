@@ -472,6 +472,13 @@ public record MiniGameBonusReward(
     string[] GameNames,
     RewardItem[] Items) : GameEventData;
 
+// The items an npc shop shows while the event runs: value1 the shop id, value2 the shop's item ids, comma separated.
+// The client has no class for this type (no GameEventNpcShopShowItem), so it is not sent and the shop window shows
+// what the server loads. A shop that a running row names shows only the items its running rows name.
+public record NpcShopShowItem(
+    int ShopId,
+    int[] ItemIds) : GameEventData;
+
 // An npc the event puts in a field: value1 <npc fieldID spawnPointID npcID shopID/>, its root read whatever its name
 // (the client's table export reads the root's npcID and fieldID and lists the npc in that field for the event's
 // time, tableexporter.cpp:906). spawnPointID is the id of a region spawn (MS2RegionSpawn) of the field, shopID the
@@ -571,4 +578,5 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
 [JsonDerivedType(typeof(SpawnNpcEvent), "SpawnNpc")]
+[JsonDerivedType(typeof(NpcShopShowItem), "NpcShopShowItem")]
 public abstract record GameEventData;

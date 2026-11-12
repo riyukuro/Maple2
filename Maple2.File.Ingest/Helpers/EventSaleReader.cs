@@ -4,8 +4,8 @@ using Maple2.Model.Metadata;
 
 namespace Maple2.File.Ingest.Helpers;
 
-// The values of the SaleUgcDesign, SaleHousing, FindDungeonHelperBonus, SaleRemake, SaleBeautyShop and SAHotTime rows. A row that changes nothing (no
-// rate, no cube row, no bonus) is not stored.
+// The values of the SaleUgcDesign, SaleHousing, FindDungeonHelperBonus, SaleRemake, SaleBeautyShop, SAHotTime and
+// NpcShopShowItem rows. A row that changes nothing (no rate, no cube row, no bonus, no item) is not stored.
 public static class EventSaleReader {
     // value1: the rate (GameEventSale, commonfiles/gameevent.cpp:1952).
     public static SaleUgcDesign? UgcDesign(string? value1) {
@@ -86,6 +86,23 @@ public static class EventSaleReader {
             return null;
         }
         return new SaleBeautyShop(shop, rate, flag != 0);
+    }
+
+    // value1 the shop id, value2 its item ids (NpcShopShowItem, server only). A row without a shop or with no item, or
+    // with an item that is not a number, is not stored: it would empty the shop.
+    public static NpcShopShowItem? ShopShowItem(string? value1, string? value2) {
+        if (!int.TryParse(value1?.Trim(), out int shopId) || shopId <= 0) {
+            return null;
+        }
+
+        string[] values = Split(value2);
+        var itemIds = new int[values.Length];
+        for (int i = 0; i < values.Length; i++) {
+            if (!int.TryParse(values[i], out itemIds[i]) || itemIds[i] <= 0) {
+                return null;
+            }
+        }
+        return itemIds.Length > 0 ? new NpcShopShowItem(shopId, itemIds) : null;
     }
 
     private static string[] Split(string? list) {
