@@ -141,8 +141,14 @@ public partial class FieldManager : IField {
         }
         FieldPortal? portal = fieldPortals?.Values.Where(entry => box.Contains(entry.Value.Position))
             .OrderBy(entry => entry.Value.Id).FirstOrDefault();
-        // The portal's own spot (a move to a portal lands there); the box's centre without one.
-        return portal != null ? (portal.Value.Position, portal.Value.Rotation) : (box.Metadata.Position, Vector3.Zero);
+        return StageSpotOf(box.Metadata, portal?.Value.Position, portal?.Value.Rotation ?? Vector3.Zero);
+    }
+
+    // The stage's spot: the portal's ground position at the box's centre height (65000001's portal 1 lies under the
+    // stage floor, 2875 against the floor's 3300, so its own height could put a fighter under the stage; the box's
+    // centre, 3350, is just above the floor, which the client falls onto). The box's centre without a portal.
+    public static (Vector3 Position, Vector3 Rotation) StageSpotOf(Ms2TriggerBox box, Vector3? portal, Vector3 rotation) {
+        return portal is { } position ? (position with { Z = box.Position.Z }, rotation) : (box.Position, Vector3.Zero);
     }
 
     // A spot on the floor: the nearest navmesh point to the position, else the position itself (a map portal's spot,

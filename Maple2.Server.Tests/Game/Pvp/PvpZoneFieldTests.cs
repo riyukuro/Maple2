@@ -220,6 +220,16 @@ public class PvpZoneFieldTests {
         Assert.That(Moves(arena.Tests[0]).Count + Moves(arena.Tests[1]).Count, Is.EqualTo(2));
     }
 
+    // The stage spot keeps the portal's ground position at the stage box's centre height: 65000001's portal 1 (z 2875)
+    // lies under the stage floor (3300); box 102's centre (3350) is just above it.
+    [Test]
+    public void RedArena_StageSpotAboveTheFloor() {
+        var box = new Maple2.Model.Metadata.Ms2TriggerBox(new System.Numerics.Vector3(825, -675, 3350), new System.Numerics.Vector3(1950, 1950, 1800), 102, true);
+        Assert.That(FieldManager.StageSpotOf(box, new System.Numerics.Vector3(825, -675, 2875), default).Position,
+            Is.EqualTo(new System.Numerics.Vector3(825, -675, 3350)));
+        Assert.That(FieldManager.StageSpotOf(box, null, default).Position, Is.EqualTo(box.Position));
+    }
+
     // A free-for-all whose players wait outside the zone (65000002: the platform, box 102, above the mine) sends each
     // participant still there down to the floor around the map's floor portal when the fight starts; one already out
     // stays where it is.
