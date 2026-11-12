@@ -137,19 +137,31 @@ public class Transform {
         LookTo(direction, new Vector3(0, 0, 1), snapToGroundPlane);
     }
 
+    // A direction without a facing keeps the current one: a zero or non-finite direction, one along the up axis
+    // when snapping to the ground plane, or one along it without snapping (no right axis). Normalizing such a
+    // direction gives NaN axes, and as Scale reads the axes back, every later LookTo kept the NaN: an npc whose
+    // path segment went straight up or down, or that faced a target on its own spot, kept a NaN rotation and its
+    // attack prisms (built from that rotation) hit nothing.
     public void LookTo(Vector3 direction, Vector3 up, bool snapToGroundPlane = true) {
-        direction = Vector3.Normalize(direction);
+        float length = direction.Length();
+        if (!float.IsFinite(length) || length == 0) {
+            return;
+        }
         up = Vector3.Normalize(up);
 
         if (snapToGroundPlane) {
-            direction = Vector3.Normalize(direction - Vector3.Dot(direction, up) * up); // plane projection formula
+            direction -= Vector3.Dot(direction, up) * up; // plane projection formula
 
-            if (direction.IsNearlyEqual(new Vector3(0, 0, 0), 1e-3f)) {
-                direction = FrontAxis;
+            if (direction.Length() <= 1e-3f * length) {
+                return;
             }
         }
+        direction = Vector3.Normalize(direction);
 
         Vector3 right = Vector3.Cross(direction, up);
+        if (right.LengthSquared() <= 1e-6f) {
+            return;
+        }
         up = Vector3.Cross(right, direction);
 
         float scale = Scale;
