@@ -51,6 +51,17 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: MapId, codeLong: npcId), Is.EqualTo(expected));
     }
 
+    // Fusing pets counts for pet_enchant; a row with a code (90000795) names the fused pet's item id.
+    [TestCase(61000002, true)]
+    [TestCase(61000003, false)]
+    public void PetEnchant_CountsTheListedPet(int petItemId, bool expected) {
+        var withCode = new ConditionMetadata(ConditionType.pet_enchant, 1,
+            new ConditionMetadata.Parameters(Integers: [61000002]), null);
+        var noCode = new ConditionMetadata(ConditionType.pet_enchant, 3, null, null);
+        Assert.That(withCode.Check(null!, codeLong: petItemId), Is.EqualTo(expected));
+        Assert.That(noCode.Check(null!, codeLong: petItemId), Is.True);
+    }
+
     // Taking furniture into use counts for controller when its item id is one of the row's codes.
     [TestCase(50400002, true)]
     [TestCase(50400004, false)]

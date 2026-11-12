@@ -249,6 +249,11 @@ public class PetHandler : FieldPacketHandler {
                 }
             }
             session.Send(PetPacket.FusionCount(character.PetFusionCount));
+            // "Use 3 pets as fusion catalysts" (70600026): each pet taken as a fodder; exp books are no pets.
+            // 90000795 names the fused pet's item id as its code.
+            if (petFodders > 0) {
+                session.ConditionUpdate(ConditionType.pet_enchant, counter: petFodders, codeLong: pet.Id);
+            }
         }
     }
 
