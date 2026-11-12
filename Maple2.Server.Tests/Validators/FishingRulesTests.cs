@@ -17,6 +17,15 @@ public class FishingRulesTests {
         Assert.That(FishingRules.IsCatch(success, bite, nowTick, biteTick), Is.EqualTo(expected));
     }
 
+    // Result 0 on a cast without the reel game gets no answer and keeps the cast; with the game it ends it.
+    [TestCase(false, false, true)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(true, true, false)]
+    public void ResultZeroWithoutTheGameIsIgnored(bool clientSuccess, bool fightGame, bool expected) {
+        Assert.That(FishingRules.IsIgnoredResult(clientSuccess, fightGame), Is.EqualTo(expected));
+    }
+
     // A cast whose reel game was won, then the next cast: the game flag of the start answer comes from the
     // new cast only. Without a bite there is no game, so the client does not send a "great" result that
     // the server would then refuse.

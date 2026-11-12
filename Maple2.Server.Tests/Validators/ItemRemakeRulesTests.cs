@@ -107,7 +107,7 @@ public class ItemRemakeRulesTests {
     [TestCase(396, 396, 396, 0)]
     [TestCase(396, 69, 69, 327000)]
     [TestCase(300, 0, 0, 300000)]
-    public void PetFragmentFee(int need, long owned, int fragments, long meso) {
-        Assert.That(ItemRemakeRules.PetFragmentFee(need, owned), Is.EqualTo((fragments, meso)));
+    public void FragmentFee(int need, long owned, int fragments, long meso) {
+        Assert.That(ItemRemakeRules.FragmentFee(need, owned), Is.EqualTo((fragments, meso)));
     }
 }

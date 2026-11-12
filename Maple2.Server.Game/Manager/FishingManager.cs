@@ -290,14 +290,23 @@ public class FishingManager {
         bool hasAutoFish = session.Player.Buffs.HasBuff(BuffEventType.AutoFish);
 
         // The result byte is the client's: it counts only for a cast that had a bite, once the bite tick has come.
+        // A cast without the reel game ends with result 1 alone (CFishingManager::Update); a result 0 before it
+        // (the casting bar running out) has no answer in KMS2 and leaves the cast open for the result 1 after it.
+        if (FishingRules.IsIgnoredResult(success, fishFightGame)) {
+            return FishingError.none;
+        }
+
+        // KMS2 order: mastery, the catch, the items, the tile again, then exp and conditions.
         success = FishingRules.IsCatch(success, bite, session.Field.FieldTick, biteTick);
         if (success) {
-            AddFish(fishSize, hasAutoFish);
+            Action report = AddFish(fishSize, hasAutoFish);
             CatchItem(spotMetadata);
+            session.Send(FishingPacket.LoadTiles([selectedTile], append: true));
+            report();
         } else {
-            session.ConditionUpdate(ConditionType.fish_fail, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
             session.Send(FishingPacket.CatchFish(selectedFish.Id, fishSize, hasAutoFish));
-            fishFightGame = false;
+            session.Send(FishingPacket.LoadTiles([selectedTile], append: true));
+            session.ConditionUpdate(ConditionType.fish_fail, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
         }
         // One catch per cast: the next one needs a new start.
         selectedFish = null;
@@ -314,14 +323,19 @@ public class FishingManager {
         }
     }
 
-    private void AddFish(int fishSize, bool hasAutoFish) {
+    // Sends the mastery gain and the catch; the returned action reports the conditions and the exp, which KMS2
+    // sends after the caught items and the tile.
+    private Action AddFish(int fishSize, bool hasAutoFish) {
         if (selectedFish == null || session.Field is null) {
-            return;
+            return () => { };
         }
 
-        bool prizeFish = fishSize >= selectedFish.BigSize.Max;
+        FishTable.Fish fish = selectedFish;
+        int mapId = session.Field.MapId;
+        bool prizeFish = fishSize >= fish.BigSize.Max;
         int masteryExp = 0;
         var caughtFishType = CaughtFishType.Default;
+        bool firstCatch = false;
 
         if (FishAlbum.TryGetValue(selectedFish.Id, out FishEntry? fishEntry)) {
             fishEntry.TotalCaught++;
@@ -334,8 +348,6 @@ public class FishingManager {
             if (prizeFish) {
                 fishEntry.TotalPrizeFish++;
             }
-
-            session.Send(FishingPacket.CatchFish(selectedFish.Id, fishSize, hasAutoFish, fishEntry));
         } else {
             fishEntry = new FishEntry(selectedFish.Id) {
                 TotalCaught = 1,
@@ -343,33 +355,42 @@ public class FishingManager {
                 LargestSize = fishSize,
             };
             FishAlbum.Add(selectedFish.Id, fishEntry);
-            session.ConditionUpdate(ConditionType.fish_collect, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
+            firstCatch = true;
             masteryExp = selectedFish.MasteryExp * 2; // double mastery exp if first catch
             caughtFishType = CaughtFishType.FirstKind;
-            session.Send(FishingPacket.CatchFish(selectedFish.Id, fishSize, hasAutoFish, fishEntry));
         }
 
-        if (fishSize >= selectedFish.BigSize.Min) {
-            session.ConditionUpdate(ConditionType.fish_goldmedal, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
-        }
         if (prizeFish) {
-            session.ConditionUpdate(ConditionType.fish_big, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
             caughtFishType = CaughtFishType.Prize;
             masteryExp = selectedFish.MasteryExp * 2; // double mastery exp if prize fish
+        }
+
+        if (masteryExp != 0) {
+            session.Mastery[MasteryType.Fishing] += masteryExp;
+            short masteryLevel = session.Mastery.GetLevel(MasteryType.Fishing);
+            session.Send(FishingPacket.IncreaseMastery(selectedFish.Id, masteryLevel, masteryExp, caughtFishType));
+        }
+
+        session.Send(FishingPacket.CatchFish(selectedFish.Id, fishSize, hasAutoFish, fishEntry));
+        if (prizeFish) {
             session.Field.Broadcast(FishingPacket.PrizeFish(session.PlayerName, selectedFish.Id));
         }
-        session.ConditionUpdate(ConditionType.fish, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
-        ReportAutoCatch(session, hasAutoFish);
-        // Every catch gives the common exp table's fishing award for the character's level.
-        session.Exp.AddExp(ExpType.fishing);
 
-        if (masteryExp == 0) {
-            return;
-        }
-
-        session.Mastery[MasteryType.Fishing] += masteryExp;
-        short masteryLevel = session.Mastery.GetLevel(MasteryType.Fishing);
-        session.Send(FishingPacket.IncreaseMastery(selectedFish.Id, masteryLevel, masteryExp, caughtFishType));
+        return () => {
+            if (firstCatch) {
+                session.ConditionUpdate(ConditionType.fish_collect, codeLong: fish.Id, targetLong: mapId);
+            }
+            if (fishSize >= fish.BigSize.Min) {
+                session.ConditionUpdate(ConditionType.fish_goldmedal, codeLong: fish.Id, targetLong: mapId);
+            }
+            if (prizeFish) {
+                session.ConditionUpdate(ConditionType.fish_big, codeLong: fish.Id, targetLong: mapId);
+            }
+            session.ConditionUpdate(ConditionType.fish, codeLong: fish.Id, targetLong: mapId);
+            ReportAutoCatch(session, hasAutoFish);
+            // Every catch gives the common exp table's fishing award for the character's level.
+            session.Exp.AddExp(ExpType.fishing);
+        };
     }
 
     private void CatchItem(FishTable.Spot spot) {
@@ -400,8 +421,14 @@ public class FishingManager {
         }
     }
 
+    // A lost reel game ends the cast: KMS2 answers with the tile alone, no catch packet.
     public void FailMinigame() {
+        if (fishFightGame && selectedTile != null) {
+            session.Send(FishingPacket.LoadTiles([selectedTile], append: true));
+        }
         fishFightGame = false;
+        selectedFish = null;
+        bite = false;
     }
 
 }

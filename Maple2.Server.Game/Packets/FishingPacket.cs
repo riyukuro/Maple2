@@ -59,10 +59,11 @@ public static class FishingPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadTiles(ICollection<FishingTile> tiles) {
+    // append: the client keeps its tiles and adds or replaces the given ones; else it clears them first.
+    public static ByteWriter LoadTiles(ICollection<FishingTile> tiles, bool append = false) {
         var pWriter = Packet.Of(SendOp.Fishing);
         pWriter.Write<Command>(Command.LoadTiles);
-        pWriter.WriteByte(); // disable loading tiles
+        pWriter.WriteBool(append);
         pWriter.WriteInt(tiles.Count);
         foreach (FishingTile tile in tiles) {
             pWriter.WriteClass<FishingTile>(tile);

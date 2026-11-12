@@ -58,13 +58,14 @@ public static class ItemRemakeRules {
     public static ConditionType RemakeCondition(bool isPet) =>
         isPet ? ConditionType.pet_remake_option : ConditionType.item_remake_option;
 
-    public const long PetFragmentMeso = 1000;
+    public const long FragmentMeso = 1000;
 
-    // A pet attribute change is paid in the crystal fragments the player owns and in 1000 meso for each one
-    // lacking (PetRemakeOptionBoard::FillIngredientList, tabcontentspetremakeoption.cpp:646); its other two
-    // materials must be owned. A gear change has no such fee.
-    public static (int Fragments, long Meso) PetFragmentFee(int need, long owned) {
+    // An attribute change is paid in the crystal fragments the player owns and in 1000 meso for each one
+    // lacking, for a pet (PetRemakeOptionBoard::FillIngredientList, tabcontentspetremakeoption.cpp:646) and
+    // for gear (UIItemRemakeOptionDialog::CanPayRemakePrice, itemremakeoptiondialog.cpp:797-800); the other
+    // materials must be owned.
+    public static (int Fragments, long Meso) FragmentFee(int need, long owned) {
         int fragments = (int) Math.Clamp(owned, 0, Math.Max(need, 0));
-        return (fragments, (Math.Max(need, 0) - fragments) * PetFragmentMeso);
+        return (fragments, (Math.Max(need, 0) - fragments) * FragmentMeso);
     }
 }

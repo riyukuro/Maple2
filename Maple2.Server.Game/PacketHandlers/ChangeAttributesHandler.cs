@@ -167,16 +167,15 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         lock (session.Item) {
             ingredients = [.. ingredients];
             long meso = 0;
-            if (item.Type.IsPet) {
-                int index = ingredients.FindIndex(info => info.Tag == ItemTag.CrystalPiece);
-                if (index >= 0) {
-                    long owned = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(fragment => (long) fragment.Amount);
-                    (int fragments, meso) = ItemRemakeRules.PetFragmentFee(ingredients[index].Amount, owned);
-                    if (fragments > 0) {
-                        ingredients[index] = new IngredientInfo(ItemTag.CrystalPiece, fragments);
-                    } else {
-                        ingredients.RemoveAt(index);
-                    }
+            // Pets and gear alike: fragments lacking are paid in meso (ItemRemakeRules.FragmentFee).
+            int index = ingredients.FindIndex(info => info.Tag == ItemTag.CrystalPiece);
+            if (index >= 0) {
+                long owned = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(fragment => (long) fragment.Amount);
+                (int fragments, meso) = ItemRemakeRules.FragmentFee(ingredients[index].Amount, owned);
+                if (fragments > 0) {
+                    ingredients[index] = new IngredientInfo(ItemTag.CrystalPiece, fragments);
+                } else {
+                    ingredients.RemoveAt(index);
                 }
             }
             bool owns = ingredients.All(info => session.Item.Inventory.Find(info.Tag).Sum(material => (long) material.Amount) >= info.Amount);

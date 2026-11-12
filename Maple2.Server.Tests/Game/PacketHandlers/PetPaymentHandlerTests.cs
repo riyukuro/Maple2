@@ -142,17 +142,50 @@ public class PetPaymentHandlerTests {
         Assert.That(Owned(session, ItemTag.MetaCell), Is.EqualTo(cells));
     }
 
-    // A gear change has no meso price for fragments.
+    // A gear change pays lacking fragments in meso as a pet change does
+    // (UIItemRemakeOptionDialog::CanPayRemakePrice, itemremakeoptiondialog.cpp:797-800).
     [Test]
-    public void GearChange_WithoutFragmentsIsRefused() {
+    public void GearChange_LackingFragmentsArePaidInMeso() {
         GameSession session = Login(meso: 10_000_000, fragments: 1, stones: 999, cells: 999);
         Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
         List<IngredientInfo> price = ChangeAttributesHandler.GetIngredients(gear);
-        Assert.That(price.Any(info => info.Tag == ItemTag.CrystalPiece && info.Amount > 1), Is.True);
+        int need = price.Single(info => info.Tag == ItemTag.CrystalPiece).Amount;
+        Assert.That(need, Is.GreaterThan(1));
 
-        Assert.That(ChangeAttributesHandler.PayChange(session, gear, price, null), Is.False);
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, price, null), Is.True);
 
-        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(test.TakeSentOps().First(), Is.EqualTo(SendOp.Meso));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000 - (need - 1) * 1000L));
+        Assert.That(Owned(session, ItemTag.CrystalPiece), Is.EqualTo(0));
+    }
+
+    // No fragment at all: the whole count is paid in meso and no refusal is sent.
+    [Test]
+    public void GearChange_WithoutAnyFragmentIsPaidInMeso() {
+        GameSession session = Login(meso: 10_000_000, fragments: 0, stones: 999, cells: 999);
+        Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
+        List<IngredientInfo> price = ChangeAttributesHandler.GetIngredients(gear);
+        int need = price.Single(info => info.Tag == ItemTag.CrystalPiece).Amount;
+
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, price, null), Is.True);
+
+        List<SendOp> sent = test.TakeSentOps();
+        Assert.That(sent.First(), Is.EqualTo(SendOp.Meso));
+        Assert.That(sent, Does.Not.Contain(SendOp.ChangeAttributes));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000 - need * 1000L));
+        Assert.That(Owned(session, ItemTag.CrystalPiece), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void GearChange_RefusedWhenTheMesoLacks() {
+        GameSession session = Login(meso: 999, fragments: 0, stones: 999, cells: 999);
+        Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
+
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, ChangeAttributesHandler.GetIngredients(gear), null), Is.False);
+
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ChangeAttributes }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(999));
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(999));
     }
 
     // Evolve points: 2 fodders of rarity 1 cost 20,000 each.

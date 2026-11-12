@@ -14,6 +14,12 @@ public static class FishingRules {
         return bite && !autoFish && roll < fightChance;
     }
 
+    // A result 0 on a cast without the reel game is the casting bar running out before the bite tick: the client
+    // sends result 1 right after (CFishingManager::Update) and KMS2 answers that one alone.
+    public static bool IsIgnoredResult(bool clientSuccess, bool fightGame) {
+        return !clientSuccess && !fightGame;
+    }
+
     public static bool IsCatch(bool clientSuccess, bool bite, long nowTick, long biteTick) {
         return clientSuccess && bite && nowTick >= biteTick - BiteSlackTicks;
     }
