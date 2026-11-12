@@ -2072,6 +2072,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
             return;
         }
         Console.WriteLine($"{name}: {counts.Ids} ids; {counts.Kept} kept for {FeatureLocaleFilter.Locale}, {counts.Added} added from the {PackTables.Locale} rows the played client lists, {counts.Dropped} dropped" +
+                          (counts.ClientOnlyIds.Count == 0 ? "" : $"; {counts.ClientOnlyIds.Count} added from the client's rows alone: {string.Join(", ", counts.ClientOnlyIds)}") +
+                          (counts.Changed.Count == 0 ? "" : $"; kept rows given the client's values: {string.Join(", ", counts.Changed)}") +
                           (counts.PackValues.Count == 0 ? "" : $"; {PackTables.Locale} value kept where the client's does not read: {string.Join(", ", counts.PackValues)}"));
     }
 

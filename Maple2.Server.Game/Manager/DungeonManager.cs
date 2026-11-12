@@ -157,9 +157,11 @@ public class DungeonManager {
 
     public void ResetWeeklyClears() {
         MailSeasonRewards();
-        foreach (DungeonRecord record in Records.Values) {
+        // Each record by its own period (PeriodOver), not the world's weekly day: one still in its period keeps its
+        // counts. The bought extra counts expire with the record's period (DungeonRecordCli::GetBonusCountNow).
+        long now = DateTime.Now.ToEpochSeconds();
+        foreach (DungeonRecord record in Records.Values.Where(record => DungeonRoomRules.PeriodOver(record, now))) {
             record.UnionClears = 0;
-            // The bought extra counts expire with the record's period (DungeonRecordCli::GetBonusCountNow).
             record.ExtraSubClears = 0;
         }
         using GameStorage.Request db = session.GameStorage.Context();
@@ -659,6 +661,7 @@ public class DungeonManager {
                 return;
             }
             DungeonRecord unionRecord = GetRecord(Metadata.Reward.UnionRewardId);
+            int weeklyBefore = GetWeeklyClearCount(unionRecord);
             // A clear counts while the record has a count left, as the client tells (HasCountLeft): a room without a
             // subRewardCount has no daily limit (the Colosseum and most rooms).
             if (DungeonRoomRules.HasCountLeft(unionRecord, unionMetadata.Reward.Count, unionMetadata.Reward.SubRewardCount, clearTimeStamp,
@@ -667,7 +670,9 @@ public class DungeonManager {
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
             }
 
-            if (session.TableMetadata.DungeonConfigTable.UnitedWeeklyRewards.TryGetValue(GetWeeklyClearCount(unionRecord), out int rewardId)) {
+            // Only a clear that counted gives its step: one past the cap left the count, and gave the step again.
+            if (DungeonRoomRules.UnitedWeeklyStep(session.TableMetadata.DungeonConfigTable.UnitedWeeklyRewards, weeklyBefore,
+                    GetWeeklyClearCount(unionRecord)) is { } rewardId) {
                 UserRecord.Flag |= DungeonBonusFlag.UnitedWeekly;
                 rewardIds.Add(rewardId);
             }

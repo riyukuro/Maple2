@@ -331,4 +331,28 @@ public class DungeonRoomRulesTests {
             Assert.That(DungeonRoomRules.ClearDropBoxIds(Reward([390000070], [])), Is.EqualTo(new[] { 390000070 }));
         });
     }
+
+    // Steps at 1, 3 and 10 counted clears (made-up reward ids).
+    private static readonly Dictionary<int, int> Steps = new() { [1] = 901, [3] = 903, [10] = 910 };
+
+    [TestCase(0, 1, 901)]
+    [TestCase(2, 3, 903)]
+    [TestCase(1, 2, null)]
+    [TestCase(10, 10, null)] // the daily cap: the clear did not count, the count stays at a step
+    [TestCase(3, 3, null)]
+    [TestCase(9, 0, null)] // a new period
+    public void UnitedWeeklyStep_OnlyForAClearThatCounted(int before, int after, int? expected) {
+        Assert.That(DungeonRoomRules.UnitedWeeklyStep(Steps, before, after), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void WeeklyReset_ByTheRecordsOwnPeriod() {
+        var record = new DungeonRecord(900601) { UnionClears = 12, UnionCooldownTimestamp = 1000 };
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.PeriodOver(record, 999), Is.False);
+            Assert.That(DungeonRoomRules.PeriodOver(record, 1000), Is.False);
+            Assert.That(DungeonRoomRules.PeriodOver(record, 1001), Is.True);
+            Assert.That(DungeonRoomRules.PeriodOver(new DungeonRecord(900602), 1), Is.True);
+        });
+    }
 }

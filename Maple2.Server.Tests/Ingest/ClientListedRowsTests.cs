@@ -10,7 +10,8 @@ using Maple2.File.Parser.Xml.Table;
 namespace Maple2.Server.Tests.Ingest;
 
 // LOCALE=KR over the NA pack: a room the filter leaves without a row is kept when the played client lists it, with the
-// client's values over the pack's. Synthetic rows.
+// client's values over the pack's; a room with a KR row takes the client's values too, and a room only the client
+// lists is added. Synthetic rows.
 [NonParallelizable]
 public class ClientListedRowsTests {
     private Dictionary<string, int> oldFeatures = null!;
@@ -44,14 +45,17 @@ public class ClientListedRowsTests {
 
     // The client's copy: 1 has its own pack row; 2 differs from the NA row; 3 is not listed; 4's row has a feature that
     // is off; 5 sets a playType the parser cannot read; an empty
-    // value (2's rewardCount, 5's playerCountFactorID) is no value; 6 has only a CN row in the pack.
+    // value (2's rewardCount, 5's playerCountFactorID) is no value; 6 has only a CN row in the pack; 7 and 8 are not in
+    // the pack, 8's feature is off.
     private const string Client = """
         <ms2>
-          <dungeonRoom dungeonRoomID="1" feature="Season1" dungeonLevel="11" />
+          <dungeonRoom dungeonRoomID="1" feature="Season2" dungeonLevel="11" rewardCount="4" />
           <dungeonRoom dungeonRoomID="2" feature="Season2" dungeonLevel="28" groupType="1" playerCountFactorID="1000" dungeonHelperRequireClearCount="1" rewardLimitedDropBoxIds="2" rewardCount="" />
           <dungeonRoom dungeonRoomID="4" feature="Season9" dungeonLevel="40" />
           <dungeonRoom dungeonRoomID="5" feature="Season1" dungeonLevel="55" playType="7" playerCountFactorID="" />
           <dungeonRoom dungeonRoomID="6" feature="Season1" dungeonLevel="60" />
+          <dungeonRoom dungeonRoomID="7" feature="Season1" dungeonLevel="70" playType="7" rewardCount="2" lobbyFieldID="5" />
+          <dungeonRoom dungeonRoomID="8" feature="Season9" dungeonLevel="80" />
         </ms2>
         """;
 
@@ -74,16 +78,40 @@ public class ClientListedRowsTests {
     public void Add_KeepsTheListedRoomsOnly() {
         (ClientListedRows.Counts counts, Dictionary<int, DungeonRoom> rooms) = Run();
         Assert.Multiple(() => {
-            Assert.That(rooms.Keys.Order(), Is.EqualTo(new[] { 1, 2, 5 }));
+            Assert.That(rooms.Keys.Order(), Is.EqualTo(new[] { 1, 2, 5, 7 }));
             Assert.That((counts.Ids, counts.Kept, counts.Added, counts.Dropped), Is.EqualTo((6, 1, 2, 3)));
             Assert.That(counts.AddedIds, Is.EqualTo(new[] { "2", "5" }));
+            Assert.That(counts.ClientOnlyIds, Is.EqualTo(new[] { "7" }));
         });
     }
 
-    // A room with its own row for the locale (or none) is the pack's: the client row does not change it.
+    // A room with its own row for the locale takes the client's value where the client row sets the field (the change
+    // is named); a field the client row does not set, and the row's feature, stay the pack's.
     [Test]
-    public void Add_LeavesAKeptRoomAsItIs() {
-        Assert.That(Run().Rooms[1].dungeonLevel, Is.EqualTo(10));
+    public void Add_KeptRoomTakesTheClientValues() {
+        (ClientListedRows.Counts counts, Dictionary<int, DungeonRoom> rooms) = Run();
+        Assert.Multiple(() => {
+            Assert.That(rooms[1].dungeonLevel, Is.EqualTo(11));
+            Assert.That(rooms[1].rewardCount, Is.EqualTo(4));
+            Assert.That(rooms[1].playerCountFactorID, Is.EqualTo(1000));
+            Assert.That(rooms[1].groupType, Is.EqualTo(DungeonGroupType.normal));
+            Assert.That(rooms[1].Feature, Is.EqualTo("Season1"));
+            Assert.That(counts.Changed, Is.EqualTo(new[] { "1.dungeonLevel 10->11", "1.rewardCount none->4" }));
+        });
+    }
+
+    // A room only the client lists is the client's row, its unreadable value left out; one whose feature is off is not.
+    [Test]
+    public void Add_RoomOnlyTheClientLists() {
+        (ClientListedRows.Counts counts, Dictionary<int, DungeonRoom> rooms) = Run();
+        Assert.Multiple(() => {
+            Assert.That(rooms[7].dungeonLevel, Is.EqualTo(70));
+            Assert.That(rooms[7].rewardCount, Is.EqualTo(2));
+            Assert.That(rooms[7].lobbyFieldID, Is.EqualTo(5));
+            Assert.That(rooms[7].Locale, Is.EqualTo("KR"));
+            Assert.That(rooms.ContainsKey(8), Is.False);
+            Assert.That(counts.PackValues, Is.EqualTo(new[] { "5.playType", "7.playType" }));
+        });
     }
 
     // Where the client row sets a value, it wins (its feature too); a value only the pack's row has stays.
@@ -110,7 +138,7 @@ public class ClientListedRowsTests {
         Assert.Multiple(() => {
             Assert.That(rooms[5].dungeonLevel, Is.EqualTo(55));
             Assert.That(rooms[5].playType, Is.EqualTo(DungeonPlayType.limitReward));
-            Assert.That(counts.PackValues, Is.EqualTo(new[] { "5.playType" }));
+            Assert.That(counts.PackValues, Does.Contain("5.playType"));
         });
     }
 }

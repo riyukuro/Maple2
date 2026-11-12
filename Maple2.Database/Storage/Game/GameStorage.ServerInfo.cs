@@ -51,7 +51,8 @@ public partial class GameStorage {
                 Context.Database.ExecuteSqlRaw("UPDATE `character-shop-item-data` SET `StockPurchased` = 0 WHERE `ShopId` IN (SELECT `ShopId` FROM `character-shop-data` WHERE `Interval` = 1)");
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `MarketLimits` = JSON_SET(MarketLimits, '$.MesoListed', 0)");
                 // Dungeon daily clears
-                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentSubClears` = 0, `ExtraCurrentSubClears` = 0");
+                // Bought extra counts (ExtraCurrentSubClears) last the record's period and event counts their own, as online.
+                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentSubClears` = 0");
             }
         }
 
@@ -73,7 +74,9 @@ public partial class GameStorage {
                 // Reset shop item stock purchased for weekly shops
                 Context.Database.ExecuteSqlRaw("UPDATE `character-shop-item-data` SET `StockPurchased` = 0 WHERE `ShopId` IN (SELECT `ShopId` FROM `character-shop-data` WHERE `Interval` = 2)");
                 // Dungeon weekly clears
-                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentClears` = 0, `ExtraCurrentClears` = 0");
+                // Dungeon weekly clears, as DungeonManager.ResetWeeklyClears: a record whose own period is over (its
+                // UnionCooldownTime) loses its clears and bought extra counts; event counts keep their own expiry.
+                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentClears` = 0, `ExtraCurrentSubClears` = 0 WHERE `UnionCooldownTime` < {0}", DateTime.Now);
             }
         }
 

@@ -13,9 +13,13 @@ namespace Maple2.File.Ingest.Helpers;
 // copy of the table lists the ids it offers. A row id the filter leaves without a row is kept when that client lists
 // the id in a row that is available for LOCALE: the pack's row for its own region, with each attribute the client row
 // sets taken from the client row (chosen here: where the two differ, the client's value, as the player sees it), and
-// the attributes only the pack's row has kept as they are. Ids the client does not list stay dropped.
+// the attributes only the pack's row has kept as they are. Ids the client does not list stay dropped. A kept row (the
+// pack has one for the locale) takes the client row's values too, where the client row sets the field; an id only the
+// client lists is added from the client row alone.
 public static class ClientListedRows {
-    public sealed record Counts(int Ids, int Kept, int Added, int Dropped, IReadOnlyList<string> AddedIds, IReadOnlyList<string> PackValues);
+    // Changed: "id.attribute before->after" for each value a kept row took from the client.
+    public sealed record Counts(int Ids, int Kept, int Added, int Dropped, IReadOnlyList<string> AddedIds, IReadOnlyList<string> PackValues,
+        IReadOnlyList<string> Changed, IReadOnlyList<string> ClientOnlyIds);
 
     // The played client's copy of a region table: table/<locale>/<name> when it has one, else table/<name>.
     public static XmlDocument? PlayedTable(M2dReader? playedReader, string locale, string name) {
@@ -71,7 +75,9 @@ public static class ClientListedRows {
     // lists it in an available row. The added row is the last row of the id tagged with the pack's region, with the
     // client row's attributes over it (its feature too, or none when the client row has none), locale set to the
     // locale, and the client row's child elements in place of its own when the client row has any. A client value
-    // the parser cannot read (parses false) is left at the pack's value and named in PackValues.
+    // the parser cannot read (parses false) is left at the pack's value and named in PackValues. A kept id's available
+    // rows take the client row's values the same way (its feature and locale aside, so the filter's pick stays). An id
+    // with no row in the pack at all is added from the client row alone, its unreadable values left out.
     public static Counts Add(XmlDocument server, XmlDocument client, string rowTag, string key, string locale, string packLocale,
             Func<XmlElement, bool> available, Func<XmlElement, bool> parses) {
         XmlElement root = server.DocumentElement!;
@@ -91,9 +97,15 @@ public static class ClientListedRows {
         int kept = 0;
         var added = new List<string>();
         var packValues = new List<string>();
+        var changed = new List<string>();
         foreach ((string id, List<XmlElement> rows) in groups) {
             if (rows.Any(available)) {
                 kept++;
+                if (listed.TryGetValue(id, out XmlElement? listedRow)) {
+                    foreach (XmlElement row in rows.Where(available).ToList()) {
+                        Overlay(row, listedRow, id, false, parses, packValues, changed);
+                    }
+                }
                 continue;
             }
             XmlElement? pack = rows.LastOrDefault(row => string.Equals(row.GetAttribute("locale"), packLocale, StringComparison.OrdinalIgnoreCase));
@@ -103,37 +115,67 @@ public static class ClientListedRows {
             var merged = (XmlElement) pack.CloneNode(true);
             merged.RemoveAttribute("feature");
             merged.SetAttribute("locale", locale);
-            if (clientRow.ChildNodes.OfType<XmlElement>().Any()) {
-                foreach (XmlElement child in merged.ChildNodes.OfType<XmlElement>().ToList()) {
-                    merged.RemoveChild(child);
-                }
-                foreach (XmlElement child in clientRow.ChildNodes.OfType<XmlElement>()) {
-                    merged.AppendChild(server.ImportNode(child, true));
-                }
-            }
-            foreach (XmlAttribute attribute in clientRow.Attributes) {
-                // An empty value is no value (the parser's reads drop it or cannot read it).
-                if (attribute.Name == "locale" || attribute.Value.Length == 0) {
-                    continue;
-                }
-                string? before = merged.HasAttribute(attribute.Name) ? merged.GetAttribute(attribute.Name) : null;
-                merged.SetAttribute(attribute.Name, attribute.Value);
-                if (parses(merged)) {
-                    continue;
-                }
-                if (before == null) {
-                    merged.RemoveAttribute(attribute.Name);
-                } else {
-                    merged.SetAttribute(attribute.Name, before);
-                }
-                packValues.Add($"{id}.{attribute.Name}");
-            }
+            Overlay(merged, clientRow, id, true, parses, packValues, null);
             if (!available(merged) || !parses(merged)) {
                 continue;
             }
             root.AppendChild(merged);
             added.Add(id);
         }
-        return new Counts(groups.Count, kept, added.Count, groups.Count - kept - added.Count, added, packValues);
+        var clientOnly = new List<string>();
+        foreach ((string id, XmlElement clientRow) in listed) {
+            if (groups.ContainsKey(id)) {
+                continue;
+            }
+            XmlElement row = server.CreateElement(rowTag);
+            row.SetAttribute(key, id);
+            row.SetAttribute("locale", locale);
+            Overlay(row, clientRow, id, true, parses, packValues, null);
+            if (!available(row) || !parses(row)) {
+                continue;
+            }
+            root.AppendChild(row);
+            clientOnly.Add(id);
+        }
+        return new Counts(groups.Count, kept, added.Count, groups.Count - kept - added.Count, added, packValues, changed, clientOnly);
+    }
+
+    // Puts the client row's child elements (when it has any) and each attribute it sets over the row; a value the
+    // parser cannot read keeps the row's own and is named in packValues. withFeature: the client's feature as well.
+    private static void Overlay(XmlElement row, XmlElement clientRow, string id, bool withFeature, Func<XmlElement, bool> parses,
+            List<string> packValues, List<string>? changed) {
+        if (clientRow.ChildNodes.OfType<XmlElement>().Any()) {
+            string beforeChildren = string.Concat(row.ChildNodes.OfType<XmlElement>().Select(child => child.OuterXml));
+            foreach (XmlElement child in row.ChildNodes.OfType<XmlElement>().ToList()) {
+                row.RemoveChild(child);
+            }
+            foreach (XmlElement child in clientRow.ChildNodes.OfType<XmlElement>()) {
+                row.AppendChild(row.OwnerDocument.ImportNode(child, true));
+            }
+            if (changed != null && beforeChildren != string.Concat(row.ChildNodes.OfType<XmlElement>().Select(child => child.OuterXml))) {
+                changed.Add($"{id}.<children>");
+            }
+        }
+        foreach (XmlAttribute attribute in clientRow.Attributes) {
+            // An empty value is no value (the parser's reads drop it or cannot read it).
+            if (attribute.Name == "locale" || (!withFeature && attribute.Name == "feature") || attribute.Value.Length == 0) {
+                continue;
+            }
+            string? before = row.HasAttribute(attribute.Name) ? row.GetAttribute(attribute.Name) : null;
+            if (before == attribute.Value) {
+                continue;
+            }
+            row.SetAttribute(attribute.Name, attribute.Value);
+            if (parses(row)) {
+                changed?.Add($"{id}.{attribute.Name} {before ?? "none"}->{attribute.Value}");
+                continue;
+            }
+            if (before == null) {
+                row.RemoveAttribute(attribute.Name);
+            } else {
+                row.SetAttribute(attribute.Name, before);
+            }
+            packValues.Add($"{id}.{attribute.Name}");
+        }
     }
 }

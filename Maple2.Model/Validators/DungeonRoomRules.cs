@@ -217,4 +217,15 @@ public static class DungeonRoomRules {
     public static IReadOnlyList<int> ClearDropBoxIds(DungeonRoomRewardMetadata reward) {
         return reward.LimitedDropBoxIds.Concat(reward.UnlimitedDropBoxIds).Where(boxId => boxId != 0).Distinct().ToList();
     }
+
+    // The united weekly reward of a clear: the step (UnitedWeeklyRewards: clear count to reward id) of the count the
+    // clear reached, only when the clear raised the union record's count. A clear past the daily or weekly cap (or
+    // one that took an event count) leaves the count where it is, and gives no step again.
+    public static int? UnitedWeeklyStep(IReadOnlyDictionary<int, int> steps, int countBefore, int countAfter) =>
+        countAfter > countBefore && steps.TryGetValue(countAfter, out int rewardId) ? rewardId : null;
+
+    // The weekly reset zeroes a record's period counts only when its own period is over (the record's
+    // UnionCooldownTimestamp, the day the room's cooldownValue names, which the client counts down to), as
+    // RewardCount reads them; a record still in its period keeps them.
+    public static bool PeriodOver(DungeonRecord record, long now) => now > record.UnionCooldownTimestamp;
 }
