@@ -140,7 +140,8 @@ public class LapenshardHandler : FieldPacketHandler {
 
             if (lapenshardUid > 0) {
                 if (UpgradeInventoryLapenshard(session, lapenshardUid, fodders, entry)) {
-                    session.Send(LapenshardPacket.Upgrade(lapenshardUid, lapenshardId, slot));
+                    // KMS2 answers with uid 0 for a bag lapenshard too (the old item is gone by now).
+                    session.Send(LapenshardPacket.Upgrade(0, lapenshardId, slot));
                 }
             } else {
                 if (UpgradeEquipLapenshard(session, slot, fodders, entry)) {
@@ -159,23 +160,38 @@ public class LapenshardHandler : FieldPacketHandler {
         return session.Config.TryGetLapenshard(slot);
     }
 
-    private bool UpgradeInventoryLapenshard(GameSession session, long lapenshardUid, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry) {
-        if (!ItemMetadata.TryGet(entry.NextItemId, out ItemMetadata? nextItem)) {
-            return false;
-        }
-
+    // The cost in the order KMS2 takes it: the fodder lapenshards, the meso, then the ingredients.
+    private static bool ConsumeCost(GameSession session, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry) {
         IngredientInfo[] ingredients = entry.Ingredients
             .Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount))
             .ToArray();
-        if (!session.Item.Inventory.Consume(ingredients)) {
-            return false;
+        foreach (IngredientInfo ingredient in ingredients) {
+            long owned = session.Item.Inventory.Find(ingredient.Tag).Sum(item => (long) item.Amount);
+            if (owned < ingredient.Amount) {
+                return false;
+            }
         }
+
         foreach ((long uid, int amount) in fodders) {
             if (!session.Item.Inventory.Consume(uid, amount)) {
                 throw new InvalidOperationException($"Failed to consume fodder: {uid} after validating");
             }
         }
         session.Currency.Meso -= entry.Meso;
+        if (!session.Item.Inventory.Consume(ingredients)) {
+            throw new InvalidOperationException("Failed to consume ingredients after validating");
+        }
+        return true;
+    }
+
+    private bool UpgradeInventoryLapenshard(GameSession session, long lapenshardUid, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry) {
+        if (!ItemMetadata.TryGet(entry.NextItemId, out ItemMetadata? nextItem)) {
+            return false;
+        }
+
+        if (!ConsumeCost(session, fodders, entry)) {
+            return false;
+        }
 
         if (!session.Item.Inventory.Remove(lapenshardUid, out Item? lapenshard, 1)) {
             throw new InvalidOperationException($"Failed to remove lapenshard: {lapenshardUid} after validating");
@@ -190,18 +206,9 @@ public class LapenshardHandler : FieldPacketHandler {
     }
 
     private static bool UpgradeEquipLapenshard(GameSession session, LapenshardSlot slot, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry) {
-        IngredientInfo[] ingredients = entry.Ingredients
-            .Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount))
-            .ToArray();
-        if (!session.Item.Inventory.Consume(ingredients)) {
+        if (!ConsumeCost(session, fodders, entry)) {
             return false;
         }
-        foreach ((long uid, int amount) in fodders) {
-            if (!session.Item.Inventory.Consume(uid, amount)) {
-                throw new InvalidOperationException($"Failed to consume fodder: {uid} after validating");
-            }
-        }
-        session.Currency.Meso -= entry.Meso;
         session.Config.SetLapenshard(slot, entry.NextItemId);
         return true;
     }

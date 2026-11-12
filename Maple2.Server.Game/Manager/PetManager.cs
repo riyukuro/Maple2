@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
@@ -82,7 +83,18 @@ public sealed class PetManager : IDisposable {
 
     public void LoadInventory() {
         lock (session.Item) {
-            session.Send(PetInventoryPacket.Load(items.ToList()));
+            foreach (ByteWriter packet in LoadInventoryPackets(items.ToList())) {
+                session.Send(packet);
+            }
+        }
+    }
+
+    // KMS2 answers the bag request with the reset (the client clears its slots on it; it only adds on the item
+    // list), then the item list when the bag holds something.
+    public static IEnumerable<ByteWriter> LoadInventoryPackets(ICollection<Item> bag) {
+        yield return PetInventoryPacket.Reset();
+        if (bag.Count > 0) {
+            yield return PetInventoryPacket.Load(bag);
         }
     }
 

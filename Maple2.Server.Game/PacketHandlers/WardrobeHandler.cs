@@ -109,9 +109,24 @@ public class WardrobeHandler : FieldPacketHandler {
             return;
         }
 
-        foreach (Wardrobe.Equip equip in wardrobe.Equips.Values) {
-            session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, (byte) layer);
+        // KMS2 ends every closet equip with a chat-and-alert notice, also when every item is already worn.
+        // An item already worn is not equipped again (it is not in the bag, which would bring a "do not have"
+        // box). The notice for an item that is gone is taken from the client's string table, not from KMS2.
+        bool missing = false;
+        lock (session.Item) {
+            foreach (Wardrobe.Equip equip in wardrobe.Equips.Values) {
+                if (session.Item.Equips.Get(equip.ItemUid) != null) {
+                    continue;
+                }
+                if (session.Item.Inventory.Get(equip.ItemUid) == null) {
+                    missing = true;
+                    continue;
+                }
+                session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, (byte) layer);
+            }
         }
+        session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert,
+            missing ? StringCode.s_closet_msg_item_not_exist : StringCode.s_closet_msg_success));
     }
 
     private void HandleReset(GameSession session, IByteReader packet) {
@@ -119,6 +134,7 @@ public class WardrobeHandler : FieldPacketHandler {
 
         if (session.Config.TryGetWardrobe(index, out Wardrobe? wardrobe)) {
             wardrobe.Equips.Clear();
+            wardrobe.Type = EquipKind.Gear; // KMS2 sends type 0 for a cleared tab, whatever it was made with.
             session.Send(WardrobePacket.Load(index, wardrobe));
         }
     }
