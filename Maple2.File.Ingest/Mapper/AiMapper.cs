@@ -2,7 +2,9 @@
 using M2dXmlGenerator;
 using Maple2.File.IO;
 using Maple2.File.IO.Crypto.Common;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Parser;
+using Maple2.File.Parser.Tools;
 using Maple2.File.Parser.Xml.AI;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -12,6 +14,10 @@ namespace Maple2.File.Ingest.Mapper;
 public class AiMapper : TypeMapper<AiMetadata> {
     private readonly AiParser parser;
     private readonly M2dReader xmlReader;
+
+    // The skill nodes of the file being mapped that write no faceTarget (AiSkillFace); null when they could not be
+    // told apart, and then the parser's 0 stays.
+    private HashSet<SkillNode>? unwrittenFace;
 
     public AiMapper(M2dReader xmlReader) {
         parser = new AiParser(xmlReader);
@@ -47,7 +53,16 @@ public class AiMapper : TypeMapper<AiMetadata> {
     }
 
     protected override IEnumerable<AiMetadata> Map() {
+        int faceFiles = 0, faceNodes = 0, faceUnknown = 0;
         foreach ((string name, NpcAi data) in parser.Parse()) {
+            PackFileEntry? file = xmlReader.GetEntry($"AI/{name}");
+            unwrittenFace = file == null ? null : AiSkillFace.UnwrittenNodes(data, Sanitizer.SanitizeAi(xmlReader.GetString(file)));
+            if (unwrittenFace == null) {
+                faceUnknown++;
+            } else if (unwrittenFace.Count > 0) {
+                faceFiles++;
+                faceNodes += unwrittenFace.Count;
+            }
             List<AiMetadata.Condition> reserved = new List<AiMetadata.Condition>();
             List<AiMetadata.Entry> battle = new List<AiMetadata.Entry>();
             List<AiMetadata.Entry> battleEnd = new List<AiMetadata.Entry>();
@@ -97,6 +112,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
                 BattleEndOnlyDead: battleEnd.Count > 0 && BattleEndOnlyDeadOf(name)
             );
         }
+        Console.WriteLine($"AI skill nodes without faceTarget: {faceNodes} in {faceFiles} files ({faceUnknown} files not told apart)");
     }
 
     // The AI files write the slave count condition two ways, and the parser reads both into one class:
@@ -271,7 +287,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
                     Prob: skill.prob,
                     Sequence: skill.sequence,
                     FacePos: skill.facePos,
-                    FaceTarget: skill.faceTarget,
+                    FaceTarget: unwrittenFace?.Contains(skill) == true ? AiSkillFace.Unwritten : skill.faceTarget,
                     FaceTargetTick: skill.faceTargetTick,
                     InitialCooltime: skill.initialCooltime,
                     Cooltime: skill.cooltime,
