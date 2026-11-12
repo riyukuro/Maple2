@@ -151,7 +151,7 @@ public class SkillHandler : FieldPacketHandler {
     }
 
     // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
-    // that a buff held disables or that names other fields. A skill of a job's tree
+    // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it. A skill of a job's tree
     // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
     // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast.
     // No cast comes before the motion of the last cast lets the next one in. The two timing checks
@@ -168,6 +168,11 @@ public class SkillHandler : FieldPacketHandler {
         }
         if (SkillCastRules.MapRefuses(condition.Maps, session.Field.MapId)) {
             Logger.Debug("Cast refused, skill {SkillId} is not for field {MapId}", record.SkillId, session.Field.MapId);
+            return false;
+        }
+        if (SkillCastRules.RideRefuses(record.Metadata.Property.UnrideOnUse,
+                session.Ride.Ride is { Action: RideOnActionDefault } ride && ride.OwnerId == session.Player.ObjectId)) {
+            Logger.Debug("Cast refused, skill {SkillId} is not cast from a ride", record.SkillId);
             return false;
         }
         SkillInfo skillInfo = session.Config.Skill.SkillInfo;

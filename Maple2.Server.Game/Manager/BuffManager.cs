@@ -354,6 +354,11 @@ public class BuffManager : IUpdatable {
         return Util.SkillCastRules.DisabledByBuff(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
     }
 
+    // The share the enabled buffs held cut from the cooldowns of a cooldown group (SkillCastRules.GroupReduceRate).
+    public float CooldownGroupRate(int groupId) {
+        return Util.SkillCastRules.GroupReduceRate(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.CooldownGroupRates), groupId);
+    }
+
     // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
     public float GetResistance(BasicAttribute attribute) => Sums().Resistance(attribute);
 

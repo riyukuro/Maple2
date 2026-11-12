@@ -10,6 +10,8 @@ public class SkillCooldown : IByteSerializable {
     public int GroupId { get; init; }
     public long EndTick;
     public int Charges;
+    // The length each of this skill's recharge cooldowns runs (not sent); 0 without recharge uses.
+    public long RechargeMs;
 
     public SkillCooldown(int skillId, short level) {
         SkillId = skillId;

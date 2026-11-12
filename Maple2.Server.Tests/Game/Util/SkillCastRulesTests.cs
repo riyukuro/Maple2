@@ -423,6 +423,50 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void CooldownIsCutByGroupAndCasterRates() {
+        // Made-up ids. Two buffs held cut group 90000001 by 0.2 each; another group and no group get nothing.
+        CooldownGroupRate[]?[] held = [[new CooldownGroupRate(90000001, 0.2f)], null, [new CooldownGroupRate(90000005, 0.5f), new CooldownGroupRate(90000001, 0.2f)]];
+        Assert.That(SkillCastRules.GroupReduceRate(held, 90000001), Is.EqualTo(0.4f).Within(1e-6));
+        Assert.That(SkillCastRules.GroupReduceRate(held, 90000002), Is.EqualTo(0f));
+        Assert.That(SkillCastRules.GroupReduceRate(held, 0), Is.EqualTo(0f));
+
+        Assert.That(SkillCastRules.CooldownMs(30f, false, 0f, 0), Is.EqualTo(30000));
+        Assert.That(SkillCastRules.CooldownMs(30f, false, 0.2f, 0), Is.EqualTo(24000).Within(1));
+        Assert.That(SkillCastRules.CooldownMs(30f, false, 0.2f, 0.1), Is.EqualTo(21000).Within(1), "the rates add up");
+        Assert.That(SkillCastRules.CooldownMs(30f, true, 0.2f, 0.1), Is.EqualTo(24000).Within(1), "the skill ignores the caster's rate only");
+        Assert.That(SkillCastRules.CooldownMs(30f, false, 0.8f, 0.5), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void RechargeUsesComeBackOnePerCooldown() {
+        // Two uses out, 10 s each, the first cooldown ends at 10000.
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 2, 10_000, 9_999), Is.EqualTo((10_000L, 2)));
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 2, 10_000, 10_000), Is.EqualTo((20_000L, 1)), "one back, the next runs from the end");
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 2, 10_000, 19_999), Is.EqualTo((20_000L, 1)));
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 2, 10_000, 25_000), Is.EqualTo((20_000L, 0)));
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 3, 10_000, 25_000), Is.EqualTo((30_000L, 1)));
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 0, 10_000, 25_000), Is.EqualTo((10_000L, 0)));
+        Assert.That(SkillCastRules.SettleRecharge(10_000, 3, 0, 25_000), Is.EqualTo((10_000L, 0)), "no length: nothing left out");
+    }
+
+    [Test]
+    public void GroupReductionIsReadFromTheSpecialEffect() {
+        // Made-up rows: type 4 with probability 1 is taken; another type or a rolled one is not.
+        const string values = "<v groupID=\"90000001\" reduceRate=\"0.20\" />";
+        List<CooldownGroupRate> found = Maple2.File.Ingest.Helpers.CooldownGroupRates.Read([
+            ("4", "1", values), ("3", "1", values), ("4", "0.5", values), ("4", "1", "<v groupID=\"0\" reduceRate=\"0.2\" />"), ("4", "1", "<v"),
+        ]);
+        Assert.That(found, Is.EqualTo(new[] { new CooldownGroupRate(90000001, 0.2f) }));
+    }
+
+    [Test]
+    public void UnrideSkillIsNotCastFromOwnRide() {
+        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: true, onOwnItemRide: true), Is.True);
+        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: false, onOwnItemRide: true), Is.False, "a skill cast from the ride");
+        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: true, onOwnItemRide: false), Is.False);
+    }
+
+    [Test]
     public void CancelIsCastUidThenCaster() {
         // Made-up ids. 12 bytes after the opcode.
         Maple2.PacketLib.Tools.ByteWriter writer = Maple2.Server.Game.Packets.SkillPacket.Cancel(0x0102030405060708, 0x00112233);

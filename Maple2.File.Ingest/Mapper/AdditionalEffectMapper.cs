@@ -1,4 +1,5 @@
 ﻿using Maple2.File.IO;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.AdditionalEffect;
 using Maple2.Model.Enum;
@@ -11,9 +12,12 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     private readonly AdditionalEffectParser parser;
+    private readonly CooldownGroupRates groupRates;
 
     public AdditionalEffectMapper(M2dReader xmlReader) {
         parser = new AdditionalEffectParser(xmlReader);
+        groupRates = new CooldownGroupRates(xmlReader);
+        Console.WriteLine($"Additional effects with a cooldown group reduction: {groupRates.Count}");
     }
 
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
@@ -50,7 +54,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         DotCondition: (BuffDotCondition) data.BasicProperty.dotCondition,
                         ClearOnDistanceFromCaster: int.TryParse(data.BasicProperty.clearDistanceFromCaster, out int distance) ? distance : 0,
                         DisableRevivalHere: data.BasicProperty.disableRevivalHere,
-                        SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null),
+                        SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null,
+                        CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level)),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),

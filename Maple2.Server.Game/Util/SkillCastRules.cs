@@ -30,6 +30,50 @@ public static class SkillCastRules {
         return blocking;
     }
 
+    // The share cut from a cooldown of this cooldown group by the buffs held: the sum of their reductions for the
+    // group, one per buff (CSkillSystem::FUN_1417664e0 sums the held buffs' group reductions; group 0 is no group).
+    public static float GroupReduceRate(IEnumerable<CooldownGroupRate[]?> held, int groupId) {
+        float rate = 0;
+        if (groupId == 0) {
+            return rate;
+        }
+        foreach (CooldownGroupRate[]? rates in held) {
+            if (rates == null) {
+                continue;
+            }
+            foreach (CooldownGroupRate entry in rates) {
+                if (entry.GroupId == groupId) {
+                    rate += entry.Rate;
+                }
+            }
+        }
+        return rate;
+    }
+
+    // The cooldown the client starts for a skill, in ms (CSkillSystem::FUN_1417664e0): the skill's cooldown less
+    // its share for the cooldown group's reduction and, unless the skill ignores cooldown reduction, for the
+    // caster's cooldown reduction rate; never under 0.
+    public static long CooldownMs(float cooldownSeconds, bool ignoreReduce, float groupRate, double reduceRate) {
+        double rate = groupRate + (ignoreReduce ? 0 : reduceRate);
+        return (long) Math.Max(0, (cooldownSeconds - cooldownSeconds * rate) * 1000);
+    }
+
+    // The recharge uses a cooldown record stands at by this tick, as the client counts them (CSkillSystem::Update
+    // with FUN_1417687e0): each ended cooldown gives one use back, and starts again from its end while uses are
+    // still out. Returns the end tick and uses left out.
+    public static (long EndTick, int Uses) SettleRecharge(long endTick, int uses, long lengthMs, long tick) {
+        while (uses > 0 && tick >= endTick) {
+            uses--;
+            if (uses > 0) {
+                if (lengthMs <= 0) {
+                    return (endTick, 0);
+                }
+                endTick += lengthMs;
+            }
+        }
+        return (endTick, uses);
+    }
+
     // A cast takes its item once, however often its cost is asked for.
     public static bool ConsumesItem(bool useItem, bool itemConsumed) => useItem && !itemConsumed;
 
@@ -238,6 +282,11 @@ public static class SkillCastRules {
 
     // A skill that names fields is cast only in one of them: the client does not send it elsewhere (cast check
     // answer 0x17). A code of 0 names no field.
+    // The client does not cast a skill that takes its caster off the ride (kinds unrideOnUse) while it rides: it
+    // asks to get off and casts once it is off (MyPC::FUN_141525580). Chosen here: only on the caster's own item
+    // ride; a passenger and a ride a buff gave are not refused.
+    public static bool RideRefuses(bool unrideOnUse, bool onOwnItemRide) => unrideOnUse && onOwnItemRide;
+
     public static bool MapRefuses(int[] maps, int mapId) {
         return maps.Any(code => code != 0) && Array.IndexOf(maps, mapId) < 0;
     }
