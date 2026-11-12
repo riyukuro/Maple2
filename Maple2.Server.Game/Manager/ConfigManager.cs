@@ -594,13 +594,19 @@ public class ConfigManager {
     }
 
     public void ResetStatPoints() {
+        // The client sends a reset only with points spent (CStatPointManager::RequestReset).
+        if (statAttributes.UsedPoints == 0) {
+            return;
+        }
+
         foreach (BasicAttribute type in session.Config.statAttributes.Allocation.Attributes) {
             session.Config.statAttributes.Allocation[type] = 0;
         }
 
+        // KMS2 order: the allocation, the notice, then the stat block.
         session.Send(AttributePointPacket.Allocation(session.Config.statAttributes));
-        session.Stats.Refresh();
         session.Send(NoticePacket.Message("s_char_info_reset_stat_pointsuccess_msg"));
+        session.Stats.Refresh();
     }
 
     // The spent points are not kept in the stats: every rebuild (StatsManager.Refresh) adds them again.

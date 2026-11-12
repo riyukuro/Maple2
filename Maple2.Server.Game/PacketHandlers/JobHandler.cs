@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Validators;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -66,23 +67,20 @@ public class JobHandler : FieldPacketHandler {
             return;
         }
 
-        // TODO: Does awakening use this same packet? Handle if so.
+        // Most job condition rows change no job (doctors, movers); the confirm box of those scripts sends this too.
+        JobConditionMetadata condition = session.NpcScript.JobCondition;
+        if (!JobRules.IsJobChange(condition.ChangeToJobCode)) {
+            return;
+        }
+        Job job = JobRules.BaseJob(condition.ChangeToJobCode)!.Value;
 
-        Job job = session.NpcScript.JobCondition.ChangeToJobCode switch {
-            JobCode.Newbie => Job.Newbie,
-            JobCode.Knight => Job.Knight,
-            JobCode.Berserker => Job.Berserker,
-            JobCode.Wizard => Job.Wizard,
-            JobCode.Priest => Job.Priest,
-            JobCode.Archer => Job.Archer,
-            JobCode.HeavyGunner => Job.HeavyGunner,
-            JobCode.Thief => Job.Thief,
-            JobCode.Assassin => Job.Assassin,
-            JobCode.RuneBlader => Job.RuneBlader,
-            JobCode.Striker => Job.Striker,
-            JobCode.SoulBinder => Job.SoulBinder,
-            _ => throw new ArgumentException($"Invalid JobCode: {session.NpcScript.JobCondition.ChangeToJobCode}"),
-        };
+        // The row's conditions again: the box can be confirmed by a character the script would not offer it to.
+        JobError? error = JobRules.AdvanceError(condition.JobCode, condition.Level,
+            session.Player.Value.Character.Job.Code(), session.Player.Value.Character.Level);
+        if (error != null) {
+            session.Send(JobPacket.Error(session.Player, error.Value));
+            return;
+        }
 
         Job currentJob = session.Player.Value.Character.Job;
         if (currentJob.Code() != job.Code()) {

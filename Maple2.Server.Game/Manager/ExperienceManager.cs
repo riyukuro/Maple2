@@ -215,11 +215,13 @@ public sealed class ExperienceManager {
         if (Level > startLevel) {
             session.Player.Flag |= PlayerObjectFlag.Level;
             session.Dungeon.UpdateDungeonEnterLimit();
+            // KMS2 order: the death penalty cleared, the level up, the skill tree (Job 1), the stat block, then the trophies.
+            session.Config.UpdateDeathPenalty(0);
             session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
+            session.Field?.Broadcast(JobPacket.Basic(session.Player, session.Config.Skill.SkillInfo));
+            session.Stats.Refresh(levelUp: true);
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
             session.ConditionUpdate(ConditionType.level, targetLong: Level);
-            session.Config.UpdateDeathPenalty(0);
-            session.Stats.Refresh(levelUp: true);
 
             session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                 AccountId = session.AccountId,
@@ -258,11 +260,13 @@ public sealed class ExperienceManager {
     public void PrestigeLevelUp(int amount = 1) {
         PrestigeLevel = Math.Clamp(PrestigeLevel + amount, amount, Constants.AdventureLevelLimit);
         PrestigeLevelsGained += amount;
-        session.ConditionUpdate(ConditionType.adventure_level, counter: amount);
-        session.ConditionUpdate(ConditionType.adventure_level_up, counter: amount);
         foreach (PrestigeMission mission in PrestigeMissions) {
             mission.GainedLevels += amount;
         }
+
+        // KMS2 order: the level (Prestige 2), the missions (7), the level's item, then the trophies.
+        session.Send(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
+        session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
 
         for (int i = 0; i < amount; i++) {
             Item? item = session.Field?.ItemDrop.CreateItem(Constants.AdventureLevelLvUpRewardItem);
@@ -275,8 +279,8 @@ public sealed class ExperienceManager {
             }
         }
 
-        session.Send(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
-        session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
+        session.ConditionUpdate(ConditionType.adventure_level, counter: amount);
+        session.ConditionUpdate(ConditionType.adventure_level_up, counter: amount);
         if (session.Field != null) {
             session.Player.Buffs.RefreshPrestigeBuffs();
         }
