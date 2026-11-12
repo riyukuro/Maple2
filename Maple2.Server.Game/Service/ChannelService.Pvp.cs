@@ -9,6 +9,14 @@ public partial class ChannelService {
     // The rank duel matchmaker's word to a character here: a match was found (the match-found box, whose
     // button sends the join), or the search or the match ended without a duel (the matching failed box).
     public override Task<PvpNoticeResponse> Pvp(PvpNoticeRequest request, ServerCallContext context) {
+        if (request.ObserveOffer) {
+            foreach (GameSession player in server.GetSessions()) {
+                if (player.Field is { RankDuel: null, Arena: null, PvpZone: null }) {
+                    player.Send(PvpPacket.RankDuelObserveOffer());
+                }
+            }
+            return Task.FromResult(new PvpNoticeResponse());
+        }
         if (server.GetSession(request.CharacterId, out GameSession? session)) {
             if (request.Arena != 0) {
                 session.Send(request.Matched ? PvpPacket.ArenaMatchFound(request.Arena) : PvpPacket.ArenaUnregistered());

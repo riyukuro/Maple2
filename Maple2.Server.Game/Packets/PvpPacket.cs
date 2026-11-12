@@ -19,8 +19,10 @@ public static class PvpPacket {
         RankDuelMatch = 16,
         RankDuelInArenaField = 17,
         RankDuelResult = 18,
+        RankDuelObserving = 19,
         RankDuelOwnRecord = 22,
         RankDuelRecords = 23,
+        RankDuelObserveOffer = 25,
         RankDuelFight = 26,
         RankDuelRound = 27,
         RankDuelWin = 28,
@@ -323,6 +325,23 @@ public static class PvpPacket {
         pWriter.WriteByte((byte) Command.TeamPlunder);
         pWriter.WriteUnicodeString(name);
         pWriter.WriteByte(team);
+        return pWriter;
+    }
+
+    // 0x19: a rank duel can be watched. The client shows its s_rank_duel_matching_complete_to_observe box only in state
+    // 0 with its observe option on; the box's yes sends the join (Pvp 16, CPvpRankDuelComponent::RequestCancelMatch).
+    public static ByteWriter RankDuelObserveOffer() {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.RankDuelObserveOffer);
+        return pWriter;
+    }
+
+    // 0x13: false makes the local player an onlooker (CPvpRankDuelComponent::OnMessage: it goes to the origin with
+    // state flag 1), true takes the flag off.
+    public static ByteWriter RankDuelObserving(bool done) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.RankDuelObserving);
+        pWriter.WriteBool(done);
         return pWriter;
     }
 }

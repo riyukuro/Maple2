@@ -263,4 +263,26 @@ public class RankDuelFieldTests {
         Assert.That(db.GetRankDuelRecord(duel.A.CharacterId).Rating, Is.EqualTo(1500));
         Assert.That(db.GetRankDuelRecord(duel.B.CharacterId).Rating, Is.EqualTo(900));
     }
+
+    // An onlooker (the observe offer's join) entering during the fight becomes an onlooker (Pvp 0x13 false) and gets the
+    // duel's observer dialog (Trigger dialog kind 5) with both duelists; at the result the dialog closes and 0x13 true
+    // ends it.
+    [Test]
+    public void Observer_DuringTheFight() {
+        Duel duel = Start();
+        Fight(duel);
+        duel.Bystander.TakeSent();
+        duel.Field.RankDuel!.Enter(duel.Bystander.Session.Player);
+        List<byte[]> entered = duel.Bystander.TakeSent();
+        Assert.That(Convert.ToHexString(entered[0]), Is.EqualTo("B600" + "13" + "00"));
+        string dialog = Convert.ToHexString(entered[1]);
+        Assert.That(dialog[..8], Is.EqualTo("4E00" + "0F" + "05"));
+        Assert.That(dialog, Does.Contain(Long(duel.A.CharacterId)));
+        Assert.That(dialog, Does.Contain(Long(duel.B.CharacterId)));
+
+        duel.Field.RankDuel.Death(duel.PlayerB);
+        List<string> after = duel.Bystander.TakeSent().Select(Convert.ToHexString).ToList();
+        Assert.That(after, Does.Contain("B600" + "13" + "01"));
+        Assert.That(after.Any(packet => packet.StartsWith("4E000F05") && packet.EndsWith("01" + new string('0', 46 * 2))), Is.True);
+    }
 }

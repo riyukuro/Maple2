@@ -110,6 +110,8 @@ public class PvpHandler : FieldPacketHandler {
             session.Send(PvpPacket.RankDuelMatchFailed());
             return;
         }
+        // The same request comes from the observe offer's box: with no match of its own the World names the duel to
+        // watch (response.Observer); the move is the same.
         PvpResponse? response = Request(session, new PvpRequest { RequesterId = session.CharacterId, Join = new PvpRequest.Types.Join() });
         if (response is not { Error: (int) RankDuelError.none }) {
             session.Send(PvpPacket.RankDuelMatchFailed());

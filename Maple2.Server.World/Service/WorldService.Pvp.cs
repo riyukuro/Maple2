@@ -11,9 +11,12 @@ public partial class WorldService {
             case PvpRequest.PvpOneofCase.Unregister:
                 return Task.FromResult(new PvpResponse { Error = (int) pvpLookup.Unregister(request.RequesterId) });
             case PvpRequest.PvpOneofCase.Join: {
-                    RankDuelError error = pvpLookup.Join(request.RequesterId, out int channel, out int mapId, out int roomId);
-                    return Task.FromResult(new PvpResponse { Error = (int) error, Channel = channel, MapId = mapId, RoomId = roomId });
+                    RankDuelError error = pvpLookup.Join(request.RequesterId, out int channel, out int mapId, out int roomId, out bool observer);
+                    return Task.FromResult(new PvpResponse { Error = (int) error, Channel = channel, MapId = mapId, RoomId = roomId, Observer = observer });
                 }
+            case PvpRequest.PvpOneofCase.Observable:
+                pvpLookup.Observable(request.Observable.MatchId);
+                return Task.FromResult(new PvpResponse());
             case PvpRequest.PvpOneofCase.End:
                 if (request.End.Arena != 0) {
                     pvpLookup.ArenaEnd(request.End.MatchId);

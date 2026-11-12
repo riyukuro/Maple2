@@ -24,6 +24,9 @@ public sealed class RankDuelMatch {
     public int MapId { get; set; }
     public int RoomId { get; set; }
     public HashSet<long> Joined { get; } = [];
+    // Its fight started: it can be watched (Observe).
+    public bool Observable { get; set; }
+    public long ObservableTick { get; set; }
 
     public bool Ready => RoomId != 0;
     public IEnumerable<long> Characters => [First, Second];
@@ -142,6 +145,25 @@ public sealed class RankDuelQueue {
         match.MapId = mapId;
         match.RoomId = roomId;
         return true;
+    }
+
+    // The match field's fight started: the match can be watched.
+    public bool SetObservable(int matchId, long tick) {
+        if (!matches.TryGetValue(matchId, out RankDuelMatch? match) || !match.Ready) {
+            return false;
+        }
+        match.Observable = true;
+        match.ObservableTick = tick;
+        return true;
+    }
+
+    // The match a character with no match of its own watches: the one whose fight started last. Chosen here (the
+    // client's offer, Pvp 0x19, names no match).
+    public RankDuelMatch? Observe(long characterId) {
+        if (matchOf.ContainsKey(characterId) || IsQueued(characterId)) {
+            return null;
+        }
+        return matches.Values.Where(match => match.Observable).OrderByDescending(match => match.ObservableTick).FirstOrDefault();
     }
 
     // The join after the match-found box: the field to enter, once it is made.

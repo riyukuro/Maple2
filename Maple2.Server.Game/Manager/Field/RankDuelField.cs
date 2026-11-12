@@ -26,6 +26,9 @@ public sealed class RankDuelField {
     private readonly FieldManager field;
     private readonly RankDuelMatchState state;
     private readonly Action<int> onEnd;
+    private readonly Action<int>? onObservable;
+    // The onlookers in the field (joined through the observe offer).
+    private readonly HashSet<long> observers = [];
     private readonly Dictionary<long, string> names = [];
     // The duelists sent out on arrival after the result (Dismiss): the exit leaves them alone.
     private readonly HashSet<long> dismissed = [];
@@ -38,7 +41,8 @@ public sealed class RankDuelField {
         }
     }
 
-    public RankDuelField(FieldManager field, int matchId, long first, long second, long tick, Action<int> onEnd) {
+    public RankDuelField(FieldManager field, int matchId, long first, long second, long tick, Action<int> onEnd, Action<int>? onObservable = null) {
+        this.onObservable = onObservable;
         this.field = field;
         this.onEnd = onEnd;
         MatchId = matchId;
@@ -76,6 +80,7 @@ public sealed class RankDuelField {
         long characterId = player.Value.Character.Id;
         lock (mutex) {
             if (!state.IsDuelist(characterId)) {
+                Observe(player);
                 return;
             }
             names[characterId] = player.Value.Character.Name;
@@ -86,7 +91,55 @@ public sealed class RankDuelField {
 
     public void Leave(FieldPlayer player) {
         lock (mutex) {
+            observers.Remove(player.Value.Character.Id);
             Apply(state.Leave(player.Value.Character.Id, field.FieldTick));
+        }
+    }
+
+    // An onlooker (a player that is not a duelist: the join of the observe offer). During the duel it becomes an
+    // onlooker (Pvp 0x13 false) and gets the duel's observer dialog (Trigger dialog kind 5); after the result there is
+    // nothing to watch and it goes back to its return field.
+    private void Observe(FieldPlayer player) {
+        long characterId = player.Value.Character.Id;
+        if (state.Phase is RankDuelPhase.Ended or RankDuelPhase.Closed) {
+            field.Scheduler.Schedule(() => {
+                if (field.TryGetPlayerById(characterId, out FieldPlayer? late)) {
+                    late.Session.ReturnField();
+                }
+            });
+            return;
+        }
+        observers.Add(characterId);
+        player.Session.Send(PvpPacket.RankDuelObserving(false));
+        if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
+            player.Session.Send(dialog);
+        }
+    }
+
+    // The duel's observer dialog with both duelists' health, rounds won (none yet: one round) and ratings. Chosen here:
+    // the center button's camera step is 0.
+    private Maple2.PacketLib.Tools.ByteWriter? DuelDialog(int duration) {
+        if (!field.TryGetPlayerById(state.First, out FieldPlayer? a) || !field.TryGetPlayerById(state.Second, out FieldPlayer? b)) {
+            return null;
+        }
+        return TriggerPacket.PvpPlayerDialog(duration, Fighter(a), Fighter(b));
+    }
+
+    private TriggerPacket.PvpFighter Fighter(FieldPlayer player) {
+        int rating = Rating;
+        try {
+            using GameStorage.Request db = field.GameStorage.Context();
+            rating = RankDuelStanding.Load(db, player.Value.Character.Id, RankDuelStanding.CurrentSeason(field.TableMetadata)).Rating;
+        } catch (Exception) {
+            // The record could not be read: the start rating.
+        }
+        return new TriggerPacket.PvpFighter(player.Value.Character.Id, (int) player.Stats.Values[BasicAttribute.Health].Current,
+            (int) player.Stats.Values[BasicAttribute.Health].Total, 0, rating);
+    }
+
+    private void SendObservers(Maple2.PacketLib.Tools.ByteWriter packet) {
+        foreach (long characterId in observers) {
+            Send(characterId, packet);
         }
     }
 
@@ -113,6 +166,10 @@ public sealed class RankDuelField {
                     Send(state.First, PvpPacket.RankDuelFight());
                     Send(state.Second, PvpPacket.RankDuelFight());
                     StartFight();
+                    if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
+                        SendObservers(dialog);
+                    }
+                    Tell(onObservable);
                     break;
                 case RankDuelEventType.Result:
                     SendResult(@event);
@@ -152,6 +209,8 @@ public sealed class RankDuelField {
                 break;
         }
         EndFight();
+        SendObservers(TriggerPacket.PvpPlayerDialog(0, default, default));
+        SendObservers(PvpPacket.RankDuelObserving(true));
         // The rank duel state goes back to 0, so the duelists can register again.
         Send(state.First, PvpPacket.RankDuelUnregistered());
         Send(state.Second, PvpPacket.RankDuelUnregistered());
@@ -293,11 +352,25 @@ public sealed class RankDuelField {
 
     // After the result: the duelists still here go back to their return field.
     private void SendOut() {
-        foreach (long characterId in new[] { state.First, state.Second }.Where(id => !dismissed.Contains(id))) {
+        foreach (long characterId in new[] { state.First, state.Second }.Where(id => !dismissed.Contains(id)).Concat(observers.ToList())) {
             if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
                 player.Session.ReturnField();
             }
         }
+    }
+
+    private void Tell(Action<int>? world) {
+        if (world == null) {
+            return;
+        }
+        int matchId = MatchId;
+        Task.Run(() => {
+            try {
+                world(matchId);
+            } catch (Exception ex) {
+                logger.Warning(ex, "Rank duel match {MatchId}: the world was not told", matchId);
+            }
+        });
     }
 
     private void Send(long characterId, Maple2.PacketLib.Tools.ByteWriter packet) {

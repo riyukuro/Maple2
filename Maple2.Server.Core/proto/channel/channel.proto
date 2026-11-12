@@ -517,6 +517,8 @@ message PvpNoticeRequest {
   bool matched = 2;
   // The individual arena of the notice; 0 for the rank duel. matched: Pvp 11 with the arena; not: Pvp 10.
   int32 arena = 3;
+  // A rank duel can be watched: every player of the channel outside a PvP field gets Pvp 0x19 (character_id is 0).
+  bool observe_offer = 4;
 }
 
 message PvpNoticeResponse {

@@ -351,24 +351,24 @@ public static class TriggerPacket {
         return pWriter;
     }
 
-    public static ByteWriter PvpObserverDialog(int duration, FieldPlayer player1, FieldPlayer player2, bool autoRemove = true) {
+    // One fighter of the observer dialog (UIPvPObserverDialog 0x4e96, CTriggerService::FUN_141862110 kinds 2 and 5 read by
+    // FUN_140743ca0 / FUN_140743f50): the character, its health and its total, its wins (a byte); a duel adds the rating.
+    public readonly record struct PvpFighter(long CharacterId, int Hp, int MaxHp, byte Wins, int Rating = 0);
+
+    // Kind 2: the two fighters of a normal match (the Red Arena's face-off). A character id of 0 closes the dialog.
+    public static ByteWriter PvpObserverDialog(int duration, PvpFighter first, PvpFighter second, bool autoRemove = true) {
         var pWriter = Packet.Of(SendOp.Trigger);
         pWriter.Write<Command>(Command.Dialog);
         pWriter.Write<DialogCommand>(DialogCommand.PvpObserver);
         pWriter.WriteInt(Environment.TickCount);
         pWriter.WriteInt(duration);
         pWriter.WriteBool(autoRemove);
-
-        pWriter.WriteLong(player1.Value.Character.Id); // characterId
-        pWriter.WriteInt(5);                           // currentHp
-        pWriter.WriteInt(10);                          // maxHp
-        pWriter.WriteByte(1);                          // wins
-
-        pWriter.WriteLong(player2.Value.Character.Id); // characterId
-        pWriter.WriteInt(5);                           // currentHp
-        pWriter.WriteInt(10);                          // maxHp
-        pWriter.WriteByte(1);                          // wins
-
+        foreach (PvpFighter fighter in new[] { first, second }) {
+            pWriter.WriteLong(fighter.CharacterId);
+            pWriter.WriteInt(fighter.Hp);
+            pWriter.WriteInt(fighter.MaxHp);
+            pWriter.WriteByte(fighter.Wins);
+        }
         return pWriter;
     }
 
@@ -394,28 +394,23 @@ public static class TriggerPacket {
         return pWriter;
     }
 
-    public static ByteWriter PvpPlayerDialog(int duration, FieldPlayer player1, FieldPlayer player2, bool autoRemove = true) {
+    // Kind 5: the two fighters of a duel (the rank duel), each with its rating, then the camera step of the dialog's
+    // center button (MyPC::FUN_14152a640). A character id of 0 closes the dialog.
+    public static ByteWriter PvpPlayerDialog(int duration, PvpFighter first, PvpFighter second, int centerCamera = 0, bool autoRemove = true) {
         var pWriter = Packet.Of(SendOp.Trigger);
         pWriter.Write<Command>(Command.Dialog);
         pWriter.Write<DialogCommand>(DialogCommand.PvpPlayer);
         pWriter.WriteInt(Environment.TickCount);
         pWriter.WriteInt(duration);
         pWriter.WriteBool(autoRemove);
-
-        pWriter.WriteLong(player1.Value.Character.Id); // characterId
-        pWriter.WriteInt(5);                           // currentHp
-        pWriter.WriteInt(10);                          // maxHp
-        pWriter.WriteByte(1);                          // wins
-        pWriter.WriteInt(100);                         // points
-
-        pWriter.WriteLong(player2.Value.Character.Id); // characterId
-        pWriter.WriteInt(5);                           // currentHp
-        pWriter.WriteInt(10);                          // maxHp
-        pWriter.WriteByte(1);                          // wins
-        pWriter.WriteInt(100);                         // points
-
-        pWriter.WriteInt(); // read after the second player's block
-
+        foreach (PvpFighter fighter in new[] { first, second }) {
+            pWriter.WriteLong(fighter.CharacterId);
+            pWriter.WriteInt(fighter.Hp);
+            pWriter.WriteInt(fighter.MaxHp);
+            pWriter.WriteByte(fighter.Wins);
+            pWriter.WriteInt(fighter.Rating);
+        }
+        pWriter.WriteInt(centerCamera);
         return pWriter;
     }
 }

@@ -166,11 +166,18 @@ public class PvpZoneFieldTests {
         arena.Field.PvpZone.Update(now + 10 + Maple2.Model.Game.Pvp.RedArenaState.PrepareMs);
         Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(1)), Is.True);
         Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(2)), Is.False);
-        Assert.That(Pvp(arena.Tests[2]).Count(packet => packet.StartsWith("B60064") && packet.EndsWith("00" + "01")), Is.EqualTo(2));
+        List<byte[]> fightStart = arena.Tests[2].TakeSent();
+        Assert.That(fightStart.Select(Convert.ToHexString).Count(packet => packet.StartsWith("B60064") && packet.EndsWith("00" + "01")), Is.EqualTo(2));
+        // The spectator gets the fighters' observer dialog (Trigger dialog kind 2) with both fighters.
+        string observer = fightStart.Select(Convert.ToHexString).Single(packet => packet.StartsWith("4E000F02"));
+        Assert.That(observer, Does.Contain(Long(arena.Tests[0].CharacterId)).And.Contain(Long(arena.Tests[1].CharacterId)));
 
         arena.Field.PvpZone.Death(arena.Player(1));
         Assert.That(arena.Field.PvpZone.Ended, Is.True);
-        List<string> texts = arena.Tests[2].TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MassiveEvent).Select(Convert.ToHexString).ToList();
+        List<byte[]> ended = arena.Tests[2].TakeSent();
+        // The result closes the spectator's dialog (character ids 0).
+        Assert.That(ended.Select(Convert.ToHexString).Any(packet => packet.StartsWith("4E000F02") && packet.EndsWith("01" + new string('0', 34 * 2))), Is.True);
+        List<string> texts = ended.Where(packet => TestGameSession.Op(packet) == SendOp.MassiveEvent).Select(Convert.ToHexString).ToList();
         Assert.That(texts[0], Does.Contain("03000000" + "01000000" + "01000000"));
         Assert.That(texts[1], Does.Contain("03000000" + "09000000" + "01000000"));
         Assert.That(arena.Tests[0].Session.Item.Inventory.Find(ArenaItem).Sum(item => item.Amount), Is.EqualTo(100));

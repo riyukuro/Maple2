@@ -90,8 +90,11 @@ public sealed class RedArenaZoneField : IPvpZoneField {
                         }
                         point++;
                     }
+                    ShowFight(@event.First, @event.Second);
                     break;
                 case RedArenaEventType.Result:
+                    SendToSpectators(@event.First, @event.Second,
+                        TriggerPacket.PvpObserverDialog(0, default, default));
                     foreach (long characterId in new[] { @event.First, @event.Second }) {
                         if (field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
                             field.Broadcast(PvpPacket.Point(fighter.ObjectId, 0, 0, 0));
@@ -105,6 +108,32 @@ public sealed class RedArenaZoneField : IPvpZoneField {
                 case RedArenaEventType.End:
                     End(@event);
                     break;
+            }
+        }
+    }
+
+    // The observer dialog (Trigger dialog kind 2) for the field's other players: both fighters' health and wins (the
+    // champion's win count); the client follows their health itself (PC::vfunc_74 for players with a PvP point).
+    // Chosen here: shown for the face-off's longest time.
+    private void ShowFight(long first, long second) {
+        if (!field.TryGetPlayerById(first, out FieldPlayer? a) || !field.TryGetPlayerById(second, out FieldPlayer? b)) {
+            return;
+        }
+        SendToSpectators(first, second, TriggerPacket.PvpObserverDialog((int) RedArenaState.FightMs, Fighter(a), Fighter(b)));
+    }
+
+    private TriggerPacket.PvpFighter Fighter(FieldPlayer player) {
+        long characterId = player.Value.Character.Id;
+        byte wins = (byte) Math.Min(characterId == state.Champion ? state.ChampionWins : 0, byte.MaxValue);
+        return new TriggerPacket.PvpFighter(characterId, (int) player.Stats.Values[BasicAttribute.Health].Current,
+            (int) player.Stats.Values[BasicAttribute.Health].Total, wins);
+    }
+
+    private void SendToSpectators(long first, long second, Maple2.PacketLib.Tools.ByteWriter packet) {
+        foreach (FieldPlayer player in field.Players.Values) {
+            long characterId = player.Value.Character.Id;
+            if (characterId != first && characterId != second) {
+                player.Session.Send(packet);
             }
         }
     }

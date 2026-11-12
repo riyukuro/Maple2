@@ -34,6 +34,13 @@ public sealed class PvpLookup : IDisposable {
     public PvpLookup(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup, ServerTableMetadataStorage serverTableMetadata)
         : this(ChannelField(channelClients), ChannelNotify(channelClients, playerLookup), () => Environment.TickCount64, true) {
         channelClients.ChannelInactive += EndChannel;
+        offer = () => {
+            foreach ((int _, ChannelClient client) in channelClients) {
+                try {
+                    client.Pvp(new PvpNoticeRequest { ObserveOffer = true }, deadline: DateTime.UtcNow.AddSeconds(5));
+                } catch (RpcException) { }
+            }
+        };
         this.serverTableMetadata = serverTableMetadata;
     }
 
@@ -54,6 +61,9 @@ public sealed class PvpLookup : IDisposable {
         constantsLoaded = true;
     }
     private bool constantsLoaded;
+
+    // The observe offer's broadcast (tests).
+    public void SetOffer(Action broadcast) => offer = broadcast;
 
     // The window's constants (tests).
     public void SetWindow(int matchingTimeSeconds, int minGap) {
@@ -190,15 +200,43 @@ public sealed class PvpLookup : IDisposable {
         }
     }
 
-    public RankDuelError Join(long characterId, out int channel, out int mapId, out int roomId) {
+    public RankDuelError Join(long characterId, out int channel, out int mapId, out int roomId) => Join(characterId, out channel, out mapId, out roomId, out _);
+
+    // The join (Pvp 16): into its own match, or, with none, to watch the duel whose fight started last (the client
+    // sends the same request from the observe offer's box).
+    public RankDuelError Join(long characterId, out int channel, out int mapId, out int roomId, out bool observer) {
         lock (mutex) {
             RankDuelError error = queue.Join(characterId, out RankDuelMatch? match);
+            observer = false;
+            if (error == RankDuelError.NoMatch && queue.MatchOf(characterId) == null
+                && arenas.MatchOf(characterId) == null && !arenas.IsQueued(characterId) && queue.Observe(characterId) is { } watched) {
+                match = watched;
+                observer = true;
+                error = RankDuelError.none;
+            }
             channel = match?.Channel ?? 0;
             mapId = match?.MapId ?? 0;
             roomId = match?.RoomId ?? 0;
             return error;
         }
     }
+
+    // A match field's fight started: the match can be watched, and the channels offer it (Pvp 0x19).
+    public void Observable(int matchId) {
+        bool set;
+        lock (mutex) {
+            set = queue.SetObservable(matchId, tick());
+        }
+        if (set) {
+            try {
+                offer?.Invoke();
+            } catch (Exception ex) {
+                logger.Warning(ex, "Rank duel observe offer not sent");
+            }
+        }
+    }
+
+    private Action? offer;
 
     // The match field ended the match. The characters that never joined are told it is over.
     public void End(int matchId) {

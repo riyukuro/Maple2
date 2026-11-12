@@ -257,6 +257,8 @@ public partial class FieldManager {
                 FieldManager? field = Create(mapId);
                 field?.StartRankDuel(matchId, first, second, id => World.Pvp(new Maple2.Server.World.Service.PvpRequest {
                     End = new Maple2.Server.World.Service.PvpRequest.Types.End { MatchId = id },
+                }, deadline: DateTime.UtcNow.AddSeconds(10)), id => World.Pvp(new Maple2.Server.World.Service.PvpRequest {
+                    Observable = new Maple2.Server.World.Service.PvpRequest.Types.Observable { MatchId = id },
                 }, deadline: DateTime.UtcNow.AddSeconds(10)));
                 return field;
             } finally {

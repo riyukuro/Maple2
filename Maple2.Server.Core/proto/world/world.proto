@@ -824,6 +824,10 @@ message PvpRequest {
   }
   message ArenaJoin {
   }
+  // A rank duel's fight started: it can be watched (the World offers it, Pvp 0x19).
+  message Observable {
+    int32 match_id = 1;
+  }
   int64 requester_id = 1;
   oneof pvp {
     Register register = 2;
@@ -833,6 +837,7 @@ message PvpRequest {
     ArenaRegister arena_register = 6;
     ArenaUnregister arena_unregister = 7;
     ArenaJoin arena_join = 8;
+    Observable observable = 9;
   }
 }
 
@@ -844,4 +849,6 @@ message PvpResponse {
   int32 channel = 4;
   // The arena queues' waits in milliseconds by arenaType (on the arena register and unregister answers).
   map<int32, int32> arena_waits = 5;
+  // The join is to watch a running rank duel (the character has no match of its own).
+  bool observer = 6;
 }
