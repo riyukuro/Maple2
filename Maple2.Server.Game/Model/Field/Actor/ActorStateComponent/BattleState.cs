@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using static Maple2.Model.Metadata.AiMetadata;
 
@@ -199,11 +200,14 @@ public class BattleState {
         IActor? target = null;
 
         if (actor.Field.Players.TryGetValue(TargetId, out FieldPlayer? targetPlayer)) {
-            if (targetPlayer.InvisibleFromNpc) {
+            if (!NpcTargetRules.CanTarget(targetPlayer.IsDead, targetPlayer.InvisibleFromNpc)) {
                 return false;
             }
             target = targetPlayer;
         } else if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc)) {
+            if (!NpcTargetRules.CanTarget(targetNpc.IsDead, invisibleFromNpc: false)) {
+                return false;
+            }
             target = targetNpc;
         }
 
@@ -249,7 +253,7 @@ public class BattleState {
         // player) as the target to trace and run from. A summoned pet follows its owner instead (FieldPet).
         if (friendlyType == 0 && actor is not FieldPet { OwnerId: not 0 }) {
             foreach (FieldPlayer player in actor.Field.Players.Values) {
-                if (player.InvisibleFromNpc) {
+                if (!NpcTargetRules.CanTarget(player.IsDead, player.InvisibleFromNpc)) {
                     continue;
                 }
                 if (ShouldTargetActor(player, sightSquared, sightHeightUp, sightHeightDown, ref nextTargetDistance, candidates)) {
@@ -260,7 +264,7 @@ public class BattleState {
 
         if (friendlyType == 1) {
             foreach (FieldNpc npc in actor.Field.Npcs.Values) {
-                if (npc.Value.Metadata.Basic.Friendly != 0) {
+                if (npc.Value.Metadata.Basic.Friendly != 0 || !NpcTargetRules.CanTarget(npc.IsDead, invisibleFromNpc: false)) {
                     continue;
                 }
 
