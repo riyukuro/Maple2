@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -51,6 +52,11 @@ public class VibrateHandler : FieldPacketHandler {
         FieldVibrateEntity? vibrate = session.Field?.AccelerationStructure?.GetVibrateEntity(entityId);
         if (vibrate != null && vibrate.BreakDefense < record.Attack.BrokenOffence) {
             //TODO: Keep a record of when the vibrate was broken.
+        }
+
+        if (vibrate != null && !string.IsNullOrEmpty(vibrate.MaterialTag)) {
+            // Each hit counts with the object's material (70400059 "Hit a tree 20 times": code "wood").
+            session.ConditionUpdate(ConditionType.vibrate_object, codeString: vibrate.MaterialTag);
         }
 
         // Packet gets sent regardless

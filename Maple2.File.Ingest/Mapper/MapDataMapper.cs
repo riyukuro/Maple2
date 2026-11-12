@@ -143,7 +143,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                             BreakDefense: vibrate.brokenDefence,
                             BreakTick: vibrate.brokenTick,
                             VibrateIndex: vibrateObjectId++,
-                            HideGroupId: vibrate.hideGroupId);
+                            HideGroupId: vibrate.hideGroupId,
+                            MaterialTag: vibrate.materialTag ?? string.Empty);
 
                         break;
                     }

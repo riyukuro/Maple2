@@ -47,7 +47,9 @@ public record FieldVibrateEntity(
     int BreakTick,
     int VibrateIndex,
     // The map's hideGroupId: a vibrate object of a group starts hidden until an AI's showVibrate shows the group.
-    int HideGroupId = 0) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
+    int HideGroupId = 0,
+    // The object's materialTag ("wood" for the trees, "stone" for the rocks): the code of the vibrate_object conditions.
+    string MaterialTag = "") : FieldEntity(Id, Position, Rotation, Scale, Bounds);
 
 public record FieldSpawnTile(
     FieldEntityId Id,

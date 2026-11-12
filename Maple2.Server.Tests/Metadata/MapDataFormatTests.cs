@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using Maple2.Model.Common;
+using Maple2.Model.Metadata.FieldEntity;
+using Maple2.Tools.VectorMath;
 using Maple2.Model.Game.Field;
 using Maple2.PacketLib.Tools;
 using Maple2.Tools.Extensions;
@@ -25,6 +29,21 @@ public class MapDataFormatTests {
             Assert.DoesNotThrow(() => reader.ReadClassWithNew<FieldAccelerationStructure>());
             Assert.That(reader.Position, Is.EqualTo(blob.Length));
         });
+    }
+
+    // A vibrate object keeps its materialTag through the map data (the vibrate_object condition code).
+    [Test]
+    public void VibrateMaterialReads() {
+        var tree = new FieldVibrateEntity(new FieldEntityId(1, 2, "tree"), Vector3.Zero, Vector3.Zero, 1,
+            new BoundingBox3(), BreakDefense: 99, BreakTick: 0, VibrateIndex: 0, MaterialTag: "wood");
+        var structure = new FieldAccelerationStructure();
+        structure.AddEntities(new Dictionary<Vector3S, List<FieldEntity>>(), new Vector3S(short.MaxValue, 0, 0),
+            new Vector3S(0, 0, 0), [tree], 1);
+        var writer = new ByteWriter();
+        writer.WriteClass(structure);
+
+        var read = new ByteReader(writer.ToArray(), 0).ReadClassWithNew<FieldAccelerationStructure>();
+        Assert.That(read.GetVibrateEntity("tree")?.MaterialTag, Is.EqualTo("wood"));
     }
 
     // A blob from the older ingest starts with the grid size: it has no marker.

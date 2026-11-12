@@ -643,9 +643,9 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
 
     // The map-data blob begins with this marker and FormatVersion, so a blob of another layout stops with a message
     // instead of being misread. Read as the old layout's grid size, the marker gives negative X and Y, which no map has.
-    // Version 1 was the unmarked layout; 2 added the vibrate entities' HideGroupId.
+    // Version 1 was the unmarked layout; 2 added the vibrate entities' HideGroupId, 3 their MaterialTag.
     public const int FormatMarker = unchecked((int) 0x8D41F2A0);
-    public const int FormatVersion = 2;
+    public const int FormatVersion = 3;
 
     /// <summary>Reads the marker and version; a blob without them or of another version throws.</summary>
     public static void ReadFormat(IByteReader reader) {
@@ -804,6 +804,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 writer.WriteInt(vibrateEntity.BreakDefense);
                 writer.WriteInt(vibrateEntity.BreakTick);
                 writer.WriteInt(vibrateEntity.HideGroupId);
+                writer.WriteString(vibrateEntity.MaterialTag);
                 break;
             case FieldSpawnTile spawnTile:
                 break;
@@ -957,7 +958,8 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                     VibrateIndex: reader.ReadInt(),
                     BreakDefense: reader.ReadInt(),
                     BreakTick: reader.ReadInt(),
-                    HideGroupId: reader.ReadInt());
+                    HideGroupId: reader.ReadInt(),
+                    MaterialTag: reader.ReadString());
             case FieldEntityType.SpawnTile:
                 return new FieldSpawnTile(
                     Id: id,

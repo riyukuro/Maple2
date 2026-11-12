@@ -28,6 +28,7 @@ public static class ConditionUtil {
             case ConditionType.emotion:
             case ConditionType.trigger:
             case ConditionType.npc_race:
+            case ConditionType.vibrate_object:
                 if (code.Strings != null && code.Strings.Contains(stringValue)) {
                     return true;
                 }

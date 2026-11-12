@@ -62,6 +62,15 @@ public class ConditionCountTests {
         Assert.That(noCode.Check(null!, codeLong: petItemId), Is.True);
     }
 
+    // A hit on a vibrate object counts with its materialTag (70400059 "Hit a tree 20 times": code "wood").
+    [TestCase("wood", true)]
+    [TestCase("stone", false)]
+    public void VibrateObject_CountsTheListedMaterial(string material, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.vibrate_object, 20,
+            new ConditionMetadata.Parameters(Strings: ["wood"]), null);
+        Assert.That(condition.Check(null!, codeString: material), Is.EqualTo(expected));
+    }
+
     // Taking furniture into use counts for controller when its item id is one of the row's codes.
     [TestCase(50400002, true)]
     [TestCase(50400004, false)]
