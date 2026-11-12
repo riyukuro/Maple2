@@ -978,24 +978,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 continue;
             }
 
-            // Times are written to the minute or to the second (634 KR rows, such as the mini game bonus rows to 2099).
-            DateTime startTime = AttendGiftReplay.ParseTime(data.eventStart);
-            DateTime endTime = AttendGiftReplay.ParseTime(data.eventEnd);
-
-            (TimeSpan partTimeStart, TimeSpan partTimeEnd) = ParsePartTime(data.partTime);
-            var metadata = new GameEventMetadata(
-                Id: id,
-                Type: eventType,
-                StartTime: startTime,
-                EndTime: endTime,
-                StartPartTime: partTimeStart,
-                EndPartTime: partTimeEnd,
-                ActiveDays: data.dayOfWeek.Length == 0 ? [] : data.dayOfWeek.Select(ParseDayOfWeek).ToArray(),
-                Data: eventData,
-                Value1: data.value1,
-                Value2: data.value2,
-                Value3: data.value3,
-                Value4: data.value4);
+            GameEventMetadata metadata = MapGameEvent(id, data, eventType, eventData);
+            DateTime endTime = metadata.EndTime;
 
             // Only add events that are not expired
             if (endTime < now) {
@@ -1043,22 +1027,41 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 }
         }
         return new GameEventTable(results);
-
-        DayOfWeek ParseDayOfWeek(Maple2.File.Parser.Enum.DayOfWeek dayofWeek) {
-            return dayofWeek switch {
-                Maple2.File.Parser.Enum.DayOfWeek.sun => DayOfWeek.Sunday,
-                Maple2.File.Parser.Enum.DayOfWeek.mon => DayOfWeek.Monday,
-                Maple2.File.Parser.Enum.DayOfWeek.tue => DayOfWeek.Tuesday,
-                Maple2.File.Parser.Enum.DayOfWeek.wed => DayOfWeek.Wednesday,
-                Maple2.File.Parser.Enum.DayOfWeek.thu => DayOfWeek.Thursday,
-                Maple2.File.Parser.Enum.DayOfWeek.fri => DayOfWeek.Friday,
-                Maple2.File.Parser.Enum.DayOfWeek.sat => DayOfWeek.Saturday,
-                _ => DayOfWeek.Sunday,
-            };
-        }
     }
 
-    private (TimeSpan, TimeSpan) ParsePartTime(string partTimeString) {
+    // A gameEvent row of the server's table: its times (written to the minute or to the second, 634 KR rows),
+    // part times and days, with the event's data as read.
+    public static GameEventMetadata MapGameEvent(int id, GameEvent data, GameEventType eventType, GameEventData eventData) {
+        (TimeSpan partTimeStart, TimeSpan partTimeEnd) = ParsePartTime(data.partTime);
+        return new GameEventMetadata(
+            Id: id,
+            Type: eventType,
+            StartTime: AttendGiftReplay.ParseTime(data.eventStart),
+            EndTime: AttendGiftReplay.ParseTime(data.eventEnd),
+            StartPartTime: partTimeStart,
+            EndPartTime: partTimeEnd,
+            ActiveDays: data.dayOfWeek.Length == 0 ? [] : data.dayOfWeek.Select(ParseDayOfWeek).ToArray(),
+            Data: eventData,
+            Value1: data.value1,
+            Value2: data.value2,
+            Value3: data.value3,
+            Value4: data.value4);
+    }
+
+    private static DayOfWeek ParseDayOfWeek(Maple2.File.Parser.Enum.DayOfWeek dayofWeek) {
+        return dayofWeek switch {
+            Maple2.File.Parser.Enum.DayOfWeek.sun => DayOfWeek.Sunday,
+            Maple2.File.Parser.Enum.DayOfWeek.mon => DayOfWeek.Monday,
+            Maple2.File.Parser.Enum.DayOfWeek.tue => DayOfWeek.Tuesday,
+            Maple2.File.Parser.Enum.DayOfWeek.wed => DayOfWeek.Wednesday,
+            Maple2.File.Parser.Enum.DayOfWeek.thu => DayOfWeek.Thursday,
+            Maple2.File.Parser.Enum.DayOfWeek.fri => DayOfWeek.Friday,
+            Maple2.File.Parser.Enum.DayOfWeek.sat => DayOfWeek.Saturday,
+            _ => DayOfWeek.Sunday,
+        };
+    }
+
+    private static (TimeSpan, TimeSpan) ParsePartTime(string partTimeString) {
         string[] partTimeStringArray = partTimeString.Split("-");
         if (partTimeStringArray.Length != 2) {
             return (TimeSpan.Zero, TimeSpan.Zero);

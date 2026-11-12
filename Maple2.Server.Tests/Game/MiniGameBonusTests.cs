@@ -23,7 +23,7 @@ using Maple2.Server.Game.Util;
 namespace Maple2.Server.Tests.Game;
 
 // The MiniGameBonusReward game event: the reader of its two values, the events that name a game, and the winners'
-// items at end_mini_game. Rows as KR ships them (99000030: the oxquiz bonus, 40 of item 30001258).
+// items at end_mini_game. Rows as the KR data has them (99000030, a reference=MAPLES2 private-server row: the oxquiz bonus, 40 of item 30001258).
 public class MiniGameBonusReaderTests {
     private const string Items = """<items><v itemID="30001258" grade="1" count="40" /></items>""";
 
