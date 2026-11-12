@@ -121,7 +121,7 @@ public sealed class RankDuelField {
         // The duelists' points, as the field got them when the fight started: the client follows the health of a
         // player with a point (PC::vfunc_74) into the dialog.
         if (state.Phase == RankDuelPhase.Fighting) {
-            int point = 1;
+            int point = PvpPoints.First;
             foreach (long duelist in new[] { state.First, state.Second }) {
                 if (field.TryGetPlayerById(duelist, out FieldPlayer? fighter)) {
                     player.Session.Send(PvpPacket.Point(fighter.ObjectId, point, 0, 0));
@@ -311,10 +311,10 @@ public sealed class RankDuelField {
     // The client takes two players for enemies on a map without PK mode when both have a PvP point and the points
     // differ (PC::vfunc_122 and vfunc_116 with CPvPInfo::ReadPointTeamMode): each duelist gets its own point (Pvp 0x64)
     // for the fight, and the field's other players see it. The server constants name the rank duel arena's buffs
-    // (ModePVPDuelRankArenaAdditionalEffect). Chosen here: the points are 1 and 2 with team 0 and mode 0, and the
+    // (ModePVPDuelRankArenaAdditionalEffect). Chosen here: the points are 101 and 102 (PvpPoints: 1 and 2 are the client's own teams) with team 0 and mode 0, and the
     // buffs (level 1) are given when the fight starts.
     private void StartFight() {
-        int point = 1;
+        int point = PvpPoints.First;
         foreach (long characterId in new[] { state.First, state.Second }) {
             if (!field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
                 point++;

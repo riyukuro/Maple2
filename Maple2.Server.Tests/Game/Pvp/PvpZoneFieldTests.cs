@@ -167,7 +167,9 @@ public class PvpZoneFieldTests {
         Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(1)), Is.True);
         Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(2)), Is.False);
         List<byte[]> fightStart = arena.Tests[2].TakeSent();
-        Assert.That(fightStart.Select(Convert.ToHexString).Count(packet => packet.StartsWith("B60064") && packet.EndsWith("00" + "01")), Is.EqualTo(2));
+        // Points 101 and 102: the client never hits a PC of team 2 and lets one hit anyone (basecollision.cpp).
+        Assert.That(fightStart.Select(Convert.ToHexString).Where(packet => packet.StartsWith("B60064")).Select(packet => packet[14..]).Order(),
+            Is.EqualTo(new[] { "65000000" + "00" + "01", "66000000" + "00" + "01" }));
         // The spectator gets the fighters' observer dialog (Trigger dialog kind 2) with both fighters.
         string observer = fightStart.Select(Convert.ToHexString).Single(packet => packet.StartsWith("4E000F02"));
         Assert.That(observer, Does.Contain(Long(arena.Tests[0].CharacterId)).And.Contain(Long(arena.Tests[1].CharacterId)));

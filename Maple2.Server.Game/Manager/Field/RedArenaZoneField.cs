@@ -80,7 +80,7 @@ public sealed class RedArenaZoneField : IPvpZoneField {
                     break;
                 case RedArenaEventType.Start:
                     field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(StartText), TextDurationMs));
-                    int point = 1;
+                    int point = PvpPoints.First;
                     foreach (long characterId in new[] { @event.First, @event.Second }) {
                         if (field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
                             field.Broadcast(PvpPacket.Point(fighter.ObjectId, point, 0, Mode));

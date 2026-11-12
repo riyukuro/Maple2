@@ -113,8 +113,8 @@ public class RankDuelFieldTests {
         Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "01000000" }));
 
         duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
-        // The fight intro, then each duelist's PvP point (A 1, B 2: the client's enemies), seen by the whole field.
-        string points = "B600" + "64" + Int(duel.PlayerA.ObjectId) + "01000000" + "00" + "00" + "|" + "B600" + "64" + Int(duel.PlayerB.ObjectId) + "02000000" + "00" + "00";
+        // The fight intro, then each duelist's PvP point (A 101, B 102: the client's enemies; 1 and 2 are its own teams), seen by the whole field.
+        string points = "B600" + "64" + Int(duel.PlayerA.ObjectId) + "65000000" + "00" + "00" + "|" + "B600" + "64" + Int(duel.PlayerB.ObjectId) + "66000000" + "00" + "00";
         Assert.That(string.Join("|", Pvp(duel.A)), Is.EqualTo("B600" + "1A" + "DC050000" + "|" + points));
         Assert.That(string.Join("|", Pvp(duel.B)), Is.EqualTo("B600" + "1A" + "DC050000" + "|" + points));
         Assert.That(string.Join("|", Pvp(duel.Bystander)), Is.EqualTo(points));
@@ -280,8 +280,8 @@ public class RankDuelFieldTests {
         List<byte[]> entered = duel.Bystander.TakeSent();
         Assert.That(Convert.ToHexString(entered[0]), Is.EqualTo("B600" + "13" + "00"));
         // The duelists' points, so the client follows their health into the dialog.
-        Assert.That(Convert.ToHexString(entered[1]), Is.EqualTo("B600" + "64" + Int(duel.PlayerA.ObjectId) + "01000000" + "0000"));
-        Assert.That(Convert.ToHexString(entered[2]), Is.EqualTo("B600" + "64" + Int(duel.PlayerB.ObjectId) + "02000000" + "0000"));
+        Assert.That(Convert.ToHexString(entered[1]), Is.EqualTo("B600" + "64" + Int(duel.PlayerA.ObjectId) + "65000000" + "0000"));
+        Assert.That(Convert.ToHexString(entered[2]), Is.EqualTo("B600" + "64" + Int(duel.PlayerB.ObjectId) + "66000000" + "0000"));
         string dialog = Convert.ToHexString(entered[3]);
         Assert.That(dialog, Does.Contain(Long(duel.B.CharacterId) + "00000000" + "00000000" + "00" + "E8030000"));
         Assert.That(dialog[..8], Is.EqualTo("4E00" + "0F" + "05"));
