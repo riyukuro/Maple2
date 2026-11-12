@@ -51,6 +51,15 @@ public static class HomeOpenRules {
         return string.Equals(stored, typed, StringComparison.Ordinal) ? Enter.Allow : Enter.WrongPassword;
     }
 
+    // The kind a stored passcode stands for, as the owner's house info carries it (ResponseCube 0x14, the last byte:
+    // UserUGCMapInfo +0x40, which the home option dialog shows as "opentype").
+    public static byte OpenType(string? passcode) {
+        if (IsPrivate(passcode)) {
+            return Private;
+        }
+        return string.IsNullOrEmpty(passcode) ? Public : Password;
+    }
+
     public static bool IsPasscode(string text) {
         return text.Length == PasscodeLength && text.All(c => c is >= '0' and <= '9');
     }

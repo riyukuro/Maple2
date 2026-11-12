@@ -3,6 +3,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -350,7 +351,8 @@ public static class CubePacket {
         pWriter.WriteLong(player.Home.PlotExpiryTime);
         pWriter.WriteLong(player.Home.LastModified);
         pWriter.WriteBool(load);
-        pWriter.WriteByte(); // UserUGCMapInfo +0x40, 0 unless the region is CN (ugcmapoptions.cpp:240)
+        // UserUGCMapInfo +0x40: the open type the home option dialog shows (0 public, 1 password, 2 private).
+        pWriter.WriteByte(HomeOpenRules.OpenType(player.Home.Passcode));
 
         return pWriter;
     }

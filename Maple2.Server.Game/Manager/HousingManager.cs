@@ -107,6 +107,9 @@ public class HousingManager {
         }
 
         session.Send(CubePacket.SetPasscode());
+        // The reply changes nothing on the client: the option dialog shows the open type of the house info, so
+        // the owner gets it again with the new type.
+        session.Send(CubePacket.UpdateProfile(session.Player));
 
         // A home set to private keeps no visitors: they leave the way a kicked visitor does. The owner can
         // change the setting from any map, so the home is looked up when the owner is not standing in it.
