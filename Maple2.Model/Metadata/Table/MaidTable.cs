@@ -36,7 +36,9 @@ public record MaidTable(
 
     // A <recipe/> row read through attr (an absent attribute reads as ""), as CMaidRecipeTable::Load does. Null when
     // the id is not positive or an ingredient names a tag the server does not know (the server could not check it).
-    // An ingredient item that is neither a positive id nor a tag name is left out, as the client leaves it out.
+    // An ingredient item that is neither a positive id nor a tag name is left out, as the client leaves it out, and
+    // so is an ingredient whose count is not positive: it asks for nothing (the ReduceMaidRecipe floor of 1 applies
+    // to a counted ingredient only). The product count is at least 1.
     public static Recipe? RecipeRow(Func<string, string> attr) {
         if (!int.TryParse(attr("Id"), out int id) || id <= 0) {
             return null;
@@ -46,7 +48,7 @@ public record MaidTable(
             string item = attr(prefix + "IngredientItemID").Trim();
             int.TryParse(attr(prefix + "IngredientCount"), out int count);
             if (uint.TryParse(item, out uint itemId)) {
-                if (itemId > 0) {
+                if (itemId > 0 && count > 0) {
                     ingredients.Add(new Ingredient((int) itemId, ItemTag.None, count));
                 }
                 continue;
@@ -57,7 +59,9 @@ public record MaidTable(
             if (!System.Enum.TryParse(item, out ItemTag tag) || tag == ItemTag.None || int.TryParse(item, out _)) {
                 return null;
             }
-            ingredients.Add(new Ingredient(0, tag, count));
+            if (count > 0) {
+                ingredients.Add(new Ingredient(0, tag, count));
+            }
         }
         int.TryParse(attr("WorkbenchType"), out int workbench);
         int.TryParse(attr("LeadTimeNormal"), out int normal);
@@ -68,7 +72,7 @@ public record MaidTable(
         int.TryParse(attr("ProductItemID"), out int product);
         int.TryParse(attr("ProductCount"), out int productCount);
         int.TryParse(attr("ProductRank"), out int rank);
-        return new Recipe(id, ingredients, workbench, [normal, good, veryGood], exp, mood, product, productCount, Math.Clamp(rank, 1, 6));
+        return new Recipe(id, ingredients, workbench, [normal, good, veryGood], exp, mood, product, Math.Max(1, productCount), Math.Clamp(rank, 1, 6));
     }
 
     // A <group GroupID RecipeIDs RequireLevels/> row (comma lists), sorted by level, then recipe id. Null when the

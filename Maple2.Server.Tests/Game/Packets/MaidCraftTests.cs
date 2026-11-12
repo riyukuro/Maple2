@@ -78,6 +78,25 @@ public class MaidCraftTests {
     }
 
     [Test]
+    public void RecipeRow_LeavesOutUncountedIngredients_AndMakesAtLeastOneProduct() {
+        MaidTable.Recipe? recipe = MaidTable.RecipeRow(Attrs(new Dictionary<string, string> {
+            ["Id"] = "4101",
+            ["FirstIngredientItemID"] = "30000001",
+            ["FirstIngredientCount"] = "0",
+            ["SecondIngredientItemID"] = "FreeChannelChatCoupon",
+            ["SecondIngredientCount"] = "-1",
+            ["ThirdIngredientItemID"] = "30000002",
+            ["ThirdIngredientCount"] = "3",
+            ["ProductItemID"] = "20000001",
+            ["ProductCount"] = "0",
+        }));
+        Assert.Multiple(() => {
+            Assert.That(recipe?.Ingredients, Is.EqualTo(new[] { new MaidTable.Ingredient(30000002, ItemTag.None, 3) }));
+            Assert.That(recipe?.ProductCount, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
     public void RecipeRow_UnknownTagOrBadId_DropsTheRecipe() {
         Assert.Multiple(() => {
             Assert.That(MaidTable.RecipeRow(Attrs(new Dictionary<string, string> { ["Id"] = "4101", ["FirstIngredientItemID"] = "NoSuchTag" })), Is.Null);

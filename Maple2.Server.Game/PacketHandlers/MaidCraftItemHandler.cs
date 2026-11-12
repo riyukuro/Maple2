@@ -75,6 +75,12 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftExpired));
                 return;
             }
+            // A product the server cannot make (an item id missing from the item data) is never started, so no
+            // ingredients are taken for a craft that could not be received.
+            if (field.ItemDrop.CreateItem(recipe.ProductItemId, recipe.ProductRank, recipe.ProductCount) == null) {
+                Logger.Warning("Maid recipe {RecipeId}: no product item {ItemId}", recipe.Id, recipe.ProductItemId);
+                return;
+            }
             IEnumerable<PlotCube> ownedCubes = field.Plots.Values
                 .Where(plot => plot.OwnerId == session.AccountId)
                 .SelectMany(plot => plot.Cubes.Values)
@@ -85,7 +91,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             }
             float reduceRate = (float) session.Player.Stats.Values[SpecialAttribute.ReduceMaidRecipe].Multiplier();
             // The inventory lock is held from the count to the take, so the counted items are the ones taken; the
-            // maid is saved before anything is taken, so a failed save takes nothing.
+            // craft is stored before anything is taken, so a craft another channel started first takes nothing.
             lock (session.Item) {
                 IList<Item> owned = session.Item.Inventory.Filter(item => recipe.Ingredients.Any(ingredient => MaidRules.Fills(ingredient, item)));
                 List<(long Uid, int Amount)>? taken = MaidRules.TakeIngredients(owned, recipe, reduceRate);
@@ -93,13 +99,15 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough));
                     return;
                 }
-                MaidRules.StartCraft(found, recipe, now);
-                if (!field.SaveMaid(found)) {
-                    MaidRules.ClearCraft(found);
+                if (!field.SetMaidCraft(found, recipe.Id, now, MaidRules.LeadTime(recipe, found.Mood))) {
+                    SendRecord(session, found);
                     return;
                 }
                 foreach ((long uid, int amount) in taken) {
-                    session.Item.Inventory.Consume(uid, amount);
+                    if (session.Item.Inventory.Consume(uid, amount)) {
+                        continue;
+                    }
+                    Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: could not take {Amount} of item {ItemUid}", recipe.Id, maidUid, amount, uid);
                 }
             }
             session.Send(MaidCraftItemPacket.Add(found));
@@ -122,7 +130,8 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             if (!MaidRules.StillPlaced(maid, found) || found.OwnerId != session.AccountId || session.Field != field) {
                 return;
             }
-            int result = MaidRules.ReceiveResult(found, DateTime.UtcNow.ToEpochSeconds());
+            long now = DateTime.UtcNow.ToEpochSeconds();
+            int result = MaidRules.ReceiveResult(found, now);
             if (result != MaidRules.CraftReceived) {
                 session.Send(MaidCraftItemPacket.ReceiveResult(result));
                 return;
@@ -140,16 +149,26 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 if (!session.Item.Inventory.CanAdd(product, product.Amount)) {
                     return; // no client code for a full bag: the craft stays until there is room
                 }
+                // The craft is cleared in storage first, tested against the one this field holds: of two receives
+                // of the same craft (the home open in two channels) only one clears it and only that one gives the
+                // product. The other answers from the stored craft.
                 (int recipeId, long start, int duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
-                (int level, int exp, int mood) = (found.Level, found.Exp, found.Mood);
-                int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
-                if (!field.SaveMaid(found)) {
-                    (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration) = (recipeId, start, duration);
-                    (found.Level, found.Exp, found.Mood) = (level, exp, mood);
+                if (!field.SetMaidCraft(found, 0, 0, 0)) {
+                    SendRecord(session, found);
+                    session.Send(MaidCraftItemPacket.ReceiveResult(MaidRules.ReceiveResult(found, now)));
                     return;
                 }
                 int amount = product.Amount, rarity = product.Rarity;
-                session.Item.Inventory.Add(product, true);
+                if (!session.Item.Inventory.Add(product, true)) {
+                    // The bag took nothing after all: the craft is stored again, to be received later.
+                    if (!field.SetMaidCraft(found, recipeId, start, duration)) {
+                        Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not added and the craft not restored",
+                            recipeId, maidUid, recipe.ProductItemId);
+                    }
+                    return;
+                }
+                int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
+                field.SaveMaid(found);
                 session.Send(MaidCraftItemPacket.Remove(maidUid));
                 session.Send(MaidCraftItemPacket.ReceiveResult(MaidRules.CraftReceived));
                 session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));
@@ -167,17 +186,22 @@ public class MaidCraftItemHandler : FieldPacketHandler {
         }
         field.Scheduler.Schedule(() => {
             Maid? maid = field.GetMaid(maidUid);
-            if (!MaidRules.StillPlaced(maid, found) || found.OwnerId != session.AccountId || !MaidRules.IsCrafting(found)) {
+            if (!MaidRules.StillPlaced(maid, found) || found.OwnerId != session.AccountId || session.Field != field
+                || !MaidRules.IsCrafting(found)) {
                 return;
             }
-            (int recipeId, long start, int duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
-            MaidRules.ClearCraft(found);
-            if (!field.SaveMaid(found)) {
-                (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration) = (recipeId, start, duration);
+            if (!field.SetMaidCraft(found, 0, 0, 0)) {
+                SendRecord(session, found);
                 return;
             }
             session.Send(MaidCraftItemPacket.Remove(maidUid));
             session.Send(MaidCraftItemPacket.CancelResult(MaidRules.CraftCancelled));
         });
+    }
+
+    // The craft record of a maid as stored, after another channel changed it: the record while it crafts, else its
+    // removal.
+    private static void SendRecord(GameSession session, Maid maid) {
+        session.Send(MaidRules.IsCrafting(maid) ? MaidCraftItemPacket.Add(maid) : MaidCraftItemPacket.Remove(maid.Uid));
     }
 }

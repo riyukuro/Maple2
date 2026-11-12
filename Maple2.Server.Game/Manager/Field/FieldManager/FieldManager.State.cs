@@ -1214,6 +1214,25 @@ public partial class FieldManager {
         return true;
     }
 
+    // Changes the running craft of a placed maid (recipe 0: none) from the one this field's copy holds, as one
+    // update that tests the stored craft: another channel may have the same home open with its own copy of the
+    // maid. True when the row changed; the copy then holds the new craft. False when it did not (another channel
+    // changed the craft first, or the row is gone): the copy then holds the stored craft, read again.
+    public bool SetMaidCraft(Maid maid, int recipeId, long startTime, int duration) {
+        using GameStorage.Request db = GameStorage.Context();
+        if (db.SetMaidCraft(maid.Uid, maid.CraftRecipeId, maid.CraftStartTime, recipeId, startTime, duration)) {
+            (maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration) = (recipeId, startTime, duration);
+            return true;
+        }
+        (int RecipeId, long StartTime, int Duration)? stored = db.GetMaidCraft(maid.Uid);
+        if (stored == null) {
+            logger.Warning("Failed to set the craft of maid {MaidUid}: no row", maid.Uid);
+        } else {
+            (maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration) = stored.Value;
+        }
+        return false;
+    }
+
     private void SendToMaidOwner(long ownerId, ByteWriter packet) {
         foreach (FieldPlayer player in Players.Values) {
             if (player.Session.AccountId == ownerId) {

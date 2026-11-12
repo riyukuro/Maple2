@@ -192,15 +192,11 @@ public class MaidStorageTests {
     }
 
     [Test]
-    public void Save_WritesTheCraft_AndAMoveKeepsIt() {
+    public void SetCraft_WritesTheCraft_AndAMoveKeepsIt() {
         PlotCube cube = PlaceCube();
         Hire(cube.Id);
         using (GameStorage.Request db = storage.Context()) {
-            Maid maid = db.GetMaid(cube.Id)!;
-            maid.CraftRecipeId = 4101;
-            maid.CraftStartTime = 1700000500;
-            maid.CraftDuration = 3600;
-            Assert.That(db.SaveMaid(maid), Is.True);
+            Assert.That(db.SetMaidCraft(cube.Id, 0, 0, 4101, 1700000500, 3600), Is.True);
             Assert.That(db.MoveMaid(cube.Id, StoredUid)?.CraftRecipeId, Is.EqualTo(4101));
         }
         using GameStorage.Request check = storage.Context();
@@ -209,6 +205,74 @@ public class MaidStorageTests {
             Assert.That(stored?.CraftRecipeId, Is.EqualTo(4101));
             Assert.That(stored?.CraftStartTime, Is.EqualTo(1700000500));
             Assert.That(stored?.CraftDuration, Is.EqualTo(3600));
+            Assert.That(check.GetMaidCraft(StoredUid), Is.EqualTo((4101, 1700000500L, 3600)));
+            Assert.That(check.GetMaidCraft(cube.Id), Is.Null);
+        });
+    }
+
+    // The home open in two channels: each holds its own copy of the maid, read while the craft ran. The first
+    // receive clears the stored craft; the second, from its stale copy, changes nothing, so it gives no product.
+    [Test]
+    public void SetCraft_SecondReceiveFromAStaleCopy_ChangesNothing() {
+        PlotCube cube = PlaceCube();
+        Hire(cube.Id);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SetMaidCraft(cube.Id, 0, 0, 4101, 1700000500, 3600), Is.True);
+        }
+        Maid first, second;
+        using (GameStorage.Request db = storage.Context()) {
+            first = db.GetMaid(cube.Id)!;
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            second = db.GetMaid(cube.Id)!;
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SetMaidCraft(first.Uid, first.CraftRecipeId, first.CraftStartTime, 0, 0, 0), Is.True);
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SetMaidCraft(second.Uid, second.CraftRecipeId, second.CraftStartTime, 0, 0, 0), Is.False);
+            Assert.That(db.GetMaidCraft(cube.Id), Is.EqualTo((0, 0L, 0)));
+        }
+    }
+
+    // Two starts from copies without a craft: only the first is stored; the second reads the first's craft back.
+    // A cancel or start from a copy whose craft is not the stored one changes nothing either.
+    [Test]
+    public void SetCraft_OnlyFromTheStoredCraft() {
+        PlotCube cube = PlaceCube();
+        Hire(cube.Id);
+        using GameStorage.Request db = storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(db.SetMaidCraft(cube.Id, 0, 0, 4101, 1700000500, 3600), Is.True);
+            Assert.That(db.SetMaidCraft(cube.Id, 0, 0, 4102, 1700000600, 60), Is.False);
+            Assert.That(db.SetMaidCraft(cube.Id, 4101, 1700000400, 0, 0, 0), Is.False);
+            Assert.That(db.SetMaidCraft(cube.Id, 4102, 1700000500, 0, 0, 0), Is.False);
+            Assert.That(db.GetMaidCraft(cube.Id), Is.EqualTo((4101, 1700000500L, 3600)));
+            Assert.That(db.SetMaidCraft(99, 0, 0, 4101, 1700000500, 3600), Is.False);
+        });
+    }
+
+    // The general save writes the mood and affinity but not the craft: a copy read before a craft started does not
+    // clear it.
+    [Test]
+    public void Save_LeavesTheCraft() {
+        PlotCube cube = PlaceCube();
+        Hire(cube.Id);
+        Maid stale;
+        using (GameStorage.Request db = storage.Context()) {
+            stale = db.GetMaid(cube.Id)!;
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SetMaidCraft(cube.Id, 0, 0, 4101, 1700000500, 3600), Is.True);
+        }
+        stale.Mood = 55;
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveMaid(stale), Is.True);
+        }
+        using GameStorage.Request check = storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(check.GetMaid(cube.Id)?.Mood, Is.EqualTo(55));
+            Assert.That(check.GetMaidCraft(cube.Id), Is.EqualTo((4101, 1700000500L, 3600)));
         });
     }
 

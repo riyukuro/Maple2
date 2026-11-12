@@ -345,7 +345,8 @@ public partial class GameStorage {
                 .ToList();
         }
 
-        // Writes the mood, affinity, contract end, profile and running craft of a maid; false when its row is gone.
+        // Writes the mood, affinity, contract end and profile of a maid; false when its row is gone. The running craft
+        // is written only by SetMaidCraft, which tests the stored craft first.
         public bool SaveMaid(Maid maid) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
             Model.Maid? model = Context.Maid.Find(maid.Uid);
@@ -357,10 +358,52 @@ public partial class GameStorage {
             model.Exp = maid.Exp;
             model.ExpiryTime = maid.ExpiryTime.FromEpochSeconds();
             model.Profile = maid.Profile;
-            model.CraftRecipeId = maid.CraftRecipeId;
-            model.CraftStartTime = maid.CraftStartTime;
-            model.CraftDuration = maid.CraftDuration;
             return Context.TrySaveChanges();
+        }
+
+        // Writes the running craft of the maid keyed by uid (recipe 0: none) only while the stored craft is still the
+        // expected one (recipe and start), in one update that tests the row. A maid's home can be open in several
+        // channels, each with its own copy of the maid, so of two requests that change the same craft only one
+        // changes the row. False when no row changed (another channel changed the craft, or the row is gone).
+        public bool SetMaidCraft(long uid, int expectedRecipeId, long expectedStartTime, int recipeId, long startTime, int duration) {
+            try {
+                if (!Context.Database.IsRelational()) {
+                    return SetMaidCraftTracked(uid, expectedRecipeId, expectedStartTime, recipeId, startTime, duration);
+                }
+                int rows = Context.Maid
+                    .Where(maid => maid.Id == uid && maid.CraftRecipeId == expectedRecipeId && maid.CraftStartTime == expectedStartTime)
+                    .ExecuteUpdate(update => update
+                        .SetProperty(maid => maid.CraftRecipeId, recipeId)
+                        .SetProperty(maid => maid.CraftStartTime, startTime)
+                        .SetProperty(maid => maid.CraftDuration, duration));
+                return rows == 1;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to set the craft of maid {MaidUid}", uid);
+                return false;
+            }
+        }
+
+        // The same test and write through the change tracker, for a provider without bulk updates (the in-memory
+        // database of the tests, where nothing runs between the read and the save).
+        private bool SetMaidCraftTracked(long uid, int expectedRecipeId, long expectedStartTime, int recipeId, long startTime, int duration) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            Model.Maid? model = Context.Maid.Find(uid);
+            if (model == null || model.CraftRecipeId != expectedRecipeId || model.CraftStartTime != expectedStartTime) {
+                return false;
+            }
+            model.CraftRecipeId = recipeId;
+            model.CraftStartTime = startTime;
+            model.CraftDuration = duration;
+            return Context.TrySaveChanges();
+        }
+
+        // The stored craft (recipe, start, lead time) of the maid keyed by uid; null when its row is gone.
+        public (int RecipeId, long StartTime, int Duration)? GetMaidCraft(long uid) {
+            var craft = Context.Maid.AsNoTracking()
+                .Where(maid => maid.Id == uid)
+                .Select(maid => new { maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration })
+                .FirstOrDefault();
+            return craft == null ? null : (craft.CraftRecipeId, craft.CraftStartTime, craft.CraftDuration);
         }
 
         // The maid of a placed cube; null when the cube row is gone or the save fails.
