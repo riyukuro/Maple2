@@ -101,7 +101,7 @@ public sealed class ItemStatsCalculator {
         }
 
         var stats = new ItemStats();
-        int job = (int) item.Metadata.Limit.JobLimits.FirstOrDefault(JobCode.None);
+        int job = RecommendedJob(item.Metadata.Limit);
 
         ItemOptionPickTable.Option? pick = TableMetadata.ItemOptionPickTable.Options.GetValueOrDefault(item.Metadata.Option.PickId, item.Rarity);
         if (GetConstantOption(item, job, pick, out ItemStats.Option? constantOption)) {
@@ -121,6 +121,27 @@ public sealed class ItemStatsCalculator {
 
         return stats;
     }
+
+    // The job the item's option values are scaled for, as the client picks it (ItemOptionValueRef::GetRecommendedJob,
+    // commonfiles/itemoptiondata_2.cpp): the lowest recommended job that is not 0 or 1 (the beginner), else 0. The
+    // job limit is not read: a weapon with no job limit can still recommend one job (15400118 recommends 90).
+    public static int RecommendedJob(ItemMetadataLimit limit) {
+        int job = 0;
+        foreach (JobCode code in limit.JobRecommends) {
+            int value = (int) code;
+            if (value is 0 or 1) {
+                continue;
+            }
+            if (job == 0 || value < job) {
+                job = value;
+            }
+        }
+        return job;
+    }
+
+    // Whether the item recommends more than one job (the client's recommendJobs set has more than one entry), which
+    // gives job 100 the intelligence of the mage jobs.
+    public static bool RecommendsManyJobs(ItemMetadataLimit limit) => limit.JobRecommends.Distinct().Count() > 1;
 
     public ItemSocket? GetSockets(Item item, int socketId = 0) {
         return CreateSockets(item.Metadata, item.Type, item.Rarity, TableMetadata.ItemSocketTable, socketId);
@@ -433,7 +454,7 @@ public sealed class ItemStatsCalculator {
 
             foreach ((BasicAttribute attribute, int deviation) in pick.ConstantValue) {
                 int currentValue = option.Basic.TryGetValue(attribute, out BasicOption basicOption) ? basicOption.Value : 0;
-                int value = ConstValue(attribute, currentValue, deviation, item.Type.Type, job, item.Metadata.Option.LevelFactor, item.Rarity, (ushort) item.Metadata.Limit.Level);
+                int value = ConstValue(attribute, currentValue, deviation, item.Type.Type, job, item.Metadata.Option.LevelFactor, item.Rarity, (ushort) item.Metadata.Limit.Level, RecommendsManyJobs(item.Metadata.Limit));
                 if (value > 0) {
                     option.Basic[attribute] = new BasicOption(value);
                 }
@@ -673,11 +694,11 @@ public sealed class ItemStatsCalculator {
         return true;
     }
 
-    private int ConstValue(BasicAttribute attribute, int statValue, int deviation, int type, int job, int levelFactor, int rarity, ushort level) {
+    private int ConstValue(BasicAttribute attribute, int statValue, int deviation, int type, int job, int levelFactor, int rarity, ushort level, bool manyJobs) {
         (float, float) range = attribute switch {
             BasicAttribute.Strength => Lua.ConstantValueStr(statValue, deviation, type, job, levelFactor, rarity, level),
             BasicAttribute.Dexterity => Lua.ConstantValueDex(statValue, deviation, type, job, levelFactor, rarity, level),
-            BasicAttribute.Intelligence => Lua.ConstantValueInt(statValue, deviation, type, job, levelFactor, rarity, level, 1), // TODO: handle a7
+            BasicAttribute.Intelligence => Lua.ConstantValueInt(statValue, deviation, type, job, levelFactor, rarity, level, (ushort) (manyJobs ? 1 : 0)),
             BasicAttribute.Luck => Lua.ConstantValueLuk(statValue, deviation, type, job, levelFactor, rarity, level),
             BasicAttribute.Health => Lua.ConstantValueHp(statValue, deviation, type, job, levelFactor, rarity, level),
             BasicAttribute.CriticalRate => Lua.ConstantValueCap(statValue, deviation, type, job, levelFactor, rarity, level),
