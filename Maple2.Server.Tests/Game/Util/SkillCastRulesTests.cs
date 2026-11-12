@@ -139,6 +139,17 @@ public class SkillCastRulesTests {
         SkillCastRules.LastCast[] casts = [new SkillCastRules.LastCast(10900001, 0, 800, 100_000, 50_000)];
         Assert.That(SkillCastRules.CooldownRefuses(casts, 10900001, 0, 50_599, 100_599), Is.True);
         Assert.That(SkillCastRules.CooldownRefuses(casts, 10900001, 0, 50_600, 100_600), Is.False);
+        // The attack speed cuts a short cooldown: 450 ms at 100 needs 337 ms, at 140 it needs 241 ms.
+        Assert.That(SkillCastRules.RequiredGap(450), Is.EqualTo(337));
+        Assert.That(SkillCastRules.RequiredGap(450, 140), Is.EqualTo(241));
+        Assert.That(SkillCastRules.RequiredGap(450, 50), Is.EqualTo(337), "under 100 counts as 100");
+        Assert.That(SkillCastRules.RequiredGap(8000, 140), Is.EqualTo(7500), "1 s or more is not cut");
+        SkillCastRules.LastCast[] strafe = [new SkillCastRules.LastCast(10500001, 0, 450, 100_000, 50_000)];
+        Assert.That(SkillCastRules.CooldownRefuses(strafe, 10500001, 0, 50_300, 100_300), Is.True);
+        Assert.That(SkillCastRules.CooldownRefuses(strafe, 10500001, 0, 50_300, 100_300, 140), Is.False);
+        // The attack speed fell since the last cast: the higher one counts.
+        SkillCastRules.LastCast[] fast = [new SkillCastRules.LastCast(10500001, 0, 450, 100_000, 50_000, 140)];
+        Assert.That(SkillCastRules.CooldownRefuses(fast, 10500001, 0, 50_300, 100_300), Is.False);
     }
 
     [Test]

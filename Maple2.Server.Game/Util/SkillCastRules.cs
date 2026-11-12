@@ -49,14 +49,15 @@ public static class SkillCastRules {
 
     // The last accepted cast of a skill: the cooldown it started and when, by the server's clock and by the
     // tick the client sent with the cast.
-    public readonly record struct LastCast(int SkillId, int GroupId, long CooldownMs, long ServerTick, int CastTick);
+    public readonly record struct LastCast(int SkillId, int GroupId, long CooldownMs, long ServerTick, int CastTick, long AttackSpeed = 100);
 
-    // The shortest time after a cast at which the next one is taken.
-    public static long RequiredGap(long cooldownMs) {
+    // The shortest time after a cast at which the next one is taken. A cooldown under 1 s is cut by the attack
+    // speed (chosen here: divided by it, as a motion is; an attack speed under 100 counts as 100).
+    public static long RequiredGap(long cooldownMs, long attackSpeed = 100) {
         if (cooldownMs <= 0) {
             return 0;
         }
-        return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare);
+        return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare / MathF.Max(1f, attackSpeed / 100f));
     }
 
     // The time between two casts: the shorter of the client's own ticks and the arrivals plus the allowance, so
@@ -69,12 +70,13 @@ public static class SkillCastRules {
 
     // Whether a cast of the skill comes too early after its own last cast or after the last cast of a skill of
     // the same cooldown group (group 0 is no group).
-    public static bool CooldownRefuses(IEnumerable<LastCast> casts, int skillId, int groupId, int castTick, long serverTick) {
+    // The higher of the attack speed at the last cast and now counts.
+    public static bool CooldownRefuses(IEnumerable<LastCast> casts, int skillId, int groupId, int castTick, long serverTick, long attackSpeed = 100) {
         foreach (LastCast last in casts) {
             if (last.SkillId != skillId && (groupId == 0 || last.GroupId != groupId)) {
                 continue;
             }
-            if (CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < RequiredGap(last.CooldownMs)) {
+            if (CastGap(castTick, last.CastTick, serverTick, last.ServerTick) < RequiredGap(last.CooldownMs, Math.Max(last.AttackSpeed, attackSpeed))) {
                 return true;
             }
         }

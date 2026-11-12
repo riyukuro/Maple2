@@ -225,7 +225,7 @@ public class ConfigManager {
         if (skill.State.RechargeMaxCount > 0 || CooldownReduced(skill)) {
             return false;
         }
-        return SkillCastRules.CooldownRefuses(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick);
+        return SkillCastRules.CooldownRefuses(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick, AttackSpeed);
     }
 
     private bool CooldownReduced(SkillMetadata skill) {
@@ -241,7 +241,7 @@ public class ConfigManager {
 
     public void SaveCastTime(SkillMetadata skill, int castTick, long tick) {
         long cooldownMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
-        lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick);
+        lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick, AttackSpeed);
     }
 
     private long AttackSpeed => session.Player.Stats.Values[BasicAttribute.AttackSpeed].Total;
