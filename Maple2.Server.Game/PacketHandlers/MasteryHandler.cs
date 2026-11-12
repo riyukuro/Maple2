@@ -88,9 +88,9 @@ public class MasteryHandler : FieldPacketHandler {
         }
 
         // The client makes the same checks in the same order before it sends the craft.
-        bool hasAnyQuest = entry.RequiredQuests.Any(questId => session.Quest.TryGetQuest(questId, out _));
-        MasteryError error = MasteryRules.CraftError(session.Mastery[entry.Type], entry.RequiredMastery,
-            entry.RequiredQuests.Count, hasAnyQuest, session.Currency.Meso, entry.RequiredMeso);
+        MasteryError error = MasteryRules.CraftError(session.Player.Value.Character.Level, entry.RequiredLevel,
+            session.Mastery[entry.Type], entry.RequiredMastery, entry.RequiredQuests.Count, session.Mastery.HasRequiredQuest(entry),
+            session.Currency.Meso, entry.RequiredMeso);
         if (error != 0) {
             session.Send(MasteryPacket.Error(error));
             return;

@@ -1177,6 +1177,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 RequiredMastery: recipe.requireMastery,
                 RequiredMeso: recipe.requireMeso,
                 RequiredQuests: recipe.requireQuest,
+                // The client loads requireLevel and puts 50 in its place for pet taming (CMasteryReceipe::Load).
+                RequiredLevel: (short) ((MasteryType) recipe.masteryType == MasteryType.PetTaming ? 50 : recipe.requireLevel),
                 RewardExp: recipe.rewardExp,
                 RewardMastery: recipe.rewardMastery,
                 HighRateLimitCount: recipe.highPropLimitCount,

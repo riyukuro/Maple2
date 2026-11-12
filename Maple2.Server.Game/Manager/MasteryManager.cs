@@ -178,8 +178,10 @@ public class MasteryManager {
             return false;
         }
 
-        if (recipeMetadata.RequiredMastery > this[recipeMetadata.Type]) {
-            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_mastery));
+        MasteryError error = MasteryRules.GatherError(this[recipeMetadata.Type], recipeMetadata.RequiredMastery,
+            recipeMetadata.RequiredQuests.Count, HasRequiredQuest(recipeMetadata));
+        if (error != 0) {
+            session.Send(MasteryPacket.Error(error));
             return false;
         }
         float successRate = GatherSuccessRate(recipeMetadata);
@@ -195,6 +197,11 @@ public class MasteryManager {
         }
         Gather(recipeMetadata, position, rotation);
         return true;
+    }
+
+    // One of the recipe's required quests is in progress.
+    public bool HasRequiredQuest(MasteryRecipeTable.Entry recipe) {
+        return recipe.RequiredQuests.Any(questId => session.Quest.TryGetQuest(questId, out Quest? quest) && MasteryRules.CountsAsRequiredQuest(quest.State));
     }
 
     // The mastery one gather gives at the current mastery (the client's CMasteryTable::Factor).

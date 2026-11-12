@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
@@ -55,11 +56,11 @@ public class InteractAnswerOrderTests {
     }
 
     // The recipe of the gathers here: always a success at the first try, 10 mastery, one item and experience.
-    private GameSession StartWithRecipe(MasteryType type) {
+    private GameSession StartWithRecipe(MasteryType type, int questId = 0) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(RewardItemId));
         test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
-            [RecipeId] = new(RecipeId, type, NoRewardExp: false, RequiredMastery: 0, RequiredMeso: 0, RequiredQuests: [], RewardExp: 0,
+            [RecipeId] = new(RecipeId, type, NoRewardExp: false, RequiredMastery: 0, RequiredMeso: 0, RequiredQuests: questId == 0 ? [] : [questId], RequiredLevel: 0, RewardExp: 0,
                 RewardMastery: 10, HighRateLimitCount: 5, NormalRateLimitCount: 10, RequiredItems: [], HabitatMapId: [],
                 RewardItems: [new ItemComponent(RewardItemId, 1, 1, ItemTag.None)]),
         }));
@@ -112,6 +113,28 @@ public class InteractAnswerOrderTests {
             }));
         }
         Assert.That(session.Player.Value.Unlock.InteractedObjects, Does.Contain(12));
+    }
+
+    // A gather whose recipe asks a quest goes on only while the quest is in progress (the client's
+    // CInteractGatheringObject checks IsQuestActive): a completed quest gives error 3 and no drop.
+    [TestCase(QuestState.Completed, false)]
+    [TestCase(QuestState.Started, true)]
+    public void FieldGather_NeedsTheRecipesQuestInProgress(QuestState state, bool gathers) {
+        const int questId = 90000600;
+        GameSession session = StartWithRecipe(MasteryType.Mining, questId);
+        test.SetQuest(questId, state);
+        test.AddInteract(Row(13, InteractType.Gathering, RecipeId, reset: 1000), new InteractGatheringObject("ab", new Ms2InteractActor(13, Vector3.Zero, Vector3.Zero)));
+        Send(session, 11, "ab");
+        test.TakeSent();
+
+        Send(session, 12, "ab");
+
+        Assert.That(test.Errors, Is.Empty);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Any(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem), Is.EqualTo(gathers));
+        bool refused = sent.Any(packet => TestGameSession.Op(packet) == SendOp.Mastery && packet[2] == 3
+            && BitConverter.ToInt16(packet, 3) == (short) MasteryError.s_mastery_error_lack_quest);
+        Assert.That(refused, Is.EqualTo(!gathers));
     }
 
     // A gathered field object: the mastery, the drop, the interaction (5) and the result (13), then the experience.

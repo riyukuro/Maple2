@@ -17,14 +17,34 @@ public static class MasteryRules {
         return id < 0 ? (-1, -1) : (id / 1000, id % 1000);
     }
 
-    // The client checks a recipe in this order before it sends the craft: mastery, quest, meso (items come after).
-    // A recipe with required quests needs one of them, not all. 0 means the recipe may be crafted.
-    public static MasteryError CraftError(int mastery, int requiredMastery, int requiredQuestCount, bool hasAnyRequiredQuest, long meso, long requiredMeso) {
+    // A required quest of a recipe counts while it is in progress: CMasteryManager asks IsQuestActive (state 1)
+    // of each, so a quest that is completed or not taken does not count (masterymanager.cpp).
+    public static bool CountsAsRequiredQuest(QuestState state) {
+        return state == QuestState.Started;
+    }
+
+    // The client checks a recipe in this order before it gathers: mastery, then quest (CInteractGatheringObject).
+    // A recipe with required quests needs one of them in progress, not all. 0 means the object may be gathered.
+    public static MasteryError GatherError(int mastery, int requiredMastery, int requiredQuestCount, bool hasAnyRequiredQuest) {
         if (requiredMastery != 0 && mastery < requiredMastery) {
             return MasteryError.s_mastery_error_lack_mastery;
         }
         if (requiredQuestCount > 0 && !hasAnyRequiredQuest) {
             return MasteryError.s_mastery_error_lack_quest;
+        }
+        return 0;
+    }
+
+    // The client checks a recipe in this order before it sends the craft: mastery, quest, meso (items come after).
+    // Its craft dialog also greys out a recipe above the player's level (UIMasteryDialog::HasRequiredLevel, 0 is
+    // no limit); that check comes first here, as in the dialog's state text. 0 means the recipe may be crafted.
+    public static MasteryError CraftError(int level, int requiredLevel, int mastery, int requiredMastery, int requiredQuestCount, bool hasAnyRequiredQuest, long meso, long requiredMeso) {
+        if (requiredLevel != 0 && level < requiredLevel) {
+            return MasteryError.s_mastery_error_invalid_level;
+        }
+        MasteryError error = GatherError(mastery, requiredMastery, requiredQuestCount, hasAnyRequiredQuest);
+        if (error != 0) {
+            return error;
         }
         if (requiredMeso != 0 && meso < requiredMeso) {
             return MasteryError.s_mastery_error_lack_meso;

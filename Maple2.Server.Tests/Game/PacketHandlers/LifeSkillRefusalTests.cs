@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -111,6 +112,73 @@ public class LifeSkillRefusalTests {
         Send(session, 1, id);
 
         AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
+    }
+
+    private const int RecipeId = 30000019;
+    private const int QuestId = 90000600;
+
+    // A tutorial recipe as the KR table has it: nothing to pay, one item, the quest or a level asked.
+    private GameSession StartRecipe(int questId, short requiredLevel) {
+        GameSession session = StartMastery();
+        test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
+            [RecipeId] = new(RecipeId, MasteryType.Mining, NoRewardExp: true, RequiredMastery: 0, RequiredMeso: 0,
+                RequiredQuests: questId == 0 ? [] : [questId], RequiredLevel: requiredLevel, RewardExp: 0, RewardMastery: 0,
+                HighRateLimitCount: 5, NormalRateLimitCount: 10, RequiredItems: [], HabitatMapId: [],
+                RewardItems: [new ItemComponent(RewardItemId, 1, 1, ItemTag.None)]),
+        }));
+        // A craft adds manufacturing experience.
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.manufacturing] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, _ => 100L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        return session;
+    }
+
+    private static int Count(GameSession session, int itemId) {
+        return session.Item.Inventory.Find(itemId).Sum(item => item.Amount);
+    }
+
+    // The client crafts only while a required quest is in progress (IsQuestActive): a completed one or none
+    // is refused with error 3 and gives nothing.
+    [TestCase(QuestState.Completed)]
+    [TestCase(QuestState.None)]
+    public void Craft_NeedsTheQuestInProgress(QuestState state) {
+        GameSession session = StartRecipe(QuestId, 0);
+        if (state != QuestState.None) {
+            test.SetQuest(QuestId, state);
+        }
+
+        Send(session, 2, RecipeId);
+
+        AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_lack_quest);
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Craft_WithTheQuestInProgressGivesTheItem() {
+        GameSession session = StartRecipe(QuestId, 0);
+        test.SetQuest(QuestId, QuestState.Started);
+
+        Send(session, 2, RecipeId);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(1));
+    }
+
+    // The craft dialog greys out a recipe above the player's level; the server answers error 7.
+    [TestCase((short) 49, 0)]
+    [TestCase((short) 50, 1)]
+    public void Craft_NeedsTheRecipesLevel(short level, int expected) {
+        GameSession session = StartRecipe(0, 50);
+        session.Player.Value.Character.Level = level;
+
+        Send(session, 2, RecipeId);
+
+        if (expected == 0) {
+            AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_invalid_level);
+        }
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(expected));
     }
 
     [Test]

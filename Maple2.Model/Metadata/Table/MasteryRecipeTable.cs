@@ -11,6 +11,7 @@ public record MasteryRecipeTable(IReadOnlyDictionary<int, MasteryRecipeTable.Ent
         int RequiredMastery,
         long RequiredMeso,
         IReadOnlyList<int> RequiredQuests,
+        short RequiredLevel,
         long RewardExp,
         int RewardMastery,
         int HighRateLimitCount,

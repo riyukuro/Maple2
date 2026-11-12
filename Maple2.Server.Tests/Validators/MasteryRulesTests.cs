@@ -52,7 +52,36 @@ public class MasteryRulesTests {
     [TestCase(10, 20, 2, false, 0L, 100L, MasteryError.s_mastery_error_lack_mastery)] // mastery is checked first
     [TestCase(20, 20, 2, false, 0L, 100L, MasteryError.s_mastery_error_lack_quest)]
     public void CraftChecks(int mastery, int requiredMastery, int questCount, bool anyQuest, long meso, long requiredMeso, MasteryError expected) {
-        Assert.That(MasteryRules.CraftError(mastery, requiredMastery, questCount, anyQuest, meso, requiredMeso), Is.EqualTo(expected));
+        Assert.That(MasteryRules.CraftError(1, 0, mastery, requiredMastery, questCount, anyQuest, meso, requiredMeso), Is.EqualTo(expected));
+    }
+
+    // The recipe's level (0: none) comes before the other checks; a player at the level may craft.
+    [TestCase(49, 50, MasteryError.s_mastery_error_invalid_level)]
+    [TestCase(50, 50, (MasteryError) 0)]
+    [TestCase(1, 0, (MasteryError) 0)]
+    public void CraftLevel(int level, int requiredLevel, MasteryError expected) {
+        Assert.That(MasteryRules.CraftError(level, requiredLevel, 0, 0, 0, false, 0L, 0L), Is.EqualTo(expected));
+        if (expected != 0) {
+            Assert.That(MasteryRules.CraftError(level, requiredLevel, 0, 20, 1, false, 0L, 100L), Is.EqualTo(expected));
+        }
+    }
+
+    // A gather checks the mastery, then the quests; it has no meso or level check.
+    [TestCase(10, 20, 0, false, MasteryError.s_mastery_error_lack_mastery)]
+    [TestCase(10, 20, 1, false, MasteryError.s_mastery_error_lack_mastery)]
+    [TestCase(20, 20, 1, false, MasteryError.s_mastery_error_lack_quest)]
+    [TestCase(20, 20, 1, true, (MasteryError) 0)]
+    [TestCase(0, 0, 0, false, (MasteryError) 0)]
+    public void GatherChecks(int mastery, int requiredMastery, int questCount, bool anyQuest, MasteryError expected) {
+        Assert.That(MasteryRules.GatherError(mastery, requiredMastery, questCount, anyQuest), Is.EqualTo(expected));
+    }
+
+    // CQuest::IsActive: state 1 only.
+    [TestCase(QuestState.None, false)]
+    [TestCase(QuestState.Started, true)]
+    [TestCase(QuestState.Completed, false)]
+    public void RequiredQuestState(QuestState state, bool expected) {
+        Assert.That(MasteryRules.CountsAsRequiredQuest(state), Is.EqualTo(expected));
     }
 
     // Grade rows of a production type (grade, value) and the difference factors, as the tables give them.
