@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -36,6 +37,10 @@ public class ItemUseHandler : FieldPacketHandler {
         Item? item = session.Item.Inventory.Get(itemUid);
         if (item == null) {
             Logger.Warning("RequestItemUse for invalid item:{ItemUid}", itemUid);
+            return;
+        }
+
+        if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
             return;
         }
 
@@ -165,6 +170,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 break;
             case ItemFunction.CallBlackMarket:
                 HandleCallBlackMarket(session);
+                break;
+            case ItemFunction.CallMedic:
+                HandleCallMedic(session, item);
                 break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
@@ -855,6 +863,26 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Send(BlackMarketPacket.Open());
+    }
+
+    // The medic call (CCashCallManager @0x140b03590, cash call kind 5) cures the death penalty. The client starts it
+    // only for a live player with a penalty count above 0 (PC m_n10ec, set by RevivalConfirm) on a field whose cashCall
+    // medic flag is on; it sends this item use at the cast's end. The answer is RevivalConfirm with count 0:
+    // CSceneStateGame::OnRevivalConfirm (scenestategame.cpp:7356) plays the cure effect when a count above 0 goes to 0.
+    // The items are stacks of 999 and one is used per cure.
+    private static void HandleCallMedic(GameSession session, Item item) {
+        if (session.Field is null) {
+            return;
+        }
+        bool penalty = session.Config.DeathCount > 0 && session.Config.DeathPenaltyEndTick >= session.Field.FieldTick;
+        if (!CashCallRules.CanCallMedic(session.Player.IsDead, penalty, session.Field.Metadata.CashCall?.Medic == true)) {
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            return;
+        }
+
+        session.Config.UpdateDeathPenalty(0);
     }
 
     private void HandleRecallGuild(GameSession session, Item item) {

@@ -187,12 +187,12 @@ public sealed class ItemStatsCalculator {
         return SocketTransferAtCreation(item.Metadata, item.Rarity, TableMetadata.ItemSocketTable, socketId);
     }
 
-    // The socket transfer flag a new item starts with (CItemTransfer::InitFromItem: m_b42 = m_b41, the socket row's
-    // rule CItemSocketTable::FUN_14062d980), worked out from the row its sockets come from: the item's own, or the drop
-    // row's socketDataID when CreateSockets takes it. A skin dropped with 1002 or 1006 (max = open) has its sockets
-    // open and may not give or take them; KMS2 sends every such skin (2/2, 4/4) with the flag at 0 and every skin made
-    // from its own 9001-9008 row (2/0, 4/0) with 1. The row is looked up as CItemSocketDataContainer::Find does: the
-    // item's rarity, else rarity 0.
+    // The socket transfer flag a new item starts with. CItemTransfer::InitFromItem sets m_b42 = m_b41, the rule
+    // CItemSocketTable::FUN_14062d980 of the item's own socketDataId row (2/0, 4/0 for the 9001-9008 rows: 1). The
+    // drop row's socketDataID is not read by the client there; chosen here: when CreateSockets takes a drop row's
+    // socketDataID, the same rule is asked of that row, so a skin dropped with 1002 or 1006 (max = open, sockets
+    // already open) starts with 0. The row is looked up as CItemSocketDataContainer::Find does: the item's rarity,
+    // else rarity 0.
     public static bool SocketTransferAtCreation(ItemMetadata metadata, int rarity, ItemSocketTable table, int socketId = 0) {
         if (socketId == 0 || !ItemSocketRules.KeepsDropSocketId(metadata.Property.SkinType, metadata.Property.SocketId)) {
             socketId = metadata.Property.SocketId;

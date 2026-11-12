@@ -8,6 +8,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.World.Service;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -18,13 +19,14 @@ public class CashCallItemHandlerTests {
     private ItemUseHandler handler = null!;
     private Item pass = null!;
 
-    private GameSession Start(ItemFunction function, int itemId, bool marketAllowed = true) {
+    private GameSession Start(ItemFunction function, int itemId, bool marketAllowed = true, bool medicAllowed = true,
+                              int slotMax = 1, int amount = 1) {
         test = new TestGameSession();
         pass = test.Store(TestGameSession.Metadata(itemId,
-            function: new ItemMetadataFunction(function, function.ToString(), string.Empty, false), type: 10, slotMax: 1));
+            function: new ItemMetadataFunction(function, function.ToString(), string.Empty, false), type: 10, slotMax: slotMax), amount: amount);
         handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
         GameSession session = test.Start();
-        test.EnterMap(TestGameSession.Map(2000023) with { CashCall = new MapMetadataCashCall(true, true, true, marketAllowed, true) });
+        test.EnterMap(TestGameSession.Map(2000023) with { CashCall = new MapMetadataCashCall(true, true, medicAllowed, marketAllowed, true) });
         test.TakeSent();
         return session;
     }
@@ -88,11 +90,101 @@ public class CashCallItemHandlerTests {
         Assert.That(session.Item.Inventory.Get(pass.Uid)!.Amount, Is.EqualTo(1));
     }
 
+    // UseItem's CanUseItem: an expired pass is refused by the client (notice 0xe1) and opens nothing here either.
+    [TestCase(ItemFunction.OpenBank, 20300087)]
+    [TestCase(ItemFunction.CallBlackMarket, 20300009)]
+    public void Expired_GetsNothing(ItemFunction function, int itemId) {
+        GameSession session = Start(function, itemId);
+        session.Item.Inventory.Get(pass.Uid)!.ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 1;
+
+        Use(session);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Item.Inventory.Get(pass.Uid)!.Amount, Is.EqualTo(1));
+    }
+
+    // A pass with a term that has not run out still opens.
+    [Test]
+    public void NotYetExpired_Opens() {
+        GameSession session = Start(ItemFunction.OpenBank, 20300087);
+        session.Item.Inventory.Get(pass.Uid)!.ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+
+        Use(session);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(StorageInventoryPacket.OpenDialog().ToArray()) }));
+    }
+
+    // CItem::FUN_140528980: expired items are not used, except pets (data type 11) and furnishings with a maid id.
+    [TestCase(false, 10, 0, true)]
+    [TestCase(true, 10, 0, false)]
+    [TestCase(true, 11, 0, true)]
+    [TestCase(true, 10, 5, true)]
+    public void ExpiryAllowsUse(bool expired, int propertyType, int maidId, bool expected) {
+        Assert.That(ItemLockRules.ExpiryAllowsUse(expired, propertyType, maidId), Is.EqualTo(expected));
+    }
+
     [TestCase(false, true, true)]
     [TestCase(true, true, false)]
     [TestCase(false, false, false)]
     public void Rules(bool dead, bool marketAllowed, bool market) {
         Assert.That(CashCallRules.CanCallBlackMarket(dead, marketAllowed), Is.EqualTo(market));
         Assert.That(CashCallRules.CanOpenBank(dead), Is.EqualTo(!dead));
+    }
+
+    private GameSession StartMedic(bool medicAllowed = true, int deaths = 2, int msRemaining = 600000) {
+        GameSession session = Start(ItemFunction.CallMedic, 20300011, medicAllowed: medicAllowed, slotMax: 999, amount: 3);
+        // The test session's config manager is not loaded; it needs only its session here.
+        typeof(Maple2.Server.Game.Manager.ConfigManager).GetField("session",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(session.Config, session);
+        session.Config.SetDeathPenalty(new DeathInfo { Count = deaths, MsRemaining = msRemaining }, session.Field!.FieldTick);
+        return session;
+    }
+
+    // The medic cures the death penalty: RevivalConfirm with end 0 and count 0 (the client plays its cure effect)
+    // and one item of the stack is used.
+    [Test]
+    public void CallMedic_CuresThePenalty() {
+        GameSession session = StartMedic();
+
+        Use(session);
+
+        Assert.That(session.Config.DeathCount, Is.EqualTo(0));
+        Assert.That(session.Config.DeathPenaltyEndTick, Is.EqualTo(0));
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.RevivalConfirm).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(RevivalPacket.UpdatePenalty(session.Player.ObjectId, 0, 0).ToArray()) }));
+        Assert.That(session.Item.Inventory.Get(pass.Uid)!.Amount, Is.EqualTo(2));
+    }
+
+    // No penalty (none, or run out), a field with the medic flag off, or a dead player: nothing is cured or used.
+    [TestCase("none")]
+    [TestCase("expired")]
+    [TestCase("field")]
+    [TestCase("dead")]
+    public void CallMedic_Refused(string why) {
+        GameSession session = why switch {
+            "none" => StartMedic(deaths: 0, msRemaining: 0),
+            "expired" => StartMedic(msRemaining: -1000),
+            "field" => StartMedic(medicAllowed: false),
+            _ => StartMedic(),
+        };
+        if (why == "dead") {
+            Kill(session);
+        }
+        short deaths = session.Config.DeathCount;
+
+        Use(session);
+
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.RevivalConfirm), Is.Empty);
+        Assert.That(session.Config.DeathCount, Is.EqualTo(deaths));
+        Assert.That(session.Item.Inventory.Get(pass.Uid)!.Amount, Is.EqualTo(3));
+    }
+
+    [TestCase(false, true, true, true)]
+    [TestCase(true, true, true, false)]
+    [TestCase(false, false, true, false)]
+    [TestCase(false, true, false, false)]
+    public void MedicRules(bool dead, bool penalty, bool medicAllowed, bool expected) {
+        Assert.That(CashCallRules.CanCallMedic(dead, penalty, medicAllowed), Is.EqualTo(expected));
     }
 }

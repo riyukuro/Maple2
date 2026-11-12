@@ -33,8 +33,8 @@ public class ItemCreationTransferTests {
         };
     }
 
-    // InitFromItem: m_b42 = m_b41 (CItemSocketTable::FUN_14062d980) of the row the sockets came from. KMS2 sends outfits
-    // with their own 9001-9008 rows as 1 and those dropped with rows 1002 or 1006 (2/2, 4/4 open) as 0.
+    // InitFromItem: m_b42 = m_b41 (CItemSocketTable::FUN_14062d980) of the item's own row: 9001-9008 give 1. For the
+    // socketDataID of a drop row (1002 or 1006, 2/2 and 4/4 open) the same rule is chosen here, which gives 0.
     [TestCase(9001, 0, 1, true)]
     [TestCase(9001, 1002, 1, false)]
     [TestCase(9001, 1006, 1, false)]
@@ -58,7 +58,7 @@ public class ItemCreationTransferTests {
         Assert.That((sockets!.MaxSlots, sockets.UnlockSlots), Is.EqualTo(((byte) 4, (byte) 0)));
     }
 
-    // A drop row with socketDataID 1002 and disableBreak: KMS2 sends the item with m_b42 0 and m_b3F 1.
+    // A drop row with socketDataID 1002 and disableBreak: m_b42 0 (the drop row rule chosen above) and m_b3F 1.
     [TestCase(1002, true, false, true)]
     [TestCase(0, false, true, false)]
     public void DropRow_SetsTheTransferFlags(int socketDataId, bool disableBreak, bool socketTransfer, bool noBreak) {

@@ -29,6 +29,13 @@ public static class ItemLockRules {
         return (summonedPetUid == 0 || itemUid != summonedPetUid) && (playedScoreUid == 0 || itemUid != playedScoreUid);
     }
 
+    // UseItem (@0x140d1bd60) asks CanUseItem, which refuses an item that CItem::FUN_140528980 says is not usable: an
+    // expired item, unless it is a pet (item data type 11, CItemData::IsPetItem) or a furnishing with a maid id
+    // (CItemData::HasMaidId). The client shows notice 0xe1 for it and sends nothing.
+    public static bool ExpiryAllowsUse(bool expired, int propertyType, int maidId) {
+        return !expired || propertyType == 11 || maidId > 0;
+    }
+
     public static bool CanStage(bool unlock, bool owned, bool locked, bool alreadyStaged) {
         if (!owned || alreadyStaged) {
             return false;

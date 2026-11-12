@@ -325,7 +325,7 @@ public class ItemDropManager {
                 }
             }
 
-            // KMS2 sends m_b3F (no dismantle) on the items of drop rows with disableBreak.
+            // A drop row with disableBreak sets CItemTransfer m_b3F (no dismantle, CItemBreakManager::CanBreakItem).
             if (selectedItem.DisableBreak && createdItem.Transfer != null) {
                 createdItem.Transfer.DisableBreak = true;
             }
