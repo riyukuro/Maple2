@@ -33,8 +33,9 @@ public class HealDamageRecord : IByteSerializable {
         // is known.
         long casterPart = CasterPart(recovery.RecoveryRate, caster.Stats.Values[BasicAttribute.MagicalAtk].Current,
             caster.Stats.Values[SpecialAttribute.RecoveryBonus].Total, multiplier > 1f);
-        HpAmount = Buff.AmountByStacks(HealingRaised((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total
-                                           + casterPart), healingRate), stacks);
+        long health = HealingRaised((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total + casterPart), healingRate);
+        long receivedBonus = caster == target ? 0 : target.Stats.Values[SpecialAttribute.BonusRecoveryFromAlly].Total;
+        HpAmount = Buff.AmountByStacks(ReceivedRaised(health, receivedBonus), stacks);
         SpAmount = Buff.AmountByStacks((long) (recovery.SpValue + recovery.SpRate * target.Stats.Values[BasicAttribute.Spirit].Total * multiplier), stacks);
         EpAmount = Buff.AmountByStacks((long) (recovery.EpValue + recovery.EpRate * target.Stats.Values[BasicAttribute.Stamina].Total * multiplier), stacks);
     }
@@ -57,6 +58,19 @@ public class HealDamageRecord : IByteSerializable {
     public static long HealingRaised(long amount, float healingRate) {
         // In decimal, so a rate of 0.04 (0.0399999 as a float) raises 1,000 to 1,040.
         return healingRate == 0f ? amount : (long) (amount * (1m + (decimal) healingRate));
+    }
+
+    // The target's s_item_opt_sa_improve_recovery_regen_receiveheal (Bonus Recovery from Allies, item option
+    // receivedhealincrease, 0.5 to 3.9 % on 491 random option lines, in thousandths) raises the health a heal from
+    // another actor gives it, rounded down. The client never reads the attribute (no ability lookup of its type 17,
+    // CEquipment::GetAbilityRate), so the server applies it. Chosen here: the whole health amount
+    // after the caster's invokes, before the stack count; a heal of the target on itself and spirit and stamina
+    // heals are unchanged, and a bonus of -100 % or less leaves nothing.
+    public static long ReceivedRaised(long amount, long bonus) {
+        if (bonus == 0 || amount <= 0) {
+            return amount;
+        }
+        return Math.Max(0, amount + amount * bonus / 1000);
     }
 
     public void WriteTo(IByteWriter writer) {
