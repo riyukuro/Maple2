@@ -178,6 +178,27 @@ public class TriggerFieldDropTests {
         Assert.That(Packets(sent, SendOp.FieldAddItem), Has.Count.EqualTo(2));
     }
 
+    // The drops go to the players in Field.Players when the state runs (the bonus maps reach it by user_detected, which
+    // reads Field.Players). With nobody in the field nothing is sent, but the drops stay in the field: a player who
+    // enters later gets each of them (FieldManager.OnAddPlayer sends every field item).
+    [Test]
+    public void SpawnItemRange_KeepsTheDropsForAPlayerWhoEntersLater() {
+        int[] ids = Enumerable.Range(1, 19).ToArray();
+        FieldManager field = FieldOf(39990001, 39990019, ids.Select(Spawn), out BlockingCollection<(byte[] packet, int length)> sent);
+        FieldPlayer player = field.Players[1];
+        field.Players.Clear();
+
+        ContextOf(field).SpawnItemRange(ids.ToArray(), 10);
+
+        Assert.That(Packets(sent, SendOp.FieldAddItem), Is.Empty);
+        var items = (ConcurrentDictionary<int, FieldItem>) typeof(FieldManager).GetField("fieldItems", Flags)!.GetValue(field)!;
+        Assert.That(items.Values.Select(item => ((Item) item).Id), Is.EqualTo(Enumerable.Repeat(39990019, 10)));
+
+        field.Players[1] = player;
+        ContextOf(field).SpawnItemRange(ids.ToArray(), 10);
+        Assert.That(Packets(sent, SendOp.FieldAddItem), Has.Count.EqualTo(10));
+    }
+
     // Kill and orb points go to the open board, each total sent as its points; a script's set_score is the base.
     [Test]
     public void ScoreBoard_AddsKillAndOrbPointsToTheOpenBoard() {

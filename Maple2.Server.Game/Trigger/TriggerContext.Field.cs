@@ -437,6 +437,8 @@ public partial class TriggerContext {
         DebugLog("[SpawnItemRange] rangeIds:{Ids}, randomPickCount:{Count}", string.Join(", ", rangeIds), randomPickCount);
         Random.Shared.Shuffle(rangeIds);
         int[] pickedIds = rangeIds.Take(randomPickCount).ToArray();
+        int sent = 0;
+        Vector3? firstPosition = null;
 
         foreach (int spawnIds in pickedIds) {
             if (!Field.Entities.EventItemSpawns.TryGetValue(spawnIds, out EventSpawnPointItem? spawn)) {
@@ -455,8 +457,14 @@ public partial class TriggerContext {
             foreach (Item item in items) {
                 Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: 0, fixedPosition: true,
                     dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
+                sent++;
+                firstPosition ??= spawn.Position;
             }
         }
+
+        // Logged in every build (not only TRIGGER_DEBUG), so a Release run shows what the drops were.
+        logger.Information("[SpawnItemRange] map {MapId}, trigger {Trigger}: picked {Picked}, sent {Sent} items, first at {Position}, players {Players}",
+            Field.MapId, owner.Value.Name, string.Join(",", pickedIds), sent, firstPosition, Field.Players.Count);
     }
 
     public void StartCombineSpawn(int[] groupIds, bool isStart) {
