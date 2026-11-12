@@ -13,9 +13,10 @@ namespace Maple2.Server.Game.Util;
 // - Start (FUN_1414609e0): the caster's position plus fireOffset, turned to the cast direction when the path rotates,
 //   and by -rotateZDegree either way. The client starts at the caster's fire node (its model's node position); the
 //   server has no node positions and starts at the feet.
-// - Targets: each path of the attack takes its own target of the target packet, in order.
-// - Once spawned the shot flies on when the caster dies (it needs the caster only at the start); a homing shot whose
-//   target dies or leaves flies on to the target's last point.
+// - Targets: each path of the attack takes its own target of the target packet, in order, and its record names the
+//   path the client draws (PathRecord). Every path is fired, also one without a target.
+// - Once spawned the shot flies on when the caster dies or is removed (it needs the caster only at the start); a
+//   homing shot whose target dies flies on to the target's last point. A shot ends with its field.
 // - Movement (FUN_14145ec50): a straight line at the path's velocity to its end: the target actor's position when the
 //   target packet names one (its middle, followed each step), else start + direction × distance + controlEndOffset.
 // - Box (FUN_141465b30 with the arrow row): from the last position to the new one, collision.X wide, from
@@ -58,6 +59,18 @@ public static class NpcProjectileRules {
         float endZ = startZ + direction.Z * path.Distance + path.ControlEndOffsetValue.Z;
         return MathF.Min(startZ, endZ) - arrow.CollisionAdd.Z <= PlayerHeight
                && MathF.Max(startZ, endZ) + arrow.Collision.Z >= 0;
+    }
+
+    // A path's record of the target packet. Its fifth field (Unknown) is the path the client draws: it reads it
+    // as m_n84 (CSceneStateGame::FUN_14171c1d0, scenestategame.cpp:5546) and CMagicModel::Init takes path
+    // m_n84 % count of the attack's magic path list (FUN_14145c300, magicdata.cpp:287); the client's own picker
+    // writes each record's running index there (PickAttackTargets, stateskill.cpp:2609). Uid 2 + index, as before.
+    public static Maple2.Server.Game.Model.Skill.TargetRecord PathRecord(int pathIndex, int targetId) {
+        return new Maple2.Server.Game.Model.Skill.TargetRecord {
+            Uid = 2 + pathIndex,
+            TargetId = targetId,
+            Unknown = (byte) pathIndex,
+        };
     }
 
     // The target of the target packet each path of an attack takes: the path's own index when there is one, else

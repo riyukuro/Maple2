@@ -50,11 +50,7 @@ public class SkillState {
                     }
 
                     var targets = new List<TargetRecord>();
-                    var targetRecord = new TargetRecord {
-                        Uid = 0 + 2 + pathIndex,
-                        TargetId = targetId,
-                        Unknown = 0,
-                    };
+                    TargetRecord targetRecord = NpcProjectileRules.PathRecord(pathIndex, targetId);
                     targets.Add(targetRecord);
 
                     // TODO: chaining
@@ -198,15 +194,10 @@ public class SkillState {
         var hitActors = new Dictionary<int, IActor>();
 
         void Tick() {
-            // The shot flies on when the caster dies; it ends with the caster gone from the field (chosen here: its
-            // hit is the caster's attack).
-            if (actor.Field != field) {
-                return;
-            }
-
+            // The shot flies on when the caster dies or leaves (chosen here); it ends with the field.
             Vector3? aim = null;
             if (homing != null) {
-                if (homing.IsDead || homing.Field != field) {
+                if (homing.IsDead) {
                     homing = null;
                 } else {
                     aim = NpcProjectileRules.AimPoint(homing.Position, HitHeight(homing));

@@ -174,6 +174,20 @@ public class NpcProjectileRulesTests {
     }
 
     [Test]
+    public void EachPathRecordNamesThePathTheClientDraws() {
+        // The client draws path Unknown % count: a fan of three draws paths 0, 1 and 2, as the server sweeps them.
+        for (int index = 0; index < 3; index++) {
+            Maple2.Server.Game.Model.Skill.TargetRecord record = NpcProjectileRules.PathRecord(index, 7);
+            Assert.That((record.Uid, record.TargetId, (int) record.Unknown % 3), Is.EqualTo((2L + index, 7, index)));
+
+            var writer = new Maple2.PacketLib.Tools.ByteWriter();
+            record.WriteTo(writer);
+            byte[] bytes = writer.Buffer[..writer.Length];
+            Assert.That(bytes[20], Is.EqualTo((byte) index)); // after prev uid, uid and target id
+        }
+    }
+
+    [Test]
     public void AnAttackIsSweptOnlyWhenEveryPathFliesAndSweeps() {
         Assert.That(NpcProjectileRules.Swept(Wave(), [Path(), Path()]), Is.True);
         // A path that does not fly keeps the attack's range hit.
