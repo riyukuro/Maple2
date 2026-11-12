@@ -313,21 +313,23 @@ public class StatsManager {
         }
     }
 
+    // A buff's status values and rates count once per stack, as the client sums them (Buff.StackFactor).
     private void AddBuffs(FieldPlayer player) {
         foreach (Buff buff in player.Buffs.EnumerateBuffs()) {
+            int stacks = buff.Stacks;
             foreach ((BasicAttribute valueBasicAttribute, long value) in buff.Metadata.Status.Values) {
-                Values[valueBasicAttribute].AddTotal(value);
+                Values[valueBasicAttribute].AddTotal(Buff.ByStacks(value, stacks));
             }
             foreach ((BasicAttribute rateBasicAttribute, float rate) in buff.Metadata.Status.Rates) {
                 // ensure regen intervals do not drop below 0.1
-                Values[rateBasicAttribute].AddRate(rate);
+                Values[rateBasicAttribute].AddRate(Buff.ByStacks(rate, stacks));
             }
             foreach ((SpecialAttribute valueSpecialAttribute, float value) in buff.Metadata.Status.SpecialValues) {
-                Values[valueSpecialAttribute].AddTotal((long) value);
+                Values[valueSpecialAttribute].AddTotal((long) Buff.ByStacks(value, stacks));
             }
             foreach ((SpecialAttribute rateSpecialAttribute, float rate) in buff.Metadata.Status.SpecialRates) {
                 // Kept in thousandths in the total, as an item's special rate is: Multiplier() reads only that.
-                Values[rateSpecialAttribute].AddTotal(new SpecialOption(rate));
+                Values[rateSpecialAttribute].AddTotal(new SpecialOption(Buff.ByStacks(rate, stacks)));
             }
         }
     }

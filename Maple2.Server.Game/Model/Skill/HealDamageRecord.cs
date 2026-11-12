@@ -13,7 +13,7 @@ public class HealDamageRecord : IByteSerializable {
     public readonly int SpAmount;
     public readonly int EpAmount;
 
-    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery) {
+    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1) {
         Caster = caster;
         Target = target;
         OwnerId = ownerId;
@@ -23,10 +23,12 @@ public class HealDamageRecord : IByteSerializable {
             multiplier = 1.5f;
         }
 
-        HpAmount = (int) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total
-                                           + recovery.RecoveryRate * caster.Stats.Values[BasicAttribute.MagicalAtk].Current * multiplier);
-        SpAmount = (int) (recovery.SpValue + recovery.SpRate * target.Stats.Values[BasicAttribute.Spirit].Total * multiplier);
-        EpAmount = (int) (recovery.EpValue + recovery.EpRate * target.Stats.Values[BasicAttribute.Stamina].Total * multiplier);
+        // Times the buff's stack count as a dot is (Buff.StackFactor); chosen here, no KMS2 heal of a stacked buff
+        // is known.
+        HpAmount = Buff.AmountByStacks((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total
+                                           + recovery.RecoveryRate * caster.Stats.Values[BasicAttribute.MagicalAtk].Current * multiplier), stacks);
+        SpAmount = Buff.AmountByStacks((long) (recovery.SpValue + recovery.SpRate * target.Stats.Values[BasicAttribute.Spirit].Total * multiplier), stacks);
+        EpAmount = Buff.AmountByStacks((long) (recovery.EpValue + recovery.EpRate * target.Stats.Values[BasicAttribute.Stamina].Total * multiplier), stacks);
     }
 
     public void WriteTo(IByteWriter writer) {

@@ -28,7 +28,6 @@ public class BuffManager : IUpdatable {
     private readonly ConcurrentDictionary<int, List<Buff>> buffs = [];
     public IDictionary<InvokeEffectType, IDictionary<int, InvokeRecord>> Invokes { get; init; }
     public IDictionary<BuffCompulsionEventType, IDictionary<int, AdditionalEffectMetadataStatus.CompulsionEvent>> Compulsions { get; init; }
-    private Dictionary<BasicAttribute, float> Resistances { get; } = new();
     public ConcurrentDictionary<int, long> CooldownTimes { get; } = new(); // TODO: Cache this
     public ReflectRecord? Reflect;
     private readonly ILogger logger = Log.ForContext<BuffManager>();
@@ -142,7 +141,11 @@ public class BuffManager : IUpdatable {
                 bool timeChanged = Buff.RestartsOnReapply(additionalEffect.Property, durationMs)
                     ? existing.Refresh(startTick, endTick)
                     : existing.UpdateEndTime(endTick);
-                if (timeChanged | existing.Stack(stacks)) {
+                bool stacked = existing.Stack(stacks);
+                if (stacked) {
+                    StacksChanged(existing);
+                }
+                if (timeChanged | stacked) {
                     if (notifyField) {
                         owner.Field.Broadcast(BuffPacket.Update(existing));
                     }
@@ -182,12 +185,6 @@ public class BuffManager : IUpdatable {
         // refresh stats if needed
         if (buff.Metadata.Status.Values.Any() || buff.Metadata.Status.Rates.Any() || buff.Metadata.Status.SpecialValues.Any() || buff.Metadata.Status.SpecialRates.Any()) {
             Actor.Stats.Refresh();
-        }
-
-        // Add resistances
-        foreach ((BasicAttribute attribute, float value) in additionalEffect.Status.Resistances) {
-            Resistances.TryGetValue(attribute, out float existingValue);
-            Resistances[attribute] = existingValue + value;
         }
 
         if (!additionalEffect.Condition.Check(caster, owner, Actor)) {
@@ -274,6 +271,19 @@ public class BuffManager : IUpdatable {
     }
 
 
+    // A buff's stack count changed: what is kept by count follows it, the invoke values and the owner's stat totals.
+    public void StacksChanged(Buff buff) {
+        SetInvoke(buff);
+        if (HasStatus(buff.Metadata)) {
+            Actor.Stats.Refresh();
+        }
+    }
+
+    private static bool HasStatus(AdditionalEffectMetadata metadata) {
+        return metadata.Status.Values.Count > 0 || metadata.Status.Rates.Count > 0
+            || metadata.Status.SpecialValues.Count > 0 || metadata.Status.SpecialRates.Count > 0;
+    }
+
     private void SetInvoke(Buff buff) {
         if (buff.Metadata.InvokeEffect == null) {
             return;
@@ -281,17 +291,14 @@ public class BuffManager : IUpdatable {
 
         for (int i = 0; i < buff.Metadata.InvokeEffect.Types.Length; i++) {
             var record = new InvokeRecord(buff.Id, buff.Metadata.InvokeEffect) {
-                Value = buff.Metadata.InvokeEffect.Values[i],
-                Rate = buff.Metadata.InvokeEffect.Rates[i],
+                Value = Buff.ByStacks(buff.Metadata.InvokeEffect.Values[i], buff.Stacks),
+                Rate = Buff.ByStacks(buff.Metadata.InvokeEffect.Rates[i], buff.Stacks),
             };
 
             // if exists, replace the record to support differentiating buff levels.
             if (Invokes.TryGetValue(buff.Metadata.InvokeEffect.Types[i], out IDictionary<int, InvokeRecord>? nestedInvokeDic)) {
-                Invokes.RemoveAll(buff.Id);
-
-                if (!nestedInvokeDic.TryAdd(buff.Id, record)) {
-                    logger.Error("Could not add invoke record from {Id} to {Object}", buff.Id, Actor.ObjectId);
-                }
+                // Only this type's record: a buff with two invoke types keeps both.
+                nestedInvokeDic[buff.Id] = record;
                 continue;
             }
 
@@ -330,12 +337,15 @@ public class BuffManager : IUpdatable {
             nestedCompulsionDic.Values.Where(compulsion => compulsion.SkillIds.Contains(skillId) || compulsion.SkillIds.Length == 0).Sum(compulsion => compulsion.Rate);
     }
 
+    // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
     public float GetResistance(BasicAttribute attribute) {
-        if (Resistances.TryGetValue(attribute, out float value)) {
-            return value;
+        float sum = 0;
+        foreach (Buff buff in EnumerateBuffs()) {
+            if (buff.Metadata.Status.Resistances.TryGetValue(attribute, out float value)) {
+                sum += Buff.ByStacks(value, buff.Stacks);
+            }
         }
-
-        return 0;
+        return sum;
     }
 
     public (int, float) GetInvokeValues(InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
@@ -377,6 +387,7 @@ public class BuffManager : IUpdatable {
                     Remove(buffResult.Id, buffResult.Caster.ObjectId);
                     continue;
                 }
+                StacksChanged(buffResult);
                 Actor.Field.Broadcast(BuffPacket.Update(buffResult));
             }
         }
@@ -577,10 +588,6 @@ public class BuffManager : IUpdatable {
             }
 
             buffsToRemove.Add(buff);
-            foreach ((BasicAttribute attribute, float value) in buff.Metadata.Status.Resistances) {
-                Resistances[attribute] = Math.Max(0, Resistances[attribute] - value);
-            }
-
             if (buff.Metadata.Status.Values.Count > 0 || buff.Metadata.Status.Rates.Count > 0 ||
                 buff.Metadata.Status.SpecialValues.Count > 0 || buff.Metadata.Status.SpecialRates.Count > 0) {
                 if (Actor is FieldPlayer player) {

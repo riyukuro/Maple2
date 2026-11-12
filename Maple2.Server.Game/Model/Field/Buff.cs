@@ -85,6 +85,20 @@ public class Buff : IUpdatable, IByteSerializable {
         return maxCount <= 0 ? 0 : Math.Clamp(requested, 1, maxCount);
     }
 
+    // What a buff's values are multiplied by: its stack count, 1 for a buff without one. The client sums a buff's
+    // status values, consume rates and resistance rates times the count (AdditionalCliList additionalcli_2.cpp:1110)
+    // and its invoke values and rates as well (additionalcli_2.cpp:938). KMS2 dot damage follows the count too: a
+    // dot of 0.8 % of the target's health hits for 3 times that at 3 stacks.
+    public static int StackFactor(int stacks) => Math.Max(1, stacks);
+    public int Factor => StackFactor(Stacks);
+
+    public static long ByStacks(long value, int stacks) => value * StackFactor(stacks);
+    public static float ByStacks(float rate, int stacks) => rate * StackFactor(stacks);
+    // A dot or recovery amount (an int in its packet) at a stack count.
+    public static int AmountByStacks(long amount, int stacks) {
+        return (int) Math.Clamp(amount * StackFactor(stacks), int.MinValue, int.MaxValue);
+    }
+
     // Applying a buff its owner already has restarts it when the reset condition is 0 or 2 and it has a duration:
     // KMS2 then sends the update with a new start and a new end. Reset condition 1 keeps its ticks, 3 replaces the
     // buff, and a buff without duration keeps its start.
@@ -136,9 +150,12 @@ public class Buff : IUpdatable, IByteSerializable {
     }
 
     public void RemoveStack(int amount = 1) {
+        int before = Stacks;
         Stacks = Math.Max(0, Stacks - amount);
         if (Stacks == 0) {
             Owner.Buffs.Remove(Id, Caster.ObjectId);
+        } else if (Stacks != before) {
+            Owner.Buffs.StacksChanged(this);
         }
     }
 
@@ -244,7 +261,7 @@ public class Buff : IUpdatable, IByteSerializable {
             return;
         }
 
-        var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery);
+        var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery, Stacks);
         var updated = new List<BasicAttribute>(3);
         if (record.HpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Health].Add(record.HpAmount);
@@ -270,7 +287,7 @@ public class Buff : IUpdatable, IByteSerializable {
             return;
         }
 
-        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage) {
+        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage, Stacks) {
             BuffObjectId = ObjectId,
         };
         var targetUpdated = new List<BasicAttribute>(3);

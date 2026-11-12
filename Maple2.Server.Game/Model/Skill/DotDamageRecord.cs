@@ -18,7 +18,7 @@ public class DotDamageRecord {
     public readonly int EpAmount;
     public readonly int RecoverHp;
 
-    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage) {
+    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1) {
         Caster = caster;
         Target = target;
         Properties = new DamagePropertyRecord {
@@ -29,27 +29,29 @@ public class DotDamageRecord {
         };
         Type = DamageType.Normal;
 
-        int hpAmount = dotDamage.HpValue;
+        // The whole amount is times the buff's stack count (Buff.StackFactor), before the not-kill cap.
+        long hpAmount = dotDamage.HpValue;
         if (!dotDamage.IsConstDamage) {
             if (dotDamage.Type != AttackType.None) {
                 try {
                     (DamageType type, long amount) = DamageCalculator.CalculateDamage(caster, target, Properties);
                     Type = type;
-                    hpAmount += (int) amount;
+                    hpAmount += amount;
                 } catch (Exception e) {
                     Log.Logger.Error(e, "Error calculating damage for {Caster} on {Target} with dot damage {DotDamage}", caster, Target, dotDamage);
                     hpAmount = 0; // Fallback to 0 if calculation fails
                 }
             }
-            hpAmount += (int) (dotDamage.DamageByTargetMaxHp * Target.Stats.Values[BasicAttribute.Health].Total);
+            hpAmount += (long) (dotDamage.DamageByTargetMaxHp * Target.Stats.Values[BasicAttribute.Health].Total);
         }
+        hpAmount = Buff.AmountByStacks(hpAmount, stacks);
         if (dotDamage.NotKill) {
-            hpAmount = Math.Min(hpAmount, (int) (Target.Stats.Values[BasicAttribute.Health].Current - 1));
+            hpAmount = Math.Min(hpAmount, Target.Stats.Values[BasicAttribute.Health].Current - 1);
         }
 
-        HpAmount = -hpAmount;
-        SpAmount = -dotDamage.SpValue;
-        EpAmount = -dotDamage.EpValue;
+        HpAmount = (int) -hpAmount;
+        SpAmount = -Buff.AmountByStacks(dotDamage.SpValue, stacks);
+        EpAmount = -Buff.AmountByStacks(dotDamage.EpValue, stacks);
         RecoverHp = (int) (dotDamage.RecoverHpByDamage * HpAmount);
     }
 }
