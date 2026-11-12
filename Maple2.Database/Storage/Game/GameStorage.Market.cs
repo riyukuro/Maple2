@@ -62,6 +62,33 @@ public partial class GameStorage {
             return Context.TrySaveChanges() ? model : null;
         }
 
+        // A sale in one save: the listing moves to the sold table and both mails are made, or nothing changes
+        // (the listing is gone, another buyer or its owner was first, or the save failed).
+        public (Maple2.Model.Game.Mail Buyer, Maple2.Model.Game.Mail Seller)? SellMesoListing(long listingId, Maple2.Model.Game.Mail buyerMail, Maple2.Model.Game.Mail sellerMail) {
+            Model.MesoListing? listing = Context.MesoMarket.Find(listingId);
+            if (listing == null) {
+                return null;
+            }
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            buyerMail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, now);
+            sellerMail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, now);
+            Model.Mail buyer = buyerMail!;
+            Model.Mail seller = sellerMail!;
+            buyer.Id = 0;
+            seller.Id = 0;
+
+            SoldMesoListing soldListing = listing;
+            Context.MesoMarket.Remove(listing);
+            Context.MesoMarketSold.Add(soldListing);
+            Context.Mail.Add(buyer);
+            Context.Mail.Add(seller);
+            if (!Context.TrySaveChanges()) {
+                return null;
+            }
+            return (buyer!, seller!);
+        }
+
         public bool DeleteMesoListing(long listingId, bool sold = false) {
             Model.MesoListing? listing = Context.MesoMarket.Find(listingId);
             if (listing == null) {

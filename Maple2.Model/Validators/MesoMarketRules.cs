@@ -36,21 +36,23 @@ public static class MesoMarketRules {
         return unitPrice >= low && unitPrice <= high;
     }
 
-    // The average price per base price over sold listings (amount, price), held between the lowest and highest
-    // price; the fallback while nothing has been sold.
-    public static long AveragePrice(IEnumerable<(long Amount, long Price)> sold, long basePrice, long fallback, long min, long max) {
-        long count = 0;
+    // The average price per base price over sold listings (amount, price): the mean of the sales' prices per base
+    // price, each sale counting once whatever its amount, held between the lowest and highest price. The fallback
+    // while fewer than minSales are sold. A sale's price is within the range rate of the average, so one sale
+    // moves the average by no more than the range rate over the count of sales (20% / 10 = 2% at the least count).
+    public static long AveragePrice(IEnumerable<(long Amount, long Price)> sold, long basePrice, long fallback, long min, long max, int minSales) {
+        long sales = 0;
         long total = 0;
         if (basePrice > 0) {
             foreach ((long amount, long price) in sold) {
                 if (amount < basePrice || price <= 0) {
                     continue;
                 }
-                count += amount / basePrice;
-                total += price;
+                sales++;
+                total += price / (amount / basePrice);
             }
         }
-        return Math.Clamp(count == 0 ? fallback : total / count, min, max);
+        return Math.Clamp(sales == 0 || sales < minSales ? fallback : total / sales, min, max);
     }
 
     // Mode 5: the listings an account has up at once (s_mesoMarket_error_maxCountOwnProduct);

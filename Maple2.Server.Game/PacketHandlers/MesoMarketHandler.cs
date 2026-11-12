@@ -17,6 +17,8 @@ public class MesoMarketHandler : FieldPacketHandler {
     private const int DEFAULT_AVERAGE_PRICE = 200;
     // The sales the average price is taken over.
     private const int AVERAGE_PRICE_SALES = 100;
+    // The sales it takes before the average price leaves the default.
+    private const int AVERAGE_PRICE_MIN_SALES = 10;
 
     public override RecvOp OpCode => RecvOp.MesoMarket;
 
@@ -59,7 +61,7 @@ public class MesoMarketHandler : FieldPacketHandler {
     // The price of MesoMarketBasePrice meso over the last sales.
     private long AveragePrice(GameStorage.Request db) {
         return MesoMarketRules.AveragePrice(db.GetSoldMesoListings(AVERAGE_PRICE_SALES), Constants.MesoMarketBasePrice,
-            DEFAULT_AVERAGE_PRICE, Constant.MesoMarketMinToken, Constant.MesoMarketMaxToken);
+            DEFAULT_AVERAGE_PRICE, Constant.MesoMarketMinToken, Constant.MesoMarketMaxToken, AVERAGE_PRICE_MIN_SALES);
     }
 
     private void HandleLoad(GameSession session) {
@@ -104,9 +106,14 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        (long low, long high) = MesoMarketRules.PriceRange(AveragePrice(db), Constant.MesoMarketRangeRate,
+        long averagePrice = AveragePrice(db);
+        (long low, long high) = MesoMarketRules.PriceRange(averagePrice, Constant.MesoMarketRangeRate,
             Constant.MesoMarketMinToken, Constant.MesoMarketMaxToken);
         if (!MesoMarketRules.IsListingPrice(amount, price, Constants.MesoMarketBasePrice, low, high)) {
+            // The client tests the price against the average it got when the window opened, and its message
+            // names the range from that average (CMesoMarketMan::ShowResultMessage): the limits again first, so
+            // the message and the next try use the average of now.
+            session.Send(MesoMarketPacket.Load(averagePrice));
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_invalidBuyMerat));
             return;
         }
@@ -205,7 +212,9 @@ public class MesoMarketHandler : FieldPacketHandler {
         }
 
         if (listing.ExpiryTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_cannotBuyExpireDate));
+            // The listing ended after the search that listed it. The client drops a row on code 0 and 17 only, so
+            // the sold-out answer; the listing stays for its owner to take back.
+            SendSoldOut(session, listingId);
             return;
         }
 
@@ -214,7 +223,11 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        if (!db.DeleteMesoListing(listingId, true)) {
+        // The listing's end and both mails are one save: a sale without its mails would lose the buyer's meso or
+        // the seller's price.
+        (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing);
+        (Mail Buyer, Mail Seller)? mails = db.SellMesoListing(listingId, buyerMail, sellerMail);
+        if (mails == null) {
             SendSoldOut(session, listingId);
             return;
         }
@@ -222,7 +235,14 @@ public class MesoMarketHandler : FieldPacketHandler {
         session.Player.Value.Account.MesoMarketPurchased++;
         session.Currency[CurrencyType.MesoToken] -= listing.Price;
 
-        SendPurchaseMail(session, db, listing);
+        foreach (Mail mail in new[] { mails.Value.Buyer, mails.Value.Seller }) {
+            try {
+                session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = mail.ReceiverId,
+                    MailId = mail.Id,
+                });
+            } catch { /* ignored */ }
+        }
 
         session.Send(MesoMarketPacket.Purchase(listing.Id, session.Player.Value.Account.MesoMarketPurchased));
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
@@ -232,7 +252,7 @@ public class MesoMarketHandler : FieldPacketHandler {
         session.Send(MesoMarketPacket.Purchase(listingId, session.Player.Value.Account.MesoMarketPurchased, s_mesoMarket_error_alreadySoldProduct));
     }
 
-    private void SendPurchaseMail(GameSession session, GameStorage.Request db, MesoListing listing) {
+    private static (Mail Buyer, Mail Seller) PurchaseMails(GameSession session, MesoListing listing) {
         var buyerMail = new Mail {
             ReceiverId = session.CharacterId,
             Type = MailType.MesoMarket,
@@ -263,30 +283,6 @@ public class MesoMarketHandler : FieldPacketHandler {
         sellerMail.SetTitle(StringCode.s_mesoMarket_mail_to_seller_title);
         sellerMail.SetContent(StringCode.s_mesoMarket_mail_to_seller_content);
 
-        buyerMail = db.CreateMail(buyerMail);
-        if (buyerMail == null) {
-            Logger.Error("Listing {Id} purchased but no buyer mail sent...", listing.Id);
-        } else {
-            // Try sending a mail notification to buying player.
-            try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = buyerMail.ReceiverId,
-                    MailId = buyerMail.Id,
-                });
-            } catch { /* ignored */ }
-        }
-
-        sellerMail = db.CreateMail(sellerMail);
-        if (sellerMail == null) {
-            Logger.Error("Listing {Id} purchased but no seller mail sent...", listing.Id);
-        } else {
-            // Try sending a mail notification to selling player.
-            try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = sellerMail.ReceiverId,
-                    MailId = sellerMail.Id,
-                });
-            } catch { /* ignored */ }
-        }
+        return (buyerMail, sellerMail);
     }
 }

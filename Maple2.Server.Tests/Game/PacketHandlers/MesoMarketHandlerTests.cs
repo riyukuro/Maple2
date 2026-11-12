@@ -103,7 +103,10 @@ public class MesoMarketHandlerTests {
 
         Send(session, 5, amount, price);
 
-        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(code) }));
+        // Code 16 comes after the limits (mode 1) with the average of now.
+        List<string> sent = Sent();
+        Assert.That(sent.Select(packet => packet[..2]), Is.EqualTo(code == 16 ? new[] { "01", "00" } : new[] { "00" }));
+        Assert.That(sent[^1], Is.EqualTo("00" + Int(code)));
         Assert.That(session.Currency.Meso, Is.EqualTo(meso));
         Assert.That(OwnListings(session), Is.Empty);
     }
@@ -202,9 +205,43 @@ public class MesoMarketHandlerTests {
         Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
     }
 
-    // Mode 8 refused: 7 too few tokens, 12 a listing past its end, 14 the month's count used up.
+    // Mode 8 on a listing past its end: code 17 as for a sold one, so the client drops the row; nothing is paid and
+    // the listing stays for its owner, who can take it back.
+    [Test]
+    public void Buy_EndedListingAnswersSoldOut() {
+        GameSession session = Login(tokens: 500);
+        MesoListing listing = OtherListing(BASE, 200, -1);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+        Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
+    }
+
+    // Mode 7 lists a listing until its end, whatever the host's time zone.
+    [Test]
+    public void Search_LeavesOutEndedListings() {
+        GameSession session = Login();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            foreach (int hours in new[] { -1, 1 }) {
+                db.CreateMesoListing(new MesoListing(TimeSpan.FromHours(hours)) {
+                    AccountId = OTHER_ACCOUNT, CharacterId = OTHER_CHARACTER, Amount = BASE, Price = 200 + hours,
+                });
+            }
+        }
+
+        Send(session, 7, BASE, BASE);
+
+        string list = Sent().Single();
+        Assert.That(list, Does.StartWith("07" + Int(1)));
+        Assert.That(list, Does.Contain(Long(BASE) + Long(201)));
+    }
+
+    // Mode 8 refused: 7 too few tokens, 14 the month's count used up.
     [TestCase(199L, 2, 0, 7)]
-    [TestCase(500L, -1, 0, 12)]
     [TestCase(500L, 2, 10, 14)]
     public void Buy_Refused(long tokens, int days, int bought, int code) {
         GameSession session = Login(tokens: tokens);
@@ -220,24 +257,28 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
     }
 
-    // The average price of the window's load follows the sales: 200 while nothing is sold, then the price per
-    // base price of what was sold, and the register range moves with it.
+    // The average price of the window's load follows the sales: 200 until 10 are sold, then the mean price per
+    // base price of the sales, and the register range moves with it. A register the client let through with its
+    // older average gets the limits with the average of now before the code 16.
     [Test]
     public void AveragePrice_FollowsTheSales() {
-        GameSession session = Login(meso: BASE, tokens: 1000);
+        GameSession session = Login(meso: BASE, tokens: 5000);
+        for (int i = 0; i < 9; i++) {
+            Send(session, 8, OtherListing(BASE, 160).Id);
+        }
+        test.TakeSent();
         Send(session, 3);
         Assert.That(Sent()[0].Substring(18, 16), Is.EqualTo(Long(200)));
 
-        Send(session, 8, OtherListing(BASE, 160).Id);
-        Send(session, 8, OtherListing(2 * BASE, 280).Id);
+        Send(session, 8, OtherListing(2 * BASE, 360).Id);
         test.TakeSent();
-
         Send(session, 3);
-        Assert.That(Sent()[0].Substring(18, 16), Is.EqualTo(Long(146)));
+        string limits = Sent()[0];
+        Assert.That(limits.Substring(18, 16), Is.EqualTo(Long(162)));
 
         Send(session, 5, BASE, 200);
-        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(16) }));
-        Send(session, 5, BASE, 175);
+        Assert.That(Sent(), Is.EqualTo(new[] { limits, "00" + Int(16) }));
+        Send(session, 5, BASE, 190);
         Assert.That(OwnListings(session), Has.Count.EqualTo(1));
     }
 }
