@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
@@ -110,6 +111,9 @@ public partial class TriggerContext {
             }
             RewardRecord rewardRecord = player.Session.GetRewardContent(rewardId);
             player.Session.MiniGameRecord.Add(rewardRecord);
+            if (MiniGameClearRules.CountsAsUserOpenClear(contentType)) {
+                player.Session.ConditionUpdate(ConditionType.useropen_minigame_clear, codeLong: Field.MapId);
+            }
         }
     }
 

@@ -59,6 +59,7 @@ public static class ConditionUtil {
                 }
                 break;
             case ConditionType.map:
+            case ConditionType.useropen_minigame_clear:
             case ConditionType.fish:
             case ConditionType.fisher_grade:
             case ConditionType.mastery_grade:
