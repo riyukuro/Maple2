@@ -6,12 +6,20 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger.Helpers;
 using Locale = Maple2.Server.Game.Trigger.Helpers.Locale;
 
 namespace Maple2.Server.Game.Trigger;
 
 public partial class TriggerContext {
+    // The players in the winner box when the game ends cleared it: minigame_clear with the field as the code
+    // (23400008 names 61000006). KMS2 sends the update when the player reaches the goal, just before the winner
+    // buff the script adds after this action.
+    internal static void ReportClear(GameSession session, int mapId) {
+        session.ConditionUpdate(ConditionType.minigame_clear, codeLong: mapId);
+    }
+
     public void EndMiniGame(int winnerBoxId, string gameName, bool isOnlyWinner) {
         IEnumerable<FieldPlayer> players = PlayersInBox(winnerBoxId);
         foreach (FieldPlayer player in players) {
@@ -19,6 +27,7 @@ public partial class TriggerContext {
                 continue;
             }
 
+            ReportClear(player.Session, Field.MapId);
             if (player.Session.MiniGameRecord.ShowResult) {
                 player.Session.Send(DungeonRewardPacket.MiniGame(player.Session.MiniGameRecord));
             }

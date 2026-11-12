@@ -60,6 +60,13 @@ public static class ConditionUtil {
                 break;
             case ConditionType.map:
             case ConditionType.useropen_minigame_clear:
+            // minigame_clear: the mini-game field (23400007, 23400008, 23400039).
+            case ConditionType.minigame_clear:
+            // play_rps and its results: the event's play ticket (92000139 and others name item 20302424).
+            case ConditionType.play_rps:
+            case ConditionType.play_rps_win:
+            case ConditionType.play_rps_lose:
+            case ConditionType.play_rps_draw:
             case ConditionType.fish:
             case ConditionType.fisher_grade:
             case ConditionType.mastery_grade:

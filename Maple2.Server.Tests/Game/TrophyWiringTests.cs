@@ -476,4 +476,44 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.EqualTo(new[] { SendOp.ResponseCube }));
     }
     #endregion
+
+    #region minigame_clear, play_rps
+    [Test]
+    public void MiniGameClear_CountsForTheTrophyOfItsField() {
+        GameSession session = Start(
+            TestGameSession.Trophy(Trophy, ConditionType.minigame_clear, [Goal], codes: [61000006]),
+            TestGameSession.Trophy(OtherTrophy, ConditionType.minigame_clear, [Goal], codes: [61000004]));
+
+        Maple2.Server.Game.Trigger.TriggerContext.ReportClear(session, 61000006);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null.Or.EqualTo(0));
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve }));
+
+        // A player-opened mini-game field ends with the same action and is no code of these trophies.
+        Maple2.Server.Game.Trigger.TriggerContext.ReportClear(session, 81000003);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Sent(), Is.Empty);
+    }
+
+    [TestCase((byte) 1, ConditionType.play_rps_win)]
+    [TestCase((byte) 2, ConditionType.play_rps_lose)]
+    [TestCase((byte) 0, ConditionType.play_rps_draw)]
+    public void RpsResult_CountsForTheTrophyThatNamesTheTicket(byte result, ConditionType type) {
+        const int ticket = 20302424;
+        ConditionType other = type == ConditionType.play_rps_win ? ConditionType.play_rps_lose : ConditionType.play_rps_win;
+        GameSession session = Start(
+            TestGameSession.Trophy(Trophy, type, [Goal], codes: [ticket]),
+            TestGameSession.Trophy(OtherTrophy, other, [Goal], codes: [ticket]));
+
+        MicrogameHandler.ReportResult(session, result, ticket);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null.Or.EqualTo(0));
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve }));
+
+        // The ticket of another event's game is no code of this trophy.
+        MicrogameHandler.ReportResult(session, result, ticket + 1);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Sent(), Is.Empty);
+    }
+    #endregion
 }

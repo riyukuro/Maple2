@@ -290,17 +290,23 @@ public class MicrogameHandler : FieldPacketHandler {
             return;
         }
 
-        Finish(inviter.Session, gameEvent, game.InviterCard, game.InviteeCard);
-        Finish(invitee.Session, gameEvent, game.InviteeCard, game.InviterCard);
+        Finish(inviter.Session, gameEvent, rps.GameTicketId, game.InviterCard, game.InviteeCard);
+        Finish(invitee.Session, gameEvent, rps.GameTicketId, game.InviteeCard, game.InviterCard);
     }
 
-    private static void Finish(GameSession player, GameEvent gameEvent, int mine, int theirs) {
+    private static void Finish(GameSession player, GameEvent gameEvent, int ticketId, int mine, int theirs) {
         byte result = RpsRules.Result(mine, theirs);
         player.Send(MicrogamePacket.Result(result, mine, theirs));
         GameEventUserValue matches = player.GameEvent.Get(GameEventUserValueType.RPSDailyMatches, gameEvent.Id, Expiration());
         player.GameEvent.Set(gameEvent.Id, GameEventUserValueType.RPSDailyMatches, matches.Int() + 1);
-        player.ConditionUpdate(ConditionType.play_rps);
-        player.ConditionUpdate(RpsRules.ResultCondition(result));
+        ReportResult(player, result, ticketId);
+    }
+
+    // The event's trophies name the play ticket as their code (92000139 "play_rps_win" code 20302424), so the
+    // ticket goes along; without it a condition that has a code never counted.
+    internal static void ReportResult(GameSession player, byte result, int ticketId) {
+        player.ConditionUpdate(ConditionType.play_rps, codeLong: ticketId);
+        player.ConditionUpdate(RpsRules.ResultCondition(result), codeLong: ticketId);
     }
 
     private static void HandleClaimReward(GameSession session, int index) {
