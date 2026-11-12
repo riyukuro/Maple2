@@ -170,6 +170,10 @@ public class TradeManager : IDisposable {
                 if (offered == null) {
                     return;
                 }
+                // Nor a locked item (InvenSlot::TryAddToTrade asks CItemLockManager::CanUseItem first).
+                if (!ItemLockRules.IsUsable(offered.IsLocked, offered.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+                    return;
+                }
                 if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
                     return;
                 }

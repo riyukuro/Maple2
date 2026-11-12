@@ -14,6 +14,21 @@ public static class ItemLockRules {
         return !requireVip && !requireWedding;
     }
 
+    // CItemLockManager::CanUseItem: a locked item, and one whose unlock wait is not over, is not sold, traded,
+    // dropped or destroyed (the client asks it before each of those requests).
+    public static bool IsUsable(bool isLocked, long unlockTime, long now) {
+        return !isLocked && now >= unlockTime;
+    }
+
+    // InvenSlot's drop and destroy (invenslot.cpp vfunc_26): not while dead, not the pet that is out, not the
+    // score that is being played, not a locked item, and a count of 1 to the stack.
+    public static bool CanDrop(bool dead, bool usable, long itemUid, long summonedPetUid, long playedScoreUid) {
+        if (dead || !usable) {
+            return false;
+        }
+        return (summonedPetUid == 0 || itemUid != summonedPetUid) && (playedScoreUid == 0 || itemUid != playedScoreUid);
+    }
+
     public static bool CanStage(bool unlock, bool owned, bool locked, bool alreadyStaged) {
         if (!owned || alreadyStaged) {
             return false;

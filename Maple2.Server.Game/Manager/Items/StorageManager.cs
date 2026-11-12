@@ -143,8 +143,17 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
+            short storedSlot = withdraw.Slot;
             withdraw.Slot = slot;
-            session.Item.Inventory.Add(withdraw, commit: true);
+            if (!session.Item.Inventory.Add(withdraw, commit: true)) {
+                // The bag did not take it (no field yet, or no such tab): it goes back into the storage.
+                withdraw.Slot = storedSlot;
+                foreach ((Item item, int _) in items.Add(withdraw, true)) {
+                    session.Send(withdraw.Uid == item.Uid
+                        ? StorageInventoryPacket.Add(item)
+                        : StorageInventoryPacket.Update(item.Uid, item.Amount));
+                }
+            }
         }
     }
 
@@ -169,11 +178,14 @@ public sealed class StorageManager : IDisposable {
     }
 
     // Deposit/Withdraw Mesos
-    private bool CanDepositMeso(long amount) => 0 <= amount && mesos + amount <= Constant.MaxMeso;
+    private bool CanDepositMeso(long amount) => 0 <= amount && amount <= Constant.MaxMeso - mesos;
     public void DepositMesos(long amount) {
         lock (session.Item) {
             if (!CanDepositMeso(amount)) {
-                session.Send(StorageInventoryPacket.Error(s_store_err_deposit_invalid_money));
+                // More than the storage holds has its own text (s_store_err_deposit_max_money).
+                session.Send(StorageInventoryPacket.Error(amount > 0
+                    ? s_store_err_deposit_max_money
+                    : s_store_err_deposit_invalid_money));
                 return;
             }
 

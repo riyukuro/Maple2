@@ -107,4 +107,94 @@ public class StorageInventoryHandlerTests {
         }));
         Assert.That(session.Currency.Meso, Is.EqualTo(750));
     }
+
+    // The window asks again while the server still holds the storage open: the same state is sent again, with
+    // what was put in.
+    [Test]
+    public void Load_OfAnOpenStorageSendsItAgain() {
+        GameSession session = Open(meso: 1000);
+        Mesos(session, deposit: true, 400);
+        Item(session, 0, stack.Uid, 5);
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(0);
+        }));
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Take(4).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(StorageInventoryPacket.Reset()),
+            Hex(StorageInventoryPacket.SlotsExpanded(0)),
+            Hex(StorageInventoryPacket.UpdateMesos(400)),
+            Hex(StorageInventoryPacket.SlotsUsed(1)),
+        }));
+        Assert.That(sent, Has.Count.EqualTo(5));
+        Assert.That(sent[4][2], Is.EqualTo(5)); // the item batch
+    }
+
+    // More mesos than the storage holds: the max money text, and nothing moves. A count below 0: the invalid text.
+    [Test]
+    public void MesosOverTheMax_AreRefusedWithTheirOwnText() {
+        GameSession session = Open(meso: Maple2.Model.Metadata.Constant.MaxMeso);
+        Mesos(session, deposit: true, Maple2.Model.Metadata.Constant.MaxMeso);
+        session.Currency.Meso = 5;
+        test.TakeSent();
+
+        Mesos(session, deposit: true, 1);
+        Mesos(session, deposit: true, -1);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_deposit_max_money)),
+            Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_deposit_invalid_money)),
+        }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5));
+    }
+
+    // A withdrawal the bag does not take (the player is in no field) goes back into the storage.
+    [Test]
+    public void Withdraw_TheBagDoesNotTakeStaysStored() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 5);
+        Maple2.Server.Game.Manager.Field.FieldManager? field = session.Field;
+        session.Field = null;
+        test.TakeSent();
+
+        Item(session, 1, stack.Uid, 5);
+        session.Field = field;
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(packet => packet[2]), Is.EqualTo(new byte[] { 1, 0 })); // removed, added again
+        Item(session, 1, stack.Uid, 5);
+        Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(5));
+    }
+
+    // Deposits and withdrawals of parts of a stack, each side asked for more than it has in between: the five
+    // pieces are all in the bag or the storage after every step.
+    [Test]
+    public void PartialMoves_KeepTheCount() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 2);
+        Item(session, 0, stack.Uid, 4);
+        Item(session, 0, stack.Uid, 0);
+        Item(session, 0, stack.Uid, -1);
+        test.TakeSent();
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(0);
+        }));
+        byte[] batch = test.TakeSent()[^1];
+        long stored = BitConverter.ToInt64(batch, 3 + 8 + 2 + 4);
+
+        Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(3));
+        Item(session, 1, stored, 3);
+        Item(session, 1, stored, 1);
+        Item(session, 1, stored, 0);
+        Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(4));
+        Item(session, 1, stored, 1);
+        Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(5));
+        Item(session, 1, stored, 1);
+        Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(5));
+        Assert.That(test.Errors, Is.Empty);
+    }
 }

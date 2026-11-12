@@ -74,6 +74,28 @@ public class TradeHandlerTests {
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
     private static string[] Modes(List<byte[]> sent) => sent.Select(packet => $"{TestGameSession.Op(packet)} {packet[2]}").ToArray();
 
+    // A locked item, and one whose unlock wait is not over, stays in the bag: the client does not offer it.
+    [Test]
+    public void Offer_OfALockedItemIsDropped() {
+        giver.Item.Inventory.Get(item.Uid)!.IsLocked = true;
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+        giver.Item.Inventory.Get(item.Uid)!.IsLocked = false;
+        giver.Item.Inventory.Get(item.Uid)!.UnlockTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+
+        Assert.That(giverTest.TakeSent(), Is.Empty);
+        Assert.That(takerTest.TakeSent(), Is.Empty);
+        Assert.That(giver.Item.Inventory.Get(item.Uid)!.Amount, Is.EqualTo(3));
+    }
+
     // An offered item leaves the bag, then enters the window; offered mesos leave the player, then enter the window.
     [Test]
     public void Offer_Order() {

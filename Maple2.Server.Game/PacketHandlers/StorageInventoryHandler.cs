@@ -112,11 +112,9 @@ public class StorageInventoryHandler : FieldPacketHandler {
     }
 
     private static void HandleLoad(GameSession session) {
-        if (session.Storage != null) {
-            return;
-        }
-
-        session.Storage = new StorageManager(session);
+        // The client asks each time its window opens and shows what the answer holds; a storage left open (the
+        // window closed without its close request, as on a map change) is sent again as it is.
+        session.Storage ??= new StorageManager(session);
         session.Storage.Load();
     }
 

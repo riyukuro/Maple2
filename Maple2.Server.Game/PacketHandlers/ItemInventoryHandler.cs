@@ -1,6 +1,7 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -57,6 +58,10 @@ public class ItemInventoryHandler : FieldPacketHandler {
 
         long uid = packet.ReadLong();
         int amount = packet.ReadInt();
+        // The client sends 1 to the stack's count; 0 and below fell through to the whole stack.
+        if (amount <= 0) {
+            return;
+        }
         DropItem(session, uid, amount);
     }
 
@@ -102,6 +107,13 @@ public class ItemInventoryHandler : FieldPacketHandler {
         if (session.Field is null) return;
         Item? drop = session.Item.Inventory.Get(uid);
         if (drop == null) {
+            return;
+        }
+
+        // The client refuses these itself and sends nothing.
+        if (!ItemLockRules.CanDrop(session.Player.IsDead,
+                ItemLockRules.IsUsable(drop.IsLocked, drop.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
+                uid, session.SummonedPetUid, session.Instrument?.Score?.Uid ?? 0)) {
             return;
         }
 
