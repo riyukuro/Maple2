@@ -10,6 +10,7 @@ using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -38,8 +39,13 @@ namespace Maple2.Server.Tests.Game;
 //   test.TakeSent()                                         // the packets sent since the last call, in order
 //
 // The session is made without its constructor, so only what Start sets exists: Player, Item (Equips, Inventory,
-// Furnishing), ItemBox, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Field (a field that only
-// broadcasts to this player and rolls item drops from the tables set here) and World (grants every lock). A handler that reaches anything else needs it set first.
+// Furnishing), ItemBox, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Exp, Dungeon (no room),
+// Housing, Guild (no guild), Field (a field that only broadcasts to this player and rolls item drops from the tables
+// set here) and World (grants every lock, answers a move with MoveAddress). A handler that reaches anything else
+// needs it set first.
+//
+// Trophies and maps come from AddAchievement and AddMap; EnterMap, EnterHome, EnterDungeon and StartQuest put the
+// started session in a place or give it a quest. A move (GameSession.Migrate) saves nothing and closes nothing here.
 // Storage is the real GameStorage; pass MySQL options to run the same test against a database.
 public sealed class TestGameSession {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -49,6 +55,7 @@ public sealed class TestGameSession {
     public readonly TableMetadataStorage TableMetadata = Uninitialized<TableMetadataStorage>();
     public readonly ServerTableMetadataStorage ServerTableMetadata = Uninitialized<ServerTableMetadataStorage>();
     public readonly LockWorld World = new();
+    public readonly MapMetadataStorage MapMetadata = Uninitialized<MapMetadataStorage>();
     public readonly long AccountId;
     public readonly long CharacterId;
     public GameSession Session { get; private set; } = null!;
@@ -58,7 +65,13 @@ public sealed class TestGameSession {
 
     private readonly LRUCache<int, ItemMetadata> items = new(1024, 1);
     private readonly ItemMetadataStorage itemMetadata = Uninitialized<ItemMetadataStorage>();
-    private readonly BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
+    private BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
+    private GameSession? started;
+    private readonly LRUCache<int, MapMetadata> maps = new(64, 1);
+    private readonly LRUCache<int, AchievementMetadata> achievements;
+    private readonly AchievementMetadataStorage achievementMetadata;
+    private ItemStatsCalculator stats = null!;
+    private FieldPlayer fieldPlayer = null!;
 
     public TestGameSession(DbContextOptions? options = null, Gender gender = Gender.Male) {
         Options = options ?? new DbContextOptionsBuilder()
@@ -68,14 +81,25 @@ public sealed class TestGameSession {
         // ItemMetadataStorage's constructor runs SQL the in-memory provider lacks; TryGet looks in the cache first.
         typeof(MetadataStorage<int, ItemMetadata>).GetField("Cache", Any)!.SetValue(itemMetadata, items);
         // The home's plot, which LoadPlayer looks up for the account's home.
-        var maps = Uninitialized<MapMetadataStorage>();
+        typeof(MetadataStorage<int, MapMetadata>).GetField("Cache", Any)!.SetValue(MapMetadata, maps);
         var ugcMaps = new LRUCache<int, UgcMapMetadata>(4, 1);
         var cost = new UgcMapGroup.Cost(0, 0, 0);
         ugcMaps.AddReplace(Constant.DefaultHomeMapId, new UgcMapMetadata(Constant.DefaultHomeMapId, new Dictionary<int, UgcMapGroup> {
             [Constant.DefaultHomeNumber] = new(Constant.DefaultHomeNumber, 0, 0, cost, cost, new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)),
         }));
-        typeof(MapMetadataStorage).GetField("UgcCache", Any)!.SetValue(maps, ugcMaps);
-        Storage = new GameStorage(Options, itemMetadata, maps, null!, null!, TableMetadata, ServerTableMetadata, NullLogger<GameStorage>.Instance, null!);
+        typeof(MapMetadataStorage).GetField("UgcCache", Any)!.SetValue(MapMetadata, ugcMaps);
+        typeof(MapMetadataStorage).GetField("ExportedUgcCache", Any)!.SetValue(MapMetadata, new Dictionary<string, ExportedUgcMapMetadata>());
+        // The trophies: an empty store whose cache AddAchievement fills. Every condition type counts as read, so
+        // GetType answers from the cache alone.
+        var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var metadataContext = new MetadataContext(metadataOptions);
+        achievementMetadata = new AchievementMetadataStorage(metadataContext);
+        // A map that AddMap did not add is looked up in the empty store and not found.
+        typeof(MetadataStorage<int, MapMetadata>).GetField("Context", Any)!.SetValue(MapMetadata, metadataContext);
+        achievements = (LRUCache<int, AchievementMetadata>) typeof(MetadataStorage<int, AchievementMetadata>).GetField("Cache", Any)!.GetValue(achievementMetadata)!;
+        var cachedTypes = (HashSet<ConditionType>) typeof(AchievementMetadataStorage).GetField("cachedTypes", Any)!.GetValue(achievementMetadata)!;
+        cachedTypes.UnionWith(Enum.GetValues<ConditionType>());
+        Storage = new GameStorage(Options, itemMetadata, MapMetadata, achievementMetadata, null!, TableMetadata, ServerTableMetadata, NullLogger<GameStorage>.Instance, null!);
         SetServerTable(new ConstantsTable(
             bagSlotTabGameCount: [48, 48], bagSlotTabSkinCount: [48, 48], bagSlotTabSummonCount: [48, 48],
             bagSlotTabMaterialCount: [48, 48], bagSlotTabMasteryCount: [48, 48], bagSlotTabLifeCount: [48, 48],
@@ -84,6 +108,11 @@ public sealed class TestGameSession {
             bagSlotTabMiscCount: [48, 48], bagSlotTabLapenShardCount: [48, 48], bagSlotTabPieceCount: [48, 48]));
         // Every created item asks for its sockets.
         SetTable(new ItemSocketTable(new Dictionary<int, IReadOnlyDictionary<int, ItemSocketMetadata>>()));
+        // What the Exp and Dungeon managers read when they are made, and a move reads: empty until a test sets them.
+        SetTable(new PrestigeMissionTable(new Dictionary<int, PrestigeMissionMetadata>()));
+        SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata>()));
+        SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
+        SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata>()));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];
@@ -144,6 +173,60 @@ public sealed class TestGameSession {
         return item;
     }
 
+    // A trophy the session's AchievementMetadata finds, before or after Start.
+    public void AddAchievement(params AchievementMetadata[] metadata) {
+        foreach (AchievementMetadata entry in metadata) {
+            achievements.AddReplace(entry.Id, entry);
+        }
+    }
+
+    // A character trophy of one condition type: one grade per goal, in order, without rewards. codes are the
+    // condition's code ids; codeRange its code range.
+    public static AchievementMetadata Trophy(int id, ConditionType type, long[] goals, int[]? codes = null, (int Min, int Max)? codeRange = null,
+                                             bool locked = false, AchievementCategory category = AchievementCategory.Life) {
+        ConditionMetadata.Parameters? code = null;
+        if (codes != null || codeRange != null) {
+            code = new ConditionMetadata.Parameters(Integers: codes,
+                Range: codeRange is { } range ? new ConditionMetadata.Range<int>(range.Min, range.Max) : null);
+        }
+        var grades = new Dictionary<int, AchievementMetadataGrade>();
+        for (int i = 0; i < goals.Length; i++) {
+            grades[i + 1] = new AchievementMetadataGrade(i + 1, new ConditionMetadata(type, goals[i], code, null), null);
+        }
+        return new AchievementMetadata(id, $"{id}", false, category, [], grades, locked);
+    }
+
+    // A map the session's MapMetadata and the handlers' MapMetadataStorage find.
+    public void AddMap(params MapMetadata[] metadata) {
+        foreach (MapMetadata entry in metadata) {
+            maps.AddReplace(entry.Id, entry);
+        }
+    }
+
+    public static MapMetadata Map(int id, bool homeReturnable = true, bool notInPlayedClient = false) {
+        var property = new MapMetadataProperty(Continent.VictoriaIsland, MapRegion.None, 0, MapType.None, false, 0, 0, 0, 0, AutoReviveType.None, 0,
+            false, false, false, false, homeReturnable, false, false, false, false, false, 0f, NotInPlayedClient: notInPlayedClient);
+        return new MapMetadata(id, $"{id}", string.Empty, property, null!, null!, [], null!, []);
+    }
+
+    // A quest without requirements or rewards, of the character.
+    public static QuestMetadata QuestData(int id, QuestType type = QuestType.EpicQuest) {
+        var basic = new QuestMetadataBasic(0, type, 0, 0, false, string.Empty, false, false, false, 0, 0, null, null);
+        var require = new QuestMetadataRequire(0, 0, [], [], [], 0, (0, 0), 0);
+        var reward = new QuestMetadataReward(0, 0, ExpType.none, 0, 0, 0, 0, 0, 0, 0, [], []);
+        return new QuestMetadata(id, $"{id}", basic, require, reward, reward, new QuestRemoteAccept(QuestRemoteType.None, 0),
+            new QuestRemoteComplete(QuestRemoteType.None, 0, false), new QuestMetadataGoToNpc(false, 0, 0),
+            new QuestMetadataGoToDungeon(QuestState.None, 0, 0), null, null, null, QuestEventMissionType.none, []);
+    }
+
+    // A dungeon room without limits whose clear gives no exp, mesos or items; rewardCount clears count per period.
+    public static DungeonRoomMetadata DungeonRoom(int id, int lobbyFieldId, int rewardCount = 10) {
+        var reward = new DungeonRoomRewardMetadata(false, rewardCount, 0, 0, 0f, 0, [], [], 0, 0, 0);
+        var limit = new DungeonRoomLimitMetadata(1, 4, 0, 0, 0, false, [], [], [], false, false, false, false, false, 0);
+        return new DungeonRoomMetadata(id, 1, DungeonPlayType.none, DungeonGroupType.none, DungeonCooldownType.dayOfWeeks, 0, 0, lobbyFieldId,
+            [lobbyFieldId], reward, limit, 0, 0, 0, false, 0, 0, false, [], [], false, DungeonTimerType.clock, false);
+    }
+
     // A client table (TableMetadata) or a server table (ServerTableMetadata) the handler reads.
     public void SetTable<T>(T table) where T : Table => SetLazy(TableMetadata, table);
     public void SetServerTable<T>(T table) where T : ServerTable => SetLazy(ServerTableMetadata, table);
@@ -177,36 +260,35 @@ public sealed class TestGameSession {
         Set(session, nameof(GameSession.TableMetadata), TableMetadata);
         Set(session, nameof(GameSession.ServerTableMetadata), ServerTableMetadata);
         Set(session, nameof(GameSession.World), World);
-        var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        Set(session, nameof(GameSession.AchievementMetadata), new AchievementMetadataStorage(new MetadataContext(metadataOptions)));
+        Set(session, nameof(GameSession.AchievementMetadata), achievementMetadata);
+        Set(session, nameof(GameSession.MapMetadata), MapMetadata);
+        // A move (Migrate) ends with the save and the disconnect of a session that leaves this server: the save and
+        // the teardown are marked as done, so the move changes only what it sends and sets. The disconnect itself
+        // closes the send queue; TakeSent opens a new one, so a test can go on with the same session.
+        typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, true);
+        typeof(GameSession).GetField("gameDisposeState", Any)!.SetValue(session, 2);
+        started = session;
+        // The server, for its events (none).
+        var server = Uninitialized<Maple2.Server.Game.GameServer>();
+        FieldInfo eventCache = typeof(Maple2.Server.Game.GameServer).GetField("eventCache", Any)!;
+        eventCache.SetValue(server, Activator.CreateInstance(eventCache.FieldType));
+        typeof(GameSession).GetField("server", Any)!.SetValue(session, server);
 
         using GameStorage.Request db = Storage.Context();
         Player player = db.LoadPlayer(AccountId, CharacterId, 1, 1) ?? throw new InvalidOperationException("player not loaded");
-        var fieldPlayer = Uninitialized<FieldPlayer>();
+        fieldPlayer = Uninitialized<FieldPlayer>();
         GC.SuppressFinalize(fieldPlayer);
         typeof(FieldPlayer).GetField(nameof(FieldPlayer.Session), Any)!.SetValue(fieldPlayer, session);
         typeof(Actor<Player>).GetField("<Value>k__BackingField", Any)!.SetValue(fieldPlayer, player);
         typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(fieldPlayer, player.ObjectId);
         Set(session, nameof(GameSession.Player), fieldPlayer);
 
-        var field = Uninitialized<FieldManager>();
-        GC.SuppressFinalize(field);
-        var players = new ConcurrentDictionary<int, FieldPlayer>();
-        players[fieldPlayer.ObjectId] = fieldPlayer;
-        typeof(FieldManager).GetField("<Players>k__BackingField", Any)!.SetValue(field, players);
-        typeof(FieldManager).GetField("initialized", Any)!.SetValue(field, true);
+        stats = Uninitialized<ItemStatsCalculator>();
+        typeof(ItemStatsCalculator).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(stats, TableMetadata);
         // What an item box roll reads from the field: its map, the tables and the item data.
         var map = Uninitialized<MapMetadata>();
         typeof(MapMetadata).GetField("<Id>k__BackingField", Any)!.SetValue(map, player.Character.MapId);
-        typeof(FieldManager).GetField(nameof(FieldManager.Metadata), Any)!.SetValue(field, map);
-        var stats = Uninitialized<ItemStatsCalculator>();
-        typeof(ItemStatsCalculator).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(stats, TableMetadata);
-        typeof(FieldManager).GetField("<ItemMetadata>k__BackingField", Any)!.SetValue(field, itemMetadata);
-        typeof(FieldManager).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(field, TableMetadata);
-        typeof(FieldManager).GetField("<ServerTableMetadata>k__BackingField", Any)!.SetValue(field, ServerTableMetadata);
-        typeof(FieldManager).GetField("<ItemStatsCalc>k__BackingField", Any)!.SetValue(field, stats);
-        typeof(FieldManager).GetField("<ItemDrop>k__BackingField", Any)!.SetValue(field, new ItemDropManager(field));
-        session.Field = field;
+        session.Field = NewField<FieldManager>(map);
 
         session.Currency = new CurrencyManager(session);
         session.Buffs = new BuffManager(fieldPlayer);
@@ -220,6 +302,10 @@ public sealed class TestGameSession {
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
         marriage.Marriage = Marriage.Default;
         session.Marriage = marriage;
+        session.Guild = Uninitialized<GuildManager>();
+        session.Exp = new ExperienceManager(session);
+        session.Dungeon = new DungeonManager(session);
+        session.Housing = new HousingManager(session, TableMetadata);
         session.Item = new ItemManager(db, session, stats);
         session.ItemBox = new ItemBoxManager(session);
 
@@ -240,6 +326,12 @@ public sealed class TestGameSession {
         while (sendQueue.TryTake(out (byte[] packet, int length) entry)) {
             sent.Add(entry.packet);
         }
+        if (sendQueue.IsAddingCompleted && started != null) {
+            Type core = typeof(Maple2.Server.Core.Network.Session);
+            sendQueue = new BlockingCollection<(byte[] packet, int length)>(new ConcurrentQueue<(byte[], int)>());
+            core.GetField("sendQueue", Any)!.SetValue(started, sendQueue);
+            core.GetField("disconnecting", Any)!.SetValue(started, 0);
+        }
         return sent;
     }
 
@@ -258,6 +350,53 @@ public sealed class TestGameSession {
         return context.Item.AsNoTracking().Where(row => row.OwnerId == CharacterId).ToList();
     }
 
+    // The session stands in a field of this map (AddMap is not needed for it).
+    public void EnterMap(MapMetadata map) {
+        Session.Field = NewField<FieldManager>(map);
+    }
+
+    // The session stands in its own home, whose plot is returned (cubes can be put into Plot.Cubes).
+    public Plot EnterHome() {
+        Home home = Session.Player.Value.Home;
+        var field = NewField<HomeFieldManager>(Map(home.Indoor.MapId));
+        typeof(HomeFieldManager).GetField("<Home>k__BackingField", Any)!.SetValue(field, home);
+        var plot = new Plot(home.Indoor.Metadata) {
+            Number = home.Indoor.Number, OwnerId = AccountId, MapId = home.Indoor.MapId, Name = home.Indoor.Name,
+        };
+        field.Plots[plot.Number] = plot;
+        Session.Field = field;
+        return plot;
+    }
+
+    // The session stands in the lobby field of a dungeon room it entered; the room's record is returned (its State
+    // decides whether CompleteDungeon is a clear).
+    public DungeonRoomRecord EnterDungeon(DungeonRoomMetadata metadata) {
+        var field = NewField<DungeonFieldManager>(Map(metadata.LobbyFieldId));
+        var record = new DungeonRoomRecord(metadata);
+        typeof(DungeonFieldManager).GetField(nameof(DungeonFieldManager.DungeonMetadata), Any)!.SetValue(field, metadata);
+        typeof(DungeonFieldManager).GetField("<DungeonRoomRecord>k__BackingField", Any)!.SetValue(field, record);
+        typeof(DungeonFieldManager).GetField("<Lobby>k__BackingField", Any)!.SetValue(field, field);
+        typeof(FieldManager).GetField("<DungeonId>k__BackingField", Any)!.SetValue(field, metadata.Id);
+        Session.Field = field;
+        typeof(DungeonManager).GetField("<Lobby>k__BackingField", Any)!.SetValue(Session.Dungeon, field);
+        Session.Dungeon.Metadata = metadata;
+        Session.Dungeon.UserRecord = new DungeonUserRecord(metadata.Id, CharacterId);
+        return record;
+    }
+
+    // A quest the character has in progress (no row is stored).
+    public Quest StartQuest(QuestMetadata metadata) {
+        var quest = new Quest(metadata) { State = QuestState.Started };
+        string values = metadata.Basic.Account > 0 ? "accountValues" : "characterValues";
+        ((IDictionary<int, Quest>) typeof(QuestManager).GetField(values, Any)!.GetValue(Session.Quest)!).Add(metadata.Id, quest);
+        return quest;
+    }
+
+    // The counter of a trophy the character has; null when it was never counted.
+    public long? TrophyCounter(int id) {
+        return Session.Achievement.TryGetAchievement(id, out Achievement? achievement) ? achievement.Counter : null;
+    }
+
     public Character StoredCharacter() {
         using GameStorage.Request db = Storage.Context();
         return db.GetCharacter(CharacterId) ?? throw new InvalidOperationException("character row gone");
@@ -268,6 +407,16 @@ public sealed class TestGameSession {
     public sealed class LockWorld : WorldClient {
         public int Acquired;
         public int Released;
+        // The answer to a move to another game server, and the moves asked for. An empty address is a refusal
+        // (the session sends the move error).
+        public string MoveAddress = "127.0.0.1";
+        public int MovePort = 20002;
+        public readonly List<MigrateOutRequest> Moves = [];
+
+        public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
+            Moves.Add(request);
+            return new MigrateOutResponse { IpAddress = MoveAddress, Port = MovePort, Token = 1 };
+        }
 
         public override LockResponse AcquireLock(LockRequest request, CallOptions options) {
             Acquired++;
@@ -288,6 +437,25 @@ public sealed class TestGameSession {
                 }
             }
         }
+    }
+
+    // A field of the map that holds only this player.
+    private T NewField<T>(MapMetadata map) where T : FieldManager {
+        var field = Uninitialized<T>();
+        GC.SuppressFinalize(field);
+        var players = new ConcurrentDictionary<int, FieldPlayer>();
+        players[fieldPlayer.ObjectId] = fieldPlayer;
+        typeof(FieldManager).GetField("<Players>k__BackingField", Any)!.SetValue(field, players);
+        typeof(FieldManager).GetField("initialized", Any)!.SetValue(field, true);
+        typeof(FieldManager).GetField(nameof(FieldManager.Metadata), Any)!.SetValue(field, map);
+        typeof(FieldManager).GetField("<MapId>k__BackingField", Any)!.SetValue(field, map.Id);
+        typeof(FieldManager).GetField(nameof(FieldManager.Plots), Any)!.SetValue(field, new ConcurrentDictionary<int, Plot>());
+        typeof(FieldManager).GetField("<ItemMetadata>k__BackingField", Any)!.SetValue(field, itemMetadata);
+        typeof(FieldManager).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(field, TableMetadata);
+        typeof(FieldManager).GetField("<ServerTableMetadata>k__BackingField", Any)!.SetValue(field, ServerTableMetadata);
+        typeof(FieldManager).GetField("<ItemStatsCalc>k__BackingField", Any)!.SetValue(field, stats);
+        typeof(FieldManager).GetField("<ItemDrop>k__BackingField", Any)!.SetValue(field, new ItemDropManager(field));
+        return field;
     }
 
     private static T Uninitialized<T>() => (T) RuntimeHelpers.GetUninitializedObject(typeof(T));

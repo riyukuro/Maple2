@@ -36,6 +36,12 @@ public class DataDbModule : Module {
             throw new Exception("Metadata database not found, did you run Maple2.File.Ingest?");
         }
 
+        // check Ingest has been run since the last change of a table this server reads
+        List<string> stale = MetadataSchemaCheck.StaleTables(context);
+        if (stale.Count > 0) {
+            throw new Exception($"Metadata database is older than this server (tables: {string.Join(", ", stale)}), run Maple2.File.Ingest again.");
+        }
+
         context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
         builder.RegisterInstance(context);
 
