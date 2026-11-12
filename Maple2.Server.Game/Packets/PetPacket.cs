@@ -155,8 +155,6 @@ public static class PetPacket {
         return pWriter;
     }
 
-    // Client reader: CPetManager, pet mode 12 (int count): today's pet fusion count (PC +0x11f4); refreshes
-    // the fusion window.
     // Client reader: UIItemPetTrainingDialog::FUN_140e57cb0 (uiitempettrainingdialog.cpp:202), registered on this
     // opcode while the training dialog is open: the mode byte only; 13 plays the dialog's "complete" and locks its
     // slot. CPetManager has no case for 13.
@@ -167,6 +165,8 @@ public static class PetPacket {
         return pWriter;
     }
 
+    // Client reader: CPetManager, pet mode 12 (int count): today's pet fusion count (PC +0x11f4); refreshes
+    // the fusion window.
     public static ByteWriter FusionCount(int count) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
         pWriter.WriteByte((byte) Command.FusionCount);
