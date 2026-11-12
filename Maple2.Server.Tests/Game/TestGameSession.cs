@@ -11,6 +11,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -36,17 +37,20 @@ namespace Maple2.Server.Tests.Game;
 //   Item scroll = test.Store(TestGameSession.Metadata(...)); // rows the character owns before it logs in
 //   test.SetTable(new DefaultItemsTable(...));              // client tables the handler reads
 //   GameSession session = test.Start();                     // player, inventory, equips, currency, buffs, ...
+//   test.AddEvent(1, GameEventType.StampEvent, new StampEvent(...)); // a live event the server holds
 //   handler.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(scroll.Uid)));
 //   test.TakeSent()                                         // the packets sent since the last call, in order
 //
 // The session is made without its constructor, so only what Start sets exists: Player, Item (Equips, Inventory,
 // Furnishing), ItemBox, ItemMerge, ItemEnchant, Stats (no actor: Refresh does nothing), PlayerInfo, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Exp, Dungeon (no room),
-// Housing, Guild (no guild), Field (a field that only broadcasts to this player and rolls item drops from the tables
+// Housing, Guild (no guild), GameEvent (the user values stored for the events added with AddEvent), Field (a field
+// that only broadcasts to this player and rolls item drops from the tables
 // set here) and World (grants every lock, answers a move with MoveAddress). A handler that reaches anything else
 // needs it set first.
 //
-// Trophies and maps come from AddAchievement and AddMap; EnterMap, EnterHome, EnterDungeon and StartQuest put the
-// started session in a place or give it a quest. A move (GameSession.Migrate) saves nothing and closes nothing here.
+// Trophies and maps come from AddAchievement and AddMap; EnterMap, EnterHome, EnterDungeon, StartQuest and SetQuest
+// put the started session in a place or give it a quest. A move (GameSession.Migrate) saves nothing and closes
+// nothing here.
 // Storage is the real GameStorage; pass MySQL options to run the same test against a database.
 public sealed class TestGameSession {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -66,6 +70,7 @@ public sealed class TestGameSession {
 
     private readonly LRUCache<int, ItemMetadata> items = new(1024, 1);
     private readonly ScriptMetadataStorage scripts = new(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+    private readonly Dictionary<int, GameEvent> events = new();
     private readonly ItemMetadataStorage itemMetadata = Uninitialized<ItemMetadataStorage>();
     private BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
     private GameSession? started;
@@ -82,6 +87,9 @@ public sealed class TestGameSession {
             .Options;
         // ItemMetadataStorage's constructor runs SQL the in-memory provider lacks; TryGet looks in the cache first.
         typeof(MetadataStorage<int, ItemMetadata>).GetField("Cache", Any)!.SetValue(itemMetadata, items);
+        // An empty item table behind the registered items, so an unknown id is not found rather than a fault.
+        typeof(MetadataStorage<int, ItemMetadata>).GetField("Context", Any)!.SetValue(itemMetadata,
+            new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         // The home's plot, which LoadPlayer looks up for the account's home.
         typeof(MetadataStorage<int, MapMetadata>).GetField("Cache", Any)!.SetValue(MapMetadata, maps);
         var ugcMaps = new LRUCache<int, UgcMapMetadata>(4, 1);
@@ -241,6 +249,15 @@ public sealed class TestGameSession {
     public void SetTable<T>(T table) where T : Table => SetLazy(TableMetadata, table);
     public void SetServerTable<T>(T table) where T : ServerTable => SetLazy(ServerTableMetadata, table);
 
+    // A live event (started three days ago, ending in thirty) of the game server the session asks for its events.
+    // Added before Start: the login reads the character's stored user values of it.
+    public GameEvent AddEvent(int id, GameEventType type, GameEventData data, DateTime? start = null, DateTime? end = null) {
+        var gameEvent = new GameEvent(new GameEventMetadata(id, type, start ?? DateTime.Now.AddDays(-3), end ?? DateTime.Now.AddDays(30),
+            TimeSpan.Zero, TimeSpan.Zero, [], data, string.Empty, string.Empty, string.Empty, string.Empty));
+        events[id] = gameEvent;
+        return gameEvent;
+    }
+
     // An individual drop box whose groups each give all of their rows' items: one group per item id list, every
     // row certain (so a test knows what the box gives).
     public static IDictionary<int, IndividualDropItemTable.Entry> DropBox(params (int ItemId, int Amount)[][] groups) {
@@ -278,10 +295,14 @@ public sealed class TestGameSession {
         typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, true);
         typeof(GameSession).GetField("gameDisposeState", Any)!.SetValue(session, 2);
         started = session;
-        // The server, for its events (none).
+        // The server, for its events (those added with AddEvent).
         var server = Uninitialized<Maple2.Server.Game.GameServer>();
         FieldInfo eventCache = typeof(Maple2.Server.Game.GameServer).GetField("eventCache", Any)!;
-        eventCache.SetValue(server, Activator.CreateInstance(eventCache.FieldType));
+        var cache = (IDictionary<int, GameEvent>) Activator.CreateInstance(eventCache.FieldType)!;
+        foreach ((int id, GameEvent gameEvent) in events) {
+            cache[id] = gameEvent;
+        }
+        eventCache.SetValue(server, cache);
         typeof(GameSession).GetField("server", Any)!.SetValue(session, server);
         var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         Set(session, nameof(GameSession.QuestMetadata), new QuestMetadataStorage(new MetadataContext(metadataOptions)));
@@ -335,6 +356,7 @@ public sealed class TestGameSession {
         session.ItemEnchant = new ItemEnchantManager(session);
         // Stats without an actor: Refresh does nothing.
         session.Stats = Uninitialized<StatsManager>();
+        session.GameEvent = new GameEventManager(session);
 
         Session = session;
         return session;
@@ -348,6 +370,22 @@ public sealed class TestGameSession {
     }
 
     // The packets sent since the last call, in the order they were sent; each starts with its opcode.
+    // A quest the player holds in the given state (an account quest, as the event quests are). Only its id is
+    // set in the quest's data.
+    public Quest SetQuest(int questId, QuestState state) {
+        var quest = new Quest(QuestData(questId)) { State = state };
+        var held = (Dictionary<int, Quest>) typeof(QuestManager).GetField("accountValues", Any)!.GetValue(Session.Quest)!;
+        held[questId] = quest;
+        return quest;
+    }
+
+    // The character's stored user values of an event, as the logout stores them.
+    public Dictionary<GameEventUserValueType, string> StoredEventValues(int eventId) {
+        using var context = new Ms2Context(Options);
+        return context.GameEventUserValue.AsNoTracking().Where(row => row.CharacterId == CharacterId && row.EventId == eventId)
+            .ToDictionary(row => row.Type, row => row.Value);
+    }
+
     public List<byte[]> TakeSent() {
         var sent = new List<byte[]>();
         while (sendQueue.TryTake(out (byte[] packet, int length) entry)) {

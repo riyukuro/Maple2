@@ -20,17 +20,19 @@ public static class AttendancePacket {
         return pWriter;
     }
 
-    // The attendance events the player has started with an item: event id and the time it was started. The client
+    // The attendance events the player has started with an item: event id and the time the event ends for this
+    // player (an item event's end is this time when it is set, GameEventAttendGiftCli::GetEndTime,
+    // client/ms2/gameeventcli.cpp:564; the dialog shows it as the end of the period). The client
     // keeps them in a map (CMyCharacter::FUN_140d9f1c0, client/ms2/notifydebugstate.cpp:147) that the gift dialog
     // reads to show "item required" for a not yet started item event (uiattendgiftdialog.cpp:557) and the meret
     // attendance dialog for its locks (uicashattenddialog.cpp:477). KMS2 sends it at login.
-    public static ByteWriter StartedEvents(ICollection<(int EventId, long StartTime)> started) {
+    public static ByteWriter StartedEvents(ICollection<(int EventId, long EndTime)> started) {
         var pWriter = Packet.Of(SendOp.Attendance);
         pWriter.WriteByte((byte) Command.StartedEvents);
         pWriter.WriteInt(started.Count);
-        foreach ((int eventId, long startTime) in started) {
+        foreach ((int eventId, long endTime) in started) {
             pWriter.WriteInt(eventId);
-            pWriter.WriteLong(startTime);
+            pWriter.WriteLong(endTime);
         }
 
         return pWriter;
