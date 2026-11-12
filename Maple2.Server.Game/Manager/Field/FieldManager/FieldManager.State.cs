@@ -651,12 +651,8 @@ public partial class FieldManager {
         worldBossObjectId = npc.ObjectId;
         npc.WorldBossDeathCallback = killedNpc => {
             worldBossObjectId = 0;
-            FieldPlayer? killer = killedNpc.GetLastAttacker();
-            string killerName = killer?.Value.Character.Name ?? string.Empty;
-            string bossName = npcMetadata.Name ?? string.Empty;
-
-            Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_hunting_kill_boss, killerName, bossName)));
-
+            // The kill notice (s_hunting_kill_boss) is the boss kill message every field boss death sends
+            // (FieldNpc.SendKillNotices); a second notice here showed it twice.
             // Notify World to remove this channel from the boss's alive channel list (for world map accuracy)
             try {
                 FieldFactory.World.TimeEvent(new WorldTimeEventRequest {

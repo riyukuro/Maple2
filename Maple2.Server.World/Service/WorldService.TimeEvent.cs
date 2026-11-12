@@ -1,5 +1,6 @@
 ﻿using Grpc.Core;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.World.Containers;
 
 namespace Maple2.Server.World.Service;
@@ -42,6 +43,11 @@ public partial class WorldService {
 
     private TimeEventResponse JoinGlobalPortal(TimeEventRequest.Types.JoinGlobalPortal portal) {
         if (!globalPortalLookup.TryGet(out GlobalPortalManager? manager) || manager.Portal.MetadataId != portal.EventId) {
+            return new TimeEventResponse();
+        }
+
+        // The index is the button the client sent.
+        if (!GlobalPortalRules.EntryValid(portal.Index, manager.Portal.Metadata.Entries.Length)) {
             return new TimeEventResponse();
         }
 

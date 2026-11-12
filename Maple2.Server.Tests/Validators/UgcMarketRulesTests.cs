@@ -74,8 +74,8 @@ public class UgcMarketRulesTests {
     [TestCase(100, 10000, 300, 0, false, false, 300, 10000)]
     [TestCase(100, 10000, 0, 5000, false, false, 100, 5000)]
     // A music score: the script's lowest price, the constant's highest; its design row is not read.
-    [TestCase(50, 10000, 300, 5000, true, false, 100, 10000)]
-    [TestCase(50, 10000, 0, 0, true, true, 15, 10000)]
+    [TestCase(50, 10000, 300, 5000, true, false, 15, 10000)]
+    [TestCase(50, 10000, 0, 0, true, true, 100, 10000)]
     // Never below 0, and the highest at least the lowest.
     [TestCase(-20, 10000, 0, 0, false, false, 0, 10000)]
     [TestCase(500, 100, 0, 0, false, false, 500, 500)]

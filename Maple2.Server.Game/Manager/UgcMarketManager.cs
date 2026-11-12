@@ -68,12 +68,7 @@ public sealed class UgcMarketManager {
     public static SoldUgcMarketItem? RecordSale(GameStorage.Request db, UgcMarketItem listing) {
         long salesTotal = SalesTotal(db.GetUgcListingsByAccountId(listing.SellerAccountId).Values);
         long profit = UgcMarketRules.Profit(UgcMarketRules.CostRows, salesTotal, listing.Price);
-        if (!db.AddUgcMarketSale(listing.Id)) {
-            return null;
-        }
-        listing.SalesCount++;
-
-        return db.CreateSoldUgcMarketItem(new SoldUgcMarketItem {
+        SoldUgcMarketItem? sold = db.AddUgcMarketSale(listing.Id, new SoldUgcMarketItem {
             AccountId = listing.SellerAccountId,
             Price = listing.Price,
             Name = listing.Look.Name,
@@ -82,6 +77,10 @@ public sealed class UgcMarketManager {
             // written as 1970, which the client shows as the sale's date with the payment already due.
             SoldTime = DateTime.Now.ToEpochSeconds(),
         });
+        if (sold != null) {
+            listing.SalesCount++;
+        }
+        return sold;
     }
 
     public void RefreshSales() {

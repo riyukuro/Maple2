@@ -166,17 +166,28 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        // One more sale of the listing, added to the stored count.
-        public bool AddUgcMarketSale(long id) {
+        // One sale of the listing: one more on the stored count and the seller's sale entry, written together, so
+        // a sale that cannot be stored leaves the count as it was.
+        public SoldUgcMarketItem? AddUgcMarketSale(long id, SoldUgcMarketItem sold) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
             Model.UgcMarketItem? listing = Context.UgcMarketItem.Find(id);
             if (listing == null) {
-                return false;
+                return null;
             }
 
             listing.SalesCount++;
-            return Context.TrySaveChanges();
+            Model.SoldUgcMarketItem model = sold;
+            Context.SoldUgcMarketItem.Add(model);
+            if (Context.TrySaveChanges()) {
+                return model;
+            }
+
+            // Neither is written; nothing of the sale is left for a later save of this context.
+            listing.SalesCount--;
+            Context.Entry(listing).State = EntityState.Unchanged;
+            Context.Entry(model).State = EntityState.Detached;
+            return null;
         }
 
         // The stored sales count of each of the account's listings.

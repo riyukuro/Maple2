@@ -291,7 +291,8 @@ public static class FieldPacket {
         pWriter.WriteNpcStats(pet.Stats.Values);
         pWriter.WriteLong(pet.Pet.Uid);
         pWriter.WriteByte();
-        // The level on the name tag (CSceneStateGame::OnFieldAddPet): KMS2 sends a summoned pet's own level.
+        // The npc level the client keeps for the pet (CSceneStateGame::OnFieldAddPet): KMS2 sends a summoned pet's own
+        // level. The name tag shows the name and title only (UINameTag::Entity), so the level is not seen there.
         pWriter.WriteShort(PetRules.FieldLevel(pet.OwnerId != 0, pet.Pet.Pet?.Level, pet.Value.Metadata.Basic.Level));
         pWriter.WriteShort(pet.TamingRank);
         pWriter.WriteInt();

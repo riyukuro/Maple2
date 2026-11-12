@@ -54,13 +54,13 @@ public static class UgcMarketRules {
 
     // The price range of the register dialog (GetSellPriceRange): the constants UGCShopSellMinPrice and
     // UGCShopSellMaxPrice; a design item's own range from the design table where that is above 0; a music score's
-    // lowest price from the client script calcMarketSellPriceMinMaxMusicScore (its highest is 0 there, which keeps
-    // the constant). Never below 0, and the highest is at least the lowest.
+    // lowest price from the client script calcMarketSellPriceMinMaxMusicScore (15, and 100 under CN; its highest is
+    // 0 there, which keeps the constant). Never below 0, and the highest is at least the lowest.
     public static (long Min, long Max) PriceRange(long constantMin, long constantMax, long designMin, long designMax, bool score, bool cn) {
         long min = constantMin;
         long max = constantMax;
         if (score) {
-            min = cn ? 15 : 100;
+            min = cn ? 100 : 15;
         } else {
             if (designMin > 0) {
                 min = designMin;

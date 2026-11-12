@@ -2,6 +2,7 @@
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Game.Packets;
 
@@ -18,8 +19,9 @@ public static class GlobalPortalPacket {
         pWriter.WriteInt(uid);
         pWriter.WriteUnicodeString(portal.PopupMessage);
         pWriter.WriteUnicodeString(portal.SoundId);
-        foreach (GlobalPortalMetadata.Field entry in portal.Entries) {
-            pWriter.WriteUnicodeString(entry.Name);
+        // The client reads three captions whatever the number of fields in the row.
+        foreach (string caption in GlobalPortalRules.Captions(portal.Entries.Select(entry => entry.Name).ToArray())) {
+            pWriter.WriteUnicodeString(caption);
         }
 
         return pWriter;
@@ -29,6 +31,14 @@ public static class GlobalPortalPacket {
     public static ByteWriter Close() {
         var pWriter = Packet.Of(SendOp.GlobalPortal);
         pWriter.Write<Command>(Command.Close);
+
+        return pWriter;
+    }
+
+    // UIGlobalPortalDialog case 3 reads nothing more: the notice s_massive_event_error_cant_enter_dead.
+    public static ByteWriter CannotEnterDead() {
+        var pWriter = Packet.Of(SendOp.GlobalPortal);
+        pWriter.WriteByte(3);
 
         return pWriter;
     }

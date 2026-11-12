@@ -167,15 +167,20 @@ public class ItemBoxManager {
                 break;
             }
 
-            if (!session.Item.Inventory.Consume([keyIngredient])) {
+            // The key and the box are taken in one step (both are tested before either is taken), so a box that
+            // cannot be taken leaves the key and gives nothing.
+            bool boxPaid = pay != ItemBoxRules.LuluPay.Meso;
+            if (boxPaid && keyIngredient.Tag == boxIngredient.Tag) {
+                if (!session.Item.Inventory.Consume([new IngredientInfo(keyIngredient.Tag, keyIngredient.Amount + boxIngredient.Amount)])) {
+                    error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                    break;
+                }
+            } else if (!session.Item.Inventory.Consume(boxPaid ? [keyIngredient, boxIngredient] : [keyIngredient])) {
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 break;
             }
-            if (pay == ItemBoxRules.LuluPay.Meso) {
+            if (!boxPaid) {
                 session.Currency.Meso -= mesoCost;
-            } else if (!session.Item.Inventory.Consume([boxIngredient])) {
-                // The key is gone and the box could not be taken: the items are still given, so nothing is lost.
-                logger.Error("Key box {ItemId}: the box item could not be taken after the key", item.Id);
             }
 
             foreach (Item newItem in items) {
