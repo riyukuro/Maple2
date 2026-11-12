@@ -45,6 +45,7 @@ public class ChannelHandler : PacketHandler<GameSession> {
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Channel change", response.IpAddress, response.Port);
                 session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_msg_cant_movechannel)));
+                session.CutAfterSend(); // the box does not make the client leave
                 return;
             }
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, session.Field?.MapId ?? 0));
@@ -57,6 +58,7 @@ public class ChannelHandler : PacketHandler<GameSession> {
             // Update the client with the latest channel list.
             ChannelsResponse response = World.Channels(new ChannelsRequest());
             session.Send(ChannelPacket.Load(response.Channels));
+            session.CutAfterSend();
         } finally {
             session.Disconnect();
         }

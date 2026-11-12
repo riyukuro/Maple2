@@ -103,7 +103,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             if (!EndpointHelper.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Login to game", response.IpAddress, response.Port);
                 session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Invalid game server address"));
-                session.Disconnect();
+                session.CutAfterSend();
                 return;
             }
             session.Send(MigrationPacket.LoginToGame(endpoint, response.Token, character.MapId));
@@ -114,12 +114,12 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             session.Send(MigrationPacket.LoginToGameError(s_move_err_member_limit, ex.Message));
         } catch (RpcException ex) {
             session.Send(MigrationPacket.LoginToGameError(s_move_err_default, ex.Message));
-            session.Disconnect();
+            session.CutAfterSend();
         } catch (Exception ex) {
             // A failed load (a bad stored row, say) would otherwise leave only the client's error code.
             Logger.Error(ex, "Login to game failed for character {CharacterId}", characterId);
             session.Send(MigrationPacket.LoginToGameError(s_move_err_default, ex.Message));
-            session.Disconnect();
+            session.CutAfterSend();
         }
     }
 

@@ -950,6 +950,7 @@ public sealed partial class GameSession : Core.Network.Session {
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Home planner", response.IpAddress, response.Port);
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                CutAfterSend();
                 return;
             }
             Send(MigrationPacket.GameToGame(endpoint, response.Token, Constant.DefaultHomeMapId));
@@ -990,6 +991,7 @@ public sealed partial class GameSession : Core.Network.Session {
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Field migration", response.IpAddress, response.Port);
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                CutAfterSend();
                 return;
             }
             beforeMove?.Invoke();

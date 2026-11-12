@@ -26,19 +26,28 @@ public static class HeartbeatRules {
     // answer that comes late says the client stood still for a while, not that it is gone.
     public const long SilenceLimitMs = 3 * IntervalMs;
 
+    // The heartbeats that must have gone unanswered as well (chosen here). The time alone does not say that the
+    // client is gone: when the rounds stop for a while (the World server restarts, its round is held up), a
+    // client that only answers heartbeats had nothing to answer. Such a session is asked again first.
+    public const int UnansweredLimit = 2;
+
+    // Asks closer together than this count as one.
+    public const long AskGapMs = IntervalMs / 2;
+
     // Whether the client has been silent for too long; both times in the same millisecond count.
-    public static bool IsSilent(long lastReceivedMs, long nowMs) {
-        return nowMs - lastReceivedMs >= SilenceLimitMs;
+    public static bool IsSilent(long lastReceivedMs, int unansweredAsks, long nowMs) {
+        return unansweredAsks >= UnansweredLimit && nowMs - lastReceivedMs >= SilenceLimitMs;
     }
 
     // One heartbeat round for a session, on the login server and on a channel alike: a silent session is cut
     // (false), any other is asked.
     public static bool Ask(Session session, long nowMs) {
-        if (IsSilent(session.LastReceivedMs, nowMs)) {
+        if (IsSilent(session.LastReceivedMs, session.UnansweredAsks, nowMs)) {
             session.Cut();
             return false;
         }
 
+        session.MarkAsked(nowMs, AskGapMs);
         session.Send(RequestPacket.Heartbeat());
         return true;
     }

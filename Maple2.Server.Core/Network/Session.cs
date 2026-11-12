@@ -39,6 +39,8 @@ public abstract class Session : IDisposable {
     private int disconnecting; // 0 = not disconnecting, 1 = disconnect in progress/already triggered (reentrancy guard)
     private volatile bool sendFailed; // set on first SendRaw failure to stop send queue drain
     private long lastReceivedMs = Environment.TickCount64;
+    private long lastAskMs = long.MinValue / 2;
+    private int unansweredAsks;
     private readonly uint siv;
     private readonly uint riv;
 
@@ -140,7 +142,7 @@ public abstract class Session : IDisposable {
     }
 
     // The first close decides how the socket closes; a later Cut or Disconnect changes nothing.
-    private void Close(bool reset, string caller, int line, string filePath) {
+    private void Close(bool reset, string caller, int line, string filePath, int settleMs = 0) {
         if (disposed) return;
 
         if (Interlocked.Exchange(ref disconnecting, 1) == 1) return;
@@ -155,6 +157,10 @@ public abstract class Session : IDisposable {
 
         // Graceful close: linger 0 turns Close into an RST, which can drop the just-sent last packet (GameToLogin) under wine.
         // Close gracefully after the drain: FIN first, short linger.
+        if (reset && settleMs > 0 && !sendFailed) {
+            Thread.Sleep(settleMs);
+        }
+
         try {
             if (reset) {
                 client.LingerState = new LingerOption(true, 0);
@@ -178,7 +184,33 @@ public abstract class Session : IDisposable {
     // The time (Environment.TickCount64) the last packet of the client arrived at; the session's start before one.
     public long LastReceivedMs => Interlocked.Read(ref lastReceivedMs);
 
-    public void MarkReceived(long now) => Interlocked.Exchange(ref lastReceivedMs, now);
+    public void MarkReceived(long now) {
+        Interlocked.Exchange(ref lastReceivedMs, now);
+        Interlocked.Exchange(ref unansweredAsks, 0);
+    }
+
+    // The heartbeats sent since the last packet of the client arrived. Asks that follow each other faster than
+    // `minGapMs` count as one, so a round that was held up and then runs twice does not count twice.
+    public int UnansweredAsks => Volatile.Read(ref unansweredAsks);
+
+    public void MarkAsked(long now, long minGapMs) {
+        if (now - Interlocked.Read(ref lastAskMs) < minGapMs) {
+            return;
+        }
+
+        Interlocked.Exchange(ref lastAskMs, now);
+        Interlocked.Increment(ref unansweredAsks);
+    }
+
+    // The time the socket is left alone after the send queue is drained and before a reset, so that the client
+    // has read the last packet by then: a reset drops what the client has not read yet (chosen here).
+    private const int LAST_PACKET_SETTLE_MS = 500;
+
+    // A reset like Cut, for a session that was just sent an error the client shows but does not leave on: the
+    // error arrives first, then the client learns that the connection is gone.
+    public void CutAfterSend([CallerMemberName] string caller = "", [CallerLineNumber] int line = 0, [CallerFilePath] string filePath = "") {
+        Close(true, caller, line, filePath, LAST_PACKET_SETTLE_MS);
+    }
 
     public bool Connected() {
         if (disposed) {

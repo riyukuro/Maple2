@@ -79,5 +79,9 @@ public class LoginServer : Server<LoginSession> {
         return base.StopAsync(cancellationToken);
     }
 
-    public List<LoginSession> GetSessions() => sessions.Values.ToList();
+    public List<LoginSession> GetSessions() {
+        lock (mutex) {
+            return sessions.Values.ToList();
+        }
+    }
 }

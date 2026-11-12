@@ -48,6 +48,7 @@ public class QuitHandler : PacketHandler<GameSession> {
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Quit to login", response.IpAddress, response.Port);
                 session.Send(MigrationPacket.GameToLoginError(s_move_err_default));
+                session.CutAfterSend();
                 return;
             }
             session.Send(MigrationPacket.GameToLogin(endpoint, response.Token));
@@ -55,6 +56,7 @@ public class QuitHandler : PacketHandler<GameSession> {
             Logger.Error(ex, "MigrateOut failed for account={AccountId} char={CharacterId}",
                 session.AccountId, session.CharacterId);
             session.Send(MigrationPacket.GameToLoginError(s_move_err_default));
+            session.CutAfterSend();
         } finally {
             session.Disconnect();
         }

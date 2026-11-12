@@ -73,18 +73,55 @@ public class HeartbeatSessionTests {
 
     [Test]
     public void ASilentClientIsCutAndNotAsked() {
-        session.MarkReceived(Environment.TickCount64 - HeartbeatRules.SilenceLimitMs);
+        long now = Environment.TickCount64;
+        session.MarkReceived(now - HeartbeatRules.SilenceLimitMs);
+        Assert.That(HeartbeatRules.Ask(session, now - 2 * HeartbeatRules.IntervalMs), Is.True);
+        Assert.That(HeartbeatRules.Ask(session, now - HeartbeatRules.IntervalMs), Is.True);
+        test.TakeSentOps();
 
         Assert.That(Ask().Success, Is.False);
         Assert.That(Closing(), Is.True);
         Assert.That(test.TakeSentOps(), Is.Empty);
     }
 
-    [TestCase(0, false)]
-    [TestCase(89999, false)]
-    [TestCase(90000, true)]
-    public void SilenceCountsFromTheLastPacket(long silentMs, bool expected) {
-        Assert.That(HeartbeatRules.IsSilent(1000, 1000 + silentMs), Is.EqualTo(expected));
+    [TestCase(0, 2, false)]
+    [TestCase(89999, 2, false)]
+    [TestCase(90000, 2, true)]
+    [TestCase(90000, 3, true)]
+    [TestCase(90000, 1, false)]
+    [TestCase(600000, 0, false)]
+    public void SilenceCountsFromTheLastPacketAndNeedsUnansweredAsks(long silentMs, int unanswered, bool expected) {
+        Assert.That(HeartbeatRules.IsSilent(1000, unanswered, 1000 + silentMs), Is.EqualTo(expected));
+    }
+
+    // The rounds stopped for a while (the World server restarted, or its round was held up): the client had
+    // nothing to answer, so the first rounds afterwards ask it and an answer keeps the session.
+    [Test]
+    public void AHeldUpRoundDoesNotCutAnIdleSession() {
+        long now = Environment.TickCount64;
+        session.MarkReceived(now - 200000);
+
+        Assert.That(HeartbeatRules.Ask(session, now), Is.True, "asked first");
+        Assert.That(HeartbeatRules.Ask(session, now + 1), Is.True);
+        Assert.That(HeartbeatRules.Ask(session, now + 2), Is.True, "rounds in a burst count as one ask");
+        Assert.That(session.UnansweredAsks, Is.EqualTo(1));
+        Assert.That(Closing(), Is.False);
+
+        session.MarkReceived(now + 100);
+        Assert.That(session.UnansweredAsks, Is.EqualTo(0));
+        Assert.That(HeartbeatRules.Ask(session, now + HeartbeatRules.IntervalMs), Is.True);
+        Assert.That(Closing(), Is.False);
+    }
+
+    [Test]
+    public void AfterAHeldUpRoundASilentClientIsCutByTheThirdRound() {
+        long now = Environment.TickCount64;
+        session.MarkReceived(now - 200000);
+
+        Assert.That(HeartbeatRules.Ask(session, now), Is.True);
+        Assert.That(HeartbeatRules.Ask(session, now + HeartbeatRules.IntervalMs), Is.True);
+        Assert.That(HeartbeatRules.Ask(session, now + 2 * HeartbeatRules.IntervalMs), Is.False);
+        Assert.That(Closing(), Is.True);
     }
 
     private sealed class SocketSession : Session {
@@ -112,6 +149,36 @@ public class HeartbeatSessionTests {
 
             var error = Assert.Throws<SocketException>(() => peer.Receive(new byte[16]));
             Assert.That(error!.SocketErrorCode, Is.EqualTo(SocketError.ConnectionReset));
+        }
+    }
+
+    // An error the client shows but does not leave on: the packet arrives, then the reset.
+    [Test]
+    public void ACutAfterSendDeliversTheLastPacketAndThenResets() {
+        (SocketSession served, Socket peer) = Connect();
+        using (peer) {
+            var reader = System.Threading.Tasks.Task.Run(() => {
+                int total = 0;
+                var buffer = new byte[256];
+                try {
+                    while (true) {
+                        int read = peer.Receive(buffer);
+                        if (read == 0) {
+                            return (total, SocketError.Success);
+                        }
+                        total += read;
+                    }
+                } catch (SocketException ex) {
+                    return (total, ex.SocketErrorCode);
+                }
+            });
+            byte[] last = new byte[40];
+            served.Send(last);
+            served.CutAfterSend();
+
+            (int received, SocketError end) = reader.GetAwaiter().GetResult();
+            Assert.That(received, Is.GreaterThanOrEqualTo(last.Length), "the last packet was read");
+            Assert.That(end, Is.EqualTo(SocketError.ConnectionReset));
         }
     }
 
@@ -157,6 +224,8 @@ public class HeartbeatSessionTests {
         using (peer) {
             long now = Environment.TickCount64;
             served.MarkReceived(now - HeartbeatRules.SilenceLimitMs);
+            served.MarkAsked(now - 2 * HeartbeatRules.IntervalMs, HeartbeatRules.AskGapMs);
+            served.MarkAsked(now - HeartbeatRules.IntervalMs, HeartbeatRules.AskGapMs);
 
             Assert.That(HeartbeatRules.Ask(served, now), Is.False);
             var error = Assert.Throws<SocketException>(() => peer.Receive(new byte[16]));

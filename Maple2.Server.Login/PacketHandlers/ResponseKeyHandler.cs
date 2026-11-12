@@ -41,7 +41,7 @@ public class ResponseKeyHandler : PacketHandler<LoginSession> {
             // and ServerEnterHandler lists the servers and characters, once, as KMS2 does.
         } catch (Exception ex) when (ex is RpcException or InvalidOperationException) {
             session.Send(MigrationPacket.MoveResult(s_move_err_default));
-            session.Disconnect();
+            session.CutAfterSend();
         }
     }
 }
