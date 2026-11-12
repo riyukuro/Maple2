@@ -10,4 +10,21 @@ public static class ItemBoxRules {
         int max = multiOpenMax > 0 ? multiOpenMax : DefaultMultiOpenMax;
         return count >= 1 && count <= max;
     }
+
+    // A select box's pick (UISelectItemBoxDialog): the rows the player picked in the list, comma separated, exactly
+    // as many as the box's select count (its first parameter). Null when the text is not that.
+    public static int[]? ParseSelection(string text, int selectCount) {
+        string[] parts = text.Split(',');
+        var rows = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++) {
+            if (!int.TryParse(parts[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out rows[i])) {
+                return null;
+            }
+        }
+        if (selectCount < 1 || rows.Length != selectCount || rows.Distinct().Count() != rows.Length) {
+            return null;
+        }
+
+        return rows;
+    }
 }

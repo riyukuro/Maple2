@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -58,9 +59,10 @@ public class ItemBoxManager {
         return error;
     }
 
-    public ItemBoxError Open(Item item, int count = 1, int index = -1) => Counted(item, () => OpenBox(item, count, index));
+    // selection: a select box's picked rows as the client sends them (ItemBoxRules.ParseSelection).
+    public ItemBoxError Open(Item item, int count = 1, string selection = "") => Counted(item, () => OpenBox(item, count, selection));
 
-    private ItemBoxError OpenBox(Item item, int count, int index) {
+    private ItemBoxError OpenBox(Item item, int count, string selection) {
         if (string.IsNullOrEmpty(item.Metadata.Function?.Parameters)) {
             logger.Error("Item {ItemId} has no parameters for item box function", item.Id);
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
@@ -90,7 +92,7 @@ public class ItemBoxManager {
         }
         int[] itemBoxParams = item.Metadata.Function.Parameters.Split(',').Select(int.Parse).ToArray();
         return item.Metadata.Function?.Type switch {
-            ItemFunction.SelectItemBox => SelectItemBox(item, itemBoxParams[0], itemBoxParams[1], index, count),
+            ItemFunction.SelectItemBox => SelectItemBox(item, itemBoxParams[0], itemBoxParams[1], selection, count),
             ItemFunction.OpenItemBox => OpenItemBox(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[3], itemBoxParams.Length == 5 ? itemBoxParams[4] : 1, count),
             ItemFunction.OpenItemBoxWithKey => OpenItemBoxWithKey(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[5], count),
             ItemFunction.OpenGachaBox => OpenGachaBox(item, itemBoxParams[0], count),
@@ -280,8 +282,14 @@ public class ItemBoxManager {
         return BoxCount > 0 ? ItemBoxError.ok : ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
     }
 
-    private ItemBoxError SelectItemBox(Item item, int groupId, int boxId, int index, int count = 1) {
+    // The parameters are the select count and the individual drop box id; the client lists the box's rows and sends
+    // the picked ones (ItemDropManager.SelectBoxRows).
+    private ItemBoxError SelectItemBox(Item item, int selectCount, int boxId, string selection, int count = 1) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        int[]? rows = ItemBoxRules.ParseSelection(selection, selectCount);
+        if (rows == null) {
+            return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        }
         // check if box count is enough to open
         if (session.Item.Inventory.Find(item.Id).Sum(box => box.Amount) < 1) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
@@ -298,12 +306,11 @@ public class ItemBoxManager {
         var error = ItemBoxError.ok;
         var ingredient = new ItemComponent(item.Id, -1, 1, ItemTag.None);
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
+            ICollection<Item> itemList = session.Field.ItemDrop.GetSelectBoxItems(session, boxId, rows);
+            if (itemList.Count == 0) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
-
-            ICollection<Item> itemList = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId, index, groupId);
-            if (itemList.Count == 0) {
+            if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
             foreach (Item newItem in itemList) {

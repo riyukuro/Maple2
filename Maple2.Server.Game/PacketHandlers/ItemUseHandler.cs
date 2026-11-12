@@ -436,10 +436,7 @@ public class ItemUseHandler : FieldPacketHandler {
     }
 
     private static void HandleSelectItemBox(GameSession session, IByteReader packet, Item item) {
-        if (!int.TryParse(packet.ReadUnicodeString(), out int index)) {
-            return;
-        }
-        session.ItemBox.Open(item, index: index);
+        session.ItemBox.Open(item, selection: packet.ReadUnicodeString());
         session.ItemBox.Reset();
     }
 

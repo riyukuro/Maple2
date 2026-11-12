@@ -26,11 +26,10 @@ public class ItemBoxHandler : FieldPacketHandler {
             return;
         }
 
-        if (!int.TryParse(packet.ReadUnicodeString(), out int index) && item.Metadata?.Function?.Type == ItemFunction.SelectItemBox) {
-            return;
-        }
+        // A select box's picked rows; ItemBoxManager checks them.
+        string selection = packet.ReadUnicodeString();
 
-        ItemBoxError error = session.ItemBox.Open(item, count, index);
+        ItemBoxError error = session.ItemBox.Open(item, count, selection);
         session.Send(ItemBoxPacket.Open(itemId, session.ItemBox.BoxCount, error));
         session.ItemBox.Reset();
     }

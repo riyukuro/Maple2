@@ -100,17 +100,71 @@ public class ItemDropManager {
     // level gates which drop groups are eligible. For mob drops this is the player's character level
     // (MinLevel in individualDropItemTable is a player requirement, not NPC level — e.g. Shinjo's Feather
     // requires player level 30+). For other callers (e.g. housing rewards) it may be a different score.
-    public ICollection<Item> GetIndividualDropItems(GameSession session, int level, int individualDropBoxId, int index = -1, int dropGroupId = -1) {
+    public ICollection<Item> GetIndividualDropItems(GameSession session, int level, int individualDropBoxId) {
         if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
             return new List<Item>();
         }
 
-        if (index >= 0 && dropGroupId > 0) {
-            if (entryDict.TryGetValue(dropGroupId, out IndividualDropItemTable.Entry? entry)) {
-                return GetAllGroups(session, level, [entry], index).ToList();
+        return GetAllGroups(session, level, entryDict.Values.ToList()).ToList();
+    }
+
+    // The items a select box (SelectItemBox) gives for the rows the player picked in its dialog, or none when a row
+    // is not in the list the client showed.
+    public ICollection<Item> GetSelectBoxItems(GameSession session, int individualDropBoxId, IReadOnlyCollection<int> rows) {
+        if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
+            return new List<Item>();
+        }
+
+        Character character = session.Player.Value.Character;
+        List<IndividualDropItemTable.Item> list = SelectBoxRows(entryDict.Values,
+            itemId => field.ItemMetadata.TryGet(itemId, out ItemMetadata? metadata) ? metadata.Limit : null,
+            character.Job.Code(), character.Gender);
+        if (rows.Count == 0 || rows.Any(row => row < 0 || row >= list.Count)) {
+            return new List<Item>();
+        }
+
+        return rows.SelectMany(row => CreateIndividualDropBoxItems(list[row], character)).ToList();
+    }
+
+    // The rows the client's select box dialog lists (ItemDropTable::GetBoxItems with the player's job group and
+    // gender), which the index it sends counts: every group in table order, each with its entries in order. An entry
+    // whose item has no data is left out; a smart gender group leaves out the other gender's items, and a group with a
+    // smart drop rate the items not recommended for the player's job. An entry with a second item id is two rows.
+    // The group's drop counts and minimum level are not looked at.
+    internal static List<IndividualDropItemTable.Item> SelectBoxRows(IEnumerable<IndividualDropItemTable.Entry> groups,
+            Func<int, ItemMetadataLimit?> limit, JobCode job, Gender gender) {
+        var rows = new List<IndividualDropItemTable.Item>();
+        foreach (IndividualDropItemTable.Entry group in groups) {
+            foreach (IndividualDropItemTable.Item itemEntry in group.Items) {
+                ItemMetadataLimit? itemLimit = limit(itemEntry.Ids.FirstOrDefault());
+                if (itemLimit == null) {
+                    continue;
+                }
+                if (group.SmartGender && itemLimit.Gender != Gender.All && itemLimit.Gender != gender) {
+                    continue;
+                }
+                if (group.SmartDropRate > 0 && !IsRecommendedInSelectBox(itemLimit.JobRecommends, job)) {
+                    continue;
+                }
+
+                rows.Add(itemEntry);
+                if (itemEntry.Ids.Length > 1 && itemEntry.Ids[1] != 0) {
+                    rows.Add(itemEntry);
+                }
             }
         }
-        return GetAllGroups(session, level, entryDict.Values.ToList()).ToList();
+
+        return rows;
+    }
+
+    // ItemLimit::IsJobRecommended: an item without recommendJobs (stored as [None]) is for every job; a beginner
+    // counts as a knight.
+    private static bool IsRecommendedInSelectBox(JobCode[] recommends, JobCode job) {
+        if (recommends is [] or [JobCode.None]) {
+            return true;
+        }
+
+        return recommends.Contains(job == JobCode.Newbie ? JobCode.Knight : job);
     }
 
     // A box rolled without a player (trigger item spawns, which anyone may pick up): each group rolled as for a player,
@@ -130,17 +184,7 @@ public class ItemDropManager {
             _ => false, itemEntry => itemEntry.Weight));
     }
 
-    private IEnumerable<Item> GetSelectedIndividualDropBoxItem(GameSession session, IEnumerable<IndividualDropItemTable.Item> itemEntries, int index) {
-        IndividualDropItemTable.Item? selectedItem = itemEntries.ElementAtOrDefault(index);
-        if (selectedItem == null) {
-            return new List<Item>();
-        }
-
-        // assuming selectedBoxes skip requirements otherwise they wouldn't have seen the item in the item selection.
-        return CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character).ToList();
-    }
-
-    private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry, int index = -1) {
+    private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry) {
         var items = new List<Item>();
         foreach (IndividualDropItemTable.Entry group in entry) {
             if (group.MinLevel > level) {
@@ -150,13 +194,6 @@ public class ItemDropManager {
             ICollection<IndividualDropItemTable.Item> itemEntries = group.Items;
             if (group.SmartGender) {
                 itemEntries = GetGenderedEntries(itemEntries, session.Player.Value.Character.Gender).ToList();
-            }
-
-            if (index >= 0) {
-                if (RollDropCount(group) > 0) {
-                    items = items.Concat(GetSelectedIndividualDropBoxItem(session, itemEntries, index)).ToList();
-                }
-                continue;
             }
 
             JobCode job = session.Player.Value.Character.Job.Code();
