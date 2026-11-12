@@ -86,8 +86,11 @@ public partial class GameStorage {
             return Context.Character.Count(character => character.AccountId == accountId);
         }
 
+        // LastModified is the row version (ON UPDATE CURRENT_TIMESTAMP): assigning it to itself keeps its value, so an
+        // online character's next save still matches it instead of hitting a concurrency conflict, and the last-online
+        // time read from it is not moved to the World's start.
         public void SetAllCharacterToOffline() {
-            Context.Database.ExecuteSqlRaw("UPDATE `character` SET Channel = -1");
+            Context.Database.ExecuteSqlRaw("UPDATE `character` SET Channel = -1, LastModified = LastModified WHERE Channel <> -1");
         }
 
         //  If accountId is specified, only characters for the account will be returned.
