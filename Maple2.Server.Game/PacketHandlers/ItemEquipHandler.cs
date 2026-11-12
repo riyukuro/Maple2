@@ -33,7 +33,8 @@ public class ItemEquipHandler : FieldPacketHandler {
     private void HandleEquip(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         var equipSlot = packet.Read<EquipSlot>();
-        // The tab the item goes to: 0 gear, 1 outfit, 2 the second outfit tab (Unk_Inventory::RequestEquipItem).
+        // The tab the client asks for: 0 gear, 1 outfit, 2 the second outfit tab (Unk_Inventory::RequestEquipItem);
+        // a right click on an outfit item asks for 2. EquipManager picks the tab the item can go to.
         byte kind = packet.ReadByte();
 
         // Disconnect if this fails to avoid bad state.

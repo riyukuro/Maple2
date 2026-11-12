@@ -95,22 +95,16 @@ public class EquipManager {
     }
 
     /// <summary>
-    /// Equips an item to a slot of the tab the client names: 0 gear, 1 outfit, 2 the second outfit tab.
+    /// Equips an item to a slot. The client's kind (0 gear, 1 outfit, 2 the second outfit tab) is a wish:
+    /// the item's own type and the second tab's period pick the tab (EquipKind.Resolve).
     /// </summary>
     public bool Equip(long itemUid, EquipSlot slot, byte kind) {
         if (!Enum.IsDefined<EquipSlot>(slot)) {
             return false;
         }
-        if (kind == EquipKind.Outfit2) {
-            Character character = session.Player.Value.Character;
-            bool tabActive = SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            if (!EquipKind.CanUseOutfit2(slot, tabActive)) {
-                return false;
-            }
-        } else if (kind > EquipKind.Outfit2) {
+        if (kind > EquipKind.Outfit2) {
             return false;
         }
-        bool isSkin = kind != EquipKind.Gear;
 
         lock (session.Item) {
             // Check that item is valid and can be equipped.
@@ -125,9 +119,11 @@ public class EquipManager {
                 return false;
             }
 
-            if (item.Metadata.Property.IsSkin != isSkin) {
-                return false;
-            }
+            // The client names a tab, but the item's own type and the second tab's period decide it.
+            Character character = session.Player.Value.Character;
+            bool tabActive = SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            bool isSkin = item.Metadata.Property.IsSkin;
+            kind = EquipKind.Resolve(kind, isSkin, slot, tabActive) ?? kind;
             if (!ValidEquipSlotForItem(slot, item)) {
                 return false;
             }
