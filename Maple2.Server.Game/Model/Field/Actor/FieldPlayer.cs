@@ -812,6 +812,15 @@ public class FieldPlayer : Actor<Player> {
                 return false;
             }
 
+            // The uid may name an item in the summoned pet's bag: the client looks there first.
+            if (Session.Pet != null && Session.Pet.Contains(record.ItemUid)) {
+                if (!Session.Pet.Consume(record.ItemUid, 1)) {
+                    Logger.Error("Failed to consume pet bag item {ItemUid} for skill: {SkillId},{Level}", record.ItemUid, metadata.Id, metadata.Level);
+                    return false;
+                }
+                return true;
+            }
+
             Item? item = Session.Item.Inventory.Get(record.ItemUid);
             if (item == null) {
                 Logger.Error("Invalid item uid for skill: {SkillId},{Level}", metadata.Id, metadata.Level);

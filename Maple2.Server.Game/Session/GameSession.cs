@@ -461,6 +461,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(BannerListPacket.Load(server.GetSystemBanners()));
         Dungeon.Load();
         Send(InGameRankPacket.Load());
+        // The pet auto flag, on as the client starts with it; it is not stored here.
+        Send(PetPacket.AutoChanged(true));
         Send(FieldEnterPacket.Request(Player));
         Party = new PartyManager(World, this);
         Send(HomeCommandPacket.LoadHome(AccountId, db.GetLastHomeCommend(AccountId)));

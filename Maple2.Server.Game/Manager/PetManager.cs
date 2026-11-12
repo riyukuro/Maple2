@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -10,6 +11,7 @@ using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -51,6 +53,27 @@ public sealed class PetManager : IDisposable {
         }
 
         session.Field?.Broadcast(PetPacket.Summon(pet));
+    }
+
+    // The owner got a monster's kill exp: the pet gets its share (PetFusionRules.KillExp) and the owner is
+    // sent the new exp (ResponsePet 10), then the new level if it rose.
+    public void AddKillExp(int npcLevel, int npcClass) {
+        long gain = PetFusionRules.KillExp(npcLevel, npcClass);
+        int maxLevel = session.ServerTableMetadata.ConstantsTable.PetMaxLevel;
+        if (gain <= 0 || !PetFusionRules.IsTarget(pet.Metadata.Type, ItemPet.Level, maxLevel)) {
+            return;
+        }
+
+        int oldLevel = ItemPet.Level;
+        (int level, long exp) = PetFusionRules.Apply(session.TableMetadata.PetExpTable, ItemPet.Level, ItemPet.Exp, Pet.Rarity,
+            Pet.Metadata.Limit.Level, gain, maxLevel);
+        ItemPet.Level = (short) level;
+        ItemPet.Exp = exp;
+        session.Send(PetPacket.Fusion(OwnerId, Pet));
+        if (level != oldLevel) {
+            session.Send(PetPacket.LevelUp(OwnerId, Pet));
+            session.Player.Stats.Refresh();
+        }
     }
 
     public void Load() {
@@ -108,6 +131,11 @@ public sealed class PetManager : IDisposable {
                 return StringCode.s_item_err_invalid_count;
             }
 
+            // The item leaves the pet's bag only when the owner's bag takes all of it.
+            if (amount <= 0 || !session.Item.Inventory.CanAdd(withdraw, amount)) {
+                return StringCode.s_err_inventory;
+            }
+
             if (!RemoveInternal(uid, amount, out withdraw)) {
                 return StringCode.s_empty_string;
             }
@@ -116,6 +144,46 @@ public sealed class PetManager : IDisposable {
             session.Item.Inventory.Add(withdraw, commit: true);
             return StringCode.s_empty_string;
         }
+    }
+
+    /// <summary>
+    /// Uses up pieces of an item in the pet's bag. The client casts an item's skill with the uid of the item it
+    /// found, and it looks in the summoned pet's bag before the owner's (CPetManager::UseItemById).
+    /// </summary>
+    public bool Consume(long uid, int amount) {
+        lock (session.Item) {
+            switch (TakePieces(items, uid, amount, out Item? item)) {
+                case PieceResult.Reduced:
+                    session.Send(PetInventoryPacket.Update(uid, item!.Amount));
+                    return true;
+                case PieceResult.Removed:
+                    session.Item.Inventory.Discard(item!);
+                    session.Send(PetInventoryPacket.Remove(uid));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+    }
+
+    public bool Contains(long uid) => items.Contains(uid);
+
+    internal enum PieceResult { None, Reduced, Removed }
+
+    // Takes amount pieces off the item: the stack shrinks, or the item leaves the collection with its last piece.
+    internal static PieceResult TakePieces(ItemCollection items, long uid, int amount, out Item? item) {
+        item = items.Get(uid);
+        if (item == null || amount <= 0 || item.IsExpired() || item.Amount < amount) {
+            item = null;
+            return PieceResult.None;
+        }
+
+        if (item.Amount > amount) {
+            item.Amount -= amount;
+            return PieceResult.Reduced;
+        }
+
+        return items.Remove(uid, out item) ? PieceResult.Removed : PieceResult.None;
     }
 
     public bool Move(long uid, short dstSlot) {

@@ -755,6 +755,8 @@ public class FieldNpc : Actor<Npc> {
 
         // The exp rate (SpecialAttribute.Experience: the party buff, gear options) raises the exp of a kill.
         double expRate = player.Stats.Values[SpecialAttribute.Experience].Multiplier();
+        player.Session.Pet?.AddKillExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class);
+
         if (Value.Metadata.Basic.CustomExp == -1) {
             // TODO: this is temporary. We need to know how to split exp between players.
             player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, modifier: (float) Math.Max(0d, 1d + expRate));

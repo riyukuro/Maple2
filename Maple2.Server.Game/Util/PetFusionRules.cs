@@ -101,6 +101,14 @@ public static class PetFusionRules {
         return uint.TryParse(first, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint value) ? value : 0;
     }
 
+    // The exp a summoned pet gets when its owner gets a monster's kill exp. KMS2 gives a level 1 pet
+    // level * 12 / 100 (rounded down) for a class 1 monster of level 23 to 50 and level * 48 / 100 for a
+    // class 3 one; the rule is not in the client. Chosen here: other classes below 3 count as class 1, above
+    // 3 as class 3, and the pet's own level does not change the amount.
+    public static long KillExp(int npcLevel, int npcClass) {
+        return npcLevel <= 0 ? 0 : (long) npcLevel * (npcClass >= 3 ? 48 : 12) / 100;
+    }
+
     // The level and exp after a gain (FUN_140cb5300). A pet at the top level does not change. Each level
     // takes the exp table/petexp.xml asks for (CExpTable::GetPetExp); reaching the top level sets the exp to 0.
     public static (int Level, long Exp) Apply(PetExpTable table, int level, long exp, int rarity, int levelLimit, long gain, int petMaxLevel) {
