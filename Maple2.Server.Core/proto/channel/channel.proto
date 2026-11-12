@@ -52,6 +52,8 @@ service Channel {
   rpc Heartbeat(maple2.HeartbeatRequest) returns (maple2.HeartbeatResponse);
   // Update Field Plots
   rpc UpdateFieldPlot(maple2.FieldPlotRequest) returns (maple2.FieldPlotResponse);
+  // The rank duel matchmaker's word to a character on this channel.
+  rpc Pvp(PvpNoticeRequest) returns (PvpNoticeResponse);
 }
 
 message ChannelsUpdateRequest {
@@ -507,4 +509,13 @@ message GameEventRequest {
 
 message GameEventResponse {
   int32 error = 1;
+}
+
+message PvpNoticeRequest {
+  int64 character_id = 1;
+  // true: a match was found (Pvp 16 true). false: the search or the match ended without a duel (Pvp 16 false).
+  bool matched = 2;
+}
+
+message PvpNoticeResponse {
 }

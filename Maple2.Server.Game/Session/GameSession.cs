@@ -282,8 +282,12 @@ public sealed partial class GameSession : Core.Network.Session {
 
         int fieldId = mapId == 0 ? player.Character.MapId : mapId;
         // A dungeon arrival whose room was closed in the meantime: enter the return field as a plain arrival.
-        if (FieldEntryRules.ArrivesInReturnField(migrationType, server.HasDungeon(roomId))) {
-            Logger.Warning("Character:{CharacterId} arrives for dungeon Room:{RoomId} which is gone, enters the return field", characterId, roomId);
+        // The same for a rank duel arrival whose match field is gone, and for a login on a rank duel map (the
+        // character left the match by logging out): a rank duel field is entered only through its match.
+        bool roomRuns = migrationType == MigrationType.PvpMatch ? server.HasRankDuel(roomId) : server.HasDungeon(roomId);
+        if (FieldEntryRules.ArrivesInReturnField(migrationType, roomRuns)
+            || (roomId == 0 && FieldEntryRules.RankDuelMapWithoutMatch(fieldId, RankDuelField.Maps))) {
+            Logger.Warning("Character:{CharacterId} arrives for dungeon or match Room:{RoomId} which is gone, enters the return field", characterId, roomId);
             migrationType = MigrationType.Normal;
             fieldId = player.Character.ReturnMaps.Peek();
             position = player.Character.ReturnPosition;

@@ -66,6 +66,8 @@ service World {
   rpc ReleaseLock (LockRequest) returns (LockResponse);
   // Field plot
   rpc UpdateFieldPlot(maple2.FieldPlotRequest) returns (maple2.FieldPlotResponse);
+  // Rank duel queue (Pvp 14/15/16) and the end of a match.
+  rpc Pvp(PvpRequest) returns (PvpResponse);
 }
 
 enum Server {
@@ -101,6 +103,7 @@ enum MigrationType {
   MODEL_HOME = 2;
   BLUEPRINT_DESIGNER = 3;
   DUNGEON = 4;
+  PVP_MATCH = 5;
 }
 
 message MigrateOutResponse {
@@ -792,4 +795,34 @@ message LockRequest {
 
 message LockResponse {
   string error = 1;
+}
+
+// The rank duel queue. requester_id is the character.
+message PvpRequest {
+  message Register {
+  }
+  message Unregister {
+  }
+  // The join after a match was found: the answer names the match field.
+  message Join {
+  }
+  // The match field ended the match: both characters leave the matchmaker.
+  message End {
+    int32 match_id = 1;
+  }
+  int64 requester_id = 1;
+  oneof pvp {
+    Register register = 2;
+    Unregister unregister = 3;
+    Join join = 4;
+    End end = 5;
+  }
+}
+
+message PvpResponse {
+  // Maple2.Model.Game.Pvp.RankDuelError
+  int32 error = 1;
+  int32 map_id = 2;
+  int32 room_id = 3;
+  int32 channel = 4;
 }

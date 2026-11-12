@@ -1,13 +1,21 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using System.Net;
+using Grpc.Core;
+using Maple2.Model.Error;
+using Maple2.Model.Game.Pvp;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
+using Maple2.Server.World.Service;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
-// The client's Pvp requests. The server runs no arena queue, no rank duel and no guild PvP, so a queue
-// request is answered with the client's own way out of the queue and nothing is ever matched.
+// The client's Pvp requests. The rank duel has a queue in the World server (PvpLookup) and a match field
+// (RankDuelField); the arena and guild PvP have none, so an arena request is answered with the client's own
+// way out of its queue.
 public class PvpHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Pvp;
 
@@ -19,9 +27,9 @@ public class PvpHandler : FieldPacketHandler {
         ArenaRegister = 9, // UIIndividualPvPDialog, with the picked arena
         ArenaUnregister = 10,
         ArenaJoin = 11, // CPVPManager::SendCancelRequest, after a match
-        RankDuelRegister = 14, // UIRankPvPDialog
-        RankDuelUnregister = 15,
-        RankDuelJoin = 16, // CPvpRankDuelComponent, after a match
+        RankDuelRegister = 14, // UIRankPvPDialog::FUN_140f95750
+        RankDuelUnregister = 15, // UIRankPvPDialog::SendPVPMode15
+        RankDuelJoin = 16, // CPvpRankDuelComponent::RequestCancelMatch, the match-found box's button
         ResultClose = 104, // the result dialogs
         TeamResultClose = 110,
     }
@@ -38,15 +46,87 @@ public class PvpHandler : FieldPacketHandler {
                 session.Send(PvpPacket.ArenaUnregistered());
                 return;
             case Command.RankDuelRegister:
-            case Command.RankDuelJoin:
-                session.Send(PvpPacket.RankDuelMatchFailed());
+                HandleRankDuelRegister(session);
                 return;
             case Command.RankDuelUnregister:
-                session.Send(PvpPacket.RankDuelUnregistered());
+                HandleRankDuelUnregister(session);
+                return;
+            case Command.RankDuelJoin:
+                HandleRankDuelJoin(session);
                 return;
             default:
                 // Guild PvP has no refusal the client reads here; the result dialogs' close needs no answer.
                 return;
+        }
+    }
+
+    // The register is answered first (state 1), then the World queues the character: a match the World makes at
+    // once is then told after it. A refusal takes the client back to state 0 with the matching failed box.
+    private static void HandleRankDuelRegister(GameSession session) {
+        if (session.Field?.RankDuel != null) {
+            session.Send(PvpPacket.RankDuelInArenaField());
+            return;
+        }
+
+        session.Send(PvpPacket.RankDuelRegistered());
+        if (Request(session, new PvpRequest { RequesterId = session.CharacterId, Register = new PvpRequest.Types.Register() })?.Error is not (int) RankDuelError.none) {
+            session.Send(PvpPacket.RankDuelMatchFailed());
+        }
+    }
+
+    private static void HandleRankDuelUnregister(GameSession session) {
+        Request(session, new PvpRequest { RequesterId = session.CharacterId, Unregister = new PvpRequest.Types.Unregister() });
+        session.Send(PvpPacket.RankDuelUnregistered());
+    }
+
+    // The match-found box's button: the character moves into the match field, on the channel that holds it.
+    private static void HandleRankDuelJoin(GameSession session) {
+        if (session.Field?.RankDuel != null) {
+            return;
+        }
+        PvpResponse? response = Request(session, new PvpRequest { RequesterId = session.CharacterId, Join = new PvpRequest.Types.Join() });
+        if (response is not { Error: (int) RankDuelError.none }) {
+            session.Send(PvpPacket.RankDuelMatchFailed());
+            return;
+        }
+
+        // Back to this spot after the match (GameSession.ReturnField), when this is the return field.
+        Maple2.Model.Game.Character character = session.Player.Value.Character;
+        if (character.MapId == character.ReturnMaps.Peek()) {
+            character.ReturnPosition = session.Player.Position;
+        }
+
+        session.MigrationSave();
+        try {
+            MigrateOutResponse migrate = session.World.MigrateOut(new MigrateOutRequest {
+                AccountId = session.AccountId,
+                CharacterId = session.CharacterId,
+                MachineId = session.MachineId.ToString(),
+                Server = Maple2.Server.World.Service.Server.Game,
+                Channel = response.Channel,
+                MapId = response.MapId,
+                RoomId = response.RoomId,
+                Type = Maple2.Server.World.Service.MigrationType.PvpMatch,
+                PetUid = session.SummonedPetUid,
+            });
+            if (!PlayerWarpUtil.TryEndpoint(migrate.IpAddress, migrate.Port, out IPEndPoint? endpoint)) {
+                session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
+            session.Send(MigrationPacket.GameToGame(endpoint, migrate.Token, response.MapId));
+            session.State = Maple2.Model.Enum.SessionState.ChangeMap;
+        } catch (RpcException) {
+            session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+            return;
+        }
+        session.Disconnect();
+    }
+
+    private static PvpResponse? Request(GameSession session, PvpRequest request) {
+        try {
+            return session.World.Pvp(request, deadline: DateTime.UtcNow.AddSeconds(5));
+        } catch (RpcException) {
+            return null;
         }
     }
 }

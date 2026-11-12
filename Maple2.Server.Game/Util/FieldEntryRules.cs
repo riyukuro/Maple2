@@ -105,7 +105,13 @@ public static class FieldEntryRules {
     // A dungeon arrival whose room is gone when the character gets there is entered as a plain arrival in the
     // return field: the client is already on its loading screen and an error there locks it out.
     public static bool ArrivesInReturnField(MigrationType type, bool roomRuns) {
-        return type == MigrationType.Dungeon && !roomRuns;
+        return type is MigrationType.Dungeon or MigrationType.PvpMatch && !roomRuns;
+    }
+
+    // A rank duel map entered without a match room (a login on the map saved when the character logged out in
+    // its match): the character goes to its return field.
+    public static bool RankDuelMapWithoutMatch(int mapId, IReadOnlyCollection<int> rankDuelMaps) {
+        return rankDuelMaps.Contains(mapId);
     }
 
     // The field a character arrives in when the one it was saved on (or sent to from another channel) is a

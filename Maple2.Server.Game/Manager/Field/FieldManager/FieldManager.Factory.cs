@@ -236,6 +236,38 @@ public partial class FieldManager {
         /// <summary>
         /// Whether the dungeon room still runs. Never creates a field.
         /// </summary>
+        /// <summary>
+        /// A field for a rank duel match, on one of the rank duel maps (RankDuelField.Maps) the server can load. The
+        /// map is picked at random. The field tells the world when the match ended.
+        /// </summary>
+        public FieldManager? CreateRankDuel(int matchId, long first, long second) {
+            int[] maps = RankDuelField.Maps
+                .Where(mapId => MapMetadata.TryGet(mapId, out MapMetadata? map) && !map.Property.NotInPlayedClient && Navigation.Exists(map.XBlock))
+                .ToArray();
+            if (maps.Length == 0) {
+                logger.Error("No rank duel map can be loaded");
+                return null;
+            }
+
+            int mapId = maps[Random.Shared.Next(maps.Length)];
+            SemaphoreSlim mapLock = GetMapLock(mapId);
+            mapLock.Wait();
+            try {
+                FieldManager? field = Create(mapId);
+                field?.StartRankDuel(matchId, first, second, id => World.Pvp(new Maple2.Server.World.Service.PvpRequest {
+                    End = new Maple2.Server.World.Service.PvpRequest.Types.End { MatchId = id },
+                }, deadline: DateTime.UtcNow.AddSeconds(10)));
+                return field;
+            } finally {
+                mapLock.Release();
+            }
+        }
+
+        // Whether the rank duel field of this room still runs on this channel. Never creates a field.
+        public bool HasRankDuel(int roomId) {
+            return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && field.RankDuel != null && !field.Disposed);
+        }
+
         public bool HasDungeon(int roomId) {
             return dungeons.TryGetValue(roomId, out DungeonFieldManager? dungeon) && !dungeon.Disposed;
         }
@@ -471,7 +503,8 @@ public partial class FieldManager {
             }
 
             if (roomId == 0 && !mapFields.IsEmpty) {
-                FieldManager? firstField = mapFields.Values.FirstOrDefault();
+                // A rank duel's field is entered only by its match (with its room id).
+                FieldManager? firstField = mapFields.Values.FirstOrDefault(mapField => mapField.RankDuel is null);
                 if (firstField != null) {
                     return firstField;
                 }

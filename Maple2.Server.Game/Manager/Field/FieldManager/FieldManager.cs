@@ -90,6 +90,12 @@ public partial class FieldManager : IField {
     public ItemDropManager ItemDrop { get; }
 
     public int MapId { get; init; }
+    // The rank duel match this field was made for (Factory.CreateRankDuel); null in every other field.
+    public RankDuelField? RankDuel { get; private set; }
+
+    public void StartRankDuel(int matchId, long first, long second, Action<int> onEnd) {
+        RankDuel = new RankDuelField(this, matchId, first, second, Environment.TickCount64, onEnd);
+    }
     public int RoomId { get; init; }
     public int DungeonId { get; init; }
     public int Size { get; init; }
@@ -385,6 +391,7 @@ public partial class FieldManager : IField {
 
         RoomTimer?.Update(FieldTick);
         PerformanceStage?.Update();
+        RankDuel?.Update(FieldTick);
     }
 
     public void EnsurePlayerPosition(FieldPlayer player) {

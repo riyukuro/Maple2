@@ -14,6 +14,8 @@ public partial class ChannelService {
                 return Task.FromResult(CreateDungeon(request.CreateDungeon, request.RequesterId));
             case FieldRequest.FieldOneofCase.DestroyDungeon:
                 return Task.FromResult(DestroyDungeon(request.DestroyDungeon));
+            case FieldRequest.FieldOneofCase.CreatePvpMatch:
+                return Task.FromResult(CreatePvpMatch(request.CreatePvpMatch));
             case FieldRequest.FieldOneofCase.CheckDungeon:
                 return Task.FromResult(new FieldResponse {
                     Error = (int) FieldEntryRules.DungeonRoomError(server.HasDungeon(request.CheckDungeon.RoomId)),
@@ -49,6 +51,22 @@ public partial class ChannelService {
         return new FieldResponse {
             Error = (int) MigrationError.ok,
             RoomId = dungeonField.RoomId,
+        };
+    }
+
+    // The rank duel match field (World PvpLookup): one field of a rank duel map for the two characters.
+    private FieldResponse CreatePvpMatch(FieldRequest.Types.CreatePvpMatch create) {
+        if (create.CharacterIds.Count != 2) {
+            return new FieldResponse { Error = (int) MigrationError.s_move_err_FailCreateDungeon };
+        }
+        FieldManager? field = server.CreateRankDuel(create.MatchId, create.CharacterIds[0], create.CharacterIds[1]);
+        if (field == null) {
+            return new FieldResponse { Error = (int) MigrationError.s_move_err_FailCreateDungeon };
+        }
+        return new FieldResponse {
+            Error = (int) MigrationError.ok,
+            MapId = field.MapId,
+            RoomId = field.RoomId,
         };
     }
 

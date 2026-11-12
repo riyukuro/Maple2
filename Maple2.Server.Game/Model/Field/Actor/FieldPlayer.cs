@@ -571,6 +571,8 @@ public class FieldPlayer : Actor<Player> {
         if (Field is DungeonFieldManager dungeonField) {
             dungeonField.CountMissions(this, mission => mission.AddDeath());
         }
+        // A duelist who dies in the rank duel's fight loses it.
+        Field.RankDuel?.Death(this);
 
         int autoReviveMs = AutoReviveDelayMs(Session.Field.Metadata.Property);
         if (autoReviveMs > 0) {

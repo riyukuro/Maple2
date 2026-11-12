@@ -572,6 +572,15 @@ public sealed class TestGameSession {
         public int MovePort = 20002;
         public readonly List<MigrateOutRequest> Moves = [];
 
+        // The rank duel queue's answers (PvpResponse by request kind, none when not set) and the requests.
+        public readonly List<PvpRequest> PvpRequests = [];
+        public readonly Dictionary<PvpRequest.PvpOneofCase, PvpResponse> PvpResponses = [];
+
+        public override PvpResponse Pvp(PvpRequest request, CallOptions options) {
+            PvpRequests.Add(request);
+            return PvpResponses.TryGetValue(request.PvpCase, out PvpResponse? response) ? response : new PvpResponse();
+        }
+
         public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
             Moves.Add(request);
             return new MigrateOutResponse { IpAddress = MoveAddress, Port = MovePort, Token = 1 };

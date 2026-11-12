@@ -143,6 +143,15 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.CreateDungeon(metadata, requesterId, size, partyId);
     }
 
+    public FieldManager? CreateRankDuel(int matchId, long first, long second) {
+        return fieldFactory.CreateRankDuel(matchId, first, second);
+    }
+
+    // Whether the rank duel field of this room still runs on this channel. Never creates a field.
+    public bool HasRankDuel(int roomId) {
+        return fieldFactory.HasRankDuel(roomId);
+    }
+
     // Whether the dungeon room still runs on this channel. Never creates a field.
     public bool HasDungeon(int roomId) {
         return fieldFactory.HasDungeon(roomId);

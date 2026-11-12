@@ -43,6 +43,10 @@ public partial class WorldService {
         // A written channel ends the channel change of that player: the login on the new channel or a logout.
         if (request.HasChannel) {
             worldServer.Migrations.End(request.CharacterId);
+            // A logout (channel -1, written only when the session ends without a move) leaves the rank duel queue.
+            if (request.Channel < 0) {
+                pvpLookup.Remove(request.CharacterId);
+            }
         }
 
         // TODO: How should we handle failed updated?

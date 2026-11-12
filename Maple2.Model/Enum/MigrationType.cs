@@ -6,4 +6,5 @@ public enum MigrationType {
     ModelHome = 2,
     BlueprintDesigner = 3,
     Dungeon = 4,
+    PvpMatch = 5,
 }

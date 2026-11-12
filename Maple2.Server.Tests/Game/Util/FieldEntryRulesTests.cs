@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -106,6 +107,17 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.ArrivesInReturnField(MigrationType.Dungeon, false), Is.True);
         Assert.That(FieldEntryRules.ArrivesInReturnField(MigrationType.Dungeon, true), Is.False);
         Assert.That(FieldEntryRules.ArrivesInReturnField(MigrationType.Normal, false), Is.False);
+    }
+
+    // The same for a rank duel arrival whose match field is gone, and for a login on a rank duel map.
+    [Test]
+    public void RankDuelArrival_FieldGone_EntersReturnField() {
+        Assert.That(FieldEntryRules.ArrivesInReturnField(MigrationType.PvpMatch, false), Is.True);
+        Assert.That(FieldEntryRules.ArrivesInReturnField(MigrationType.PvpMatch, true), Is.False);
+        Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(65010001, RankDuelField.Maps), Is.True);
+        Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(65010010, RankDuelField.Maps), Is.True);
+        Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(65000001, RankDuelField.Maps), Is.False);
+        Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(2000062, RankDuelField.Maps), Is.False);
     }
 
     // A session whose character was never loaded (an arrival with a used token) has an empty log name

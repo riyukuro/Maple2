@@ -856,8 +856,13 @@ public partial class FieldManager {
             case ApplyTargetType.Hostile:
                 if (caster is FieldNpc) {
                     return prisms.Filter(Players.Values, limit, ignore);
-                } else if (caster is FieldPlayer) {
+                } else if (caster is FieldPlayer casterPlayer) {
                     //TODO Include other players if PVP is Active
+                    // In a rank duel's fight the opponent is hostile too.
+                    if (RankDuel is { } rankDuel) {
+                        return prisms.Filter(Mobs.Values.Cast<IActor>()
+                            .Concat(Players.Values.Where(player => rankDuel.Hostile(casterPlayer, player))), limit, ignore);
+                    }
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 }
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
@@ -1425,6 +1430,8 @@ public partial class FieldManager {
             }
             Broadcast(FieldPacket.RemovePlayer(objectId));
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
+            // A duelist who leaves the rank duel loses it.
+            RankDuel?.Leave(fieldPlayer);
             // Last, and guarded: a failed send to the world must not cut the leave short.
             try {
                 fieldPlayer.FlushHealth();
@@ -1699,6 +1706,8 @@ public partial class FieldManager {
         foreach (TickTimer timer in Timers.Values.Where(timer => timer.Display)) {
             Broadcast(TriggerPacket.TimerDialog(timer));
         }
+
+        RankDuel?.Enter(added);
     }
     #endregion Events
 

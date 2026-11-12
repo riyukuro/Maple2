@@ -15,17 +15,24 @@ message FieldRequest {
   message CheckDungeon {
     int32 room_id = 1;
   }
+  // A rank duel match field for two characters. The answer names the map and the room.
+  message CreatePvpMatch {
+    int32 match_id = 1;
+    repeated int64 character_ids = 2;
+  }
   int64 requester_id = 1;
   oneof field {
     CreateDungeon create_dungeon = 2;
     DestroyDungeon destroy_dungeon = 3;
     CheckDungeon check_dungeon = 4;
+    CreatePvpMatch create_pvp_match = 5;
   }
 }
 
 message FieldResponse {
   int32 error = 1;
   int32 room_id = 2;
+  int32 map_id = 3;
 }
 
 message ChatRequest {
