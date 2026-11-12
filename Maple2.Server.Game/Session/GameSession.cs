@@ -346,7 +346,6 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Survival.Load();
         // MeretMarket
-        // UserConditionEvent
         // PCBangBonus
         Guild.Load();
         foreach ((int id, GroupChatManager groupChat) in GroupChats) {
@@ -369,6 +368,8 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         Buddy.Load();
+        // KMS2 sends it at every login, after the guild, club and buddy lists and before the home blocks.
+        Send(UserConditionEventPacket.Load());
         Send(HomeBlockPacket.Load(db.GetHomeBlocks(AccountId)));
         IList<Maid> maids = db.GetMaids(AccountId);
         Send(UserMaidPacket.List(maids));

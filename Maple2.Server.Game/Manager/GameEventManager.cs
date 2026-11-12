@@ -139,6 +139,24 @@ public sealed class GameEventManager {
         return moved;
     }
 
+    // The play-time reward's step after `elapsed` more seconds: the row's seconds and the total both grow by them,
+    // and the row's reward is due once its seconds reach the row's end.
+    public static (long Current, long Total, bool Due) DtRewardStep(long current, long total, long elapsed, int endDuration) {
+        return (current + elapsed, total + elapsed, current + elapsed >= endDuration);
+    }
+
+    // Chosen here: the play-time values last until the last second of the server's local day, the end most KMS2
+    // values carry (a few carry a later day's last second).
+    public static long DtRewardExpiry(DateTime now) => now.Date.AddDays(1).AddSeconds(-1).ToEpochSeconds();
+
+    // The second of the last play-time step of this session.
+    private long dtRewardStep;
+
+    // The play-time reward (DTReward), once a second as KMS2 sends it, per event: the time now (700), the total
+    // seconds (703), then the row's seconds (701); the seconds grow by the time since the last step. On the step
+    // that reaches the row's end the next row's index (702) and the restarted seconds go in place of the row's
+    // seconds, and the mail notice follows. The client counts between the steps itself: the row's seconds plus the
+    // time since 700 (UIDTEventDialog, uidteventdialog.cpp).
     private void UpdateDtReward() {
         if (session.Field is null) return;
 
@@ -147,60 +165,72 @@ public sealed class GameEventManager {
             return;
         }
 
+        DateTime now = DateTime.Now;
+        long nowSeconds = now.ToEpochSeconds();
+        // Chosen here: the first step of a session counts one second; the time away is not play time.
+        long elapsed = dtRewardStep == 0 ? 1 : nowSeconds - dtRewardStep;
+        if (elapsed <= 0) {
+            return;
+        }
+        dtRewardStep = nowSeconds;
+        long expiry = DtRewardExpiry(now);
+
         foreach (GameEvent gameEvent in events) {
             if (gameEvent.Metadata.Data is not DTReward dtReward) {
                 continue;
             }
-            DateTime now = DateTime.Now;
 
-            GameEventUserValue rewardIndexValue = Get(GameEventUserValueType.DTRewardRewardIndex, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
+            GameEventUserValue rewardIndexValue = Get(GameEventUserValueType.DTRewardRewardIndex, gameEvent.Id, expiry);
 
             if (dtReward.Entries.Length <= rewardIndexValue.Int()) {
                 continue;
             }
 
-            GameEventUserValue userValue = Get(GameEventUserValueType.DTRewardStartTime, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardStartTime, DateTime.Now.ToEpochSeconds());
-            userValue = Get(GameEventUserValueType.DTRewardCurrentTime, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, userValue.Long() + 1);
+            DTReward.Entry entry = dtReward.Entries[rewardIndexValue.Int()];
+            long current = Get(GameEventUserValueType.DTRewardCurrentTime, gameEvent.Id, expiry).Long();
+            long total = Get(GameEventUserValueType.DTRewardTotalTime, gameEvent.Id, expiry).Long();
+            (current, total, bool due) = DtRewardStep(current, total, elapsed, entry.EndDuration);
 
-            // Give reward
-            if (userValue.Long() >= dtReward.Entries[rewardIndexValue.Int()].EndDuration) {
-                DTReward.Entry entry = dtReward.Entries[rewardIndexValue.Int()];
-                Item? item = session.Field?.ItemDrop.CreateItem(entry.Item.ItemId, entry.Item.Rarity, entry.Item.Amount);
-                if (item == null) {
-                    continue;
-                }
-
-                using GameStorage.Request db = session.GameStorage.Context();
-                var mail = new Mail {
-                    Type = MailType.System,
-                    ReceiverId = session.CharacterId,
-                    SenderId = session.CharacterId,
-                    Content = entry.MailContentId.ToString(),
-                };
-
-                mail = db.CreateMail(mail);
-                if (mail == null) {
-                    logger.Error("Failed to create mail for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
-                    return;
-                }
-
-                item = db.CreateItem(mail.Id, item);
-                if (item == null) {
-                    logger.Error("Failed to create item for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
-                    return;
-                }
-
-                mail.Items.Add(item);
-                session.Mail.Notify(true);
-
-                Set(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1);
-                Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration);
+            Get(GameEventUserValueType.DTRewardStartTime, gameEvent.Id, expiry);
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardStartTime, nowSeconds);
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardTotalTime, total);
+            if (!due) {
+                Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, current);
+                continue;
             }
 
-            userValue = Get(GameEventUserValueType.DTRewardTotalTime, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardTotalTime, userValue.Long() + 1);
+            // Give reward
+            Item? item = session.Field?.ItemDrop.CreateItem(entry.Item.ItemId, entry.Item.Rarity, entry.Item.Amount);
+            if (item == null) {
+                Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, current);
+                continue;
+            }
+
+            using GameStorage.Request db = session.GameStorage.Context();
+            var mail = new Mail {
+                Type = MailType.System,
+                ReceiverId = session.CharacterId,
+                SenderId = session.CharacterId,
+                Content = entry.MailContentId.ToString(),
+            };
+
+            mail = db.CreateMail(mail);
+            if (mail == null) {
+                logger.Error("Failed to create mail for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
+                return;
+            }
+
+            item = db.CreateItem(mail.Id, item);
+            if (item == null) {
+                logger.Error("Failed to create item for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
+                return;
+            }
+
+            mail.Items.Add(item);
+
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1);
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration);
+            session.Mail.Notify(true);
         }
     }
 
