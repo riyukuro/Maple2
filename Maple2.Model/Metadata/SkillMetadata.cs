@@ -105,7 +105,8 @@ public record SkillMetadataMotionProperty(
     string SequenceName,
     float SequenceSpeed,
     float MoveDistance,
-    bool FaceTarget);
+    bool FaceTarget,
+    int MoveType = 0);
 
 public record SkillMetadataAttack(
     string Point,

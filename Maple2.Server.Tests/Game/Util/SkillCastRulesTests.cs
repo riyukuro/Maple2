@@ -301,6 +301,8 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.MotionSpeed(1.5f, 120), Is.EqualTo(1.8f).Within(0.0001f));
         Assert.That(SkillCastRules.MotionSpeed(0f, 100), Is.EqualTo(1f), "no speed in the data");
         Assert.That(SkillCastRules.MotionSpeed(1f, 80), Is.EqualTo(1f), "not slowed");
+        Assert.That(SkillCastRules.MotionSpeed(1.5f, 120, 3), Is.EqualTo(1.5f), "move type 3 keeps its own speed");
+        Assert.That(SkillCastRules.MotionSpeed(1.5f, 120, 2), Is.EqualTo(1.8f).Within(0.0001f));
         Assert.That(SkillCastRules.MotionRequiredGap(0.6f, 1.2f), Is.EqualTo(400));
         Assert.That(SkillCastRules.MotionRequiredGap(0.7f, 1f), Is.EqualTo(600), "rounded, not cut");
     }
@@ -319,6 +321,10 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 120, 5399, 10399), Is.True);
         // The client's tick cannot lengthen the time: the arrivals plus the allowance count.
         Assert.That(SkillCastRules.MotionRefuses(last, 11, false, 100, 9000, 10000), Is.False, "arrivals 0 ms apart plus 1000");
+        // A motion of move type 3 is not sped up: 0.6 s at attack speed 120, from 500 ms on.
+        var unscaled = last with { MoveType = 3 };
+        Assert.That(SkillCastRules.MotionRefuses(unscaled, 11, false, 120, 5499, 10499), Is.True);
+        Assert.That(SkillCastRules.MotionRefuses(unscaled, 11, false, 120, 5500, 10500), Is.False);
         var slow = new SkillCastRules.LastMotion(10, 1.2f, 1.2f, 1f, 100, ServerTick: 10000, CastTick: 5000);
         Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 9000, 10000), Is.True);
         Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 9000, 10100), Is.False, "two casts held up together");

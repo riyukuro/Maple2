@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using Maple2.File.IO;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Skill;
 using Maple2.Model.Enum;
@@ -11,9 +12,12 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly SkillParser parser;
+    private readonly SkillMoveTypes moveTypes;
 
     public SkillMapper(M2dReader xmlReader, string language) {
         parser = new SkillParser(xmlReader, language);
+        moveTypes = new SkillMoveTypes(xmlReader);
+        Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
     }
 
     protected override IEnumerable<StoredSkillMetadata> Map() {
@@ -43,12 +47,13 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         SpValue: level.recoveryProperty.spValue,
                         SpRate: level.recoveryProperty.spRate),
                     Skills: level.conditionSkill.Select(skill => skill.Convert()).ToArray(),
-                    Motions: level.motion.Select(motion => new SkillMetadataMotion(
+                    Motions: level.motion.Select((motion, motionIndex) => new SkillMetadataMotion(
                         new SkillMetadataMotionProperty(
                             SequenceName: motion.motionProperty.sequenceName,
                             SequenceSpeed: motion.motionProperty.sequenceSpeed,
                             MoveDistance: motion.motionProperty.movedistance,
-                            FaceTarget: motion.motionProperty.faceTarget),
+                            FaceTarget: motion.motionProperty.faceTarget,
+                            MoveType: moveTypes.Get(id, level.value, motionIndex)),
                         Attacks: motion.attack.Select(attack => new SkillMetadataAttack(
                             Point: attack.point,
                             PointGroup: attack.pointGroupID,

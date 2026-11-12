@@ -86,8 +86,8 @@ public static class SkillCastRules {
     // without it is counted to its "combo" key, else to its "end" key. The key times are in seconds at speed 1.
     // The client plays the motion at a speed its Lua (calc_pc_asiR) makes of the motion's own speed and the attack
     // speed stat. The Lua body is not known: speed = motion speed x attack speed / 100 is fitted here over KMS2
-    // casts at attack speed 100 to 121. The client does not scale a motion of move type 3; the server does not hold
-    // the move type, so every motion is counted as scaled, which only shortens the time asked for.
+    // casts at attack speed 100 to 121. A motion of move type 3 is played at its own speed whatever the attack speed
+    // (StateSkill::GetMotionSpeedScale, stateskill.cpp:1242).
     // A motion with a loop (a held skill) leaves the loop when the hold ends, so a key after "loopend" can come up
     // to one loop sooner: such a key is counted without the loop's length.
     // Chosen here: a cast is taken up to this long before that time.
@@ -97,7 +97,7 @@ public static class SkillCastRules {
     public const long MotionArrivalAllowanceMs = 1000;
 
     // The last accepted cast that plays a motion: the times of its keys, its speed and when it came.
-    public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick);
+    public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick, int MoveType = 0);
 
     // The earliest time of a key in a motion's sequence, null when the sequence lacks it.
     public static float? KeyTime(IEnumerable<AnimationKey> keys, string name) {
@@ -127,8 +127,11 @@ public static class SkillCastRules {
     }
 
     // The fitted speed of a motion. An attack speed under 100 is counted as 100 (chosen here: no KMS2 cast has one).
-    public static float MotionSpeed(float sequenceSpeed, long attackSpeed) {
-        return (sequenceSpeed > 0 ? sequenceSpeed : 1f) * MathF.Max(1f, attackSpeed / 100f);
+    public const int UnscaledMoveType = 3;
+
+    public static float MotionSpeed(float sequenceSpeed, long attackSpeed, int moveType = 0) {
+        float speed = sequenceSpeed > 0 ? sequenceSpeed : 1f;
+        return moveType == UnscaledMoveType ? speed : speed * MathF.Max(1f, attackSpeed / 100f);
     }
 
     public static long MotionRequiredGap(float keySeconds, float speed) {
@@ -143,7 +146,7 @@ public static class SkillCastRules {
             return false;
         }
         float key = last.SkillId == skillId ? last.SelfKey : last.NextKey;
-        float speed = MotionSpeed(last.SequenceSpeed, Math.Max(last.AttackSpeed, attackSpeed));
+        float speed = MotionSpeed(last.SequenceSpeed, Math.Max(last.AttackSpeed, attackSpeed), last.MoveType);
         return CastGap(castTick, last.CastTick, serverTick, last.ServerTick, MotionArrivalAllowanceMs) < MotionRequiredGap(key, speed);
     }
 

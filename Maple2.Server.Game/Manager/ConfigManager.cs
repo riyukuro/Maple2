@@ -261,7 +261,7 @@ public class ConfigManager {
         if (sequence == null || SkillCastRules.MotionKeys(sequence.Keys) is not { } keys) {
             return;
         }
-        lastMotion = new SkillCastRules.LastMotion(skillId, keys.Next, keys.Self, motion.SequenceSpeed, AttackSpeed, tick, castTick);
+        lastMotion = new SkillCastRules.LastMotion(skillId, keys.Next, keys.Self, motion.SequenceSpeed, AttackSpeed, tick, castTick, motion.MoveType);
     }
 
     // A cancelled cast's motion ends there: the next cast is not measured against it.
@@ -287,7 +287,7 @@ public class ConfigManager {
         if (start == null || end == null) {
             return 0;
         }
-        return SkillHitRules.HeldInterval(end.Value - start.Value, SkillCastRules.MotionSpeed(motion.SequenceSpeed, heldAttackSpeed));
+        return SkillHitRules.HeldInterval(end.Value - start.Value, SkillCastRules.MotionSpeed(motion.SequenceSpeed, heldAttackSpeed, motion.MoveType));
     }
 
     public SkillCooldown? GetSkillCooldown(int skillId) {
