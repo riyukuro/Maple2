@@ -4,6 +4,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Model;
 
@@ -26,6 +27,16 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
         nextTick = Environment.TickCount64;
         reactLimit = Value.ReactCount > 0 ? Value.ReactCount : int.MaxValue;
         Object = interactObject;
+    }
+
+    private readonly GatherRespawn gatherRespawn = new();
+
+    // A gathered object: its state stays as it is for the field; only this character waits resetTime.
+    public bool Gather(long characterId) {
+        if (State != InteractState.Reactable) {
+            return false;
+        }
+        return gatherRespawn.Take(characterId, Environment.TickCount64, Value.Time.Reset);
     }
 
     public bool React() {

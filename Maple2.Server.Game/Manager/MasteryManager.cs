@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -181,23 +182,20 @@ public class MasteryManager {
         if (!recipeMetadata.NoRewardExp) {
             session.Exp.AddExp(ExpType.gathering);
         }
-        switch (recipeMetadata.Type) {
-            case MasteryType.Farming:
-            case MasteryType.Mining:
-            case MasteryType.Gathering:
-            case MasteryType.Breeding:
-                short playerLevel = GetLevel(recipeMetadata.Type);
-                // no mastery given - recipe level is more than 3 levels below player's mastery level
-                int masteryFactorCount = session.TableMetadata.MasteryDifferentialFactorTable.Entries.Values.Count(m => m.Factor > 0);
-                if (playerLevel - recipeMetadata.RewardMastery >= masteryFactorCount) {
-                    return true;
-                }
-                break;
-            default:
-                break;
+        int reward = GatherReward(recipeMetadata);
+        if (reward > 0) {
+            this[recipeMetadata.Type] += reward;
         }
-        this[recipeMetadata.Type] += recipeMetadata.RewardMastery;
         return true;
+    }
+
+    // The mastery one gather gives at the current mastery (the client's CMasteryTable::Factor).
+    public int GatherReward(MasteryRecipeTable.Entry recipeMetadata) {
+        IEnumerable<(int Grade, int Value)> rows = session.TableMetadata.MasteryRewardTable.Entries.TryGetValue(recipeMetadata.Type, out IReadOnlyDictionary<int, MasteryRewardTable.Entry>? grades)
+            ? grades.Select(grade => (grade.Key, grade.Value.Value))
+            : [];
+        return MasteryRules.Reward(recipeMetadata.Type, recipeMetadata.RewardMastery, recipeMetadata.RequiredMastery, this[recipeMetadata.Type], rows,
+            difference => session.TableMetadata.MasteryDifferentialFactorTable.Entries.TryGetValue(difference, out MasteryDifferentialFactorTable.Entry? entry) ? entry.Factor : null);
     }
 
     public void Gather(MasteryRecipeTable.Entry recipeMetadata, Vector3 position, Vector3 rotation) {

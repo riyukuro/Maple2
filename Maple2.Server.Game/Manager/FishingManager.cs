@@ -352,6 +352,8 @@ public class FishingManager {
             session.Field.Broadcast(FishingPacket.PrizeFish(session.PlayerName, selectedFish.Id));
         }
         session.ConditionUpdate(ConditionType.fish, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
+        // Every catch gives the common exp table's fishing award for the character's level.
+        session.Exp.AddExp(ExpType.fishing);
 
         if (masteryExp == 0) {
             return;

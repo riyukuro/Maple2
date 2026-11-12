@@ -73,7 +73,8 @@ public static class InteractObjectPacket {
             pWriter.Write<InteractType>(interact.Type);
 
             if (interact.Type == InteractType.Gathering) {
-                pWriter.WriteInt(10);   // RemainGatherCount
+                // The client keeps this as the object's respawn tick (0: none running); KMS2 sends 0.
+                pWriter.WriteInt(0);
             }
         }
 

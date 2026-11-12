@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -24,5 +25,79 @@ public class MasteryRulesTests {
     [TestCase(20, 20, 2, false, 0L, 100L, MasteryError.s_mastery_error_lack_quest)]
     public void CraftChecks(int mastery, int requiredMastery, int questCount, bool anyQuest, long meso, long requiredMeso, MasteryError expected) {
         Assert.That(MasteryRules.CraftError(mastery, requiredMastery, questCount, anyQuest, meso, requiredMeso), Is.EqualTo(expected));
+    }
+
+    // Grade rows of a production type (grade, value) and the difference factors, as the tables give them.
+    private static readonly (int Grade, int Value)[] Grades = [(1, 0), (2, 10), (3, 50), (4, 230), (5, 550), (6, 1300)];
+
+    private static int? FactorOf(int difference) {
+        return difference switch {
+            0 => 10000,
+            1 => 6000,
+            2 => 2000,
+            >= 3 and <= 14 => 0,
+            _ => null,
+        };
+    }
+
+    [TestCase(0, 1)]
+    [TestCase(9, 1)]
+    [TestCase(10, 2)]
+    [TestCase(49, 2)]
+    [TestCase(50, 3)]
+    [TestCase(229, 3)]
+    [TestCase(1299, 5)]
+    [TestCase(1300, 6)]
+    [TestCase(99999, 6)] // above the last row: the last grade
+    public void GradeEdges(int mastery, int expected) {
+        Assert.That(MasteryRules.Grade(Grades, mastery), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void GradeWithoutRowsIsZero() {
+        Assert.That(MasteryRules.Grade([], 100), Is.EqualTo(0));
+    }
+
+    // A recipe that needs mastery 0 (grade 1) and gives 5: whole in grade 1, 60 % in grade 2, 20 % in
+    // grade 3, nothing from grade 4.
+    [TestCase(5, 0, 0, 5)]
+    [TestCase(5, 0, 9, 5)]
+    [TestCase(5, 0, 10, 3)]
+    [TestCase(5, 0, 49, 3)]
+    [TestCase(5, 0, 50, 1)]
+    [TestCase(5, 0, 229, 1)]
+    [TestCase(5, 0, 230, 0)]
+    // The starter recipes give 1: 0.6 rounds up to 1, 0.2 down to 0.
+    [TestCase(1, 0, 9, 1)]
+    [TestCase(1, 0, 10, 1)]
+    [TestCase(1, 0, 50, 0)]
+    // A recipe that needs mastery 10 (grade 2) and gives 2.
+    [TestCase(2, 10, 9, 0)] // below the recipe's grade: a negative difference gives nothing
+    [TestCase(2, 10, 10, 2)]
+    [TestCase(2, 10, 49, 2)]
+    [TestCase(2, 10, 50, 1)] // 1.2
+    [TestCase(2, 10, 230, 0)] // 0.4
+    [TestCase(2, 10, 550, 0)]
+    public void ProductionRewardByGradeDifference(int rewardMastery, int requireMastery, int mastery, int expected) {
+        Assert.That(MasteryRules.Reward(MasteryType.Mining, rewardMastery, requireMastery, mastery, Grades, FactorOf), Is.EqualTo(expected));
+        Assert.That(MasteryRules.Reward(MasteryType.Farming, rewardMastery, requireMastery, mastery, Grades, FactorOf), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void RewardRoundsHalfUp() {
+        Assert.That(MasteryRules.Reward(MasteryType.Gathering, 5, 0, 0, Grades, _ => 1000), Is.EqualTo(1)); // 0.5
+        Assert.That(MasteryRules.Reward(MasteryType.Gathering, 4, 0, 0, Grades, _ => 1000), Is.EqualTo(0)); // 0.4
+    }
+
+    [Test]
+    public void DifferenceWithoutRowGivesNothing() {
+        Assert.That(MasteryRules.Reward(MasteryType.Breeding, 5, 0, 0, Grades, _ => null), Is.EqualTo(0));
+    }
+
+    [TestCase(MasteryType.Fishing)]
+    [TestCase(MasteryType.Music)]
+    [TestCase(MasteryType.Cooking)]
+    public void OtherTypesGetTheWholeReward(MasteryType type) {
+        Assert.That(MasteryRules.Reward(type, 5, 0, 99999, Grades, _ => 0), Is.EqualTo(5));
     }
 }
