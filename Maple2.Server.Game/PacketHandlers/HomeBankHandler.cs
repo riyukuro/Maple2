@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -36,6 +37,9 @@ public class HomeBankHandler : FieldPacketHandler {
 
         session.Player.Value.Character.StorageCooldown = time;
         session.Send(HomeBank(time));
+        if (HomeConvenienceRules.CountsAsHomeBank(kind)) {
+            session.ConditionUpdate(ConditionType.home_bank);
+        }
     }
 
     private static ByteWriter HomeBank(long time) {

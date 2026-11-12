@@ -31,6 +31,12 @@ public static class HomeConvenienceRules {
         return premiumEndSeconds > nowSeconds;
     }
 
+    // home_bank (70400061, 74000003 "Use the safe inside your home once"): only the home dialog's call counts,
+    // not the premium bank button in the inventory.
+    public static bool CountsAsHomeBank(byte kind) {
+        return kind == BankFromHome;
+    }
+
     // The client offers the doctor only in the player's own home.
     public static bool IsDoctorAllowed(bool inHome, long homeOwnerAccountId, long accountId) {
         return inHome && homeOwnerAccountId == accountId;

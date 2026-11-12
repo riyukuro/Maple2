@@ -44,4 +44,11 @@ public class HomeConvenienceRulesTests {
     public void DoctorOnlyInOwnHome(bool inHome, long owner, long account, bool expected) {
         Assert.That(HomeConvenienceRules.IsDoctorAllowed(inHome, owner, account), Is.EqualTo(expected));
     }
+
+    // "Use the safe inside your home": the home dialog's call, not the inventory's premium button.
+    [TestCase(HomeConvenienceRules.BankFromHome, true)]
+    [TestCase(HomeConvenienceRules.BankFromInventory, false)]
+    public void HomeBankConditionCountsTheHomeCallOnly(byte kind, bool expected) {
+        Assert.That(HomeConvenienceRules.CountsAsHomeBank(kind), Is.EqualTo(expected));
+    }
 }
