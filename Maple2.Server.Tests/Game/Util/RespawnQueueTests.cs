@@ -71,11 +71,4 @@ public class RespawnQueueTests {
         Assert.That(queue.Count, Is.EqualTo(1));
         Assert.That(queue.Take(21_000, 1), Is.EqualTo(1));
     }
-
-    [Test]
-    public void DebugRate_TwiceAsFast() {
-        var queue = new RespawnQueue();
-        queue.Died(0, DeadTime, Cooldown, msPerSecond: 500);
-        Assert.That(queue.Take(9_000, 1), Is.EqualTo(1));
-    }
 }

@@ -51,14 +51,8 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
             return;
         }
 
-#if DEBUG
-        // 2x faster respawns.
-        const int spawnRate = 500;
-#else
-        const int spawnRate = 1000;
-#endif
-
-        respawns.Died(Environment.TickCount64, deadTime, Value.Cooldown, spawnRate);
+        // Debug builds respawn at the same time as release builds, so a live check there shows the real timing.
+        respawns.Died(Environment.TickCount64, deadTime, Value.Cooldown);
     }
 
     private List<Vector3> GetRandomSpawns(int count) {

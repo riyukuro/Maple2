@@ -8,12 +8,12 @@ public sealed class RespawnQueue {
 
     public int Count => due.Count;
 
-    // A mob died at tick; msPerSecond is 1000 (500 in debug builds, twice as fast).
-    public void Died(long tick, float deadTimeSeconds, int cooldownSeconds, int msPerSecond = 1000) {
+    // A mob died at tick.
+    public void Died(long tick, float deadTimeSeconds, int cooldownSeconds) {
         if (cooldownSeconds <= 0) {
             return; // no respawn without a cooldown
         }
-        due.Add(tick + (long) ((Math.Max(deadTimeSeconds, 0) + cooldownSeconds) * msPerSecond));
+        due.Add(tick + (long) ((Math.Max(deadTimeSeconds, 0) + cooldownSeconds) * 1000));
     }
 
     // The number of mobs to spawn now: the timers due at tick, at most free (the group's free places). Taken timers are
