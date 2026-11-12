@@ -134,7 +134,7 @@ public sealed class RedArenaZoneField : IPvpZoneField {
         if (stage is not { } spot || !field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
             return;
         }
-        fighter.MoveToPosition(spot.Position + new Vector3(offset, 0, 0), spot.Rotation);
+        fighter.MoveToPosition(field.StageSpot(spot.Position + new Vector3(offset, 0, 0)), spot.Rotation);
     }
 
     // The observer dialog (Trigger dialog kind 2) for the field's other players: both fighters' health and wins (the

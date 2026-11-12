@@ -139,7 +139,17 @@ public partial class FieldManager : IField {
         }
         FieldPortal? portal = fieldPortals?.Values.Where(entry => box.Contains(entry.Value.Position))
             .OrderBy(entry => entry.Value.Id).FirstOrDefault();
-        return portal != null ? (portal.Value.Position, portal.Value.Rotation) : (box.Metadata.Position, Vector3.Zero);
+        // At the box's centre height: 65000001's portal 1 lies under the stage floor (2875; the floor's item spawns
+        // are at 3300), so the fighters' spots are taken at the box's height and put on the navmesh (StageSpot).
+        Vector3 spot = portal != null ? portal.Value.Position with { Z = box.Metadata.Position.Z } : box.Metadata.Position;
+        return (spot, portal?.Value.Rotation ?? Vector3.Zero);
+    }
+
+    // A spot on the floor: the nearest navmesh point to the position (the position itself without a navmesh).
+    public Vector3 StageSpot(Vector3 position) {
+        return FindNearestPoly(position, out long nearestRef, out RcVec3f point) && nearestRef != 0
+            ? DotRecastHelper.FromNavMeshSpace(point)
+            : position;
     }
 
     // Whether a player's hostile skills reach another player here: the rank duel's fight or the PvP zone's.
