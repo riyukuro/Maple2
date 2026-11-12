@@ -72,21 +72,24 @@ public enum BuffFlag {
     UpdateShield = 2,
 }
 
+// The invoke effect types the client counts (AdditionalCliList::CollectInvokeEffectStats, additionalcli_2.cpp:851):
+// an invoke keyed on a skill (skillID, skillGroupID) counts with a skill type, one keyed on an effect (effectID,
+// effectGroupID) with an effect type (specialability.cpp FUN_14081d8a0, FUN_14081d8e0); any other type the client
+// drops. The client's skill types are 1001-1004; the ingest maps them to the server's numbers (PlayedClientAdditionalEffects).
 public enum InvokeEffectType : byte {
-    ReduceCooldown = 1,
-    IncreaseSkillDamage = 2,
-    IncreaseEffectDuration = 3,
+    ReduceCooldown = 1, // client 1001 (rate) and 1002 (seconds)
+    IncreaseSkillDamage = 2, // client 1004
+    IncreaseEffectDuration = 3, // client 3 (rate) and 4 (milliseconds)
     IncreaseDotDamage = 5,
-    // 20 (90050324)
-    // 21 (90050324) // Triggered from 10200081 (Adrenaline Rush)
+    // 20, 21 (90050324, on 10200081): not in the played client, and the client drops the types.
     IncreaseEvasionDebuff = 23,
     IncreaseCritEvasionDebuff = 26,
-    // 34 (90050853) // Adds 9% weapon attack to the triggered effect of Explosive Panic or Explosive Fervor cannons.
-    // 35 (90050854) // Triggered from 90050852 - Increases weapon attack by 4.5% when still for at least 1.5 sec."
-    // 38 (90050806) // Adds 2% physical damage to the triggered effect of the Barbaric Extreme Longsword.
-    // 40 (90050827) // Adds 5.2% magic damage to the triggered effect of the Holy Extreme Scepter.
-    ReduceSpiritCost = 56,
-    // 57 (90050351) // Triggered from 10500061 (Sharp Eyes) -
+    // 34, 35 (90050853, 90050854, on 90050852): the client drops the types; 90050854 is not in the played client and
+    // its 90050853 has no invoke.
+    IncreaseOffensivePhysicalDamage = 38, // offensive_physicaldamage of the keyed effect, in thousandths
+    IncreaseOffensiveMagicalDamage = 40, // offensive_magicaldamage of the keyed effect, in thousandths
+    ReduceSpiritCost = 56, // client 1003
+    // 57 (90050351, on skill 10500061): not in the played client, and the client drops the type.
     IncreaseHealing = 58,
 }
 

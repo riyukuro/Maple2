@@ -15,7 +15,7 @@ public class HealDamageRecord : IByteSerializable {
 
     public const float CritMultiplier = 1.5f;
 
-    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1) {
+    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1, float healingRate = 0f) {
         Caster = caster;
         Target = target;
         OwnerId = ownerId;
@@ -33,8 +33,8 @@ public class HealDamageRecord : IByteSerializable {
         // is known.
         long casterPart = CasterPart(recovery.RecoveryRate, caster.Stats.Values[BasicAttribute.MagicalAtk].Current,
             caster.Stats.Values[SpecialAttribute.RecoveryBonus].Total, multiplier > 1f);
-        HpAmount = Buff.AmountByStacks((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total
-                                           + casterPart), stacks);
+        HpAmount = Buff.AmountByStacks(HealingRaised((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total
+                                           + casterPart), healingRate), stacks);
         SpAmount = Buff.AmountByStacks((long) (recovery.SpValue + recovery.SpRate * target.Stats.Values[BasicAttribute.Spirit].Total * multiplier), stacks);
         EpAmount = Buff.AmountByStacks((long) (recovery.EpValue + recovery.EpRate * target.Stats.Values[BasicAttribute.Stamina].Total * multiplier), stacks);
     }
@@ -47,6 +47,16 @@ public class HealDamageRecord : IByteSerializable {
         long part = (long) (recoveryRate * magicalAtk);
         part += part * recoveryBonus / 1000;
         return crit ? (long) (part * CritMultiplier) : part;
+    }
+
+    // Invoke type 58 (IncreaseHealing): the caster's invokes on the heal's effect or its effect group raise the health
+    // it gives by their rate, rounded down (10400301, a priest effect, adds 4 % to the heals of its group 10400301;
+    // 97 levels in the played client, rates 0.04 to 0.4). The client counts the type for nothing of its own
+    // (CollectInvokeEffectStats feeds only cooldowns, spirit and the DPS meter); chosen here: health only, before the
+    // stack count, spirit and stamina heals unchanged.
+    public static long HealingRaised(long amount, float healingRate) {
+        // In decimal, so a rate of 0.04 (0.0399999 as a float) raises 1,000 to 1,040.
+        return healingRate == 0f ? amount : (long) (amount * (1m + (decimal) healingRate));
     }
 
     public void WriteTo(IByteWriter writer) {

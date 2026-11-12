@@ -96,8 +96,11 @@ public class BuffManager : IUpdatable {
             durationMs = additionalEffect.Property.DurationTick;
         }
 
-        // Apply invoke values
-        (int invokeValue, float invokeRate) = GetInvokeValues(InvokeEffectType.IncreaseEffectDuration, id, additionalEffect.Property.Group);
+        // The caster's invokes on this effect lengthen it: client type 3 by a rate, type 4 by milliseconds (both
+        // IncreaseEffectDuration here). Chosen here: the caster's buffs count, as both the invoke and the effect it
+        // names are of the caster's job skills (10400281 lengthens 10400182, both priest effects). Before, the holder's invokes on a skill of the effect's id counted,
+        // which no duration invoke is, so none counted.
+        (int invokeValue, float invokeRate) = caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseEffectDuration, id, additionalEffect.Property.InvokeGroupId);
         durationMs = Math.Max(0, invokeValue + (int) ((1 + invokeRate) * durationMs));
         if (Actor is FieldPlayer target) {
             durationMs = Buff.ReducedDuration(additionalEffect.Property, durationMs,
@@ -186,7 +189,7 @@ public class BuffManager : IUpdatable {
         ModifyBuffStackCount(buff);
 
         // refresh stats if needed
-        if (buff.Metadata.Status.Values.Any() || buff.Metadata.Status.Rates.Any() || buff.Metadata.Status.SpecialValues.Any() || buff.Metadata.Status.SpecialRates.Any()) {
+        if (HasStatus(buff.Metadata)) {
             Actor.Stats.Refresh();
         }
 
@@ -286,9 +289,12 @@ public class BuffManager : IUpdatable {
         }
     }
 
+    // The buff changes its holder's stats: by its own status, or by an invoke that raises the damage of another buff
+    // (StatsManager.InvokeDamageBonus).
     private static bool HasStatus(AdditionalEffectMetadata metadata) {
         return metadata.Status.Values.Count > 0 || metadata.Status.Rates.Count > 0
-            || metadata.Status.SpecialValues.Count > 0 || metadata.Status.SpecialRates.Count > 0;
+            || metadata.Status.SpecialValues.Count > 0 || metadata.Status.SpecialRates.Count > 0
+            || metadata.InvokeEffect?.Types.Any(type => type is InvokeEffectType.IncreaseOffensivePhysicalDamage or InvokeEffectType.IncreaseOffensiveMagicalDamage) == true;
     }
 
     private void SetCompulsionEvent(Buff buff) {
@@ -371,18 +377,46 @@ public class BuffManager : IUpdatable {
         return Sums().Invokes(invokeType, skillId, skillGroup);
     }
 
+    public (int, float) GetEffectInvokeValues(InvokeEffectType invokeType, int effectId, int effectGroupId) {
+        return Sums().EffectInvokes(invokeType, effectId, effectGroupId);
+    }
+
     // The invoke values and rates of a type for a skill, summed over every buff held, each times its stack count
     // (Buff.StackFactor), as the client sums them (additionalcli_2.cpp:938). The same buff from two casters counts
-    // twice, and a removed buff leaves nothing behind.
+    // twice, and a removed buff leaves nothing behind. An invoke is keyed on the first of skillID, effectID,
+    // skillGroupID and effectGroupID it has (CollectInvokeEffectStats, additionalcli_2.cpp:851): one with an effectID
+    // and no skillID is an effect's, and counts for no skill.
     public static (int, float) SumInvokes(IEnumerable<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> held,
             InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
+        return Sum(held, invokeType, meta => meta.SkillId != 0 ? meta.SkillId == skillId
+            : meta.EffectId == 0 && meta.SkillGroupId != 0 && skillGroup.Contains(meta.SkillGroupId));
+    }
+
+    // The invoke values and rates of a type for an additional effect: the invokes keyed on its id (effectID) or on
+    // its effect group (effectGroupID, the played client's groupIDs: AdditionalEffectMetadataProperty.InvokeGroupId),
+    // summed as SumInvokes does. The client counts these for its own display only (dpsmetersystem.cpp:1145), so what
+    // each type changes is chosen here (BuffManager.AddBuff, Buff.ApplyRecovery, StatsManager.AddBuffs).
+    public static (int, float) SumEffectInvokes(IEnumerable<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> held,
+            InvokeEffectType invokeType, int effectId, int effectGroupId) {
+        return Sum(held, invokeType, meta => EffectKeyed(meta, effectId, effectGroupId));
+    }
+
+    // Whether an invoke is an effect's and names this effect (its id, or its effect group when it has one).
+    public static bool EffectKeyed(AdditionalEffectMetadataInvokeEffect meta, int effectId, int effectGroupId) {
+        if (meta.SkillId != 0) {
+            return false;
+        }
+        if (meta.EffectId != 0) {
+            return meta.EffectId == effectId;
+        }
+        return meta.SkillGroupId == 0 && meta.EffectGroupId != 0 && meta.EffectGroupId == effectGroupId;
+    }
+
+    private static (int, float) Sum(IEnumerable<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> held,
+            InvokeEffectType invokeType, Func<AdditionalEffectMetadataInvokeEffect, bool> keyed) {
         float value = 0, rate = 0;
         foreach ((AdditionalEffectMetadataInvokeEffect? meta, int stacks) in held) {
-            if (meta == null) {
-                continue;
-            }
-            if ((meta.SkillId == 0 || meta.SkillId != skillId) &&
-                (meta.SkillGroupId == 0 || !skillGroup.Contains(meta.SkillGroupId))) {
+            if (meta == null || !keyed(meta)) {
                 continue;
             }
             for (int i = 0; i < meta.Types.Length; i++) {
@@ -631,8 +665,7 @@ public class BuffManager : IUpdatable {
             }
 
             buffsToRemove.Add(buff);
-            if (buff.Metadata.Status.Values.Count > 0 || buff.Metadata.Status.Rates.Count > 0 ||
-                buff.Metadata.Status.SpecialValues.Count > 0 || buff.Metadata.Status.SpecialRates.Count > 0) {
+            if (HasStatus(buff.Metadata)) {
                 if (Actor is FieldPlayer player) {
                     refreshStats = true;
                 }

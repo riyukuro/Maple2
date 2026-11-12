@@ -38,4 +38,8 @@ public sealed class BuffSums {
     public (int, float) Invokes(InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
         return invokes.Length == 0 ? (0, 0f) : BuffManager.SumInvokes(invokes, invokeType, skillId, skillGroup);
     }
+
+    public (int, float) EffectInvokes(InvokeEffectType invokeType, int effectId, int effectGroupId) {
+        return invokes.Length == 0 ? (0, 0f) : BuffManager.SumEffectInvokes(invokes, invokeType, effectId, effectGroupId);
+    }
 }

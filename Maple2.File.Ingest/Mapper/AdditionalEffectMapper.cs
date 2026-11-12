@@ -14,10 +14,28 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     private readonly AdditionalEffectParser parser;
     private readonly CooldownGroupRates groupRates;
 
-    public AdditionalEffectMapper(M2dReader xmlReader) {
+    // The played client's own invoke effects and effect groups (PlayedClientAdditionalEffects); empty without a played client.
+    private readonly Dictionary<int, PlayedClientAdditionalEffects.Entry> played = [];
+
+    public AdditionalEffectMapper(M2dReader xmlReader, M2dReader? playedReader = null) {
         parser = new AdditionalEffectParser(xmlReader);
         groupRates = new CooldownGroupRates(xmlReader);
         Console.WriteLine($"Additional effects with a cooldown group reduction: {groupRates.Count}");
+        if (playedReader != null) {
+            played = PlayedClientAdditionalEffects.Read(playedReader.Files.Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)));
+            Console.WriteLine($"Additional effects in the played client's data: {played.Count} ({played.Values.Count(entry => entry.GroupId != 0)} in an effect group, " +
+                              $"{played.Values.Sum(entry => entry.Levels.Values.Count(invoke => invoke != null))} levels with an invoke effect)");
+        }
+    }
+
+    // The played client's invoke effect stands in for the data pack's at every level the client has (none where its
+    // level has none); the pack's is kept for a level the client does not have.
+    private AdditionalEffectMetadataInvokeEffect? InvokeEffect(int id, short level, InvokeEffectProperty? pack) {
+        if (played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.Levels.TryGetValue(level, out AdditionalEffectMetadataInvokeEffect? invoke)) {
+            return invoke;
+        }
+        return Convert(pack);
     }
 
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
@@ -55,7 +73,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         ClearOnDistanceFromCaster: int.TryParse(data.BasicProperty.clearDistanceFromCaster, out int distance) ? distance : 0,
                         DisableRevivalHere: data.BasicProperty.disableRevivalHere,
                         SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null,
-                        CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level)),
+                        CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level),
+                        InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),
@@ -67,7 +86,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         Damage: Convert(data.DotDamageProperty),
                         Buff: Convert(data.DotBuffProperty)),
                     Shield: Convert(data.ShieldProperty),
-                    InvokeEffect: Convert(data.InvokeEffectProperty),
+                    InvokeEffect: InvokeEffect(id, data.BasicProperty.level, data.InvokeEffectProperty),
                     ModifyOverlapCount: data.ModifyOverlapCountProperty == null! ? [] : data.ModifyOverlapCountProperty.effectCodes
                         .Zip(data.ModifyOverlapCountProperty.offsetCounts)
                         .Select(tuple => new AdditionalEffectMetadataModifyOverlapCount(

@@ -47,7 +47,8 @@ public record AdditionalEffectMetadataProperty(
     int ClearOnDistanceFromCaster,
     bool DisableRevivalHere = false, // BasicProperty disableRevivalHere: no revive in place while the buff is on
     int[]? SkillUseDisableIds = null, // MotionProperty skillUseDisableIDs: the skills the holder cannot cast
-    CooldownGroupRate[]? CooldownGroupRates = null); // SpecialEffectProperty type 4: shorter cooldowns for a cooldown group
+    CooldownGroupRate[]? CooldownGroupRates = null, // SpecialEffectProperty type 4: shorter cooldowns for a cooldown group
+    int InvokeGroupId = 0); // the played client's Basic groupIDs of the first level: the group an invoke's effectGroupID names
 
 public record CooldownGroupRate(int GroupId, float Rate);
 

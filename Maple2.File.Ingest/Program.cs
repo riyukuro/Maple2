@@ -249,7 +249,7 @@ UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language, playedReader)
 UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader, originalDropTable, replayAttendGift));
 UpdateDatabase(metadataContext, new AiMapper(serverReader));
 
-UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader));
+UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader, playedReader));
 UpdateDatabase(metadataContext, new AnimationMapper(xmlReader));
 UpdateDatabase(metadataContext, new PetMapper(xmlReader));
 UpdateDatabase(metadataContext, new MapMapper(xmlReader, language, playedReader));

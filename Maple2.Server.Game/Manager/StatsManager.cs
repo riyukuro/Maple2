@@ -420,6 +420,39 @@ public class StatsManager {
                 Values[rateSpecialAttribute].AddTotal(new SpecialOption(Buff.ByStacks(rate, stacks)));
             }
         }
+        List<Buff> held = player.Buffs.EnumerateBuffs().ToList();
+        foreach ((SpecialAttribute attribute, float rate) in InvokeDamageBonus(
+                     held.Select(buff => (buff.Metadata.InvokeEffect, buff.Stacks)),
+                     held.Select(buff => (buff.Id, buff.Metadata.Property.InvokeGroupId)))) {
+            Values[attribute].AddTotal(new SpecialOption(rate));
+        }
+    }
+
+    // Invoke types 38 and 40 add to the offensive physical or magical damage of the effect they name, in thousandths
+    // times the invoke's stack count: 90050806 (up to 5 stacks) adds 20 to 90050805's physical damage of 2 %, and
+    // 90050827 adds 52 to 90050825's magical damage of 2.6 %. The client counts these for no stat of its own (CollectInvokeEffectStats feeds
+    // only skill cooldowns, spirit and the DPS meter), so the server chooses: the bonus is the holder's while it holds
+    // the named effect too (each invoke buff begins on hasBuffID of it), once however many of it are held.
+    public static List<(SpecialAttribute Attribute, float Rate)> InvokeDamageBonus(
+            IEnumerable<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> invokes, IEnumerable<(int Id, int GroupId)> held) {
+        List<(int Id, int GroupId)> effects = held.ToList();
+        List<(SpecialAttribute, float)> bonus = [];
+        foreach ((AdditionalEffectMetadataInvokeEffect? invoke, int stacks) in invokes) {
+            if (invoke == null || !effects.Any(effect => BuffManager.EffectKeyed(invoke, effect.Id, effect.GroupId))) {
+                continue;
+            }
+            for (int i = 0; i < invoke.Types.Length; i++) {
+                SpecialAttribute? attribute = invoke.Types[i] switch {
+                    InvokeEffectType.IncreaseOffensivePhysicalDamage => SpecialAttribute.OffensivePhysicalDamage,
+                    InvokeEffectType.IncreaseOffensiveMagicalDamage => SpecialAttribute.OffensiveMagicalDamage,
+                    _ => null,
+                };
+                if (attribute != null && invoke.Values[i] != 0) {
+                    bonus.Add((attribute.Value, Buff.ByStacks(invoke.Values[i] / 1000f, stacks)));
+                }
+            }
+        }
+        return bonus;
     }
 
     private void StatConversion(FieldPlayer player) {
