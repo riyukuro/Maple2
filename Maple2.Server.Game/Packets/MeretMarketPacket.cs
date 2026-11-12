@@ -28,8 +28,22 @@ public static class MeretMarketPacket {
         FailPurchase = 31,
         FeaturedPremium = 101,
         FeaturedUgc = 102,
+        AdProducts = 103,
         SaleSettings = 107,
         Unknown201 = 201,
+    }
+
+    // Client reader: CMeratMarketMan::OnAdProducts (meratmarketman.cpp:2129), the answer to MeretMarket 103, which the
+    // market dialog sends when it opens (uimeratmarketdialog.cpp:1174, :3496). A byte count, then per entry a byte and,
+    // when it is not 0, a premium product. The request sets flags in the client that only this answer clears, and
+    // with the dialog's flag the answer hides or shows the dialog's limited tab (RefreshLimitedTab). No ad data is
+    // ingested, so the list is empty, which is also what KMS2 sends.
+    public static ByteWriter AdProducts() {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.Write<Command>(Command.AdProducts);
+        pWriter.WriteByte(); // count
+
+        return pWriter;
     }
 
     // Client reader: CMeratMarketMan::OnSettleSettings (meratmarketman.cpp:2476), the answer to MeretMarket 107, which

@@ -47,6 +47,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         LoadUgcById = 33,
         Featured = 101,
         OpenUgcShop = 102,
+        AdProducts = 103, // sent when the market dialog opens; answered with 103 (OnAdProducts)
         Search = 104,
         BlueprintSearch = 105,
         SaleSettings = 107, // sent when the market dialog opens; answered with 107 (OnSettleSettings)
@@ -105,6 +106,9 @@ public class MeretMarketHandler : FieldPacketHandler {
                 return;
             case Command.OpenUgcShop:
                 HandleOpenUgcShop(session);
+                return;
+            case Command.AdProducts:
+                session.Send(MeretMarketPacket.AdProducts());
                 return;
             case Command.SaleSettings:
                 session.Send(MeretMarketPacket.SaleSettings(Constant.UGCShopProfitDelayDays));
