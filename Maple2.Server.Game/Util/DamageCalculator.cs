@@ -24,6 +24,38 @@ public static class DamageCalculator {
         return (0, damage - shield, true);
     }
 
+    // The target's reduction of a hit's range type (item option and buff lines "Melee Reduction" 37 and "Ranged
+    // Damage Reduction" 38), none for a hit of neither.
+    internal static SpecialAttribute? RangeReductionOf(RangeType rangeType) => rangeType switch {
+        RangeType.Melee => SpecialAttribute.ReduceMeleeDamage,
+        RangeType.Range => SpecialAttribute.ReduceRangedDamage,
+        _ => null,
+    };
+
+    // The target's reduction of a hit's element (the "... Damage Reduction" lines 28 to 33), none for a physical or
+    // element-less hit.
+    internal static SpecialAttribute? ElementReductionOf(Element element) => element switch {
+        Element.Fire => SpecialAttribute.ReduceFireDamage,
+        Element.Ice => SpecialAttribute.ReduceIceDamage,
+        Element.Electric => SpecialAttribute.ReduceElectricDamage,
+        Element.Holy => SpecialAttribute.ReduceHolyDamage,
+        Element.Dark => SpecialAttribute.ReduceDarkDamage,
+        Element.Poison => SpecialAttribute.ReducePoisonDamage,
+        _ => null,
+    };
+
+    // The part of a hit the target takes after its range and element reductions (rates, 0.022 for 2.2 %). Each
+    // reduction takes its part of what is left, and one of 100 % or more takes the whole hit. The client never
+    // computes damage, so the server chooses the formula.
+    internal static double ReductionFactor(double rangeReduction, double elementReduction) {
+        return (1 - Math.Clamp(rangeReduction, 0, 1)) * (1 - Math.Clamp(elementReduction, 0, 1));
+    }
+
+    internal static double ReductionFactor(IActor target, RangeType rangeType, Element element) {
+        double Rate(SpecialAttribute? attribute) => attribute is { } value ? target.Stats.Values[value].Multiplier() : 0;
+        return ReductionFactor(Rate(RangeReductionOf(rangeType)), Rate(ElementReductionOf(element)));
+    }
+
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
@@ -145,6 +177,7 @@ public static class DamageCalculator {
 
         damageMultiplier *= attackTypeAmount * resistance * (finalDamage == 0 ? 1 : finalDamage);
         attackDamage *= damageMultiplier * AttackDamageFactor(caster is FieldNpc and not FieldPet) + property.Value;
+        attackDamage *= ReductionFactor(target, property.RangeType, property.Element);
 
         // Apply any shields
         foreach (Buff buff in BuffManager.Shields(target.Buffs.EnumerateBuffs())) {
