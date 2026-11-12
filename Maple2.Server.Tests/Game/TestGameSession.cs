@@ -147,6 +147,11 @@ public sealed class TestGameSession {
             MapId = 2000023, ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
         }) ?? throw new InvalidOperationException("character row not created");
         CharacterId = character.Id;
+        // A Debug build's CreateCharacter starts the character with mesos; the tests start from none in any build.
+        using (var context = new Ms2Context(Options)) {
+            context.Character.Find(CharacterId)!.Currency = new Maple2.Database.Model.CharacterCurrency();
+            context.SaveChanges();
+        }
         if (!db.InitNewCharacter(CharacterId, new Unlock())) {
             throw new InvalidOperationException("character unlock row not created");
         }
