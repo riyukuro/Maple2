@@ -58,7 +58,7 @@ public sealed class TeamZoneField : IPvpZoneField {
             } else if (state.DueToEnd(tick)) {
                 End();
             } else {
-                Apply(state.Update(tick, box => playersInBox(box).Select(player => player.Value.Character.Id).ToList()));
+                Apply(state.Update(tick, box => playersInBox(box).Where(player => !player.IsDead).Select(player => player.Value.Character.Id).ToList()));
             }
         }
     }
@@ -126,6 +126,10 @@ public sealed class TeamZoneField : IPvpZoneField {
             }
             player.Session.Send(PvpPacket.TeamScore(state.RedScore, state.BlueScore));
             player.Session.Send(PvpPacket.TeamGauge(state.RedGauge()));
+            // Last: the team result dialog takes its own team from the point (SetMyTeam).
+            if (state.Entry(player.Value.Character.Id) != null) {
+                player.Session.Send(PvpPacket.TeamReset());
+            }
         }
     }
 
@@ -171,7 +175,8 @@ public sealed class TeamZoneField : IPvpZoneField {
             if (!field.TryGetPlayerById(entry.CharacterId, out FieldPlayer? player)) {
                 continue;
             }
-            int count = won ? constants.pvpBtiRewardWinnerCount : constants.pvpBtiRewardLoserCount;
+            // Rewards only in an arena match's field (the guild and test maps that set the same zone have no match).
+            int count = field.Arena == null ? 0 : won ? constants.pvpBtiRewardWinnerCount : constants.pvpBtiRewardLoserCount;
             player.Session.Send(PvpPacket.TeamResult(winner, count));
             player.Session.Send(PvpPacket.WinLose(won));
             try {
@@ -181,7 +186,9 @@ public sealed class TeamZoneField : IPvpZoneField {
                         logger.Warning("Team zone reward of {CharacterId} not added", entry.CharacterId);
                     }
                 }
-                player.Session.Exp.AddExp(won ? ExpType.btiTeamWin : ExpType.btiTeamLose);
+                if (field.Arena != null) {
+                    player.Session.Exp.AddExp(won ? ExpType.btiTeamWin : ExpType.btiTeamLose);
+                }
             } catch (Exception ex) {
                 logger.Error(ex, "Team zone reward of {CharacterId} not given", entry.CharacterId);
             }

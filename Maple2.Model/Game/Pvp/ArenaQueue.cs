@@ -1,4 +1,4 @@
-﻿namespace Maple2.Model.Game.Pvp;
+namespace Maple2.Model.Game.Pvp;
 
 // One individual arena match: its characters, and its field once made. Joined holds those that asked to enter.
 public sealed class ArenaMatch {

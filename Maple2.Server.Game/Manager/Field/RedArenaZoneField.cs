@@ -1,4 +1,4 @@
-﻿using Maple2.Model.Enum;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Server.Game.Model;
@@ -125,7 +125,9 @@ public sealed class RedArenaZoneField : IPvpZoneField {
             }
             bool won = characterId == champion;
             player.Session.Send(PvpPacket.WinLose(won));
-            player.Session.Exp.AddExp(won ? ExpType.redDuelWin : ExpType.redDuelLose);
+            if (field.Arena != null) {
+                player.Session.Exp.AddExp(won ? ExpType.redDuelWin : ExpType.redDuelLose);
+            }
             if (!won) {
                 ranking.Add(characterId);
             }

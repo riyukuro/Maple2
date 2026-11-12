@@ -31,8 +31,9 @@ public sealed class TeamZoneEntry {
 // extra boxes are the red team's treasure, the blue team's treasure, then the north, center and south flags, in that
 // order; the participants (the players in the zone's box when the fight starts, in random order) are dealt to red
 // and blue in turn; a flag is taken by a team whose players are in its box with none of the other team's for
-// CaptureMs; each held flag gives FlagScore to its team every ScoreTickMs; a player in the other team's treasure box
-// plunders it for PlunderScore, once per PlunderCooldownMs; a kill gives KillScore; the team with the higher score
+// CaptureMs; each held flag gives FlagScore to its team every ScoreTickMs; a living player that enters the other
+// team's treasure box plunders it for PlunderScore, once per entry and at most once per PlunderCooldownMs (the caller
+// lists only living players in a box, so a dead body neither plunders nor holds a flag); a kill gives KillScore; the team with the higher score
 // wins, equal scores are a draw. The gauge is the red team's share of both scores.
 public sealed class TeamZoneState {
     public const int Red = 201;
@@ -56,6 +57,8 @@ public sealed class TeamZoneState {
     public int BlueTreasureBox { get; }
 
     private readonly Dictionary<long, TeamZoneEntry> entries = [];
+    // The players in the other team's treasure box at the last update: a plunder needs a new entry.
+    private readonly HashSet<long> inTreasure = [];
     private readonly int[] flagOwner;
     private readonly int[] captureTeam;
     private readonly long[] captureSince;
@@ -139,12 +142,18 @@ public sealed class TeamZoneState {
                 events.Add(new TeamZoneEvent(TeamZoneEventType.Flag, Team: team, Flag: flag));
             }
         }
+        var nowInTreasure = new HashSet<long>();
         foreach ((int box, int owner) in new[] { (RedTreasureBox, Red), (BlueTreasureBox, Blue) }) {
             if (box == 0) {
                 continue;
             }
             foreach (long characterId in inBox(box)) {
                 if (!entries.TryGetValue(characterId, out TeamZoneEntry? entry) || entry.Team == owner) {
+                    continue;
+                }
+                nowInTreasure.Add(characterId);
+                // Once per entry: a player standing in the box (or lying there) does not plunder again.
+                if (inTreasure.Contains(characterId)) {
                     continue;
                 }
                 if (entry.LastPlunderTick != long.MinValue && tick - entry.LastPlunderTick < PlunderCooldownMs) {
@@ -156,6 +165,8 @@ public sealed class TeamZoneState {
                 events.Add(new TeamZoneEvent(TeamZoneEventType.Plunder, characterId, owner));
             }
         }
+        inTreasure.Clear();
+        inTreasure.UnionWith(nowInTreasure);
         while (tick >= nextScoreTick) {
             nextScoreTick += ScoreTickMs;
             foreach (int owner in flagOwner.Where(owner => owner != 0)) {

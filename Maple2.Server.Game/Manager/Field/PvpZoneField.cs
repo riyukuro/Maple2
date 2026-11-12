@@ -150,7 +150,10 @@ public sealed class PvpZoneField : IPvpZoneField {
             player.Session.Send(PvpPacket.LastRank(rank));
             player.Session.Send(PvpPacket.WinLose(rank == 1));
             try {
-                Reward(player, rank, PvpZoneState.Reward(rank, entry.Kill, rewardCounts, constants.PvpFFAAdditionRewardRate), constants.PvpFFARewardItem);
+                // Rewards only in an arena match's field.
+                if (field.Arena != null) {
+                    Reward(player, rank, PvpZoneState.Reward(rank, entry.Kill, rewardCounts, constants.PvpFFAAdditionRewardRate), constants.PvpFFARewardItem);
+                }
             } catch (Exception ex) {
                 logger.Error(ex, "PvP zone reward of {CharacterId} not given", entry.CharacterId);
             }

@@ -192,4 +192,24 @@ public class PvpZoneFieldTests {
         System.Threading.Thread.Sleep(50);
         Assert.That(arena.Ended, Is.EqualTo(new[] { 4 }));
     }
+
+    // Dead players count in no box: with only one living player in every box, its team takes the flags alone and it
+    // plunders the other team's treasure once; the dead of the other team neither contest nor plunder.
+    [Test]
+    public void Teams_DeadPlayersCountInNoBox() {
+        Arena arena = Start(field => field.StartPvpZone(3, 104, 0, 600, 0, [1, 2, 101, 102, 103], _ => field.Players.Values));
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        foreach (int index in new[] { 1, 2 }) {
+            typeof(FieldPlayer).GetField("isDead", Any)!.SetValue(arena.Player(index), true);
+        }
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        arena.Field.PvpZone.Update(now + 1_000);
+        arena.Field.PvpZone.Update(now + 1_000 + Maple2.Model.Game.Pvp.TeamZoneState.CaptureMs);
+        List<string> sent = Pvp(arena.Tests[0]);
+        Assert.That(sent.Count(packet => packet.StartsWith("B60070")), Is.EqualTo(3));
+        Assert.That(sent.Count(packet => packet.StartsWith("B60071")), Is.EqualTo(1));
+    }
 }

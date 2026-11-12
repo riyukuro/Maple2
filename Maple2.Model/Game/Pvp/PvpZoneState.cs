@@ -1,4 +1,4 @@
-﻿namespace Maple2.Model.Game.Pvp;
+namespace Maple2.Model.Game.Pvp;
 
 public enum PvpZonePhase {
     // The zone is set; the fight starts after its prepare time.

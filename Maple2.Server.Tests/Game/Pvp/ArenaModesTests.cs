@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Game.Pvp;
@@ -175,5 +175,21 @@ public class ArenaModesTests {
         TeamZoneState state = Teams();
         Assert.That(state.RedGauge(), Is.EqualTo(500));
         Assert.That(state.End(), Is.EqualTo(0));
+    }
+
+    // A plunder needs a new entry into the treasure box: standing there gives nothing more, leaving and coming back
+    // after the cooldown plunders again.
+    [Test]
+    public void Teams_PlunderOncePerEntry() {
+        TeamZoneState state = Teams();
+        var boxes = new Dictionary<int, long[]> { [2] = [10] };
+        IEnumerable<long> InBox(int box) => boxes.GetValueOrDefault(box) ?? [];
+        Assert.That(state.Update(4_000, InBox).Count(e => e.Type == TeamZoneEventType.Plunder), Is.EqualTo(1));
+        Assert.That(state.Update(4_000 + TeamZoneState.PlunderCooldownMs * 3, InBox).Count(e => e.Type == TeamZoneEventType.Plunder), Is.EqualTo(0));
+        boxes.Remove(2);
+        state.Update(4_000 + TeamZoneState.PlunderCooldownMs * 3 + 1, InBox);
+        boxes[2] = [10];
+        Assert.That(state.Update(4_000 + TeamZoneState.PlunderCooldownMs * 3 + 2, InBox).Count(e => e.Type == TeamZoneEventType.Plunder), Is.EqualTo(1));
+        Assert.That(state.RedScore, Is.EqualTo(TeamZoneState.PlunderScore * 2));
     }
 }

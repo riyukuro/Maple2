@@ -145,7 +145,10 @@ public class PvpHandler : FieldPacketHandler {
         if (response == null) {
             return;
         }
-        session.Send(PvpPacket.GameRuleValues(response.ArenaWaits.Select(wait => (wait.Key, wait.Value)).ToList()));
+        // Every arena of the table, 0 for an empty queue: the client keeps a value until it is sent again.
+        List<(int, int)> waits = session.TableMetadata.IndividualArenaTable.Entries.Keys.Order()
+            .Select(arena => (arena, response.ArenaWaits.GetValueOrDefault(arena))).ToList();
+        session.Send(PvpPacket.GameRuleValues(waits));
     }
 
     // The yes of the individualArenaJoin box: the character moves into the arena match's field.

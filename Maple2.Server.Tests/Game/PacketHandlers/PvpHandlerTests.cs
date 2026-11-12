@@ -140,7 +140,7 @@ public class PvpHandlerTests {
     }
 
     // Arena register (9 with the arena): queued with its playerCount, then Pvp 12 with the World's waits (arenaType,
-    // milliseconds). An arena that is not in the table gets Pvp 10, the client's state 0.
+    // milliseconds) for every arena of the table, 0 for an empty queue. An arena that is not in the table gets Pvp 10, the client's state 0.
     [Test]
     public void ArenaRegister_IsQueued() {
         TestGameSession test = NewTest();
@@ -150,7 +150,7 @@ public class PvpHandlerTests {
         test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaRegister] = response;
         Assert.That(Send(test, session, "09" + "01000000"), Is.EqualTo(new[] {
             "B600" + "09" + "01000000",
-            "B600" + "0C" + "01" + "01000000" + "A00F0000",
+            "B600" + "0C" + "03" + "01000000" + "A00F0000" + "02000000" + "00000000" + "03000000" + "00000000",
         }));
         PvpRequest request = test.World.PvpRequests.Single();
         Assert.That((request.ArenaRegister.Arena, request.ArenaRegister.PlayerCount), Is.EqualTo((1, 10)));
@@ -164,7 +164,8 @@ public class PvpHandlerTests {
     public void ArenaUnregister_LeavesTheQueue() {
         TestGameSession test = NewTest();
         GameSession session = test.Start();
-        Assert.That(Send(test, session, "0A"), Is.EqualTo(new[] { "B600" + "0A", "B600" + "0C" + "00" }));
+        Assert.That(Send(test, session, "0A"), Is.EqualTo(new[] { "B600" + "0A",
+            "B600" + "0C" + "03" + "01000000" + "00000000" + "02000000" + "00000000" + "03000000" + "00000000" }));
         Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.ArenaUnregister));
     }
 

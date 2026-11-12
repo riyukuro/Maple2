@@ -1,4 +1,4 @@
-﻿using Maple2.Database.Storage;
+using Maple2.Database.Storage;
 using Maple2.Server.Game.Manager.Field;
 
 namespace Maple2.Server.Game.Util;
