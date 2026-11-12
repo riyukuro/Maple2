@@ -18,6 +18,9 @@ public sealed class MailManager {
     private readonly GameSession session;
     private DateTime lastFetch;
     private long lastReceivedMail;
+    // A mail with a temporary item came in after the login's fetch and its notice is still to be sent.
+    private bool temporaryArrived;
+    private readonly bool loaded;
 
     private readonly SortedList<long, Mail> inbox;
 
@@ -28,16 +31,24 @@ public sealed class MailManager {
 
         inbox = new SortedList<long, Mail>();
         Fetch();
+        loaded = true;
     }
 
     public void Notify(bool force = false) {
         if (Fetch(force) || force) {
             int unreadMail;
             int unreadAlarm;
+            bool temporary;
             lock (inbox) {
                 long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 unreadMail = MailRules.UnreadCount(inbox.Values, now);
                 unreadAlarm = MailRules.UnreadAlarmCount(inbox.Values, now);
+                temporary = temporaryArrived;
+                temporaryArrived = false;
+            }
+            // KMS2 sends the temporary item notice (Mail 15) right before the count of the mail that brought it.
+            if (temporary) {
+                session.Send(MailPacket.NotifyTemporary());
             }
             session.Send(MailPacket.Notify(unreadMail, unreadMail > 0, unreadAlarm));
         }
@@ -126,6 +137,9 @@ public sealed class MailManager {
             foreach (Mail mail in db.GetAllMail(characterId, lastReceivedMail)) {
                 newMail = true;
                 inbox.Add(mail.Id, mail);
+                if (loaded && MailRules.HasTemporaryItem(mail, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+                    temporaryArrived = true;
+                }
             }
 
             lastFetch = DateTime.Now;

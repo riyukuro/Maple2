@@ -433,6 +433,19 @@ public class PartyManager : IDisposable {
     }
 
     // The party is told once that a member is under a tombstone: when the member goes from alive to dead.
+    // Two dungeon limit tables with the same dungeons and the same limit for each.
+    internal static bool SameLimits(IReadOnlyDictionary<int, DungeonEnterLimit> before, IReadOnlyDictionary<int, DungeonEnterLimit> after) {
+        if (before.Count != after.Count) {
+            return false;
+        }
+        foreach ((int dungeonId, DungeonEnterLimit limit) in before) {
+            if (!after.TryGetValue(dungeonId, out DungeonEnterLimit other) || other != limit) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     internal static bool DiedNow(DeathState before, DeathState after) {
         return before == DeathState.Alive && after != DeathState.Alive;
     }
@@ -458,7 +471,7 @@ public class PartyManager : IDisposable {
             session.Send(PartyPacket.Tombstone(member.CharacterId, member.Info.DeathState == DeathState.Metal));
         }
 
-        if (previousDungeonLimits != member.Info.DungeonEnterLimits) {
+        if (!SameLimits(previousDungeonLimits, member.Info.DungeonEnterLimits)) {
             session.Send(PartyPacket.UpdateDungeonInfo(member));
         }
 

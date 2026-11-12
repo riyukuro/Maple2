@@ -33,6 +33,12 @@ public static class MailRules {
         return (byte) type >= 100 && (byte) type < 113;
     }
 
+    // A mail whose attached items include one with an end time still ahead: the client's "temporary item" notice
+    // (OnMail mode 0xf) is about such a mail.
+    public static bool HasTemporaryItem(Mail mail, long now) {
+        return !IsExpired(mail, now) && mail.Items.Any(item => item.ExpiryTime > now);
+    }
+
     public static bool HasUncollected(Mail mail) {
         return mail.Items.Count > 0 || !mail.MesoCollected() || !mail.MeretCollected() || !mail.GameMeretCollected();
     }

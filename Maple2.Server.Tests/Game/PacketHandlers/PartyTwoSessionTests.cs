@@ -192,8 +192,7 @@ public class PartyTwoSessionTests {
 
         Update(UpdateField.Death, state);
         string notice = "5300" + "12" + Convert.ToHexString(BitConverter.GetBytes(guest.CharacterId)) + flag;
-        // The dungeon info line (Party 14) that follows every update is left out.
-        Assert.That(Party(inviterTest).Where(packet => packet[2] != 14).Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] {
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] {
             Hex(PartyPacket.UpdateStats(member)),
             notice,
         }));
@@ -205,6 +204,32 @@ public class PartyTwoSessionTests {
 
         Update(UpdateField.Health | UpdateField.Death, state);
         Assert.That(Party(inviterTest).Select(Convert.ToHexString), Does.Contain(notice));
+    }
+
+    // The dungeon info line (Party 14) follows a member update only when the member's dungeon limits differ from the
+    // ones held: not on an hp update, not on an equal table in a new dictionary, once on a changed limit or a new dungeon.
+    [Test]
+    public void MemberUpdate_SendsDungeonInfoOnlyOnChangedLimits() {
+        Invite(guest.PlayerName);
+        Reply(PartyInviteResponse.Accept);
+        Party(inviterTest);
+        Maple2.Model.Game.Party.PartyMember member = inviter.Party.Party!.Members[guest.CharacterId];
+        MethodInfo sync = typeof(PartyManager).GetMethod("SyncUpdate", Any)!;
+        int DungeonInfos(UpdateField type, params (int Id, DungeonEnterLimit Limit)[] limits) {
+            Maple2.Model.Game.PlayerInfo info = member.Info.Clone();
+            info.DungeonEnterLimits = limits.ToDictionary(limit => limit.Id, limit => limit.Limit);
+            sync.Invoke(inviter.Party, [System.Threading.CancellationToken.None, guest.CharacterId, type, info]);
+            return Party(inviterTest).Count(packet => packet[2] == 14);
+        }
+
+        Assert.That(DungeonInfos(UpdateField.Health), Is.EqualTo(0));
+        Assert.That(DungeonInfos(UpdateField.Dungeon, (1, DungeonEnterLimit.Rookie)), Is.EqualTo(1));
+        Assert.That(DungeonInfos(UpdateField.Dungeon, (1, DungeonEnterLimit.Rookie)), Is.EqualTo(0));
+        Assert.That(DungeonInfos(UpdateField.Health | UpdateField.Dungeon, (1, DungeonEnterLimit.Rookie)), Is.EqualTo(0));
+        Assert.That(DungeonInfos(UpdateField.Dungeon, (1, DungeonEnterLimit.MinLevel)), Is.EqualTo(1));
+        Assert.That(DungeonInfos(UpdateField.Dungeon, (1, DungeonEnterLimit.MinLevel), (2, DungeonEnterLimit.Rookie)), Is.EqualTo(1));
+        Assert.That(DungeonInfos(UpdateField.Dungeon, (2, DungeonEnterLimit.Rookie), (1, DungeonEnterLimit.MinLevel)), Is.EqualTo(0));
+        Assert.That(DungeonInfos(UpdateField.Health), Is.EqualTo(0));
     }
 
     [TestCase(DeathState.Alive, DeathState.FirstDeath, true)]

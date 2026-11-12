@@ -99,6 +99,35 @@ public class MailTwoSessionTests {
     }
 
     // Only the recipient can read the mail.
+    // A mail that comes in with a temporary item is announced by Mail 15 right before its count, once; a mail whose
+    // item has no end time, or whose item's time is over, is not.
+    [TestCase(3600, true)]
+    [TestCase(0, false)]
+    [TestCase(-3600, false)]
+    public void Mail_WithATemporaryItemIsAnnouncedOnce(int secondsLeft, bool announced) {
+        Maple2.Model.Metadata.ItemMetadata metadata = TestGameSession.Metadata(20000001);
+        recipientTest.Register(metadata);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using (Maple2.Database.Storage.GameStorage.Request db = recipientTest.Storage.Context()) {
+            Maple2.Model.Game.Mail mail = db.CreateMail(new Maple2.Model.Game.Mail {
+                ReceiverId = recipient.CharacterId, Type = Maple2.Model.Enum.MailType.System, Title = "t", Content = "c",
+            }) ?? throw new InvalidOperationException("mail row not created");
+            var item = new Maple2.Model.Game.Item(metadata) { ExpiryTime = secondsLeft == 0 ? 0 : now + secondsLeft };
+            Assert.That(db.CreateItem(mail.Id, item), Is.Not.Null);
+        }
+
+        recipient.Mail.Notify(true);
+
+        string[] expected = announced
+            ? [Hex(MailPacket.NotifyTemporary()), Hex(MailPacket.Notify(1, true, 1))]
+            : [Hex(MailPacket.Notify(1, true, 1))];
+        Assert.That(Hex(Mail(recipientTest)), Is.EqualTo(expected));
+        Assert.That(Hex(MailPacket.NotifyTemporary()), Is.EqualTo("54000F"));
+
+        recipient.Mail.Notify(true);
+        Assert.That(Hex(Mail(recipientTest)), Is.EqualTo(new[] { Hex(MailPacket.Notify(1, true, 1)) }));
+    }
+
     [Test]
     public void Mail_CannotBeReadByTheSender() {
         Assume.That(sender.CharacterId, Is.Not.EqualTo(recipient.CharacterId));
