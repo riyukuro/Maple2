@@ -32,12 +32,13 @@ public class SuperChatHandler : FieldPacketHandler {
         int itemId = packet.ReadInt();
 
         Item? superChatItem = session.Item.Inventory.Find(itemId).FirstOrDefault();
-        if (superChatItem?.Metadata.Function?.Type != ItemFunction.SuperWorldChat ||
-            !int.TryParse(superChatItem.Metadata.Function?.Parameters.Split(",").First(), out int superChatId)) {
+        if (superChatItem?.Metadata.Function?.Type != ItemFunction.SuperWorldChat) {
             return;
         }
 
-        session.SuperChatId = superChatId;
+        // The item id, not its first function parameter (the icon name): the client looks the line's int up as item
+        // data (texttohtml FUN_14183eba0), and KMS2 lines carry the item id (20801012, whose icon parameter is 20800026).
+        session.SuperChatId = itemId;
         session.SuperChatItemId = itemId;
         session.Send(SuperChatPacket.Select(session.Player.ObjectId, itemId));
     }

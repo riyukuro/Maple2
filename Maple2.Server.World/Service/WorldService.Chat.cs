@@ -32,8 +32,10 @@ public partial class WorldService {
         }
     }
 
+    // The line goes to the recipient's channel. NotFound (offline, or gone from that channel) goes back to the sender's
+    // channel, which answers s_err_cannot_find_user.
     private Task<ChatResponse> WhisperChat(ChatRequest request) {
-        if (!playerLookup.TryGet(request.CharacterId, out PlayerInfo? info)) {
+        if (!playerLookup.TryGet(request.Whisper.RecipientId, out PlayerInfo? info) || !info.Online) {
             throw new RpcException(new Status(StatusCode.NotFound,
                 $"Unable to whisper: {request.Whisper.RecipientName}"));
         }
@@ -57,14 +59,14 @@ public partial class WorldService {
             Whisper = new ChatRequest.Types.Whisper {
                 RecipientId = request.Whisper.RecipientId,
                 RecipientName = request.Whisper.RecipientName,
+                Reject = request.Whisper.Reject,
             },
         };
 
         try {
             return Task.FromResult(channelClient.Chat(channelChat));
         } catch (RpcException ex) when (ex.StatusCode is StatusCode.NotFound) {
-            logger.Information("{CharacterId} not found...", request.CharacterId);
-            return Task.FromResult(new ChatResponse());
+            throw new RpcException(new Status(StatusCode.NotFound, $"Unable to whisper: {request.Whisper.RecipientName}"));
         }
     }
 
@@ -103,7 +105,6 @@ public partial class WorldService {
 
             request.Guild.MemberIds.Clear();
             request.Guild.MemberIds.AddRange(group.Select(member => member.Info.CharacterId));
-
             try {
                 client.Chat(request);
             } catch { /* ignored */ }

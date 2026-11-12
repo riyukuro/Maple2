@@ -304,6 +304,7 @@ public sealed class TestGameSession {
         core.GetField("lastSentPackets", Any)!.SetValue(session, new ConcurrentDictionary<SendOp, byte[]>());
         core.GetField("Logger", Any)!.SetValue(session, new LoggerConfiguration().WriteTo.Sink(new ErrorSink(Errors)).CreateLogger());
         Set(session, nameof(GameSession.AccountId), AccountId);
+        typeof(GameSession).GetField(nameof(GameSession.WhisperedBy), Any)!.SetValue(session, new ConcurrentDictionary<string, long>());
         Set(session, nameof(GameSession.CharacterId), CharacterId);
         Set(session, nameof(GameSession.GameStorage), Storage);
         Set(session, nameof(GameSession.ItemMetadata), itemMetadata);

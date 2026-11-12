@@ -94,16 +94,19 @@ public static class ChatPacket {
         return pWriter;
     }
 
-    public static ByteWriter WhisperReject(string name) {
+    // The notice that a player refuses whispers. The client prints string 0x8cd with the name (UIMessengerBrowser
+    // vfunc_84). KMS2 sends the refusing player's ids, name and channel, and the text as common string 0: the client
+    // drops a line whose text is empty before it looks at the type.
+    public static ByteWriter WhisperReject(long accountId, long characterId, string name, int channel) {
         var pWriter = Packet.Of(SendOp.UserChat);
-        pWriter.WriteLong();
-        pWriter.WriteLong();
+        pWriter.WriteLong(accountId);
+        pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(name);
-        pWriter.WriteBool(false);
-        pWriter.WriteUnicodeString(".");
+        pWriter.WriteBool(true);
+        pWriter.WriteInt(0);
         pWriter.Write<ChatType>(ChatType.WhisperReject);
         pWriter.WriteBool(false);
-        pWriter.WriteInt();
+        pWriter.WriteInt(channel);
         pWriter.WriteBool(false);
 
         return pWriter;

@@ -53,6 +53,12 @@ public partial class ChannelService {
             throw new RpcException(new Status(StatusCode.NotFound, $"Unable to whisper: {request.Whisper.RecipientName}"));
         }
 
+        if (request.Whisper.Reject) {
+            session.Send(ChatPacket.WhisperReject(request.AccountId, request.CharacterId, request.Name, request.Channel));
+            return;
+        }
+
+        session.WhisperedBy[request.Name] = request.CharacterId;
         if (items.Count > 0) {
             session.Send(MessengerBrowserPacket.Link(items.ToArray()));
         }
@@ -83,7 +89,8 @@ public partial class ChannelService {
                 session.Send(MessengerBrowserPacket.Link(items.ToArray()));
             }
 
-            session.Send(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Guild, request.Message, gm: request.Gm, channel: request.Channel));
+            ChatType type = request.Guild.Notice ? ChatType.GuildNotice : ChatType.Guild;
+            session.Send(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, type, request.Message, gm: request.Gm, channel: request.Channel));
         }
     }
 

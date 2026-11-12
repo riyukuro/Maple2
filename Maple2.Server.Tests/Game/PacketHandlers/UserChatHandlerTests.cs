@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game;
 using Maple2.Server.Game.Manager.Field;
@@ -9,6 +12,8 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
+using Serilog;
+using GuildManager = Maple2.Server.Game.Manager.GuildManager;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -143,5 +148,65 @@ public class UserChatHandlerTests {
             byte[] line = ChatPacket.Message(1, 2, "ab", type, "hi", channel: Channel).ToArray();
             Assert.That(BitConverter.ToInt32(line, 36), Is.EqualTo(Channel), type.ToString());
         }
+    }
+    // A guild with the session's character in rank 0, which has the given permissions.
+    private static void Join(GameSession session, GuildPermission permission) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var manager = (GuildManager) RuntimeHelpers.GetUninitializedObject(typeof(GuildManager));
+        typeof(GuildManager).GetField("session", any)!.SetValue(manager, session);
+        typeof(GuildManager).GetField("tokenSource", any)!.SetValue(manager, new CancellationTokenSource());
+        typeof(GuildManager).GetField("logger", any)!.SetValue(manager, Log.Logger);
+        var info = new PlayerInfo(new CharacterInfo(session.AccountId, session.CharacterId, session.PlayerName, "", "", Gender.Male, Job.Newbie, 20), "",
+            new AchievementInfo(), []);
+        var self = new GuildMember { GuildId = 7, Info = info, Rank = 0, JoinTime = 1000 };
+        var guild = new Guild(7, "Guild", self);
+        guild.Members[self.CharacterId] = self;
+        guild.Ranks.Add(new GuildRank { Id = 0, Name = "rank", Permission = permission });
+        typeof(GuildManager).GetProperty("Guild", any)!.SetValue(manager, guild);
+        session.Guild = manager;
+    }
+
+    // The guild megaphone (kind 18) goes to the guild with channel 0 and the notice flag; the client sends it only
+    // with the rank permission 0x800 (SendAlert), and the server holds to that too.
+    [TestCase(GuildPermission.Default | GuildPermission.SendAlert, true)]
+    [TestCase(GuildPermission.Default, false)]
+    public void GuildNotice_NeedsTheAlertPermission(GuildPermission permission, bool sent) {
+        GameSession session = Login(meret: 0);
+        Join(session, permission);
+
+        Say(session, ChatType.GuildNotice, "all here");
+
+        if (!sent) {
+            Assert.That(test.World.Chats, Is.Empty);
+            return;
+        }
+        ChatRequest request = test.World.Chats.Single();
+        Assert.That(request.Guild.GuildId, Is.EqualTo(7));
+        Assert.That(request.Guild.Notice, Is.True);
+        Assert.That(request.Channel, Is.EqualTo(0));
+        Assert.That(request.Message, Is.EqualTo("all here"));
+    }
+
+    // Plain guild chat needs no permission and is no notice.
+    [Test]
+    public void GuildChat_IsNoNotice() {
+        GameSession session = Login(meret: 0);
+        Join(session, GuildPermission.Default);
+
+        Say(session, ChatType.Guild, "hi");
+
+        ChatRequest request = test.World.Chats.Single();
+        Assert.That(request.Guild.Notice, Is.False);
+        Assert.That(request.Channel, Is.EqualTo(UserChatHandler.LineChannel(session)));
+    }
+
+    // Without a guild nothing goes to the world.
+    [Test]
+    public void GuildNotice_WithoutAGuildSendsNothing() {
+        GameSession session = Login(meret: 0);
+
+        Say(session, ChatType.GuildNotice, "all here");
+
+        Assert.That(test.World.Chats, Is.Empty);
     }
 }

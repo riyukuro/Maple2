@@ -54,8 +54,13 @@ public partial class GameSession {
 
     public MiniGameUserRecord? MiniGameRecord;
 
+    // The selected super chat item (charObj+0x11f0): the item id, which the chat line and the field packet carry.
     public int SuperChatId;
     public int SuperChatItemId;
+
+    // The players whose whispers reached this session, by name: the client's whisper block option answers a received
+    // whisper with chat kind 6 naming the sender, and only such a sender is sent the reject notice.
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> WhisperedBy = new();
 
     public long ReportCooldown = 0;
 

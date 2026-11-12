@@ -39,6 +39,9 @@ message ChatRequest {
   message Whisper {
     int64 recipient_id = 1;
     string recipient_name = 2;
+    // The recipient refuses whispers (the client's whisper block option answers with chat kind 6): the line goes
+    // back to the whisperer as the reject notice.
+    bool reject = 3;
   }
   message Party {
     int32 party_id = 1;
@@ -47,6 +50,8 @@ message ChatRequest {
   message Guild {
     int64 guild_id = 1;
     repeated int64 member_ids = 2;
+    // The guild megaphone (chat kind 18), for members whose rank may send alerts.
+    bool notice = 3;
   }
   message World {
   }

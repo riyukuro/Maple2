@@ -48,11 +48,18 @@ public class UserChatHandler : FieldPacketHandler {
             case ChatType.WhisperTo:
                 HandleWhisper(session, message, recipient, itemUids);
                 break;
+            case ChatType.WhisperReject:
+                // Sent by the client itself, not said by the player.
+                HandleWhisperReject(session, recipient);
+                return;
             case ChatType.Party:
                 HandleParty(session, message, itemUids);
                 break;
             case ChatType.Guild:
                 HandleGuild(session, message, itemUids);
+                break;
+            case ChatType.GuildNotice:
+                HandleGuild(session, message, itemUids, notice: true);
                 break;
             case ChatType.World:
                 HandleWorld(session, message, itemUids);
@@ -129,20 +136,40 @@ public class UserChatHandler : FieldPacketHandler {
 
         try {
             World.Chat(request);
-            // The sender's own copy names the recipient's character, not the account (KMS2 sends 0).
-            session.Send(ChatPacket.Whisper(0, info.CharacterId, info.Name, request.Message));
+            // The sender's own copy names the recipient; KMS2 sends account and character id 0 in it.
+            session.Send(ChatPacket.Whisper(0, 0, info.Name, request.Message));
         } catch (RpcException ex) {
             switch (ex.StatusCode) {
                 case StatusCode.NotFound:
                     session.Send(ChatPacket.Alert(StringCode.s_err_cannot_find_user));
                     return;
                 case StatusCode.PermissionDenied:
-                    session.Send(ChatPacket.WhisperReject(recipient));
+                    session.Send(ChatPacket.WhisperReject(info.AccountId, info.CharacterId, info.Name, 0));
                     return;
                 case StatusCode.Unavailable:
                     return;
             }
         }
+    }
+
+    // Chat kind 6: the client's whisper block option answers a received whisper, naming its sender. Only a player
+    // whose whisper reached this session is sent the notice, on whatever channel it is now.
+    private void HandleWhisperReject(GameSession session, string recipient) {
+        if (!session.WhisperedBy.TryRemove(recipient, out long characterId)) {
+            return;
+        }
+
+        var request = new ChatRequest {
+            AccountId = session.AccountId,
+            CharacterId = session.CharacterId,
+            Name = session.PlayerName,
+            Channel = LineChannel(session),
+            Whisper = new ChatRequest.Types.Whisper { RecipientId = characterId, RecipientName = recipient, Reject = true },
+        };
+
+        try {
+            World.Chat(request);
+        } catch (RpcException) { }
     }
 
     private void HandleParty(GameSession session, string message, ICollection<long> itemUids) {
@@ -168,8 +195,13 @@ public class UserChatHandler : FieldPacketHandler {
         } catch (RpcException) { }
     }
 
-    private void HandleGuild(GameSession session, string message, ICollection<long> itemUids) {
+    // notice: the guild megaphone (kind 18). The client sends it only with the rank permission 0x800 (SendAlert) and
+    // otherwise prints string 0x415; KMS2 gives the line to the guild with channel 0.
+    private void HandleGuild(GameSession session, string message, ICollection<long> itemUids, bool notice = false) {
         if (session.Guild.Guild == null) {
+            return;
+        }
+        if (notice && !session.Guild.HasPermission(session.CharacterId, GuildPermission.SendAlert)) {
             return;
         }
 
@@ -180,9 +212,10 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
-            Channel = LineChannel(session),
+            Channel = notice ? 0 : LineChannel(session),
             Guild = new ChatRequest.Types.Guild {
                 GuildId = session.Guild.Id,
+                Notice = notice,
             },
         };
 
@@ -249,6 +282,14 @@ public class UserChatHandler : FieldPacketHandler {
             session.Currency.Meret -= meretCost;
         }
 
+        // The linked items go first, as in the other lines; channel chat sent none, so its item links showed nothing.
+        if (itemUids.Count > 0) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            Item[] items = itemUids.Select(db.GetItem).OfType<Item>().ToArray();
+            if (items.Length > 0) {
+                session.ChannelBroadcast(MessengerBrowserPacket.Link(items));
+            }
+        }
         session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message, gm: AdminLevel.IsGm(session.Player.AdminPermissions), channel: GameServer.GetChannel()));
     }
 
