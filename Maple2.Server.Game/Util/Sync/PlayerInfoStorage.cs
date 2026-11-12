@@ -119,15 +119,27 @@ public class PlayerInfoStorage {
             return false;
         }
 
+        int called = 0;
         foreach ((int id, PlayerInfoListener listener) in dict) {
             if ((listener.Type & type) == default) {
                 continue;
             }
 
-            bool completed = listener.Callback(type, info);
+            // One listener that fails (a session that is gone) must not keep the others from their update.
+            bool completed;
+            try {
+                completed = listener.Callback(type, info);
+            } catch (Exception ex) {
+                logger.Error(ex, "PlayerInfo listener for {CharacterId} failed on {Type}", info.CharacterId, type);
+                continue;
+            }
+            called++;
             if (completed) {
                 dict.Remove(id, out _);
             }
+        }
+        if (type.HasFlag(UpdateField.Map)) {
+            logger.Debug("PlayerInfo {CharacterId} map {MapId} ({Type}): {Count} listeners", info.CharacterId, info.MapId, type, called);
         }
         return true;
     }

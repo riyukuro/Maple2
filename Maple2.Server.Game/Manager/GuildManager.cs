@@ -706,6 +706,7 @@ public class GuildManager : IDisposable {
         if (type == UpdateField.Map) {
             // KMS2 sends a field change alone, by the member's name (Guild 31); the client redraws the member's row.
             session.Send(GuildPacket.UpdateMemberMap(member.Name, member.Info.MapId));
+            logger.Debug("Guild {GuildId}: member {MemberId} map {MapId} sent to {CharacterId}", Guild.Id, id, member.Info.MapId, session.CharacterId);
         } else if (type == UpdateField.GearScore) {
             // KMS2 sends a gear score change alone, by the member's name.
             session.Send(GuildPacket.UpdateMemberGearScore(member.Name, member.Info.GearScore));

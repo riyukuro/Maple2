@@ -7,6 +7,8 @@ using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Core.Sync;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.World.Service;
 using Maple2.Server.Game.Packets;
 using Serilog;
@@ -134,6 +136,37 @@ public class GuildJoinTests {
         }));
         // The layout the client reads (CGuildManager case 31): the name, then the map id.
         Assert.That(System.Convert.ToHexString(sent[0]), Is.EqualTo("8A00" + "1F" + "0600" + "4A006F0069006E0065007200" + "BE841E00"));
+    }
+
+    // Another listener on the member that fails (a session that is gone) does not keep the field change from the
+    // guild's open list, nor fail the world's notice.
+    [Test]
+    public void MemberChangesField_AFailingListenerDoesNotStopTheGuildUpdate() {
+        var test = new TestGameSession();
+        test.Start();
+        test.World.AddPlayer(111, 11, "Joiner");
+        Assert.That(test.Session.PlayerInfo.GetOrFetch(11, out _), Is.True);
+        for (int i = 0; i < 8; i++) {
+            test.Session.PlayerInfo.Listen(11, new PlayerInfoListener(UpdateField.Guild, (_, _) => throw new System.ObjectDisposedException("session")));
+        }
+        GuildManager manager = Manager(test, OneMemberGuild());
+        Assert.That(manager.AddMember("Leader", Member(11, "Joiner", 5)), Is.True);
+        for (int i = 0; i < 8; i++) {
+            test.Session.PlayerInfo.Listen(11, new PlayerInfoListener(UpdateField.Guild, (_, _) => throw new System.ObjectDisposedException("session")));
+        }
+        test.TakeSent();
+
+        Assert.DoesNotThrow(() => test.Session.PlayerInfo.ReceiveUpdate(new PlayerUpdateRequest {
+            AccountId = 111,
+            CharacterId = 11,
+            MapId = 2000062,
+            RoomId = 3,
+        }));
+
+        byte[][] sent = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild).ToArray();
+        Assert.That(sent.Select(System.Convert.ToHexString), Is.EqualTo(new[] {
+            System.Convert.ToHexString(GuildPacket.UpdateMemberMap("Joiner", 2000062).ToArray()),
+        }));
     }
 
     [Test]
