@@ -1,3 +1,5 @@
+using Maple2.Model.Enum;
+
 namespace Maple2.Model.Validators;
 
 public static class ItemSocketRules {
@@ -13,4 +15,14 @@ public static class ItemSocketRules {
     public static bool KeepsDropSocketId(int skinType, int itemSocketId) {
         return skinType == 0 || itemSocketId != 0;
     }
+
+    // The client tells a skin socket from an equipment socket by the item's skin type (CItemData::HasSkinType,
+    // skinType != 0, itemsocketsystemutil.cpp 0x140627930: kind 2 skin, 1 equipment). A gem put into or taken from a
+    // socket counts for the skin or the equip condition of that kind, besides gemstone_puton / gemstone_putoff
+    // (70600031 "Insert a gemstone into a socket" is equip_gemstone_puton).
+    public static ConditionType GemstonePutOnCondition(int skinType) =>
+        skinType != 0 ? ConditionType.skin_gemstone_puton : ConditionType.equip_gemstone_puton;
+
+    public static ConditionType GemstonePutOffCondition(int skinType) =>
+        skinType != 0 ? ConditionType.skin_gemstone_putoff : ConditionType.equip_gemstone_putoff;
 }

@@ -276,6 +276,7 @@ public class ItemSocketHandler : FieldPacketHandler {
             item.Socket!.Sockets[socketSlot] = itemGemstone;
             session.Send(ItemSocketPacket.EquipGemstone(item.Uid, socketSlot, itemGemstone));
             session.ConditionUpdate(ConditionType.gemstone_puton);
+            session.ConditionUpdate(ItemSocketRules.GemstonePutOnCondition(item.Metadata.Property.SkinType));
         }
     }
 
@@ -328,6 +329,7 @@ public class ItemSocketHandler : FieldPacketHandler {
             item.Socket!.Sockets[socketSlot] = null;
             session.Send(ItemSocketPacket.UnequipGemstone(item.Uid, socketSlot, gem.Uid));
             session.ConditionUpdate(ConditionType.gemstone_putoff);
+            session.ConditionUpdate(ItemSocketRules.GemstonePutOffCondition(item.Metadata.Property.SkinType));
         }
 
         #region Local Function
