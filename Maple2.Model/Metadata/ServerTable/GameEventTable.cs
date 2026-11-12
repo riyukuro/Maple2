@@ -480,6 +480,20 @@ public record NpcShopShowItem(
     int ShopId,
     int[] ItemIds) : GameEventData;
 
+// The system mail a new character gets: value1 the id of its string/systemmailcontent row (KR 110000: 160331001).
+// The client has no class for the type (no GameEventCharacterFirstConnect).
+public record CharacterFirstConnectMail(
+    int ContentId) : GameEventData;
+
+// A system mail sent to the players value1 names: value2 "<systemmailcontent id>,<mail kind>", value3 a number of
+// days. KR has one row, 10100100: ReturnUser, "170531002,3", 90, the mail a character gets when it enters after 90
+// days or more away. The client has no class for the type (no GameEventSendMail).
+public record SendMailEvent(
+    string Target,
+    int ContentId,
+    MailType Kind,
+    int Days) : GameEventData;
+
 // An npc the event puts in a field: value1 <npc fieldID spawnPointID npcID shopID/>, its root read whatever its name
 // (the client's table export reads the root's npcID and fieldID and lists the npc in that field for the event's
 // time, tableexporter.cpp:906). spawnPointID is the id of a region spawn (MS2RegionSpawn) of the field, shopID the
@@ -580,4 +594,6 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
 [JsonDerivedType(typeof(SpawnNpcEvent), "SpawnNpc")]
 [JsonDerivedType(typeof(NpcShopShowItem), "NpcShopShowItem")]
+[JsonDerivedType(typeof(CharacterFirstConnectMail), "CharacterFirstConnect")]
+[JsonDerivedType(typeof(SendMailEvent), "SendMail")]
 public abstract record GameEventData;

@@ -11,6 +11,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Helpers;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.World.Service;
@@ -167,8 +168,13 @@ public class LoginSession : Core.Network.Session {
             item.Transfer?.Bind(character);
         }
         List<Item>? outfits = db.CreateItems(character.Id, createOutfits.ToArray());
+        // The running CharacterFirstConnect rows mail the new character (KR 110000: the beginner guide).
+        bool mailed = true;
+        foreach (Mail mail in EventMailRules.FirstConnect(Server.GetEvents().Select(gameEvent => gameEvent.Metadata), character.Id)) {
+            mailed &= db.CreateMail(mail) != null;
+        }
 
-        if (outfits == null || !db.Commit()) {
+        if (outfits == null || !mailed || !db.Commit()) {
             Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
         }

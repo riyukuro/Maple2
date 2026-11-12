@@ -526,7 +526,11 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(MentorPacket.MyList());
         Send(MentorPacket.Unknown12());
         Config.LoadChatStickers();
-        // Mail
+        // Mail. A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100: 90).
+        foreach (Mail mail in EventMailRules.ReturnUser(FindEvent(GameEventType.SendMail).Select(gameEvent => gameEvent.Metadata),
+                     CharacterId, Player.Value.Character.LastOnlineTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            db.CreateMail(mail);
+        }
         Mail.Notify(true);
         // BypassKey
         // AH
