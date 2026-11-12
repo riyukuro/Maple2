@@ -177,6 +177,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.OpenDungeonItemBox:
                 HandleOpenDungeonItemBox(session, item);
                 break;
+            case ItemFunction.PetTraining:
+                HandlePetTraining(session, item, packet);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -902,6 +905,53 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Dungeon.OpenRewardPouch(room, session.Field);
+    }
+
+    // The pet training kits (PetTraining, 64000001-64000008): the item opens UIItemPetTrainingDialog (0x4f12,
+    // uiitempettrainingdialog.cpp), which takes a pet item of pet type 1 below the top level and shows the level and
+    // exp the kit's offsetExp gives. Its confirm (after s_msg_transfer_bind_pet_training for an unbound pet with a
+    // binding rule) sends the plain item use with the pet's uid as text. The server checks the same, uses one kit,
+    // binds the pet and gives the exp as a fusion does (ResponsePet 10, and 11 on a level up), then sends mode 13,
+    // which completes the dialog.
+    private static void HandlePetTraining(GameSession session, Item item, IByteReader packet) {
+        if (!long.TryParse(packet.ReadUnicodeString().Trim(), out long petUid)) {
+            return;
+        }
+        long gain = PetFusionRules.TrainingExp(XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters));
+        if (gain <= 0) {
+            return;
+        }
+
+        lock (session.Item) {
+            Item? pet = session.Pet?.Pet.Uid == petUid ? session.Pet.Pet : session.Item.Inventory.Get(petUid, InventoryType.Pets);
+            if (pet?.Pet == null || !session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? petMetadata)) {
+                return;
+            }
+            int maxLevel = session.ServerTableMetadata.ConstantsTable.PetMaxLevel;
+            if (!PetFusionRules.IsTrainingTarget(petMetadata.Type, pet.Pet.Level, maxLevel)) {
+                return;
+            }
+            if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+                return;
+            }
+            session.Item.Bind(pet);
+
+            int oldLevel = pet.Pet.Level;
+            (int level, long exp) = PetFusionRules.Apply(session.TableMetadata.PetExpTable, pet.Pet.Level, pet.Pet.Exp, pet.Rarity,
+                pet.Metadata.Limit.Level, gain, maxLevel);
+            pet.Pet.Level = (short) level;
+            pet.Pet.Exp = exp;
+
+            session.Send(PetPacket.Fusion(session.Player.ObjectId, pet));
+            if (level != oldLevel) {
+                session.Send(PetPacket.LevelUp(session.Player.ObjectId, pet));
+                if (session.Pet?.Pet.Uid == pet.Uid) {
+                    // The summoned pet's stats count in the owner's totals.
+                    session.Player.Stats.Refresh();
+                }
+            }
+            session.Send(PetPacket.TrainingComplete());
+        }
     }
 
     private void HandleRecallGuild(GameSession session, Item item) {

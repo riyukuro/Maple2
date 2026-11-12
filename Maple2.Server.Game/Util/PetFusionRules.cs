@@ -38,6 +38,18 @@ public static class PetFusionRules {
         return petType != 0 && petLevel < petMaxLevel;
     }
 
+    // The pet training kit's target (UIItemPetTrainingDialog FUN_140e57ed0): a pet item with a pet data row of type 1,
+    // below the top level (s_pet_training_dialog_invalid_item, s_pet_training_dialog_max_level otherwise).
+    public static bool IsTrainingTarget(int petType, int petLevel, int petMaxLevel) {
+        return petType == 1 && petLevel < petMaxLevel;
+    }
+
+    // The kit's exp: offsetExp of its parameters (`<v offsetExp="1500" />`); the dialog does nothing for 0.
+    public static long TrainingExp(IReadOnlyDictionary<string, string> parameters) {
+        return parameters.TryGetValue("offsetExp", out string? text)
+            && uint.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out uint value) ? value : 0;
+    }
+
     public static FodderKind KindOf(Item fodder, int? petType) {
         if (fodder.Pet != null) {
             return petType is not null and not 0 ? FodderKind.Pet : FodderKind.None;
