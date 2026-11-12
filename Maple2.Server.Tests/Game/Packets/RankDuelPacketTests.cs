@@ -18,14 +18,17 @@ public class RankDuelPacketTests {
         Assert.That(Hex(PvpPacket.RankDuelInArenaField()), Is.EqualTo("B600" + "11" + "00000000"));
     }
 
-    // 0x1b reads two ints and passes them to onRound the other way round: the rounds first, the round second.
+    // Each int is how long the intro movie stays (ms; addMovie's setTimeout to onTimeOut, which plays "out"), so
+    // 0 hides it at once. 0x1b: the client passes its two ints to onRound the other way round; onRound draws its
+    // first argument as the round and times the movie with its second, so the wire has the time, then the round.
     [Test]
     public void Intros() {
-        Assert.That(Hex(PvpPacket.RankDuelRound(1, 3)), Is.EqualTo("B600" + "1B" + "03000000" + "01000000"));
-        Assert.That(Hex(PvpPacket.RankDuelFight()), Is.EqualTo("B600" + "1A" + "00000000"));
-        Assert.That(Hex(PvpPacket.RankDuelWin()), Is.EqualTo("B600" + "1C" + "00000000"));
-        Assert.That(Hex(PvpPacket.RankDuelLose()), Is.EqualTo("B600" + "1D" + "00000000"));
-        Assert.That(Hex(PvpPacket.RankDuelDraw()), Is.EqualTo("B600" + "1E" + "00000000"));
+        Assert.That(Hex(PvpPacket.RankDuelRound(1)), Is.EqualTo("B600" + "1B" + "C4090000" + "01000000"));
+        Assert.That(Hex(PvpPacket.RankDuelRound(12, 1000)), Is.EqualTo("B600" + "1B" + "E8030000" + "0C000000"));
+        Assert.That(Hex(PvpPacket.RankDuelFight()), Is.EqualTo("B600" + "1A" + "DC050000"));
+        Assert.That(Hex(PvpPacket.RankDuelWin()), Is.EqualTo("B600" + "1C" + "B80B0000"));
+        Assert.That(Hex(PvpPacket.RankDuelLose()), Is.EqualTo("B600" + "1D" + "B80B0000"));
+        Assert.That(Hex(PvpPacket.RankDuelDraw()), Is.EqualTo("B600" + "1E" + "B80B0000"));
     }
 
     // The winner, then per side: name, character, score, rating, rating change, reward.

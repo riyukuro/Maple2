@@ -511,10 +511,21 @@ public class FieldPlayer : Actor<Player> {
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
         if (!TakesDamage(IsDead, Field.FieldTick, revivalInvincibleUntil)) {
+            if (caster is FieldPlayer && Field.RankDuel != null) {
+                Logger.Information("Rank duel hit on {Target} by {Caster}, skill {SkillId}: not taken (dead {Dead}, revival invincible {Ms} ms more)",
+                    Value.Character.Name, ((FieldPlayer) caster).Value.Character.Name, damage.SkillId, IsDead, revivalInvincibleUntil - Field.FieldTick);
+            }
             return;
         }
         long healthBefore = Stats.Values[BasicAttribute.Health].Current;
         base.ApplyDamage(caster, damage, attack);
+        // One line per hit between rank duelists: what each hit did (the damage type shows a miss, a block or an
+        // invincible hit) and the health it took.
+        if (caster is FieldPlayer duelist && Field.RankDuel != null && damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hit)) {
+            Logger.Information("Rank duel hit on {Target} by {Caster}, skill {SkillId}: {Hits}, health {Before} -> {After}",
+                Value.Character.Name, duelist.Value.Character.Name, damage.SkillId,
+                string.Join(",", hit.Damage.Select(entry => $"{entry.Type}:{entry.Amount}")), healthBefore, Stats.Values[BasicAttribute.Health].Current);
+        }
         if (Stats.Values[BasicAttribute.Health].Current != healthBefore) {
             // The health a hit takes goes to the world like any other health change, so the party frames of
             // members in other fields follow it (only heals, regen and non-skill damage were sent). Hits in a

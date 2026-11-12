@@ -109,14 +109,14 @@ public class RankDuelFieldTests {
         duel.Field.RankDuel!.Enter(duel.PlayerA);
         Assert.That(Pvp(duel.A), Is.Empty);
         duel.Field.RankDuel.Enter(duel.PlayerB);
-        Assert.That(Pvp(duel.A), Is.EqualTo(new[] { "B600" + "1B" + "01000000" + "01000000" }));
-        Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1B" + "01000000" + "01000000" }));
+        Assert.That(Pvp(duel.A), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "01000000" }));
+        Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "01000000" }));
 
         duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
         // The fight intro, then each duelist's PvP point (A 1, B 2: the client's enemies), seen by the whole field.
         string points = "B600" + "64" + Int(duel.PlayerA.ObjectId) + "01000000" + "00" + "00" + "|" + "B600" + "64" + Int(duel.PlayerB.ObjectId) + "02000000" + "00" + "00";
-        Assert.That(string.Join("|", Pvp(duel.A)), Is.EqualTo("B600" + "1A" + "00000000" + "|" + points));
-        Assert.That(string.Join("|", Pvp(duel.B)), Is.EqualTo("B600" + "1A" + "00000000" + "|" + points));
+        Assert.That(string.Join("|", Pvp(duel.A)), Is.EqualTo("B600" + "1A" + "DC050000" + "|" + points));
+        Assert.That(string.Join("|", Pvp(duel.B)), Is.EqualTo("B600" + "1A" + "DC050000" + "|" + points));
         Assert.That(string.Join("|", Pvp(duel.Bystander)), Is.EqualTo(points));
     }
 
@@ -167,7 +167,7 @@ public class RankDuelFieldTests {
         Assert.That(duel.B.Session.Player.Value.Character.Exp, Is.EqualTo(expB + 200));
 
         List<string> sentA = Pvp(duel.A);
-        Assert.That(sentA[0], Is.EqualTo("B600" + "1C" + "00000000"));
+        Assert.That(sentA[0], Is.EqualTo("B600" + "1C" + "B80B0000"));
         Assert.That(sentA[1], Does.StartWith("B600" + "12" + Long(duel.A.CharacterId)));
         Assert.That(sentA[1], Does.Contain(Long(duel.A.CharacterId) + "01000000" + "06040000" + "1E000000" + "0A000000"));
         Assert.That(sentA[1], Does.Contain(Long(duel.B.CharacterId) + "00000000" + "DE030000" + "F6FFFFFF" + "0A000000"));
@@ -178,7 +178,7 @@ public class RankDuelFieldTests {
             "B600" + "64" + Int(duel.PlayerB.ObjectId) + "00000000" + "0000",
             "B600" + "0F",
         }));
-        Assert.That(Pvp(duel.B)[0], Is.EqualTo("B600" + "1D" + "00000000"));
+        Assert.That(Pvp(duel.B)[0], Is.EqualTo("B600" + "1D" + "B80B0000"));
 
         System.Threading.SpinWait.SpinUntil(() => duel.Ended.Count > 0, 2000);
         Assert.That(duel.Ended, Is.EqualTo(new[] { 7 }));

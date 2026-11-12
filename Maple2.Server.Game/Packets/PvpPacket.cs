@@ -115,28 +115,32 @@ public static class PvpPacket {
         pWriter.WriteInt(side.Reward);
     }
 
-    // The round intro of UIEventIntroduce (0x4f06): the client reads two ints and passes them to onRound in
-    // the other order, as the massive event's round (round, goal) is passed (uimassiveevent.cpp
-    // FUN_1419f60a0). So the goal (rounds in the match) goes first, the round second.
-    public static ByteWriter RankDuelRound(int round, int rounds) {
+    // The intros of UIEventIntroduce (0x4f06, uieventintroduce.gfx). Each movie stays on screen for the int it
+    // is given in milliseconds: the movie's addMovie(movie, ms) arms setTimeout(onTimeOut, ms), which plays the
+    // movie's "out" frames, so 0 takes it away at once. The round intro: the client reads two ints and passes
+    // them to onRound in the other order (pvprankduelcomponent.cpp 0x1b); onRound draws its first argument as the
+    // round number (digit1/digit10) and gives the second to addMovie. So the time goes first, the round second.
+    public const int RoundIntroMs = 2_500;
+    public const int FightIntroMs = 1_500;
+    public const int ResultIntroMs = 3_000;
+
+    public static ByteWriter RankDuelRound(int round, int durationMs = RoundIntroMs) {
         var pWriter = Packet.Of(SendOp.Pvp);
         pWriter.WriteByte((byte) Command.RankDuelRound);
-        pWriter.WriteInt(rounds);
+        pWriter.WriteInt(durationMs);
         pWriter.WriteInt(round);
         return pWriter;
     }
 
-    // The fight, win, lose and draw intros: each int goes to the intro's Flash call (onFight, onWin, onLose,
-    // onDraw) unread by the client code; 0 is sent.
-    public static ByteWriter RankDuelFight() => Intro(Command.RankDuelFight);
-    public static ByteWriter RankDuelWin() => Intro(Command.RankDuelWin);
-    public static ByteWriter RankDuelLose() => Intro(Command.RankDuelLose);
-    public static ByteWriter RankDuelDraw() => Intro(Command.RankDuelDraw);
+    public static ByteWriter RankDuelFight(int durationMs = FightIntroMs) => Intro(Command.RankDuelFight, durationMs);
+    public static ByteWriter RankDuelWin(int durationMs = ResultIntroMs) => Intro(Command.RankDuelWin, durationMs);
+    public static ByteWriter RankDuelLose(int durationMs = ResultIntroMs) => Intro(Command.RankDuelLose, durationMs);
+    public static ByteWriter RankDuelDraw(int durationMs = ResultIntroMs) => Intro(Command.RankDuelDraw, durationMs);
 
-    private static ByteWriter Intro(Command command) {
+    private static ByteWriter Intro(Command command, int durationMs) {
         var pWriter = Packet.Of(SendOp.Pvp);
         pWriter.WriteByte((byte) command);
-        pWriter.WriteInt(0);
+        pWriter.WriteInt(durationMs);
         return pWriter;
     }
 

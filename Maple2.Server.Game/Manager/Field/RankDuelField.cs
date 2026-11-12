@@ -184,8 +184,8 @@ public sealed class RankDuelField {
         foreach (RankDuelEvent @event in events) {
             switch (@event.Type) {
                 case RankDuelEventType.Round:
-                    Send(state.First, PvpPacket.RankDuelRound(1, 1));
-                    Send(state.Second, PvpPacket.RankDuelRound(1, 1));
+                    Send(state.First, PvpPacket.RankDuelRound(1));
+                    Send(state.Second, PvpPacket.RankDuelRound(1));
                     break;
                 case RankDuelEventType.Fight:
                     Send(state.First, PvpPacket.RankDuelFight());

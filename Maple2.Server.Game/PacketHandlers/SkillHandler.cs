@@ -446,6 +446,9 @@ public class SkillHandler : FieldPacketHandler {
         }*/
 
         IEnumerable<IActor> targets = session.Field.GetTargets(record);
+        if (session.Field.RankDuel != null) {
+            LogRankDuelTarget(session, record, targets.ToList());
+        }
         SkillMetadataArrow arrow = record.Attack.Arrow;
         bool bounces = arrow.BounceCount > 0 && BounceChain.PicksAround(arrow.BounceType);
         foreach (IActor target in targets) {
@@ -460,6 +463,18 @@ public class SkillHandler : FieldPacketHandler {
             }
         }
         session.Player.TargetAttack(record);
+    }
+
+    // A rank duelist's hit (Attack.Target) that the server finds no player for: where the impact, the caster and the
+    // other players were, and whether the field holds them hostile (the duel's fight).
+    private void LogRankDuelTarget(GameSession session, SkillRecord record, IReadOnlyCollection<IActor> targets) {
+        if (session.Field == null || targets.Any(target => target is FieldPlayer)) {
+            return;
+        }
+        string others = string.Join("; ", session.Field.Players.Values.Where(player => player != session.Player)
+            .Select(player => $"{player.Value.Character.Name} at {player.Position} hostile {session.Field.PlayerHostile(session.Player, player)}"));
+        Logger.Information("Rank duel hit by {Caster}, skill {SkillId}, attack point {AttackPoint}, apply target {ApplyTarget}: no player in range; impact {Impact}, caster at {Position}; {Others}",
+            session.PlayerName, record.SkillId, record.AttackPoint, record.Attack.Range.ApplyTarget, record.ImpactPosition, session.Player.Position, others);
     }
 
     private void HandleCubeMagicPath(GameSession session, IByteReader packet) {
