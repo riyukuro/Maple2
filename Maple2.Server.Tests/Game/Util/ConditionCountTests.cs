@@ -51,6 +51,15 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: MapId, codeLong: npcId), Is.EqualTo(expected));
     }
 
+    // Taking furniture into use counts for controller when its item id is one of the row's codes.
+    [TestCase(50400002, true)]
+    [TestCase(50400004, false)]
+    public void Controller_CountsTheListedFurniture(int itemId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.controller, 1,
+            new ConditionMetadata.Parameters(Integers: [50400002]), null);
+        Assert.That(condition.Check(null!, codeLong: itemId), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]

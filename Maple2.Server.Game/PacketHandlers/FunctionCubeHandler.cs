@@ -149,6 +149,10 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 fieldInteract.InteractCube.InteractingCharacterId = isInDefaultState ? session.CharacterId : 0;
                 session.Field?.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldInteract.InteractCube));
                 session.Field?.Broadcast(FunctionCubePacket.UseFurniture(session.CharacterId, fieldInteract.InteractCube));
+                if (isInDefaultState) {
+                    // Taking furniture into use counts for controller, with the furniture's item id as the code.
+                    session.ConditionUpdate(ConditionType.controller, codeLong: fieldInteract.ItemId);
+                }
                 break;
         }
     }

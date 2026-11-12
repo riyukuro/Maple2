@@ -9,6 +9,8 @@ namespace Maple2.Server.Game.Model;
 public class FieldFunctionInteract : FieldEntity<FunctionCubeMetadata> {
     public readonly InteractCube InteractCube;
     public readonly long CubeId;
+    // The item id of the placed furniture (the code of the controller condition).
+    public int ItemId { get; init; }
 
     private long NextUpdateTick { get; set; }
 

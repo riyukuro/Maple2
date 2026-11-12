@@ -1038,6 +1038,7 @@ public partial class FieldManager {
         var fieldInteract = new FieldFunctionInteract(this, NextLocalId(), cube.Interact, cube.Id) {
             Position = cube.Position,
             Rotation = new Vector3(0, 0, cube.Rotation),
+            ItemId = cube.ItemId,
         };
 
         fieldFunctionInteracts[cube.Interact.Id] = fieldInteract;
