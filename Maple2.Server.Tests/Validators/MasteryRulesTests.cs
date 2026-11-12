@@ -158,6 +158,26 @@ public class MasteryRulesTests {
         Assert.That(MasteryRules.Reward(type, 5, 0, 99999, Grades, _ => 0), Is.EqualTo(5));
     }
 
+    // A craft's mastery bonus: the type's ability rate (total / 1000) as a float, the product truncated.
+    [TestCase(30, 0, 30)]
+    [TestCase(30, 100, 33)]
+    [TestCase(30, 250, 37)]
+    [TestCase(100, 300, 129)] // 1.3f is a little under 1.3
+    [TestCase(30, -500, 15)]
+    public void CraftReward_ScalesByTheAbilityRate(int reward, int bonusTotal, int expected) {
+        Assert.That(MasteryRules.CraftReward(reward, bonusTotal), Is.EqualTo(expected));
+    }
+
+    [TestCase(MasteryType.Blacksmithing, SpecialAttribute.SmithingRewardMastery)]
+    [TestCase(MasteryType.Engraving, SpecialAttribute.EngravingRewardMastery)]
+    [TestCase(MasteryType.Alchemist, SpecialAttribute.AlchemistRewardMastery)]
+    [TestCase(MasteryType.Cooking, SpecialAttribute.CookingRewardMastery)]
+    [TestCase(MasteryType.Mining, null)]
+    [TestCase(MasteryType.PetTaming, null)]
+    public void CraftBonus_OfEachType(MasteryType type, SpecialAttribute? expected) {
+        Assert.That(MasteryRules.CraftBonus(type), Is.EqualTo(expected));
+    }
+
     // The client's id of a grade: type * 1000 + grade.
     [TestCase(3002, 3, 2)]
     [TestCase(3102, 3, 102)]

@@ -191,13 +191,13 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
                     cancellationToken: cancellationToken);
                 switch (response.Status) {
                     case HealthCheckResponse.Types.ServingStatus.Serving:
-                        if (channel.Status is ChannelStatus.Inactive || channel.Status is ChannelStatus.Pending) {
+                        if (SetStatusIf(channel, ch => ch.Status is ChannelStatus.Inactive or ChannelStatus.Pending, ChannelStatus.Active)) {
                             logger.Information("Channel {Channel} has become active", channel.Id);
                             Active(channel);
                         }
                         break;
                     default:
-                        if (channel.Status is ChannelStatus.Active || channel.Status is ChannelStatus.Pending && channel.StartOver) {
+                        if (SetStatusIf(channel, ch => ch.Status is ChannelStatus.Active || ch.Status is ChannelStatus.Pending && ch.StartOver, ChannelStatus.Inactive)) {
                             Inactive(channel);
                             logger.Information("Channel {Channel} has become inactive due to {Status}", channel.Id, response.Status);
 #if !DEBUG
@@ -210,18 +210,24 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
                 if (ex.Status.StatusCode != StatusCode.Unavailable) {
                     logger.Warning("{Error} monitoring channel {Channel}", ex.Message, channel.Id);
                 }
-                if (channel.Status is ChannelStatus.Active) {
+                // A Game server that is still starting does not answer yet: its channel stays pending (its id is
+                // not given to another Game server) until the start grace is over.
+                bool wasActive = false;
+                lock (registerLock) {
+                    if (channel.Status is ChannelStatus.Active) {
+                        wasActive = true;
+                        channel.Status = ChannelStatus.Inactive;
+                    } else if (channel.Status is not ChannelStatus.Pending || channel.StartOver) {
+                        channel.Status = ChannelStatus.Inactive;
+                    }
+                }
+                if (wasActive) {
                     logger.Information("Channel {Channel} has become inactive", channel.Id);
                     Inactive(channel);
 
 #if !DEBUG
                     await cancellationTokenSource.CancelAsync();
 #endif
-                }
-                // A Game server that is still starting does not answer yet: its channel stays pending (its id is
-                // not given to another Game server) until the start grace is over.
-                if (channel.Status is not ChannelStatus.Pending || channel.StartOver) {
-                    channel.Status = ChannelStatus.Inactive;
                 }
             }
 
@@ -249,8 +255,20 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
     // A channel that became inactive (its game server is gone).
     public event Action<int>? ChannelInactive;
 
+    // The monitor changes a channel's status under the registration lock, as the two takers (Register and
+    // FindOrCreateChannelByIp) do: a channel taken a moment before is not set back by a check made before it was taken.
+    private bool SetStatusIf(Channel channel, Func<Channel, bool> when, ChannelStatus status) {
+        lock (registerLock) {
+            if (!when(channel)) {
+                return false;
+            }
+            channel.Status = status;
+            return true;
+        }
+    }
+
+    // The status is already set (SetStatusIf); these tell the rest of the World server.
     private void Inactive(Channel channel) {
-        channel.Status = ChannelStatus.Inactive;
         try {
             ChannelInactive?.Invoke(channel.Id);
         } catch (Exception ex) {
@@ -261,7 +279,6 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
     }
 
     private void Active(Channel channel) {
-        channel.Status = ChannelStatus.Active;
         UpdateChannels(channel.Id);
         // Load custom string boards
         foreach ((int id, string message) in worldServer.GetCustomStringBoards()) {

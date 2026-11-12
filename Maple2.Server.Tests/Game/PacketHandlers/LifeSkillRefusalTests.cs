@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -118,11 +119,11 @@ public class LifeSkillRefusalTests {
     private const int QuestId = 90000600;
 
     // A tutorial recipe as the KR table has it: nothing to pay, one item, the quest or a level asked.
-    private GameSession StartRecipe(int questId, short requiredLevel) {
+    private GameSession StartRecipe(int questId, short requiredLevel, MasteryType type = MasteryType.Mining, int rewardMastery = 0) {
         GameSession session = StartMastery();
         test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
-            [RecipeId] = new(RecipeId, MasteryType.Mining, NoRewardExp: true, RequiredMastery: 0, RequiredMeso: 0,
-                RequiredQuests: questId == 0 ? [] : [questId], RequiredLevel: requiredLevel, RewardExp: 0, RewardMastery: 0,
+            [RecipeId] = new(RecipeId, type, NoRewardExp: rewardMastery == 0, RequiredMastery: 0, RequiredMeso: 0,
+                RequiredQuests: questId == 0 ? [] : [questId], RequiredLevel: requiredLevel, RewardExp: 0, RewardMastery: rewardMastery,
                 HighRateLimitCount: 5, NormalRateLimitCount: 10, RequiredItems: [], HabitatMapId: [],
                 RewardItems: [new ItemComponent(RewardItemId, 1, 1, ItemTag.None)]),
         }));
@@ -179,6 +180,23 @@ public class LifeSkillRefusalTests {
             AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_invalid_level);
         }
         Assert.That(Count(session, RewardItemId), Is.EqualTo(expected));
+    }
+
+    // A craft gives the mastery the craft dialog shows: 30 raised by the type's ability (100 = 10%), and the
+    // mastery update carries it. Another type's ability does nothing.
+    [TestCase(MasteryType.Blacksmithing, SpecialAttribute.SmithingRewardMastery, 33)]
+    [TestCase(MasteryType.Cooking, SpecialAttribute.CookingRewardMastery, 33)]
+    [TestCase(MasteryType.Cooking, SpecialAttribute.SmithingRewardMastery, 30)]
+    public void Craft_MasteryIsRaisedByTheTypesAbility(MasteryType type, SpecialAttribute ability, int expected) {
+        GameSession session = StartRecipe(0, 0, type, rewardMastery: 30);
+        session.Stats.Values[ability].AddTotal(100);
+
+        Send(session, 2, RecipeId);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Mastery[type], Is.EqualTo(expected));
+        Assert.That(test.TakeSent().Exists(packet => TestGameSession.Op(packet) == SendOp.Mastery && packet[2] == 0
+            && packet[3] == (byte) type && BitConverter.ToInt32(packet, 4) == expected), Is.True);
     }
 
     [Test]

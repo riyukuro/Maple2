@@ -104,7 +104,10 @@ public class MasteryHandler : FieldPacketHandler {
         session.Currency.Meso -= entry.RequiredMeso;
 
         if (!entry.NoRewardExp) {
-            session.Mastery[entry.Type] += entry.RewardMastery;
+            // The gain the client's craft dialog shows: the recipe's mastery raised by the type's ability.
+            SpecialAttribute? bonus = MasteryRules.CraftBonus(entry.Type);
+            int bonusTotal = bonus == null ? 0 : (int) session.Player.Stats.Values[bonus.Value].Total;
+            session.Mastery[entry.Type] += MasteryRules.CraftReward(entry.RewardMastery, bonusTotal);
         }
 
         foreach (ItemComponent rewardItem in entry.RewardItems) {

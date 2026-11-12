@@ -96,4 +96,23 @@ public static class MasteryRules {
         float reward = (uint) (rewardMastery * factor.Value) / 10000.0f;
         return (int) (uint) (reward + 0.5f);
     }
+
+    // The special ability that raises a craft's mastery (UIMasteryDialog's gain of a recipe, uimasterydialog.cpp):
+    // smithing, handicrafts, alchemy and cooking each have one; the other types have none.
+    public static SpecialAttribute? CraftBonus(MasteryType type) {
+        return type switch {
+            MasteryType.Blacksmithing => SpecialAttribute.SmithingRewardMastery,
+            MasteryType.Engraving => SpecialAttribute.EngravingRewardMastery,
+            MasteryType.Alchemist => SpecialAttribute.AlchemistRewardMastery,
+            MasteryType.Cooking => SpecialAttribute.CookingRewardMastery,
+            _ => null,
+        };
+    }
+
+    // A craft's mastery: Factor's value scaled by 1 + the ability's rate (its total / 1000, CEquipment::GetAbilityRate),
+    // truncated (ScaleByRate, gamerule.cpp).
+    public static int CraftReward(int reward, int bonusTotal) {
+        float rate = 1.0f + bonusTotal / 1000.0f;
+        return (int) (long) ((uint) reward * (double) rate + 1e-06);
+    }
 }
