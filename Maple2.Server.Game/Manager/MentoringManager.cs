@@ -40,6 +40,11 @@ public class MentoringManager : IDisposable {
             return;
         }
         if (Role is MentorRole.Mentee or MentorRole.Mentor) {
+            // A second press of the own page's button is dropped. The other page's button gets the client's
+            // "invalid target" notice (chosen here: the client has no notice of its own for it).
+            if (Role != role) {
+                session.Send(MentorPacket.Error(MentorError.InvalidTarget));
+            }
             return;
         }
 

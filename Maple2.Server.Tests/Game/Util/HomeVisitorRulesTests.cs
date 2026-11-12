@@ -23,4 +23,12 @@ public class HomeVisitorRulesTests {
         Assert.That(HomeVisitorRules.Pick(command, true, false, false, dead), Is.EqualTo(HomeVisitorRules.Action.None));
         Assert.That(HomeVisitorRules.Pick(command, true, true, true, dead), Is.EqualTo(HomeVisitorRules.Action.None));
     }
+
+    [Test]
+    public void SendEveryoneOutMovesOnlyOtherAccountsAndOnlyForTheOwner() {
+        Assert.That(HomeVisitorRules.SentOutWithAll(7, 7, 9), Is.True);
+        Assert.That(HomeVisitorRules.SentOutWithAll(7, 7, 7), Is.False);
+        Assert.That(HomeVisitorRules.SentOutWithAll(7, 9, 9), Is.False);
+        Assert.That(HomeVisitorRules.SentOutWithAll(7, 9, 11), Is.False);
+    }
 }

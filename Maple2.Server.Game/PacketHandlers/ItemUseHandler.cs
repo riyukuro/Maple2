@@ -587,6 +587,7 @@ public class ItemUseHandler : FieldPacketHandler {
             PublicHouse = fieldParameters[2].Equals("1"),
             CreationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             ExpirationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + durationSec,
+            BoardUid = BillboardRules.NextBoardUid(),
             Model = functionParameters["model"],
             Asset = functionParameters.TryGetValue("asset", out string? parameter) ? parameter : string.Empty,
             NormalState = functionParameters["normal"],

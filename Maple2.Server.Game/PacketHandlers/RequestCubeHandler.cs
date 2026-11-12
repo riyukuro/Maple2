@@ -794,7 +794,16 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
 
-    private void HandleKickOut(GameSession session) { }
+    // UIHomeOptionDialog::SendRequestCubeMode49 (uihomeoptiondialog.cpp:278, the "send everyone out" button of the
+    // home options): no fields. The client shows its own notice; every visitor goes back to the return map.
+    private void HandleKickOut(GameSession session) {
+        if (session.Field is not HomeFieldManager home) return;
+        foreach (FieldPlayer visitor in home.Players.Values) {
+            if (HomeVisitorRules.SentOutWithAll(home.OwnerId, session.AccountId, visitor.Value.Account.Id)) {
+                visitor.Session.ReturnField();
+            }
+        }
+    }
 
     private void HandleSetBackground(GameSession session, IByteReader packet) {
         if (session.Field is null) return;

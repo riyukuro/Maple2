@@ -102,6 +102,8 @@ public sealed class InteractBillBoardObject : InteractObject<Ms2InteractMesh> {
     public bool PublicHouse { get; init; }
     public long CreationTime { get; init; }
     public long ExpirationTime { get; init; }
+    // The board's own id: the last long of the window packet, which the staff's remove request sends back.
+    public long BoardUid { get; init; }
 
     public InteractBillBoardObject(string entityId, Ms2InteractMesh metadata, Character owner) : base(entityId, metadata) {
         OwnerAccountId = owner.AccountId;

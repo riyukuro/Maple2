@@ -534,6 +534,9 @@ public partial class FieldManager : IField {
 
     public ICollection<FieldInteract> EnumerateInteract() => fieldInteracts.Values;
     public ICollection<FieldLiftable> EnumerateLiftables() => fieldLiftables.Values;
+    public FieldInteract? FindBillboard(long boardUid) {
+        return fieldAdBalloons.Values.FirstOrDefault(interact => interact.Object is InteractBillBoardObject billboard && billboard.BoardUid == boardUid);
+    }
     public bool TryGetInteract(string entityId, [NotNullWhen(true)] out FieldInteract? fieldInteract) {
         return fieldInteracts.TryGetValue(entityId, out fieldInteract) || fieldAdBalloons.TryGetValue(entityId, out fieldInteract) || fieldChests.TryGetValue(entityId, out fieldInteract);
     }

@@ -24,4 +24,12 @@ public static class BillboardRules {
             ? scale
             : 1f;
     }
+
+    // A board's id for the window packet's last long: never 0 (the client takes 0 for "no board shown") and never
+    // given twice while the server runs. Boards do not outlive the server, so the count starts again with it.
+    private static long lastBoardUid;
+
+    public static long NextBoardUid() {
+        return System.Threading.Interlocked.Increment(ref lastBoardUid);
+    }
 }

@@ -64,4 +64,24 @@ public class BillboardRulesTests {
         Assert.That(bytes[3], Is.EqualTo(low));
         Assert.That(bytes[4] | bytes[5] | bytes[6], Is.EqualTo(0));
     }
+
+    // The window's last long is the board's id: the staff remove request (ItemBillboard 8) sends it back.
+    [Test]
+    public void BoardIdsAreNeverZeroAndDiffer() {
+        long first = BillboardRules.NextBoardUid();
+        long second = BillboardRules.NextBoardUid();
+        Assert.That(first, Is.Not.EqualTo(0));
+        Assert.That(second, Is.GreaterThan(first));
+    }
+
+    [Test]
+    public void TheWindowEndsWithTheBoardId() {
+        var board = new InteractBillBoardObject("BillBoard_x", new Ms2InteractMesh(5, default, default),
+            new Character { Id = 77, Name = "Owner", Mastery = new Mastery() }) {
+            BoardUid = 0x1122334455667788,
+        };
+        byte[] bytes = PlayerHostPacket.AdBalloonWindow(board).ToArray();
+        Assert.That(bytes[2], Is.EqualTo(6));
+        Assert.That(System.BitConverter.ToInt64(bytes, bytes.Length - 8), Is.EqualTo(0x1122334455667788));
+    }
 }

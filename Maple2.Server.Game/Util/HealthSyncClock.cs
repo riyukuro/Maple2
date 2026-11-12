@@ -42,6 +42,18 @@ public sealed class HealthSyncClock {
         }
     }
 
+    // The player leaves the field: true when a held change is to go now, as nothing sends it later.
+    public bool Flush(long tick) {
+        lock (mutex) {
+            if (!pending) {
+                return false;
+            }
+            lastSentTick = tick;
+            pending = false;
+            return true;
+        }
+    }
+
     // The health went out by another way (a heal, regen, a cost): nothing is held any more.
     public void Sent(long tick) {
         lock (mutex) {

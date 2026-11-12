@@ -30,4 +30,12 @@ public static class HomeVisitorRules {
             _ => Action.None,
         };
     }
+
+    /// <summary>
+    /// The owner's "send everyone out" (RequestCube 0x31): every player of another account leaves, and only
+    /// when the sender owns the home.
+    /// </summary>
+    public static bool SentOutWithAll(long ownerAccountId, long senderAccountId, long visitorAccountId) {
+        return ownerAccountId == senderAccountId && visitorAccountId != ownerAccountId;
+    }
 }

@@ -112,10 +112,22 @@ public class MentorHandlerTests {
         Send(session, RegisterMentee);
         Mentor(test);
         Send(session, RegisterMentee);
-        Send(session, RegisterMentor);
 
         Assert.That(Mentor(test), Is.Empty);
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
+        Assert.That(test.World.PlayerUpdates.Count(update => update.HasMentorRole), Is.EqualTo(1));
+    }
+
+    [TestCase(RegisterMentee, RegisterMentor, MentorRole.Mentee)]
+    [TestCase(RegisterMentor, RegisterMentee, MentorRole.Mentor)]
+    public void Register_TheOtherRoleIsRefusedWithANotice(byte first, byte second, MentorRole kept) {
+        Login(season: true);
+        Send(session, first);
+        Mentor(test);
+        Send(session, second);
+
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.InvalidTarget) }));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(kept));
         Assert.That(test.World.PlayerUpdates.Count(update => update.HasMentorRole), Is.EqualTo(1));
     }
 

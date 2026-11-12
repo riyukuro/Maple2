@@ -220,10 +220,7 @@ public class FieldPlayer : Actor<Player> {
 
     public override void Update(long tickCount) {
         base.Update(tickCount);
-        healthSyncTick = tickCount;
-        if (healthSync.Due(tickCount)) {
-            SendHealth();
-        }
+        UpdateHealthSync(tickCount);
         Session.GameEvent.Update(tickCount);
         scheduler.InvokeAll();
 
@@ -493,6 +490,22 @@ public class FieldPlayer : Actor<Player> {
     }
 
     // A dead player takes no hits, nor does one inside the window after a revival.
+    // Each field tick: the clock of the hit health follows the tick, and a held health that is due goes.
+    public void UpdateHealthSync(long tickCount) {
+        healthSyncTick = tickCount;
+        if (healthSync.Due(tickCount)) {
+            SendHealth();
+        }
+    }
+
+    // On leaving the field: a held hit health goes now, as this actor's Update does not run again (the next field
+    // makes a new actor with a new clock).
+    public void FlushHealth() {
+        if (healthSync.Flush(healthSyncTick)) {
+            SendHealth();
+        }
+    }
+
     public static bool TakesDamage(bool isDead, long tick, long revivalInvincibleUntil) => !isDead && tick >= revivalInvincibleUntil;
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {

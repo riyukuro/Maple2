@@ -1395,6 +1395,7 @@ public partial class FieldManager {
     #region Remove
     public virtual bool RemovePlayer(int objectId, [NotNullWhen(true)] out FieldPlayer? fieldPlayer) {
         if (Players.TryRemove(objectId, out fieldPlayer)) {
+            fieldPlayer.FlushHealth();
             CommitPlot(fieldPlayer.Session);
             fieldPlayer.Session.Ride.LeaveField(this);
             foreach (FieldReactor reactor in fieldReactors.Values) {

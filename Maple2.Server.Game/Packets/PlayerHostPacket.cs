@@ -92,7 +92,7 @@ public static class PlayerHostPacket {
         pWriter.WriteBool(billboard.PublicHouse);
         pWriter.WriteLong(billboard.CreationTime);
         pWriter.WriteLong(billboard.ExpirationTime);
-        pWriter.WriteLong();
+        pWriter.WriteLong(billboard.BoardUid);
 
         return pWriter;
     }
