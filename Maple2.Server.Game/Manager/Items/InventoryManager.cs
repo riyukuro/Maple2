@@ -290,7 +290,7 @@ public class InventoryManager {
                 }
                 session.ConditionUpdate(ConditionType.item_collect, codeLong: item.Id);
                 session.ConditionUpdate(ConditionType.item_add, counter: item.Amount, codeLong: item.Id);
-                session.ConditionUpdate(ConditionType.item_exist, counter: item.Amount, codeLong: item.Id);
+                session.ConditionUpdate(ConditionType.item_exist, counter: item.Amount, targetLong: session.Field?.MapId ?? 0, codeLong: item.Id);
             }
 
             return true;

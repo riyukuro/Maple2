@@ -208,8 +208,10 @@ public static class ConditionUtil {
                 }
 
                 break;
+            case ConditionType.item_exist:
             case ConditionType.spawner:
-                // The map of the spawn: a region spawn id names a spawn of one map only.
+                // item_exist: the map the item is collected on (quest drops of one map, 20001480 and others).
+                // spawner: the map of the spawn, as a region spawn id names a spawn of one map only.
                 if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
                     return true;
                 }

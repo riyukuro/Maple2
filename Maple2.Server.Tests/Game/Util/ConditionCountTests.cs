@@ -29,6 +29,19 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: MapId, codeLong: spawnId), Is.EqualTo(expected));
     }
 
+    // An item counts for an item_exist row with a map target only when collected on that map; a row without a
+    // target counts it anywhere.
+    [TestCase(MapId, true)]
+    [TestCase(MapId + 1, false)]
+    public void ItemExist_CountsOnTheTargetMap(int mapId, bool expected) {
+        var withTarget = new ConditionMetadata(ConditionType.item_exist, 5,
+            new ConditionMetadata.Parameters(Integers: [30000285]), new ConditionMetadata.Parameters(Integers: [MapId]));
+        var noTarget = new ConditionMetadata(ConditionType.item_exist, 5,
+            new ConditionMetadata.Parameters(Integers: [30000285]), null);
+        Assert.That(withTarget.Check(null!, targetLong: mapId, codeLong: 30000285), Is.EqualTo(expected));
+        Assert.That(noTarget.Check(null!, targetLong: mapId, codeLong: 30000285), Is.True);
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
