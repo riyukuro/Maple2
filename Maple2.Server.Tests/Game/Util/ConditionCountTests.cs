@@ -28,4 +28,14 @@ public class ConditionCountTests {
             new ConditionMetadata.Parameters(Integers: [MapId]));
         Assert.That(condition.Check(null!, targetLong: MapId, codeLong: spawnId), Is.EqualTo(expected));
     }
+
+    // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
+    [TestCase(DungeonGroupType.normal, true)]
+    [TestCase(DungeonGroupType.raid, true)]
+    [TestCase(DungeonGroupType.chaosRaid, false)]
+    public void DungeonClearGroup_CountsTheListedGroups(DungeonGroupType groupType, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.dungeon_clear_group, 1,
+            new ConditionMetadata.Parameters(Integers: [1, 2]), null);
+        Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
+    }
 }

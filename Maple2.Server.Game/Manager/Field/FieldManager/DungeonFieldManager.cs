@@ -120,6 +120,9 @@ public class DungeonFieldManager : FieldManager {
                 player.Session.Dungeon.CompleteDungeon(clearTimestamp, DungeonRoomRules.WithOtherRookie(characterId, veterans));
                 player.Session.ConditionUpdate(ConditionType.dungeon_clear,
                     codeLong: DungeonId);
+                // The room's group type (1 normal or adventure, 2 raid, 3 chaos raid) is the code of dungeon_clear_group.
+                player.Session.ConditionUpdate(ConditionType.dungeon_clear_group,
+                    codeLong: (long) DungeonMetadata.GroupType);
 
             }
         } else if (DungeonRoomRecord.State == DungeonState.Fail) {

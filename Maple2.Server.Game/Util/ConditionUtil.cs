@@ -87,6 +87,7 @@ public static class ConditionUtil {
             case ConditionType.quest_clear_by_chapter:
             case ConditionType.quest_clear:
             case ConditionType.dungeon_clear:
+            case ConditionType.dungeon_clear_group:
             case ConditionType.buff:
             case ConditionType.enchant_result:
             case ConditionType.dialogue:
