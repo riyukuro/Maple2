@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Tools;
@@ -89,7 +90,10 @@ public class AiState {
     }
 
     public void Update(long tickCount) {
-        if (IsWaitingOnTask(tickCount)) {
+        // A chase ends with its target: the npc does not walk on to an actor it no longer fights (a dead player).
+        bool chaseOver = currentTask is MovementState.NpcMoveTargetDistanceTask chase
+            && NpcTargetRules.ChaseEnds(chase.Target.ObjectId, actor.BattleState.TargetId);
+        if (!chaseOver && IsWaitingOnTask(tickCount)) {
             return;
         }
 

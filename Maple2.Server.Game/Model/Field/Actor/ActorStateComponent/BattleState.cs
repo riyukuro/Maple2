@@ -66,7 +66,7 @@ public class BattleState {
             return;
         }
 
-        if (TargetId != 0 && (!ShouldKeepTarget() || !CanBattle) && !KeepBattle) {
+        if (TargetId != 0 && NpcTargetRules.LosesTarget(TargetGone(), !ShouldKeepTarget() || !CanBattle, KeepBattle)) {
             actor.AppendDebugMessage($"Lost target '{GetTargetName()}'\n");
 
             Target = null;
@@ -189,6 +189,17 @@ public class BattleState {
                 break;
         }
 
+        return true;
+    }
+
+    // The target died or left the field.
+    private bool TargetGone() {
+        if (actor.Field.Players.TryGetValue(TargetId, out FieldPlayer? targetPlayer)) {
+            return !NpcTargetRules.CanTarget(targetPlayer.IsDead, invisibleFromNpc: false);
+        }
+        if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc)) {
+            return !NpcTargetRules.CanTarget(targetNpc.IsDead, invisibleFromNpc: false);
+        }
         return true;
     }
 
