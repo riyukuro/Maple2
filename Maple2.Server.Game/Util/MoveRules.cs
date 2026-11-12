@@ -36,6 +36,7 @@ public sealed class MoveWindow {
     private long granted; // the time drawn from the lag budget for the positions leaving the window now
     private long grantedAt;
     private int lastTick;
+    private long lastNow;
     private long graceUntil = long.MinValue;
 
     // The server moved the player: the positions kept are of the old place.
@@ -96,11 +97,19 @@ public sealed class MoveWindow {
             samples.Clear();
             return null;
         }
-        // A tick that runs backwards starts again.
-        if (samples.Count > 0 && unchecked(tick - lastTick) < 0) {
-            samples.Clear();
+        // A tick that runs backwards (a time sync answer that was held up sets the client's ticks back) keeps the
+        // window: the positions in it are moved back with the ticks, so that this one lies after the last one by
+        // the time between their arrivals.
+        int step = unchecked(tick - lastTick);
+        if (samples.Count > 0 && step < 0) {
+            int shift = unchecked(step - (int) Math.Clamp(now - lastNow, 0, MoveRules.WindowMs + 1));
+            for (int i = samples.Count; i > 0; i--) {
+                (int Tick, Vector3 Position, long Now) sample = samples.Dequeue();
+                samples.Enqueue((unchecked(sample.Tick + shift), sample.Position, sample.Now));
+            }
         }
         lastTick = tick;
+        lastNow = now;
         while (samples.Count > 0 && unchecked(tick - samples.Peek().Tick) > MoveRules.WindowMs && Leaves(samples.Peek().Now, now, lag, clockFast)) {
             samples.Dequeue();
         }

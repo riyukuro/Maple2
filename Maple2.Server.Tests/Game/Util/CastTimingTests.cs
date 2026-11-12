@@ -40,6 +40,33 @@ public class CastTimingTests {
         return casts;
     }
 
+    // The same stall with the time sync answer held up as long: the client sets its ticks to the server's number
+    // when the answer arrives, so every tick from the end of the stall on lies holdMs lower.
+    private static List<(int, long)> SpikeWithSync(long holdMs, int everyMs = 500) {
+        var casts = new List<(int, long)>();
+        for (int t = 0; t <= 20_000; t += everyMs) {
+            bool held = t >= 5000 && t < 5000 + holdMs;
+            casts.Add(((int) (t >= 5000 + holdMs ? t - holdMs : t), held ? 5000 + holdMs : t));
+        }
+        return casts;
+    }
+
+    [Test]
+    public void ASpikeThatHoldsTheTimeSyncAnswerIsTaken() {
+        foreach (long hold in new long[] { 300, 500, 1000, 2000 }) {
+            var clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+            clock.Start(0, 0);
+            Assert.That(Refused(SpikeWithSync(hold), new LagBudget(), clock), Is.EqualTo(0), $"held {hold} ms");
+            Assert.That(clock.IsFast(20_000), Is.False);
+        }
+        // Casts 700 ms apart: the tick after the stall lies ahead of the last one, by less than the motion needs.
+        foreach (long hold in new long[] { 500, 1000, 2000 }) {
+            var clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+            clock.Start(0, 0);
+            Assert.That(Refused(SpikeWithSync(hold, 700), new LagBudget(), clock), Is.EqualTo(0), $"held {hold} ms");
+        }
+    }
+
     [Test]
     public void SettingIsEnforceOnlyWhenNamed() {
         Assert.That(CastCheckSetting.Parse(null), Is.EqualTo(CastCheckMode.LogOnly));
@@ -76,17 +103,20 @@ public class CastTimingTests {
         // On time by the arrivals: taken whatever the ticks say (a time sync that came late moves the ticks back).
         Assert.That(SkillCastRules.ArrivalShortfall(50_300, 50_000, 100_600, 100_000, Required), Is.EqualTo(0));
         Assert.That(SkillCastRules.ArrivalShortfall(58_000, 50_000, 100_500, 100_000, Required), Is.EqualTo(0));
-        // Arrivals closer than the time needed: the client's ticks must be far enough apart.
-        Assert.That(SkillCastRules.ArrivalShortfall(50_499, 50_000, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
+        // Arrivals closer than the time needed: the time missing, whether the ticks say the client waited or lie
+        // up to 2 s short of that (a time sync answer held up with the casts).
+        Assert.That(SkillCastRules.ArrivalShortfall(50_499, 50_000, 100_100, 100_000, Required), Is.EqualTo(400));
+        Assert.That(SkillCastRules.ArrivalShortfall(48_500, 50_000, 100_100, 100_000, Required), Is.EqualTo(400));
+        Assert.That(SkillCastRules.ArrivalShortfall(48_499, 50_000, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
         Assert.That(SkillCastRules.ArrivalShortfall(50_500, 50_000, 100_100, 100_000, Required), Is.EqualTo(400));
         // The client's tick does not lengthen the time.
         Assert.That(SkillCastRules.ArrivalShortfall(58_000, 50_000, 100_000, 100_000, Required), Is.EqualTo(500));
-        // A tick that runs backwards draws nothing; on time by the arrivals it is taken.
+        // A tick that runs back further draws nothing; on time by the arrivals it is taken.
         Assert.That(SkillCastRules.ArrivalShortfall(40_000, 50_000, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
         Assert.That(SkillCastRules.ArrivalShortfall(40_000, 50_000, 100_500, 100_000, Required), Is.EqualTo(0));
         // The 32-bit tick wraps.
         Assert.That(SkillCastRules.ArrivalShortfall(int.MinValue + 250, int.MaxValue - 250, 100_100, 100_000, Required), Is.EqualTo(400));
-        Assert.That(SkillCastRules.ArrivalShortfall(int.MinValue + 200, int.MaxValue - 200, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
+        Assert.That(SkillCastRules.ArrivalShortfall(int.MaxValue - 1000, int.MinValue + 1000, 100_100, 100_000, Required), Is.EqualTo(SkillCastRules.ClientRefused));
     }
 
     [Test]
@@ -118,14 +148,23 @@ public class CastTimingTests {
     }
 
     [Test]
-    public void CastsFasterThanTheClientsOwnTicksAreRefused() {
-        // Every 300 ms by its own ticks, arriving as sent: by the arrivals and by the ticks too early.
+    public void CastsFasterThanTheMotionGetTheBudgetOnce() {
+        // Every 300 ms by its own ticks, arriving as sent: 200 ms from the budget each time.
         var casts = new List<(int, long)>();
-        for (int t = 0; t < 3000; t += 300) {
+        for (int t = 0; t < 60_000; t += 300) {
             casts.Add((t, t));
         }
-        // 0 taken, 300 refused, 600 taken, 900 refused, ...
-        Assert.That(Refused(casts, new LagBudget()), Is.EqualTo(5));
+        // 60 s: 120 casts are due by the arrivals, the budget and its refill give 8 s more (16 casts).
+        Assert.That(200 - Refused(casts, new LagBudget()), Is.InRange(120, 137));
+        // Ticks that fall with every cast get no more.
+        casts.Clear();
+        for (int i = 0; i < 200; i++) {
+            casts.Add((1_000_000 - i * 1000, i * 300L));
+        }
+        Assert.That(200 - Refused(casts, new LagBudget()), Is.InRange(120, 137));
+        var clock = new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs);
+        clock.Start(1_000_000, 0);
+        Assert.That(200 - Refused(casts, new LagBudget(), clock), Is.InRange(120, 137));
     }
 
     [Test]

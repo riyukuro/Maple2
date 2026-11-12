@@ -175,8 +175,10 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.CooldownRefuses(casts, 10900061, 0, 58_000, 101_000), Is.True);
         // Arrivals 7.2 s apart: 300 ms early, for the lag budget.
         Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 58_000, 107_200), Is.EqualTo(300));
-        // The ticks too close as well.
-        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 57_000, 107_200), Is.EqualTo(SkillCastRules.ClientRefused));
+        // The ticks closer than that (a time sync answer held up): the same.
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 55_500, 107_200), Is.EqualTo(300));
+        // More than 2 s closer.
+        Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 55_499, 107_200), Is.EqualTo(SkillCastRules.ClientRefused));
         // Long enough by the arrivals: taken whatever the tick says.
         Assert.That(SkillCastRules.CooldownShortfall(casts, 10900061, 0, 57_000, 107_500), Is.EqualTo(0));
         Assert.That(SkillCastRules.CooldownShortfall(casts, 10900062, 0, 50_001, 100_001), Is.EqualTo(0), "another skill");
@@ -360,8 +362,10 @@ public class SkillCastRulesTests {
         // The attack speed fell since the last cast: the higher one counts.
         var fast = last with { AttackSpeed = 150 };
         Assert.That(SkillCastRules.MotionRefuses(fast, 11, false, 100, 5300, 10300), Is.False, "0.6 / 1.5 = 400 ms");
-        // Arriving in a burst: too early by the client's own ticks is refused outright.
-        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 6099, 10600), Is.EqualTo(SkillCastRules.ClientRefused));
+        // Arriving in a burst: a tick more than 2 s short of the time needed is refused outright.
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 6099, 10600), Is.EqualTo(500));
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 4100, 10600), Is.EqualTo(500));
+        Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 4099, 10600), Is.EqualTo(SkillCastRules.ClientRefused));
         Assert.That(SkillCastRules.MotionShortfall(slow, 11, false, 100, 6100, 10100), Is.EqualTo(1000));
     }
 

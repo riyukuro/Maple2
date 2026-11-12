@@ -64,24 +64,25 @@ public static class SkillCastRules {
         return cooldownMs >= 1000 ? cooldownMs - JobCooldownSlackMs : (long) (cooldownMs * ShortCooldownShare / MotionSpeed(sequenceSpeed, attackSpeed, moveType));
     }
 
-    // A cast that comes too early by the client's own ticks as well as by the arrivals.
+    // A cast that comes too early by the arrivals, with a tick further back than a held-up time sync explains.
     public const long ClientRefused = long.MaxValue;
 
     // The time a cast comes too early by. The time between the two arrivals at the server counts: a client cannot
     // lengthen it with its ticks. 0 when that time is long enough, whatever the ticks say: the client sets its
     // tick anew at every time sync (CMainSystem::SetServerTickBase, to the server's number as it arrives), so a
     // sync held up by the link or by a stalled client moves the ticks after it back by that long.
-    // When the arrivals are closer (packets held up and delivered together), the client's own ticks must be far
-    // enough apart, else ClientRefused; the time missing between the arrivals is returned then, to be drawn from
-    // the session's LagBudget. A cast tick that runs backwards shows no wait and draws nothing: ClientRefused.
-    // (ClockRate counts a tick that jumps back far as clock trouble.)
+    // When the arrivals are closer (packets held up and delivered together), the time missing between them is
+    // returned, to be drawn from the session's LagBudget. The client's own ticks may then lie closer than the time
+    // needed, or run backwards, by up to ClockRate.CastBackMs: a stall that holds the casts holds the time sync
+    // answer too, and the ticks after it lie lower by the time it was held. Further back than that is
+    // ClientRefused and draws nothing. (ClockRate counts a tick that jumps back far as clock trouble.)
     public static long ArrivalShortfall(int castTick, int lastCastTick, long serverTick, long lastServerTick, long requiredMs) {
         long shortfall = requiredMs - (serverTick - lastServerTick);
         if (shortfall <= 0) {
             return 0;
         }
         long client = unchecked(castTick - lastCastTick);
-        return client < requiredMs ? ClientRefused : shortfall;
+        return client < requiredMs - ClockRate.CastBackMs ? ClientRefused : shortfall;
     }
 
     // The time a cast of the skill comes too early by (ArrivalShortfall) after its own last cast or after the last
@@ -195,7 +196,7 @@ public static class SkillCastRules {
             return null;
         }
         if (needMs == ClientRefused) {
-            return "too early by the client's own ticks";
+            return "too early, with a tick too far back";
         }
         if (clockFast) {
             return $"arrives {needMs} ms early and the client's clock runs fast";

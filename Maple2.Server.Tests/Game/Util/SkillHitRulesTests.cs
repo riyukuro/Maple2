@@ -222,7 +222,22 @@ public class SkillHitRulesTests {
         window = new MoveWindow();
         Assert.That(window.Add(0, new Vector3(0, 0, 0), 0), Is.Null);
         Assert.That(window.Add(1100, new Vector3(1900, 0, 0), 1100), Is.Null, "over more than 1 s");
-        Assert.That(window.Add(1000, new Vector3(9000, 0, 0), 1200), Is.Null, "a tick that runs backwards starts again");
+        // A tick that runs backwards keeps the window: 100 ms after the last position by the arrivals.
+        Assert.That(window.Add(1000, new Vector3(9000, 0, 0), 1200), Is.EqualTo(new Vector3(1900, 0, 0)));
+
+        // Ticks that fall with every sync are measured by the arrivals.
+        window = new MoveWindow();
+        Assert.That(window.Add(50_000, new Vector3(0, 0, 0), 0), Is.Null);
+        for (int i = 1; i <= 4; i++) {
+            Assert.That(window.Add(50_000 - i * 3000, new Vector3(i * 400, 0, 0), i * 100), Is.Null);
+        }
+        Assert.That(window.Add(35_000, new Vector3(2000, 0, 0), 500), Is.EqualTo(new Vector3(0, 0, 0)), "2000 in 0.5 s");
+
+        // An honest walk, the ticks set back 2 s once: nothing found, and positions leave after 1 s as before.
+        window = new MoveWindow();
+        for (int t = 0; t <= 5000; t += 100) {
+            Assert.That(window.Add(t >= 2500 ? t - 2000 : t, new Vector3(t * 0.35f * 5, 0, 0), t), Is.Null, $"at {t}");
+        }
     }
 
     [Test]
