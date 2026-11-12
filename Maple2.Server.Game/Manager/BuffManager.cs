@@ -220,10 +220,13 @@ public class BuffManager : IUpdatable {
                 return false;
             }
             buffs.Add(buff);
+            InvalidateSums();
             return true;
         }
 
-        return this.buffs.TryAdd(buff.Id, [buff]);
+        bool added = this.buffs.TryAdd(buff.Id, [buff]);
+        InvalidateSums();
+        return added;
     }
 
     public List<Buff> EnumerateBuffs() => buffs.Values.SelectMany(list => list).ToList();
@@ -265,9 +268,10 @@ public class BuffManager : IUpdatable {
     }
 
 
-    // A buff's stack count changed (Buff.Stack calls this): the owner's stat totals follow it. Invoke values and
-    // resistances are summed from the buffs held when they are read.
+    // A buff's stack count changed (Buff.Stack calls this): the owner's stat totals follow it, and the invoke and
+    // resistance sums are taken again at the next read.
     public void StacksChanged(Buff buff) {
+        InvalidateSums();
         if (HasStatus(buff.Metadata)) {
             Actor.Stats.Refresh();
         }
@@ -307,19 +311,34 @@ public class BuffManager : IUpdatable {
             nestedCompulsionDic.Values.Where(compulsion => compulsion.SkillIds.Contains(skillId) || compulsion.SkillIds.Length == 0).Sum(compulsion => compulsion.Rate);
     }
 
-    // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
-    public float GetResistance(BasicAttribute attribute) {
-        float sum = 0;
-        foreach (Buff buff in EnumerateBuffs()) {
-            if (buff.Metadata.Status.Resistances.TryGetValue(attribute, out float value)) {
-                sum += Buff.ByStacks(value, buff.Stacks);
-            }
-        }
-        return sum;
+    // The sums are taken from the buffs held on the first read after a change (BuffSums). The version keeps a sum
+    // taken while a buff changed from being stored.
+    private BuffSums? sums;
+    private int sumsVersion;
+
+    private void InvalidateSums() {
+        Interlocked.Increment(ref sumsVersion);
+        Volatile.Write(ref sums, null);
     }
 
+    private BuffSums Sums() {
+        BuffSums? current = Volatile.Read(ref sums);
+        if (current != null) {
+            return current;
+        }
+        int version = Volatile.Read(ref sumsVersion);
+        current = new BuffSums(EnumerateBuffs().Select(buff => (buff.Metadata, buff.Stacks)));
+        if (version == Volatile.Read(ref sumsVersion)) {
+            Volatile.Write(ref sums, current);
+        }
+        return current;
+    }
+
+    // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
+    public float GetResistance(BasicAttribute attribute) => Sums().Resistance(attribute);
+
     public (int, float) GetInvokeValues(InvokeEffectType invokeType, int skillId, params int[] skillGroup) {
-        return SumInvokes(EnumerateBuffs().Select(buff => (buff.Metadata.InvokeEffect, buff.Stacks)), invokeType, skillId, skillGroup);
+        return Sums().Invokes(invokeType, skillId, skillGroup);
     }
 
     // The invoke values and rates of a type for a skill, summed over every buff held, each times its stack count
@@ -617,6 +636,7 @@ public class BuffManager : IUpdatable {
                 if (!buffList.Remove(buffToRemove)) {
                     logger.Error("Failed to remove buff {Id} from {Object}", buffToRemove.Id, Actor.ObjectId);
                 }
+                InvalidateSums();
             } else {
                 logger.Error("Buff {Id} doesn't exist in buff list {BuffList}. Buffs to remove {BuffsToRemove}", buffToRemove.Id, buffList, buffsToRemove);
             }
