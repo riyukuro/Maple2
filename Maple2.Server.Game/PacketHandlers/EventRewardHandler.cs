@@ -75,22 +75,23 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimLongTermAttendReward:
                 HandleClaimLongTermAttendReward(session, packet);
                 return;
+            case Command.ClaimStampReward:
+                HandleClaimStampReward(session, packet);
+                return;
+            case Command.ClaimStampCompleteReward:
+                HandleClaimStampCompleteReward(session);
+                return;
             // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
-            // stamp, item box, snowman, level-up package, burning level-up and item collection events, and
+            // item box, snowman, level-up package, burning level-up and item collection events, and
             // GameEvent writes none of them), so the client's dialogs have no event to show and
             // there is nothing to pay out. The client has no refusal text for them: read and logged.
             // Client writers:
-            //   0, 1   uistampeventdialog.cpp:319, :331
             //   2      uiitemeventopenboxdialog.cpp:226
             //   5      uibuddyeventlistener.cpp:667 (needs client feature 0x82)
             //   12, 13 uisnowmaneventdialog.cpp:343, :365
             //   15     uileveluppackagewidgetdialog.cpp:580
             //   16     uicharacterlistdialog.cpp:2093
             //   19     uicollectitemgroupeventdialog.cpp:415
-            case Command.ClaimStampReward: // stamp count, special flag
-                Logger.Debug("EventReward {Command} from {CharacterId}: count {Count}, special {Special}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
-                return;
-            case Command.ClaimStampCompleteReward: // all stamps collected; no body
             case Command.OpenEventBox: // the event box dialog's open button; no body
                 Logger.Debug("EventReward {Command} from {CharacterId}", command, session.CharacterId);
                 return;
@@ -186,6 +187,91 @@ public class EventRewardHandler : FieldPacketHandler {
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendClaimedDays, LongTermAttendRules.AddClaimedDay(claimed.Value, day));
         session.Send(EventRewardPacket.ClaimLongTermAttendReward());
+    }
+
+    // Stamp card. 0 + int count + byte special (uistampeventdialog.cpp:319) claims the reward row of that count
+    // and kind; 1 (no body, :331) the complete reward. The user value is updated first, then the reply with the
+    // items for the reward notice. The client has no reply for a refusal.
+    private void HandleClaimStampReward(GameSession session, IByteReader packet) {
+        int count = packet.ReadInt();
+        bool special = packet.ReadByte() != 0;
+        GameEvent? gameEvent = StampEvent(session);
+        if (gameEvent?.Metadata.Data is not StampEvent stampEvent || session.Field == null) {
+            return;
+        }
+
+        GameEventUserValueType type = special ? GameEventUserValueType.StampSpecialRewardsClaimed : GameEventUserValueType.StampRewardsClaimed;
+        GameEventUserValue claimed = session.GameEvent.Get(type, gameEvent.Id, gameEvent.EndTime);
+        StampEvent.Reward? reward = StampEventRules.CheckReward(stampEvent, count, special, claimed.Value, questId => QuestCompleted(session, questId));
+        if (reward == null) {
+            Logger.Debug("ClaimStampReward from {CharacterId} refused: count {Count}, special {Special}", session.CharacterId, count, special);
+            return;
+        }
+
+        List<RewardItem>? given = GiveStampItems(session, gameEvent.Id, [reward.Item01, reward.Item02]);
+        if (given == null) {
+            return;
+        }
+        session.GameEvent.Set(gameEvent.Id, type, LongTermAttendRules.AddClaimedDay(claimed.Value, count));
+        session.Send(EventRewardPacket.ClaimStampReward(given));
+    }
+
+    private void HandleClaimStampCompleteReward(GameSession session) {
+        GameEvent? gameEvent = StampEvent(session);
+        if (gameEvent?.Metadata.Data is not StampEvent stampEvent || session.Field == null) {
+            return;
+        }
+
+        GameEventUserValue claimed = session.GameEvent.Get(GameEventUserValueType.StampCompleteRewardClaimed, gameEvent.Id, gameEvent.EndTime);
+        if (!StampEventRules.CanClaimComplete(stampEvent, claimed.Value, questId => QuestCompleted(session, questId))) {
+            Logger.Debug("ClaimStampCompleteReward from {CharacterId} refused", session.CharacterId);
+            return;
+        }
+
+        List<RewardItem>? given = GiveStampItems(session, gameEvent.Id, [stampEvent.CompleteReward]);
+        if (given == null) {
+            return;
+        }
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.StampCompleteRewardClaimed, 1);
+        session.Send(EventRewardPacket.ClaimStampCompleteReward(given));
+    }
+
+    private static GameEvent? StampEvent(GameSession session) {
+        return StampEventRules.PickEvent(session.FindEvent(GameEventType.StampEvent), gameEvent => gameEvent.Metadata.Data as StampEvent);
+    }
+
+    private static bool QuestCompleted(GameSession session, int questId) {
+        return session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Completed;
+    }
+
+    // The items of a stamp reward, each to the bag or by mail when the bag does not take it; an empty slot gives
+    // nothing. Null (nothing claimed, no reply) when an item cannot be made or the first one lands nowhere.
+    private List<RewardItem>? GiveStampItems(GameSession session, int eventId, RewardItem[] rewardItems) {
+        var items = new List<(Item Item, RewardItem Reward)>();
+        foreach (RewardItem rewardItem in rewardItems) {
+            if (rewardItem.ItemId == 0) {
+                continue;
+            }
+            Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item == null) {
+                Logger.Error("Stamp reward: event {EventId} item {ItemId} could not be made", eventId, rewardItem.ItemId);
+                return null;
+            }
+            items.Add((item, rewardItem));
+        }
+
+        var given = new List<RewardItem>();
+        foreach ((Item item, RewardItem rewardItem) in items) {
+            if (session.Item.AddOrMail(item, true)) {
+                given.Add(rewardItem);
+                continue;
+            }
+            Logger.Error("Stamp reward: event {EventId} item {ItemId} went to neither bag nor mail", eventId, item.Id);
+            if (given.Count == 0) {
+                return null;
+            }
+        }
+        return given;
     }
 
     private void HandleClaimTimeRunStepReward(GameSession session, IByteReader packet) {

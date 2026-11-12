@@ -297,6 +297,31 @@ public class GameEvent : IByteSerializable {
                     writer.Write<RewardItem>(rewardItem);
                 }
                 break;
+            case StampEvent stampEvent:
+                // StampEventContext::Read (gameeventcontext.cpp): the tag, the end time, the stamp count, the key,
+                // a flag (true: the dialog reads the account's user values), the stamps, the reward rows and the
+                // complete reward.
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(stampEvent.EventTag);
+                writer.WriteLong(EndTime);
+                writer.WriteInt(stampEvent.Stamps.Length);
+                writer.WriteInt(stampEvent.Key);
+                writer.WriteBool(true);
+                foreach (StampEvent.Stamp stamp in stampEvent.Stamps) {
+                    writer.WriteInt(stamp.QuestId);
+                    writer.WriteBool(stamp.Special);
+                    writer.WriteInt(stamp.X);
+                    writer.WriteInt(stamp.Y);
+                }
+                writer.WriteInt(stampEvent.Rewards.Length);
+                foreach (StampEvent.Reward reward in stampEvent.Rewards) {
+                    writer.WriteInt(reward.Count);
+                    writer.WriteBool(reward.Special);
+                    WriteItemEntity(writer, reward.Item01);
+                    WriteItemEntity(writer, reward.Item02);
+                }
+                WriteItemEntity(writer, stampEvent.CompleteReward);
+                break;
             case LongTermAttendGift longTermAttend:
                 // LongTermAttendGiftContext::Read (gameeventcontext.cpp): the tag, the end time, an int and a flag
                 // (0 and true in KMS2), the reward rows, then begin, end, title, merat and maxattendance.

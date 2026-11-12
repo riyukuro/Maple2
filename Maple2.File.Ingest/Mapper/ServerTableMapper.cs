@@ -1013,11 +1013,26 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             int ClientRank(int itemId) =>
                 ItemMapper.ItemMetadataById.TryGetValue(itemId, out ItemMetadata? item) && !item.Property.NotInPlayedClient
                     ? item.Property.Rank ?? 0 : 0;
+            // The quests of the played client's quest table (PlayedClientQuests); without a played client every
+            // quest of the data counts as known.
+            HashSet<int>? playedQuests = null;
+            Maple2.File.IO.Crypto.Common.PackFileEntry? questTable = playedReader?.Files.FirstOrDefault(file =>
+                string.Equals(file.Name, PlayedClientQuests.QuestTable, StringComparison.OrdinalIgnoreCase));
+            if (playedReader != null && questTable != null) {
+                playedQuests = PlayedClientQuests.Ids(playedReader.GetXmlDocument(questTable), node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")));
+                if (playedQuests.Count == 0) {
+                    playedQuests = null;
+                }
+            }
+            bool ClientQuest(int questId) => playedQuests == null || playedQuests.Contains(questId);
             foreach (GameEventType type in AttendGiftReplay.Types) {
-                GameEventMetadata? replay = AttendGiftReplay.Pick(ended, now, type, ClientRank);
-                int[] passed = AttendGiftReplay.Candidates(ended, now, type).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
+                // An event whose data was not read (null) is not a candidate.
+                GameEventMetadata[] readable = ended.Where(e => e.Type != GameEventType.StampEvent || e.Data is StampEvent).ToArray();
+                GameEventMetadata? replay = AttendGiftReplay.Pick(readable, now, type, ClientRank, ClientQuest);
+                int[] passed = AttendGiftReplay.Candidates(readable, now, type).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
                 if (passed.Length > 0) {
-                    Console.WriteLine($"{AttendGiftReplay.Option}: {type} {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data");
+                    Console.WriteLine($"{AttendGiftReplay.Option}: {type} {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data"
+                                      + (type == GameEventType.StampEvent ? " or a stamp quest is not in the client's quest table" : string.Empty));
                 }
                 if (replay == null) {
                     Console.WriteLine($"{AttendGiftReplay.Option}: no ended {type} event to replay");
@@ -1567,6 +1582,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.LongTermAttendGift:
                 // Read only for the replay: with the switch off the type is not stored, as before.
                 return replayAttendGift ? LongTermAttendGiftReader.Parse(value1, value2) : null;
+            case GameEventType.StampEvent:
+                // Read only for the replay: every row has ended, and with the switch off the type is not stored.
+                return replayAttendGift ? StampEventReader.Parse(value1, value2, value3, value4) : null;
             case GameEventType.MapleSurvivalOpenPeriod:
                 return new MapleSurvivalOpenPeriod();
             case GameEventType.ShutdownMapleSurvival:

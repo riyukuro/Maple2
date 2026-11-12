@@ -38,6 +38,11 @@ public enum GameEventUserValueType {
     // Reactor event (flower pots, chocolate): rewards taken today; the client refuses at the event's limit.
     ReactorRewardCount = 1901,
 
+    // Stamp card (StampEvent), read by its dialog (uistampeventdialog.cpp)
+    StampCompleteRewardClaimed = 1200, // 1 once the complete reward is claimed
+    StampRewardsClaimed = 1201, // counts of the claimed reward rows, "4,7"
+    StampSpecialRewardsClaimed = 1202, // the same for the special rows
+
     // Rock Paper Scissors Event
     RPSDailyMatches = 1800,
     RPSRewardsClaimed = 1801,

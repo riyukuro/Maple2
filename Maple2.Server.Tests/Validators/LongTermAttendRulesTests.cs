@@ -169,7 +169,7 @@ public class LongTermAttendRulesTests {
         Assert.That(AttendGiftReplay.ParseTime("2029-05-15-00-00-00"), Is.EqualTo(new DateTime(2029, 5, 15)));
         Assert.That(AttendGiftReplay.ParseTime("2029-05-15-07-30"), Is.EqualTo(new DateTime(2029, 5, 15, 7, 30, 0)));
         Assert.That(AttendGiftReplay.ParseTime("2029-05-15"), Is.EqualTo(DateTime.MinValue));
-        Assert.That(AttendGiftReplay.Types, Is.EqualTo(new[] { GameEventType.AttendGift, GameEventType.LongTermAttendGift }));
+        Assert.That(AttendGiftReplay.Types, Is.EqualTo(new[] { GameEventType.AttendGift, GameEventType.LongTermAttendGift, GameEventType.StampEvent }));
 
         var now = new DateTime(2030, 6, 15, 9, 30, 0);
         GameEventMetadata[] events = [

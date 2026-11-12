@@ -67,6 +67,16 @@ public sealed class QuestManager {
         }
     }
 
+    // The quests of the live stamp cards (StampEvent). They are event missions with an event tag that no quest tag
+    // event carries; the card is their event, so the server starts them while it is live, and completes them
+    // when their conditions are met: the card's dialog has no action for either, it only shows a stamp as done
+    // once its quest is rewarded.
+    private HashSet<int> StampQuests() {
+        return stampQuests ??= StampEventRules.Quests(session.FindEvent(GameEventType.StampEvent)
+            .Select(gameEvent => gameEvent.Metadata.Data).OfType<StampEvent>());
+    }
+    private HashSet<int>? stampQuests;
+
     private void Initialize(GameStorage.Request db) {
         IEnumerable<QuestMetadata> quests = session.QuestMetadata.GetQuests();
         IList<QuestTag> events = session.FindEvent(GameEventType.QuestTag)
@@ -79,16 +89,18 @@ public sealed class QuestManager {
                 continue;
             }
 
+            bool stampQuest = StampQuests().Contains(metadata.Id);
+
             // Event missions should only be started through the event.
-            if (metadata.EventMissionType != QuestEventMissionType.none) {
+            if (metadata.EventMissionType != QuestEventMissionType.none && !stampQuest) {
                 continue;
             }
 
-            if (metadata.Basic.CompleteNpc != 0) {
+            if (metadata.Basic.CompleteNpc != 0 && !stampQuest) {
                 continue;
             }
 
-            if (metadata.Basic.CompleteMaps != null && metadata.Basic.CompleteMaps.Length != 0) {
+            if (metadata.Basic.CompleteMaps != null && metadata.Basic.CompleteMaps.Length != 0 && !stampQuest) {
                 continue;
             }
 
@@ -279,7 +291,7 @@ public sealed class QuestManager {
                     session.Send(QuestPacket.Update(quest));
                 }
 
-                if (quest.Metadata.Basic.Type == QuestType.FieldMission && CanComplete(quest)) {
+                if ((quest.Metadata.Basic.Type == QuestType.FieldMission || StampQuests().Contains(quest.Id)) && CanComplete(quest)) {
                     Complete(quest);
                 }
             }
@@ -321,7 +333,7 @@ public sealed class QuestManager {
             return false;
         }
 
-        if (metadata.Basic.EventTag != string.Empty &&
+        if (metadata.Basic.EventTag != string.Empty && !StampQuests().Contains(metadata.Id) &&
             !session.FindEvent(GameEventType.QuestTag).Any(gameEvent => gameEvent.Metadata.Data is QuestTag tag && tag.Tag == metadata.Basic.EventTag)) {
             return false;
         }

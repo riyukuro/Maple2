@@ -13,6 +13,17 @@ public partial class GameStorage {
                 .ToList();
         }
 
+        // The values of the given types that the account's other characters hold for the event.
+        public IList<GameEventUserValue> GetAccountEventUserValues(long accountId, long characterId, int eventId, GameEventUserValueType[] types) {
+            return Context.GameEventUserValue
+                .Where(model => model.EventId == eventId && model.CharacterId != characterId
+                                && Context.Character.Any(character => character.Id == model.CharacterId && character.AccountId == accountId))
+                .Select<Model.GameEventUserValue, GameEventUserValue>(userValue => userValue)
+                .AsEnumerable()
+                .Where(userValue => types.Contains(userValue.Type))
+                .ToList();
+        }
+
         public void RemoveGameEventUserValue(long characterId, int eventId) {
             List<Model.GameEventUserValue> list = Context.GameEventUserValue
                 .Where(model => model.CharacterId == characterId && model.EventId == eventId)

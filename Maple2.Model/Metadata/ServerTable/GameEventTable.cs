@@ -286,6 +286,36 @@ public record TimeRunEvent(
 
 
 /// <summary>
+/// Stamp card: each stamp is a quest, done when the quest is completed. A reward row is claimed once as many
+/// stamps of its kind (special or not) are done; the complete reward once all are.
+/// </summary>
+/// <param name="EventTag">value1 tag event: the dialog's frame name.</param>
+/// <param name="Key">value4: 0, or 10001/10002 for the cards the client picks by a user value.</param>
+/// <param name="Stamps">value1 stamp rows.</param>
+/// <param name="Rewards">value2 reward rows.</param>
+/// <param name="CompleteReward">value3 "id,rank,count": the reward for the full card.</param>
+public record StampEvent(
+    string EventTag,
+    int Key,
+    StampEvent.Stamp[] Stamps,
+    StampEvent.Reward[] Rewards,
+    RewardItem CompleteReward) : GameEventData {
+    // x and y place the stamp on the card.
+    public record Stamp(
+        int QuestId,
+        bool Special,
+        int X,
+        int Y);
+
+    // count = the stamps of the row's kind it takes; item01 and item02 are "id,rank,count".
+    public record Reward(
+        int Count,
+        bool Special,
+        RewardItem Item01,
+        RewardItem Item02);
+}
+
+/// <summary>
 /// Long-term attendance calendar: a day is attended with an attend point (one a day) or for Merat merets, and
 /// each reward row is claimed once its day is attended.
 /// </summary>
@@ -373,6 +403,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(BingoEvent), "BingoEvent")]
 [JsonDerivedType(typeof(TimeRunEvent), "TimeRunEvent")]
 [JsonDerivedType(typeof(LongTermAttendGift), "LongTermAttendGift")]
+[JsonDerivedType(typeof(StampEvent), "StampEvent")]
 [JsonDerivedType(typeof(MapleSurvivalOpenPeriod), "MapleSurvivalOpenPeriod")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
 [JsonDerivedType(typeof(Ontime), "Ontime")]

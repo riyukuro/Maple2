@@ -7,7 +7,8 @@ namespace Maple2.Server.Game.Packets;
 
 public static class EventRewardPacket {
     private enum Command : byte {
-        Unknown1 = 1,
+        ClaimStampReward = 0,
+        ClaimStampCompleteReward = 1,
         ClaimTimeRunFinalReward = 3,
         ClaimTimeRunStepReward = 4,
         FlipGalleryCard = 7,
@@ -41,9 +42,23 @@ public static class EventRewardPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown1(List<RewardItem> items) {
+    // The stamp card replies (CSceneStateGame::OnEventReward): the items given, each an int id and a short rank
+    // for the reward notice (UIRewardNotify); the dialog then redraws from the user values sent before.
+    public static ByteWriter ClaimStampReward(List<RewardItem> items) {
         var pWriter = Packet.Of(SendOp.EventReward);
-        pWriter.Write<Command>(Command.Unknown1);
+        pWriter.Write<Command>(Command.ClaimStampReward);
+        pWriter.WriteInt(items.Count);
+        foreach (RewardItem item in items) {
+            pWriter.WriteInt(item.ItemId);
+            pWriter.WriteShort(item.Rarity);
+        }
+
+        return pWriter;
+    }
+
+    public static ByteWriter ClaimStampCompleteReward(List<RewardItem> items) {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.Write<Command>(Command.ClaimStampCompleteReward);
         pWriter.WriteInt(items.Count);
         foreach (RewardItem item in items) {
             pWriter.WriteInt(item.ItemId);

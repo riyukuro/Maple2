@@ -64,15 +64,44 @@ public sealed class GameEventManager {
                 valueDict.TryAdd(loaded.Type, loaded);
             }
         }
+
+        // A stamp card's quests are the account's, so its claims are too: those of the account's other characters
+        // are added to this character's (StampEventRules.MergeClaimed).
+        long nowSeconds = DateTime.Now.ToEpochSeconds();
+        foreach (GameEvent gameEvent in events.Where(gameEvent => gameEvent.Metadata.Data is StampEvent)) {
+            IList<GameEventUserValue> others = db.GetAccountEventUserValues(session.AccountId, session.CharacterId, gameEvent.Id, StampValueTypes)
+                .Where(value => value.ExpirationTime >= nowSeconds).ToList();
+            foreach (GameEventUserValueType type in StampValueTypes) {
+                string?[] texts = others.Where(value => value.Type == type).Select(value => (string?) value.Value).ToArray();
+                if (texts.Length == 0) {
+                    continue;
+                }
+                GameEventUserValue own = GetLocked(type, gameEvent.Id, gameEvent.EndTime);
+                own.SetValue(type == GameEventUserValueType.StampCompleteRewardClaimed
+                    ? (texts.Append(own.Value).Any(StampEventRules.CompleteClaimed) ? "1" : own.Value)
+                    : StampEventRules.MergeClaimed(texts.Prepend(own.Value)));
+            }
+        }
     }
 
-    // A long-term attendance value lasts as long as its event. When the event's end has moved since the value was
-    // stored (a replayed event is moved again by a later ingest), the value follows it: stored at the first end it
-    // would run out while the event is still live, and every day claimed so far could be claimed again.
+    private static readonly GameEventUserValueType[] StampValueTypes = [
+        GameEventUserValueType.StampCompleteRewardClaimed,
+        GameEventUserValueType.StampRewardsClaimed,
+        GameEventUserValueType.StampSpecialRewardsClaimed,
+    ];
+
+    // A long-term attendance value and a stamp card's claims last as long as their event. When the event's end has
+    // moved since the value was stored (a replayed event is moved again by a later ingest), the value follows it:
+    // stored at the first end it would run out while the event is still live, and every day or reward row claimed
+    // so far could be claimed again.
     public static GameEventUserValue FollowEventEnd(GameEventUserValue value, GameEvent gameEvent) {
-        if (gameEvent.Metadata.Type != GameEventType.LongTermAttendGift || value.ExpirationTime == gameEvent.EndTime
-            || value.Type is not (GameEventUserValueType.LongTermAttendClaimedDays or GameEventUserValueType.LongTermAttendPoints
-                or GameEventUserValueType.LongTermAttendDays or GameEventUserValueType.LongTermAttendPointTime)) {
+        bool follows = gameEvent.Metadata.Type switch {
+            GameEventType.LongTermAttendGift => value.Type is GameEventUserValueType.LongTermAttendClaimedDays or GameEventUserValueType.LongTermAttendPoints
+                or GameEventUserValueType.LongTermAttendDays or GameEventUserValueType.LongTermAttendPointTime,
+            GameEventType.StampEvent => StampValueTypes.Contains(value.Type),
+            _ => false,
+        };
+        if (!follows || value.ExpirationTime == gameEvent.EndTime) {
             return value;
         }
         var moved = new GameEventUserValue(value.Type, gameEvent.EndTime, value.EventId);
