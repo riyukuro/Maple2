@@ -9,6 +9,9 @@ public class CommonExpRulesTests {
     [TestCase(ExpType.fishing, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.userMiniGame, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.petTaming, CommonExpRules.LevelSource.Character)]
+    // The arenas' results (before: "Unhandled ExpType", no exp).
+    [TestCase(ExpType.redDuelLose, CommonExpRules.LevelSource.Character)]
+    [TestCase(ExpType.bloodMineRank1, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.taxi, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.rareChestFirst, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.none, CommonExpRules.LevelSource.None)]

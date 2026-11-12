@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
@@ -20,6 +21,11 @@ public sealed class PvpZoneField : IPvpZoneField {
     private readonly PvpZoneState state;
     private readonly int additionalEffectId;
     private readonly Func<IEnumerable<FieldPlayer>> playersInBox;
+    // The map's waiting area (the box of its player spawn, apart from the zone's box) and its floor's anchor
+    // (FieldManager.WaitingArea); null where the players wait in the zone itself.
+    private readonly (TriggerBox Box, Vector3 Floor)? waiting;
+    // Chosen here: how far around the floor's anchor a waiting participant is put down.
+    private const int FloorRadius = 1500;
     private readonly Action<IReadOnlyList<long>, int>? onEnd;
 
     public int BoxId => state.BoxId;
@@ -30,7 +36,9 @@ public sealed class PvpZoneField : IPvpZoneField {
     }
 
     public PvpZoneField(FieldManager field, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId,
-                        Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick) {
+                        Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick,
+                        (TriggerBox Box, Vector3 Floor)? waiting = null) {
+        this.waiting = waiting;
         this.field = field;
         this.additionalEffectId = additionalEffectId;
         this.playersInBox = playersInBox;
@@ -72,6 +80,11 @@ public sealed class PvpZoneField : IPvpZoneField {
         foreach (PvpZoneEntry entry in entries) {
             if (!field.TryGetPlayerById(entry.CharacterId, out FieldPlayer? player)) {
                 continue;
+            }
+            // A participant still in the waiting area (65000002's platform above the mine, where box 102's 70000040
+            // keeps its skills off) goes down to the zone's floor when the fight starts.
+            if (waiting is { } area && area.Box.Contains(player.Position)) {
+                player.Session.Send(PortalPacket.MoveByPortal(player, field.FloorSpotAround(area.Floor, FloorRadius), player.Rotation));
             }
             field.Broadcast(PvpPacket.Point(player.ObjectId, entry.Point, 0, (byte) state.Mode));
             field.Broadcast(PvpPacket.RankRow(entry.CharacterId, 0, 0, 0));

@@ -28,6 +28,15 @@ public static class CommonExpRules {
             // rankDuelLose, on the level curve of their expTableID).
             case ExpType.rankDuelWin:
             case ExpType.rankDuelLose:
+            // The individual arenas' results: the Red Arena's champion and the others (redDuelWin, redDuelLose) and the
+            // free-for-all's places (bloodMineRank1 to 3, bloodMineRankOther), at the player's own level as the rank
+            // duel's rows.
+            case ExpType.redDuelWin:
+            case ExpType.redDuelLose:
+            case ExpType.bloodMineRank1:
+            case ExpType.bloodMineRank2:
+            case ExpType.bloodMineRank3:
+            case ExpType.bloodMineRankOther:
             // A pet capture: the tamer's own level, as the other life skills.
             case ExpType.petTaming:
                 return LevelSource.Character;

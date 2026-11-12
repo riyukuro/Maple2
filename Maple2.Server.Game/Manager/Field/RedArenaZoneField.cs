@@ -134,7 +134,9 @@ public sealed class RedArenaZoneField : IPvpZoneField {
         if (stage is not { } spot || !field.TryGetPlayerById(characterId, out FieldPlayer? fighter)) {
             return;
         }
-        fighter.MoveToPosition(field.StageSpot(spot.Position + new Vector3(offset, 0, 0)), spot.Rotation);
+        // Sent as is: MoveToPosition drops a spot the navmesh does not find, and 65000001's stage portal lies where the
+        // nearest-poly search finds nothing (no move and no log in a live run).
+        fighter.Session.Send(PortalPacket.MoveByPortal(fighter, field.StageSpot(spot.Position + new Vector3(offset, 0, 0)), spot.Rotation));
     }
 
     // The observer dialog (Trigger dialog kind 2) for the field's other players: both fighters' health and wins (the

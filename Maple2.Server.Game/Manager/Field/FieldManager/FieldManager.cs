@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using DotRecast.Core;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour;
 using Maple2.Database.Storage;
@@ -120,7 +121,8 @@ public partial class FieldManager : IField {
             // fighters are moved onto the stage.
             1 => new RedArenaZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(0), onEnd, tick,
                 stage: StagePosition(boxId)),
-            2 => new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick),
+            2 => new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick,
+                waiting: WaitingArea(boxId)),
             3 => new TeamZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, boxIds, playersInBox, onEnd, tick),
             _ => null,
         };
@@ -139,17 +141,46 @@ public partial class FieldManager : IField {
         }
         FieldPortal? portal = fieldPortals?.Values.Where(entry => box.Contains(entry.Value.Position))
             .OrderBy(entry => entry.Value.Id).FirstOrDefault();
-        // At the box's centre height: 65000001's portal 1 lies under the stage floor (2875; the floor's item spawns
-        // are at 3300), so the fighters' spots are taken at the box's height and put on the navmesh (StageSpot).
-        Vector3 spot = portal != null ? portal.Value.Position with { Z = box.Metadata.Position.Z } : box.Metadata.Position;
-        return (spot, portal?.Value.Rotation ?? Vector3.Zero);
+        // The portal's own spot (a move to a portal lands there); the box's centre without one.
+        return portal != null ? (portal.Value.Position, portal.Value.Rotation) : (box.Metadata.Position, Vector3.Zero);
     }
 
-    // A spot on the floor: the nearest navmesh point to the position (the position itself without a navmesh).
+    // A spot on the floor: the nearest navmesh point to the position, else the position itself (a map portal's spot,
+    // which a portal move lands on anyway).
     public Vector3 StageSpot(Vector3 position) {
-        return FindNearestPoly(position, out long nearestRef, out RcVec3f point) && nearestRef != 0
+        return Navigation != null && FindNearestPoly(position, out long nearestRef, out RcVec3f point) && nearestRef != 0
             ? DotRecastHelper.FromNavMeshSpace(point)
             : position;
+    }
+
+    // A free-for-all zone's waiting area: the smallest trigger box but the zone's own that holds the map's player spawn
+    // (65000002: box 102, the platform above the mine, while the zone's box 101 is the whole map), and the anchor of its
+    // floor: the map's portal inside the zone's box outside the waiting box (65000002: portal 2 on the mine's floor).
+    // Null without both.
+    private (TriggerBox Box, Vector3 Floor)? WaitingArea(int zoneBoxId) {
+        if (TriggerObjects?.Boxes.TryGetValue(zoneBoxId, out TriggerBox? zone) != true || zone == null || fieldPlayerSpawnPoints == null) {
+            return null;
+        }
+        List<Vector3> spawns = fieldPlayerSpawnPoints.Values.Select(spawn => spawn.Position).ToList();
+        TriggerBox? waiting = TriggerObjects.Boxes.Values
+            .Where(box => box.Id != zoneBoxId && spawns.Any(spawn => box.Contains(spawn)))
+            .OrderBy(box => box.Metadata.Dimensions.X * box.Metadata.Dimensions.Y * box.Metadata.Dimensions.Z)
+            .FirstOrDefault();
+        FieldPortal? floor = waiting == null ? null : fieldPortals?.Values
+            .Where(portal => zone.Contains(portal.Value.Position) && !waiting.Contains(portal.Value.Position))
+            .OrderBy(portal => portal.Value.Id).FirstOrDefault();
+        return waiting != null && floor != null ? (waiting, floor.Value.Position) : null;
+    }
+
+    // A random floor spot within radius of a point (the navmesh), the point itself without one.
+    public Vector3 FloorSpotAround(Vector3 point, int radius) {
+        if (Navigation == null || !FindNearestPoly(point, out long nearestRef, out RcVec3f start) || nearestRef == 0) {
+            return point;
+        }
+        float distance = radius * DotRecastHelper.MapRotation.GetRightAxis().Length(); // to navmesh space
+        DtStatus status = Navigation.Crowd.GetNavMeshQuery().FindRandomPointAroundCircle(nearestRef, start, distance,
+            Navigation.Crowd.GetFilter(0), new RcRand(), out _, out RcVec3f randomPoint);
+        return status.Failed() ? DotRecastHelper.FromNavMeshSpace(start) : DotRecastHelper.FromNavMeshSpace(randomPoint);
     }
 
     // Whether a player's hostile skills reach another player here: the rank duel's fight or the PvP zone's.

@@ -201,6 +201,47 @@ public class PvpZoneFieldTests {
         Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(1)), Is.True);
     }
 
+    private static List<string> Moves(TestGameSession test) =>
+        test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.UserMoveByPortal).Select(Convert.ToHexString).ToList();
+
+    // The Red Arena's fighters are sent onto the stage even where the navmesh finds no floor there (65000001's stage
+    // portal: no move and no log in a live run): the move goes as is.
+    [Test]
+    public void RedArena_FightersMovedOntoTheStage() {
+        Arena arena = Start(field => { });
+        long now = Environment.TickCount64;
+        var zone = new RedArenaZoneField(arena.Field, 102, 0, 120, 0, () => arena.Field.Players.Values.Take(2), null, now,
+            stage: (new System.Numerics.Vector3(825, -675, 2875), default));
+        typeof(FieldManager).GetProperty(nameof(FieldManager.PvpZone))!.SetValue(arena.Field, zone);
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        zone.Update(now + 10);
+        Assert.That(Moves(arena.Tests[0]).Count + Moves(arena.Tests[1]).Count, Is.EqualTo(2));
+    }
+
+    // A free-for-all whose players wait outside the zone (65000002: the platform, box 102, above the mine) sends each
+    // participant still there down to the floor around the map's floor portal when the fight starts; one already out
+    // stays where it is.
+    [Test]
+    public void FreeForAll_WaitingPlayersGoDownToTheFloor() {
+        Arena arena = Start(field => { });
+        var platform = new TriggerBox(new Maple2.Model.Metadata.Ms2TriggerBox(new System.Numerics.Vector3(75, 75, 7350),
+            new System.Numerics.Vector3(1200, 1200, 900), 102, true));
+        arena.Player(0).Position = new System.Numerics.Vector3(75, 75, 7500);
+        arena.Player(1).Position = new System.Numerics.Vector3(2000, 0, 4500);
+        long now = Environment.TickCount64;
+        var zone = new PvpZoneField(arena.Field, 101, 0, 300, 0, () => arena.Field.Players.Values.Take(2), null, now,
+            waiting: (platform, new System.Numerics.Vector3(825, 75, 4500)));
+        typeof(FieldManager).GetProperty(nameof(FieldManager.PvpZone))!.SetValue(arena.Field, zone);
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        zone.Update(now + 10);
+        Assert.That(Moves(arena.Tests[0]).Count, Is.EqualTo(1));
+        Assert.That(Moves(arena.Tests[1]), Is.Empty);
+    }
+
     // An arena field whose match characters all left before its zone ended tells the world the match is over.
     [Test]
     public void Arena_AllLeftBeforeTheEnd_EndsTheMatch() {
