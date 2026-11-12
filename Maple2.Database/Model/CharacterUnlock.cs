@@ -21,6 +21,8 @@ internal class CharacterUnlock {
     public required IDictionary<int, byte> CollectedItems { get; set; }
     // Null in rows from before the column (AddFamePoints).
     public IDictionary<AllianceType, int>? FamePoints { get; set; }
+    // Null in rows from before the column (AddFameLogs).
+    public IDictionary<int, long>? FameLogs { get; set; }
     public required InventoryExpand Expand { get; set; }
     public short HairSlotExpand { get; set; }
     public DateTime LastModified { get; set; }
@@ -39,6 +41,7 @@ internal class CharacterUnlock {
             InteractedObjects = new SortedSet<int>(),
             CollectedItems = new Dictionary<int, byte>(),
             FamePoints = new Dictionary<AllianceType, int>(),
+            FameLogs = new Dictionary<int, long>(),
             DungeonRankRewards = new Dictionary<int, DungeonRankReward>(),
         } : new CharacterUnlock {
             LastModified = other.LastModified,
@@ -72,6 +75,7 @@ internal class CharacterUnlock {
             InteractedObjects = other.InteractedObjects,
             CollectedItems = other.CollectedItems,
             FamePoints = other.FamePoints,
+            FameLogs = other.FameLogs,
         };
     }
 
@@ -130,6 +134,11 @@ internal class CharacterUnlock {
                 unlock.FamePoints[alliance] = points;
             }
         }
+        if (other.FameLogs != null) {
+            foreach ((int logId, long time) in other.FameLogs) {
+                unlock.FameLogs[logId] = time;
+            }
+        }
 
         return unlock;
     }
@@ -152,6 +161,7 @@ internal class CharacterUnlock {
         builder.Property(unlock => unlock.CollectedItems).HasJsonConversion().IsRequired();
         builder.Property(unlock => unlock.DungeonRankRewards).HasJsonConversion().IsRequired();
         builder.Property(unlock => unlock.FamePoints).HasJsonConversion();
+        builder.Property(unlock => unlock.FameLogs).HasJsonConversion();
 
         builder.Property(unlock => unlock.LastModified).IsRowVersion();
     }

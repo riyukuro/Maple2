@@ -4,10 +4,23 @@ namespace Maple2.Model.Metadata;
 
 // table/famepickmethod.xml and table/famedef.xml, as CFameTable reads them (famegradedata.cpp:571, :604): how the
 // server picks the alliance missions (alliance quests, type 9) a player may take each day or week, and which NPC kind
-// is the officer of which alliance.
+// is the officer of which alliance. table/fame.xml and table/famelog.xml (LoadFame, LoadFameLog): the points each
+// alliance grade needs and the fame board's log lines, each of one alliance and grade.
 public record FameTable(
     IReadOnlyList<FameTable.PickMethod> PickMethods,
-    IReadOnlyDictionary<int, AllianceType> OfficerNpcKinds) : Table {
+    IReadOnlyDictionary<int, AllianceType> OfficerNpcKinds,
+    IReadOnlyList<FameTable.Grade>? GradeRows = null,
+    IReadOnlyList<FameTable.Log>? LogRows = null) : Table {
+    // Empty in a table stored before the rows were read.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<Grade> Grades => GradeRows ?? [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<Log> Logs => LogRows ?? [];
+
+    public record Grade(AllianceType Alliance, int Level, int RequirePoint);
+
+    public record Log(int Id, AllianceType Alliance, int Grade);
+
     // One method: the quests of this repeat (2 daily, 3 weekly) are picked from the listed alliances, by rank (S, A, B,
     // C, D) the counts of PickCountByRank. Combination (RankAllianceCombination) picks each rank's count from all the
     // listed alliances together, each alliance at most its MaxCount quests; otherwise (FixedCountPerAlliance) each

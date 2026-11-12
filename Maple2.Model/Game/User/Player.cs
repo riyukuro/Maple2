@@ -58,6 +58,9 @@ public class Unlock {
 
     // The alliance fame points (reputation), by alliance: the client's GetFamePoints, sent by UserEnv 10 and 11.
     public readonly IDictionary<AllianceType, int> FamePoints = new SortedDictionary<AllianceType, int>();
+
+    // The fame log (the fame board's history), log id to the time it was added in epoch seconds: UserEnv 12 and 13.
+    public readonly IDictionary<int, long> FameLogs = new SortedDictionary<int, long>();
 }
 
 public class Currency {

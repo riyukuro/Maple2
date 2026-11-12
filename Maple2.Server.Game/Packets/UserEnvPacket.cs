@@ -16,6 +16,8 @@ public static class UserEnvPacket {
         MasteryRewardsClaimed = 9,
         FamePoints = 10,
         FamePoint = 11,
+        FameLogs = 12,
+        FameLog = 13,
     }
 
     public static ByteWriter AddTitle(int titleId) {
@@ -110,6 +112,30 @@ public static class UserEnvPacket {
         pWriter.Write<Command>(Command.FamePoint);
         pWriter.WriteShort((short) alliance);
         pWriter.WriteInt(points);
+
+        return pWriter;
+    }
+
+    // The fame log (CSceneStateGame::OnUserEnv modes 12 and 13): the fame board's history, each entry a log id of
+    // table/famelog.xml and its time in epoch seconds. 12 replaces the list, 13 adds one entry and shows the
+    // client's fame update notice.
+    public static ByteWriter FameLogs(IDictionary<int, long> fameLogs) {
+        var pWriter = Packet.Of(SendOp.UserEnv);
+        pWriter.Write<Command>(Command.FameLogs);
+        pWriter.WriteInt(fameLogs.Count);
+        foreach ((int logId, long time) in fameLogs.OrderBy(entry => entry.Value).ThenBy(entry => entry.Key)) {
+            pWriter.WriteInt(logId);
+            pWriter.WriteLong(time);
+        }
+
+        return pWriter;
+    }
+
+    public static ByteWriter FameLog(int logId, long time) {
+        var pWriter = Packet.Of(SendOp.UserEnv);
+        pWriter.Write<Command>(Command.FameLog);
+        pWriter.WriteInt(logId);
+        pWriter.WriteLong(time);
 
         return pWriter;
     }

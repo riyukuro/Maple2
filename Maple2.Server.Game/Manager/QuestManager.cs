@@ -818,6 +818,24 @@ public sealed class QuestManager {
         int points = AllianceMissions.AddFame(famePoints.GetValueOrDefault(alliance), amount);
         famePoints[alliance] = points;
         session.Send(UserEnvPacket.FamePoint(alliance, points));
+        if (amount > 0 && FameLogRules.Roll(Random.Shared)) {
+            AddFameLog(alliance, points, Random.Shared);
+        }
+    }
+
+    // One fame log of the alliance's grade at these points that the character does not hold yet, sent to the client
+    // (the fame board's history and its notice).
+    public bool AddFameLog(AllianceType alliance, int points, Random random) {
+        IDictionary<int, long> fameLogs = session.Player.Value.Unlock.FameLogs;
+        FameTable table = session.TableMetadata.FameTable;
+        int logId = FameLogRules.Pick(table, alliance, FameLogRules.Grade(table, alliance, points), fameLogs.Keys, random);
+        if (logId == 0) {
+            return false;
+        }
+        long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        fameLogs[logId] = time;
+        session.Send(UserEnvPacket.FameLog(logId, time));
+        return true;
     }
 
     private void CompleteChapter(int questId, bool ignoreItemRewards = false) {

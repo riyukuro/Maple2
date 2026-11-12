@@ -309,7 +309,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
             xmlReader.GetXmlDocument(xmlReader.GetEntry("table/famepickmethod.xml")),
             xmlReader.GetXmlDocument(xmlReader.GetEntry("table/famedef.xml")),
             FeatureLocaleFilter.Locale,
-            FeatureLocaleFilter.FeatureEnabled);
+            FeatureLocaleFilter.FeatureEnabled,
+            xmlReader.GetXmlDocument(xmlReader.GetEntry("table/fame.xml")),
+            xmlReader.GetXmlDocument(xmlReader.GetEntry("table/famelog.xml")),
+            FeatureLocaleFilter.HasLocale);
     }
 
     // The client's alliance names (Parse_14021a330, commonenum.cpp:728), any case.
@@ -326,7 +329,11 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // CFameTable::LoadPickMethod (famegradedata.cpp:571): the methods of one <environment>, the one of the locale or else
     // one without a locale, whose feature is on (FUN_14028f8d0); each method only with its own feature on.
     // CFameTable::LoadFameDef: every season's fame rows, officerNpcKind to alliance.
-    public static FameTable ReadFame(XmlDocument pickMethod, XmlDocument fameDef, string locale, Func<string, bool> featureEnabled) {
+    // LoadFame and LoadFameLog (famegradedata.cpp:319): the grade and log rows the feature and locale filter lets
+    // through (IsElementAvailable), of a known alliance; a later row of the same alliance and grade, or of the
+    // same log id, replaces the earlier one.
+    public static FameTable ReadFame(XmlDocument pickMethod, XmlDocument fameDef, string locale, Func<string, bool> featureEnabled,
+                                     XmlDocument? fame = null, XmlDocument? fameLog = null, Func<string, bool>? hasLocale = null) {
         XmlElement? environment = null;
         foreach (XmlElement node in (pickMethod.SelectNodes("/ms2/environment")?.OfType<XmlElement>() ?? [])) {
             string nodeLocale = node.GetAttribute("locale");
@@ -370,7 +377,31 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 officers[kind] = alliance;
             }
         }
-        return new FameTable(methods, officers);
+
+        bool Available(XmlElement node) => featureEnabled(node.GetAttribute("feature")) && (hasLocale?.Invoke(node.GetAttribute("locale")) ?? true);
+
+        var grades = new Dictionary<(AllianceType, int), FameTable.Grade>();
+        foreach (XmlElement node in (fame?.SelectNodes("/ms2/fame")?.OfType<XmlElement>() ?? [])) {
+            AllianceType alliance = ParseAlliance(node.GetAttribute("alliance"));
+            int grade = ParseIntOrZero(node.GetAttribute("grade"));
+            if (alliance == AllianceType.AnyFaction || grade <= 0 || !Available(node)) {
+                continue;
+            }
+            grades[(alliance, grade)] = new FameTable.Grade(alliance, grade, ParseIntOrZero(node.GetAttribute("requirePoint")));
+        }
+
+        var logs = new Dictionary<int, FameTable.Log>();
+        foreach (XmlElement node in (fameLog?.SelectNodes("/ms2/fame")?.OfType<XmlElement>() ?? [])) {
+            AllianceType alliance = ParseAlliance(node.GetAttribute("alliance"));
+            int id = ParseIntOrZero(node.GetAttribute("id"));
+            if (alliance == AllianceType.AnyFaction || id <= 0 || !Available(node)) {
+                continue;
+            }
+            logs[id] = new FameTable.Log(id, alliance, ParseIntOrZero(node.GetAttribute("grade")));
+        }
+        return new FameTable(methods, officers,
+            grades.Values.OrderBy(row => row.Alliance).ThenBy(row => row.Level).ToList(),
+            logs.Values.OrderBy(row => row.Id).ToList());
 
         static int ParseIntOrZero(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
     }
