@@ -69,7 +69,8 @@ internal record ItemBlueprint(
             Type = (BlueprintType) other.Type,
             AccountId = other.AccountId,
             CharacterId = other.CharacterId,
-            CharacterName = other.CharacterName,
+            // A stored `{}` (the column default of a listing's blueprint) has no name.
+            CharacterName = other.CharacterName ?? "",
         };
     }
 }

@@ -59,6 +59,16 @@ public static class QuestRules {
         };
     }
 
+    // Quest 4 (Complete) names the talk's npc, or none from the popup talk. With an npc: it is on the field and is the
+    // quest's complete npc. Without one: the quest is completed remotely or has no complete npc (KMS2: 8 remote
+    // quests and 2 without an npc among the 10 requests with none).
+    public static bool CanCompleteAt(QuestMetadata metadata, bool named, int npcId) {
+        if (named) {
+            return npcId != 0 && (metadata.Basic.CompleteNpc == 0 || metadata.Basic.CompleteNpc == npcId);
+        }
+        return metadata.RemoteComplete.Type != QuestRemoteType.None || metadata.Basic.CompleteNpc == 0;
+    }
+
     // Quest 2 (Abandon): a forfeitable quest known to the played client that is not completed, for the same reason.
     public static bool CanForfeit(QuestMetadataBasic basic, QuestState state) {
         return basic.Forfeitable && state != QuestState.Completed && PlayedClientQuests.Known(basic);

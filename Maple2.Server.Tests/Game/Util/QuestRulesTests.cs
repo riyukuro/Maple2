@@ -171,4 +171,23 @@ public class QuestRulesTests {
     public void TalkStateBase(QuestState? held, bool canStartAgain, bool conditionsMet, bool atCompleteNpc, int expected) {
         Assert.That(QuestRules.TalkStateBase(held, canStartAgain, conditionsMet, atCompleteNpc), Is.EqualTo(expected));
     }
+
+    // The complete request's npc: the quest's complete npc on the field (npc id 0: not on the field), or none for a
+    // quest that is completed remotely or has no complete npc.
+    [TestCase(11000001, QuestRemoteType.None, true, 11000001, true)]
+    [TestCase(11000001, QuestRemoteType.None, true, 11000002, false)]
+    [TestCase(11000001, QuestRemoteType.None, true, 0, false)]
+    [TestCase(11000001, QuestRemoteType.Popup, true, 11000001, true)]
+    [TestCase(0, QuestRemoteType.None, true, 11000002, true)]
+    [TestCase(11000001, QuestRemoteType.None, false, 0, false)]
+    [TestCase(11000001, QuestRemoteType.Popup, false, 0, true)]
+    [TestCase(0, QuestRemoteType.None, false, 0, true)]
+    public void CanCompleteAt(int completeNpc, QuestRemoteType remote, bool named, int npcId, bool expected) {
+        Maple2.Model.Metadata.QuestMetadata data = Maple2.Server.Tests.Game.TestGameSession.QuestData(90000001);
+        data = data with {
+            Basic = data.Basic with { CompleteNpc = completeNpc },
+            RemoteComplete = new Maple2.Model.Metadata.QuestRemoteComplete(remote, 0, false),
+        };
+        Assert.That(QuestRules.CanCompleteAt(data, named, npcId), Is.EqualTo(expected));
+    }
 }

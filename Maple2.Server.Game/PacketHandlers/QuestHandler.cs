@@ -212,7 +212,9 @@ public class QuestHandler : FieldPacketHandler {
 
     private void HandleComplete(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
-        // Then the talk npc's object id (0 without a talk) and an int that is 0 in every KMS2 request.
+        // The talk npc's object id, then an int the client always writes as 0 (CQuestCompleteCinematicComponent,
+        // cinematiccomponent.cpp: a local set to 0, so the client has no reward choice to send).
+        int npcObjectId = packet.ReadInt();
 
         // A quest that is not held, is already completed or has an open condition: the client's own text (Quest 0),
         // and nothing is given. A dead player gets its own text. A full bag is answered by Complete.
@@ -222,6 +224,16 @@ public class QuestHandler : FieldPacketHandler {
         }
         if (session.Player.IsDead) {
             session.Send(QuestPacket.Error(QuestError.s_quest_error_fail_complete_by_dead));
+            return;
+        }
+        // The npc talk names its npc; the popup talk (UIPopupNpcTalkDialog) of a quest that is completed without
+        // one writes 0.
+        int npcId = 0;
+        if (npcObjectId != 0 && session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? npc)) {
+            npcId = npc.Value.Id;
+        }
+        if (!QuestRules.CanCompleteAt(quest.Metadata, npcObjectId != 0, npcId)) {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
             return;
         }
         if (!session.Quest.Complete(quest)) {
@@ -237,8 +249,12 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
+        // A quest that was completed before and started again goes back to completed: its count and its last
+        // completion (which decide when it starts again) stay. The client drops it from its list either way.
         if (quest.CompletionCount > 0) {
-            quest.State = QuestState.Completed; // ?? how do you revert?
+            quest.State = QuestState.Completed;
+            session.Send(QuestPacket.Abandon(quest.Id));
+            return;
         }
 
         if (session.Quest.Remove(quest)) {

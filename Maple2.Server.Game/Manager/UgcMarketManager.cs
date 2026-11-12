@@ -78,6 +78,9 @@ public sealed class UgcMarketManager {
             Price = listing.Price,
             Name = listing.Look.Name,
             Profit = profit,
+            // Set here: the column's default only applies when no value is written, and the entry's 0 was
+            // written as 1970, which the client shows as the sale's date with the payment already due.
+            SoldTime = DateTime.Now.ToEpochSeconds(),
         });
     }
 

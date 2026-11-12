@@ -27,11 +27,13 @@ public class QuestHandlerTests {
     private TestGameSession test = null!;
     private QuestHandler handler = null!;
 
-    private static QuestMetadata Data(bool acceptItem = false) {
+    // A quest of the popup talk: accepted and completed without an npc on the field.
+    private static QuestMetadata Data(bool acceptItem = false, bool remote = true) {
         QuestMetadata data = TestGameSession.QuestData(QuestId);
         return data with {
-            Basic = data.Basic with { CompleteNpc = Npc },
+            Basic = data.Basic with { CompleteNpc = Npc, Forfeitable = true },
             RemoteAccept = new QuestRemoteAccept(QuestRemoteType.Popup, 0),
+            RemoteComplete = new QuestRemoteComplete(remote ? QuestRemoteType.Popup : QuestRemoteType.None, 0, false),
             AcceptReward = data.AcceptReward with { EssentialItem = acceptItem ? [new QuestMetadataReward.Item(RewardId, 1, 1)] : [] },
             CompleteReward = data.CompleteReward with { Meso = 100, Exp = 10, EssentialItem = [new QuestMetadataReward.Item(RewardId, 1, 2)] },
             Conditions = [new ConditionMetadata(ConditionType.jump, 1, null, null)],
@@ -56,8 +58,8 @@ public class QuestHandlerTests {
     }
 
     // A started quest with its one condition met or open.
-    private Quest Started(bool met = true) {
-        Quest quest = test.StartQuest(Data());
+    private Quest Started(bool met = true, bool remote = true) {
+        Quest quest = test.StartQuest(Data(remote: remote));
         quest.Conditions[0].Counter = met ? 1 : 0;
         return quest;
     }
@@ -70,13 +72,98 @@ public class QuestHandlerTests {
         }));
     }
 
-    private void Complete(GameSession session, int questId = QuestId) {
+    private void Complete(GameSession session, int questId = QuestId, int npcObjectId = 0) {
         handler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(4);
             writer.WriteInt(questId);
-            writer.WriteInt(0);
+            writer.WriteInt(npcObjectId);
             writer.WriteInt(0);
         }));
+    }
+
+    private void Abandon(GameSession session) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(6);
+            writer.WriteInt(QuestId);
+        }));
+    }
+
+    // A quest of an npc is not completed without the npc (the popup talk's request) or with an npc that is not on
+    // the field; twice the same.
+    [TestCase(0)]
+    [TestCase(77)]
+    public void Complete_AwayFromTheQuestsNpcGivesNothing(int npcObjectId) {
+        GameSession session = Login();
+        Quest quest = Started(remote: false);
+        long meso = session.Currency.Meso;
+
+        Complete(session, npcObjectId: npcObjectId);
+        Complete(session, npcObjectId: npcObjectId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Error(QuestError.s_quest_error_consume_fail), Error(QuestError.s_quest_error_consume_fail),
+            }));
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+            Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // Abandon (Quest 6 with the quest id, answered with the same): the quest is dropped; a second request and a
+    // request for a completed quest have no answer and change nothing.
+    [Test]
+    public void Abandon_DropsAStartedQuestOnce() {
+        GameSession session = Login();
+        test.Register(Data());
+        Accept(session);
+        Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.True);
+        test.TakeSent();
+
+        Abandon(session);
+        Abandon(session);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { "5200" + "06" + "814A5D05" }));
+            Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.False);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Abandon_OfACompletedQuestKeepsIt() {
+        GameSession session = Login();
+        Quest quest = Started();
+        quest.State = QuestState.Completed;
+        quest.CompletionCount = 1;
+
+        Abandon(session);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.True);
+        });
+    }
+
+    // A quest that was completed before and is in progress again goes back to completed with its count.
+    [Test]
+    public void Abandon_OfAQuestStartedAgainKeepsItsCompletion() {
+        GameSession session = Login();
+        Quest quest = Started();
+        quest.CompletionCount = 3;
+        quest.EndTime = 1700000000;
+
+        Abandon(session);
+        Abandon(session);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { "5200" + "06" + "814A5D05" }));
+            Assert.That(session.Quest.TryGetQuest(QuestId, out Quest? held), Is.True);
+            Assert.That(held?.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(held?.CompletionCount, Is.EqualTo(3));
+            Assert.That(held?.EndTime, Is.EqualTo(1700000000));
+        });
     }
 
     private static string Error(QuestError error) => Convert.ToHexString(QuestPacket.Error(error).ToArray());

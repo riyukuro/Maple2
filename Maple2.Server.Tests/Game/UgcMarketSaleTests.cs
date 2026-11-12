@@ -74,6 +74,40 @@ public class UgcMarketSaleTests {
         });
     }
 
+    // A sale carries its time: the client shows it as the sale's date and counts the payment's wait from it,
+    // and the profit cannot be collected before that wait is over.
+    [Test]
+    public void Sale_IsStoredWithItsTime() {
+        var test = new TestGameSession();
+        long id = List(test, 3000).Id;
+        GameSession seller = Login(test);
+        long before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        SoldUgcMarketItem sold = Sell(test, id);
+        seller.UgcMarket.RefreshSales();
+        seller.UgcMarket.CollectProfit(sold.Id);
+
+        using GameStorage.Request db = test.Storage.Context();
+        SoldUgcMarketItem stored = db.GetMySoldUgcListings(test.AccountId)[sold.Id];
+        Assert.Multiple(() => {
+            Assert.That(sold.SoldTime, Is.InRange(before - 1, before + 60));
+            Assert.That(stored.SoldTime, Is.InRange(before - 1, before + 60));
+        });
+    }
+
+    // A listing row whose blueprint column holds the column default `{}` is written to the client with an
+    // empty builder name.
+    [Test]
+    public void Blueprint_OfTheColumnDefaultIsWritten() {
+        Maple2.Database.Model.ItemBlueprint stored =
+            System.Text.Json.JsonSerializer.Deserialize<Maple2.Database.Model.ItemBlueprint>("{}")!;
+        ItemBlueprint blueprint = stored;
+
+        var writer = new Maple2.PacketLib.Tools.ByteWriter();
+        Assert.DoesNotThrow(() => blueprint.WriteTo(writer));
+        Assert.That(writer.Length, Is.EqualTo(8 + 12 + 8 + 4 + 16 + 2));
+    }
+
     // The sales tab (which saves) and taking the listing off the market leave the count, and the seller's own copy
     // follows the stored count.
     [Test]
