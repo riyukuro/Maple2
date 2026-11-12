@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Tests.Ingest;
@@ -66,6 +69,32 @@ public class AttendGiftReplayTests {
         ];
         Assert.That(AttendGiftReplay.Pick(events, Now)?.Id, Is.EqualTo(800));
         Assert.That(AttendGiftReplay.Pick([], Now), Is.Null);
+    }
+
+    private static GameEventMetadata Gift(int id, string start, string end, params int[] itemIds) {
+        return Event(id, GameEventType.AttendGift, start, end) with {
+            Data = new AttendGift(itemIds.Select(itemId => new RewardItem(itemId, 5, 1)).ToArray(), "", "", "", "", 600, null),
+        };
+    }
+
+    // The client takes an AttendGift reward's rank from its item data (ItemGift, itemgift.cpp:32) and asserts on 0.
+    // Shaped like KR's latest row: four grade 5 items the client's item data does not have (made-up ids here).
+    [Test]
+    public void Pick_PassesOverAnEventWithAnItemTheClientHasNoRankFor() {
+        var ranks = new Dictionary<int, int> { [900101] = 3, [900102] = 1, [900103] = 0 };
+        int ClientRank(int itemId) => ranks.GetValueOrDefault(itemId);
+        GameEventMetadata[] events = [
+            Gift(700, "2029-01-01 00:00", "2029-01-05 23:59", 900101, 900102),
+            Gift(701, "2029-03-01 00:00", "2029-03-05 23:59", 900101, 900103), // in the item data without a rank
+            Gift(702, "2029-05-01 00:00", "2029-05-05 23:59", 900201, 900202, 900203, 900204), // not in the item data
+        ];
+
+        Assert.That(AttendGiftReplay.Pick(events, Now)?.Id, Is.EqualTo(702));
+        GameEventMetadata? picked = AttendGiftReplay.Pick(events, Now, ClientRank);
+        Assert.That(picked?.Id, Is.EqualTo(700));
+        Assert.That(((AttendGift) picked!.Data).Items.Select(item => ClientRank(item.ItemId)), Has.None.EqualTo(0));
+        Assert.That(AttendGiftReplay.Candidates(events, Now).Select(e => e.Id), Is.EqualTo(new[] { 702, 701, 700 }));
+        Assert.That(AttendGiftReplay.Pick(events[1..], Now, ClientRank), Is.Null);
     }
 
     [Test]

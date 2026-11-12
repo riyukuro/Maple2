@@ -1001,7 +1001,16 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
 
         if (replayAttendGift) {
-            GameEventMetadata? replay = AttendGiftReplay.Pick(ended, now);
+            // The rank the client's item data gives an item id (0: not there, or no rank); the played client's
+            // item data when MS2_PLAYED_CLIENT_XML names it.
+            int ClientRank(int itemId) =>
+                ItemMapper.ItemMetadataById.TryGetValue(itemId, out ItemMetadata? item) && !item.Property.NotInPlayedClient
+                    ? item.Property.Rank ?? 0 : 0;
+            GameEventMetadata? replay = AttendGiftReplay.Pick(ended, now, ClientRank);
+            int[] passed = AttendGiftReplay.Candidates(ended, now).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
+            if (passed.Length > 0) {
+                Console.WriteLine($"{AttendGiftReplay.Option}: AttendGift {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data");
+            }
             if (replay == null) {
                 Console.WriteLine($"{AttendGiftReplay.Option}: no ended AttendGift event to replay");
             } else if (!results.ContainsKey(replay.Id)) {

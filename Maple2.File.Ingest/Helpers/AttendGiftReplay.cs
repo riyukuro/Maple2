@@ -20,15 +20,30 @@ public static class AttendGiftReplay {
 
     // The ended AttendGift event to replay: the latest end; on the same end the longer event (more days to
     // attend), then the higher id. Events without a readable start or end time (DateTime.MinValue) or that end
-    // before they start are not taken.
-    public static GameEventMetadata? Pick(IEnumerable<GameEventMetadata> events, DateTime now) {
+    // before they start are not taken, nor (with clientRank) an event with a reward the client cannot show.
+    public static GameEventMetadata? Pick(IEnumerable<GameEventMetadata> events, DateTime now, Func<int, int>? clientRank = null) {
+        return Candidates(events, now)
+            .Where(e => clientRank == null || ClientHasRewards(e, clientRank))
+            .FirstOrDefault();
+    }
+
+    // The ended AttendGift events in pick order, whatever their rewards.
+    public static IEnumerable<GameEventMetadata> Candidates(IEnumerable<GameEventMetadata> events, DateTime now) {
         return events
             .Where(e => e.Type == GameEventType.AttendGift && e.StartTime != DateTime.MinValue
                         && e.EndTime != DateTime.MinValue && e.StartTime <= e.EndTime && e.EndTime < now)
             .OrderByDescending(e => e.EndTime)
             .ThenByDescending(e => e.EndTime - e.StartTime)
-            .ThenByDescending(e => e.Id)
-            .FirstOrDefault();
+            .ThenByDescending(e => e.Id);
+    }
+
+    // The client reads an AttendGift reward as an ItemGift, whose rank is the item data's rank, not the one sent
+    // (ItemGift::vfunc_o18_1, commonfiles/itemgift.cpp:32, GetItemRank of the item id), and it asserts when that
+    // is 0: the item is not in its item data or its property element has no rank. clientRank gives that rank for
+    // an item id. KR AttendGift rows list items the KR item data does not have (99000056's four), so such an
+    // event cannot be shown.
+    public static bool ClientHasRewards(GameEventMetadata gameEvent, Func<int, int> clientRank) {
+        return gameEvent.Data is not AttendGift attendGift || attendGift.Items.All(item => clientRank(item.ItemId) > 0);
     }
 
     // The event moved to start on the given day at its original time of day, with its original length. The times
