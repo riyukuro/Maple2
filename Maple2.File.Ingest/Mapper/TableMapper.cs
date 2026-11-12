@@ -319,11 +319,14 @@ public class TableMapper : TypeMapper<TableMetadata> {
             FeatureLocaleFilter.HasLocale);
     }
 
-    // The parser does not read it. The played client's copy when there is one (the KR pack's is the same).
+    // The parser does not read it. The played client's copy when there is one (the KR pack's is the same), read by
+    // the name its pack spells (the client's own is table/weaponAction.xml).
     private WeaponActionTable ParseWeaponAction() {
         const string path = "table/weaponaction.xml";
-        M2dReader reader = playedReader?.Files.Any(file => file.Name.Equals(path, StringComparison.OrdinalIgnoreCase)) == true ? playedReader : xmlReader;
-        return ReadWeaponAction(reader.GetXmlDocument(reader.GetEntry(path)));
+        var played = playedReader?.Files.FirstOrDefault(file => file.Name.Equals(path, StringComparison.OrdinalIgnoreCase));
+        return played != null
+            ? ReadWeaponAction(playedReader!.GetXmlDocument(played))
+            : ReadWeaponAction(xmlReader.GetXmlDocument(xmlReader.GetEntry(path)));
     }
 
     // CWeaponActionTable::Load (weaponactiontable.cpp:76): every <weapon> row in order, and each <allowWeapon> row's

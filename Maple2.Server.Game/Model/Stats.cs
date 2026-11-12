@@ -237,8 +237,13 @@ public class Stats {
     /// </summary>
     public void EndReset(bool dead, bool levelUp = false) {
         foreach ((BasicAttribute attribute, Stat stat) in basicValues) {
+            long before = stat.Current;
             stat.EndHold();
-            if (dead && attribute == BasicAttribute.Health) {
+            if (!dead && attribute == BasicAttribute.Health && before > 0 && stat.Total > 0 && stat.Current == 0) {
+                // A living actor's share rounds down to 0 only when the maximum falls far (a debuff): it keeps 1, as
+                // a rebuild is no hit and kills no one.
+                stat.Current = 1;
+            } else if (dead && attribute == BasicAttribute.Health) {
                 stat.Current = 0;
             } else if (levelUp && !dead && attribute is BasicAttribute.Health or BasicAttribute.Spirit) {
                 stat.Current = stat.Total;

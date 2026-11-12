@@ -428,25 +428,51 @@ public class StatsManager {
         if (npcStats == null) {
             return;
         }
-        long health = Values[BasicAttribute.Health].Total;
-        Values.Reset(npcStats);
-        AddBuffs(npc);
-        Values.Total();
-        Values.EndReset(npc.IsDead);
-        if (Values[BasicAttribute.Health].Total != health) {
+        if (RebuildNpc(Values, npcStats, npc.Buffs.EnumerateBuffs(), npc.IsDead)) {
             npc.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));
         }
     }
 
-    private void AddBuffs(IActor actor) {
-        foreach (Buff buff in actor.Buffs.EnumerateBuffs()) {
-            AddStatus(Values, buff.Metadata.Status, buff.Stacks);
+    // Rebuilds an npc's totals from its own stats and the buffs it holds; true when its maximum health changed, which
+    // the field is told of.
+    public static bool RebuildNpc(Stats values, IReadOnlyDictionary<BasicAttribute, long> npcStats, IEnumerable<Buff> buffs, bool dead) {
+        long health = values[BasicAttribute.Health].Total;
+        values.Reset(npcStats);
+        AddBuffs(values, buffs);
+        values.Total();
+        FloorNpc(values);
+        values.EndReset(dead);
+        return values[BasicAttribute.Health].Total != health;
+    }
+
+    // A debuff never takes an npc's maximum health or movement speed under 1: rates that sum to -1 or less (the data
+    // holds MovementSpeed -1 and -0.5 that stacks to 3) would leave a walk with speed 0 that never arrives, and a
+    // maximum health of 0 would kill the npc with no killer, then refill it to full when the buff ends. An npc with no
+    // speed of its own (Base 0) keeps 0.
+    public static void FloorNpc(Stats values) {
+        foreach (BasicAttribute attribute in new[] { BasicAttribute.Health, BasicAttribute.MovementSpeed }) {
+            Stat stat = values[attribute];
+            if (stat.Base >= 1 && stat.Total < 1) {
+                stat.AddTotal(1 - stat.Total);
+            }
         }
-        List<Buff> held = actor.Buffs.EnumerateBuffs().ToList();
+    }
+
+    private void AddBuffs(IActor actor) => AddBuffs(Values, actor.Buffs.EnumerateBuffs());
+
+    // The status of the enabled buffs held, and the invoke damage bonus among them. A buff whose begin condition
+    // fails (Buff.Enabled false: an HP band, a weapon, a buff it needs) counts for nothing, as in the client's sums
+    // (AdditionalCliList::FUN_140972a00 and CollectInvokeEffectStats skip a buff without m_bEnabled); before, its
+    // stats were counted the whole time it was held.
+    public static void AddBuffs(Stats values, IEnumerable<Buff> buffs) {
+        List<Buff> held = buffs.Where(buff => buff.Enabled).ToList();
+        foreach (Buff buff in held) {
+            AddStatus(values, buff.Metadata.Status, buff.Stacks);
+        }
         foreach ((SpecialAttribute attribute, float rate) in InvokeDamageBonus(
                      held.Select(buff => (buff.Metadata.InvokeEffect, buff.Stacks)),
                      held.Select(buff => (buff.Id, buff.Metadata.Property.InvokeGroupId)))) {
-            Values[attribute].AddTotal(new SpecialOption(rate));
+            values[attribute].AddTotal(new SpecialOption(rate));
         }
     }
 
@@ -495,7 +521,7 @@ public class StatsManager {
     }
 
     private void StatConversion(FieldPlayer player) {
-        foreach (Buff buff in player.Buffs.EnumerateBuffs()) {
+        foreach (Buff buff in player.Buffs.EnumerateBuffs().Where(buff => buff.Enabled)) {
             if (buff.Metadata.Status.Conversion != null) {
                 float sum = Values[buff.Metadata.Status.Conversion.BaseAttribute].Total;
                 sum *= buff.Metadata.Status.Conversion.Rate;

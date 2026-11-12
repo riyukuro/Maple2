@@ -188,13 +188,14 @@ public class BuffManager : IUpdatable {
         SetUpdates(buff);
         ModifyBuffStackCount(buff);
 
+        if (!additionalEffect.Condition.Check(caster, owner, Actor)) {
+            buff.Disable();
+            InvalidateSums();
+        }
+
         // refresh stats if needed
         if (HasStatus(buff.Metadata)) {
             Actor.Stats.Refresh();
-        }
-
-        if (!additionalEffect.Condition.Check(caster, owner, Actor)) {
-            buff.Disable();
         }
 
         logger.Verbose("{Id} AddBuff to {ObjectId}: {SkillId},{Level} for {Tick}ms", buff.ObjectId, owner.ObjectId, id, level, buff.EndTick - buff.StartTick);
@@ -280,6 +281,21 @@ public class BuffManager : IUpdatable {
     }
 
 
+    // The sums of the enabled buffs only: the client's resistance, invincible, stun and invoke sums skip a buff
+    // without m_bEnabled (AdditionalCliList::FUN_140972a00, FUN_1409713b0, CollectInvokeEffectStats).
+    public static BuffSums SumsOf(IEnumerable<Buff> held) {
+        return new BuffSums(held.Where(buff => buff.Enabled).Select(buff => (buff.Metadata, buff.Stacks)));
+    }
+
+    // A held buff's begin condition began or stopped holding (Buff.UpdateEnabled): the sums and the stat totals
+    // follow it, as they do a stack change.
+    public void EnabledChanged(Buff buff) {
+        InvalidateSums();
+        if (HasStatus(buff.Metadata)) {
+            Actor.Stats.Refresh();
+        }
+    }
+
     // A buff's stack count changed (Buff.Stack calls this): the owner's stat totals follow it, and the invoke and
     // resistance sums are taken again at the next read.
     public void StacksChanged(Buff buff) {
@@ -291,7 +307,7 @@ public class BuffManager : IUpdatable {
 
     // The buff changes its holder's stats: by its own status, or by an invoke that raises the damage of another buff
     // (StatsManager.InvokeDamageBonus).
-    private static bool HasStatus(AdditionalEffectMetadata metadata) {
+    internal static bool HasStatus(AdditionalEffectMetadata metadata) {
         return metadata.Status.Values.Count > 0 || metadata.Status.Rates.Count > 0
             || metadata.Status.SpecialValues.Count > 0 || metadata.Status.SpecialRates.Count > 0
             || metadata.InvokeEffect?.Types.Any(type => type is InvokeEffectType.IncreaseOffensivePhysicalDamage or InvokeEffectType.IncreaseOffensiveMagicalDamage) == true;
@@ -350,7 +366,7 @@ public class BuffManager : IUpdatable {
             return current;
         }
         int version = Volatile.Read(ref sumsVersion);
-        current = new BuffSums(EnumerateBuffs().Select(buff => (buff.Metadata, buff.Stacks)));
+        current = SumsOf(EnumerateBuffs());
         if (version == Volatile.Read(ref sumsVersion)) {
             Volatile.Write(ref sums, current);
         }

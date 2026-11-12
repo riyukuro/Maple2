@@ -231,12 +231,15 @@ public class Buff : IUpdatable, IByteSerializable {
         Proc();
     }
 
+    // notifyField is false only in the constructor, before the buff is held: then neither the field nor the
+    // holder's sums and stats are told.
     public bool UpdateEnabled(bool notifyField = true) {
         bool enabled = Metadata.Condition.Check(Caster, Owner, Owner);
         if (Enabled != enabled) {
             Enabled = enabled;
             if (notifyField) {
                 Field.Broadcast(BuffPacket.Update(this));
+                Owner.Buffs.EnabledChanged(this);
             }
         }
 
