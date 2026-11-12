@@ -511,8 +511,21 @@ public sealed class TestGameSession {
             return new BlackMarketResponse();
         }
 
-        // No other player is known to the world.
+        // The other players the world knows; a character that was not added is not found.
+        public readonly Dictionary<long, PlayerInfoResponse> Players = [];
+
+        public void AddPlayer(long accountId, long characterId, string name) {
+            Players[characterId] = new PlayerInfoResponse {
+                AccountId = accountId, CharacterId = characterId, Name = name, Motto = "", Picture = "", GuildName = "",
+                Health = new HealthUpdate(), Trophy = new TrophyUpdate(),
+                Home = new HomeUpdate { Name = "", ExpiryTime = new Google.Protobuf.WellKnownTypes.Timestamp() },
+            };
+        }
+
         public override PlayerInfoResponse PlayerInfo(PlayerInfoRequest request, CallOptions options) {
+            if (Players.TryGetValue(request.CharacterId, out PlayerInfoResponse? response)) {
+                return response;
+            }
             throw new RpcException(new Status(StatusCode.NotFound, "no such character"));
         }
 
@@ -525,9 +538,12 @@ public sealed class TestGameSession {
 
         // The chat lines handed to the world.
         public readonly List<ChatRequest> Chats = [];
+        // Where the world hands a chat line on (the recipient's game server); it may throw what the world would.
+        public Action<ChatRequest>? ChatDelivery;
 
         public override ChatResponse Chat(ChatRequest request, CallOptions options) {
             Chats.Add(request);
+            ChatDelivery?.Invoke(request);
             return new ChatResponse();
         }
 
