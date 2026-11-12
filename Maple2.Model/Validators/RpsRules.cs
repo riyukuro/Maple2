@@ -5,6 +5,12 @@ namespace Maple2.Model.Validators;
 // uibannereventlistener.cpp (invite), uimessagebox.cpp (accept / decline), uimicrogamerps.cpp (card) and
 // uirpseventdialog.cpp (banner, rewards).
 public static class RpsRules {
+    // A microgame reward (an RPS step or a couple dance step) is settled, so its claim is stored, when an item reached
+    // the player or when the step has no items at all; a step whose items all failed stays open for another try.
+    public static bool ClaimSettled(int rewardCount, int deliveredCount) {
+        return rewardCount == 0 || deliveredCount > 0;
+    }
+
     // Client -> server modes.
     public const short OpenBanner = 0;
     public const short Invite = 1;
@@ -100,7 +106,10 @@ public static class RpsRules {
 // the client keeps one request box and one game state.
 // Server limits of both microgames (RPS and couple dance), in ms of the field clock. The client keeps its own
 // countdowns (the request box, the choice time) and sends nothing when a player's client stops answering, so the server
-// drops what is left waiting. The values are the server's choice, not the client's.
+// drops what is left waiting. The values are the server's choice, not the client's. The client's request boxes count
+// down MicroGameRequestDuration (20 s by default; the constants table has no row for it) and then press decline, which
+// sends the decline mode, so PendingMs only catches a client that went away. The client has no choice countdown in its
+// code; a round counts from the previous round's second answer, so RoundMs also covers the dance motion between rounds.
 public static class MicrogameLimits {
     public const long PendingMs = 60_000;        // an invite nobody accepted, declined or cancelled
     public const long RoundMs = 60_000;          // a running game or round with an answer missing
@@ -110,6 +119,9 @@ public static class MicrogameLimits {
         lastInvite.TryGetValue(inviter, out long last) && now - last < InviteCooldownMs;
 
     public static void PruneCooldowns(Dictionary<long, long> lastInvite, long now) {
+        if (lastInvite.Count == 0) {
+            return;
+        }
         foreach (long inviter in lastInvite.Where(entry => now - entry.Value >= InviteCooldownMs).Select(entry => entry.Key).ToList()) {
             lastInvite.Remove(inviter);
         }
@@ -235,8 +247,12 @@ public sealed class RpsMatchTable {
     }
 
     // Drops the invites older than MicrogameLimits.PendingMs and the games without both cards after RoundMs.
-    public List<Expired> Expire(long now) {
+    // Runs on every field tick: with no invite, game or cooldown it returns the shared empty list.
+    public IReadOnlyList<Expired> Expire(long now) {
         lock (guard) {
+            if (matches.Count == 0 && lastInvite.Count == 0) {
+                return Array.Empty<Expired>();
+            }
             MicrogameLimits.PruneCooldowns(lastInvite, now);
             var expired = new List<Expired>();
             foreach (Match match in matches.Values.Distinct().ToList()) {

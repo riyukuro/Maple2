@@ -23,4 +23,13 @@ public static class StorageRules {
     public static bool HasRoom(int openSlots, int notStackable) {
         return openSlots > 0 || notStackable == 0;
     }
+
+    // Slots needed for the pieces left after the existing stacks took what they could, at slotMax per slot.
+    public static int SlotsNeeded(int notStackable, int slotMax) {
+        if (notStackable <= 0) {
+            return 0;
+        }
+        int perSlot = Math.Max(1, slotMax);
+        return (notStackable + perSlot - 1) / perSlot;
+    }
 }

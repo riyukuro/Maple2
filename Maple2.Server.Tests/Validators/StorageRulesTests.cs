@@ -48,4 +48,15 @@ public class StorageRulesTests {
     public void WithdrawNeedsRoom(int openSlots, int notStackable, bool expected) {
         Assert.That(StorageRules.HasRoom(openSlots, notStackable), Is.EqualTo(expected));
     }
+
+    // A reward over the slot maximum (e.g. 250 pieces at 100 per slot) needs several slots after the stacks are full.
+    [TestCase(0, 100, 0)]
+    [TestCase(1, 100, 1)]
+    [TestCase(100, 100, 1)]
+    [TestCase(250, 100, 3)]
+    [TestCase(3, 1, 3)]
+    [TestCase(3, 0, 3)] // a missing slot maximum counts as one per slot
+    public void SlotsNeeded_RoundsUpPerSlotMax(int notStackable, int slotMax, int expected) {
+        Assert.That(StorageRules.SlotsNeeded(notStackable, slotMax), Is.EqualTo(expected));
+    }
 }

@@ -203,8 +203,12 @@ public sealed class CoupleDanceMatchTable {
 
     // Drops the invites older than MicrogameLimits.PendingMs and the dances whose round has waited RoundMs for an
     // answer.
-    public List<Expired> Expire(long now) {
+    // Runs on every field tick: with no invite, game or cooldown it returns the shared empty list.
+    public IReadOnlyList<Expired> Expire(long now) {
         lock (guard) {
+            if (matches.Count == 0 && lastInvite.Count == 0) {
+                return Array.Empty<Expired>();
+            }
             MicrogameLimits.PruneCooldowns(lastInvite, now);
             var expired = new List<Expired>();
             foreach (Match match in matches.Values.Distinct().ToList()) {

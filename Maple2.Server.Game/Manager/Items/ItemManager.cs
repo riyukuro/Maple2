@@ -75,6 +75,8 @@ public class ItemManager {
                 item.Slot = -1;
                 Item? newAdd = db.CreateItem(mail.Id, item);
                 if (newAdd == null) {
+                    // No empty mail is left behind when the item could not be created.
+                    db.DeleteMail(mail.Id, session.CharacterId);
                     return false;
                 }
                 item = newAdd;

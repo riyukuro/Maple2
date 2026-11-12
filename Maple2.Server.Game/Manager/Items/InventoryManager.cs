@@ -375,6 +375,18 @@ public class InventoryManager {
         }
     }
 
+    // Room for the whole amount of the item: what the stacks do not take fits the open slots at SlotMax each,
+    // so Add takes all of it or (before it changes anything) none. Currency, medals and furnishings need no slot.
+    public bool HasRoomFor(Item item) {
+        if (item.IsCurrency() || item.Type.IsMedal || item.Type.IsFurnishing) {
+            return true;
+        }
+        lock (session.Item) {
+            return tabs.TryGetValue(item.Inventory, out ItemCollection? items)
+                   && items.OpenSlots >= StorageRules.SlotsNeeded(items.GetStackResult(item), item.Metadata.Property.SlotMax);
+        }
+    }
+
     public bool CanAdd(ICollection<Item> items) {
         lock (session.Item) {
             // Group items by inventory type

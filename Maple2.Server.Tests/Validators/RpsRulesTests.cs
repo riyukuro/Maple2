@@ -125,6 +125,25 @@ public class RpsRulesTests {
         Assert.That(table.IsBusy(1) || table.IsBusy(2), Is.False);
     }
 
+    [Test]
+    public void Table_ExpireIdleReturnsEmpty() {
+        var table = new RpsMatchTable();
+        Assert.That(table.Expire(0), Is.Empty);
+        table.Invite(1, 2, 0);
+        table.RemovePending(1, 2);
+        // Only the cooldown is left: pruned once it is over, then the table is idle again.
+        Assert.That(table.Expire(MicrogameLimits.InviteCooldownMs), Is.Empty);
+        Assert.That(table.Invite(1, 2, MicrogameLimits.InviteCooldownMs), Is.True);
+    }
+
+    [TestCase(0, 0, true)]   // no items: settled, so the row is marked claimed
+    [TestCase(2, 0, false)]  // nothing given or mailed: retry later
+    [TestCase(2, 1, true)]
+    [TestCase(2, 2, true)]
+    public void ClaimSettled_EmptyRowsSettle(int rewards, int delivered, bool expected) {
+        Assert.That(RpsRules.ClaimSettled(rewards, delivered), Is.EqualTo(expected));
+    }
+
     private static byte[] Body(ByteWriter writer) => writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
 
     // MicroGameManagerCli: a short mode, then the mode's fields.

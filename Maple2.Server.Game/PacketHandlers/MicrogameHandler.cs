@@ -126,11 +126,14 @@ public class MicrogameHandler : FieldPacketHandler {
         return items;
     }
 
-    // Puts the items in the inventory, or in the mail when the inventory is full; the items delivered either way.
+    // Puts each item in the inventory when the whole amount fits, else in the mail; the items delivered either way.
+    // The room is checked first: an Add over the slot maximum fills the stacks before it finds the slots short,
+    // and mailing the full amount after that gave the filled part twice.
     private static List<Item> Deliver(GameSession session, List<Item> items, int eventId) {
         var delivered = new List<Item>();
         foreach (Item item in items) {
-            if (session.Item.Inventory.Add(item, true) || session.Item.MailItem(item)) {
+            bool added = session.Item.Inventory.HasRoomFor(item) && session.Item.Inventory.Add(item, true);
+            if (added || session.Item.MailItem(item)) {
                 delivered.Add(item);
                 continue;
             }
@@ -277,8 +280,10 @@ public class MicrogameHandler : FieldPacketHandler {
         bool inviteePaid = inviterPaid && invitee.Session.Item.Inventory.Consume(inviteeTicket.Uid, 1);
         if (!inviteePaid) {
             if (inviterPaid) {
-                Log.Error("RPS event {EventId}: ticket of {Invitee} not consumed after the ticket of {Inviter} was",
+                // The game does not count, so the inviter gets the ticket back.
+                Log.Error("RPS event {EventId}: ticket of {Invitee} not consumed after the ticket of {Inviter} was; giving it back",
                     gameEvent.Id, game.Invitee, game.Inviter);
+                Deliver(inviter.Session, CreateRewards(inviter.Session, [new RewardItem(rps.GameTicketId, (short) inviterTicket.Rarity, 1)], gameEvent.Id), gameEvent.Id);
             }
             inviter.Session.Send(MicrogamePacket.Failed(game.Invitee, RpsRules.ReasonFailed));
             invitee.Session.Send(MicrogamePacket.Failed(game.Inviter, RpsRules.ReasonFailed));
@@ -310,8 +315,9 @@ public class MicrogameHandler : FieldPacketHandler {
         }
 
         // The reward counts as claimed only when at least one item reached the player; otherwise it stays open.
+        // A reward row without items is marked claimed at once.
         List<Item> delivered = Deliver(session, CreateRewards(session, rps.Rewards[index].Rewards, gameEvent.Id), gameEvent.Id);
-        if (delivered.Count == 0) {
+        if (!RpsRules.ClaimSettled(rps.Rewards[index].Rewards.Length, delivered.Count)) {
             return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.RPSRewardsClaimed, RpsRules.AddClaimed(claimed.String(), index));
@@ -507,8 +513,10 @@ public class MicrogameHandler : FieldPacketHandler {
             rewards = rewards.Concat(dance.GoodEndRewards);
         }
         // The step counts as received only when at least one item reached the player; otherwise it stays claimable.
-        List<Item> delivered = Deliver(session, CreateRewards(session, rewards, gameEvent.Id), gameEvent.Id);
-        if (delivered.Count == 0) {
+        // A step without items is marked received at once.
+        List<RewardItem> rewardList = rewards.ToList();
+        List<Item> delivered = Deliver(session, CreateRewards(session, rewardList, gameEvent.Id), gameEvent.Id);
+        if (!RpsRules.ClaimSettled(rewardList.Count, delivered.Count)) {
             return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CoupleDanceRewardState, value);
