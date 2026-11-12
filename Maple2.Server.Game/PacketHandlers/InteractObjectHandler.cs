@@ -137,20 +137,16 @@ public class InteractObjectHandler : FieldPacketHandler {
                 break;
         }
 
-        ICollection<Item> items = new List<Item>();
-        if (interact.Value.Drop.IndividualDropBoxIds.Length > 0) {
-            foreach (int individualDropBoxId in interact.Value.Drop.IndividualDropBoxIds) {
-                ICollection<Item> individualDropBoxItems = session.Field.ItemDrop.GetIndividualDropItems(individualDropBoxId, interact.Value.Drop.Rarity);
-                if (individualDropBoxItems.Count <= 0) {
-                    continue;
-                }
-                items.Add(individualDropBoxItems.ElementAt(Random.Shared.Next(individualDropBoxItems.Count)));
-            }
+        // Each box is rolled for the player (groups, drop counts, weights, job and gender), as an opened item box.
+        // Drop.Rarity is the object's objectDropRank, not an item grade.
+        var items = new List<Item>();
+        foreach (int individualDropBoxId in interact.Value.Drop.IndividualDropBoxIds) {
+            items.AddRange(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, individualDropBoxId));
         }
 
-        ICollection<Item> globalDropBoxItems = new List<Item>();
+        var globalDropBoxItems = new List<Item>();
         foreach (int globalDropBoxId in interact.Value.Drop.GlobalDropBoxIds) {
-            globalDropBoxItems = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level);
+            globalDropBoxItems.AddRange(session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level));
         }
 
         foreach (Item item in globalDropBoxItems) {

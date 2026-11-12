@@ -398,7 +398,6 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        IEnumerable<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId);
         var ingredients = new List<ItemComponent> {
             new ItemComponent(item.Id, -item.Rarity, 1, ItemTag.None),
             new ItemComponent(keyItemId, -1, keyAmountRequired, ItemTag.None),
@@ -418,7 +417,8 @@ public class ItemBoxManager {
                 }
             }
 
-            foreach (Item newItem in items) {
+            // Each box opened is rolled on its own (the roll was made once and its items given for every box).
+            foreach (Item newItem in session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)) {
                 if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }

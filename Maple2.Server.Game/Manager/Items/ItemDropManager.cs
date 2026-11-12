@@ -113,22 +113,21 @@ public class ItemDropManager {
         return GetAllGroups(session, level, entryDict.Values.ToList()).ToList();
     }
 
-    public ICollection<Item> GetIndividualDropItems(int individualDropBoxId, int rarity = -1) {
+    // A box rolled without a player (trigger item spawns, which anyone may pick up): each group rolled as for a player,
+    // by the entries' own weights; entries for a quest or another map are skipped.
+    public ICollection<Item> GetIndividualDropItems(int individualDropBoxId) {
         if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
             return new List<Item>();
         }
 
-        ICollection<Item> items = new List<Item>();
-        foreach (IndividualDropItemTable.Entry group in entryDict.Values) {
-            foreach (IndividualDropItemTable.Item itemEntry in group.Items) {
-                if (itemEntry.MapIds.Length > 0 && !itemEntry.MapIds.Contains(field.Metadata.Id)) {
-                    continue;
-                }
-                items = items.Concat(CreateIndividualDropBoxItems(itemEntry, rarity: rarity)).ToList();
-            }
-        }
+        return PickBoxEntriesWithoutPlayer(entryDict.Values, field.Metadata.Id)
+            .SelectMany(itemEntry => CreateIndividualDropBoxItems(itemEntry)).ToList();
+    }
 
-        return items;
+    internal static IEnumerable<IndividualDropItemTable.Item> PickBoxEntriesWithoutPlayer(IEnumerable<IndividualDropItemTable.Entry> groups, int mapId) {
+        return groups.SelectMany(group => PickGroupEntries(group, group.Items,
+            itemEntry => itemEntry.QuestId == 0 && (itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(mapId)),
+            _ => false, itemEntry => itemEntry.Weight));
     }
 
     private IEnumerable<Item> GetSelectedIndividualDropBoxItem(GameSession session, IEnumerable<IndividualDropItemTable.Item> itemEntries, int index) {

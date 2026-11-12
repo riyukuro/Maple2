@@ -378,7 +378,7 @@ public class FishingManager {
         }
 
         if (spot.IndividualDropBoxId > 0) {
-            ICollection<Item> individualDropItems = session.Field.ItemDrop.GetIndividualDropItems(spot.IndividualDropBoxId, spot.DropRank);
+            ICollection<Item> individualDropItems = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, spot.IndividualDropBoxId);
             foreach (Item item in individualDropItems) {
                 items.Add(item);
                 if (!session.Item.Inventory.Add(item, true)) {
