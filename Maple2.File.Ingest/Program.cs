@@ -69,7 +69,7 @@ string exportedPath = Path.Combine(ms2Root, "Resource/Exported.m2d");
 string serverPath = Path.Combine(ms2Root, "Server.m2d");
 
 if (!File.Exists(xmlPath)) {
-    throw new FileNotFoundException($"Could not find Xml.m2d file at path: {xmlPath}");
+    throw new FileNotFoundException($"Could not find Xml.m2d file at path: {xmlPath}\n" + DataPack.Hint);
 }
 
 // Optional: the Xml.m2d of the client that is played, when it is another version than the data folder's.
@@ -86,12 +86,12 @@ bool originalDropTable = Maple2.File.Ingest.Helpers.ServerDropTable.UseOriginal(
 bool replayAttendGift = Maple2.File.Ingest.Helpers.AttendGiftReplay.Enabled(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.AttendGiftReplay.Option));
 
 if (!File.Exists(exportedPath)) {
-    throw new FileNotFoundException($"Could not find Exported.m2d file at path: {exportedPath}");
+    throw new FileNotFoundException($"Could not find Exported.m2d file at path: {exportedPath}\n" +
+                                    "Exported.m2d is in the Data/Resource folder of a MapleStory 2 client: MS2_DATA_FOLDER is (a copy of) the client's Data folder.");
 }
 
 if (!File.Exists(serverPath)) {
-    throw new FileNotFoundException($"Could not find Server.m2d file at path: {serverPath}\n" +
-                                    "You can download this file from here: https://github.com/Zintixx/MapleStory2-XML/releases/latest");
+    throw new FileNotFoundException($"Could not find Server.m2d file at path: {serverPath}\n" + DataPack.Hint);
 }
 
 string? server = Environment.GetEnvironmentVariable("DB_IP");
