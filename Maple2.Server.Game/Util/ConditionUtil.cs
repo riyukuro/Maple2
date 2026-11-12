@@ -203,8 +203,7 @@ public static class ConditionUtil {
                 break;
             case ConditionType.emotiontime:
             case ConditionType.emotion:
-                if (target.Range != null && target.Range.Value.Min >= session.Player.Value.Character.MapId &&
-                    target.Range.Value.Max <= session.Player.Value.Character.MapId) {
+                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, session.Player.Value.Character.MapId)) {
                     return true;
                 }
 
@@ -234,8 +233,7 @@ public static class ConditionUtil {
             case ConditionType.fish:
             case ConditionType.fish_big:
             case ConditionType.fall_damage:
-                if (target.Range != null && target.Range.Value.Min >= longValue &&
-                    target.Range.Value.Max <= longValue) {
+                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
                     return true;
                 }
 
@@ -275,8 +273,7 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve:
             case ConditionType.chat:
             case ConditionType.character_ability_learn:
-                if (target.Range != null && target.Range.Value.Min >= longValue &&
-                    target.Range.Value.Max <= longValue) {
+                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
                     return true;
                 }
 

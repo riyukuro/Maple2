@@ -99,6 +99,19 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: (long) type, codeLong: 10000001), Is.EqualTo(expected));
     }
 
+    // A target range holds the values from Min to Max (it was tested the wrong way round, so only Min == Max matched).
+    [TestCase(ConditionType.chat, 5, true)]
+    [TestCase(ConditionType.chat, 1, true)]
+    [TestCase(ConditionType.chat, 9, true)]
+    [TestCase(ConditionType.chat, 10, false)]
+    [TestCase(ConditionType.revise_achieve_single_grade, 5, true)]
+    [TestCase(ConditionType.fish, 5, true)]
+    [TestCase(ConditionType.fish, 0, false)]
+    public void TargetRange_CountsTheValuesInside(ConditionType type, long value, bool expected) {
+        var target = new ConditionMetadata.Parameters(Range: new ConditionMetadata.Range<int>(1, 9));
+        Assert.That(target.CheckTarget(null!, type, longValue: value), Is.EqualTo(expected));
+    }
+
     // A dungeon clear counts for dungeon_clear_group when the room's group type is one of its codes.
     [TestCase(DungeonGroupType.normal, true)]
     [TestCase(DungeonGroupType.raid, true)]
