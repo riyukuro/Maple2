@@ -260,7 +260,7 @@ UpdateDatabase(metadataContext, new RideMapper(xmlReader));
 UpdateDatabase(metadataContext, new ScriptMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new SkillMapper(xmlReader, language));
 UpdateDatabase(metadataContext, new TableMapper(xmlReader, language, playedReader, serverReader));
-UpdateDatabase(metadataContext, new AchievementMapper(xmlReader));
+UpdateDatabase(metadataContext, new AchievementMapper(xmlReader, playedReader));
 UpdateDatabase(metadataContext, new FunctionCubeMapper(xmlReader));
 UpdateDatabase(metadataContext, new BanWordMapper(xmlReader));
 

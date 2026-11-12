@@ -3,6 +3,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager;
 
@@ -31,6 +32,16 @@ public class CurrencyManager {
             long delta = Math.Min(value, Constant.MaxMeret) - Currency.Meret;
             Currency.Meret = Math.Min(value, Constant.MaxMeret);
             session.Send(CurrencyPacket.UpdateMeret(Currency, delta));
+            ReportMeretSpent(delta);
+        }
+    }
+
+    // use_merat (trophy 23200041) counts the merets spent: KMS2 sends its update right after each Meret packet with
+    // a negative change, the value up by the amount spent.
+    private void ReportMeretSpent(long delta) {
+        long spent = TrophyReportRules.MeretSpent(delta);
+        if (spent > 0) {
+            session.ConditionUpdate(ConditionType.use_merat, counter: spent);
         }
     }
 
@@ -44,6 +55,7 @@ public class CurrencyManager {
             long delta = Math.Min(value, Constant.MaxMeret) - Currency.GameMeret;
             Currency.GameMeret = Math.Min(value, Constant.MaxMeret);
             session.Send(CurrencyPacket.UpdateMeret(Currency, delta));
+            ReportMeretSpent(delta);
         }
     }
 

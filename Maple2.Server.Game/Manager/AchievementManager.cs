@@ -57,6 +57,9 @@ public sealed class AchievementManager {
     /// <param name="codeLong">Trophy grade condition code parameter in long.</param>
     public void Update(ConditionType conditionType, long count = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
         foreach (AchievementMetadata metadata in session.AchievementMetadata.GetType(conditionType)) {
+            if (metadata.Locked) {
+                continue;
+            }
             IDictionary<int, Achievement> achievements = metadata.AccountWide ? accountValues : characterValues;
             if (!achievements.TryGetValue(metadata.Id, out Achievement? achievement) || !metadata.Grades.TryGetValue(achievement.CurrentGrade, out AchievementMetadataGrade? grade)) {
                 int lowestgradeValue = metadata.Grades.Keys.Min();

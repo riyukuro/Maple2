@@ -893,6 +893,10 @@ public class DungeonManager {
         // CooldownTimestamp is not the room cooldown: the client reads it as the expiry of CurrentRecord, and
         // nothing on the server read the cooldown written here. UpdateRankScore sets it.
         session.Send(DungeonRoomPacket.Update(record));
+        // KMS2 sends the dungeon_first_clear update right after the record update that shows 1 clear.
+        if (TrophyReportRules.IsFirstClear(metadata.GroupType, record.TotalClears)) {
+            session.ConditionUpdate(ConditionType.dungeon_first_clear, codeLong: record.DungeonId);
+        }
     }
 
     private int GetWeeklyClearCount(DungeonRecord record) {

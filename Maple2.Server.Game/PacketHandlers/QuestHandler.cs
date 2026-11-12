@@ -390,6 +390,7 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         if (metadata.GoToMapId is Constant.DefaultHomeMapId) {
+            session.ConditionUpdate(ConditionType.home_goto);
             session.Migrate(Constant.DefaultHomeMapId, session.AccountId);
             return;
         }

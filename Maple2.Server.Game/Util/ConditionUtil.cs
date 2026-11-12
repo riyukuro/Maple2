@@ -99,6 +99,7 @@ public static class ConditionUtil {
             case ConditionType.pet_taming:
             case ConditionType.openItemBox:
             case ConditionType.dungeon_clear:
+            case ConditionType.dungeon_first_clear:
             case ConditionType.dungeon_clear_group:
             case ConditionType.dungeon_rank_clear:
             case ConditionType.dungeon_rank:
@@ -191,6 +192,8 @@ public static class ConditionUtil {
             case ConditionType.wedding_hall_cancel:
             case ConditionType.item_gear_score:
             case ConditionType.killcount:
+            case ConditionType.use_merat:
+            case ConditionType.home_goto:
             case ConditionType.revival:
             case ConditionType.home_doctor:
             case ConditionType.resolve_panelty:
@@ -381,6 +384,8 @@ public static class ConditionUtil {
             case ConditionType.explore:
             case ConditionType.item_gear_score:
             case ConditionType.killcount:
+            case ConditionType.use_merat:
+            case ConditionType.home_goto:
             case ConditionType.revival:
             case ConditionType.home_doctor:
             case ConditionType.resolve_panelty:

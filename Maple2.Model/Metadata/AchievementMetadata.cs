@@ -8,7 +8,10 @@ public record AchievementMetadata(
     bool AccountWide,
     AchievementCategory Category,
     string[] CategoryTags,
-    IReadOnlyDictionary<int, AchievementMetadataGrade> Grades) : ISearchResult;
+    IReadOnlyDictionary<int, AchievementMetadataGrade> Grades,
+    // The achieve XML's locking attribute, of the data folder's pack or the played client's
+    // (PlayedClientAchievements): the client shows the trophy locked and KMS2 does not count it.
+    bool Locked = false) : ISearchResult;
 
 public record AchievementMetadataGrade(
     int Grade,

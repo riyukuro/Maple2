@@ -1,4 +1,6 @@
-﻿using Maple2.File.IO;
+﻿using System.Xml;
+using Maple2.File.IO;
+using M2dXmlGenerator;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Enum;
 using Maple2.File.Parser.Xml.Achieve;
@@ -11,11 +13,25 @@ namespace Maple2.File.Ingest.Mapper;
 public class AchievementMapper : TypeMapper<AchievementMetadata> {
     private readonly AchieveParser parser;
 
-    public AchievementMapper(M2dReader xmlReader) {
+    private readonly M2dReader? playedReader;
+
+    public AchievementMapper(M2dReader xmlReader, M2dReader? playedReader = null) {
         parser = new AchieveParser(xmlReader);
+        this.playedReader = playedReader;
     }
 
+    private static bool RowAvailable(XmlElement node) =>
+        FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+
     protected override IEnumerable<AchievementMetadata> Map() {
+        // The trophies the played client holds locked (PlayedClientAchievements); empty without a played client.
+        HashSet<int> playedLocked = playedReader == null ? []
+            : PlayedClientAchievements.LockedIds(
+                playedReader.Files.Where(file => PlayedClientAchievements.IsAchieveFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
+                RowAvailable);
+        if (playedLocked.Count > 0) {
+            Console.WriteLine($"achievements: {playedLocked.Count} locked in the played client's achieve data");
+        }
         foreach ((int id, string name, AchieveData data) in parser.Parse()) {
             var grades = new Dictionary<int, AchievementMetadataGrade>();
             foreach (Grade grade in data.grade) {
@@ -47,7 +63,8 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                 AccountWide: data.account,
                 Category: category,
                 CategoryTags: tags,
-                Grades: grades);
+                Grades: grades,
+                Locked: data.locking || playedLocked.Contains(id));
         }
     }
 

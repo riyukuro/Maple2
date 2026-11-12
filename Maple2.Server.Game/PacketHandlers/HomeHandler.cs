@@ -132,6 +132,8 @@ public class HomeHandler : PacketHandler<GameSession> {
             session.Housing.InitNewHome(session.Player.Value.Character.Name, exportedUgcMap);
         }
 
+        // home_goto (trophy 23500019): KMS2 sends its update, up by 1, just before the migrate packet to the own home.
+        session.ConditionUpdate(ConditionType.home_goto);
         session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId);
     }
 }
