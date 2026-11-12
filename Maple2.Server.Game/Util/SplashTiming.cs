@@ -15,4 +15,12 @@ public static class SplashTiming {
         }
         return delay + interval;
     }
+
+    // What a fire of a region sends. The client plays the region's hit effect for every region damage packet,
+    // before it reads the targets (CSceneStateGame::OnRegionSkillDamage), and KMS2 sends one for each fire: four
+    // in five name no target, and no target packet goes before them. A cube skill's fire (the tile packet) is
+    // sent with its targets only, after their target packet, as before.
+    public static (bool Targets, bool Damage) FirePackets(bool cube, int targetCount) {
+        return cube ? (targetCount > 0, targetCount > 0) : (false, true);
+    }
 }

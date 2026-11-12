@@ -212,8 +212,11 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                             Index = (byte) targetRecords.Count,
                         });
                     }
-                    if (targetRecords.Count > 0) {
+                    (bool sendTargets, bool sendDamage) = SplashTiming.FirePackets(Source == SkillSource.Cube, targetRecords.Count);
+                    if (sendTargets) {
                         Field.Broadcast(SkillDamagePacket.Target(record, targetRecords));
+                    }
+                    if (sendDamage) {
                         Field.Broadcast(GetDamagePacket(damage));
                     }
 

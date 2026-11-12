@@ -28,4 +28,12 @@ public class SplashTimingTests {
         Assert.That(SplashTiming.FirstFire(false, true, 10000, 0), Is.EqualTo(0));
         Assert.That(SplashTiming.FirstFire(false, true, 0, 10000), Is.EqualTo(10000));
     }
+
+    [Test]
+    public void ARegionFireIsSentWithoutTargetsToo() {
+        Assert.That(SplashTiming.FirePackets(false, 0), Is.EqualTo((false, true)), "the hit effect plays");
+        Assert.That(SplashTiming.FirePackets(false, 3), Is.EqualTo((false, true)), "no target packet");
+        Assert.That(SplashTiming.FirePackets(true, 0), Is.EqualTo((false, false)));
+        Assert.That(SplashTiming.FirePackets(true, 1), Is.EqualTo((true, true)));
+    }
 }
