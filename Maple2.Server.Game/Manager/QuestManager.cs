@@ -6,6 +6,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
@@ -423,6 +424,24 @@ public sealed class QuestManager {
     public static bool CanStartAgain(Quest quest) {
         return quest.State == QuestState.Completed && quest.Metadata.Basic.Type != QuestType.GuildQuest
                && QuestRules.CanStartAgain(quest.Metadata.Basic.Repeat, quest.Metadata.Basic.ResetWeekday, quest.StartTime, DateTime.Now);
+    }
+
+    // QuestRules.IsExpired with the quest's term: the QuestTag event of its tag. A stamp quest is started without one
+    // (CanStart), so its tag sets no end.
+    public bool IsExpired(Quest quest) {
+        QuestMetadataBasic basic = quest.Metadata.Basic;
+        if (!string.IsNullOrEmpty(basic.EventTag) && StampQuests().Contains(quest.Id)) {
+            basic = basic with { EventTag = string.Empty };
+        }
+        (long, long)? term = null;
+        if (!string.IsNullOrEmpty(basic.EventTag)) {
+            GameEvent? gameEvent = session.FindEvent(GameEventType.QuestTag)
+                .FirstOrDefault(gameEvent => gameEvent.Metadata.Data is QuestTag tag && tag.Tag == basic.EventTag);
+            if (gameEvent != null) {
+                term = (gameEvent.StartTime, gameEvent.EndTime);
+            }
+        }
+        return QuestRules.IsExpired(basic, quest.StartTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), term);
     }
 
     public bool CanComplete(Quest quest) {

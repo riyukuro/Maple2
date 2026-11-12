@@ -75,6 +75,45 @@ public static class QuestRules {
     }
 
     // Quest 2 (Abandon): a forfeitable quest known to the played client that is not completed, for the same reason.
+    // CQuestCommon::GetEndTime (questdata.cpp:253), in epoch seconds: a reset weekday gives the start of that weekday
+    // after the start, else a duration the start plus its minutes (a quest not started counts from now); an event tag
+    // gives the end of its term (the QuestTag event), 0 when the term is gone or the quest was started outside it;
+    // with both, the earlier one.
+    public static long EndTime(QuestMetadataBasic basic, long startTime, long now, (long Start, long End)? term) {
+        long period = 0;
+        long start = startTime != 0 ? startTime : now;
+        if (basic.ResetWeekday != 0) {
+            DateTime local = DateTimeOffset.FromUnixTimeSeconds(start).LocalDateTime;
+            period = new DateTimeOffset(NextWeekdayStart(basic.ResetWeekday, local)).ToUnixTimeSeconds();
+        } else if (basic.DurationMinutes != 0) {
+            period = start + basic.DurationMinutes * 60L;
+        }
+        long eventEnd = 0;
+        if (!string.IsNullOrEmpty(basic.EventTag)) {
+            if (term is not { } t) {
+                return 0;
+            }
+            if (startTime != 0 && !(t.Start <= startTime && startTime < t.End)) {
+                return 0;
+            }
+            eventEnd = t.End;
+        }
+        if (period != 0 && eventEnd != 0) {
+            return Math.Min(period, eventEnd);
+        }
+        return period != 0 ? period : eventEnd;
+    }
+
+    // CQuestCommon::IsExpired (questdata.cpp:241): a quest with an end time (CanExpire's fields) whose end has come.
+    // The shared completion check (FUN_140746ba0, questdata.cpp:653) refuses such a quest with invalid_date (4)
+    // before it looks at the state or the conditions.
+    public static bool IsExpired(QuestMetadataBasic basic, long startTime, long now, (long Start, long End)? term) {
+        if (basic.ResetWeekday == 0 && basic.DurationMinutes == 0 && string.IsNullOrEmpty(basic.EventTag)) {
+            return false;
+        }
+        return now >= EndTime(basic, startTime, now, term);
+    }
+
     public static bool CanForfeit(QuestMetadataBasic basic, QuestState state) {
         return basic.Forfeitable && state != QuestState.Completed && PlayedClientQuests.Known(basic);
     }

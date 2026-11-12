@@ -217,8 +217,17 @@ public class QuestHandler : FieldPacketHandler {
         int npcObjectId = packet.ReadInt();
 
         // A quest that is not held, is already completed or has an open condition: the client's own text (Quest 0),
-        // and nothing is given. A dead player gets its own text. A full bag is answered by Complete.
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || !session.Quest.CanComplete(quest)) {
+        // and nothing is given. A held quest whose end time has come gets invalid_date first, as the shared check
+        // (FUN_140746ba0) gives it. A dead player gets its own text. A full bag is answered by Complete.
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest)) {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
+            return;
+        }
+        if (session.Quest.IsExpired(quest)) {
+            session.Send(QuestPacket.Error(QuestError.s_quest_error_invalid_date));
+            return;
+        }
+        if (!session.Quest.CanComplete(quest)) {
             session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
             return;
         }

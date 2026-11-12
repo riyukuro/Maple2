@@ -622,4 +622,50 @@ public class QuestHandlerTests {
         quest.State = QuestState.Started;
         Assert.That(NpcTalkUtil.GetQuestScriptState(session, bare, Npc), Is.Null);
     }
+
+    // A timed quest whose end time has come (a duration that ran out, an event tag whose QuestTag event is over) gets
+    // invalid_date (4) and nothing, as the shared completion check gives it; inside its time it completes.
+    [TestCase(30, -10, false)]
+    [TestCase(30, -40, true)]
+    public void Complete_OfATimedQuestAfterItsEndGivesInvalidDate(int minutes, int startedMinutesAgo, bool expired) {
+        GameSession session = Login();
+        Quest quest = test.StartQuest(Data() with { Basic = Data().Basic with { DurationMinutes = minutes } });
+        quest.Conditions[0].Counter = 1;
+        quest.StartTime = DateTimeOffset.UtcNow.AddMinutes(startedMinutesAgo).ToUnixTimeSeconds();
+        long meso = session.Currency.Meso;
+
+        Complete(session);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            if (expired) {
+                Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_invalid_date) }));
+            } else {
+                Assert.That(Convert.ToHexString(sent[0]), Is.EqualTo(Convert.ToHexString(QuestPacket.Complete(quest).ToArray())));
+            }
+            Assert.That(quest.State, Is.EqualTo(expired ? QuestState.Started : QuestState.Completed));
+            Assert.That(session.Currency.Meso, Is.EqualTo(expired ? meso : meso + 100));
+            Assert.That(Held(session), Is.EqualTo(expired ? 0 : 2));
+        });
+    }
+
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void Complete_OfAnEventTagQuestNeedsItsTerm(bool live, bool expired) {
+        var prepared = new TestGameSession();
+        if (live) {
+            prepared.AddEvent(1, GameEventType.QuestTag, new QuestTag("tag"));
+        }
+        GameSession session = Login(prepared: prepared);
+        Quest quest = test.StartQuest(Data() with { Basic = Data().Basic with { EventTag = "tag" } });
+        quest.Conditions[0].Counter = 1;
+        quest.StartTime = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds();
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString).First() == Error(QuestError.s_quest_error_invalid_date), Is.EqualTo(expired));
+            Assert.That(quest.State, Is.EqualTo(expired ? QuestState.Started : QuestState.Completed));
+        });
+    }
 }

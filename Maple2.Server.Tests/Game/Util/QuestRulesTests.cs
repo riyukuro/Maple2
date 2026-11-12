@@ -195,4 +195,47 @@ public class QuestRulesTests {
         };
         Assert.That(QuestRules.CanCompleteAt(data, named, npcId, 2000023), Is.EqualTo(expected));
     }
+
+    // CQuestCommon::GetEndTime / IsExpired (commonfiles/questdata.cpp:241, 253): a duration ends minutes after the
+    // start, a reset weekday at the start of that weekday after the start, an event tag at its term's end (0 when the
+    // term is gone or the quest was started outside it), and both at the earlier one. A quest with none never ends.
+    private static Maple2.Model.Metadata.QuestMetadataBasic Basic(int weekday = 0, int minutes = 0, string tag = "") =>
+        TestGameSession.QuestData(90000001).Basic with { ResetWeekday = weekday, DurationMinutes = minutes, EventTag = tag };
+
+    private const long Start = 1_800_000_000;
+
+    [TestCase(0, false)]
+    [TestCase(30 * 60 - 1, false)]
+    [TestCase(30 * 60, true)]
+    public void Duration_EndsMinutesAfterTheStart(long elapsed, bool expired) {
+        Assert.That(QuestRules.EndTime(Basic(minutes: 30), Start, Start + elapsed, null), Is.EqualTo(Start + 30 * 60));
+        Assert.That(QuestRules.IsExpired(Basic(minutes: 30), Start, Start + elapsed, null), Is.EqualTo(expired));
+    }
+
+    [Test]
+    public void Weekday_EndsAtTheNextStartOfThatWeekday() {
+        // A Monday (weekday 2) start ends at the next Monday's midnight, local time.
+        var monday = new DateTime(2026, 11, 9, 10, 0, 0, DateTimeKind.Local);
+        long start = new DateTimeOffset(monday).ToUnixTimeSeconds();
+        long end = new DateTimeOffset(new DateTime(2026, 11, 16, 0, 0, 0, DateTimeKind.Local)).ToUnixTimeSeconds();
+        Assert.That(QuestRules.EndTime(Basic(weekday: 2), start, start, null), Is.EqualTo(end));
+        Assert.That(QuestRules.IsExpired(Basic(weekday: 2), start, end - 1, null), Is.False);
+        Assert.That(QuestRules.IsExpired(Basic(weekday: 2), start, end, null), Is.True);
+    }
+
+    [Test]
+    public void EventTag_EndsWithItsTerm() {
+        (long, long) term = (Start - 100, Start + 1000);
+        Assert.That(QuestRules.EndTime(Basic(tag: "t"), Start, Start, term), Is.EqualTo(Start + 1000));
+        Assert.That(QuestRules.EndTime(Basic(tag: "t"), Start, Start, null), Is.EqualTo(0));
+        Assert.That(QuestRules.EndTime(Basic(tag: "t"), Start - 200, Start, term), Is.EqualTo(0));
+        Assert.That(QuestRules.EndTime(Basic(minutes: 10, tag: "t"), Start, Start, term), Is.EqualTo(Start + 600));
+        Assert.That(QuestRules.IsExpired(Basic(tag: "t"), Start, Start, term), Is.False);
+        Assert.That(QuestRules.IsExpired(Basic(tag: "t"), Start, Start, null), Is.True);
+    }
+
+    [Test]
+    public void NoEndFields_NeverExpires() {
+        Assert.That(QuestRules.IsExpired(Basic(), Start, long.MaxValue, null), Is.False);
+    }
 }
