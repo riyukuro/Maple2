@@ -2761,6 +2761,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         constants = constants with {
             WarpOpenContinents = ConstantsTable.ReadList(rowLookup, "WarpOpenContinent"),
             EquipmentSellPriceFactors = ConstantsTable.ReadMultiControl(MultiControlRows(), "equipmentSellPrice"),
+            QuestRewardMesoFactors = ConstantsTable.ReadMultiControl(MultiControlRows(), "questRewardMeso"),
         };
 
         // Prices: the client's own row for this locale wins, so the server takes what the client's box shows.

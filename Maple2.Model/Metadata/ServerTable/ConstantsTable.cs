@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.Model.Enum;
 
 namespace Maple2.Model.Metadata;
 
@@ -959,7 +960,9 @@ public record ConstantsTable(
     // The whole WarpOpenContinent list, read as the client reads it. Null in a table made before this field.
     IReadOnlyList<int>? WarpOpenContinents = null,
     // The multicontrol equipmentSellPrice factors of the locale by rarity. Null in a table made before this field.
-    IReadOnlyDictionary<int, float>? EquipmentSellPriceFactors = null
+    IReadOnlyDictionary<int, float>? EquipmentSellPriceFactors = null,
+    // The multicontrol questRewardMeso factors of the locale by quest type. Null in a table made before this field.
+    IReadOnlyDictionary<int, float>? QuestRewardMesoFactors = null
 ) : ServerTable {
     // Client: the multicontrol table (table/<locale>/multicontrol.xml), rows <multi type key value>: per type a
     // map of key to factor; the first row of a key stays, a row without a value is 1.
@@ -980,6 +983,11 @@ public record ConstantsTable(
     // A rarity without a row is not changed (factor 1).
     public float EquipmentSellPriceFactor(int rarity) {
         return EquipmentSellPriceFactors != null && EquipmentSellPriceFactors.TryGetValue(rarity, out float factor) ? factor : 1f;
+    }
+
+    // CGloabalFactor::GetMultiControlFactor(MULTI_QUEST_REWARD_MESO, type): a quest type without a row is 1.
+    public float QuestRewardMesoFactor(QuestType type) {
+        return QuestRewardMesoFactors != null && QuestRewardMesoFactors.TryGetValue((int) type, out float factor) ? factor : 1f;
     }
 
     public int SellPriceMax(int rarity) {

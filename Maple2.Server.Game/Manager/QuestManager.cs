@@ -513,8 +513,15 @@ public sealed class QuestManager {
         quest.CompletionCount++;
         session.Send(QuestPacket.Complete(quest));
 
-        if (reward.Meso > 0) {
-            session.Currency.Meso += reward.Meso;
+        // The meso the reward line shows: a guild quest's relativeMeso row at the player's level with the guild bonus,
+        // else the fixed money.
+        long? relativeMeso = reward.RelativeMeso != 0
+            ? session.TableMetadata.RewardContentTable.RewardMeso(reward.RelativeMeso, session.Player.Value.Character.Level)
+            : null;
+        long meso = QuestMesoRules.Meso(reward.Meso, relativeMeso, session.ServerTableMetadata.ConstantsTable.QuestRewardMesoFactor(quest.Metadata.Basic.Type),
+            quest.Metadata.Basic.Type == QuestType.GuildQuest ? guildFactor?.UserMeso : null);
+        if (meso > 0) {
+            session.Currency.Meso += meso;
         }
 
         // The exp the reward line shows: the fixed exp or the relativeExp curve at the player's level, whichever is

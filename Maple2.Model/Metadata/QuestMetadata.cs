@@ -81,7 +81,10 @@ public record QuestMetadataReward(
     List<QuestMetadataReward.Item> EssentialItem,
     List<QuestMetadataReward.Item> EssentialJobItem,
     // useMainFamePoint: when set, the reward gives the quest's alliance fame points (Lua calcQuestRewardFamePoint).
-    int UseMainFamePoint = 0) {
+    int UseMainFamePoint = 0,
+    // relativeMeso: the reward contents row (rewardcontent.xml rewardID) whose meso the reward gives instead of the
+    // fixed money; 0 for none. The guild quests' GuildQuest (1003) and GuildWeeklyQuest (1004).
+    int RelativeMeso = 0) {
 
     public record Item(int Id, int Rarity, int Amount);
 }

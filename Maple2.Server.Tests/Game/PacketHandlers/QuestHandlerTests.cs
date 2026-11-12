@@ -305,6 +305,33 @@ public class QuestHandlerTests {
         });
     }
 
+    // A guild quest's relativeMeso (GuildQuest, rewardcontent 1003): the meso of its row at the player's level instead
+    // of the fixed money. Without a guild there is no guild bonus. Made-up amounts.
+    [Test]
+    public void Complete_OfARelativeMesoQuestGivesTheTablesMeso() {
+        GameSession session = Login();
+        int level = session.Player.Value.Character.Level;
+        test.SetTable(new RewardContentTable(
+            new Dictionary<int, RewardContentTable.Base> { [1003] = new(1003, MesoTableId: 2, ExpTableId: 0, MesoFactor: 1f, ExpFactor: 0f, ItemTableId: 0, PrestigeExpTableId: 0) },
+            new Dictionary<int, RewardContentTable.Item>(), new Dictionary<int, long>(),
+            new Dictionary<int, Dictionary<int, long>> { [2] = new() { [level] = 4100 } }, new Dictionary<int, long>()));
+        QuestMetadata data = Data();
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Type = QuestType.GuildQuest },
+            CompleteReward = data.CompleteReward with { Meso = 0, RelativeMeso = 1003 },
+        });
+        quest.Conditions[0].Counter = 1;
+        long meso = session.Currency.Meso;
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso + 4100));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // The quest that ends a job change row (the awakening): the job, the skill tree to the field (Job 2) after the
     // quest's packet, the job trophies' count and the flag that updates the other players' copy.
     [Test]
