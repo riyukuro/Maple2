@@ -713,8 +713,10 @@ public class DungeonManager {
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
 
             ICollection<Item> items = [];
+            // Each box is rolled for the player as an opened item box is (drop count, smart drop by job, gender, level):
+            // a room box such as 21001001 holds every job's gear, and gave all 55 entries at once unrolled.
             foreach (int boxId in DungeonRoomRules.ClearDropBoxIds(rewardMetadata)) {
-                items = items.Concat(Lobby.ItemDrop.GetIndividualDropItems(boxId)).ToList();
+                items = items.Concat(Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)).ToList();
                 items = items.Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level)).ToList();
             }
 
@@ -756,7 +758,7 @@ public class DungeonManager {
         UserRecord.Flag |= DungeonBonusFlag.Helper;
 
         foreach (int boxId in Metadata.HelperRewardDropBoxIds ?? []) {
-            foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level))) {
+            foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level))) {
                 UserRecord.RewardItems.Add(item);
                 if (!session.Item.Inventory.Add(item, true)) {
                     session.Item.MailItem(item);

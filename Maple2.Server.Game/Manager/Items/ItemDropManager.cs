@@ -153,64 +153,79 @@ public class ItemDropManager {
                 itemEntries = GetGenderedEntries(itemEntries, session.Player.Value.Character.Gender).ToList();
             }
 
-            var itemsAmount = new WeightedSet<IndividualDropItemTable.Entry.DropCount>();
-            foreach (IndividualDropItemTable.Entry.DropCount dropCount in group.DropCounts) {
-                itemsAmount.Add(dropCount, dropCount.Probability);
-            }
-
-            int amount = itemsAmount.Get().Count;
-            if (amount == 0) {
-                continue;
-            }
-
             if (index >= 0) {
-                items = items.Concat(GetSelectedIndividualDropBoxItem(session, itemEntries, index)).ToList();
-                continue;
-            }
-
-            // some boxes have a smart drop rate, but the items dont have a weight. If that's the case, just get the item for the job. if it doesn't exist, skip.
-            if (group.SmartDropRate > 0 && itemEntries.All(x => x.Weight == 0)) {
-                IndividualDropItemTable.Item? jobRecommendedItems = itemEntries.FirstOrDefault(x => x.Ids.Length > 0 && IsItemJobRecommended(x.Ids.FirstOrDefault(), session.Player.Value.Character.Job.Code()));
-                if (jobRecommendedItems is not null) {
-                    items = items.Concat(CreateIndividualDropBoxItems(jobRecommendedItems, session.Player.Value.Character)).ToList();
-                    continue;
+                if (RollDropCount(group) > 0) {
+                    items = items.Concat(GetSelectedIndividualDropBoxItem(session, itemEntries, index)).ToList();
                 }
                 continue;
             }
 
-            var weightedItems = new WeightedSet<IndividualDropItemTable.Item>();
-            foreach (IndividualDropItemTable.Item itemEntry in itemEntries.OrderBy(_ => Random.Shared.Next())) {
-                if (itemEntry.QuestId > 0) {
-                    if (!session.Quest.TryGetQuest(itemEntry.QuestId, out Quest? quest) || quest.State != QuestState.Started) {
-                        continue;
-                    }
-                }
-
-                if (itemEntry.MapIds.Length > 0 && !itemEntry.MapIds.Contains(field.Metadata.Id)) {
-                    continue;
-                }
-
-                int weight;
-                if (group.SmartDropRate > 0) {
-                    weight = GetWeightByJob(itemEntry.Ids.FirstOrDefault(), session.Player.Value.Character.Job.Code(), itemEntry.Weight, itemEntry.ProperJobWeight, itemEntry.ImproperJobWeight);
-                } else {
-                    weight = itemEntry.Weight;
-                }
-
-                weightedItems.Add(itemEntry, weight);
-            }
-
-            if (weightedItems.Count == 0) {
-                continue;
-            }
-
-            for (int i = 0; i < amount; i++) {
-                IndividualDropItemTable.Item selectedItem = weightedItems.Get();
+            JobCode job = session.Player.Value.Character.Job.Code();
+            IEnumerable<IndividualDropItemTable.Item> picked = PickGroupEntries(group, itemEntries,
+                itemEntry => IsEntryAvailable(session, itemEntry),
+                itemId => IsItemJobRecommended(itemId, job),
+                itemEntry => GetWeightByJob(itemEntry.Ids.FirstOrDefault(), job, itemEntry.Weight, itemEntry.ProperJobWeight, itemEntry.ImproperJobWeight));
+            foreach (IndividualDropItemTable.Item selectedItem in picked) {
                 items = items.Concat(CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character)).ToList();
             }
         }
 
         return items;
+    }
+
+    // The group's drop count: one of its DropCounts rows by probability (a row without a count gives nothing).
+    private static int RollDropCount(IndividualDropItemTable.Entry group) {
+        var itemsAmount = new WeightedSet<IndividualDropItemTable.Entry.DropCount>();
+        foreach (IndividualDropItemTable.Entry.DropCount dropCount in group.DropCounts) {
+            itemsAmount.Add(dropCount, dropCount.Probability);
+        }
+        return itemsAmount.Count > 0 ? itemsAmount.Get().Count : 0;
+    }
+
+    private bool IsEntryAvailable(GameSession session, IndividualDropItemTable.Item itemEntry) {
+        if (itemEntry.QuestId > 0) {
+            if (!session.Quest.TryGetQuest(itemEntry.QuestId, out Quest? quest) || quest.State != QuestState.Started) {
+                return false;
+            }
+        }
+        return itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(field.Metadata.Id);
+    }
+
+    // The entries one rolled group of an individual drop box gives: its drop count rolled, then that many entries
+    // picked by weight (by the player's job when the group has a smart drop rate). A smart drop group whose entries
+    // have no weight gives the first entry for the player's job, once.
+    internal static IEnumerable<IndividualDropItemTable.Item> PickGroupEntries(IndividualDropItemTable.Entry group,
+            ICollection<IndividualDropItemTable.Item> itemEntries, Func<IndividualDropItemTable.Item, bool> available,
+            Func<int, bool> jobRecommended, Func<IndividualDropItemTable.Item, int> jobWeight) {
+        int amount = RollDropCount(group);
+        if (amount == 0) {
+            yield break;
+        }
+
+        // some boxes have a smart drop rate, but the items dont have a weight. If that's the case, just get the item for the job. if it doesn't exist, skip.
+        if (group.SmartDropRate > 0 && itemEntries.All(x => x.Weight == 0)) {
+            IndividualDropItemTable.Item? jobRecommendedItems = itemEntries.FirstOrDefault(x => x.Ids.Length > 0 && jobRecommended(x.Ids.FirstOrDefault()));
+            if (jobRecommendedItems is not null) {
+                yield return jobRecommendedItems;
+            }
+            yield break;
+        }
+
+        var weightedItems = new WeightedSet<IndividualDropItemTable.Item>();
+        foreach (IndividualDropItemTable.Item itemEntry in itemEntries.OrderBy(_ => Random.Shared.Next())) {
+            if (!available(itemEntry)) {
+                continue;
+            }
+            weightedItems.Add(itemEntry, group.SmartDropRate > 0 ? jobWeight(itemEntry) : itemEntry.Weight);
+        }
+
+        if (weightedItems.Count == 0) {
+            yield break;
+        }
+
+        for (int i = 0; i < amount; i++) {
+            yield return weightedItems.Get();
+        }
     }
 
     private IEnumerable<Item> CreateIndividualDropBoxItems(IndividualDropItemTable.Item selectedItem, Character? character = null, int rarity = -1) {
