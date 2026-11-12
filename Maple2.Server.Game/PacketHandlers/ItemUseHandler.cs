@@ -11,6 +11,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -180,6 +181,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.PetTraining:
                 HandlePetTraining(session, item, packet);
                 break;
+            case ItemFunction.UGCMapPackage:
+                HandleUgcMapPackage(session, item, packet);
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -218,6 +222,46 @@ public class ItemUseHandler : FieldPacketHandler {
         // The client has a blueprint bill pending for this item (FUN_140ee8610, uiugccubebilldialog.cpp:181) and
         // confirms it with RequestCube 70. The bill is not a preview, so the confirm is sent.
         session.Send(CubePacket.CalculateEstimate(result.cubeCosts, result.cubeCount, preview: false));
+    }
+
+    // An interior package (UgcMapPackageRules): the text is "false" or "true". The client's checks are made again, with
+    // its messages: the owner's indoor home, a package the server has, and for "false" a home of the package's size
+    // with no cubes. The package is used up, then built (HousingManager.InstallPackage).
+    private static void HandleUgcMapPackage(GameSession session, Item item, IByteReader packet) {
+        if (UgcMapPackageRules.Confirmed(packet.ReadUnicodeString()) is not { } confirmed) {
+            return;
+        }
+        void Refuse(StringCode code) => session.Send(NoticePacket.Message(code, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+
+        if (session.Field is not HomeFieldManager home || session.Field.MapId != session.Player.Value.Home.Indoor.MapId) {
+            Refuse(StringCode.s_err_ugcmap_package_should_use_in_indoor);
+            return;
+        }
+        if (home.OwnerId != session.AccountId) {
+            Refuse(StringCode.s_err_ugcmap_package_cant_use_in_others_home);
+            return;
+        }
+        Plot? plot = session.Housing.GetIndoorPlot();
+        if (plot is null || plot.IsPlanner) {
+            Refuse(StringCode.s_err_ugcmap_package_not_a_valid_indoor);
+            return;
+        }
+        string name = item.Metadata.Function?.Parameters.Trim() ?? "";
+        if (name.Length == 0 || !session.MapMetadata.TryGetExportedUgc(name, out ExportedUgcMapMetadata? package)
+                || UgcMapPackageRules.Size(package) is not { } size) {
+            Refuse(StringCode.s_err_ugcmap_package_not_a_valid_package_item);
+            return;
+        }
+        Home owner = session.Player.Value.Home;
+        if (UgcMapPackageRules.Refusal(confirmed, owner.Area, owner.Height, plot.Cubes.Count, size) is { } refusal) {
+            Refuse(refusal);
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            Refuse(StringCode.s_err_ugcmap_package_failed_to_consume_package_item);
+            return;
+        }
+        session.Housing.InstallPackage(plot, package);
     }
 
     private static void HandleStoryBook(GameSession session, Item item) {

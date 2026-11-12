@@ -350,6 +350,8 @@ public sealed class TestGameSession {
         typeof(Actor<Player>).GetField("<Value>k__BackingField", Any)!.SetValue(fieldPlayer, player);
         typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(fieldPlayer, player.ObjectId);
         typeof(Actor<Player>).GetField("<Transform>k__BackingField", Any)!.SetValue(fieldPlayer, new Maple2.Tools.VectorMath.Transform());
+        // The moves the client synced: a server move (MoveByPortal) starts them again.
+        typeof(FieldPlayer).GetField(nameof(FieldPlayer.Moves), Any)!.SetValue(fieldPlayer, new MoveWindow());
         Set(session, nameof(GameSession.Player), fieldPlayer);
         // The objects and cubes whose interaction the session began.
         typeof(GameSession).GetField(nameof(GameSession.InteractStarted), Any)!.SetValue(session, new HashSet<string>());
@@ -745,6 +747,9 @@ public sealed class TestGameSession {
         typeof(FieldManager).GetField("fieldItems", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldItem>());
         typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(FieldManager).GetField("fieldInstruments", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldInstrument>());
+        // The maids of the placed cubes (none): a removed cube asks for its maid.
+        System.Reflection.FieldInfo maids = typeof(FieldManager).GetField("maids", Any)!;
+        maids.SetValue(field, Activator.CreateInstance(maids.FieldType));
         // The billboards and the field's queue of delayed steps (a removed object leaves through it).
         typeof(FieldManager).GetField("fieldAdBalloons", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldInteract>());
         var scheduler = new Maple2.Tools.Scheduler.EventQueue(Log.Logger);

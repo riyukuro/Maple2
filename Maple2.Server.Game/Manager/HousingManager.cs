@@ -424,6 +424,58 @@ public class HousingManager {
         db.SaveCubes(Home.Indoor, plotCubes);
     }
 
+    // An interior package (item function UGCMapPackage, UIInteriorBuildDialog::OnUseItem) builds its exported map in
+    // the owner's home: the cubes there go back to storage, a home smaller than the package grows to its size, and
+    // each cube of the package is put into storage and placed from there at the home's base cell plus its offset
+    // (UgcMapPackageRules.Origin). A cube that cannot be placed stays in storage. The number placed is returned.
+    public int InstallPackage(Plot plot, ExportedUgcMapMetadata package) {
+        if (session.Field is null || UgcMapPackageRules.Size(package) is not var (area, height)) {
+            return 0;
+        }
+        foreach (PlotCube cube in plot.Cubes.Values.ToList()) {
+            if (TryRemoveCube(plot, cube.Position, out _)) {
+                session.Field.Broadcast(CubePacket.RemoveCube(session.Player.ObjectId, cube.Position));
+            }
+        }
+
+        if (Home.Area < area || Home.Height < height) {
+            Home.SetArea(Math.Max(Home.Area, area));
+            Home.SetHeight(Math.Max(Home.Height, height));
+            session.Field.Broadcast(CubePacket.UpdateHomeAreaAndHeight(Home.Area, Home.Height));
+        }
+
+        Vector3B origin = UgcMapPackageRules.Origin(Home.Area);
+        int placed = 0;
+        foreach (ExportedUgcMapMetadata.Cube cube in package.Cubes) {
+            if (!session.ItemMetadata.TryGet(cube.ItemId, out ItemMetadata? itemMetadata) || itemMetadata.Install is null || itemMetadata.Housing is null) {
+                logger.Error("Package {PackageId}: no install data for cube {CubeId}.", package.Id, cube.ItemId);
+                continue;
+            }
+            long itemUid = session.Item.Furnishing.AddCube(cube.ItemId);
+            if (itemUid == 0) {
+                logger.Error("Package {PackageId}: cube {CubeId} not added to storage.", package.Id, cube.ItemId);
+                continue;
+            }
+            Vector3B position = origin + cube.OffsetPosition;
+            if (!TryPlaceCube(new PlotCube(itemMetadata, itemUid) { Type = PlotCube.CubeType.Default }, plot, itemMetadata, position, cube.Rotation, out PlotCube? plotCube)) {
+                continue;
+            }
+            session.Field.Broadcast(plotCube.Position.Z == 0
+                ? CubePacket.ReplaceCube(session.Player.ObjectId, plotCube)
+                : CubePacket.PlaceCube(session.Player.ObjectId, plot, plotCube));
+            placed++;
+        }
+
+        Vector3 safe = Home.CalculateSafePosition(plot.Cubes.Values.ToList());
+        foreach (FieldPlayer fieldPlayer in session.Field.Players.Values) {
+            fieldPlayer.Session.Send(PortalPacket.MoveByPortal(fieldPlayer, safe, default));
+        }
+        session.Item.Furnishing.SendStorageCount();
+        SaveHome();
+        session.Send(NoticePacket.Message(StringCode.s_ugcmap_package_automatic_creation_completed, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+        return placed;
+    }
+
     // The decoration score of a plot as it stands: the points of the decoration goals its cubes meet.
     public static int DecorationScore(Plot plot) {
         return InteriorPointRules.Score(plot.Cubes.Values
