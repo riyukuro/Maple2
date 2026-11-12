@@ -35,6 +35,7 @@ public class SkillRecord {
     public string HoldString = string.Empty;
     public long ItemUid;
     public bool ItemConsumed; // the cast has taken its item
+    public long CancelTick; // the field tick of the cast's cancel, 0 while it is not cancelled
 
     public long StateNextTick; // Used for state skills only
 

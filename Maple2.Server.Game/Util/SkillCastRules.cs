@@ -126,6 +126,12 @@ public static class SkillCastRules {
         return (next > loopEnd ? next.Value - loop : next.Value, self > loopEnd ? self - loop : self);
     }
 
+    // A cancelled cast takes no more attack packets once this time has passed since its cancel. KMS2 still answers
+    // an attack that comes up to 0.87 s after the cancel of its cast with damage; the 1 s is chosen here.
+    public const long CancelledAttackWindowMs = 1000;
+
+    public static bool CancelledRefuses(long cancelTick, long tick) => cancelTick != 0 && tick - cancelTick > CancelledAttackWindowMs;
+
     // The fitted speed of a motion. An attack speed under 100 is counted as 100 (chosen here: no KMS2 cast has one).
     public const int UnscaledMoveType = 3;
 

@@ -195,6 +195,9 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Warning("Invalid Attack-Point Skill {SkillUid}", skillUid);
             return;
         }
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
+            return;
+        }
 
         byte attackPoint = packet.ReadByte();
         if (!record.TrySetAttackPoint(attackPoint)) {
@@ -305,6 +308,9 @@ public class SkillHandler : FieldPacketHandler {
         SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
         if (record == null) {
             Logger.Warning("Invalid Attack-Target Skill {SkillUid}", skillUid);
+            return;
+        }
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
             return;
         }
 
@@ -520,6 +526,9 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         session.Player.InBattle = true;
+        if (record.CancelTick == 0 && session.Field != null) {
+            record.CancelTick = session.Field.FieldTick;
+        }
         session.Field?.Broadcast(SkillPacket.Cancel(record));
 
         if (session.Player.DebugSkills) {

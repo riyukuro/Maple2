@@ -335,4 +335,12 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 6099, 10600), Is.True);
         Assert.That(SkillCastRules.MotionRefuses(slow, 11, false, 100, 6100, 10100), Is.False);
     }
+
+    [Test]
+    public void CancelledCastStopsTakingAttacks() {
+        Assert.That(SkillCastRules.CancelledRefuses(0, 99999), Is.False, "not cancelled");
+        Assert.That(SkillCastRules.CancelledRefuses(5000, 5000), Is.False);
+        Assert.That(SkillCastRules.CancelledRefuses(5000, 6000), Is.False, "an attack already on its way");
+        Assert.That(SkillCastRules.CancelledRefuses(5000, 6001), Is.True);
+    }
 }
