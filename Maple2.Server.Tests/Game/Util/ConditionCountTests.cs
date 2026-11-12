@@ -171,6 +171,19 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!), Is.True);
     }
 
+    // An alliance mission counts for quest_alliance with its alliance as the code (93000188 "Maple Alliance Drill":
+    // code 2, complete a Maple Alliance mission); a field quest or a quest without an alliance does not.
+    [TestCase(QuestType.AllianceQuest, AllianceType.MapleAlliance, true)]
+    [TestCase(QuestType.AllianceQuest, AllianceType.DarkWind, false)]
+    [TestCase(QuestType.FieldQuest, AllianceType.MapleAlliance, false)]
+    [TestCase(QuestType.AllianceQuest, AllianceType.AnyFaction, false)]
+    public void QuestAlliance_CountsAMissionOfTheListedAlliance(QuestType type, AllianceType alliance, bool expected) {
+        QuestMetadataBasic basic = Basic(type, 3) with { Alliance = alliance };
+        var condition = new ConditionMetadata(ConditionType.quest_alliance, 1, new ConditionMetadata.Parameters(Integers: [2]), null);
+        bool counted = QuestRules.CountsAsAllianceMission(basic) && condition.Check(null!, codeLong: (long) basic.Alliance);
+        Assert.That(counted, Is.EqualTo(expected));
+    }
+
     private static QuestMetadataBasic Basic(QuestType type, int repeat) {
         return new QuestMetadataBasic(ChapterId: 0, Type: type, Account: 0, StandardLevel: 1, Forfeitable: false,
             EventTag: string.Empty, AutoStart: false, Disabled: false, UsePostbox: false, StartNpc: 0, CompleteNpc: 0,

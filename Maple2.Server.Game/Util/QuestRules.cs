@@ -27,6 +27,11 @@ public static class QuestRules {
     // the quest_guide rows have no codes and read "complete a daily mission" (74000017, achievement 22300047).
     public static bool CountsAsGuide(QuestMetadataBasic basic) => basic.Type == QuestType.DailyMission;
 
+    // A completed alliance quest (type 9) counts for quest_alliance with its alliance as the code: the rows read
+    // "complete a Maple Alliance mission" with code 2 (the drill 93000188), and the code is the alliance id (1 to 8).
+    public static bool CountsAsAllianceMission(QuestMetadataBasic basic) =>
+        basic.Type == QuestType.AllianceQuest && basic.Alliance != AllianceType.AnyFaction;
+
     // Quest 7 (Expired): the client sends it for a quest in progress whose end time has come, and a quest has an end
     // time only with a reset weekday, a duration or an event tag (FUN_14074b090, CQuestManager::FUN_1416d3010,
     // questmanager_2.cpp:2157). Anything else, a completed quest above all, stays: its row is what keeps a repeat

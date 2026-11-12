@@ -488,6 +488,9 @@ public sealed class QuestManager {
         if (quest.Metadata.Basic.Type == QuestType.FieldMission) {
             session.ConditionUpdate(ConditionType.field_mission, codeLong: quest.Metadata.Id);
         }
+        if (QuestRules.CountsAsAllianceMission(quest.Metadata.Basic)) {
+            session.ConditionUpdate(ConditionType.quest_alliance, codeLong: (long) quest.Metadata.Basic.Alliance);
+        }
 
         quest.EndTime = DateTime.Now.ToEpochSeconds();
         quest.State = QuestState.Completed;
