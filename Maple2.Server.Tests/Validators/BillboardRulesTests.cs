@@ -20,7 +20,7 @@ public class BillboardRulesTests {
         Assert.That(BillboardRules.InstallResult(parts, itemParameters, placed), Is.EqualTo(expected));
     }
 
-    // InteractObject add: after the four strings the client reads f32 scale, bool, and for a billboard i64 owner, name.
+    // InteractObject add: after the four strings the client reads f32 scale, bool, and for a billboard i64 board id, name.
     [TestCase("1.5", 1.5f)]
     [TestCase("2", 2f)]
     [TestCase(null, 1f)]
@@ -33,6 +33,7 @@ public class BillboardRulesTests {
         var billboard = new InteractBillBoardObject("BillBoard_x", mesh, owner) {
             Model = "MS2InteractMesh",
             Scale = BillboardRules.Scale(parameter),
+            BoardUid = 4242,
         };
         var writer = new ByteWriter();
         billboard.WriteTo(writer);
@@ -48,7 +49,7 @@ public class BillboardRulesTests {
         packet.ReadUnicodeString();
         Assert.That(packet.ReadFloat(), Is.EqualTo(expected));
         Assert.That(packet.ReadBool(), Is.False);
-        Assert.That(packet.ReadLong(), Is.EqualTo(77));
+        Assert.That(packet.ReadLong(), Is.EqualTo(4242));
         Assert.That(packet.ReadUnicodeString(), Is.EqualTo("Owner"));
         Assert.That(packet.Available, Is.EqualTo(0));
     }
@@ -65,7 +66,8 @@ public class BillboardRulesTests {
         Assert.That(bytes[4] | bytes[5] | bytes[6], Is.EqualTo(0));
     }
 
-    // The window's last long is the board's id: the staff remove request (ItemBillboard 8) sends it back.
+    // The window's last long is the board's id: the client compares it with the long of the board's interact
+    // object (interactobject.cpp:1670), and the staff remove request (ItemBillboard 8) sends it back.
     [Test]
     public void BoardIdsAreNeverZeroAndDiffer() {
         long first = BillboardRules.NextBoardUid();
@@ -83,5 +85,22 @@ public class BillboardRulesTests {
         byte[] bytes = PlayerHostPacket.AdBalloonWindow(board).ToArray();
         Assert.That(bytes[2], Is.EqualTo(6));
         Assert.That(System.BitConverter.ToInt64(bytes, bytes.Length - 8), Is.EqualTo(0x1122334455667788));
+    }
+
+    // The long before the name in the interact object is the same id, not the owner's.
+    [Test]
+    public void TheInteractObjectCarriesTheWindowsBoardId() {
+        var board = new InteractBillBoardObject("BillBoard_x", new Ms2InteractMesh(5, default, default),
+            new Character { Id = 77, Name = "Owner", Mastery = new Mastery() }) {
+            BoardUid = 0x1122334455667788,
+        };
+        var writer = new ByteWriter();
+        board.WriteTo(writer);
+        byte[] bytes = writer.ToArray();
+        byte[] window = PlayerHostPacket.AdBalloonWindow(board).ToArray();
+        int nameSize = 2 + 2 * "Owner".Length;
+        long inObject = System.BitConverter.ToInt64(bytes, bytes.Length - nameSize - 8);
+        Assert.That(inObject, Is.EqualTo(System.BitConverter.ToInt64(window, window.Length - 8)));
+        Assert.That(inObject, Is.Not.EqualTo(77));
     }
 }

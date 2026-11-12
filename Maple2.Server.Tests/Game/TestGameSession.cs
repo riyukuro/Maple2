@@ -482,6 +482,20 @@ public sealed class TestGameSession {
         return interact;
     }
 
+    // A billboard standing in the session's field.
+    public FieldInteract AddBillboard(InteractObjectMetadata metadata, InteractBillBoardObject board) {
+        var interact = new FieldInteract(Session.Field, 9000 + metadata.Id, board.EntityId, metadata, board);
+        typeof(FieldInteract).GetField("<State>k__BackingField", Any)!.SetValue(interact, InteractState.Reactable);
+        var boards = (ConcurrentDictionary<string, FieldInteract>) typeof(FieldManager).GetField("fieldAdBalloons", Any)!.GetValue(Session.Field)!;
+        boards[interact.EntityId] = interact;
+        return interact;
+    }
+
+    // The field's delayed steps that are due run now.
+    public void RunFieldQueue() {
+        Session.Field!.Scheduler.InvokeAll();
+    }
+
     // A function cube of the session's field, at the player's place.
     public FieldFunctionInteract AddFunctionCube(InteractCube cube) {
         var interact = new FieldFunctionInteract(Session.Field, 9500, cube, 1);
@@ -689,6 +703,11 @@ public sealed class TestGameSession {
         typeof(FieldManager).GetField("fieldItems", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldItem>());
         typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(FieldManager).GetField("fieldInstruments", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldInstrument>());
+        // The billboards and the field's queue of delayed steps (a removed object leaves through it).
+        typeof(FieldManager).GetField("fieldAdBalloons", Any)!.SetValue(field, new ConcurrentDictionary<string, FieldInteract>());
+        var scheduler = new Maple2.Tools.Scheduler.EventQueue(Log.Logger);
+        scheduler.Start();
+        typeof(FieldManager).GetField(nameof(FieldManager.Scheduler), Any)!.SetValue(field, scheduler);
         return field;
     }
 

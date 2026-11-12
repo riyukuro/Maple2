@@ -1395,7 +1395,6 @@ public partial class FieldManager {
     #region Remove
     public virtual bool RemovePlayer(int objectId, [NotNullWhen(true)] out FieldPlayer? fieldPlayer) {
         if (Players.TryRemove(objectId, out fieldPlayer)) {
-            fieldPlayer.FlushHealth();
             CommitPlot(fieldPlayer.Session);
             fieldPlayer.Session.Ride.LeaveField(this);
             foreach (FieldReactor reactor in fieldReactors.Values) {
@@ -1426,6 +1425,12 @@ public partial class FieldManager {
             }
             Broadcast(FieldPacket.RemovePlayer(objectId));
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
+            // Last, and guarded: a failed send to the world must not cut the leave short.
+            try {
+                fieldPlayer.FlushHealth();
+            } catch (Exception ex) {
+                logger.Warning(ex, "Held health of {CharacterId} not sent on leave", fieldPlayer.Session.CharacterId);
+            }
 
             return true;
         }

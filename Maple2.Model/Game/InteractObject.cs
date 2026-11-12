@@ -102,7 +102,9 @@ public sealed class InteractBillBoardObject : InteractObject<Ms2InteractMesh> {
     public bool PublicHouse { get; init; }
     public long CreationTime { get; init; }
     public long ExpirationTime { get; init; }
-    // The board's own id: the last long of the window packet, which the staff's remove request sends back.
+    // The board's own id: the long of the board's interact object and the last long of its window packet. The
+    // client compares the two to tell whether the open window is this board's (interactobject.cpp:1670), and the
+    // staff's remove request sends it back.
     public long BoardUid { get; init; }
 
     public InteractBillBoardObject(string entityId, Ms2InteractMesh metadata, Character owner) : base(entityId, metadata) {
@@ -116,7 +118,7 @@ public sealed class InteractBillBoardObject : InteractObject<Ms2InteractMesh> {
 
     public override void WriteTo(IByteWriter writer) {
         base.WriteTo(writer);
-        writer.WriteLong(OwnerCharacterId);
+        writer.WriteLong(BoardUid);
         writer.WriteUnicodeString(OwnerName);
     }
 }

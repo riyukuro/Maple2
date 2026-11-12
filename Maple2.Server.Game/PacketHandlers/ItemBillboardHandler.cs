@@ -7,6 +7,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -28,6 +29,9 @@ public class ItemBillboardHandler : FieldPacketHandler {
                 HandleClaimHongBao(session, packet);
                 return;
             case Command.RemoveBillboard:
+                if (!GmCheck.Allow(session, OpCode, (int) command)) {
+                    return;
+                }
                 HandleRemoveBillboard(session, packet);
                 return;
         }
@@ -36,7 +40,7 @@ public class ItemBillboardHandler : FieldPacketHandler {
     // The board goes the way an expired one does: hidden for everyone in the field, then taken out of it.
     private static void HandleRemoveBillboard(GameSession session, IByteReader packet) {
         long boardUid = packet.ReadLong();
-        if (session.Field is null || !AdminLevel.IsGm(session.Player.AdminPermissions)) {
+        if (session.Field is null) {
             return;
         }
 
