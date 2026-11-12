@@ -30,7 +30,9 @@ public class UgcMapPackageTests {
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> { [1] = new(1, 0, 0) }));
         test.SetTable(new FurnishingShopTable(new Dictionary<int, FurnishingShopTable.Entry>()));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
+        // A mesh item, as a designed cube is: it gets an empty template (url "") and a blueprint when made.
         test.Register(TestGameSession.Metadata(Cube) with {
+            Mesh = "cube",
             Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false),
             Install = new ItemMetadataInstall(true, 0, 0, false, MapAttribute.none),
         });
@@ -61,10 +63,10 @@ public class UgcMapPackageTests {
     private int Packages(GameSession session) => session.Item.Inventory.Get(package.Uid)?.Amount ?? 0;
 
     // A cube where the package puts one: its own cells from the base cell (1 - area, 1 - area, 0).
-    private static void Place(GameSession session, Plot plot, sbyte x, sbyte y, sbyte z) {
+    private static void Place(GameSession session, Plot plot, sbyte x, sbyte y, sbyte z, UgcItemLook? template = null) {
         session.ItemMetadata.TryGet(Cube, out ItemMetadata? metadata);
-        long uid = session.Item.Furnishing.AddCube(Cube);
-        Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!, uid) { Type = PlotCube.CubeType.Default }, plot, metadata!,
+        long uid = template == null ? session.Item.Furnishing.AddCube(Cube) : session.Item.Furnishing.AddCube(new PlotCube(metadata!, 0, template) { Type = PlotCube.CubeType.Default });
+        Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!, uid, template) { Type = PlotCube.CubeType.Default }, plot, metadata!,
             new Vector3B(x, y, z), 0, out _), Is.True);
     }
 
@@ -175,6 +177,49 @@ public class UgcMapPackageTests {
         Assert.That(Packages(session), Is.EqualTo(2));
     }
 
+    // Two cubes of one design in the home: they go back to storage on one stack that keeps the design, so storage
+    // takes them and the set with two open slots and not with one.
+    [TestCase(1, false)]
+    [TestCase(2, true)]
+    public void Install_DesignedCubesShareAStack(int slots, bool installed) {
+        (GameSession session, Plot plot) = Start();
+        System.Reflection.FieldInfo field = typeof(FurnishingManager).GetField("storage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        field.SetValue(session.Item.Furnishing, new ItemCollection(4));
+        Place(session, plot, -1, -1, 1, new UgcItemLook { Url = "u" });
+        Place(session, plot, -2, -2, 1, new UgcItemLook { Url = "u" });
+        Assert.That(plot.Cubes.Values.Select(cube => cube.Template?.Url), Is.EqualTo(new[] { "u", "u" }));
+        field.SetValue(session.Item.Furnishing, new ItemCollection((short) slots));
+
+        Use(session, "true");
+
+        Assert.That(plot.Cubes, Has.Count.EqualTo(installed ? 3 : 2));
+        Assert.That(Packages(session), Is.EqualTo(installed ? 1 : 2));
+        if (installed) {
+            var storage = (ItemCollection) field.GetValue(session.Item.Furnishing)!;
+            Item designed = storage.Single(item => item.Template?.Url == "u");
+            Assert.That(designed.Amount, Is.EqualTo(2));
+        }
+    }
+
+    // A furnishing added to storage with a design keeps it, and joins only a stack of that design.
+    [Test]
+    public void AddStorage_KeepsTheDesign() {
+        (GameSession session, _) = Start();
+        session.ItemMetadata.TryGet(Cube, out ItemMetadata? metadata);
+        var look = new UgcItemLook { Url = "u" };
+        long designed = session.Item.Furnishing.AddCube(new PlotCube(metadata!, 0, look) { Type = PlotCube.CubeType.Default });
+        long again = session.Item.Furnishing.AddCube(new PlotCube(metadata!, 0, new UgcItemLook { Url = "u" }) { Type = PlotCube.CubeType.Default });
+        long plain = session.Item.Furnishing.AddCube(Cube);
+
+        Assert.That(again, Is.EqualTo(designed));
+        Assert.That(plain, Is.Not.EqualTo(designed));
+        var storage = (ItemCollection) typeof(FurnishingManager).GetField("storage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(session.Item.Furnishing)!;
+        Item item = storage.Single(stored => stored.Uid == designed);
+        Assert.That((item.Template?.Url, item.Amount), Is.EqualTo(("u", 2)));
+        Assert.That(item.Template, Is.Not.SameAs(look));
+    }
+
     // A package without a size: the plain use is refused (the client asks indoorSizeDifferent); "true" builds it and
     // keeps the home's size.
     [Test]
@@ -205,6 +250,8 @@ public class UgcMapPackageTests {
         Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a, a]), Is.True);
         Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a with { ItemId = 2 }]), Is.False);
         Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a with { Url = "u" }]), Is.False);
+        Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a with { Url = "" }]), Is.True);
+        Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a with { Url = "u" }, a with { Url = "u" }]), Is.True);
         var maid = new UgcMapPackageRules.Stack(5, null, true, 1, 9);
         Assert.That(UgcMapPackageRules.StorageTakes([maid with { Amount = 0 }], 1, [maid, maid]), Is.True);
         Assert.That(UgcMapPackageRules.StorageTakes([maid with { Amount = 1 }], 1, [maid, maid]), Is.False);

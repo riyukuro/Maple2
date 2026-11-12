@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Game.Util;
 
@@ -42,12 +43,12 @@ public static class UgcMapPackageRules {
     public record struct Stack(int ItemId, string? Url, bool Maid, int Amount, int SlotMax);
 
     // Whether the furnishing storage takes every incoming cube, one at a time, as FurnishingManager.AddStorage adds
-    // them: onto the first stack of the same item and template (a maid item only onto an empty stack), which must
+    // them: onto the first stack of the same item and design (MaidRules.CanJoin; a maid item only onto an empty stack), which must
     // have room; with no such stack into a new slot. Each incoming cube counts as staying in storage.
     public static bool StorageTakes(IEnumerable<Stack> stored, int openSlots, IEnumerable<Stack> incoming) {
         List<Stack> stacks = stored.ToList();
         foreach (Stack add in incoming) {
-            int index = stacks.FindIndex(stack => stack.ItemId == add.ItemId && stack.Url == add.Url && (!add.Maid || stack.Amount == 0));
+            int index = stacks.FindIndex(stack => stack.ItemId == add.ItemId && MaidRules.DesignKey(stack.Url) == MaidRules.DesignKey(add.Url) && (!add.Maid || stack.Amount == 0));
             if (index < 0) {
                 if (openSlots <= 0) {
                     return false;

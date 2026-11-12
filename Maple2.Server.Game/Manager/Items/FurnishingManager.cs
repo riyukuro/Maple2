@@ -262,6 +262,11 @@ public class FurnishingManager {
                     return 0;
                 }
                 item.Group = ItemGroup.Furnishing;
+                // A designed cube keeps its design in storage (the stack is joined by it, and a cube placed from it
+                // takes it).
+                if (template != null) {
+                    item.Template = template.Clone();
+                }
                 using GameStorage.Request db = session.GameStorage.Context();
                 Item? newItem = db.CreateItem(session.AccountId, item);
                 if (newItem == null) {
