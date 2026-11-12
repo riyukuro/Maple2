@@ -78,14 +78,26 @@ public class CharacterRenameTests {
         });
     }
 
-    [TestCase("Abcdefghijkl", false)]
-    [TestCase(LONG_NAME, true)]
-    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00", false)] // 6 Hangul count 12
-    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00a", true)]
-    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\u00E9", true)] // a character the region does not allow counts once
-    [TestCase("Abcdefghijk\u00E9", false)]
-    public void RenameIsDueForANameThatIsTooLong(string name, bool due) {
-        Assert.That(LoginSession.IsRenameDue(name), Is.EqualTo(due));
+    // The count is the client's of the server's region (ScanLimit): one per character, and one more for a
+    // character the region counts twice. KR counts Hangul twice; NA counts no character twice (its client has
+    // no Hangul case), so there only a name of more than 12 characters is due; CN counts the ideographs twice.
+    [TestCase("Abcdefghijkl", false, false, false)]
+    [TestCase(LONG_NAME, true, true, true)]
+    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00", false, false, false)] // 6 Hangul count 12 in KR
+    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00a", true, false, false)]
+    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\u00E9", true, false, false)] // a character the region does not allow counts once
+    [TestCase("\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00\uAC00", true, true, true)]
+    [TestCase("\u4E00\u4E00\u4E00\u4E00\u4E00\u4E00a", false, false, true)]
+    [TestCase("Abcdefghijk\u00E9", false, false, false)]
+    public void RenameIsDueForANameThatIsTooLong(string name, bool kr, bool na, bool cn) {
+        Assert.Multiple(() => {
+            Assert.That(NameChangeRules.IsRenameDue(NameValidator.CharacterNameScanWidth(name, "KR"), 12), Is.EqualTo(kr), "KR");
+            Assert.That(NameChangeRules.IsRenameDue(NameValidator.CharacterNameScanWidth(name, "NA"), 12), Is.EqualTo(na), "NA");
+            Assert.That(NameChangeRules.IsRenameDue(NameValidator.CharacterNameScanWidth(name, "CN"), 12), Is.EqualTo(cn), "CN");
+            // The session's own test is the one of the region the server runs for.
+            bool due = Target.LOCALE switch { "NA" => na, "CN" => cn, _ => kr };
+            Assert.That(LoginSession.IsRenameDue(name), Is.EqualTo(due), Target.LOCALE);
+        });
     }
 
     // The list's end flag is set only when a character of the account is due.

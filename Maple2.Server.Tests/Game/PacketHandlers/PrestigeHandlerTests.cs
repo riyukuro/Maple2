@@ -20,9 +20,9 @@ public class PrestigeHandlerTests {
     private TestGameSession test = null!;
     private PrestigeHandler handler = null!;
 
-    private GameSession Login(bool fullBag = false) {
+    private GameSession Login(bool fullBag = false, int slotMax = 100, int openSlots = 0) {
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(RewardId));
+        test.Register(TestGameSession.Metadata(RewardId, slotMax: slotMax));
         test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata> {
             [3] = new(3, PrestigeAwardType.item, RewardId, 1, 2),
         }));
@@ -31,7 +31,7 @@ public class PrestigeHandlerTests {
         }));
         if (fullBag) {
             test.Store(TestGameSession.Metadata(20000009));
-            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = [1, 0] });
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = [(short) (1 + openSlots), 0] });
         }
         GameSession session = test.Start();
         handler = new PrestigeHandler { TableMetadata = test.TableMetadata };
@@ -89,6 +89,20 @@ public class PrestigeHandlerTests {
     public void LevelReward_WithAFullBagStaysClaimable() {
         GameSession session = Login(fullBag: true);
         Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Misc), Is.EqualTo(0));
+
+        Claim(session, 3, 3);
+
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.UserChat }));
+        Assert.That(Held(session), Is.EqualTo(0));
+        Assert.That(session.Exp.PrestigeRewardsClaimed, Is.Empty);
+    }
+
+    // A reward of more pieces than the open slots hold (two pieces that do not stack, one open slot): refused
+    // whole, the level can still be claimed.
+    [Test]
+    public void LevelReward_ThatDoesNotFitWholeStaysClaimable() {
+        GameSession session = Login(fullBag: true, slotMax: 1, openSlots: 1);
+        Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Misc), Is.EqualTo(1));
 
         Claim(session, 3, 3);
 

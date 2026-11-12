@@ -350,8 +350,13 @@ public class ItemEnchantManager {
                 }
 
                 // What was staged is spent: a request that follows without a new stage pays the cost of the
-                // item's grade as it is now, at that grade's rate, with no fodder and no charges.
-                Prepare();
+                // item's grade as it is now, at that grade's rate, with no fodder and no charges. The last grade
+                // has no next cost (the tables end with it): nothing stays staged.
+                if (ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0)) {
+                    Prepare();
+                } else {
+                    Reset();
+                }
                 return true;
             case EnchantType.Peachy:
                 upgradeItem.Enchant.EnchantExp += force ? MaxExp : GainExp[enchants];

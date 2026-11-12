@@ -57,7 +57,8 @@ public class PrestigeHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.CanAdd(item)) {
+        // Room for the whole amount; a currency, medal or furnishing reward needs no slot.
+        if (!session.Item.Inventory.HasRoomFor(item)) {
             session.Send(ChatPacket.Alert(StringCode.s_err_inventory));
             return;
         }

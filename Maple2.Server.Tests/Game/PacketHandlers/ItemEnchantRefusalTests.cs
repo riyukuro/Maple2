@@ -113,6 +113,28 @@ public class ItemEnchantRefusalTests {
         });
     }
 
+    // A success that reaches the last grade: there is no next grade to price, nothing stays staged, and a
+    // request that follows is refused without a change.
+    [Test]
+    public void Ophelia_SuccessToTheLastGradeLeavesNothingStaged() {
+        GameSession session = Login(30000, 30000, 30000, 0);
+        session.Item.Inventory.Get(gear.Uid)!.Enchant = new ItemEnchant(enchants: 14);
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid, force: true), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps().Last(), Is.EqualTo(SendOp.ItemEnchant));
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(15));
+            Assert.That(session.ItemEnchant.Type, Is.EqualTo(EnchantType.None));
+            Assert.That(test.Errors, Is.Empty);
+        });
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid, force: true), Is.False);
+        Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(15));
+    }
+
     // The second request finds too little left for its grade: the first result stays, nothing more is taken.
     [Test]
     public void Ophelia_TheSecondRequestWithoutItsCostTakesNothing() {
