@@ -8,7 +8,7 @@ namespace Maple2.Server.Game.Packets;
 public static class AttendancePacket {
     private enum Command : byte {
         Unknown5 = 5,
-        Unknown6 = 6,
+        StartedEvents = 6,
         Unknown7 = 7,
         Error = 9,
     }
@@ -20,15 +20,18 @@ public static class AttendancePacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown6() {
+    // The attendance events the player has started with an item: event id and the time it was started. The client
+    // keeps them in a map (CMyCharacter::FUN_140d9f1c0, client/ms2/notifydebugstate.cpp:147) that the gift dialog
+    // reads to show "item required" for a not yet started item event (uiattendgiftdialog.cpp:557) and the meret
+    // attendance dialog for its locks (uicashattenddialog.cpp:477). KMS2 sends it at login.
+    public static ByteWriter StartedEvents(ICollection<(int EventId, long StartTime)> started) {
         var pWriter = Packet.Of(SendOp.Attendance);
-        pWriter.Write<Command>(Command.Unknown6);
-        pWriter.WriteInt(); // count
-
-        // foreach (int i in count) {
-        //     pWriter.WriteInt(Id);
-        //     pWriter.WriteLong(Timestamp);
-        // }
+        pWriter.WriteByte((byte) Command.StartedEvents);
+        pWriter.WriteInt(started.Count);
+        foreach ((int eventId, long startTime) in started) {
+            pWriter.WriteInt(eventId);
+            pWriter.WriteLong(startTime);
+        }
 
         return pWriter;
     }

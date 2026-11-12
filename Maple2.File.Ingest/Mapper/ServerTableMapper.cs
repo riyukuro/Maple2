@@ -48,9 +48,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     // The drop table file (ServerDropTable): today's, or the original with MS2_ORIGINAL_DROP_TABLE.
     private readonly string dropFile;
+    // MS2_REPLAY_ATTEND_GIFT (AttendGiftReplay): one ended attendance gift event is kept, moved to the ingest day.
+    private readonly bool replayAttendGift;
 
-    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false) {
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false) {
         this.xmlReader = xmlReader;
+        this.replayAttendGift = replayAttendGift;
         dropFile = ServerDropTable.FileName(originalDropTable);
         this.playedReader = playedReader;
         parser = new ServerTableParser(xmlReader);
@@ -959,6 +962,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     private GameEventTable ParseGameEventTable() {
         var results = new Dictionary<int, GameEventMetadata>();
+        DateTime now = DateTime.UtcNow;
+        var ended = new List<GameEventMetadata>();
         foreach ((int id, GameEvent data) in parser.ParseGameEvent()) {
             if (!Enum.TryParse(data.eventType, out GameEventType eventType)) {
                 Console.WriteLine($"Unknown GameEventType: {data.eventType}");
@@ -972,13 +977,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             DateTime startTime = DateTime.TryParseExact(data.eventStart, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out startTime) ? startTime : DateTime.MinValue;
             DateTime endTime = DateTime.TryParseExact(data.eventEnd, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out endTime) ? endTime : DateTime.MinValue;
 
-            // Only add events that are not expired
-            if (endTime < DateTime.UtcNow) {
-                continue;
-            }
-
             (TimeSpan partTimeStart, TimeSpan partTimeEnd) = ParsePartTime(data.partTime);
-            results.Add(id, new GameEventMetadata(
+            var metadata = new GameEventMetadata(
                 Id: id,
                 Type: eventType,
                 StartTime: startTime,
@@ -990,7 +990,25 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 Value1: data.value1,
                 Value2: data.value2,
                 Value3: data.value3,
-                Value4: data.value4));
+                Value4: data.value4);
+
+            // Only add events that are not expired
+            if (endTime < now) {
+                ended.Add(metadata);
+                continue;
+            }
+            results.Add(id, metadata);
+        }
+
+        if (replayAttendGift) {
+            GameEventMetadata? replay = AttendGiftReplay.Pick(ended, now);
+            if (replay == null) {
+                Console.WriteLine($"{AttendGiftReplay.Option}: no ended AttendGift event to replay");
+            } else if (!results.ContainsKey(replay.Id)) {
+                GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
+                results.Add(moved.Id, moved);
+                Console.WriteLine($"{AttendGiftReplay.Option}: AttendGift {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
+            }
         }
         return new GameEventTable(results);
 

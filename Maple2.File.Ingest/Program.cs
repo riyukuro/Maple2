@@ -82,6 +82,8 @@ if (playedXmlPath != null && !File.Exists(playedXmlPath)) {
 
 // Optional: read the server pack's original (KMS) drop table instead of today's (ServerDropTable).
 bool originalDropTable = Maple2.File.Ingest.Helpers.ServerDropTable.UseOriginal(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.ServerDropTable.Option));
+// Optional: keep one ended attendance gift event, moved to start on the ingest day (AttendGiftReplay).
+bool replayAttendGift = Maple2.File.Ingest.Helpers.AttendGiftReplay.Enabled(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.AttendGiftReplay.Option));
 
 if (!File.Exists(exportedPath)) {
     throw new FileNotFoundException($"Could not find Exported.m2d file at path: {exportedPath}");
@@ -244,7 +246,7 @@ UpdateDatabase(metadataContext, new TriggerMapper(xmlReader));
 UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false, playedReader));
 UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language, playedReader));
 
-UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader, originalDropTable));
+UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader, originalDropTable, replayAttendGift));
 UpdateDatabase(metadataContext, new AiMapper(serverReader));
 
 UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader));
