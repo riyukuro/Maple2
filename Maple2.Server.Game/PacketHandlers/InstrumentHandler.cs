@@ -149,6 +149,15 @@ public class InstrumentHandler : FieldPacketHandler {
         session.Send(InstrumentPacket.RemainUses(score.Uid, score.RemainUses));
     }
 
+    // The code is the instrument's category, as for music_play_instrument_mastery (whose trophies name the
+    // categories 1 to 30), not the instrument id (1 to 96).
+    internal static void ReportPlayTime(GameSession session, InstrumentMetadata instrument, long playedMs) {
+        if (session.Field == null) {
+            return;
+        }
+        session.ConditionUpdate(ConditionType.music_play_instrument_time, counter: playedMs / 1000, targetLong: session.Field.MapId, codeLong: instrument.Category);
+    }
+
     private void HandleStopScore(GameSession session) {
         if (session.Field == null || session.Instrument == null) {
             return;
@@ -174,7 +183,7 @@ public class InstrumentHandler : FieldPacketHandler {
         // Modifier is the number of 500ms ticks that have passed.
         session.Exp.AddExp(expType, (float) (totalTickTime - 500) / 500);
 
-        session.ConditionUpdate(ConditionType.music_play_instrument_time, counter: totalTickTime / 1000, targetLong: session.Field.MapId, codeLong: session.Instrument.Value.Id);
+        ReportPlayTime(session, session.Instrument.Value, totalTickTime);
         if (session.Instrument.Ensemble) {
             session.ConditionUpdate(ConditionType.play_ensenble_time, counter: totalTickTime / 1000, targetLong: session.Field.MapId, codeLong: session.Field.MapId);
         }

@@ -347,6 +347,20 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
+    // stay_cube is a time condition (the client groups it with playtime, stay_map and survive_cube): one second on
+    // a cube, in any state. The code is the map, the target the cube's material (grass, snow, glass in the quests).
+    internal static void ReportStayCube(GameSession session, FieldEntity? block) {
+        MapAttribute? attribute = block switch {
+            FieldMeshColliderEntity mesh => mesh.MapAttribute,
+            FieldBoxColliderEntity { IsFluid: false } box => box.MapAttribute,
+            _ => null,
+        };
+        if (attribute == null || session.Field == null) {
+            return;
+        }
+        session.ConditionUpdate(ConditionType.stay_cube, codeLong: session.Field.MapId, targetString: attribute.Value.ToString());
+    }
+
     public void OnStateSync(StateSync stateSync) {
         int syncEmotion = TrophyTimeRules.EmotionSkillId(stateSync);
         if (syncEmotion != emotionSkillId) {
@@ -379,6 +393,7 @@ public class FieldPlayer : Actor<Player> {
             LastCurrentBlockUpdateTick = 0;
             Session.Field?.AccelerationStructure?.FindBlockUnderPlayer(Position, entity => {
                 StandingOnBlock = entity;
+                ReportStayCube(Session, entity);
             });
         }
 
@@ -403,16 +418,6 @@ public class FieldPlayer : Actor<Player> {
             case ActorState.Walk:
                 if (UpdateStateSyncTracking()) {
                     Session.ConditionUpdate(ConditionType.run, codeLong: Value.Character.MapId);
-                    Session.Field?.AccelerationStructure?.FindBlockUnderPlayer(Position, entity => {
-                        switch (entity) {
-                            case FieldMeshColliderEntity { MapAttribute: MapAttribute.glass } meshCollider:
-                                Session.ConditionUpdate(ConditionType.stay_cube, codeLong: Session.Field.MapId, targetString: meshCollider.MapAttribute.ToString());
-                                break;
-                            case FieldBoxColliderEntity { MapAttribute: MapAttribute.snow or MapAttribute.grass } boxCollider:
-                                Session.ConditionUpdate(ConditionType.stay_cube, codeLong: Session.Field.MapId, targetString: boxCollider.MapAttribute.ToString());
-                                break;
-                        }
-                    });
                 }
                 break;
             case ActorState.Crawl:

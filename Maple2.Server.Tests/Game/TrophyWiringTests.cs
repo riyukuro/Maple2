@@ -580,6 +580,9 @@ public class TrophyWiringTests {
         return TestGameSession.QuestData(id) with { Conditions = [condition] };
     }
 
+    private static QuestMetadata QuestWith(int id, ConditionMetadata condition) =>
+        TestGameSession.QuestData(id) with { Conditions = [condition] };
+
     private static Maple2.PacketLib.Tools.ByteReader Jump() => TestGameSession.Packet(writer => {
         writer.WriteByte(0); // Jump
         writer.WriteByte(0);
@@ -619,6 +622,52 @@ public class TrophyWiringTests {
         Assert.That(here.Conditions[0].Counter, Is.EqualTo(1));
         Assert.That(lower.Conditions[0].Counter, Is.Zero);
         Assert.That(higher.Conditions[0].Counter, Is.Zero);
+    }
+
+    [Test]
+    public void StayCube_CountsASecondOnTheMaterialOfTheQuest() {
+        GameSession session = Start();
+        Quest grass = test.StartQuest(QuestWith(QuestId, new ConditionMetadata(ConditionType.stay_cube, 60, null,
+            new ConditionMetadata.Parameters(Strings: ["grass"]))));
+        Quest snow = test.StartQuest(QuestWith(QuestId + 1, new ConditionMetadata(ConditionType.stay_cube, 60, null,
+            new ConditionMetadata.Parameters(Strings: ["snow"]))));
+        Quest here = test.StartQuest(QuestWith(QuestId + 2, ConditionType.stay_cube, codes: [Town]));
+        Quest elsewhere = test.StartQuest(QuestWith(QuestId + 3, ConditionType.stay_cube, codes: [Town + 1]));
+        test.EnterMap(TestGameSession.Map(Town));
+        var id = new Maple2.Model.Metadata.FieldEntity.FieldEntityId(0, 0, string.Empty);
+        var cube = new Maple2.Model.Metadata.FieldEntity.FieldBoxColliderEntity(id, default, default, 1f, default, default, false, false, MapAttribute.grass);
+
+        // Standing still: the block under the player is looked up once per second, whatever the state.
+        Maple2.Server.Game.Model.FieldPlayer.ReportStayCube(session, cube);
+        Maple2.Server.Game.Model.FieldPlayer.ReportStayCube(session, cube);
+        Assert.That(grass.Conditions[0].Counter, Is.EqualTo(2));
+        Assert.That(snow.Conditions[0].Counter, Is.Zero);
+        Assert.That(here.Conditions[0].Counter, Is.EqualTo(2));
+        Assert.That(elsewhere.Conditions[0].Counter, Is.Zero);
+
+        // No cube (in the air) and a fluid count nothing.
+        Maple2.Server.Game.Model.FieldPlayer.ReportStayCube(session, null);
+        Maple2.Server.Game.Model.FieldPlayer.ReportStayCube(session, cube with { IsFluid = true });
+        Assert.That(grass.Conditions[0].Counter, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void InstrumentTime_CountsForTheCategoryOfTheInstrument() {
+        GameSession session = Start();
+        Quest piano = test.StartQuest(QuestWith(QuestId, new ConditionMetadata(ConditionType.music_play_instrument_time, 20,
+            new ConditionMetadata.Parameters(Integers: [1]), new ConditionMetadata.Parameters(Integers: [Town]))));
+        Quest any = test.StartQuest(QuestWith(QuestId + 1, ConditionType.music_play_instrument_time));
+        test.EnterMap(TestGameSession.Map(Town));
+
+        // Instrument 2 is of category 2: 3 seconds for the quest of any instrument only.
+        InstrumentHandler.ReportPlayTime(session, new InstrumentMetadata(2, 0, 1, 2, 0, 0), 3500);
+        Assert.That(piano.Conditions[0].Counter, Is.Zero);
+        Assert.That(any.Conditions[0].Counter, Is.EqualTo(3));
+
+        // Instrument 6 is of category 1.
+        InstrumentHandler.ReportPlayTime(session, new InstrumentMetadata(6, 0, 3, 1, 0, 0), 5000);
+        Assert.That(piano.Conditions[0].Counter, Is.EqualTo(5));
+        Assert.That(any.Conditions[0].Counter, Is.EqualTo(8));
     }
     #endregion
 }
