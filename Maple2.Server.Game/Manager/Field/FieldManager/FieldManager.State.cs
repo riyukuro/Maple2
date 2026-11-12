@@ -1563,6 +1563,10 @@ public partial class FieldManager {
         }
         added.Session.Send(LiftablePacket.Update(fieldLiftables.Values.Where(liftable => liftable.FinishTick == 0).ToList()));
         added.Session.Send(BreakablePacket.Update(fieldBreakables.Values));
+        List<(Vector3B, int)> away = LiftupRules.Away(liftedCubes, Environment.TickCount64);
+        if (away.Count > 0) {
+            added.Session.Send(CubePacket.LiftedCubes(away));
+        }
         // The client shows every vibrate object; the hidden groups are hidden for the newcomer.
         foreach (string vibrateId in Vibrate.Hidden) {
             added.Session.Send(VibratePacket.Hide(vibrateId));

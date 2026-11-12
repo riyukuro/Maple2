@@ -278,7 +278,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     private void HandleForfeitPlot(GameSession session) {
         PlotInfo? plot = session.Housing.ForfeitPlot();
         if (plot != null) {
-            session.Send(CubePacket.ConfirmForfeitPlot(plot));
+            session.Send(CubePacket.ConfirmForfeitPlot(plot, CubePacket.ForfeitByOwner));
         }
     }
 
@@ -421,13 +421,13 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Field.LiftupCube(position, out LiftupWeapon? weapon)) {
+        if (!session.Field.LiftupCube(position, out LiftupWeapon? weapon, out int respawnTick)) {
             session.Send(CubePacket.LiftupError(UgcMapError.s_ugcmap_no_cube_to_lift, session.Player.ObjectId));
             return;
         }
 
         session.HeldLiftup = weapon;
-        session.Field.Broadcast(CubePacket.LiftupObject(session.Player, session.HeldLiftup));
+        session.Field.Broadcast(CubePacket.LiftupObject(session.Player, session.HeldLiftup, respawnTick));
         session.Player.InBattle = true;
     }
 

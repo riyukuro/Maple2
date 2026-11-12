@@ -70,7 +70,7 @@ public partial class ChannelService {
         if (request.Forfeit) {
             if (fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
                 fieldManager.Broadcast(CubePacket.ForfeitPlot(plot));
-                session?.Send(CubePacket.ConfirmForfeitPlot(plot));
+                session?.Send(CubePacket.ConfirmForfeitPlot(plot, CubePacket.ForfeitExpired));
             }
         }
     }

@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -6,6 +7,7 @@ using DotRecast.Core.Numerics;
 using DotRecast.Detour;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
+using Maple2.Model.Validators;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -729,8 +731,15 @@ public partial class FieldManager : IField {
         return entered;
     }
 
-    public bool LiftupCube(in Vector3B coordinates, [NotNullWhen(true)] out LiftupWeapon? liftupWeapon) {
-        if (!Entities.ObjectWeapons.TryGetValue(coordinates, out ObjectWeapon? objectWeapon)) {
+    // A lifted weapon cube is away until its respawn time: nobody lifts it again before, and a player who enters
+    // meanwhile is told (ResponseCube 27).
+    private readonly ConcurrentDictionary<Vector3B, long> liftedCubes = new();
+
+    public bool LiftupCube(in Vector3B coordinates, [NotNullWhen(true)] out LiftupWeapon? liftupWeapon, out int respawnTick) {
+        respawnTick = 0;
+        long now = Environment.TickCount64;
+        if (!Entities.ObjectWeapons.TryGetValue(coordinates, out ObjectWeapon? objectWeapon)
+            || (liftedCubes.TryGetValue(coordinates, out long until) && LiftupRules.IsAway(until, now))) {
             liftupWeapon = null;
             return false;
         }
@@ -742,6 +751,8 @@ public partial class FieldManager : IField {
         }
 
         liftupWeapon = new LiftupWeapon(objectWeapon, itemId, item.Skill.WeaponId, item.Skill.WeaponLevel);
+        liftedCubes[coordinates] = now + objectWeapon.RespawnTick;
+        respawnTick = LiftupRules.ClientTick(now + objectWeapon.RespawnTick);
 
         if (objectWeapon.SpawnNpcId != 0 && Random.Shared.NextSingle() < objectWeapon.SpawnNpcRate) {
             if (NpcMetadata.TryGet(objectWeapon.SpawnNpcId, out NpcMetadata? metadata)) {

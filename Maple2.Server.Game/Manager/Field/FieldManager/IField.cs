@@ -94,7 +94,7 @@ public interface IField : IDisposable {
     public ICollection<FieldLiftable> EnumerateLiftables();
     public bool TryGetInteract(string entityId, [NotNullWhen(true)] out FieldInteract? fieldInteract);
     public bool UsePortal(GameSession session, int portalId, string password);
-    public bool LiftupCube(in Vector3B coordinates, [NotNullWhen(true)] out LiftupWeapon? liftupWeapon);
+    public bool LiftupCube(in Vector3B coordinates, [NotNullWhen(true)] out LiftupWeapon? liftupWeapon, out int respawnTick);
     public void MovePlayerAlongPath(string pathName, Func<FieldPlayer, bool>? moves = null);
 
     public bool RemoveNpc(int objectId, TimeSpan removeDelay = default);

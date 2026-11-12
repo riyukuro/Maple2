@@ -48,14 +48,14 @@ public static class HomeBuildRules {
 
     // Whether an account in the owner's home is told it may build there (ResponseCube 0x35): a listed helper,
     // and not while the home is in a planner mode. The same answer on every path that tells a helper.
+    public static bool MayGrant(bool planner, bool isBuilder) {
+        return isBuilder && !planner;
+    }
+
     // The trophy grades cube items ask for that the home owner has not cleared, in key order: the set a build
     // helper's client locks cubes by (ResponseCube 0x37).
     public static List<(int TrophyId, int Grade)> MissingTrophies(IEnumerable<(int TrophyId, int Grade)> required, Func<int, int, bool> cleared) {
         return required.Where(key => key.TrophyId > 0 && !cleared(key.TrophyId, key.Grade)).Distinct().Order().ToList();
-    }
-
-    public static bool MayGrant(bool planner, bool isBuilder) {
-        return isBuilder && !planner;
     }
 
     // A cube a helper places is bought from the budget, in the currency of its shop entry.

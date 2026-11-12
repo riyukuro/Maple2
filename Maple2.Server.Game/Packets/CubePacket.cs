@@ -33,7 +33,7 @@ public static class CubePacket {
         SetPasscode = 24,
         ConfirmVote = 25,
         KickOut = 26,
-        // 27
+        LiftedCubes = 27,
         ArchitectScore = 28,
         SetHomeMessage = 29,
         // 32
@@ -170,7 +170,12 @@ public static class CubePacket {
 
     // Client: CSceneStateGame::OnResponseCube case 7 (scenestategame.cpp:9959): short reason (0x75 picks the other
     // notice text), byte flag, int, int.
-    public static ByteWriter ConfirmForfeitPlot(PlotInfo plot, short reason = 0, bool flag = false) {
+    // Client: ResponseCube case 7 (scenestategame.cpp:9959) shows the "already expired" notice for reason 0x75 and
+    // the forfeit notice for any other; KMS2 sends 0x72 to an owner who gave the plot up.
+    public const short ForfeitByOwner = 0x72;
+    public const short ForfeitExpired = 0x75;
+
+    public static ByteWriter ConfirmForfeitPlot(PlotInfo plot, short reason, bool flag = false) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.ConfirmForfeitPlot);
         pWriter.WriteShort(reason);
@@ -282,14 +287,29 @@ public static class CubePacket {
         return pWriter;
     }
 
-    public static ByteWriter LiftupObject(IActor<Player> player, LiftupWeapon liftupWeapon) {
+    public static ByteWriter LiftupObject(IActor<Player> player, LiftupWeapon liftupWeapon, int respawnTick) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.LiftupObject);
         pWriter.Write<UgcMapError>(UgcMapError.s_ugcmap_ok);
         pWriter.WriteInt(player.ObjectId);
         pWriter.Write<Vector3B>(liftupWeapon.Object.Position);
         pWriter.WriteInt(liftupWeapon.ItemId);
-        pWriter.WriteInt(Environment.TickCount + liftupWeapon.Object.RespawnTick);
+        pWriter.WriteInt(respawnTick);
+
+        return pWriter;
+    }
+
+    // Client: ResponseCube case 0x1b (scenestategame.cpp:10195): int count, then per cube its cell key and the
+    // tick it comes back at; the cube is hidden until then, as after sub-type 17. For a player who enters the
+    // field while cubes are away.
+    public static ByteWriter LiftedCubes(IReadOnlyCollection<(Vector3B Position, int RespawnTick)> cubes) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.Write<Command>(Command.LiftedCubes);
+        pWriter.WriteInt(cubes.Count);
+        foreach ((Vector3B position, int respawnTick) in cubes) {
+            pWriter.Write<Vector3B>(position);
+            pWriter.WriteInt(respawnTick);
+        }
 
         return pWriter;
     }
