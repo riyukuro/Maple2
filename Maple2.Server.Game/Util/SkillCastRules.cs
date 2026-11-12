@@ -378,13 +378,20 @@ public static class SkillCastRules {
     // field's (PCBase::GetSkillUseDisableMask, CSkillSystem cast check answer 0x1e).
     // Only a cast's first motion is checked: the client checks the type when a cast starts and sends the next motion
     // of the same cast (motion point 1 and on) without it (CStateSkill, stateskill.cpp:2977), so a mask that lands
-    // between motions does not stop the cast the client goes on playing.
-    public static bool TypeDisabled(int buffMask, int fieldMask, int mainType, int motionPoint = 0) {
-        if (motionPoint != 0) {
+    // between motions does not stop the cast the client goes on playing. laterMotion: see LaterMotion.
+    public static bool TypeDisabled(int buffMask, int fieldMask, int mainType, bool laterMotion = false) {
+        if (laterMotion) {
             return false;
         }
         int mask = buffMask | fieldMask;
         return mask != 0 && mainType is >= 0 and < 32 && (mask & (1 << mainType)) != 0;
+    }
+
+    // A Use is the next motion of a cast only when the server took an earlier motion of it: the client sends the
+    // next motion with the cast's own id, skill and the motion point one on (StateSkill::FUN_1417ee120,
+    // stateskill.cpp:2971). A Use with a motion point past 0 and no such cast held is a cast start and is checked as one.
+    public static bool LaterMotion(int motionPoint, int skillId, int? heldSkillId, int heldMotionPoint) {
+        return motionPoint != 0 && heldSkillId == skillId && heldMotionPoint < motionPoint;
     }
 
     public static bool MapRefuses(int[] maps, int mapId) {

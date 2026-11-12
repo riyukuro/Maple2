@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -152,8 +152,22 @@ public class DisabledBuffTests {
         Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 4), Is.False);
         Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(0, 0, 2), Is.False);
         // A later motion of the same cast is not checked, as the client sends it without the check.
-        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2, motionPoint: 1), Is.False);
-        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2, motionPoint: 0), Is.True);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2, laterMotion: true), Is.False);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2, laterMotion: false), Is.True);
+    }
+
+    [Test]
+    public void OnlyAHeldCastHasLaterMotions() {
+        // The next motion of a held cast of 10200001 (motion 0 taken, then motion 1 sent).
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.LaterMotion(1, 10200001, 10200001, 0), Is.True);
+        // A Use with motion point 1 and no cast of that id held: a cast start, checked.
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.LaterMotion(1, 10200001, null, 0), Is.False);
+        // The cast id held is of another skill.
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.LaterMotion(1, 10200001, 10200011, 0), Is.False);
+        // Not past the motion held.
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.LaterMotion(1, 10200001, 10200001, 1), Is.False);
+        // Motion 0 is always a cast start.
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.LaterMotion(0, 10200001, 10200001, 0), Is.False);
 
         int field = Maple2.Server.Game.Util.SkillCastRules.FieldTypeMask([1, 2, 3, 5, 8, 9]);
         Assert.That(field, Is.EqualTo(0b1100101110));

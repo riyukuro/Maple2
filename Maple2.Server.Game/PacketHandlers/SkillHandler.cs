@@ -165,13 +165,15 @@ public class SkillHandler : FieldPacketHandler {
         if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
             return false;
         }
+        SkillRecord? held = session.Player.ActiveSkills.Get(record.CastUid);
+        bool laterMotion = SkillCastRules.LaterMotion(record.MotionPoint, record.SkillId, held?.SkillId, held?.MotionPoint ?? 0);
         if (SkillCastRules.TypeDisabled(session.Player.Buffs.SkillUseDisableMask(), SkillCastRules.FieldTypeMask(session.Field.Metadata.Limit.DisableSkills),
-                record.Metadata.Property.MainType, record.MotionPoint)) {
+                record.Metadata.Property.MainType, laterMotion)) {
             Logger.Debug("Cast refused, skill {SkillId} of main type {MainType} is disabled by a buff held or the field", record.SkillId, record.Metadata.Property.MainType);
             return false;
         }
         // The same holds for a buff that disables the skill itself (answer 0x1f): checked on the first motion only.
-        if (record.MotionPoint == 0 && session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
+        if (!laterMotion && session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
             Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);
             return false;
         }
