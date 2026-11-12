@@ -121,6 +121,9 @@ public partial class FieldManager {
                     return;
                 }
 
+                if (!plot.IsPlanner) {
+                    owner.ConditionUpdate(ConditionType.interior_point, counter: HousingManager.DecorationScore(plot));
+                }
                 session.Field!.Broadcast(CubePacket.PlaceCube(session.Player.ObjectId, plot, plotCube));
 
                 if (plot.MapId is not Constant.DefaultHomeMapId) {

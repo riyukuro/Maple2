@@ -6,6 +6,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -94,6 +95,9 @@ public sealed class AchievementManager {
     /// score at or below the counter changes nothing and sends no Update. Other conditions add the count.
     /// </summary>
     public static bool Advances(ConditionType conditionType, long counter, long count) {
+        if (conditionType is ConditionType.interior_point) {
+            return InteriorPointRules.Advances(counter, count);
+        }
         return conditionType is not ConditionType.item_gear_score || count > counter;
     }
 
@@ -108,6 +112,8 @@ public sealed class AchievementManager {
         // Are there more conditions that should be added here?
         if (conditionType is ConditionType.item_gear_score) {
             achievement.Counter = Math.Max(achievement.Counter, count); // Using Math.Max to ensure gear score doesn't decrease.
+        } else if (conditionType is ConditionType.interior_point) {
+            achievement.Counter = InteriorPointRules.Counter(achievement.Counter, count);
         } else {
             achievement.Counter += count;
         }

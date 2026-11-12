@@ -417,19 +417,13 @@ public class HousingManager {
         db.SaveCubes(Home.Indoor, plotCubes);
     }
 
-    private readonly Dictionary<HousingCategory, int> decorationGoal = new() {
-        { HousingCategory.Bed, 1 },
-        { HousingCategory.Table, 1 },
-        { HousingCategory.SofasChairs, 2 },
-        { HousingCategory.Storage, 1 },
-        { HousingCategory.WallDecoration, 1 },
-        { HousingCategory.WallTiles, 3 },
-        { HousingCategory.Bathroom, 1 },
-        { HousingCategory.Lighting, 1 },
-        { HousingCategory.Electronics, 1 },
-        { HousingCategory.Fences, 2 },
-        { HousingCategory.NaturalTerrain, 4 },
-    };
+    // The decoration score of a plot as it stands: the points of the decoration goals its cubes meet.
+    public static int DecorationScore(Plot plot) {
+        return InteriorPointRules.Score(plot.Cubes.Values
+            .Where(plotCube => plotCube.Metadata.Housing != null)
+            .GroupBy(plotCube => plotCube.Metadata.Housing!.HousingCategory)
+            .ToDictionary(grouping => grouping.Key, grouping => grouping.Count()));
+    }
 
     public void InteriorCheckIn(Plot plot) {
         if (session.Field is null) return;
@@ -438,44 +432,7 @@ public class HousingManager {
             return;
         }
 
-        Dictionary<HousingCategory, int> decorationCurrent = plot.Cubes.Values
-            .Where(plotCube => plotCube.Metadata.Housing != null)
-            .GroupBy(plotCube => plotCube.Metadata.Housing!.HousingCategory)
-            .ToDictionary(grouping => grouping.Key, grouping => grouping.Count());
-
-        int decorationScore = 0;
-
-        foreach (KeyValuePair<HousingCategory, int> goal in decorationGoal) {
-            if (!decorationCurrent.TryGetValue(goal.Key, out int current)) {
-                continue;
-            }
-
-            if (current < goal.Value) {
-                continue;
-            }
-
-            switch (goal.Key) {
-                case HousingCategory.Bed:
-                case HousingCategory.SofasChairs:
-                case HousingCategory.WallDecoration:
-                case HousingCategory.WallTiles:
-                case HousingCategory.Bathroom:
-                case HousingCategory.Lighting:
-                case HousingCategory.Fences:
-                case HousingCategory.NaturalTerrain:
-                    decorationScore += 100;
-                    break;
-                case HousingCategory.Table:
-                case HousingCategory.Storage:
-                    decorationScore += 50;
-                    break;
-                case HousingCategory.Electronics:
-                    decorationScore += 200;
-                    break;
-                default:
-                    continue;
-            }
-        }
+        int decorationScore = DecorationScore(plot);
 
         int housingPoint = decorationScore switch {
             < 300 => 100,

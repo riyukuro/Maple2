@@ -260,8 +260,15 @@ public sealed class QuestManager {
                     continue;
                 }
 
+                if (type is ConditionType.interior_point && !InteriorPointRules.Advances(condition.Counter, counter)) {
+                    continue;
+                }
+
                 int previousCounter = condition.Counter;
-                condition.Counter = (int) Math.Min(condition.Metadata.Value, condition.Counter + counter);
+                long counted = type is ConditionType.interior_point
+                    ? InteriorPointRules.Counter(condition.Counter, counter)
+                    : condition.Counter + counter;
+                condition.Counter = (int) Math.Min(condition.Metadata.Value, counted);
 
                 // Only send update every 5 increments for throttleStates
                 if (throttleStates.Contains(type)) {
