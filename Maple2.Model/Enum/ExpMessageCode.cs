@@ -22,7 +22,19 @@ public enum ExpMessageCode : ushort {
     [Description("You got {0} experience.")]
     gathering = 3103,
     [Description("You got {0} experience.")]
+    masteryGathering = 3104,
+    [Description("You got {0} experience.")]
+    masteryBreeding = 3105,
+    [Description("You got {0} experience.")]
+    masteryFarming = 3106,
+    [Description("You got {0} experience.")]
     manufacturing = 3107,
+    [Description("You got {0} experience.")]
+    masteryEngraving = 3108,
+    [Description("You got {0} experience.")]
+    masteryAlchemist = 3109,
+    [Description("You got {0} experience.")]
+    masteryCooking = 3110,
     [Description("You got {0} experience.")]
     petTaming = 3200,
     [Description("You got {0} experience.")]

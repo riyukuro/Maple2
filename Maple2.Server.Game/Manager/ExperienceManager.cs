@@ -124,7 +124,8 @@ public sealed class ExperienceManager {
         return expGained;
     }
 
-    public long AddExp(ExpType expType, float modifier = 1f, long additionalExp = 0) {
+    // message: the reason to name instead of the exp type's own (a gather or a craft names its mastery type).
+    public long AddExp(ExpType expType, float modifier = 1f, long additionalExp = 0, ExpMessageCode? message = null) {
         if (session.Field is null) return 0;
         if (!session.TableMetadata.CommonExpTable.Entries.TryGetValue(expType, out CommonExpTable.Entry? entry)
             || !session.TableMetadata.ExpTable.ExpBase.TryGetValue(entry.ExpTableId, out IReadOnlyDictionary<int, long>? expBase)) {
@@ -147,7 +148,7 @@ public sealed class ExperienceManager {
             return 0;
         }
 
-        return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), expType.Message());
+        return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message());
     }
 
     // The client's CExpTable::GetTypeValue at the character's level: the type's common exp curve, its base exp times its

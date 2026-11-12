@@ -168,7 +168,7 @@ public class MasteryManager {
 
     private void GatherExp(bool success, MasteryRecipeTable.Entry? recipeMetadata) {
         if (success && recipeMetadata is { NoRewardExp: false }) {
-            session.Exp.AddExp(ExpType.gathering);
+            session.Exp.AddExp(ExpType.gathering, message: MasteryRules.ExpReason(recipeMetadata.Type));
         }
     }
 

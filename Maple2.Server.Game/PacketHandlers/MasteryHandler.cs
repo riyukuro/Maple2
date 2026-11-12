@@ -114,7 +114,7 @@ public class MasteryHandler : FieldPacketHandler {
         }
         // KMS2 sends the crafted item list right after the bag updates, before the exp and the trophies.
         session.Send(MasteryPacket.GetCraftedItem(entry.Type, (ICollection<ItemComponent>) entry.RewardItems));
-        session.Exp.AddExp(ExpType.manufacturing);
+        session.Exp.AddExp(ExpType.manufacturing, message: MasteryRules.ExpReason(entry.Type));
         session.ConditionUpdate(ConditionType.mastery_manufacturing, codeLong: recipeId);
     }
 }

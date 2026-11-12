@@ -6,6 +6,34 @@ using Maple2.PacketLib.Tools;
 namespace Maple2.Server.Tests.Validators;
 
 public class MasteryRulesTests {
+    // KMS2: the exp of a gather or a craft names 3100 plus the mastery type.
+    [TestCase(MasteryType.Mining, 3103)]
+    [TestCase(MasteryType.Gathering, 3104)]
+    [TestCase(MasteryType.Breeding, 3105)]
+    [TestCase(MasteryType.Farming, 3106)]
+    [TestCase(MasteryType.Blacksmithing, 3107)]
+    [TestCase(MasteryType.Engraving, 3108)]
+    [TestCase(MasteryType.Alchemist, 3109)]
+    [TestCase(MasteryType.Cooking, 3110)]
+    public void ExpReason(MasteryType type, int expected) {
+        Assert.That((int?) MasteryRules.ExpReason(type), Is.EqualTo(expected));
+    }
+
+    [TestCase(MasteryType.Unknown)]
+    [TestCase(MasteryType.Fishing)]
+    [TestCase(MasteryType.Music)]
+    [TestCase(MasteryType.PetTaming)]
+    public void ExpReasonOtherTypes(MasteryType type) {
+        Assert.That(MasteryRules.ExpReason(type), Is.Null);
+    }
+
+    [Test]
+    public void ExpReasonNames() {
+        Assert.That(MasteryRules.ExpReason(MasteryType.Mining), Is.EqualTo(ExpMessageCode.gathering));
+        Assert.That(MasteryRules.ExpReason(MasteryType.Blacksmithing), Is.EqualTo(ExpMessageCode.manufacturing));
+        Assert.That(MasteryRules.ExpReason(MasteryType.Farming), Is.EqualTo(ExpMessageCode.masteryFarming));
+    }
+
     // Mastery 0x0092 mode 2: u8 mode, i32 recipe id.
     [Test]
     public void CraftPacket() {

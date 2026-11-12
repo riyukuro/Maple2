@@ -4,6 +4,13 @@ using Maple2.Model.Error;
 namespace Maple2.Model.Validators;
 
 public static class MasteryRules {
+    // The reason KMS2 names for the character exp of a gather or a craft: 3100 plus the recipe's mastery type
+    // (3103 mining, 3104 gathering, 3105 breeding, 3106 farming, 3108 engraving are seen; 3107 is in the client's
+    // list). 3109 and 3110 for alchemy and cooking follow the same rule and are not seen. Null for the other types.
+    public static ExpMessageCode? ExpReason(MasteryType type) {
+        return type is >= MasteryType.Mining and <= MasteryType.Cooking ? (ExpMessageCode) (3100 + (int) type) : null;
+    }
+
     // The client checks a recipe in this order before it sends the craft: mastery, quest, meso (items come after).
     // A recipe with required quests needs one of them, not all. 0 means the recipe may be crafted.
     public static MasteryError CraftError(int mastery, int requiredMastery, int requiredQuestCount, bool hasAnyRequiredQuest, long meso, long requiredMeso) {
