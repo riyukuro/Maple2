@@ -418,6 +418,12 @@ public class FieldPlayer : Actor<Player> {
             return;
         }
         base.ApplyDamage(caster, damage, attack);
+        if (caster is not FieldPlayer) {
+            // A hit by a monster's or the map's skill counts for skill_damage_npc with the skill id as the code
+            // (70400009 "Get attacked by a seedling at the Maple Arcade" 49230005, 21233002 "Get trapped in the
+            // $npc:23000018$'s water prison" 99999981).
+            Session.ConditionUpdate(ConditionType.skill_damage_npc, codeLong: damage.SkillMetadata.Id);
+        }
     }
 
     protected override void OnDeath() {

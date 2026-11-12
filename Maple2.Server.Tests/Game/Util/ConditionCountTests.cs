@@ -226,6 +226,16 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: (long) type), Is.EqualTo(expected));
     }
 
+    // A hit by a monster's skill counts for skill_damage_npc when the skill id is one of the row's codes
+    // (21233021 "Get sent flying by $npc:23001001$": skills 49905001 and 49905002).
+    [TestCase(49905002, true)]
+    [TestCase(49905003, false)]
+    public void SkillDamageNpc_CountsTheListedSkills(int skillId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.skill_damage_npc, 1,
+            new ConditionMetadata.Parameters(Integers: [49905001, 49905002]), null);
+        Assert.That(condition.Check(null!, codeLong: skillId), Is.EqualTo(expected));
+    }
+
     // A completed daily quest counts for quest_daily when its id is one of the row's codes.
     [TestCase(30000359, true)]
     [TestCase(30000360, false)]
