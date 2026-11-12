@@ -257,6 +257,7 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryRemove(member.CharacterId, out _) && Party.Search != null) {
             Party.Search.MemberCount--;
         }
+        DropFromVote(member.CharacterId);
         PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
     });
@@ -286,6 +287,7 @@ public class PartyManager : IDisposable {
         if (Party.Members.TryRemove(member.CharacterId, out _) && Party.Search != null) {
             Party.Search.MemberCount--;
         }
+        DropFromVote(member.CharacterId);
         PartyLookup.DungeonMatchResize(this);
         return PartyError.none;
     });
@@ -435,6 +437,28 @@ public class PartyManager : IDisposable {
 
         return PartyError.none;
     });
+
+    // A member who left or was kicked has no answer to give. The client takes a member who goes offline off its ready
+    // check (PartyVoteReadyCli::vfunc_6); a member who leaves is taken off too, and the check ends once everyone
+    // left has answered. A kick vote whose target is gone ends: each channel ends its copy when the target's
+    // RemoveMember arrives (Game PartyManager.RemoveMember), so nothing more is sent.
+    private void DropFromVote(long characterId) {
+        PartyVote? vote = Party.Vote;
+        if (vote == null) {
+            return;
+        }
+        if (vote.Type == PartyVoteType.Kick) {
+            if (vote.TargetMember?.CharacterId == characterId) {
+                Party.Vote = null;
+            }
+            return;
+        }
+
+        vote.Voters.Remove(characterId);
+        vote.Approvals.Remove(characterId);
+        vote.Disapprovals.Remove(characterId);
+        CheckEndVote();
+    }
 
     private void CheckEndVote() {
         if (Party.Vote == null) {

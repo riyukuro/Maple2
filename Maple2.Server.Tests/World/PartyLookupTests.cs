@@ -749,4 +749,57 @@ public class PartyLookupTests {
         lookup.VoteTimers[0]();
         Assert.That(party.Party.Vote, Is.Not.Null);
     }
+
+    // A member who leaves during a ready check is taken off it: once everyone left has answered, the check ends
+    // instead of running out its time.
+    [Test]
+    public void ReadyCheckEndsWhenTheLastUnansweredMemberLeaves() {
+        PartyManager party = Party(3);
+        long leader = party.Party.LeaderCharacterId;
+        long[] others = party.Party.Members.Keys.Where(id => id != leader).ToArray();
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int id = party.Party.Vote!.Id;
+        Assert.That(party.ReadyCheckReply(others[0], id, true), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Not.Null);
+
+        Assert.That(party.Leave(others[1]), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Null);
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+    }
+
+    // The same for a member the leader kicks; an answer the member gave is taken off with them.
+    [Test]
+    public void KickedMemberIsTakenOffTheReadyCheck() {
+        PartyManager party = Party(4);
+        long leader = party.Party.LeaderCharacterId;
+        long[] others = party.Party.Members.Keys.Where(id => id != leader).ToArray();
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int id = party.Party.Vote!.Id;
+        Assert.That(party.ReadyCheckReply(others[0], id, false), Is.EqualTo(PartyError.none));
+        Assert.That(party.Kick(leader, others[0]), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote!.Voters, Does.Not.Contain(others[0]));
+        Assert.That(party.Party.Vote!.Disapprovals, Does.Not.Contain(others[0]));
+
+        Assert.That(party.ReadyCheckReply(others[1], id, true), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Not.Null);
+        Assert.That(party.Kick(leader, others[2]), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Null);
+    }
+
+    // A kick vote whose target leaves ends, so the party can vote again.
+    [Test]
+    public void KickVoteEndsWhenItsTargetLeaves() {
+        PartyManager party = Party(4);
+        long leader = party.Party.LeaderCharacterId;
+        long[] others = party.Party.Members.Keys.Where(id => id != leader).ToArray();
+
+        Assert.That(party.VoteKick(others[0], others[1]), Is.EqualTo(PartyError.none));
+        Assert.That(party.Leave(others[2]), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Not.Null);
+        Assert.That(party.Leave(others[1]), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Null);
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+    }
 }

@@ -19,7 +19,8 @@ public class PartyVote : IByteSerializable {
 
     public PartyVote(PartyVoteType type, ICollection<long> voters, long requestorId) {
         Type = type;
-        Voters = voters;
+        // A copy: a member who leaves during a ready check is taken off it.
+        Voters = new List<long>(voters);
         InitiatorId = requestorId;
         Approvals = new List<long> { requestorId };
         Disapprovals = new List<long>();
