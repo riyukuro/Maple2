@@ -799,7 +799,16 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+        bool advanced = item.Metadata.Property.Tag == ItemTag.air_taxi_advanced;
+        int tickets = TaxiRules.TicketCost(advanced, session.Player.Value.Unlock.Maps.Contains(mapId));
+        if (tickets <= 0) {
+            return; // the client refuses this itself (s_err_cash_taxi_need_advanced_ticket, a client-only string)
+        }
+        bool consumed = tickets == 1
+            ? session.Item.Inventory.Consume(item.Uid, 1)
+            : session.Item.Inventory.Consume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]);
+        if (!consumed) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_itemcount));
             return;
         }
 

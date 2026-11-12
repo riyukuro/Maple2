@@ -102,15 +102,15 @@ public class TaxiHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(s_move_err_default));
     }
 
+    // The client never sends mode 2 (its RequestTaxi senders use modes 0, 1, 3, 4 and 5); it took no payment, so it
+    // is refused instead of moving the character for free.
     private void HandleRotorsAirTaxi(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
-        if (!CheckMapCashCall(session, mapId, MapMetadata)) {
-            return;
-        }
+        Logger.Warning("Refused RequestTaxi mode 2 to {MapId} from {CharacterId}", mapId, session.CharacterId);
+    }
 
-        session.Send(session.PrepareField(mapId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(s_move_err_default));
+    private float AirTaxiReduceRate(GameSession session) {
+        return (float) session.Player.Stats.Values[SpecialAttribute.ReduceAirTaxiFee].Multiplier();
     }
 
     private void HandleMesoAirTaxi(GameSession session, IByteReader packet) {
@@ -119,9 +119,14 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        int cost = Lua.CalcAirTaxiCharge((ushort) session.Player.Value.Character.Level);
+        bool premium = session.Config.IsPremiumClubActive();
+        if (!TaxiRules.CanMesoRide(session.Player.Value.Unlock.Maps.Contains(mapId), premium)) {
+            return; // the client offers merets or advanced walkie-talkies for a field never visited
+        }
 
-        if (!session.Config.IsPremiumClubActive()) {
+        long cost = TaxiRules.AirFare(Lua.CalcAirTaxiCharge((ushort) session.Player.Value.Character.Level), AirTaxiReduceRate(session));
+
+        if (!premium) {
             if (session.Currency.Meso < cost) {
                 session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
                 return;
@@ -141,12 +146,13 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Currency.Meret < Constants.MeratAirTaxiPrice) {
+        long price = TaxiRules.AirFare(Constants.MeratAirTaxiPrice, AirTaxiReduceRate(session));
+        if (session.Currency.Meret < price) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
             return;
         }
 
-        session.Currency.Meret -= Constants.MeratAirTaxiPrice;
+        session.Currency.Meret -= price;
 
         session.Send(session.PrepareField(mapId)
             ? FieldEnterPacket.Request(session.Player)
