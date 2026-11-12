@@ -1,11 +1,14 @@
 ﻿using System.Numerics;
+using DotRecast.Core.Numerics;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
+using Maple2.Tools.DotRecast;
 using Serilog;
 
 namespace Maple2.Server.Game.Model;
@@ -67,33 +70,18 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
     }
 
     private List<Vector3> GetRandomSpawns(int count) {
-        List<Vector3> spawnsPicked = new();
-        var spawnsRemaining = new Vector3[validSpawns.Count];
+        return SpawnPicker.Pick(validSpawns, count, Random.Shared, SpreadAround);
+    }
 
-        validSpawns.CopyTo(spawnsRemaining);
-
-        int selectSpawns = Math.Min(count, validSpawns.Count);
-        int remainder = count - selectSpawns;
-
-        for (int i = 0; i < selectSpawns; ++i) {
-            int picked = Random.Shared.Next(spawnsRemaining.Length - i);
-
-            spawnsPicked.Add(spawnsRemaining[picked]);
-            spawnsRemaining[picked] = spawnsRemaining[selectSpawns - i - 1]; // remove picked from list by replacing with last in list
+    // A navmesh point within SPAWN_DISTANCE of tile, or the tile itself when none is found there.
+    private Vector3 SpreadAround(Vector3 tile) {
+        float angle = Random.Shared.NextSingle() * MathF.PI * 2;
+        float distance = Random.Shared.NextSingle() * SPAWN_DISTANCE;
+        Vector3 candidate = tile + new Vector3(MathF.Cos(angle) * distance, MathF.Sin(angle) * distance, 0);
+        if (Field.FindNearestPoly(candidate, out long nearestRef, out RcVec3f position) && nearestRef != 0) {
+            return DotRecastHelper.FromNavMeshSpace(position);
         }
-
-        if (remainder > 0) {
-            Log.Logger.Error("Ran out of valid spawns to pick for spawn {SpawnId} in map {MapId}; valid spawns: {SpawnCount}; picking: {Picking}", spawnId, Field.MapId, validSpawns.Count, count);
-        }
-
-        // ran out of spawns to pick from so we are picking any duplicate now
-        for (int i = 0; i < remainder; ++i) {
-            int picked = Random.Shared.Next(0, validSpawns.Count);
-
-            spawnsPicked.Add(validSpawns[picked]);
-        }
-
-        return spawnsPicked;
+        return tile;
     }
 
     private void InitializeSpawns() {
