@@ -48,6 +48,10 @@ public sealed class BeautyManager : IDisposable {
         }
     }
 
+    // The saved style slots the character owns, and the styles saved in them.
+    public int SlotCount => Slots;
+    public int SavedCount => items.Count;
+
     public short OpenSlots {
         get {
             ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;

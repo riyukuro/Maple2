@@ -28,11 +28,14 @@ public static class BeautyPacket {
         ApplySavedHair = 21,
     }
 
-    public static ByteWriter BeautyShop(BeautyShop shop) {
+    // styleSlots and savedStyles: the saved style slots the character owns and the styles saved in them. The
+    // client counts its saves up from savedStyles and refuses a save with extension once that reaches its
+    // slot maximum (UIBeautyShopDialog::OnBeautyShopPacket, uibeautyshopdialog.cpp:1518-1519, 1748).
+    public static ByteWriter BeautyShop(BeautyShop shop, int styleSlots = 0, int savedStyles = 0) {
         var pWriter = Packet.Of(SendOp.Beauty);
         pWriter.Write<Command>(Command.BeautyShop);
         pWriter.WriteClass<BeautyShop>(shop);
-        pWriter.WriteBeautyShopItems(shop.Items);
+        pWriter.WriteBeautyShopItems(shop.Items, (byte) Math.Clamp(styleSlots, 0, 255), (byte) Math.Clamp(savedStyles, 0, 255));
 
         return pWriter;
     }
@@ -158,10 +161,10 @@ public static class BeautyPacket {
         return pWriter;
     }
 
-    private static void WriteBeautyShopItems(this IByteWriter pWriter, BeautyShopItem[] items) {
-        pWriter.WriteByte(); // Unknown1
-        pWriter.WriteByte(); // Unknown2
-        pWriter.WriteLong(); // the client sends this value back in the random hair request (sub-type 7)
+    private static void WriteBeautyShopItems(this IByteWriter pWriter, BeautyShopItem[] items, byte styleSlots, byte savedStyles) {
+        pWriter.WriteByte(styleSlots);
+        pWriter.WriteByte(savedStyles);
+        pWriter.WriteLong(); // KMS2 sends a date here (yyyymmddhhmmss as a number); the client sends this value back in the random hair request (sub-type 7)
         pWriter.WriteShort((short) items.Length);
         foreach (BeautyShopItem item in items) {
             pWriter.WriteInt(item.Id);

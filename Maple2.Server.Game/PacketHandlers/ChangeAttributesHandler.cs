@@ -149,8 +149,23 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 }
             }
 
-            // Consume required materials. A pet's lacking crystal fragments are paid in meso; nothing is taken
-            // unless everything can be, and KMS2 takes the meso before the materials.
+            if (!PayChange(session, item, ingredients, lockItem)) {
+                return;
+            }
+
+            item.TimeChangedOption++;
+            changeItem.TimeChangedOption++;
+            session.ChangeAttributesItem = changeItem;
+            session.Send(ChangeAttributesPacket.PreviewItem(session.ChangeAttributesItem));
+            session.ConditionUpdate(ItemRemakeRules.RemakeCondition(item.Type.IsPet));
+        }
+    }
+
+    // Takes the price of a change. A pet's lacking crystal fragments are paid in meso; nothing is taken unless
+    // everything can be, and KMS2 takes the meso before the materials.
+    internal static bool PayChange(GameSession session, Item item, List<IngredientInfo> ingredients, Item? lockItem) {
+        lock (session.Item) {
+            ingredients = [.. ingredients];
             long meso = 0;
             if (item.Type.IsPet) {
                 int index = ingredients.FindIndex(info => info.Tag == ItemTag.CrystalPiece);
@@ -167,33 +182,28 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             bool owns = ingredients.All(info => session.Item.Inventory.Find(info.Tag).Sum(material => (long) material.Amount) >= info.Amount);
             if (!owns || session.Currency.Meso < meso) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
-                return;
+                return false;
             }
             if (lockItem != null && lockItem.Amount < 1) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
-                return;
+                return false;
             }
             if (meso > 0) {
                 session.Currency.Meso -= meso;
             }
             if (!session.Item.Inventory.Consume(ingredients)) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
-                return;
+                return false;
             }
             if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
-                return;
+                return false;
             }
-
-            item.TimeChangedOption++;
-            changeItem.TimeChangedOption++;
-            session.ChangeAttributesItem = changeItem;
-            session.Send(ChangeAttributesPacket.PreviewItem(session.ChangeAttributesItem));
-            session.ConditionUpdate(ItemRemakeRules.RemakeCondition(item.Type.IsPet));
+            return true;
         }
     }
 
-    private List<IngredientInfo> GetIngredients(Item item) {
+    internal static List<IngredientInfo> GetIngredients(Item item) {
         var ingredients = new List<IngredientInfo>();
         (string tag1Str, int amount1, string tag2Str, int amount2, string tag3Str, int amount3) = item.Type.IsPet
             ? Lua.CalcGetPetRemakeIngredient(item.TimeChangedOption, item.Rarity, 0)

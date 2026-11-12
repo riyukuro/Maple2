@@ -142,7 +142,7 @@ public class BeautyHandler : FieldPacketHandler {
                         session.Send(BeautyPacket.DyeShop(session.BeautyShop));
                         break;
                     case BeautyShopCategory.Skin:
-                        session.Send(BeautyPacket.BeautyShop(session.BeautyShop));
+                        session.Send(BeautyPacket.BeautyShop(session.BeautyShop, session.Beauty.SlotCount, session.Beauty.SavedCount));
                         break;
                 }
                 break;
@@ -152,7 +152,7 @@ public class BeautyHandler : FieldPacketHandler {
                 break;
             case BeautyShopType.Default:
             case BeautyShopType.Random:
-                session.Send(BeautyPacket.BeautyShop(session.BeautyShop));
+                session.Send(BeautyPacket.BeautyShop(session.BeautyShop, session.Beauty.SlotCount, session.Beauty.SavedCount));
                 break;
             default:
                 Logger.Error("Unknown beauty shop category: {Category}", session.BeautyShop.Metadata.Category);
@@ -520,7 +520,7 @@ public class BeautyHandler : FieldPacketHandler {
         var shop = new BeautyShop(shopMetadata, shopMetadata.Items);
 
         session.BeautyShop = shop;
-        session.Send(BeautyPacket.BeautyShop(shop));
+        session.Send(BeautyPacket.BeautyShop(shop, session.Beauty.SlotCount, session.Beauty.SavedCount));
     }
 
     // Whether the fee can be taken; nothing is taken. Packets of one session are handled one at a time, so

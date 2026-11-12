@@ -23,7 +23,7 @@ public class BeautyShop : IByteSerializable {
         writer.WriteInt(Id);
         writer.Write<BeautyShopCategory>(Metadata.Category);
         writer.WriteInt(Metadata.CouponId);
-        writer.WriteByte(); // Related to random hair tickets
+        writer.WriteBool(Metadata.IsRandom); // KMS2 sends 1 for the random hair shop, 0 for the dye shop
         writer.WriteInt(Metadata.ReturnCouponId);
         writer.WriteInt(Metadata.SubType);
         writer.WriteByte();

@@ -171,6 +171,18 @@ public sealed class TestGameSession {
         cache.AddReplace(script.Id, script);
     }
 
+    // Pet data the session's ItemMetadata finds by pet id.
+    public void RegisterPet(int petId, int type = 1) {
+        var field = typeof(ItemMetadataStorage).GetField("petLookup", Any)!;
+        var lookup = (Maple2.Tools.ConcurrentMultiDictionary<int, int, PetMetadata>?) field.GetValue(itemMetadata);
+        if (lookup == null) {
+            lookup = new Maple2.Tools.ConcurrentMultiDictionary<int, int, PetMetadata>();
+            field.SetValue(itemMetadata, lookup);
+        }
+        lookup.TryAdd(petId, petId, new PetMetadata(petId, $"{petId}", type, [], petId, 0, false, 0, 0f, null, [],
+            new PetMetadataDistance(0, 0, 0), new PetMetadataTime(0, 0, 0, 0, 0)));
+    }
+
     // Item data the storage and the session's ItemMetadata find. Store registers its item by itself.
     public void Register(params ItemMetadata[] metadata) {
         foreach (ItemMetadata entry in metadata) {
