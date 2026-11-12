@@ -65,7 +65,12 @@ public sealed class MailManager {
     }
 
     public bool Delete(long mailId) {
-        if (!inbox.ContainsKey(mailId)) {
+        if (!inbox.TryGetValue(mailId, out Mail? inboxMail)) {
+            return false;
+        }
+        // The client refuses to delete a mail while an uncollected item on it is locked (s_itemlock_mail_remove).
+        if (MailRules.HasLockedItem(inboxMail)) {
+            logger.Information("Mail {MailId} not deleted: an item on it is locked", mailId);
             return false;
         }
 
@@ -74,7 +79,9 @@ public sealed class MailManager {
             return false;
         }
 
-        inbox.Remove(mailId);
+        lock (inbox) {
+            inbox.Remove(mailId);
+        }
         session.Send(MailPacket.Deleted(mailId));
         return true;
     }

@@ -43,6 +43,11 @@ public static class MailRules {
         return mail.Items.Count > 0 || !mail.MesoCollected() || !mail.MeretCollected() || !mail.GameMeretCollected();
     }
 
+    // UIMailListDialog::HasLockedAttachment: an uncollected item that is locked keeps the mail from being deleted.
+    public static bool HasLockedItem(Mail mail) {
+        return mail.Items.Any(item => item.IsLocked);
+    }
+
     // What refuses a collect before anything is given.
     public static MailError CollectError(Mail mail, long now) {
         if (!HasUncollected(mail)) {

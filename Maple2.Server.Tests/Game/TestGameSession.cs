@@ -43,7 +43,7 @@ namespace Maple2.Server.Tests.Game;
 //
 // The session is made without its constructor, so only what Start sets exists: Player, Item (Equips, Inventory,
 // Furnishing), ItemBox, ItemMerge, ItemEnchant, Stats (no actor: Refresh does nothing), PlayerInfo, Currency, Buffs, Achievement, Quest (no quests), Marriage (single), Exp, Dungeon (no room),
-// Housing, Guild (no guild), GameEvent (the user values stored for the events added with AddEvent), Field (a field
+// Housing, Buddy (no entries), Guild (no guild), GameEvent (the user values stored for the events added with AddEvent), Field (a field
 // that only broadcasts to this player and rolls item drops from the tables
 // set here) and World (grants every lock, answers a move with MoveAddress). A handler that reaches anything else
 // needs it set first.
@@ -386,6 +386,8 @@ public sealed class TestGameSession {
         session.Item = new ItemManager(db, session, stats);
         session.ItemBox = new ItemBoxManager(session);
         session.Mail = new MailManager(session);
+        // An empty friend and block list: what a mail send reads.
+        session.Buddy = new BuddyManager(db, session);
         session.BlackMarket = new BlackMarketManager(session);
         session.Shop = new ShopManager(session);
         session.ItemMerge = new ItemMergeManager(session);

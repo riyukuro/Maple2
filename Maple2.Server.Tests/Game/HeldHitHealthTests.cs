@@ -5,6 +5,9 @@ using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
@@ -85,7 +88,29 @@ public class HeldHitHealthTests {
         Assert.That(SentHealth(), Is.Empty);
     }
 
-    // FieldManager.RemovePlayer calls FlushHealth first (the fixture's field cannot run the rest of a leave).
+    // FieldManager.RemovePlayer itself: the held health goes last, after the leave is broadcast.
+    [Test]
+    public void RemovePlayerSendsTheHeldHealth() {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        FieldManager field = test.Session.Field!;
+        // What the leave reads that the fixture's field does not set.
+        typeof(FieldManager).GetField("<GameStorage>k__BackingField", any)!.SetValue(field, test.Storage);
+        typeof(FieldManager).GetField("fieldReactors", any)!.SetValue(field, new ConcurrentDictionary<int, FieldReactor>());
+        typeof(FieldManager).GetField("<Rps>k__BackingField", any)!.SetValue(field, new RpsMatchTable());
+        typeof(FieldManager).GetField("<CoupleDance>k__BackingField", any)!.SetValue(field, new CoupleDanceMatchTable());
+        test.Session.Ride = new RideManager(test.Session);
+        player.UpdateHealthSync(10_000);
+        Hit(100);
+        Hit(100);
+        Assert.That(SentHealth(), Is.EqualTo(new long[] { 900 }));
+
+        Assert.That(field.RemovePlayer(player.ObjectId, out FieldPlayer? removed), Is.True);
+
+        Assert.That(removed, Is.SameAs(player));
+        Assert.That(SentHealth(), Is.EqualTo(new long[] { 800 }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     [Test]
     public void AHeldHealthGoesWhenThePlayerLeavesTheField() {
         player.UpdateHealthSync(10_000);

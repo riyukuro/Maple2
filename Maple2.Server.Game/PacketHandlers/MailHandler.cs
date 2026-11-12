@@ -80,6 +80,15 @@ public class MailHandler : FieldPacketHandler {
             session.Send(MailPacket.Error(MailError.s_mail_error_username, (byte) Command.Send));
             return;
         }
+        // The client has a text for both directions of a block (OnMail error 27 and 28).
+        if (session.Buddy.IsBlocked(receiverId)) {
+            session.Send(MailPacket.Error(MailError.s_mail_error_block_from_me, (byte) Command.Send));
+            return;
+        }
+        if (db.GetBuddyType(receiverId, session.CharacterId) == BuddyType.Blocked) {
+            session.Send(MailPacket.Error(MailError.s_mail_error_block_from_other, (byte) Command.Send));
+            return;
+        }
 
         var mail = new Mail {
             SenderId = session.CharacterId,

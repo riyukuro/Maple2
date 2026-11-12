@@ -75,8 +75,9 @@ public class BuddyManager : IDisposable {
         return buddy != null && buddy.Type == BuddyType.Default;
     }
 
+    // The block list is keyed by the entry id; callers ask by the other character's id.
     public bool IsBlocked(long characterId) {
-        return blocked.TryGetValue(characterId, out Buddy? buddy);
+        return blocked.Values.Any(entry => entry.Info.CharacterId == characterId);
     }
 
     // The count that ends the list (Buddy 19): KMS2 leaves out the blocked entries and the requests the player sent.
@@ -112,6 +113,12 @@ public class BuddyManager : IDisposable {
         long receiverId = db.GetCharacterId(name);
         if (receiverId == default) {
             session.Send(BuddyPacket.Invite(error: s_buddy_err_miss_id));
+            return;
+        }
+
+        // The player's own block entry for the receiver: a request next to it would give two entries for one character.
+        if (IsBlocked(receiverId)) {
+            session.Send(BuddyPacket.Invite(name, error: s_buddy_err_request_somebody));
             return;
         }
 
@@ -295,6 +302,11 @@ public class BuddyManager : IDisposable {
                 if (value.Info.Name == name) {
                     entryId = value.Id;
                 }
+            }
+            // Already blocked: the client only asks for players it has not blocked, so a repeat is dropped.
+            if (blocked.Values.Any(value => value.Info.Name == name)) {
+                logger.Information("{Name} is already blocked", name);
+                return;
             }
         } else {
             if (blocked.TryGetValue(entryId, out _)) {
