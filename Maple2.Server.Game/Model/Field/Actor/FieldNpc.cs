@@ -170,7 +170,7 @@ public class FieldNpc : Actor<Npc> {
     public readonly AnimationSequenceMetadata? WalkSequence;
     public readonly AnimationSequenceMetadata? FlySequence;
     public readonly string? SpawnAnimation;
-    private readonly WeightedSet<string> defaultRoutines;
+    private readonly WeightedSet<string?> defaultRoutines;
     public AiState AiState { get; private set; }
     // The AI file the GM NPC control window asked for (SetDebugMode 4, AI file). The field thread takes it
     // at the NPC's next update, so the AI is never replaced while it runs.
@@ -240,14 +240,7 @@ public class FieldNpc : Actor<Npc> {
         WalkSequence = npc.Animations.GetValueOrDefault("Walk_A");
         FlySequence = npc.Animations.GetValueOrDefault("Fly_A");
         SpawnAnimation = spawnAnimation;
-        // An action the npc's model has no sequence for is left out (KR: 198 npcs, 122 of them name a Bore_A their
-        // model lacks, as the Dummy model of 11003970 has only Idle_A and Idle_B); it would only fall back to standby.
-        defaultRoutines = new WeightedSet<string>();
-        foreach (NpcAction action in Value.Metadata.Action.Actions) {
-            if (npc.Animations.ContainsKey(action.Name)) {
-                defaultRoutines.Add(action.Name, action.Probability);
-            }
-        }
+        defaultRoutines = Routines(Value.Metadata.Action.Actions, npc.Animations);
 
         if (agent is not null) {
             Navigation = Field.Navigation.ForAgent(this, agent);
@@ -417,6 +410,21 @@ public class FieldNpc : Actor<Npc> {
         MovementState.KeyframeEvent(keyName);
     }
 
+    /// <summary>
+    /// The npc's routines by weight. An action its model has no sequence for (KR: 198 npcs, 122 of them name a Bore_A
+    /// their model lacks, as the Dummy model of 11003970 has only Idle_A and Idle_B) stays in the set as standby (null)
+    /// with its own weight, so the npc stands as often as before instead of doing its other actions more often. With
+    /// every weight 0 the first action is picked, as before; a missing one is standby.
+    /// </summary>
+    internal static WeightedSet<string?> Routines(IEnumerable<NpcAction> actions,
+                                                  IReadOnlyDictionary<string, AnimationSequenceMetadata> animations, Random? random = null) {
+        var routines = new WeightedSet<string?>(random);
+        foreach (NpcAction action in actions) {
+            routines.Add(animations.ContainsKey(action.Name) ? action.Name : null, action.Probability);
+        }
+        return routines;
+    }
+
     private NpcTask? NextRoutine(long tickCount) {
         // A summoned pet keeps up with its owner instead of wandering around where it was summoned.
         if (this is FieldPet { OwnerId: not 0 } summoned) {
@@ -427,12 +435,10 @@ public class FieldNpc : Actor<Npc> {
             return NextWaypoint();
         }
 
-        if (defaultRoutines.Count == 0) {
+        string? routineName = defaultRoutines.Count == 0 ? null : defaultRoutines.Get();
+        if (routineName is null || !Value.Animations.TryGetValue(routineName, out AnimationSequenceMetadata? sequence)) {
             return MovementState.TryStandby(null, true);
         }
-
-        string routineName = defaultRoutines.Get();
-        AnimationSequenceMetadata sequence = Value.Animations[routineName];
 
         switch (routineName) {
             case not null when routineName.Contains("Idle_"):
