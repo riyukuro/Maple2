@@ -52,6 +52,8 @@ public partial class WorldService {
             Message = request.Message,
             ItemUids = { request.ItemUids },
             Gm = request.Gm,
+            Channel = request.Channel,
+            Picture = request.Picture,
             Whisper = new ChatRequest.Types.Whisper {
                 RecipientId = request.Whisper.RecipientId,
                 RecipientName = request.Whisper.RecipientName,

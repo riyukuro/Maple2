@@ -62,6 +62,9 @@ message ChatRequest {
   repeated int64 item_uids = 5;
   // The sender's account is a GM (set by the sender's channel): the line is drawn in the GM colour.
   bool gm = 30;
+  // The sender's channel (world and super chat lines show it) and profile picture (whisper notice portrait).
+  int32 channel = 31;
+  string picture = 32;
 
   oneof chat {
     Whisper whisper = 6;

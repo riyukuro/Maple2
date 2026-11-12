@@ -57,7 +57,7 @@ public partial class ChannelService {
             session.Send(MessengerBrowserPacket.Link(items.ToArray()));
         }
 
-        session.Send(ChatPacket.Whisper(request.AccountId, request.CharacterId, request.Name, request.Message, request.Name, request.Gm));
+        session.Send(ChatPacket.Whisper(request.AccountId, request.CharacterId, request.Name, request.Message, request.Picture, request.Gm));
     }
 
     private void PartyChat(ChatRequest request, List<Item> items) {
@@ -91,14 +91,14 @@ public partial class ChannelService {
         if (items.Count > 0) {
             server.Broadcast(MessengerBrowserPacket.Link(items.ToArray()));
         }
-        server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.World, request.Message, gm: request.Gm));
+        server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.World, request.Message, gm: request.Gm, channel: request.Channel));
     }
 
     private void SuperChat(ChatRequest request, List<Item> items) {
         if (items.Count > 0) {
             server.Broadcast(MessengerBrowserPacket.Link(items.ToArray()));
         }
-        server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Super, request.Message, request.Super.ItemId, gm: request.Gm));
+        server.Broadcast(ChatPacket.Message(request.AccountId, request.CharacterId, request.Name, ChatType.Super, request.Message, request.Super.ItemId, gm: request.Gm, channel: request.Channel));
     }
 
     private void ClubChat(ChatRequest request, List<Item> items) {

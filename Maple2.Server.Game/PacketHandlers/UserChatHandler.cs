@@ -112,12 +112,14 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
+            Picture = session.Player.Value.Character.Picture,
             Whisper = new ChatRequest.Types.Whisper { RecipientId = info.CharacterId, RecipientName = recipient },
         };
 
         try {
             World.Chat(request);
-            session.Send(ChatPacket.Whisper(info.AccountId, info.CharacterId, info.Name, request.Message));
+            // The sender's own copy names the recipient's character, not the account (KMS2 sends 0).
+            session.Send(ChatPacket.Whisper(0, info.CharacterId, info.Name, request.Message));
         } catch (RpcException ex) {
             switch (ex.StatusCode) {
                 case StatusCode.NotFound:
@@ -204,6 +206,7 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
+            Channel = GameServer.GetChannel(),
             World = new ChatRequest.Types.World(),
         };
 
@@ -233,7 +236,7 @@ public class UserChatHandler : FieldPacketHandler {
             session.Currency.Meret -= meretCost;
         }
 
-        session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message, gm: AdminLevel.IsGm(session.Player.AdminPermissions)));
+        session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message, gm: AdminLevel.IsGm(session.Player.AdminPermissions), channel: GameServer.GetChannel()));
     }
 
     private void HandleSuper(GameSession session, string message, ICollection<long> itemUids) {
@@ -257,6 +260,7 @@ public class UserChatHandler : FieldPacketHandler {
             Message = message,
             ItemUids = { itemUids },
             Gm = AdminLevel.IsGm(session.Player.AdminPermissions),
+            Channel = GameServer.GetChannel(),
             Super = new ChatRequest.Types.Super { ItemId = session.SuperChatId },
         };
 

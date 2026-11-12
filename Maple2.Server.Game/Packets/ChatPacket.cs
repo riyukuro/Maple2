@@ -38,7 +38,7 @@ public static class ChatPacket {
         return pWriter;
     }
 
-    public static ByteWriter Message(long accountId, long characterId, string characterName, ChatType type, string message, int superChatId = 0, long clubId = 0, bool gm = false) {
+    public static ByteWriter Message(long accountId, long characterId, string characterName, ChatType type, string message, int superChatId = 0, long clubId = 0, bool gm = false, int channel = 0) {
         var pWriter = Packet.Of(SendOp.UserChat);
         pWriter.WriteLong(accountId);
         pWriter.WriteLong(characterId);
@@ -47,7 +47,8 @@ public static class ChatPacket {
         pWriter.WriteUnicodeString(message);
         pWriter.Write<ChatType>(type);
         pWriter.WriteBool(gm);
-        pWriter.WriteInt();
+        // The sender's channel. The client prints it in front of the world and super chat lines.
+        pWriter.WriteInt(channel);
 
         switch (type) {
             case ChatType.WhisperFrom:
@@ -66,8 +67,9 @@ public static class ChatPacket {
         return pWriter;
     }
 
-    public static ByteWriter Whisper(long accountId, long characterId, string name, string message, string? unknown = null, bool gm = false) {
-        ChatType type = unknown == null ? ChatType.WhisperTo : ChatType.WhisperFrom;
+    // picture: the sender's profile picture, for the portrait of the whisper notice. Null makes the sender's own copy.
+    public static ByteWriter Whisper(long accountId, long characterId, string name, string message, string? picture = null, bool gm = false) {
+        ChatType type = picture == null ? ChatType.WhisperTo : ChatType.WhisperFrom;
 
         var pWriter = Packet.Of(SendOp.UserChat);
         pWriter.WriteLong(accountId);
@@ -81,7 +83,7 @@ public static class ChatPacket {
         pWriter.WriteInt();
 
         if (type == ChatType.WhisperFrom) {
-            pWriter.WriteUnicodeString(unknown ?? string.Empty);
+            pWriter.WriteUnicodeString(picture ?? string.Empty);
         }
 
         pWriter.WriteBool(false);

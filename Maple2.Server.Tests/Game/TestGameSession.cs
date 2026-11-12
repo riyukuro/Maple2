@@ -523,6 +523,14 @@ public sealed class TestGameSession {
             return new MailNotificationResponse();
         }
 
+        // The chat lines handed to the world.
+        public readonly List<ChatRequest> Chats = [];
+
+        public override ChatResponse Chat(ChatRequest request, CallOptions options) {
+            Chats.Add(request);
+            return new ChatResponse();
+        }
+
         // What PlayerInfo.SendUpdate sent to the world.
         public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
 

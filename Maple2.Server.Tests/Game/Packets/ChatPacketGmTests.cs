@@ -46,6 +46,38 @@ public class ChatPacketGmTests {
         Assert.That(Flag(plain), Is.EqualTo(0));
     }
 
+    // The int after the GM flag is the sender's channel; the type's own field follows it.
+    [TestCase(ChatType.World)]
+    [TestCase(ChatType.Channel)]
+    [TestCase(ChatType.Super)]
+    public void Message_CarriesTheSendersChannel(ChatType type) {
+        ByteWriter writer = ChatPacket.Message(1, 2, Name, type, Text, superChatId: 20300041, channel: 7);
+        ByteWriter plain = ChatPacket.Message(1, 2, Name, type, Text, superChatId: 20300041);
+
+        Assert.That(BitConverter.ToInt32(writer.Buffer, FlagOffset + 1), Is.EqualTo(7));
+        Assert.That(BitConverter.ToInt32(plain.Buffer, FlagOffset + 1), Is.EqualTo(0));
+        Assert.That(writer.Length, Is.EqualTo(plain.Length));
+        if (type == ChatType.Super) {
+            Assert.That(BitConverter.ToInt32(writer.Buffer, FlagOffset + 5), Is.EqualTo(20300041));
+        }
+    }
+
+    // The received whisper carries the sender's profile picture after the int; the own copy has no string.
+    [Test]
+    public void Whisper_ReceivedLineCarriesThePicture() {
+        const string picture = "profile/1/2.png";
+        ByteWriter received = ChatPacket.Whisper(1, 2, Name, Text, picture);
+        ByteWriter ownCopy = ChatPacket.Whisper(0, 2, Name, Text);
+
+        int at = FlagOffset + 5;
+        Assert.That(BitConverter.ToInt32(received.Buffer, FlagOffset - 4), Is.EqualTo((int) ChatType.WhisperFrom));
+        Assert.That(BitConverter.ToInt16(received.Buffer, at), Is.EqualTo(picture.Length));
+        Assert.That(Encoding.Unicode.GetString(received.Buffer, at + 2, picture.Length * 2), Is.EqualTo(picture));
+        Assert.That(received.Length, Is.EqualTo(at + 2 + picture.Length * 2 + 1));
+        Assert.That(BitConverter.ToInt32(ownCopy.Buffer, FlagOffset - 4), Is.EqualTo((int) ChatType.WhisperTo));
+        Assert.That(ownCopy.Length, Is.EqualTo(at + 1));
+    }
+
     [Test]
     public void Text_IsWhereTheOffsetAssumes() {
         ByteWriter writer = ChatPacket.Message(1, 2, Name, ChatType.Normal, Text);
