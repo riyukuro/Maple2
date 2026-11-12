@@ -41,6 +41,18 @@ public class BlackMarketRulesTests {
         Assert.That(BlackMarketRules.IsSalePrice(price, min, max), Is.EqualTo(expected));
     }
 
+    // The bounds hold for the total, as the client's register button tests them.
+    [TestCase(50L, 4, true)]     // 200: a herb at 50 each
+    [TestCase(50L, 19, true)]
+    [TestCase(50L, 1, false)]    // 50 < 100
+    [TestCase(100L, 1, true)]
+    [TestCase(600L, 2, false)]   // 1200 > 1000
+    [TestCase(0L, 4, false)]
+    [TestCase(long.MaxValue / 2, 3, false)]
+    public void ListingBoundsAreForTheTotal(long price, int count, bool expected) {
+        Assert.That(BlackMarketRules.IsSaleListing(price, count, 100, 1000), Is.EqualTo(expected));
+    }
+
     [Test]
     public void LockedAndBoundItemsAreNotListed() {
         Assert.That(BlackMarketRules.CanList(false, true, TransferFlag.Trade, 0, false), Is.True);

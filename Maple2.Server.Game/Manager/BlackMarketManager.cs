@@ -51,8 +51,8 @@ public sealed class BlackMarketManager {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_invalid_sale_count, 2));
             return;
         }
-        if (!BlackMarketRules.IsSalePrice(price, Constants.BlackMarketSellMinPrice, Constants.BlackMarketSellMaxPrice)
-            || !BlackMarketRules.IsSaleTotal(price, quantity)) {
+        // Only a sender that skips the client's own total check gets here; nothing is taken.
+        if (!BlackMarketRules.IsSaleListing(price, quantity, Constants.BlackMarketSellMinPrice, Constants.BlackMarketSellMaxPrice)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2));
             return;
         }

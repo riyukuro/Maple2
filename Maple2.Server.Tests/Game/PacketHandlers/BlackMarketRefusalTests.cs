@@ -25,9 +25,9 @@ public class BlackMarketRefusalTests {
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
-    private static GameSession Login(TestGameSession test, long meso) {
+    private static GameSession Login(TestGameSession test, long meso, long minPrice = 1) {
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
-            BlackMarketSellMinPrice = 1,
+            BlackMarketSellMinPrice = minPrice,
             BlackMarketSellMaxPrice = 1000000,
             BlackMarketSellEndDay = 2,
         });
@@ -131,6 +131,7 @@ public class BlackMarketRefusalTests {
     [TestCase(true, 0L, 2, BlackMarketError.s_blackmarket_error_fail_register)]
     [TestCase(true, -5L, 2, BlackMarketError.s_blackmarket_error_fail_register)]
     [TestCase(true, 1000001L, 2, BlackMarketError.s_blackmarket_error_fail_register)]
+    [TestCase(true, 600000L, 2, BlackMarketError.s_blackmarket_error_fail_register)] // the total is over the maximum
     public void Add_Refused(bool own, long price, int count, BlackMarketError error) {
         test = new TestGameSession();
         Item item = test.Store(metadata, amount: 5);
@@ -144,6 +145,22 @@ public class BlackMarketRefusalTests {
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetBlackMarketListings(test.CharacterId), Is.Empty);
         Assert.That(test.World.BlackMarketRequests, Is.Empty);
+    }
+
+    // The played client's minimum is 100 for the total: 4 at 50 each (200) is listed, as the client sends it.
+    [Test]
+    public void Add_TheMinimumIsForTheTotal() {
+        test = new TestGameSession();
+        Item item = test.Store(metadata, amount: 5);
+        GameSession session = Login(test, 100000, minPrice: 100);
+
+        Send(test, session, 2, item.Uid, 50, 4);
+
+        using GameStorage.Request db = test.Storage.Context();
+        BlackMarketListing listing = db.GetBlackMarketListings(test.CharacterId).Single();
+        Assert.That((listing.Price, listing.Quantity), Is.EqualTo((50L, 4)));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Not.Contain(Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2))));
     }
 
     // A take-back refused (another character's listing, or none): the error; the listing stays, nothing is mailed.
