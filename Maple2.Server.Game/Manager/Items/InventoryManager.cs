@@ -41,12 +41,45 @@ public class InventoryManager {
         }
 
         delete = [];
+        var overflow = new List<Item>();
         foreach ((InventoryType type, List<Item> load) in db.GetInventory(session.CharacterId)) {
             if (!tabs.TryGetValue(type, out ItemCollection? items)) continue;
             foreach (Item item in load) {
                 if (items.Add(item).Count != 0) continue;
-                delete.Add(item);
-                Log.Warning("Deleted item {ItemUid} from inventory {InventoryType} due to overflow", item.Uid, type);
+                overflow.Add(item);
+            }
+        }
+        MailOverflow(overflow);
+    }
+
+    // An item row the tab has no slot for at load: the tab is taken from the item data (Item.Inventory), so an ingest
+    // that puts an item in another tab (PlayedClientItems.ClientType) can bring more items to a tab than it has slots,
+    // and the client shows no item past the tab's size. Such a row went to owner 0 at the next save, which lost the
+    // item. It now moves to a system mail of its own, as a reward that finds the bag full (ItemManager.MailItem); the
+    // login's mail count (MailManager.Notify) shows it. When the mail is not made the row stays with the character,
+    // out of the bag, and the next load tries again.
+    private void MailOverflow(List<Item> overflow) {
+        if (overflow.Count == 0) {
+            return;
+        }
+        // Another request: the rows loaded above are tracked by the caller's context.
+        using GameStorage.Request db = session.GameStorage.Context();
+        foreach (Item item in overflow) {
+            short slot = item.Slot;
+            item.Slot = -1;
+            var mail = new Mail {
+                Type = MailType.System,
+                ReceiverId = session.CharacterId,
+                Content = "50000000", // id from string/en/systemmailcontentna.xml
+            };
+            mail.Items.Add(item);
+            if (db.CreateMail(mail) is { } created) {
+                logger.Warning("Item {ItemUid} ({ItemId}) found no slot in inventory {InventoryType}: mailed ({MailId})",
+                    item.Uid, item.Id, item.Inventory, created.Id);
+            } else {
+                item.Slot = slot;
+                logger.Error("Item {ItemUid} ({ItemId}) found no slot in inventory {InventoryType} and could not be mailed",
+                    item.Uid, item.Id, item.Inventory);
             }
         }
     }
