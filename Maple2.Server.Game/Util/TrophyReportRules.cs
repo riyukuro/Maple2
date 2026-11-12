@@ -19,6 +19,18 @@ public static class TrophyReportRules {
         return !metadata.Locked;
     }
 
+    // What the GM command "player trophy <id>" says after it ran: a locked trophy takes no progress, and a trophy
+    // whose condition the command's update did not meet has no row. Both were a silent success before.
+    public static (bool Ok, string Line) GmTrophyOutcome(int trophyId, bool locked, bool hasRow, int grade, long counter) {
+        if (locked) {
+            return (false, $"Trophy ID {trophyId} is locked in the client and takes no progress.");
+        }
+        if (!hasRow) {
+            return (false, $"Trophy ID {trophyId} took no progress: its condition was not met by this command.");
+        }
+        return (true, $"Trophy ID {trophyId}: grade {grade}, counter {counter}.");
+    }
+
     // The decoration exp a home check-in adds to interior_exp_offset: the check-in's decoration score, when the home
     // took it (a home at the top decoration level takes none).
     public static long InteriorExpCounted(long decorationScore, bool homeGainedExp) {

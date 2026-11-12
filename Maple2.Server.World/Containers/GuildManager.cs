@@ -111,13 +111,14 @@ public class GuildManager : IDisposable {
         }
     }
 
-    public GuildError Join(string requestorName, PlayerInfo info) {
+    // beforeNotice goes to the members before the join notice: KMS2 sends the invite answer (Guild 6) first.
+    public GuildError Join(string requestorName, PlayerInfo info, GuildRequest? beforeNotice = null) {
         lock (guildLock) {
-            return JoinLocked(requestorName, info);
+            return JoinLocked(requestorName, info, beforeNotice);
         }
     }
 
-    private GuildError JoinLocked(string requestorName, PlayerInfo info) {
+    private GuildError JoinLocked(string requestorName, PlayerInfo info, GuildRequest? beforeNotice) {
         if (Guild.Members.Count >= Guild.Capacity) {
             return GuildError.s_guild_err_full_member;
         }
@@ -132,6 +133,9 @@ public class GuildManager : IDisposable {
         }
 
         // Broadcast before adding this new member.
+        if (beforeNotice != null) {
+            Broadcast(beforeNotice);
+        }
         Broadcast(new GuildRequest {
             AddMember = new GuildRequest.Types.AddMember {
                 CharacterId = member.CharacterId,

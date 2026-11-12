@@ -115,4 +115,20 @@ public class TrophyReportRulesTests {
         Assert.That(TrophyReportRules.Counts(metadata), Is.True);
         Assert.That(TrophyReportRules.Counts(metadata with { Locked = true }), Is.False);
     }
+
+    // The GM trophy command names a locked trophy and a trophy that got no row instead of a silent success.
+    [Test]
+    public void GmTrophyCommandSaysWhyNothingChanged() {
+        (bool ok, string line) = TrophyReportRules.GmTrophyOutcome(21100058, locked: true, hasRow: false, 0, 0);
+        Assert.That(ok, Is.False);
+        Assert.That(line, Does.Contain("21100058").And.Contain("locked"));
+
+        (ok, line) = TrophyReportRules.GmTrophyOutcome(7, locked: false, hasRow: false, 0, 0);
+        Assert.That(ok, Is.False);
+        Assert.That(line, Does.Contain("no progress"));
+
+        (ok, line) = TrophyReportRules.GmTrophyOutcome(7, locked: false, hasRow: true, 3, 50);
+        Assert.That(ok, Is.True);
+        Assert.That(line, Does.Contain("grade 3").And.Contain("counter 50"));
+    }
 }

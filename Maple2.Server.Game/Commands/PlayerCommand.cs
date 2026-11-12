@@ -8,6 +8,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -647,8 +648,21 @@ public class PlayerCommand : GameCommand {
                     return;
                 }
 
+                if (!TrophyReportRules.Counts(achievementMetadata)) {
+                    ctx.Console.Error.WriteLine(TrophyReportRules.GmTrophyOutcome(trophyId, locked: true, hasRow: false, 0, 0).Line);
+                    ctx.ExitCode = 1;
+                    return;
+                }
+
                 UnlockTrophy(trophyId, achievementMetadata, maxGrade);
-                ctx.ExitCode = 0;
+                bool hasRow = session.Achievement.TryGetAchievement(trophyId, out Achievement? after);
+                (bool ok, string line) = TrophyReportRules.GmTrophyOutcome(trophyId, locked: false, hasRow, after?.CurrentGrade ?? 0, after?.Counter ?? 0);
+                if (ok) {
+                    ctx.Console.Out.WriteLine(line);
+                } else {
+                    ctx.Console.Error.WriteLine(line);
+                }
+                ctx.ExitCode = ok ? 0 : 1;
             } catch (Exception ex) {
                 ctx.Console.Error.WriteLine($"Failed to unlock trophy ID {trophyId} with grade {grade}: {ex.Message}");
                 ctx.ExitCode = 1;

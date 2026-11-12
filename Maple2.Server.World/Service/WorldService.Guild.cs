@@ -158,18 +158,17 @@ public partial class WorldService {
 
         if (respond.Accepted) {
             IList<GuildApplicationRow> open = OpenApplicationsOf(requestorId);
-            GuildError error = manager.Join(requestorName, info);
-            if (error != GuildError.none) {
-                return new GuildResponse { Error = (int) error };
-            }
-            NotifyApplicationsRemoved(open);
-
-            manager.Broadcast(new ChannelGuildRequest {
+            // KMS2 order for the members: the invite answer (Guild 6), then the join notice (18) and the member data (32).
+            GuildError error = manager.Join(requestorName, info, new ChannelGuildRequest {
                 InviteReply = new ChannelGuildRequest.Types.InviteReply {
                     Name = info.Name,
                     Reply = (int) GuildInvite.Response.Accept,
                 },
             });
+            if (error != GuildError.none) {
+                return new GuildResponse { Error = (int) error };
+            }
+            NotifyApplicationsRemoved(open);
 
             return new GuildResponse { Guild = ToGuildInfo(manager) };
         }
