@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Game.Ugc;
 using Maple2.PacketLib.Tools;
 
@@ -184,6 +185,45 @@ public static class UgcRules {
     // is of that kind.
     public static bool GuildConfirmAllowed(long stagedUgcUid, long ugcUid, bool resourceOfKind) {
         return ugcUid != 0 && stagedUgcUid == ugcUid && resourceOfKind;
+    }
+
+    // The sales window offers "stop the sale" (MeretMarket 15) only for a listing on sale, and "delete"
+    // (MeretMarket 14) only for one that is not on sale (it shows a notice for one on sale and sends nothing).
+    public static bool ListingStopAllowed(UgcMarketListingStatus status) {
+        return status == UgcMarketListingStatus.Active;
+    }
+
+    public static bool ListingDeleteAllowed(UgcMarketListingStatus status) {
+        return status != UgcMarketListingStatus.Active;
+    }
+
+    // A layout blueprint's preview: only the upload this session staged on the blueprint, and a resource of
+    // that kind.
+    public static bool BlueprintConfirmAllowed(long stagedUgcUid, long ugcUid, bool resourceOfKind) {
+        return ugcUid != 0 && stagedUgcUid == ugcUid && resourceOfKind;
+    }
+
+    // The name of a design (item, furniture, mount): the design window takes UgcNameLengthMin to
+    // UgcNameLengthMax characters (3 to 14 today). No control characters; a limit of 0 is not tested.
+    public static bool DesignNameValid(string? name, int min, int max) {
+        if (name == null || name.Length < min || (max > 0 && name.Length > max)) {
+            return false;
+        }
+        return !name.Any(char.IsControl);
+    }
+
+    // Mode 11 names the picture the web server stored for the character's profile upload: the path it
+    // answered, data/profiles/avatar/<character id>/<file>.png. Any other text is not made the picture
+    // (it is shown to every player that sees the character).
+    public static bool ProfilePathValid(string? path, long characterId) {
+        string prefix = $"data/profiles/avatar/{characterId}/";
+        const string suffix = ".png";
+        if (path == null || characterId <= 0 || path.Length <= prefix.Length + suffix.Length || path.Length > 128 ||
+            !path.StartsWith(prefix, StringComparison.Ordinal) || !path.EndsWith(suffix, StringComparison.Ordinal)) {
+            return false;
+        }
+        string file = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
+        return file.All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-');
     }
 
     // The price of one hour of the banner, -1 when the table has none for it.

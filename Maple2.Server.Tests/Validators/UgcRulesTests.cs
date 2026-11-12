@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Ugc;
 using Maple2.Model.Validators;
@@ -298,5 +299,55 @@ public class UgcRulesTests {
         Assert.That(UgcRules.GuildConfirmAllowed(100, 101, true), Is.False);
         Assert.That(UgcRules.GuildConfirmAllowed(100, 100, false), Is.False);
         Assert.That(UgcRules.GuildConfirmAllowed(0, 0, true), Is.False);
+    }
+
+    [Test]
+    public void Listing_StopOnlyOnSale_DeleteOnlyOffSale() {
+        Assert.That(UgcRules.ListingStopAllowed(UgcMarketListingStatus.Active), Is.True);
+        Assert.That(UgcRules.ListingStopAllowed(UgcMarketListingStatus.Expired), Is.False);
+        Assert.That(UgcRules.ListingStopAllowed(UgcMarketListingStatus.Hold), Is.False);
+        Assert.That(UgcRules.ListingStopAllowed(UgcMarketListingStatus.None), Is.False);
+        Assert.That(UgcRules.ListingDeleteAllowed(UgcMarketListingStatus.Active), Is.False);
+        Assert.That(UgcRules.ListingDeleteAllowed(UgcMarketListingStatus.Expired), Is.True);
+        Assert.That(UgcRules.ListingDeleteAllowed(UgcMarketListingStatus.Hold), Is.True);
+    }
+
+    [Test]
+    public void BlueprintConfirm_OnlyTheStagedPreview() {
+        Assert.That(UgcRules.BlueprintConfirmAllowed(100, 100, true), Is.True);
+        Assert.That(UgcRules.BlueprintConfirmAllowed(100, 101, true), Is.False);
+        Assert.That(UgcRules.BlueprintConfirmAllowed(100, 100, false), Is.False);
+        Assert.That(UgcRules.BlueprintConfirmAllowed(0, 0, true), Is.False);
+    }
+
+    [Test]
+    public void DesignName_LengthOfTheDesignWindow() {
+        Assert.That(UgcRules.DesignNameValid("abc", 3, 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid("abcdefghijklmn", 3, 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid("\uAC00\uB098\uB2E4", 3, 14), Is.True);
+        Assert.That(UgcRules.DesignNameValid("ab", 3, 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("", 3, 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid(null, 3, 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("abcdefghijklmno", 3, 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("ab\ncd", 3, 14), Is.False);
+        Assert.That(UgcRules.DesignNameValid("ab\0cd", 3, 14), Is.False);
+        // constants not loaded: only the lower limit
+        Assert.That(UgcRules.DesignNameValid(new string('a', 40), 0, 0), Is.True);
+    }
+
+    [Test]
+    public void ProfilePath_OnlyTheCharactersStoredPicture() {
+        const string file = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/77/{file}.png", 77), Is.True);
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/78/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/770/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/77/../78/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/77/{file}.jpg", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid("data/profiles/avatar/77/.png", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid($"http://example.com/data/profiles/avatar/77/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid("", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid(null, 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/0/{file}.png", 0), Is.False);
+        Assert.That(UgcRules.ProfilePathValid("data/profiles/avatar/77/" + new string('a', 200) + ".png", 77), Is.False);
     }
 }

@@ -158,7 +158,17 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Item.Inventory.FreeSlots(InventoryType.Outfit) <= 0) {
+        // Only an item design goes to the outfit bag (furniture goes to the furnishing storage; a full bag
+        // of another kind gets the item by mail).
+        if (ugcType == UgcType.Item && session.Item.Inventory.FreeSlots(InventoryType.Outfit) <= 0) {
+            return;
+        }
+
+        // The design window sends a name of UgcNameLengthMin to UgcNameLengthMax characters; nothing is charged
+        // for another.
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        if (!UgcRules.DesignNameValid(name, constants.UgcNameLengthMin, constants.UgcNameLengthMax)) {
+            Logger.Warning("Refused design name of {Length} characters from {CharacterId}", name.Length, session.CharacterId);
             return;
         }
 
@@ -599,6 +609,11 @@ public class UgcHandler : FieldPacketHandler {
             if (item?.Template is null || item.Blueprint is null) {
                 return;
             }
+            // Only the preview this session staged on the blueprint: another resource id is not made its picture.
+            if (!UgcRules.BlueprintConfirmAllowed(item.Template.Id, ugcUid, resource.Type == UgcType.LayoutBlueprint)) {
+                Logger.Warning("Blueprint confirmation for another upload {UgcUid} from {CharacterId}", ugcUid, session.CharacterId);
+                return;
+            }
 
             item.Template.Url = resource.Path;
 
@@ -613,8 +628,12 @@ public class UgcHandler : FieldPacketHandler {
         }
     }
 
-    private static void HandleProfilePicture(GameSession session, IByteReader packet) {
+    private void HandleProfilePicture(GameSession session, IByteReader packet) {
         string path = packet.ReadUnicodeString();
+        if (!UgcRules.ProfilePathValid(path, session.CharacterId)) {
+            Logger.Warning("Refused profile picture path from {CharacterId}", session.CharacterId);
+            return;
+        }
         session.Player.Value.Character.Picture = path;
 
         session.ConditionUpdate(ConditionType.change_profile);

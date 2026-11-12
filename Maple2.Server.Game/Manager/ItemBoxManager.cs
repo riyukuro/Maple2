@@ -377,11 +377,9 @@ public class ItemBoxManager {
             }
 
             if (itemId > 0) {
+                // A fixed item that cannot be made does not cost the box its roll (it was skipped with the box taken).
                 Item? newItem = session.Field.ItemDrop.CreateItem(itemId, item.Metadata.Option?.ConstantId ?? 1);
-                if (newItem == null) {
-                    continue;
-                }
-                if (!AddFromBox(item, newItem)) {
+                if (newItem != null && !AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                     error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 }
@@ -434,11 +432,8 @@ public class ItemBoxManager {
             }
 
             if (itemId > 0) {
-                Item? newItem = session.Field?.ItemDrop.CreateItem(itemId, item.Metadata.Option?.ConstantId ?? 1);
-                if (newItem == null) {
-                    continue;
-                }
-                if (!AddFromBox(item, newItem)) {
+                Item? newItem = session.Field.ItemDrop.CreateItem(itemId, item.Metadata.Option?.ConstantId ?? 1);
+                if (newItem != null && !AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
             }

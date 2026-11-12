@@ -52,7 +52,7 @@ public class ItemDropManager {
                     itemsAmount.Add(dropCount, dropCount.Probability);
                 }
 
-                int amount = itemsAmount.Get().Amount;
+                int amount = itemsAmount.Count > 0 ? itemsAmount.Get().Amount : 0;
                 if (amount == 0) {
                     continue;
                 }
@@ -83,7 +83,7 @@ public class ItemDropManager {
                 for (int i = 0; i < amount; i++) {
                     GlobalDropItemBoxTable.Item selectedItem = weightedItems.Get();
 
-                    int itemAmount = Random.Shared.Next(selectedItem.DropCount.Min, selectedItem.DropCount.Max + 1);
+                    int itemAmount = Random.Shared.Next(selectedItem.DropCount.Min, Math.Max(selectedItem.DropCount.Min, selectedItem.DropCount.Max) + 1);
                     Item? createdItem = CreateItem(selectedItem.Id, selectedItem.Rarity, itemAmount);
                     if (createdItem == null) {
                         continue;
@@ -214,8 +214,8 @@ public class ItemDropManager {
     }
 
     // The group's drop count: one of its DropCounts rows by probability (a row without a count gives nothing).
-    private static int RollDropCount(IndividualDropItemTable.Entry group) {
-        var itemsAmount = new WeightedSet<IndividualDropItemTable.Entry.DropCount>();
+    private static int RollDropCount(IndividualDropItemTable.Entry group, Random? random = null) {
+        var itemsAmount = new WeightedSet<IndividualDropItemTable.Entry.DropCount>(random);
         foreach (IndividualDropItemTable.Entry.DropCount dropCount in group.DropCounts) {
             itemsAmount.Add(dropCount, dropCount.Probability);
         }
@@ -233,30 +233,41 @@ public class ItemDropManager {
 
     // The entries one rolled group of an individual drop box gives: its drop count rolled, then that many entries
     // picked by weight (by the player's job when the group has a smart drop rate). A smart drop group whose entries
-    // have no weight gives the first entry for the player's job, once.
+    // have no weight at all (neither the plain nor the job weights) gives one of the available entries for the
+    // player's job, each as likely, once. A smart group with job weights only is rolled by them like any other.
     internal static IEnumerable<IndividualDropItemTable.Item> PickGroupEntries(IndividualDropItemTable.Entry group,
             ICollection<IndividualDropItemTable.Item> itemEntries, Func<IndividualDropItemTable.Item, bool> available,
-            Func<int, bool> jobRecommended, Func<IndividualDropItemTable.Item, int> jobWeight) {
-        int amount = RollDropCount(group);
+            Func<int, bool> jobRecommended, Func<IndividualDropItemTable.Item, int> jobWeight, Random? random = null) {
+        random ??= Random.Shared;
+        int amount = RollDropCount(group, random);
         if (amount == 0) {
             yield break;
         }
 
-        // some boxes have a smart drop rate, but the items dont have a weight. If that's the case, just get the item for the job. if it doesn't exist, skip.
-        if (group.SmartDropRate > 0 && itemEntries.All(x => x.Weight == 0)) {
-            IndividualDropItemTable.Item? jobRecommendedItems = itemEntries.FirstOrDefault(x => x.Ids.Length > 0 && jobRecommended(x.Ids.FirstOrDefault()));
-            if (jobRecommendedItems is not null) {
-                yield return jobRecommendedItems;
+        if (group.SmartDropRate > 0 && itemEntries.All(x => x.Weight == 0 && x.ProperJobWeight == 0 && x.ImproperJobWeight == 0)) {
+            List<IndividualDropItemTable.Item> jobEntries = itemEntries
+                .Where(x => x.Ids.Length > 0 && jobRecommended(x.Ids.FirstOrDefault()) && available(x)).ToList();
+            if (jobEntries.Count > 0) {
+                yield return jobEntries[random.Next(jobEntries.Count)];
             }
             yield break;
         }
 
-        var weightedItems = new WeightedSet<IndividualDropItemTable.Item>();
-        foreach (IndividualDropItemTable.Item itemEntry in itemEntries.OrderBy(_ => Random.Shared.Next())) {
+        var weightedItems = new WeightedSet<IndividualDropItemTable.Item>(random);
+        foreach (IndividualDropItemTable.Item itemEntry in itemEntries.OrderBy(_ => random.Next()).ToList()) {
             if (!available(itemEntry)) {
                 continue;
             }
-            weightedItems.Add(itemEntry, group.SmartDropRate > 0 ? jobWeight(itemEntry) : itemEntry.Weight);
+            if (group.SmartDropRate <= 0) {
+                weightedItems.Add(itemEntry, itemEntry.Weight);
+                continue;
+            }
+            // A smart drop entry without a weight for the player's job never drops (when none has one the group gives
+            // nothing, instead of another job's entry).
+            int weight = jobWeight(itemEntry);
+            if (weight > 0) {
+                weightedItems.Add(itemEntry, weight);
+            }
         }
 
         if (weightedItems.Count == 0) {
@@ -269,15 +280,10 @@ public class ItemDropManager {
     }
 
     private IEnumerable<Item> CreateIndividualDropBoxItems(IndividualDropItemTable.Item selectedItem, Character? character = null, int rarity = -1) {
-        int itemAmount = Random.Shared.Next(selectedItem.DropCount.Min, selectedItem.DropCount.Max + 1);
+        int itemAmount = RollAmount(selectedItem);
 
         if (rarity <= 0) {
-            var raritySet = new WeightedSet<IndividualDropItemTable.Item.Rarity>();
-            foreach (IndividualDropItemTable.Item.Rarity rarityEntry in selectedItem.Rarities) {
-                raritySet.Add(rarityEntry, rarityEntry.Probability);
-            }
-
-            rarity = raritySet.Count > 0 ? raritySet.Get().Grade : -1;
+            rarity = RollRarity(selectedItem);
         }
 
         foreach (int itemId in selectedItem.Ids) {
@@ -316,6 +322,23 @@ public class ItemDropManager {
         }
     }
 
+    // The entry's count: one of minCount..maxCount, each as likely. A row without a maxCount (or with one below its
+    // minCount) gives its minCount.
+    internal static int RollAmount(IndividualDropItemTable.Item itemEntry, Random? random = null) {
+        int min = itemEntry.DropCount.Min;
+        int max = Math.Max(min, itemEntry.DropCount.Max);
+        return (random ?? Random.Shared).Next(min, max + 1);
+    }
+
+    // The entry's rank: one of its rarity rows by probability, or -1 (the item's own rank) without rows.
+    internal static int RollRarity(IndividualDropItemTable.Item itemEntry, Random? random = null) {
+        var raritySet = new WeightedSet<IndividualDropItemTable.Item.Rarity>(random);
+        foreach (IndividualDropItemTable.Item.Rarity rarityEntry in itemEntry.Rarities) {
+            raritySet.Add(rarityEntry, rarityEntry.Probability);
+        }
+
+        return raritySet.Count > 0 ? raritySet.Get().Grade : -1;
+    }
 
     private IEnumerable<IndividualDropItemTable.Item> GetGenderedEntries(ICollection<IndividualDropItemTable.Item> itemEntries, Gender gender) {
         foreach (IndividualDropItemTable.Item itemEntry in itemEntries) {

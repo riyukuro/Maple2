@@ -8,17 +8,22 @@ namespace Maple2.Tools;
 
 public class WeightedSet<T> : IEnumerable<(T, int)> {
     private readonly Random rng;
-    private readonly HashSet<(T, int)> set;
+    // A list, in the order added: a row repeated with the same weight counts twice, as its weight does in the total.
+    private readonly List<(T, int)> set;
     private int totalWeight;
 
     public int Count => set.Count;
 
     public WeightedSet(Random? random = null) {
         rng = random ?? Random.Shared;
-        set = new HashSet<(T, int)>();
+        set = new List<(T, int)>();
     }
 
     public void Add(T value, int weight) {
+        // A negative weight counts as none: it would take from the other rows' share (and throw once the total is negative).
+        if (weight < 0) {
+            weight = 0;
+        }
         Interlocked.Add(ref totalWeight, weight);
         set.Add((value, weight));
     }

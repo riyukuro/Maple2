@@ -45,14 +45,14 @@ public class IndividualDropPickTests {
     public void SmartDropWithoutWeights_GivesThePlayersJobEntry() {
         for (int i = 0; i < 200; i++) {
             List<IndividualDropItemTable.Item> picked = ItemDropManager.PickGroupEntries(Box[0], Box[0].Items, _ => true,
-                itemId => itemId % 100 == JobItemOffset, item => item.ProperJobWeight).ToList();
+                itemId => itemId % 100 == JobItemOffset, item => item.Ids[0] % 100 == JobItemOffset ? item.ProperJobWeight : item.ImproperJobWeight).ToList();
             Assert.That(picked.Select(item => item.Ids[0]), Is.EqualTo(new[] { 13100000 + JobItemOffset }));
         }
     }
 
     [Test]
     public void SmartDropWithoutAJobEntry_GivesNothing() {
-        Assert.That(ItemDropManager.PickGroupEntries(Box[0], Box[0].Items, _ => true, _ => false, item => item.ProperJobWeight), Is.Empty);
+        Assert.That(ItemDropManager.PickGroupEntries(Box[0], Box[0].Items, _ => true, _ => false, item => item.ImproperJobWeight), Is.Empty);
     }
 
     [Test]

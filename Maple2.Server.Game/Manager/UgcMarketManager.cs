@@ -124,7 +124,7 @@ public sealed class UgcMarketManager {
     }
 
     public void RemoveListing(long id) {
-        if (!items.ContainsKey(id)) {
+        if (!items.TryGetValue(id, out UgcMarketItem? listing) || !UgcRules.ListingDeleteAllowed(listing.Status)) {
             return;
         }
 
@@ -138,7 +138,7 @@ public sealed class UgcMarketManager {
     }
 
     public void UnlistItem(long id) {
-        if (!items.TryGetValue(id, out UgcMarketItem? item)) {
+        if (!items.TryGetValue(id, out UgcMarketItem? item) || !UgcRules.ListingStopAllowed(item.Status)) {
             return;
         }
 
