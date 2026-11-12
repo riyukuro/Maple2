@@ -8,7 +8,8 @@ namespace Maple2.Server.Tests.Game.Util;
 public class AiPathRulesTests {
     private static readonly HashSet<string> Shipped = ["AI_Default.xml", "AI_Default_Summon.xml", "AI_GigantikaHead_Summon_1.xml",
         "BossDungeon/SnowKing/AI_SnowKing.xml", "BossDungeon/SnowKing_Normal/AI_SnowKing_Chaos.xml",
-        "BossDungeon/Pinkbean/AI_StatueHuman01.xml", "BossDungeon/Pinkbean_Normal/Chaos/AI_StatueHuman01.xml"];
+        "BossDungeon/Pinkbean/AI_StatueHuman01.xml", "BossDungeon/Pinkbean_Normal/Chaos/AI_StatueHuman01.xml",
+        "BossDungeon/Papulatus_Chaos/AI_Papulatus_Chaos.xml", "BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNormalJP.xml"];
 
     private static string? Resolve(string path) => AiPathRules.Resolve(path, Shipped.Contains);
 
@@ -40,6 +41,18 @@ public class AiPathRulesTests {
             Assert.That(Resolve("BossDungeon/SnowKing/AI_SnowKing.xml"), Is.EqualTo("BossDungeon/SnowKing/AI_SnowKing.xml"));
             Assert.That(Resolve("BossDungeon/SnowKing/AI_Nothing.xml"), Is.Null);
             Assert.That(Resolve("Test/AI_SnowKing_Chaos.xml"), Is.Null);
+        });
+    }
+
+    [Test]
+    public void MissingLocaleName_UsesTheNameWithoutIt() {
+        Assert.Multiple(() => {
+            // npc 23200077.
+            Assert.That(Resolve("BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNA.xml"), Is.EqualTo("BossDungeon/Papulatus_Chaos/AI_Papulatus_Chaos.xml"));
+            Assert.That(Resolve("BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNormalJP.xml"), Is.EqualTo("BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNormalJP.xml"));
+            Assert.That(Resolve("BossDungeon/Papulatus_Chaos/AI_NothingNA.xml"), Is.Null);
+            Assert.That(AiPathRules.WithoutLocale("AI_BANANA.xml"), Is.EqualTo("AI_BANA.xml"));
+            Assert.That(AiPathRules.WithoutLocale("AI_Default.xml"), Is.Null);
         });
     }
 

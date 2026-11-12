@@ -241,17 +241,14 @@ public partial class TriggerContext {
 
     public bool MonsterInCombat(int[] spawnIds, bool negate) {
         DebugLog("[MonsterInCombat] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
-        foreach (FieldNpc mob in Field.Mobs.Values) {
-            if (mob.SpawnPointId > 0 || !spawnIds.Contains(mob.SpawnPointId)) {
-                continue;
-            }
+        return AnyInCombat(Field.Mobs.Values.Select(mob => (mob.SpawnPointId, mob.BattleState.InBattle)), spawnIds, negate);
+    }
 
-            if (mob.BattleState.InBattle) {
-                return !negate;
-            }
-        }
-
-        return negate;
+    // True when a monster of one of the spawn points is in battle; negate is the opposite. Every shipped use names
+    // one spawn point (02000066 spawn_ids="5001", 02000313 "2002"), so the monsters to look at are those with a
+    // listed spawn point id.
+    public static bool AnyInCombat(IEnumerable<(int SpawnPointId, bool InBattle)> mobs, int[] spawnIds, bool negate) {
+        return mobs.Any(mob => mob.InBattle && spawnIds.Contains(mob.SpawnPointId)) != negate;
     }
 
     public bool NpcDetected(int boxId, int[] spawnIds, bool negate) {

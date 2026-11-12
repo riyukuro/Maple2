@@ -23,7 +23,21 @@ public static partial class AiPathRules {
         if (normal != null && exists(normal)) {
             return normal;
         }
+        string? plain = WithoutLocale(aiPath);
+        if (plain != null && exists(plain)) {
+            return plain;
+        }
         return null;
+    }
+
+    // Npc 23200077 names "BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNA.xml", which does not ship; the folder
+    // has AI_Papulatus_Chaos.xml (and AI_Papulatus_ChaosNormalJP.xml, which uses a skill index the npc's skills
+    // lack the skill for). With the npc's own skill list AI_Papulatus_Chaos.xml holds every skill and level KMS2
+    // sends for this npc, each inside the file's health bounds. So a missing name ending in NA.xml falls back to
+    // the name without NA.
+    public static string? WithoutLocale(string aiPath) {
+        const string suffix = "NA.xml";
+        return aiPath.EndsWith(suffix) ? aiPath[..^suffix.Length] + ".xml" : null;
     }
 
     // Some boss npc rows name a file in BossDungeon/<boss>/ that ships only in the copy folder

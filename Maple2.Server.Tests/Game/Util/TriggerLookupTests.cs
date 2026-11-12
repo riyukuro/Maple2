@@ -38,6 +38,21 @@ public class TriggerLookupTests {
         Assert.That(TriggerContext.AllDead([], false), Is.True);
     }
 
+    // 'monster_in_combat' (02000066 spawn_ids="5001"): a monster of a listed spawn point that is in battle.
+    [Test]
+    public void MonsterInCombat_LooksAtTheListedSpawnPoints() {
+        (int, bool)[] mobs = [(5001, true), (5002, false), (0, true)];
+        Assert.Multiple(() => {
+            Assert.That(TriggerContext.AnyInCombat(mobs, [5001], false), Is.True);
+            Assert.That(TriggerContext.AnyInCombat(mobs, [5002], false), Is.False);
+            Assert.That(TriggerContext.AnyInCombat(mobs, [5002, 5001], false), Is.True);
+            Assert.That(TriggerContext.AnyInCombat(mobs, [5003], false), Is.False);
+            Assert.That(TriggerContext.AnyInCombat(mobs, [5001], true), Is.False);
+            Assert.That(TriggerContext.AnyInCombat(mobs, [5002], true), Is.True);
+            Assert.That(TriggerContext.AnyInCombat([], [5001], false), Is.False);
+        });
+    }
+
     [Test]
     public void InitNpcRotation_UsesTheSpawnPointRotation() {
         var list = new List<SpawnPointNPCListEntry> { new(21000001, 1) };
