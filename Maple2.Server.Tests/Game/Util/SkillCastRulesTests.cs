@@ -351,7 +351,7 @@ public class SkillCastRulesTests {
     public void CancelledCastStopsTakingAttacks() {
         Assert.That(SkillCastRules.CancelledRefuses(0, 99999), Is.False, "not cancelled");
         Assert.That(SkillCastRules.CancelledRefuses(5000, 5000), Is.False);
-        Assert.That(SkillCastRules.CancelledRefuses(5000, 6000), Is.False, "an attack already on its way");
-        Assert.That(SkillCastRules.CancelledRefuses(5000, 6001), Is.True);
+        Assert.That(SkillCastRules.CancelledRefuses(5000, 7000), Is.False, "an attack already on its way");
+        Assert.That(SkillCastRules.CancelledRefuses(5000, 7001), Is.True);
     }
 }

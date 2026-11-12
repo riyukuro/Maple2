@@ -196,6 +196,7 @@ public class SkillHandler : FieldPacketHandler {
             return;
         }
         if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
+            Logger.Debug("Attack point dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }
 
@@ -311,6 +312,7 @@ public class SkillHandler : FieldPacketHandler {
             return;
         }
         if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
+            Logger.Debug("Attack target dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }
 

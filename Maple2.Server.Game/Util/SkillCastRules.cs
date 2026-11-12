@@ -52,7 +52,8 @@ public static class SkillCastRules {
     public readonly record struct LastCast(int SkillId, int GroupId, long CooldownMs, long ServerTick, int CastTick, long AttackSpeed = 100);
 
     // The shortest time after a cast at which the next one is taken. A cooldown under 1 s is cut by the attack
-    // speed (chosen here: divided by it, as a motion is; an attack speed under 100 counts as 100).
+    // speed (chosen here: divided by it, as a motion is; an attack speed under 100 counts as 100). Not proven: that
+    // a refusal seen at a 450 ms cooldown came from the attack speed; KMS2 has no cast above attack speed 121.
     public static long RequiredGap(long cooldownMs, long attackSpeed = 100) {
         if (cooldownMs <= 0) {
             return 0;
@@ -89,7 +90,7 @@ public static class SkillCastRules {
     // The client plays the motion at a speed its Lua (calc_pc_asiR) makes of the motion's own speed and the attack
     // speed stat. The Lua body is not known: speed = motion speed x attack speed / 100 is fitted here over KMS2
     // casts at attack speed 100 to 121. A motion of move type 3 is played at its own speed whatever the attack speed
-    // (StateSkill::GetMotionSpeedScale, stateskill.cpp:1242).
+    // (StateSkill::GetMotionSpeedScale).
     // A motion with a loop (a held skill) leaves the loop when the hold ends, so a key after "loopend" can come up
     // to one loop sooner: such a key is counted without the loop's length.
     // Chosen here: a cast is taken up to this long before that time.
@@ -129,8 +130,9 @@ public static class SkillCastRules {
     }
 
     // A cancelled cast takes no more attack packets once this time has passed since its cancel. KMS2 still answers
-    // an attack that comes up to 0.87 s after the cancel of its cast with damage; the 1 s is chosen here.
-    public const long CancelledAttackWindowMs = 1000;
+    // an attack that comes up to 0.87 s after the cancel of its cast with damage (the latest of 23 such casts, target
+    // packets only); the 2 s is chosen here, well above it, since the time is taken between two arrivals.
+    public const long CancelledAttackWindowMs = 2000;
 
     public static bool CancelledRefuses(long cancelTick, long tick) => cancelTick != 0 && tick - cancelTick > CancelledAttackWindowMs;
 
