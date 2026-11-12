@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -45,6 +46,12 @@ public class GuildMoneyHandlerTests {
             GuildNameLengthMin = 2,
             GuildNameLengthMax = 12,
         });
+        var property = (GuildTable.Property) RuntimeHelpers.GetUninitializedObject(typeof(GuildTable.Property));
+        test.SetTable(new GuildTable(
+            new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
+            new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
+            new Dictionary<short, GuildTable.Property> { [1] = property with { Level = 1, Capacity = 10, DonateMax = 3 } }));
         test.Start();
         session = test.Session;
         session.Player.Value.Character.Level = 20;
@@ -187,6 +194,87 @@ public class GuildMoneyHandlerTests {
         Assert.That(test.World.GuildRequests.Count, Is.EqualTo(asked ? 1 : 0));
         Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(error)) }));
         Assert.That(session.Guild.Guild, Is.Null);
+    }
+
+    // The founder's answers in the order KMS2 sends them: the name tag (77), the result (1), the guild (0), the founder as a joined
+    // member with an empty requestor and no notice line (18), the founder's data (32). The price is taken once.
+    [Test]
+    public void Create_AnswersInOrder() {
+        Join(inGuild: false);
+        session.Currency.Meso = 5000;
+        test.World.AddPlayer(session.AccountId, session.CharacterId, "Founder");
+        test.World.GuildWorld = request => new GuildResponse {
+            Guild = new GuildInfo {
+                Id = 7,
+                Name = request.Create.GuildName,
+                Emblem = "",
+                Notice = "",
+                Members = { new GuildInfo.Types.Member { CharacterId = session.CharacterId, Message = "", Rank = 0, JoinTime = 1000 } },
+            },
+        };
+        test.TakeSent();
+
+        Create("Guild");
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - CreatePrice));
+        Guild guild = session.Guild.Guild!;
+        self = guild.Members[session.CharacterId];
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] {
+            Hex(GuildPacket.AddTag(session.PlayerName, "Guild")),
+            Hex(GuildPacket.Created("Guild")),
+            Hex(GuildPacket.Load(guild)),
+            Hex(GuildPacket.Joined(string.Empty, self, notify: false)),
+            Hex(GuildPacket.UpdateMember(self.Info)),
+        }));
+
+        // Guild 18 for the founder: the requestor's name is empty and the notice byte is 0.
+        ByteWriter joined = GuildPacket.Joined(string.Empty, self, notify: false);
+        byte[] head = joined.ToArray().Take(2 + 1 + 2 + 2 + 2 * self.Name.Length + 1).ToArray();
+        ByteWriter expected = Packet.Of(SendOp.Guild);
+        expected.WriteByte(18);
+        expected.WriteUnicodeString(string.Empty);
+        expected.WriteUnicodeString(self.Name);
+        expected.WriteBool(false);
+        Assert.That(Convert.ToHexString(head), Is.EqualTo(Hex(expected)));
+        // Guild 1: the result byte 0 and the name.
+        ByteWriter created = Packet.Of(SendOp.Guild);
+        created.WriteByte(1);
+        created.WriteByte(0);
+        created.WriteUnicodeString("Guild");
+        Assert.That(Hex(GuildPacket.Created("Guild")), Is.EqualTo(Hex(created)));
+    }
+
+    // Another member's check-in as a member sees it, in the order KMS2 sends it: the guild's exp (50) and fund
+    // (51), the member's contribution (53: name, the amount, the week's and the whole sum) and check-in time (36).
+    [Test]
+    public void Contribution_OfAnotherMemberInOrder() {
+        Join();
+        var info = new PlayerInfo(new CharacterInfo(900, 901, "Other", "", "", Gender.Male, Job.Newbie, 20), "", new AchievementInfo(), []);
+        using var other = new GuildMember { GuildId = 7, Info = info, Rank = 2, JoinTime = 1000, WeeklyContribution = 40, TotalContribution = 340 };
+        session.Guild.Guild!.Members[other.CharacterId] = other;
+        test.TakeSent();
+
+        // The channel service applies the world's two notices in the order the world sends them.
+        Assert.That(session.Guild.UpdateGuildExpFunds(other.CharacterId, 105, 2030), Is.True);
+        Assert.That(session.Guild.UpdateMemberContribution(other.CharacterId, 1637700000, 10), Is.True);
+
+        ByteWriter exp = Packet.Of(SendOp.Guild);
+        exp.WriteByte(50);
+        exp.WriteInt(105);
+        ByteWriter fund = Packet.Of(SendOp.Guild);
+        fund.WriteByte(51);
+        fund.WriteInt(2030);
+        ByteWriter contribution = Packet.Of(SendOp.Guild);
+        contribution.WriteByte(53);
+        contribution.WriteUnicodeString("Other");
+        contribution.WriteInt(10);
+        contribution.WriteInt(50);
+        contribution.WriteInt(350);
+        ByteWriter time = Packet.Of(SendOp.Guild);
+        time.WriteByte(36);
+        time.WriteUnicodeString("Other");
+        time.WriteLong(1637700000);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(exp), Hex(fund), Hex(contribution), Hex(time) }));
     }
 
     // A member of a guild cannot found another: nothing is asked, taken or answered.

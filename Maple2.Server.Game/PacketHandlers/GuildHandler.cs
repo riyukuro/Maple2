@@ -259,11 +259,23 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             }
 
-            session.Guild.SetGuild(response.Guild);
+            // The answers in the order KMS2 sends them: the name tag (77, from SetGuild), the result (1), the
+            // meso, the guild (0), then the founder as a joined member without a notice line (18 with an
+            // empty requestor and the notice byte 0) and the founder's data (32). The client's reader of 18
+            // (CGuildManager::OnPacketMemberJoined) updates the member the load brought and redraws the
+            // guild window.
+            if (!session.Guild.SetGuild(response.Guild)) {
+                return;
+            }
+            session.Send(GuildPacket.Created(guildName));
             session.Currency.Meso -= Constants.GuildCreatePrice;
 
             session.Guild.Load();
-            session.Send(GuildPacket.Created(guildName));
+            GuildMember? founder = session.Guild.GetMember(session.CharacterId);
+            if (founder != null) {
+                session.Send(GuildPacket.Joined(string.Empty, founder, notify: false));
+                session.Send(GuildPacket.UpdateMember(founder.Info));
+            }
             // The founder is the guild's first member: "Join a guild" (70300010) counts for it too.
             session.ConditionUpdate(ConditionType.guild_join);
         } catch (RpcException ex) {
