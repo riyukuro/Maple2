@@ -641,6 +641,9 @@ public class DungeonManager {
 
         DungeonRecord record = GetRecord(Metadata.Id);
         short score = DungeonScoreRules.RunScore(UserRecord.Missions.Values.Select(mission => mission.Score), rankTable.MaxScore);
+        // The result dialog's score fields: the best before this clear and the run's (new record when it is higher).
+        UserRecord.HighestScore = record.LifetimeRecord;
+        UserRecord.Score = score;
         DungeonScoreRules.ApplyLifetime(record, score);
         // The clear's rank counts for dungeon_rank: the room is the code and the rank (0 F to 5 S+) must reach the
         // target (22210001 "Earn S+ Rank" 5, 22210045 "Earn A rank" 3, 93000173 "Spar with" the captain 0).
@@ -735,7 +738,12 @@ public class DungeonManager {
             }
             UserRecord.Rewards[DungeonRewardType.Exp] = exp;
             UserRecord.Rewards[DungeonRewardType.Meso] = meso;
-            session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp]);
+            // The clear's prestige exp: the dialog names the table's amount, as KMS2 sends it whatever the character
+            // gets (less past the daily amount, none below the prestige start level). It is given with the exp,
+            // which carries the dungeon message code (1085) and so the dungeonClear prestige type.
+            session.ServerTableMetadata.PrestigeExpTable.Entries.TryGetValue(ExpType.dungeonClear, out long prestige);
+            UserRecord.Rewards[DungeonRewardType.Prestige] = (int) Math.Min(prestige, int.MaxValue);
+            session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp], ExpMessageCode.dungeonRelative);
             session.Currency.Meso += UserRecord.Rewards[DungeonRewardType.Meso];
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
 
@@ -890,10 +898,6 @@ public class DungeonManager {
         } else {
             record.UnionClears++;
             record.UnionSubClears++;
-        }
-
-        if (record.UnionClears <= metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, clearTimeStamp)) {
-            UserRecord.Flag |= DungeonBonusFlag.UnitedWeekly;
         }
 
         if (record.UnionSubClears <= metadata.Reward.SubRewardCount) {

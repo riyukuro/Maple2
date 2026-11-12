@@ -271,6 +271,7 @@ public static class ModelExtensions {
             ExpMessageCode.s_msg_take_play_instrument_exp => ExpType.musicMastery1,
             ExpMessageCode.s_msg_take_arcade_exp => ExpType.arcade,
             ExpMessageCode.s_msg_take_fishing_exp => ExpType.fishing,
+            ExpMessageCode.dungeonRelative => ExpType.dungeonClear,
             _ => ExpType.none,
         };
     }

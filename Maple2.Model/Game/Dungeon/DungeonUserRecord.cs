@@ -11,14 +11,15 @@ public class DungeonUserRecord : IUserContentRecord {
     public bool WithParty { get; set; }
     public readonly ConcurrentDictionary<DungeonAccumulationRecordType, int> AccumulationRecords;
     public Dictionary<int, DungeonMission> Missions = [];
-    public DungeonBonusFlag BonusFlag = DungeonBonusFlag.None;
     public Dictionary<DungeonRewardType, int> Rewards { get; init; } = [];
     public ICollection<RewardItem> RewardItems { get; init; } = [];
     public Dictionary<DungeonRewardType, int> BonusRewards { get; init; } = [];
     public ICollection<RewardItem> BonusRewardItems { get; init; } = [];
     public int TotalSeconds;
+    // The run's rank score and the best score before it; the dialog plays its new record effect when the best is
+    // below the run's (uidungeonrewarddialog.cpp:469). A room without a rank table sends -1 and 0, as KMS2 does.
     public int Score = -1;
-    public int HighestScore = -1;
+    public int HighestScore = 0;
     public DungeonBonusFlag Flag = DungeonBonusFlag.None;
     public int Round;
     // Default (first button) revivals used in this run; the room's defaultRevivalLimitCount caps them.
@@ -56,10 +57,12 @@ public class DungeonUserRecord : IUserContentRecord {
         writer.WriteInt(TotalSeconds);
         writer.WriteInt(HighestScore);
         writer.WriteInt(Score);
-        writer.Write<DungeonBonusFlag>(BonusFlag); // Client reads this as 4 separate bytes.
+        // The bonus lines of the dialog's tooltip, one per bit 1 to 9 (OnRewardPacket, uidungeonrewarddialog.cpp:557).
+        // Bit 0 has an empty text and KMS2 never sets it.
+        writer.WriteInt((int) (Flag & ~DungeonBonusFlag.None));
         writer.WriteInt(Rewards.Count);
         foreach ((DungeonRewardType type, int value) in Rewards) {
-            writer.Write<DungeonRewardType>(type);
+            writer.WriteByte((byte) type);
             writer.WriteInt(value);
         }
 
@@ -73,9 +76,12 @@ public class DungeonUserRecord : IUserContentRecord {
             writer.WriteBool(item.Unknown3);
         }
 
-        writer.WriteInt(BonusRewards.Count);
-        foreach ((DungeonRewardType type, int value) in BonusRewards) {
-            writer.Write<DungeonRewardType>(type);
+        // Only the amounts that were given, as KMS2 sends them: the dialog plays its bonus stage whenever this
+        // list or the bonus items are not empty (DungeonRewardInfo::HasRewards).
+        List<KeyValuePair<DungeonRewardType, int>> bonus = BonusRewards.Where(entry => entry.Value != 0).ToList();
+        writer.WriteInt(bonus.Count);
+        foreach ((DungeonRewardType type, int value) in bonus) {
+            writer.WriteByte((byte) type);
             writer.WriteInt(value);
         }
 

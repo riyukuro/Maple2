@@ -293,6 +293,7 @@ public class TrophyWiringTests {
     private GameSession StartWithDungeon(DungeonGroupType group = DungeonGroupType.normal, int rewardCount = 10) {
         DungeonRoomMetadata room = TestGameSession.DungeonRoom(Dungeon, 90000201, rewardCount) with { GroupType = group };
         test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [Dungeon] = room }));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
         GameSession session = Start(
             TestGameSession.Trophy(Trophy, ConditionType.dungeon_first_clear, [Goal], codes: [Dungeon]),
             TestGameSession.Trophy(OtherTrophy, ConditionType.dungeon_first_clear, [Goal], codes: [Dungeon + 1]));

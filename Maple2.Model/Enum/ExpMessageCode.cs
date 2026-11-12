@@ -11,7 +11,6 @@ public enum ExpMessageCode : ushort {
      * quest = 1010
      * mission = 1053
      * expDrop = 1062
-     * dungeonRelative = 1085
      * miniGame = 3007
      * gathering = 3103
      * manufacturing = 3107
@@ -19,6 +18,8 @@ public enum ExpMessageCode : ushort {
      * guildUserExp = 3301
      * monster = 60001
      */
+    [Description("You got {0} experience.")]
+    dungeonRelative = 1085,
     [Description("You got {0} experience from fishing.")]
     s_msg_take_fishing_exp = 1059,
     [Description("You got {0} experience for playing an instrument.")]
