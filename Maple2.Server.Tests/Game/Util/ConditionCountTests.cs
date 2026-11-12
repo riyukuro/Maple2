@@ -124,6 +124,18 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: mapId, codeLong: 21000063), Is.EqualTo(expected));
     }
 
+    // A listed npc kill map counts only that map (10001600: target 2000171), as the client finds the value in the id
+    // list; a target of 0 is no target.
+    [TestCase(2000171, 2000171, true)]
+    [TestCase(2000171, 2000276, false)]
+    [TestCase(2000171, 2000100, false)]
+    [TestCase(0, 2000276, true)]
+    public void Npc_CountsAKillOnTheListedMapOnly(int targetMap, long mapId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.npc, 5,
+            null, new ConditionMetadata.Parameters(Integers: [targetMap]));
+        Assert.That(condition.Check(null!, targetLong: mapId, codeLong: 21000063), Is.EqualTo(expected));
+    }
+
     // A captured pet counts for pet_catch_id when its item id is the code (94000006: capture 2 of 61000153).
     [TestCase(61000153, true)]
     [TestCase(61000158, false)]

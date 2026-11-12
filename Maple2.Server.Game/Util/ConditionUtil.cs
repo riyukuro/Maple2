@@ -263,7 +263,9 @@ public static class ConditionUtil {
                     return true;
                 }
 
-                if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
+                // A listed map must be the map of the kill: the client's CConditionParam::Matches
+                // (conditionutil.cpp, 0x14029e600) finds the value in the id list, and a target of "0" is no target.
+                if (target.Integers != null && target.Integers.Any(value => value == 0 || value == longValue)) {
                     return true;
                 }
                 break;
