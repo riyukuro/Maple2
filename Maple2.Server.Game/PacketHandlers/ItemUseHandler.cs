@@ -395,10 +395,12 @@ public class ItemUseHandler : FieldPacketHandler {
     }
 
     // The gender voucher. KMS2: the voucher leaves the bag, hair, face, face decoration and ear
-    // come off (ItemPutOff), a Notice 5 message box with common string 755 closes the game scene,
-    // and the character list then shows the other gender with new items in those slots. String 755
-    // is the worn-items refusal text (s_change_gender_err_equip_items); KMS2 sends it in the done
-    // notice too, so it is not replaced by s_change_gender_result_success here.
+    // come off (ItemPutOff), a Notice 5 message box closes the game scene, and the character list
+    // then shows the other gender with new items in those slots. The client shows the notice's text
+    // as it is (CSceneStateGame::OnNotice, kind 5), so it has to be the done text,
+    // s_change_gender_result_success (756 in this client). The KMS2 notice carried id 755 on build
+    // 2521; in this client's table 755 is the worn-items refusal, which showed after a change that
+    // went through.
     private void HandleChangeGender(GameSession session, Item item) {
         Character character = session.Player.Value.Character;
         Gender gender = GenderChangeRules.Other(character.Gender);
@@ -464,7 +466,7 @@ public class ItemUseHandler : FieldPacketHandler {
             session.Item.Inventory.Save(db);
         });
 
-        session.Send(NoticePacket.Disconnect(StringCode.s_change_gender_err_equip_items));
+        session.Send(NoticePacket.Disconnect(StringCode.s_change_gender_result_success));
     }
 
     private void HandleChangeCharacterName(GameSession session, IByteReader packet, Item item) {

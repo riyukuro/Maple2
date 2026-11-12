@@ -112,7 +112,9 @@ public class GenderVoucherHandlerTests {
             Assert.That(BitConverter.ToInt32(sent[1 + i], 2), Is.EqualTo(session.Player.ObjectId));
             Assert.That(BitConverter.ToInt64(sent[1 + i], 6), Is.EqualTo(oldLook[i]), "hair, face, face decoration, ear");
         }
-        Assert.That(Hex(sent[5]), Is.EqualTo(Hex(NoticePacket.Disconnect(StringCode.s_change_gender_err_equip_items))));
+        // Notice 5, message box flag, the done text: the client's string 756, not the refusal 755.
+        Assert.That(Hex(sent[5]), Is.EqualTo(Hex(NoticePacket.Disconnect(StringCode.s_change_gender_result_success))));
+        Assert.That(BitConverter.ToInt32(sent[5], sent[5].Length - 8), Is.EqualTo(756));
 
         AssertChanged(session);
         AssertStoredAsWorn(session);
