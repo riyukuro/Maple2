@@ -1,4 +1,5 @@
 using System;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
@@ -50,11 +51,25 @@ public class MailCollectPacketTests {
 
     [Test]
     public void Notify_CountThenAlarmThenCount() {
-        byte[] bytes = MailPacket.Notify(2, true).Buffer.AsSpan(0, 12).ToArray();
+        byte[] bytes = MailPacket.Notify(2, true, 1).Buffer.AsSpan(0, 12).ToArray();
         Assert.That(bytes[2], Is.EqualTo(14));
         Assert.That(BitConverter.ToInt32(bytes, 3), Is.EqualTo(2));
         Assert.That(bytes[7], Is.EqualTo(1));
-        Assert.That(BitConverter.ToInt32(bytes, 8), Is.EqualTo(2));
+        Assert.That(BitConverter.ToInt32(bytes, 8), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void UnreadAlarmCount_LeavesOutPlayerAndAdMails() {
+        Mail[] mails = [
+            new Mail { Id = 1, Type = MailType.Player },
+            new Mail { Id = 2, Type = MailType.System },
+            new Mail { Id = 3, Type = MailType.MesoMarket, ReadTime = Now - 5 },
+            new Mail { Id = 4, Type = MailType.WeddingInvite },
+            new Mail { Id = 5, Type = MailType.Ad },
+            new Mail { Id = 6, Type = MailType.System, ExpiryTime = Now },
+        ];
+        Assert.That(MailRules.UnreadCount(mails, Now), Is.EqualTo(4));
+        Assert.That(MailRules.UnreadAlarmCount(mails, Now), Is.EqualTo(2));
     }
 
     [Test]

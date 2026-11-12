@@ -95,7 +95,8 @@ public class PartyManager : IDisposable {
         }
     }
 
-    public bool SetParty(PartyInfo info) {
+    // One Load per party: KMS2 sends a single Load, with the join byte set, to a player who makes or joins a party.
+    public bool SetParty(PartyInfo info, bool joinNotify = false) {
         if (Party != null) {
             return false;
         }
@@ -129,7 +130,7 @@ public class PartyManager : IDisposable {
             party.Members.TryAdd(member.CharacterId, member);
         }
 
-        session.Send(PartyPacket.Load(Party));
+        session.Send(PartyPacket.Load(Party, joinNotify));
 
         session.Dungeon.SetDungeon(Party.DungeonId, Party.DungeonLobbyRoomId, Party.DungeonSet);
 
@@ -251,8 +252,8 @@ public class PartyManager : IDisposable {
         }
 
         PartyInfoResponse response = world.PartyInfo(new PartyInfoRequest { PartyId = partyId });
-        if (response.Party != null && SetParty(response.Party)) {
-            session.Send(PartyPacket.Load(Party!, true));
+        if (response.Party != null) {
+            SetParty(response.Party, joinNotify: true);
         }
     }
 

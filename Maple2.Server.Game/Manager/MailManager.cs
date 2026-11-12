@@ -33,10 +33,13 @@ public sealed class MailManager {
     public void Notify(bool force = false) {
         if (Fetch(force) || force) {
             int unreadMail;
+            int unreadAlarm;
             lock (inbox) {
-                unreadMail = MailRules.UnreadCount(inbox.Values, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                unreadMail = MailRules.UnreadCount(inbox.Values, now);
+                unreadAlarm = MailRules.UnreadAlarmCount(inbox.Values, now);
             }
-            session.Send(MailPacket.Notify(unreadMail, unreadMail > 0));
+            session.Send(MailPacket.Notify(unreadMail, unreadMail > 0, unreadAlarm));
         }
     }
 

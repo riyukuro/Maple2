@@ -116,12 +116,13 @@ public static class MailPacket {
         return pWriter;
     }
 
-    public static ByteWriter Notify(int unreadCount, bool alert = true) {
+    // The last int is the client's unread alarm (CUserMail::SetUnreadAlarm): above 0 it highlights the mail menu.
+    public static ByteWriter Notify(int unreadCount, bool alert, int alarmCount) {
         var pWriter = Packet.Of(SendOp.Mail);
         pWriter.Write<Command>(Command.Notify);
         pWriter.WriteInt(unreadCount);
         pWriter.WriteBool(alert);
-        pWriter.WriteInt(unreadCount);
+        pWriter.WriteInt(alarmCount);
 
         return pWriter;
     }

@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 
@@ -20,6 +21,16 @@ public static class MailRules {
     // The badge counts what the list shows as unread: mails without a read time that are not expired.
     public static int UnreadCount(IEnumerable<Mail> mails, long now) {
         return mails.Count(mail => mail.ReadTime == 0 && !IsExpired(mail, now));
+    }
+
+    // The menu highlight count: the unread mails of the kinds the client highlights by itself once it has the list
+    // (100 to 112, UIHighlightGameMenu), so a player's mail is not counted.
+    public static int UnreadAlarmCount(IEnumerable<Mail> mails, long now) {
+        return mails.Count(mail => mail.ReadTime == 0 && !IsExpired(mail, now) && IsAlarmKind(mail.Type));
+    }
+
+    public static bool IsAlarmKind(MailType type) {
+        return (byte) type >= 100 && (byte) type < 113;
     }
 
     public static bool HasUncollected(Mail mail) {

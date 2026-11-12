@@ -73,7 +73,7 @@ public class MailTwoSessionTests {
 
         Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Send()) }));
         long mailId = Deliver();
-        Assert.That(Hex(Mail(recipientTest)), Is.EqualTo(new[] { Hex(MailPacket.Notify(1, true)) }));
+        Assert.That(Hex(Mail(recipientTest)), Is.EqualTo(new[] { Hex(MailPacket.Notify(1, true, 0)) }));
 
         // The list is a start mark, the mails and an end mark.
         handler.Handle(recipient, TestGameSession.Packet(writer => writer.WriteByte(Load)));
@@ -92,7 +92,7 @@ public class MailTwoSessionTests {
 
         // Read mail no longer counts.
         recipient.Mail.Notify(true);
-        Assert.That(Hex(Mail(recipientTest)).Last(), Is.EqualTo(Hex(MailPacket.Notify(0, false))));
+        Assert.That(Hex(Mail(recipientTest)).Last(), Is.EqualTo(Hex(MailPacket.Notify(0, false, 0))));
         // The sender's inbox did not get it.
         handler.Handle(sender, TestGameSession.Packet(writer => writer.WriteByte(Load)));
         Assert.That(Mail(senderTest).Select(packet => packet[2]), Is.EqualTo(new byte[] { 16, 17 }));
@@ -113,7 +113,7 @@ public class MailTwoSessionTests {
 
         Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Error(MailError.mail_not_found, Read)) }));
         recipient.Mail.Notify(true);
-        Assert.That(Hex(Mail(recipientTest)).Last(), Is.EqualTo(Hex(MailPacket.Notify(1, true))));
+        Assert.That(Hex(Mail(recipientTest)).Last(), Is.EqualTo(Hex(MailPacket.Notify(1, true, 0))));
     }
 
     [Test]

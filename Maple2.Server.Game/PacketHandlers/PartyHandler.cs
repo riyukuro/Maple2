@@ -115,9 +115,7 @@ public class PartyHandler : FieldPacketHandler {
                 return;
             }
 
-            if (session.Party.SetParty(response.Party)) {
-                session.Send(PartyPacket.Load(session.Party.Party!));
-            }
+            session.Party.SetParty(response.Party, joinNotify: true);
         } else if (session.Party.Party.LeaderCharacterId != session.CharacterId) {
             session.Send(PartyPacket.Error(PartyError.s_party_err_not_chief));
             return;
@@ -173,9 +171,7 @@ public class PartyHandler : FieldPacketHandler {
         }
 
         if (response == PartyInviteResponse.Accept) {
-            if (session.Party.SetParty(partyResponse.Party)) {
-                session.Send(PartyPacket.Load(session.Party.Party!, true));
-            }
+            session.Party.SetParty(partyResponse.Party, joinNotify: true);
         }
     }
 
@@ -267,9 +263,7 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Party.SetParty(response.Party)) {
-            session.Send(PartyPacket.Load(session.Party.Party!, true));
-        }
+        session.Party.SetParty(response.Party, joinNotify: true);
     }
 
     // UIMessenger::FUN_141a17bc0 (uimessenger.cpp:2502, join as a dungeon helper) and
@@ -298,9 +292,7 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Party.SetParty(response.Party)) {
-            session.Send(PartyPacket.Load(session.Party.Party!, true));
-        }
+        session.Party.SetParty(response.Party, joinNotify: true);
     }
 
     // StateRecall with no scroll: the player agreed to pay PartyRecallMerat merets instead.

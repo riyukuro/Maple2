@@ -63,9 +63,7 @@ public class PartySearchHandler : FieldPacketHandler {
                 return;
             }
 
-            if (session.Party.SetParty(partyResponse.Party)) {
-                session.Send(PartyPacket.Load(session.Party.Party!));
-            }
+            session.Party.SetParty(partyResponse.Party, joinNotify: true);
         }
 
         if (session.Party.Party == null) {

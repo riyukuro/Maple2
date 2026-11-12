@@ -184,7 +184,7 @@ public class MailMarketHandlerTests {
         List<byte[]> sent = test.TakeSent();
         Assert.That(Shape(sent), Is.EqualTo(new[] { (SendOp.Meso, sent[0][2]), (SendOp.BlackMarket, (byte) 5), (SendOp.Mail, (byte) 14) }));
         Assert.That(Convert.ToHexString(sent[1]), Is.EqualTo(Hex(BlackMarketPacket.Purchase(listing.Id, 4))));
-        Assert.That(Convert.ToHexString(sent[2]), Is.EqualTo(Hex(MailPacket.Notify(1, true))));
+        Assert.That(Convert.ToHexString(sent[2]), Is.EqualTo(Hex(MailPacket.Notify(1, true, 1))));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 1200));
         using GameStorage.Request check = test.Storage.Context();
         Assert.That(check.GetBlackMarketListing(listing.Id), Is.Null);

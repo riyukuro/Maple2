@@ -147,7 +147,10 @@ public class PartyTwoSessionTests {
         // The inviter is alone in a new party; the guest is asked.
         Assert.That(inviter.Party.Party, Is.Not.Null);
         Assert.That(inviter.Party.Party!.Members.Keys, Is.EqualTo(new[] { inviter.CharacterId }));
-        Assert.That(Party(inviterTest).Select(packet => packet[2]), Is.All.EqualTo(Load));
+        // One Load, with the join byte set.
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Load(inviter.Party.Party, true)),
+        }));
         Assert.That(Party(guestTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
             Hex(PartyPacket.Invite(PartyId, inviter.PlayerName)),
         }));
@@ -159,10 +162,10 @@ public class PartyTwoSessionTests {
         Assert.That(guest.Party.Party!.Members.Keys, Is.EquivalentTo(new[] { inviter.CharacterId, guest.CharacterId }));
         Assert.That(guest.Party.Party.LeaderCharacterId, Is.EqualTo(inviter.CharacterId));
         Assert.That(guest.Player.Value.Character.PartyId, Is.EqualTo(PartyId));
-        // The guest's last packet is the party with the join notice.
-        byte[][] sent = Party(guestTest);
-        Assert.That(sent.Select(packet => packet[2]), Is.All.EqualTo(Load));
-        Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(PartyPacket.Load(guest.Party.Party, true))));
+        // The guest gets the party once, with the join notice.
+        Assert.That(Party(guestTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Load(guest.Party.Party, true)),
+        }));
         // The inviter is told of the new member.
         Assert.That(inviter.Party.Party.Members.Keys, Is.EquivalentTo(new[] { inviter.CharacterId, guest.CharacterId }));
         Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
