@@ -54,8 +54,9 @@ public class ShopHandler : FieldPacketHandler {
     private void HandleBuy(GameSession session, IByteReader packet) {
         int shopItemId = packet.ReadInt();
         int quantity = packet.ReadInt();
+        int shopId = packet.ReadInt();
 
-        session.Shop.Buy(shopItemId, quantity);
+        session.Shop.Buy(shopItemId, quantity, shopId);
     }
 
     private void HandleSell(GameSession session, IByteReader packet) {

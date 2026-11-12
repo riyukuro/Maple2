@@ -454,8 +454,9 @@ public sealed class ShopManager {
     }
 
 
-    public void Buy(int shopItemId, int quantity) {
-        if (activeShop == null) {
+    public void Buy(int shopItemId, int quantity, int shopId) {
+        // The client names the shop of its window (UIShopDialog::SendPurchase); a buy for another shop is dropped.
+        if (activeShop == null || shopId != activeShop.Id) {
             return;
         }
 
@@ -514,10 +515,13 @@ public sealed class ShopManager {
             } else {
                 UpdateUnresetStockCount(activeShop.Metadata, shopItem, quantity);
             }
-            session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
 
         session.Item.Inventory.Add(item, true, commit: true);
+        // KMS2 order: the payment, the item, the bought count, then the result.
+        if (shopItem.StockCount > 0) {
+            session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
+        }
         session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price));
         // The mesos paid in an NPC shop count for shop_buy (trophy 23200004).
         if (shopItem.Metadata.Cost.Type == ShopCurrencyType.Meso && price > 0) {
@@ -562,7 +566,8 @@ public sealed class ShopManager {
             return;
         }
 
-        if (!Pay(new ShopCost { Type = ShopCurrencyType.Meso, Amount = (int) buyBackItem.Price }, (int) buyBackItem.Price)) {
+        if (session.Currency.CanAddMeso(-buyBackItem.Price) != -buyBackItem.Price) {
+            session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
             return;
         }
 
@@ -570,8 +575,10 @@ public sealed class ShopManager {
             logger.Error("Failed to remove buyback item {Id}", id);
             return;
         }
-        session.Item.Inventory.Add(buyBackItem.Item, true, commit: true);
+        // KMS2 order: the entry leaves the list, the item comes back, then the mesos are taken.
         session.Send(ShopPacket.RemoveBuyBackItem(id));
+        session.Item.Inventory.Add(buyBackItem.Item, true, commit: true);
+        session.Currency.Meso -= buyBackItem.Price;
         session.SavePurchase();
     }
 
@@ -614,9 +621,8 @@ public sealed class ShopManager {
             return;
         }
 
-        session.Currency.Meso += sellPrice;
-
         if (buyBackItems.Count >= Constant.MaxBuyBackItems && !RemoveBuyBackItem()) {
+            session.Currency.Meso += sellPrice;
             return;
         }
 
@@ -628,7 +634,9 @@ public sealed class ShopManager {
             Price = sellPrice,
         };
 
+        // KMS2 order: the item leaves the bag, the buy-back entry is listed, then the mesos are paid.
         session.Send(ShopPacket.LoadBuyBackItem(buyBackItems[entryId]));
+        session.Currency.Meso += sellPrice;
     }
 
     private bool Pay(ShopCost cost, int price) {

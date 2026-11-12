@@ -599,10 +599,16 @@ public class InventoryManager {
             }
 
             if (mergeStacks) {
-                // The changed amounts go out with the reloaded tab below and are saved with the inventory.
-                // Emptied stacks are deleted at that save; they were merged, not destroyed, so no item_destroy.
+                // Emptied stacks are deleted at the inventory save; they were merged, not destroyed, so no
+                // item_destroy. As in KMS2, an emptied stack is removed and a changed one updated before the
+                // tab is reloaded.
+                Dictionary<long, int> amounts = items.ToDictionary(item => item.Uid, item => item.Amount);
                 foreach (Item emptied in items.MergeStacks()) {
                     delete.Add(emptied);
+                    session.Send(ItemInventoryPacket.Remove(emptied.Uid));
+                }
+                foreach (Item item in items.Where(item => amounts[item.Uid] != item.Amount)) {
+                    session.Send(ItemInventoryPacket.UpdateAmount(item.Uid, item.Amount));
                 }
             }
 

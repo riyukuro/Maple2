@@ -327,6 +327,7 @@ public sealed class TestGameSession {
         session.Housing = new HousingManager(session, TableMetadata);
         session.Item = new ItemManager(db, session, stats);
         session.ItemBox = new ItemBoxManager(session);
+        session.Shop = new ShopManager(session);
         session.ItemMerge = new ItemMergeManager(session);
         typeof(GameSession).GetField(nameof(GameSession.DismantleStaging), Any)!.SetValue(session, new (long Uid, int Amount)[100]);
         session.ItemEnchant = new ItemEnchantManager(session);
