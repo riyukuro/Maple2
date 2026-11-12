@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -151,6 +151,9 @@ public class DisabledBuffTests {
         Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2), Is.True);
         Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 4), Is.False);
         Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(0, 0, 2), Is.False);
+        // A later motion of the same cast is not checked, as the client sends it without the check.
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2, motionPoint: 1), Is.False);
+        Assert.That(Maple2.Server.Game.Util.SkillCastRules.TypeDisabled(4, 0, 2, motionPoint: 0), Is.True);
 
         int field = Maple2.Server.Game.Util.SkillCastRules.FieldTypeMask([1, 2, 3, 5, 8, 9]);
         Assert.That(field, Is.EqualTo(0b1100101110));
@@ -168,5 +171,14 @@ public class DisabledBuffTests {
         // Not yet due, or a buff of one proc (no interval): unchanged, so it still procs once it is on.
         Assert.That(Buff.ResumedProcTick(3000, 500, 2200), Is.EqualTo(3000));
         Assert.That(Buff.ResumedProcTick(1000, 0, 2200), Is.EqualTo(1000));
+    }
+
+    [Test]
+    public void ABuffEnabledAfterItsLastProcSlotDoesNotProcPastItsEnd() {
+        // Due at 5000 every 1000, ends at 5500, back on at 5200: the next slot (6000) is past the end, so no proc.
+        Assert.That(Buff.ResumedCanProc(Buff.ResumedProcTick(5000, 1000, 5200), 5500), Is.False);
+        // Back on before the slot: it still procs at 5000.
+        Assert.That(Buff.ResumedCanProc(Buff.ResumedProcTick(5000, 1000, 4800), 5500), Is.True);
+        Assert.That(Buff.ResumedCanProc(5500, 5500), Is.True);
     }
 }

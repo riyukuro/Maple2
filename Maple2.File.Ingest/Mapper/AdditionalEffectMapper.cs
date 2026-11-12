@@ -38,9 +38,22 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return Convert(pack);
     }
 
+    // The skillUseDisable mask of the played client's level (0 where its level has none); the data pack's for a
+    // level the client does not have. The pack's masks differ (49018002: 12 where the client has 6; 71000051,
+    // 71000068 and 71000074: 2 where the client has none), and the server refused casts the client sends.
+    private int SkillUseDisableMask(int id, short level, int pack) {
+        return played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.SkillUseDisable.TryGetValue(level, out int mask) ? mask : pack;
+    }
+
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
+        int packMasks = 0, masks = 0, changed = 0;
         foreach ((int id, IList<AdditionalEffectData> datas) in parser.Parse()) {
             foreach (AdditionalEffectData data in datas) {
+                int packMask = (int) data.MotionProperty.skillUseDisable;
+                int mask = SkillUseDisableMask(id, data.BasicProperty.level, packMask);
+                packMasks += packMask != 0 ? 1 : 0;
+                masks += mask != 0 ? 1 : 0;
+                changed += mask != packMask ? 1 : 0;
                 yield return new AdditionalEffectMetadata(
                     Id: id,
                     Level: data.BasicProperty.level,
@@ -75,7 +88,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null,
                         CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level),
                         InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0,
-                        SkillUseDisableMask: (int) data.MotionProperty.skillUseDisable),
+                        SkillUseDisableMask: mask),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),
@@ -98,6 +111,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                     TickSkills: data.conditionSkill.Concat(data.splashSkill).Where(skill => skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray());
             }
         }
+        Console.WriteLine($"Additional effect levels with a skillUseDisable mask: {masks} ({packMasks} in the data pack, {changed} taken from the played client)");
     }
 
     private static AdditionalEffectMetadataUpdate Convert(AdditionalEffectData data) {

@@ -30,6 +30,10 @@ public class InvokeEffectTests {
             <level level="1" feature="Off"><Basic groupIDs="7" /><InvokeEffect effectID="10300283" types="3" rates="0.5" /></level>
             <level level="2"><Basic groupIDs="9" /></level>
           </additional>
+          <additional id="49018002">
+            <level level="1"><Basic /><Motion skillUseDisable="6" /></level>
+            <level level="2"><Basic /></level>
+          </additional>
           <additional id="11000102">
             <level level="1"><InvokeEffect skillID="11000001" types="1001,1002,1003" values="0,4" rates="0.05" /></level>
           </additional>
@@ -45,6 +49,15 @@ public class InvokeEffectTests {
     private static AdditionalEffectMetadataInvokeEffect Invoke(InvokeEffectType type, float value, float rate,
             int effectId = 0, int effectGroupId = 0, int skillId = 0, int skillGroupId = 0) {
         return new AdditionalEffectMetadataInvokeEffect([type], [value], [rate], effectId, effectGroupId, skillId, skillGroupId);
+    }
+
+    // The client's <Motion skillUseDisable> is a mask as written (6: main types 1 and 2), 0 for a level without one.
+    [Test]
+    public void ReadsTheClientSkillUseDisableMaskPerLevel() {
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = Read();
+        Assert.That(played[49018002].SkillUseDisable[1], Is.EqualTo(6));
+        Assert.That(played[49018002].SkillUseDisable[2], Is.EqualTo(0));
+        Assert.That(played[10300281].SkillUseDisable.ContainsKey(1), Is.False, "a level that is off is not read");
     }
 
     [Test]

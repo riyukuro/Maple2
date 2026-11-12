@@ -227,6 +227,10 @@ public class Buff : IUpdatable, IByteSerializable {
         }
         if (!wasEnabled) {
             NextProcTick = ResumedProcTick(NextProcTick, Metadata.Property.IntervalTick > 0 ? IntervalTick : 0, tickCount);
+            // Its schedule's next proc past its end is not had: the timer ends it, as Proc does for the last slot.
+            if (!ResumedCanProc(NextProcTick, EndTick)) {
+                canProc = false;
+            }
         }
 
         if (!canProc || tickCount < NextProcTick) {
@@ -259,6 +263,8 @@ public class Buff : IUpdatable, IByteSerializable {
         }
         return nextProcTick + (tickCount - nextProcTick + intervalTick - 1) / intervalTick * intervalTick;
     }
+
+    internal static bool ResumedCanProc(long nextProcTick, long endTick) => nextProcTick <= endTick;
 
     private void Proc() {
         ProcCount++;

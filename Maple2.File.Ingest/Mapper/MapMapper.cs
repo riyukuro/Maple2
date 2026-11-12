@@ -15,6 +15,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
     private readonly HashSet<int> notInPlayedClient = [];
     // All map ids the played client's field table has a row for; a map without a row is lacking too.
     private readonly HashSet<int> playedClientRows = [];
+    // The played client's skillUseDisable list of each row (PlayedClientMaps.SkillUseDisable); empty without one.
+    private readonly Dictionary<int, int[]> playedDisableSkills = [];
 
     public MapMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         spawnParser = PackTables.NewParser(xmlReader, language);
@@ -25,6 +27,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
             System.Xml.XmlDocument fieldTable = playedReader.GetXmlDocument(entry);
             notInPlayedClient = PlayedClientMaps.Missing(fieldTable);
             playedClientRows = PlayedClientMaps.Rows(fieldTable);
+            playedDisableSkills = PlayedClientMaps.SkillUseDisable(fieldTable, Helpers.ClientListedRows.Available);
         }
     }
 
@@ -49,12 +52,20 @@ public class MapMapper : TypeMapper<MapMetadata> {
             ).ToList();
         }
 
-        int marked = 0;
+        int marked = 0, packLists = 0, lists = 0, changedLists = 0;
         foreach ((int id, string name, MapData data) in parser.Parse()) {
             bool lacking = PlayedClientMaps.Lacks(playedClientRows, notInPlayedClient, id);
             if (lacking) {
                 marked++;
             }
+            // The client's list where it has the field (none where its row lists none or it has no row); the data pack's
+            // differs (84000006 to 84000046 add 5, 8 and 9, 61000023 to 61000034 add 4) and the server refused casts the
+            // client sends. Without a played client the pack's list is kept.
+            int[] packDisable = data.property.skillUseDisable ?? [];
+            int[] disableSkills = playedDisableSkills.Count > 0 ? playedDisableSkills.GetValueOrDefault(id, []) : packDisable;
+            packLists += packDisable.Length > 0 ? 1 : 0;
+            lists += disableSkills.Length > 0 ? 1 : 0;
+            changedLists += !disableSkills.SequenceEqual(packDisable) ? 1 : 0;
             yield return new MapMetadata(
                 Id: id,
                 Name: name,
@@ -89,7 +100,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     MinLevel: data.property.enterMinLevel,
                     MaxLevel: data.property.enterMaxLevel,
                     RequireQuest: data.property.requireQuest,
-                    DisableSkills: data.property.skillUseDisable,
+                    DisableSkills: disableSkills,
                     Climb: data.property.checkClimb,
                     Fly: data.property.checkFly,
                     Move: data.property.limitMove,
@@ -115,6 +126,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
         }
         if (playedClientRows.Count > 0) {
             Console.WriteLine($"maps: {marked} marked as not in the played client (entry refused)");
+            Console.WriteLine($"maps with a skillUseDisable list: {lists} ({packLists} in the data pack, {changedLists} taken from the played client)");
         }
     }
 }

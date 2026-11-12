@@ -19,7 +19,11 @@ public static class PlayedClientAdditionalEffects {
     public const string AdditionalFolder = "additional/";
 
     // GroupId: the first level's groupIDs. Levels: every level the client has, with its invoke effect or null.
-    public sealed record Entry(int GroupId, Dictionary<short, AdditionalEffectMetadataInvokeEffect?> Levels);
+    // SkillUseDisable: every level's <Motion skillUseDisable> mask, 0 where the level has none (the client's
+    // m_motion.m_nSkillUseDisable, summed over the enabled buffs by AdditionalCliList::FUN_140972a00).
+    public sealed record Entry(int GroupId, Dictionary<short, AdditionalEffectMetadataInvokeEffect?> Levels) {
+        public Dictionary<short, int> SkillUseDisable { get; init; } = [];
+    }
 
     public static bool IsAdditionalFile(string name) => name.StartsWith(AdditionalFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -38,6 +42,7 @@ public static class PlayedClientAdditionalEffects {
                 }
                 // A later row of the same id replaces the earlier one, as the client's load does.
                 var levels = new Dictionary<short, AdditionalEffectMetadataInvokeEffect?>();
+                var useDisable = new Dictionary<short, int>();
                 int groupId = 0;
                 bool first = true;
                 foreach (XmlElement level in effect.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level" && available(child))) {
@@ -49,8 +54,9 @@ public static class PlayedClientAdditionalEffects {
                         first = false;
                     }
                     levels[levelId] = Invoke(Child(level, "InvokeEffect"));
+                    useDisable[levelId] = Number(Child(level, "Motion"), "skillUseDisable");
                 }
-                entries[id] = new Entry(groupId, levels);
+                entries[id] = new Entry(groupId, levels) { SkillUseDisable = useDisable };
             }
         }
         return entries;

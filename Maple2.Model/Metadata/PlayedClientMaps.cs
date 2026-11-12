@@ -35,6 +35,30 @@ public static class PlayedClientMaps {
         return missing;
     }
 
+    // The main types each row's skillUseDisable lists (<environment><property skillUseDisable="1,2">), as the client
+    // reads them into its field mask (CFieldData::vfunc_1, fielddata.cpp:708): an empty list for a row whose
+    // environment lists none. available: whether an environment's feature and locale are on; of several available
+    // environments the last is taken (chosen here; in the KR table no field has two that differ). A row with no
+    // available environment is left out.
+    public static Dictionary<int, int[]> SkillUseDisable(XmlDocument fieldTable, Func<XmlElement, bool> available) {
+        var lists = new Dictionary<int, int[]>();
+        XmlNodeList? rows = fieldTable.SelectNodes("ms2/fieldData");
+        if (rows == null) {
+            return lists;
+        }
+        foreach (XmlNode node in rows) {
+            if (node is not XmlElement row || !int.TryParse(row.GetAttribute("id"), out int id)) {
+                continue;
+            }
+            foreach (XmlElement environment in row.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "environment" && available(child))) {
+                string list = environment.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "property")?.GetAttribute("skillUseDisable") ?? "";
+                lists[id] = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(text => int.TryParse(text, out int type) ? type : -1).Where(type => type >= 0).ToArray();
+            }
+        }
+        return lists;
+    }
+
     // The ids of all rows, loadable or not.
     public static HashSet<int> Rows(XmlDocument fieldTable) {
         var ids = new HashSet<int>();

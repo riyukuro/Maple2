@@ -166,11 +166,12 @@ public class SkillHandler : FieldPacketHandler {
             return false;
         }
         if (SkillCastRules.TypeDisabled(session.Player.Buffs.SkillUseDisableMask(), SkillCastRules.FieldTypeMask(session.Field.Metadata.Limit.DisableSkills),
-                record.Metadata.Property.MainType)) {
+                record.Metadata.Property.MainType, record.MotionPoint)) {
             Logger.Debug("Cast refused, skill {SkillId} of main type {MainType} is disabled by a buff held or the field", record.SkillId, record.Metadata.Property.MainType);
             return false;
         }
-        if (session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
+        // The same holds for a buff that disables the skill itself (answer 0x1f): checked on the first motion only.
+        if (record.MotionPoint == 0 && session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
             Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);
             return false;
         }

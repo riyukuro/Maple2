@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Xml;
@@ -26,6 +26,26 @@ public class PlayedClientMapsTests {
             """);
 
         Assert.That(PlayedClientMaps.Missing(table).OrderBy(id => id), Is.EqualTo(new[] { 900002, 900003, 900004 }));
+    }
+
+    // The client's field skillUseDisable list: from the available environment's <property>, empty where it lists none,
+    // and no entry for a row with no available environment.
+    [Test]
+    public void SkillUseDisable_IsTheAvailableEnvironmentsList() {
+        XmlDocument table = Table("""
+            <fieldData id="51000001"><environment><property skillUseDisable="1,2,3,5" /></environment></fieldData>
+            <fieldData id="900002"><environment><property /></environment></fieldData>
+            <fieldData id="900003"><environment feature="Off"><property skillUseDisable="1" /></environment></fieldData>
+            <fieldData id="900004"><environment><property skillUseDisable="4" /></environment><environment feature="Off"><property skillUseDisable="1" /></environment></fieldData>
+            <fieldData id="900005" />
+            """);
+        Dictionary<int, int[]> lists = PlayedClientMaps.SkillUseDisable(table, environment => environment.GetAttribute("feature") != "Off");
+
+        Assert.That(lists[51000001], Is.EqualTo(new[] { 1, 2, 3, 5 }));
+        Assert.That(lists[900002], Is.Empty);
+        Assert.That(lists.ContainsKey(900003), Is.False, "no available environment");
+        Assert.That(lists[900004], Is.EqualTo(new[] { 4 }), "the one that is off is skipped");
+        Assert.That(lists.ContainsKey(900005), Is.False, "no environment");
     }
 
     [Test]

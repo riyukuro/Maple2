@@ -376,7 +376,13 @@ public static class SkillCastRules {
 
     // The client refuses a cast whose main type has its bit in the enabled buffs' skillUseDisable masks or the
     // field's (PCBase::GetSkillUseDisableMask, CSkillSystem cast check answer 0x1e).
-    public static bool TypeDisabled(int buffMask, int fieldMask, int mainType) {
+    // Only a cast's first motion is checked: the client checks the type when a cast starts and sends the next motion
+    // of the same cast (motion point 1 and on) without it (CStateSkill, stateskill.cpp:2977), so a mask that lands
+    // between motions does not stop the cast the client goes on playing.
+    public static bool TypeDisabled(int buffMask, int fieldMask, int mainType, int motionPoint = 0) {
+        if (motionPoint != 0) {
+            return false;
+        }
         int mask = buffMask | fieldMask;
         return mask != 0 && mainType is >= 0 and < 32 && (mask & (1 << mainType)) != 0;
     }
