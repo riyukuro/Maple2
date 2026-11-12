@@ -336,7 +336,8 @@ public class InventoryManager {
                 }
                 session.ConditionUpdate(ConditionType.item_collect, codeLong: item.Id);
                 session.ConditionUpdate(ConditionType.item_add, counter: item.Amount, codeLong: item.Id);
-                session.ConditionUpdate(ConditionType.item_exist, counter: item.Amount, targetLong: session.Field?.MapId ?? 0, codeLong: item.Id);
+                session.Achievement.Update(ConditionType.item_exist, count: item.Amount, targetLong: session.Field?.MapId ?? 0, codeLong: item.Id);
+                session.Quest.UpdateHeld(item.Id);
             }
 
             return true;
@@ -807,6 +808,7 @@ public class InventoryManager {
                 item.Amount -= amount;
 
                 session.Send(ItemInventoryPacket.UpdateAmount(uid, item.Amount));
+                session.Quest.UpdateHeld(item.Id);
                 return true;
             }
         }
@@ -816,6 +818,7 @@ public class InventoryManager {
             if (notify) {
                 session.Send(ItemInventoryPacket.Remove(uid));
             }
+            session.Quest.UpdateHeld(removed.Id);
             return true;
         }
 
@@ -839,6 +842,7 @@ public class InventoryManager {
                 item.Amount -= amount;
 
                 session.Send(ItemInventoryPacket.UpdateAmount(uid, item.Amount));
+                session.Quest.UpdateHeld(item.Id);
                 return true;
             }
         }
@@ -847,6 +851,7 @@ public class InventoryManager {
         if (items.Remove(uid, out Item? removed)) {
             Discard(removed, commit);
             session.Send(ItemInventoryPacket.Remove(uid));
+            session.Quest.UpdateHeld(removed.Id);
             return true;
         }
 

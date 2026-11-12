@@ -56,6 +56,10 @@ public sealed class QuestManager {
 
     public void Load() {
         DropEndedMissions(DateTime.Now);
+        // The held items are counted again on login (a counter stored before held counts, or items moved since).
+        foreach (Quest quest in HeldCandidates(0)) {
+            CountHeld(quest, 0);
+        }
         session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress));
 
         // A stored quest the played client lacks stays stored but is not sent: the client would read the list wrong
@@ -250,6 +254,8 @@ public sealed class QuestManager {
         }
 
         session.ConditionUpdate(ConditionType.quest_accept, codeLong: quest.Id);
+        // Items held before the quest count from its start, as the client shows them.
+        CountHeld(quest, 0);
         session.Send(QuestPacket.Start(quest));
         if (quest.Metadata.SummonPortal != null) {
             SummonPortal(quest);
@@ -842,6 +848,47 @@ public sealed class QuestManager {
             .Any(condition => condition.Metadata is { Type: ConditionType.item_exist, Codes: not null }
                               && condition.Counter < condition.Metadata.Value
                               && condition.Metadata.Check(session, targetLong: mapId, codeLong: itemId));
+    }
+
+    // The held count of an item changed (InventoryManager: added, removed or consumed): each started quest's
+    // item_exist condition for the item takes the count the player holds now, up or down (QuestRules.HeldItem), and
+    // gets an update when it moved. A drop or sale below the count takes a met condition back, as the client does.
+    public void UpdateHeld(int itemId) {
+        foreach (Quest quest in HeldCandidates(itemId)) {
+            if (!CountHeld(quest, itemId)) {
+                continue;
+            }
+            session.Send(QuestPacket.Update(quest));
+            if ((quest.Metadata.Basic.Type == QuestType.FieldMission || StampQuests().Contains(quest.Id)) && CanComplete(quest)) {
+                Complete(quest);
+            }
+        }
+    }
+
+    // The started quests with a held-count condition for the item (0: for any item).
+    private List<Quest> HeldCandidates(int itemId) {
+        return characterValues.Values.Concat(accountValues.Values)
+            .Where(quest => quest.State == QuestState.Started && PlayedClientQuests.Known(quest.Metadata.Basic)
+                            && quest.Conditions.Values.Any(condition => QuestRules.HeldItem(condition.Metadata) is var item
+                                                                        && item != 0 && (itemId == 0 || item == itemId)))
+            .ToList();
+    }
+
+    // Sets the quest's held-count conditions for the item (0: for any item) to the held count. True when one moved.
+    private bool CountHeld(Quest quest, int itemId) {
+        bool changed = false;
+        foreach (Quest.Condition condition in quest.Conditions.Values) {
+            int item = QuestRules.HeldItem(condition.Metadata);
+            if (item == 0 || (itemId != 0 && item != itemId)) {
+                continue;
+            }
+            int counter = QuestRules.HeldCounter(condition.Metadata, session.Item.Inventory.Find(item).Sum(held => (long) held.Amount));
+            if (counter != condition.Counter) {
+                condition.Counter = counter;
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     public bool TryGetQuest(int questId, [NotNullWhen(true)] out Quest? quest) {

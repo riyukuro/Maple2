@@ -132,6 +132,15 @@ public static class QuestRules {
         quests.Where(quest => quest.State != QuestState.Completed && PlayedClientQuests.Known(quest.Metadata.Basic)
                               && quest.Conditions.Values.Any(condition => condition.Metadata.Type == type));
 
+    // item_exist (and item_inven, which KR does not use): the client's progress is the count of the item the player
+    // holds (CQuestManager::UpdateQuestProgress counts the item's inventory tab, the first code only), not a count
+    // of pickups; it keeps no progress the server sends for them. The item counted, or 0 for other conditions.
+    public static int HeldItem(ConditionMetadata metadata) =>
+        metadata is { Type: ConditionType.item_exist or ConditionType.item_inven, Codes.Integers: [var item, ..] } ? item : 0;
+
+    // The counter for a held count: the count up to the condition's value.
+    public static int HeldCounter(ConditionMetadata metadata, long held) => (int) Math.Clamp(held, 0, metadata.Value);
+
     // A level condition moves only on a level-up (ExperienceManager.LevelUp sends the new level), so a quest started
     // at or above its level target waited for the next level-up and never came due at the top level. The start counts
     // the current level once the same way (ConditionUtil level: level >= a target value). Conditions with codes or a
