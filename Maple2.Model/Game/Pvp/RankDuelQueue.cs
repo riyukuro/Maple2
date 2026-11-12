@@ -86,33 +86,44 @@ public sealed class RankDuelQueue {
         return RankDuelError.none;
     }
 
-    // The matches the windows allow at this tick, taken out of the queue.
+    // The matches the windows allow at this tick, taken out of the queue: one pass over the waiters, the longest
+    // waiting first, each taking the closest rating left inside its window (O(n^2) for n waiters).
     public List<RankDuelMatch> Pair(long tick) {
         var made = new List<RankDuelMatch>();
-        bool found = true;
-        while (found && waiting.Count >= 2) {
-            found = false;
-            foreach (Waiter first in waiting.OrderBy(waiter => waiter.Since)) {
-                long gap = RankDuelRules.AllowedGap(tick - first.Since, MatchingTimeSeconds, MatchingMinGap);
-                Waiter? second = waiting
-                    .Where(waiter => waiter != first && Math.Abs((long) waiter.Rating - first.Rating) <= gap)
-                    .OrderBy(waiter => Math.Abs((long) waiter.Rating - first.Rating))
-                    .ThenBy(waiter => waiter.Since)
-                    .FirstOrDefault();
-                if (second == null) {
+        if (waiting.Count < 2) {
+            return made;
+        }
+        List<Waiter> order = waiting.OrderBy(waiter => waiter.Since).ToList();
+        var taken = new HashSet<Waiter>();
+        foreach (Waiter first in order) {
+            if (taken.Contains(first)) {
+                continue;
+            }
+            long gap = RankDuelRules.AllowedGap(tick - first.Since, MatchingTimeSeconds, MatchingMinGap);
+            Waiter? second = null;
+            long best = long.MaxValue;
+            foreach (Waiter other in order) {
+                if (other == first || taken.Contains(other)) {
                     continue;
                 }
-                waiting.Remove(first);
-                waiting.Remove(second);
-                var match = new RankDuelMatch { Id = nextMatchId++, First = first.CharacterId, Second = second.CharacterId, CreatedTick = tick };
-                matches[match.Id] = match;
-                matchOf[match.First] = match.Id;
-                matchOf[match.Second] = match.Id;
-                made.Add(match);
-                found = true;
-                break;
+                long distance = Math.Abs((long) other.Rating - first.Rating);
+                if (distance <= gap && distance < best) {
+                    second = other;
+                    best = distance;
+                }
             }
+            if (second == null) {
+                continue;
+            }
+            taken.Add(first);
+            taken.Add(second);
+            var match = new RankDuelMatch { Id = nextMatchId++, First = first.CharacterId, Second = second.CharacterId, CreatedTick = tick };
+            matches[match.Id] = match;
+            matchOf[match.First] = match.Id;
+            matchOf[match.Second] = match.Id;
+            made.Add(match);
         }
+        waiting.RemoveAll(taken.Contains);
         return made;
     }
 

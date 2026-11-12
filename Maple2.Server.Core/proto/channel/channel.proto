@@ -1,4 +1,4 @@
-syntax = "proto3";
+﻿syntax = "proto3";
 
 package maple2.server.channel.service;
 
@@ -515,6 +515,8 @@ message PvpNoticeRequest {
   int64 character_id = 1;
   // true: a match was found (Pvp 16 true). false: the search or the match ended without a duel (Pvp 16 false).
   bool matched = 2;
+  // The individual arena of the notice; 0 for the rank duel. matched: Pvp 11 with the arena; not: Pvp 10.
+  int32 arena = 3;
 }
 
 message PvpNoticeResponse {

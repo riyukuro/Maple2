@@ -868,10 +868,10 @@ public partial class FieldManager {
                     return prisms.Filter(Players.Values.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc))), limit, ignore);
                 } else if (caster is FieldPlayer casterPlayer) {
                     //TODO Include other players if PVP is Active
-                    // In a rank duel's fight the opponent is hostile too.
-                    if (RankDuel is { } rankDuel) {
+                    // In a rank duel's fight or a PvP zone the other side's players are hostile too.
+                    if (RankDuel != null || PvpZone != null) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>()
-                            .Concat(Players.Values.Where(player => rankDuel.Hostile(casterPlayer, player))), limit, ignore);
+                            .Concat(Players.Values.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
                     }
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 }
@@ -1442,6 +1442,7 @@ public partial class FieldManager {
             Broadcast(ProxyObjectPacket.RemovePlayer(objectId));
             // A duelist who leaves the rank duel loses it.
             RankDuel?.Leave(fieldPlayer);
+            PvpZone?.Leave(fieldPlayer);
             // Last, and guarded: a failed send to the world must not cut the leave short.
             try {
                 fieldPlayer.FlushHealth();
@@ -1718,6 +1719,7 @@ public partial class FieldManager {
         }
 
         RankDuel?.Enter(added);
+        PvpZone?.Enter(added);
     }
     #endregion Events
 

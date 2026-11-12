@@ -15,10 +15,18 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class PvpHandlerTests {
     private static readonly Dictionary<int, SeasonDataTable.Entry> NoSeasons = [];
 
+    // The rows of table/individualarena.xml.
+    internal static readonly IndividualArenaTable Arenas = new(new Dictionary<int, IndividualArenaTable.Entry> {
+        [1] = new(1, 65000001, 10, 40100023, 1000, 200, 0, 0, 0),
+        [2] = new(2, 65000002, 10, 40100023, 100, 10, 0, 0, 0),
+        [3] = new(3, 65000003, 20, 40100023, 1000, 400, 0, 0, 0),
+    });
+
     // A session with no PvP season and no rank duel record (the register reads the rating).
     private static TestGameSession NewTest() {
         var test = new TestGameSession();
         test.SetTable(new SeasonDataTable(NoSeasons, NoSeasons, NoSeasons, NoSeasons, NoSeasons, NoSeasons, NoSeasons, NoSeasons, NoSeasons));
+        test.SetTable(Arenas);
         return test;
     }
 
@@ -131,12 +139,40 @@ public class PvpHandlerTests {
         Assert.That(move.CharacterId, Is.EqualTo(test.CharacterId));
     }
 
-    // Arena register (9 with the arena), unregister (10) and join (11): Pvp 10, the client's state 0.
-    [TestCase("09" + "01000000")]
-    [TestCase("0A")]
-    [TestCase("0B")]
-    public void ArenaRequests_AreAnsweredWithTheUnregisteredState(string request) {
-        Assert.That(Send(request), Is.EqualTo(new[] { "B600" + "0A" }));
+    // Arena register (9 with the arena): the free-for-all arena (2, the Crimson Tear Mine) is queued with its
+    // playerCount; an arena whose round is not built (1, the Red Arena) gets Pvp 10, the client's state 0.
+    [Test]
+    public void ArenaRegister_PlayableArenaIsQueued() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        Assert.That(Send(test, session, "09" + "02000000"), Is.EqualTo(new[] { "B600" + "09" + "02000000" }));
+        PvpRequest request = test.World.PvpRequests.Single();
+        Assert.That((request.ArenaRegister.Arena, request.ArenaRegister.PlayerCount), Is.EqualTo((2, 10)));
+
+        test.World.PvpRequests.Clear();
+        Assert.That(Send(test, session, "09" + "01000000"), Is.EqualTo(new[] { "B600" + "0A" }));
+        Assert.That(test.World.PvpRequests, Is.Empty);
+    }
+
+    [Test]
+    public void ArenaUnregister_LeavesTheQueue() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        Assert.That(Send(test, session, "0A"), Is.EqualTo(new[] { "B600" + "0A" }));
+        Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.ArenaUnregister));
+    }
+
+    // Join (11): with no match Pvp 10; with one the character moves to the arena field's room.
+    [Test]
+    public void ArenaJoin() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaJoin] = new PvpResponse { Error = (int) RankDuelError.NoMatch };
+        Assert.That(Send(test, session, "0B"), Is.EqualTo(new[] { "B600" + "0A" }));
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaJoin] = new PvpResponse { Channel = 1, MapId = 65000002, RoomId = 77 };
+        Send(test, session, "0B");
+        MigrateOutRequest move = test.World.Moves.Single();
+        Assert.That((move.MapId, move.RoomId, move.Type), Is.EqualTo((65000002, 77, MigrationType.PvpMatch)));
     }
 
     // Guild PvP (1 to 4) and the result dialogs' close (104, 110) have no answer.

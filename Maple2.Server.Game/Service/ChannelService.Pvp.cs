@@ -10,7 +10,11 @@ public partial class ChannelService {
     // button sends the join), or the search or the match ended without a duel (the matching failed box).
     public override Task<PvpNoticeResponse> Pvp(PvpNoticeRequest request, ServerCallContext context) {
         if (server.GetSession(request.CharacterId, out GameSession? session)) {
-            session.Send(request.Matched ? PvpPacket.RankDuelMatchFound() : PvpPacket.RankDuelMatchFailed());
+            if (request.Arena != 0) {
+                session.Send(request.Matched ? PvpPacket.ArenaMatchFound(request.Arena) : PvpPacket.ArenaUnregistered());
+            } else {
+                session.Send(request.Matched ? PvpPacket.RankDuelMatchFound() : PvpPacket.RankDuelMatchFailed());
+            }
         }
         return Task.FromResult(new PvpNoticeResponse());
     }

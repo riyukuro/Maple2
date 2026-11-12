@@ -524,6 +524,13 @@ public class FieldPlayer : Actor<Player> {
                 SendHealth();
             }
         }
+        // A hit between players in a PvP zone grows the attacker's damage row.
+        if (caster is FieldPlayer attacker && Field.PvpZone != null) {
+            long taken = healthBefore - Stats.Values[BasicAttribute.Health].Current;
+            if (taken > 0) {
+                Field.PvpZone.Damage(attacker, this, taken);
+            }
+        }
         if (caster is not FieldPlayer) {
             // A hit by a monster's or the map's skill counts for skill_damage_npc with the skill id as the code
             // (70400009 "Get attacked by a seedling at the Maple Arcade" 49230005, 21233002 "Get trapped in the
@@ -571,8 +578,9 @@ public class FieldPlayer : Actor<Player> {
         if (Field is DungeonFieldManager dungeonField) {
             dungeonField.CountMissions(this, mission => mission.AddDeath());
         }
-        // A duelist who dies in the rank duel's fight loses it.
+        // A duelist who dies in the rank duel's fight loses it; a PvP zone counts the death and the kill.
         Field.RankDuel?.Death(this);
+        Field.PvpZone?.Death(this);
 
         int autoReviveMs = AutoReviveDelayMs(Session.Field.Metadata.Property);
         if (autoReviveMs > 0) {

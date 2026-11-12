@@ -1,4 +1,4 @@
-using Maple2.Database.Extensions;
+﻿using Maple2.Database.Extensions;
 using Maple2.Model.Game.Pvp;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,11 +24,30 @@ public partial class GameStorage {
 
         // Writes the whole record: the standing and the job rows (a job row that is no longer there goes).
         public bool SaveRankDuelRecord(long characterId, RankDuelRecord record) {
+            return SaveRankDuelRecords(new Dictionary<long, RankDuelRecord> { [characterId] = record });
+        }
+
+        // Writes several records in one save: all of them or, when the save fails, none (the staged changes are
+        // dropped). A record of a character that is gone fails the whole save.
+        public bool SaveRankDuelRecords(IReadOnlyDictionary<long, RankDuelRecord> records) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
-            if (!Context.Character.Any(character => character.Id == characterId)) {
-                return false;
+            foreach (long characterId in records.Keys) {
+                if (!Context.Character.Any(character => character.Id == characterId)) {
+                    return false;
+                }
             }
 
+            foreach ((long characterId, RankDuelRecord record) in records) {
+                Stage(characterId, record);
+            }
+            if (Context.TrySaveChanges()) {
+                return true;
+            }
+            Context.ChangeTracker.Clear();
+            return false;
+        }
+
+        private void Stage(long characterId, RankDuelRecord record) {
             Model.RankDuelRecord? row = Context.RankDuelRecord.FirstOrDefault(r => r.CharacterId == characterId);
             if (row == null) {
                 row = new Model.RankDuelRecord { CharacterId = characterId };
@@ -52,7 +71,6 @@ public partial class GameStorage {
                     job.Losses = value.Losses;
                 }
             }
-            return Context.TrySaveChanges();
         }
     }
 }

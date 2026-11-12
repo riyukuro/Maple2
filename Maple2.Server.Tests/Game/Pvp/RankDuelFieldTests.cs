@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -113,9 +113,11 @@ public class RankDuelFieldTests {
         Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1B" + "01000000" + "01000000" }));
 
         duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
-        Assert.That(Pvp(duel.A), Is.EqualTo(new[] { "B600" + "1A" + "00000000" }));
-        Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1A" + "00000000" }));
-        Assert.That(Pvp(duel.Bystander), Is.Empty);
+        // The fight intro, then each duelist's PvP point (A 1, B 2: the client's enemies), seen by the whole field.
+        string points = "B600" + "64" + Int(duel.PlayerA.ObjectId) + "01000000" + "00" + "00" + "|" + "B600" + "64" + Int(duel.PlayerB.ObjectId) + "02000000" + "00" + "00";
+        Assert.That(string.Join("|", Pvp(duel.A)), Is.EqualTo("B600" + "1A" + "00000000" + "|" + points));
+        Assert.That(string.Join("|", Pvp(duel.B)), Is.EqualTo("B600" + "1A" + "00000000" + "|" + points));
+        Assert.That(string.Join("|", Pvp(duel.Bystander)), Is.EqualTo(points));
     }
 
     // During the fight each duelist's hostile skills reach the other, never the bystander; before it, nobody.
@@ -172,6 +174,8 @@ public class RankDuelFieldTests {
         Assert.That(sentA.Skip(2), Is.EqualTo(new[] {
             "B600" + "16" + "5A000000" + "06040000" + "06040000" + "0A000000",
             "B600" + "17" + "01000000" + Int(jobB) + "01000000" + "00000000",
+            "B600" + "64" + Int(duel.PlayerA.ObjectId) + "00000000" + "0000",
+            "B600" + "64" + Int(duel.PlayerB.ObjectId) + "00000000" + "0000",
             "B600" + "0F",
         }));
         Assert.That(Pvp(duel.B)[0], Is.EqualTo("B600" + "1D" + "00000000"));
@@ -239,5 +243,24 @@ public class RankDuelFieldTests {
         Assert.That(duel.Field.RankDuel.Runs, Is.False);
         Assert.That(duel.A.TakeSent(), Is.Empty);
         Assert.That(duel.B.TakeSent(), Is.Empty);
+    }
+
+    // Both records go in one save: a record of a character that is gone fails it, and the other is not written.
+    [Test]
+    public void Records_SavedTogetherOrNotAtAll() {
+        Duel duel = Start();
+        using GameStorage.Request db = duel.A.Storage.Context();
+        var records = new Dictionary<long, RankDuelRecord> {
+            [duel.A.CharacterId] = new() { Season = 90, Rating = 1500 },
+            [987654321] = new() { Season = 90, Rating = 900 },
+        };
+        Assert.That(db.SaveRankDuelRecords(records), Is.False);
+        Assert.That(db.GetRankDuelRecord(duel.A.CharacterId).Rating, Is.EqualTo(RankDuelRecord.StartRating));
+
+        records.Remove(987654321);
+        records[duel.B.CharacterId] = new RankDuelRecord { Season = 90, Rating = 900 };
+        Assert.That(db.SaveRankDuelRecords(records), Is.True);
+        Assert.That(db.GetRankDuelRecord(duel.A.CharacterId).Rating, Is.EqualTo(1500));
+        Assert.That(db.GetRankDuelRecord(duel.B.CharacterId).Rating, Is.EqualTo(900));
     }
 }

@@ -1,4 +1,4 @@
-using Maple2.Database.Storage;
+﻿using Maple2.Database.Storage;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
@@ -8,6 +8,8 @@ namespace Maple2.Server.Game.Util;
 
 // A character's rank duel record as of now: the stored record, started over when the PvP season changed.
 public static class RankDuelStanding {
+    // The server's local time: the time sync gives the client this host's zone (TimeSyncPacket.ZoneSeconds), so it is
+    // the time the client's season table is read in.
     public static int CurrentSeason(TableMetadataStorage tableMetadata) {
         return RankDuelRules.SeasonAt(tableMetadata.SeasonDataTable.Pvp, DateTime.Now);
     }

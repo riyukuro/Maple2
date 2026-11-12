@@ -1,4 +1,4 @@
-using Maple2.Model.Metadata;
+﻿using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Game.Pvp;
 
@@ -52,10 +52,12 @@ public static class RankDuelRules {
     }
 
     // The current PvP season as the client finds it (CSeasonDataTable::Refresh): the season whose start is at or
-    // before now and whose end is after it; 0 when none is.
+    // before now and whose end is after it; 0 when none is. The client moves on from its season only once now is
+    // past the end (now > end), so at the end's own second it still holds the ending season: the earlier season
+    // whose span holds now with its end included wins.
     public static int SeasonAt(IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons, DateTime now) {
         foreach (SeasonDataTable.Entry season in seasons.Values.OrderBy(season => season.StartTime)) {
-            if (now >= season.StartTime && now < season.EndTime) {
+            if (now >= season.StartTime && now <= season.EndTime) {
                 return season.Id;
             }
         }

@@ -148,8 +148,12 @@ public class GameServer : Server<GameSession> {
     }
 
     // Whether the rank duel field of this room still runs on this channel. Never creates a field.
-    public bool HasRankDuel(int roomId) {
-        return fieldFactory.HasRankDuel(roomId);
+    public bool HasPvpMatch(int roomId) {
+        return fieldFactory.HasPvpMatch(roomId);
+    }
+
+    public FieldManager? CreateArena(int matchId, int arenaType, IReadOnlyList<long> characters) {
+        return fieldFactory.CreateArena(matchId, arenaType, characters);
     }
 
     // Whether the dungeon room still runs on this channel. Never creates a field.

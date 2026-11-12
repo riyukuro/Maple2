@@ -96,6 +96,27 @@ public partial class FieldManager : IField {
     public void StartRankDuel(int matchId, long first, long second, Action<int> onEnd) {
         RankDuel = new RankDuelField(this, matchId, first, second, Environment.TickCount64, onEnd);
     }
+
+    // The individual arena match this field was made for (Factory.CreateArena); null in every other field.
+    public ArenaMatchField? Arena { get; private set; }
+
+    public void StartArena(int matchId, IndividualArenaTable.Entry arena, IReadOnlyList<long> characters, Action<int> onEnd) {
+        Arena = new ArenaMatchField(this, matchId, arena, characters, onEnd);
+    }
+
+    // The trigger's PvP zone (set_pvp_zone) while it runs and after (pvp_zone_ended); null before one is set.
+    public PvpZoneField? PvpZone { get; private set; }
+
+    public void StartPvpZone(int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId, Func<IEnumerable<FieldPlayer>> playersInBox) {
+        ArenaMatchField? arena = Arena;
+        PvpZone = new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, playersInBox,
+            ranking => arena?.ZoneEnded(ranking), Environment.TickCount64);
+    }
+
+    // Whether a player's hostile skills reach another player here: the rank duel's fight or the PvP zone's.
+    public bool PlayerHostile(FieldPlayer caster, FieldPlayer target) {
+        return RankDuel?.Hostile(caster, target) == true || PvpZone?.Hostile(caster, target) == true;
+    }
     public int RoomId { get; init; }
     public int DungeonId { get; init; }
     public int Size { get; init; }
@@ -392,6 +413,7 @@ public partial class FieldManager : IField {
         RoomTimer?.Update(FieldTick);
         PerformanceStage?.Update();
         RankDuel?.Update(FieldTick);
+        PvpZone?.Update(FieldTick);
     }
 
     public void EnsurePlayerPosition(FieldPlayer player) {

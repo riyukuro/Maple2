@@ -60,6 +60,7 @@ public class TableMetadataStorage {
     private readonly Lazy<SeasonDataTable> seasonDataTable;
     private readonly Lazy<SmartPushTable> smartPushTable;
     private readonly Lazy<RankDuelGradeTable> rankDuelGradeTable;
+    private readonly Lazy<IndividualArenaTable> individualArenaTable;
     private readonly Lazy<AutoActionTable> autoActionTable;
     private readonly Lazy<MaidTable> maidTable;
     private readonly Lazy<FieldMetaTable> fieldMetaTable;
@@ -141,6 +142,7 @@ public class TableMetadataStorage {
     public SeasonDataTable SeasonDataTable => seasonDataTable.Value;
     public SmartPushTable SmartPushTable => smartPushTable.Value;
     public RankDuelGradeTable RankDuelGradeTable => rankDuelGradeTable.Value;
+    public IndividualArenaTable IndividualArenaTable => individualArenaTable.Value;
     public AutoActionTable AutoActionTable => autoActionTable.Value;
     public MaidTable MaidTable => maidTable.Value;
     public FieldMetaTable FieldMetaTable => fieldMetaTable.Value;
@@ -242,6 +244,7 @@ public class TableMetadataStorage {
         seasonDataTable = Retrieve<SeasonDataTable>(context, TableNames.SEASON_DATA);
         smartPushTable = Retrieve<SmartPushTable>(context, TableNames.SMART_PUSH);
         rankDuelGradeTable = Retrieve<RankDuelGradeTable>(context, TableNames.RANK_DUEL_GRADE);
+        individualArenaTable = Retrieve<IndividualArenaTable>(context, TableNames.INDIVIDUAL_ARENA);
         autoActionTable = Retrieve<AutoActionTable>(context, TableNames.AUTO_ACTION);
         maidTable = Retrieve<MaidTable>(context, TableNames.MAID_PROPERTY);
         fieldMetaTable = Retrieve<FieldMetaTable>(context, TableNames.FIELD_METADATA);

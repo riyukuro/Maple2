@@ -111,6 +111,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.SEASON_DATA, Table = ParseSeasonDataTable() };
         yield return new TableMetadata { Name = TableNames.SMART_PUSH, Table = ParseSmartPushTable() };
         yield return new TableMetadata { Name = TableNames.RANK_DUEL_GRADE, Table = ParseRankDuelGradeTable() };
+        yield return new TableMetadata { Name = TableNames.INDIVIDUAL_ARENA, Table = ParseIndividualArenaTable() };
         yield return new TableMetadata { Name = TableNames.AUTO_ACTION, Table = ParseAutoActionTable() };
         yield return new TableMetadata { Name = TableNames.MAID_PROPERTY, Table = ParseMaidTable() };
         yield return new TableMetadata { Name = TableNames.FIELD_METADATA, Table = ParseFieldMetaTable() };
@@ -2378,6 +2379,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
             var results = new Dictionary<int, SeasonDataTable.Entry>();
             foreach (XmlNode node in playedReader.GetXmlDocument(entry).SelectNodes("ms2/Season")!) {
                 if (node is not XmlElement row || !int.TryParse(row.GetAttribute("seasonID"), out int id)) continue;
+                // As the client reads it (CSeasonDataTable::ReadData): every row, a season listed twice keeps its last row.
+                if (results.ContainsKey(id)) {
+                    Console.WriteLine($"seasondata {type}: season {id} is listed twice in {name}, the last row is kept");
+                }
                 results[id] = new SeasonDataTable.Entry(
                     Id: id,
                     StartTime: SeasonTime(row.GetAttribute("eventStart"), DateTime.MinValue),
@@ -2426,6 +2431,26 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 row.winnerRating, row.loserRating);
         }
         return new RankDuelGradeTable(results);
+    }
+
+    // table/individualarena.xml as the client reads it (CIndividualArenaDataTable::Load): one row per arenaType, an
+    // empty attribute as 0. The played client's file wins when it has one.
+    private IndividualArenaTable ParseIndividualArenaTable() {
+        var results = new Dictionary<int, IndividualArenaTable.Entry>();
+        foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/individualarena.xml");
+            if (reader == null || entry == null) {
+                continue;
+            }
+            foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/individualArena")!) {
+                if (node is not XmlElement row || !int.TryParse(row.GetAttribute("arenaType"), out int arenaType)) continue;
+                int Read(string name) => int.TryParse(row.GetAttribute(name), out int value) ? value : 0;
+                results[arenaType] = new IndividualArenaTable.Entry(arenaType, Read("fieldID"), Read("playerCount"),
+                    Read("rewardItemId1"), Read("reward1Winner"), Read("reward1Loser"), Read("rewardItemId2"), Read("reward2Winner"), Read("reward2Loser"));
+            }
+            break;
+        }
+        return new IndividualArenaTable(results);
     }
 
     private SmartPushTable ParseSmartPushTable() {

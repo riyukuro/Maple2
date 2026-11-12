@@ -809,9 +809,20 @@ message PvpRequest {
   // The join after a match was found: the answer names the match field.
   message Join {
   }
-  // The match field ended the match: both characters leave the matchmaker.
+  // The match field ended the match: its characters leave the matchmaker. arena is 0 for a rank duel.
   message End {
     int32 match_id = 1;
+    int32 arena = 2;
+  }
+  // The individual arena queue (Pvp 9 with the arena, 10, 11).
+  message ArenaRegister {
+    int32 arena = 1;
+    // The arena's playerCount (individualarena.xml).
+    int32 player_count = 2;
+  }
+  message ArenaUnregister {
+  }
+  message ArenaJoin {
   }
   int64 requester_id = 1;
   oneof pvp {
@@ -819,6 +830,9 @@ message PvpRequest {
     Unregister unregister = 3;
     Join join = 4;
     End end = 5;
+    ArenaRegister arena_register = 6;
+    ArenaUnregister arena_unregister = 7;
+    ArenaJoin arena_join = 8;
   }
 }
 

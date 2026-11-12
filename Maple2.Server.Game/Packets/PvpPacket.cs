@@ -10,7 +10,9 @@ namespace Maple2.Server.Game.Packets;
 // queue; the rank duel has its queue, match and result.
 public static class PvpPacket {
     private enum Command : byte {
+        ArenaRegistered = 9,
         ArenaUnregistered = 10,
+        ArenaMatchFound = 11,
         RankDuelRegistered = 14,
         RankDuelUnregistered = 15,
         RankDuelMatch = 16,
@@ -23,6 +25,12 @@ public static class PvpPacket {
         RankDuelWin = 28,
         RankDuelLose = 29,
         RankDuelDraw = 30,
+        Point = 100,
+        WinLose = 101,
+        ClearRanking = 102,
+        RankRow = 103,
+        LastRank = 104,
+        Damage = 106,
     }
 
     // One side of the rank duel result (UIPvPRankDuelResultDialog::FUN_140f90b10): the name, the character,
@@ -144,6 +152,80 @@ public static class PvpPacket {
             pWriter.WriteInt(job.Wins);
             pWriter.WriteInt(job.Losses);
         }
+        return pWriter;
+    }
+
+    // CSceneStateGame::OnPvp 9: state 1 (queued) for the arena, with the client's queued notice.
+    public static ByteWriter ArenaRegistered(int arena) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.ArenaRegistered);
+        pWriter.WriteInt(arena);
+        return pWriter;
+    }
+
+    // CSceneStateGame::OnPvp 11: state 2 for the arena and the individualArenaJoin box (yes/no, 25 s), whose yes
+    // sends the join (Pvp 11, CPVPManager::SendCancelRequest).
+    public static ByteWriter ArenaMatchFound(int arena) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.ArenaMatchFound);
+        pWriter.WriteInt(arena);
+        return pWriter;
+    }
+
+    // 0x64: a player's PvP point, team and mode (CPvPInfo::ReadPointTeamMode on the player of this object id). Two
+    // players with points above 0 that differ are enemies (PC::vfunc_122, vfunc_116); point 0 ends it.
+    public static ByteWriter Point(int objectId, int point, byte team, byte mode) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.Point);
+        pWriter.WriteInt(objectId);
+        pWriter.WriteInt(point);
+        pWriter.WriteByte(team);
+        pWriter.WriteByte(mode);
+        return pWriter;
+    }
+
+    // 0x65: the local player's win (true) or loss pose (MyPC state 0x28 with 0x73 or 0x74).
+    public static ByteWriter WinLose(bool win) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.WinLose);
+        pWriter.WriteBool(win);
+        return pWriter;
+    }
+
+    // 0x66: CPVPManager::Clear, the ranking rows and team tables start over.
+    public static ByteWriter ClearRanking() {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.ClearRanking);
+        return pWriter;
+    }
+
+    // 0x67: one ranking row (Unk_PvpTimer::OnMessage): character, score, kills, deaths and an int the free-for-all
+    // order does not read (sent as 0). Opens the ranking dialog (0x4e9a).
+    public static ByteWriter RankRow(long characterId, int score, int kill, int death) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.RankRow);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteInt(score);
+        pWriter.WriteInt(kill);
+        pWriter.WriteInt(death);
+        pWriter.WriteInt(0);
+        return pWriter;
+    }
+
+    // 0x68: the player's last rank; opens the result dialog (0x4e9b) with the rows and the rank's reward.
+    public static ByteWriter LastRank(int rank) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.LastRank);
+        pWriter.WriteInt(rank);
+        return pWriter;
+    }
+
+    // 0x6a: a row's damage (the client reads an int and keeps it unsigned).
+    public static ByteWriter Damage(long characterId, long damage) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.Damage);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteInt(unchecked((int) (uint) Math.Clamp(damage, 0, uint.MaxValue)));
         return pWriter;
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Game.Pvp;
@@ -87,7 +87,9 @@ public class RankDuelRulesTests {
             [81] = new(81, new DateTime(2022, 12, 15, 7, 0, 0), new DateTime(2023, 1, 12, 7, 0, 0), []),
         };
         Assert.That(RankDuelRules.SeasonAt(seasons, new DateTime(2022, 12, 1)), Is.EqualTo(80));
-        Assert.That(RankDuelRules.SeasonAt(seasons, new DateTime(2022, 12, 15, 7, 0, 0)), Is.EqualTo(81));
+        // At the end's own second the client still holds the ending season (it moves on at now > end).
+        Assert.That(RankDuelRules.SeasonAt(seasons, new DateTime(2022, 12, 15, 7, 0, 0)), Is.EqualTo(80));
+        Assert.That(RankDuelRules.SeasonAt(seasons, new DateTime(2022, 12, 15, 7, 0, 1)), Is.EqualTo(81));
         Assert.That(RankDuelRules.SeasonAt(seasons, new DateTime(2026, 11, 12)), Is.EqualTo(0));
         Assert.That(RankDuelRules.SeasonAt(seasons, new DateTime(2016, 1, 1)), Is.EqualTo(0));
     }

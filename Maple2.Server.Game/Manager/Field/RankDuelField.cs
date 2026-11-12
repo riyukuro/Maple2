@@ -112,6 +112,7 @@ public sealed class RankDuelField {
                 case RankDuelEventType.Fight:
                     Send(state.First, PvpPacket.RankDuelFight());
                     Send(state.Second, PvpPacket.RankDuelFight());
+                    StartFight();
                     break;
                 case RankDuelEventType.Result:
                     SendResult(@event);
@@ -150,6 +151,7 @@ public sealed class RankDuelField {
                 logger.Information("Rank duel match {MatchId}: nobody came", MatchId);
                 break;
         }
+        EndFight();
         // The rank duel state goes back to 0, so the duelists can register again.
         Send(state.First, PvpPacket.RankDuelUnregistered());
         Send(state.Second, PvpPacket.RankDuelUnregistered());
@@ -168,13 +170,17 @@ public sealed class RankDuelField {
             int season = RankDuelStanding.CurrentSeason(field.TableMetadata);
             RankDuelGradeTable grades = field.TableMetadata.RankDuelGradeTable;
             using GameStorage.Request db = field.GameStorage.Context();
+            var records = new Dictionary<long, RankDuelRecord>();
             foreach ((long characterId, bool won) in new[] { (winner, true), (loser, false) }) {
                 RankDuelRecord record = RankDuelStanding.Load(db, characterId, season);
                 bool here = field.TryGetPlayerById(characterId, out _);
                 changes[characterId] = RankDuelRules.Apply(record, grades, won, JobOf(db, won ? loser : winner), here);
-                if (!db.SaveRankDuelRecord(characterId, record)) {
-                    logger.Warning("Rank duel match {MatchId}: the record of {CharacterId} was not saved", MatchId, characterId);
-                }
+                records[characterId] = record;
+            }
+            // Both records in one save: when it fails neither changes, and nobody is rewarded.
+            if (!db.SaveRankDuelRecords(records)) {
+                logger.Warning("Rank duel match {MatchId}: the records were not saved", MatchId);
+                changes.Clear();
             }
         } catch (Exception ex) {
             logger.Error(ex, "Rank duel match {MatchId}: the result was not applied", MatchId);
@@ -214,6 +220,42 @@ public sealed class RankDuelField {
                     logger.Warning(ex, "Rank duel standing of {CharacterId} not sent", characterId);
                 }
             }
+        }
+    }
+
+    // The client takes two players for enemies on a map without PK mode when both have a PvP point and the points
+    // differ (PC::vfunc_122 and vfunc_116 with CPvPInfo::ReadPointTeamMode): each duelist gets its own point (Pvp 0x64)
+    // for the fight, and the field's other players see it. The server constants name the rank duel arena's buffs
+    // (ModePVPDuelRankArenaAdditionalEffect). Chosen here: the points are 1 and 2 with team 0 and mode 0, and the
+    // buffs (level 1) are given when the fight starts.
+    private void StartFight() {
+        int point = 1;
+        foreach (long characterId in new[] { state.First, state.Second }) {
+            if (!field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                point++;
+                continue;
+            }
+            field.Broadcast(PvpPacket.Point(player.ObjectId, point++, 0, 0));
+            foreach (int buffId in Buffs()) {
+                player.Buffs.AddBuff(field.FieldActor, player, buffId, 1, field.FieldTick);
+            }
+        }
+    }
+
+    // After the result the duelists are no enemies any more: their points go back to 0.
+    private void EndFight() {
+        foreach (long characterId in new[] { state.First, state.Second }) {
+            if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                field.Broadcast(PvpPacket.Point(player.ObjectId, 0, 0, 0));
+            }
+        }
+    }
+
+    private IEnumerable<int> Buffs() {
+        try {
+            return field.ServerTableMetadata.ConstantsTable.ModePVPDuelRankArenaAdditionalEffect ?? [];
+        } catch (Exception) {
+            return [];
         }
     }
 

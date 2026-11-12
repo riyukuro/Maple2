@@ -24,6 +24,7 @@ public partial class FieldManager {
         public required MapEntityStorage MapEntities { private get; init; }
         public required MapDataStorage MapData { private get; init; }
         public required ServerTableMetadataStorage ServerTableMetadata { private get; init; }
+        public TableMetadataStorage? TableMetadata { private get; init; }
         public required NpcMetadataStorage NpcMetadata { get; init; } = null!;
         // ReSharper restore All
         #endregion
@@ -263,9 +264,33 @@ public partial class FieldManager {
             }
         }
 
-        // Whether the rank duel field of this room still runs on this channel. Never creates a field.
-        public bool HasRankDuel(int roomId) {
-            return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && field.RankDuel is { Runs: true } && !field.Disposed);
+        // Whether the PvP match field of this room (a rank duel that still takes its duelists, or an individual arena)
+        // still runs on this channel. Never creates a field.
+        public bool HasPvpMatch(int roomId) {
+            return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && !field.Disposed
+                                                  && (field.RankDuel is { Runs: true } || field.Arena != null));
+        }
+
+        /// <summary>
+        /// A field for an individual arena match: a new room of the arena's fieldID (individualarena.xml). The map's
+        /// own script runs the round; the field tells the world when its PvP zone ended.
+        /// </summary>
+        public FieldManager? CreateArena(int matchId, int arenaType, IReadOnlyList<long> characters) {
+            if (TableMetadata == null || !TableMetadata.IndividualArenaTable.Entries.TryGetValue(arenaType, out IndividualArenaTable.Entry? arena)) {
+                logger.Error("Arena {Arena} is not in the arena table", arenaType);
+                return null;
+            }
+            SemaphoreSlim mapLock = GetMapLock(arena.FieldId);
+            mapLock.Wait();
+            try {
+                FieldManager? field = Create(arena.FieldId);
+                field?.StartArena(matchId, arena, characters, id => World.Pvp(new Maple2.Server.World.Service.PvpRequest {
+                    End = new Maple2.Server.World.Service.PvpRequest.Types.End { MatchId = id, Arena = arenaType },
+                }, deadline: DateTime.UtcNow.AddSeconds(10)));
+                return field;
+            } finally {
+                mapLock.Release();
+            }
         }
 
         public bool HasDungeon(int roomId) {
@@ -470,7 +495,7 @@ public partial class FieldManager {
                 }
                 // A rank duel room that is gone (disposed since the arrival checked it) is not made again as a
                 // plain field: the arrival fails and takes its fallback field.
-                if (!FieldEntryRules.MakesMissingRoom(mapId, RankDuelField.Maps)) {
+                if (!FieldEntryRules.MakesMissingRoom(mapId, PvpMatchMaps.All(TableMetadata))) {
                     return null;
                 }
             }
@@ -509,7 +534,7 @@ public partial class FieldManager {
 
             if (roomId == 0 && !mapFields.IsEmpty) {
                 // A rank duel's field is entered only by its match (with its room id).
-                FieldManager? firstField = mapFields.Values.FirstOrDefault(mapField => mapField.RankDuel is null);
+                FieldManager? firstField = mapFields.Values.FirstOrDefault(mapField => mapField.RankDuel is null && mapField.Arena is null);
                 if (firstField != null) {
                     return firstField;
                 }

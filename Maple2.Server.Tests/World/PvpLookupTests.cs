@@ -11,20 +11,28 @@ namespace Maple2.Server.Tests.World;
 public class PvpLookupTests {
     private readonly List<(long CharacterId, bool Matched)> notices = [];
     private readonly List<(int MatchId, long[] Characters)> made = [];
+    private readonly List<(long CharacterId, bool Matched, int Arena)> arenaNotices = [];
+    private readonly List<int> madeArenas = [];
     private long tick;
 
     [SetUp]
     public void Reset() {
         notices.Clear();
         made.Clear();
+        arenaNotices.Clear();
+        madeArenas.Clear();
         tick = 0;
     }
 
     private PvpLookup Lookup(MigrationError error = MigrationError.ok) {
-        return new PvpLookup((matchId, characterIds) => {
+        return new PvpLookup((matchId, arena, characterIds) => {
             made.Add((matchId, characterIds.ToArray()));
+            madeArenas.Add(arena);
             return (error, 1, 65010002, error == MigrationError.ok ? 900 + matchId : 0);
-        }, (characterId, matched) => notices.Add((characterId, matched)), () => tick);
+        }, (characterId, matched, arena) => {
+            notices.Add((characterId, matched));
+            arenaNotices.Add((characterId, matched, arena));
+        }, () => tick);
     }
 
     [Test]
@@ -121,5 +129,29 @@ public class PvpLookupTests {
         lookup.Pair();
         lookup.LastStep.Wait();
         Assert.That(made.Single().Characters, Is.EquivalentTo(new long[] { 1, 2 }));
+    }
+
+    // The arena: two players gather after the wait; the field is made for the arena and both are told with it. A
+    // character in one queue is busy in the other.
+    [Test]
+    public void Arena_GathersAndTellsTheArena() {
+        PvpLookup lookup = Lookup();
+        Assert.That(lookup.ArenaRegister(1, 2, 10), Is.EqualTo(RankDuelError.none));
+        Assert.That(lookup.Register(1), Is.EqualTo(RankDuelError.Busy));
+        Assert.That(lookup.ArenaRegister(2, 2, 10), Is.EqualTo(RankDuelError.none));
+        Assert.That(made, Is.Empty);
+        tick = ArenaQueue.GatherMs;
+        lookup.Pair();
+        lookup.LastStep.Wait();
+        Assert.That(madeArenas.Single(), Is.EqualTo(2));
+        Assert.That(arenaNotices, Is.EquivalentTo(new[] { (1L, true, 2), (2L, true, 2) }));
+        Assert.That(lookup.ArenaJoin(1, out _, out int mapId, out int roomId), Is.EqualTo(RankDuelError.none));
+        Assert.That(roomId, Is.EqualTo(900 + made.Single().MatchId));
+
+        arenaNotices.Clear();
+        lookup.ArenaEnd(made.Single().MatchId);
+        Assert.That(arenaNotices, Is.EqualTo(new[] { (2L, false, 2) }));
+        Assert.That(lookup.ArenaMatchOf(1), Is.Null);
+        Assert.That(lookup.RankDuelOrArenaFree(1), Is.True);
     }
 }

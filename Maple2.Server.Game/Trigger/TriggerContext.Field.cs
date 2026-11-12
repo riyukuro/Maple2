@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -92,9 +93,17 @@ public partial class TriggerContext {
         Broadcast(FieldPropertyPacket.Add(sightRange));
     }
 
+    // The PvP zone of a map script. Its type is the client's PvP mode (CPvPInfo m_nMode): 2 is the free-for-all of the
+    // Crimson Tear Mine, the one built (PvpZoneField); the others (1 Red Arena, 3 Treasure Island, 4 guild) are not.
     public void SetPvpZone(int boxId, int prepareTime, int matchTime, int additionalEffectId, int type, params int[] boxIds) {
-        ErrorLog("[SetPvpZone] boxId:{BoxId}, prepareTime:{PrepareTime}, matchTime:{MatchTime}, additionalEffectId:{AdditionalEffectId}, type:{Type}, boxIds:{BoxIds}",
-            boxId, prepareTime, matchTime, additionalEffectId, type, string.Join(", ", boxIds));
+        if (type != PvpZoneState.FfaMode) {
+            ErrorLog("[SetPvpZone] boxId:{BoxId}, prepareTime:{PrepareTime}, matchTime:{MatchTime}, additionalEffectId:{AdditionalEffectId}, type:{Type}, boxIds:{BoxIds}",
+                boxId, prepareTime, matchTime, additionalEffectId, type, string.Join(", ", boxIds));
+            return;
+        }
+        DebugLog("[SetPvpZone] boxId:{BoxId}, prepareTime:{PrepareTime}, matchTime:{MatchTime}, additionalEffectId:{AdditionalEffectId}, type:{Type}",
+            boxId, prepareTime, matchTime, additionalEffectId, type);
+        Field.StartPvpZone(boxId, prepareTime, matchTime, additionalEffectId, () => PlayersInBox(boxId));
     }
 
     public void SetTimeScale(bool enabled, float startScale, float endScale, float duration, int interpolator) {
@@ -550,8 +559,7 @@ public partial class TriggerContext {
     }
 
     public bool PvpZoneEnded(int boxId) {
-        ErrorLog("[PvpZoneEnded] boxId:{BoxId}", boxId);
-        return false;
+        return Field.PvpZone is { } zone && zone.BoxId == boxId && zone.Ended;
     }
 
     public bool TimeExpired(string timerId) {

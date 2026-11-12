@@ -95,6 +95,7 @@ public class TableMetadata {
 [JsonDerivedType(typeof(SeasonDataTable), typeDiscriminator: "seasondata")]
 [JsonDerivedType(typeof(SmartPushTable), typeDiscriminator: "smartpush")]
 [JsonDerivedType(typeof(RankDuelGradeTable), typeDiscriminator: "rankduelgrade")]
+[JsonDerivedType(typeof(IndividualArenaTable), typeDiscriminator: "individualarena")]
 [JsonDerivedType(typeof(AutoActionTable), typeDiscriminator: "autoaction")]
 [JsonDerivedType(typeof(MaidTable), typeDiscriminator: "maidproperty")]
 [JsonDerivedType(typeof(FieldMetaTable), typeDiscriminator: "fieldmetadata")]

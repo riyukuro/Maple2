@@ -1,4 +1,4 @@
-syntax = "proto3";
+﻿syntax = "proto3";
 
 package maple2;
 
@@ -19,6 +19,8 @@ message FieldRequest {
   message CreatePvpMatch {
     int32 match_id = 1;
     repeated int64 character_ids = 2;
+    // The individual arena (its fieldID is the map); 0 for a rank duel.
+    int32 arena = 3;
   }
   int64 requester_id = 1;
   oneof field {
