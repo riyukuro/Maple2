@@ -91,23 +91,26 @@ public sealed class ExperienceManager {
                 return;
             }
         }
-        expGained += GetRestExp((long) (expGained * expRate));
+        expGained = SpendRest((long) (expGained * expRate), kill: true);
         LevelUp();
         session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, ExpMessageCode.s_msg_take_exp, npc.ObjectId));
     }
 
-    private long GetRestExp(long expGained) {
-        long addedRestExp = Math.Min(RestExp, (long) (expGained * (Constants.RestExpAcquireRate / 10000.0f))); // convert int to a percentage
-        RestExp = Math.Max(0, RestExp - addedRestExp);
-        Exp += expGained;
-        return addedRestExp;
+    // Adds a gain and spends rest exp on it (RestExpRules); returns the gain with its bonus.
+    private long SpendRest(long expGained, bool kill) {
+        (long gain, long rest) = RestExpRules.Spend(expGained, RestExp, kill, Constants.RestExpAcquireRate);
+        RestExp = rest;
+        Exp += gain;
+        return gain;
     }
 
-    public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) {
+    public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) => AddExp(expGained, message, kill: false);
+
+    private long AddExp(long expGained, ExpMessageCode message, bool kill) {
         if (expGained <= 0) {
             return 0;
         }
-        expGained += GetRestExp(expGained);
+        expGained = SpendRest(expGained, kill);
         LevelUp();
         AddPrestigeExp(message.Type());
         session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, message));
@@ -175,7 +178,7 @@ public sealed class ExperienceManager {
         }
 
 
-        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message());
+        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message(), kill: true);
     }
 
     public bool LevelUp() {
