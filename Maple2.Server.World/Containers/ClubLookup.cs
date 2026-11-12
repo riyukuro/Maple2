@@ -4,10 +4,12 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Club;
+using Serilog;
 
 namespace Maple2.Server.World.Containers;
 
 public class ClubLookup : IDisposable {
+    private readonly ILogger logger = Log.ForContext<ClubLookup>();
     private readonly GameStorage gameStorage;
     private readonly ChannelClientLookup channelClients;
     private readonly PlayerInfoLookup playerLookup;
@@ -97,23 +99,56 @@ public class ClubLookup : IDisposable {
         return ClubError.none;
     }
 
+    // The database first: a failed delete leaves the club in memory and on every channel as it was.
     public ClubError Disband(long clubId) {
         if (!TryGet(clubId, out ClubManager? manager)) {
             return ClubError.s_club_err_null_club;
         }
 
-        if (!clubs.TryRemove(clubId, out manager)) {
-            return ClubError.s_club_err_unknown;
+        using (GameStorage.Request db = gameStorage.Context()) {
+            if (!db.DeleteClub(clubId)) {
+                return ClubError.s_club_err_unknown;
+            }
         }
 
+        clubs.TryRemove(clubId, out _);
         manager.Disband();
+        return ClubError.none;
+    }
 
-        using GameStorage.Request db = gameStorage.Context();
-        if (!db.DeleteClub(clubId)) {
-            return ClubError.s_club_err_unknown;
+    // The character is about to be deleted: it leaves each of its clubs as a member who leaves would (a club of two
+    // is disbanded, a leader hands the club to another member) and the other members get Club 0x1c instead of 0x12.
+    // A staged club is disbanded, as a declined invite disbands it: it could never reach all its members' accepts.
+    // No club blocks the deletion: a club that fails to load or to change is logged and forgotten here, so it loads
+    // again from the database as the deletion leaves it (its member rows go with the character, and a club the
+    // character still leads goes too). A club whose stored leader is no member loads with another member leading.
+    public void RemoveCharacter(long characterId) {
+        IList<long> clubIds;
+        using (GameStorage.Request db = gameStorage.Context()) {
+            clubIds = db.ListClubs(characterId);
         }
 
-        return ClubError.none;
+        foreach (long clubId in clubIds) {
+            ClubError error;
+            try {
+                if (!TryGet(clubId, out ClubManager? manager)) {
+                    logger.Warning("Delete of character {CharacterId}: club {ClubId} did not load", characterId, clubId);
+                    continue;
+                }
+
+                error = manager.Club.State == ClubState.Staged || manager.Club.Members.Count <= 2
+                    ? Disband(clubId)
+                    : manager.Leave(characterId, deleted: true);
+            } catch (Exception ex) {
+                logger.Warning(ex, "Delete of character {CharacterId}: club {ClubId} failed", characterId, clubId);
+                error = ClubError.s_club_err_unknown;
+            }
+
+            if (error != ClubError.none) {
+                logger.Warning("Delete of character {CharacterId}: club {ClubId} kept it ({Error})", characterId, clubId, error);
+                clubs.TryRemove(clubId, out _);
+            }
+        }
     }
 
 }

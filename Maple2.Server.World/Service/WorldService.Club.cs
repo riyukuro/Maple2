@@ -263,21 +263,10 @@ public partial class WorldService {
         return new ClubResponse();
     }
 
-    // The character is about to be deleted: it leaves each club as a member who leaves would (a club of two is
-    // disbanded, a leader hands the club to another member), and the other members get Club 0x1c instead of 0x12.
-    // This runs before the character row goes, so the club rows that name it are already changed.
+    // The character is about to be deleted (ClubLookup.RemoveCharacter): this runs before the character row goes, so
+    // a led club is handed on rather than left naming it. No club refuses the deletion.
     private ClubResponse DeleteCharacter(long characterId) {
-        foreach (ClubManager manager in clubLookup.TryGetByCharacterId(characterId)) {
-            ClubError error = manager.Club.Members.Count <= 2
-                ? clubLookup.Disband(manager.Club.Id)
-                : manager.Leave(characterId, deleted: true);
-            if (error != ClubError.none) {
-                return new ClubResponse {
-                    Error = (int) error,
-                };
-            }
-        }
-
+        clubLookup.RemoveCharacter(characterId);
         return new ClubResponse();
     }
 

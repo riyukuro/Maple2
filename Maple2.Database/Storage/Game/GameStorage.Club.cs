@@ -17,7 +17,15 @@ public partial class GameStorage {
             }
 
             List<ClubMember> members = GetClubMembers(provider, clubId);
-            club.Leader = members.First(member => member.Info.CharacterId == club.LeaderId);
+            // A stored leader who is no member (a club saved before a leader's leave stored the new leader, or one
+            // whose leader's deletion did not reach the club) gives the club to its longest member.
+            ClubMember? leader = members.FirstOrDefault(member => member.Info.CharacterId == club.LeaderId)
+                                 ?? members.MinBy(member => member.JoinTime);
+            if (leader == null) {
+                return null;
+            }
+            club.Leader = leader;
+            club.LeaderId = leader.Info.CharacterId;
             foreach (ClubMember member in members) {
                 club.Members.TryAdd(member.Info.CharacterId, member);
             }

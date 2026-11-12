@@ -293,12 +293,12 @@ public class ClubManager : IDisposable {
         return ClubError.none;
     }
 
+    // The club rows are already deleted (ClubLookup.Disband), so nothing is saved.
     public void Disband() {
         Broadcast(new ClubRequest {
             ClubId = Club.Id,
             Disband = new ClubRequest.Types.Disband(),
         });
-        Dispose();
     }
 
     public void Broadcast(ClubRequest request, ClubMember? also = null) {
