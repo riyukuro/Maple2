@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Channel.Service;
 using Maple2.Server.Core.Helpers;
 using Maple2.Server.World.Containers;
@@ -25,6 +26,7 @@ public class WorldServer {
     private readonly ChannelClientLookup channelClients;
     private readonly ServerTableMetadataStorage serverTableMetadata;
     private readonly ItemMetadataStorage itemMetadata;
+    private readonly QuestMetadataStorage questMetadata;
     private readonly GlobalPortalLookup globalPortalLookup;
     private readonly WorldBossLookup worldBossLookup;
     private readonly PlayerInfoLookup playerInfoLookup;
@@ -42,7 +44,7 @@ public class WorldServer {
 
     private readonly LoginClient login;
 
-    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata) {
+    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
         this.gameStorage = gameStorage;
         this.channelClients = channelClients;
         this.serverTableMetadata = serverTableMetadata;
@@ -51,6 +53,7 @@ public class WorldServer {
         this.playerInfoLookup = playerInfoLookup;
         this.login = login;
         this.itemMetadata = itemMetadata;
+        this.questMetadata = questMetadata;
         scheduler = new EventQueue(logger);
         scheduler.Start();
         memoryStringBoards = [];
@@ -436,12 +439,18 @@ public class WorldServer {
     // after the end kept for it starts a new run without the old values and stamp quests.
     private void BeginEventRuns(IEnumerable<GameEvent> events) {
         long now = DateTimeOffset.Now.ToUnixTimeSeconds();
+        events = events.ToList();
         using GameStorage.Request db = gameStorage.Context();
         foreach (GameEvent gameEvent in events) {
             if (gameEvent.Metadata.Type is not (GameEventType.StampEvent or GameEventType.LongTermAttendGift)) {
                 continue;
             }
-            int[] quests = gameEvent.Metadata.Data is StampEvent stampEvent ? stampEvent.Stamps.Select(stamp => stamp.QuestId).ToArray() : [];
+            int[] quests = [];
+            if (gameEvent.Metadata.Data is StampEvent stampEvent) {
+                IEnumerable<StampEvent> otherCards = events.Where(other => other.Id != gameEvent.Id).Select(other => other.Metadata.Data).OfType<StampEvent>();
+                quests = StampEventRules.RunQuests(stampEvent, otherCards,
+                    questId => questMetadata.TryGet(questId, out QuestMetadata? quest) && quest.EventMissionType == QuestEventMissionType.stamp);
+            }
             try {
                 if (db.BeginEventRun(gameEvent.Id, gameEvent.EndTime, now, quests)) {
                     logger.Information("Game event {Id} runs again: its user values and stamp quests were dropped", gameEvent.Id);

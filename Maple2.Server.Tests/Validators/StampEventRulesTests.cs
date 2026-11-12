@@ -363,6 +363,99 @@ public class StampEventRulesTests {
         });
     }
 
+    // An event taken out before its end (a replay switched off) and put back before that end is the same run: a
+    // login in between does not read the claims and does not delete them; only a value that has run out goes.
+    [Test]
+    public void Login_WhileTheEventIsAbsentBeforeItsEnd_KeepsTheClaims() {
+        var test = new TestGameSession();
+        Maple2.Server.Game.Session.GameSession session = test.Start();
+        const int eventId = 990049;
+        long end = DateTimeOffset.Now.AddDays(5).ToUnixTimeSeconds();
+        long past = DateTimeOffset.Now.AddDays(-1).ToUnixTimeSeconds();
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            context.AccountEventValue.Add(new Maple2.Database.Model.AccountEventValue {
+                AccountId = test.AccountId, Type = GameEventUserValueType.StampRewardsClaimed, EventId = eventId, Value = "1,2", ExpirationTime = end,
+            });
+            context.AccountEventValue.Add(new Maple2.Database.Model.AccountEventValue {
+                AccountId = test.AccountId, Type = GameEventUserValueType.StampRewardsClaimed, EventId = 990050, Value = "1", ExpirationTime = past,
+            });
+            context.GameEventUserValue.Add(new Maple2.Database.Model.GameEventUserValue {
+                CharacterId = test.CharacterId, Type = GameEventUserValueType.LongTermAttendDays, EventId = eventId, Value = "3", ExpirationTime = end,
+            });
+            context.GameEventUserValue.Add(new Maple2.Database.Model.GameEventUserValue {
+                CharacterId = test.CharacterId, Type = GameEventUserValueType.LongTermAttendDays, EventId = 990050, Value = "4", ExpirationTime = past,
+            });
+            context.SaveChanges();
+        }
+        (int[] Claims, int[] Values) Stored() {
+            using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+            return (context.AccountEventValue.Where(value => value.AccountId == test.AccountId).Select(value => value.EventId).ToArray(),
+                context.GameEventUserValue.Where(value => value.CharacterId == test.CharacterId).Select(value => value.EventId).ToArray());
+        }
+
+        var absent = new GameEventManager(session);
+        Assert.Multiple(() => {
+            Assert.That(absent.Peek(GameEventUserValueType.StampRewardsClaimed, eventId), Is.Null.Or.Empty, "not read while absent");
+            Assert.That(Stored(), Is.EqualTo((new[] { eventId }, new[] { eventId })), "kept until their end; the ones that ran out are deleted");
+        });
+
+        var server = typeof(Maple2.Server.Game.Session.GameSession).GetField("server", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
+        var cache = (System.Collections.IDictionary) server.GetType().GetField("eventCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(server)!;
+        cache.Add(eventId, new GameEvent(new GameEventMetadata(eventId, GameEventType.StampEvent, DateTime.Now.AddDays(-1), DateTime.Now.AddDays(9), TimeSpan.Zero,
+            TimeSpan.Zero, [], Card, "", "", "", "")));
+        var back = new GameEventManager(session);
+        Assert.Multiple(() => {
+            Assert.That(back.Peek(GameEventUserValueType.StampRewardsClaimed, eventId), Is.EqualTo("1,2"), "the same run: the claims are back");
+            Assert.That(Stored(), Is.EqualTo((new[] { eventId }, new[] { eventId })));
+        });
+    }
+
+    [Test]
+    public void Outdated_OnlyAfterTheValuesEnd() {
+        var live = new GameEvent(Event(990045, "2030-06-25-08-00", "2030-07-25-08-00", Card));
+        long oldEnd = live.EndTime - 86400;
+        var claimed = new GameEventUserValue(GameEventUserValueType.StampRewardsClaimed, oldEnd, 990045);
+        Assert.Multiple(() => {
+            Assert.That(GameEventManager.Outdated(claimed, [], oldEnd - 10), Is.False, "absent before the end");
+            Assert.That(GameEventManager.Outdated(claimed, [], oldEnd + 10), Is.True, "absent after the end");
+            Assert.That(GameEventManager.Outdated(claimed, [live], oldEnd + 10), Is.False, "follows the moved end");
+            Assert.That(GameEventManager.Outdated(claimed, [live], live.EndTime + 10), Is.True);
+        });
+    }
+
+    // A new run deletes only the card's own stamp quests: not a quest that is no stamp event mission, and not a
+    // quest another card has as a stamp too.
+    [Test]
+    public void RunQuests_OnlyTheCardsOwnStampQuests() {
+        var other = new StampEvent("othercard", 5, [new StampEvent.Stamp(880002, false, 0, 0), new StampEvent.Stamp(880010, false, 0, 0)], [], Card.CompleteReward);
+        var twice = Card with { Stamps = [.. Card.Stamps, new StampEvent.Stamp(880001, true, 0, 0)] };
+        Assert.Multiple(() => {
+            Assert.That(StampEventRules.RunQuests(Card, [], _ => true), Is.EqualTo(new[] { 880001, 880002, 880003 }));
+            Assert.That(StampEventRules.RunQuests(Card, [other], _ => true), Is.EqualTo(new[] { 880001, 880003 }), "880002 is the other card's too");
+            Assert.That(StampEventRules.RunQuests(Card, [], questId => questId != 880003), Is.EqualTo(new[] { 880001, 880002 }), "no stamp event mission");
+            Assert.That(StampEventRules.RunQuests(twice, [], _ => true), Is.EqualTo(new[] { 880001, 880002, 880003 }));
+            Assert.That(StampEventRules.RunQuests(Card, [], _ => false), Is.Empty);
+        });
+
+        // The delete takes the ids it is given for every owner, and no other quest.
+        var test = new TestGameSession();
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            foreach (int questId in new[] { 880001, 880002, 880003, 880010 }) {
+                context.Quest.Add(new Maple2.Database.Model.Quest { OwnerId = test.AccountId, Id = questId, State = QuestState.Completed });
+            }
+            context.Quest.Add(new Maple2.Database.Model.Quest { OwnerId = test.CharacterId + 77, Id = 880001, State = QuestState.Completed });
+            context.SaveChanges();
+        }
+        int[] quests = StampEventRules.RunQuests(Card, [other], questId => questId != 880003);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.BeginEventRun(990051, 2000000000, 1999990000, quests), Is.False);
+            Assert.That(db.BeginEventRun(990051, 2100000000, 2000000100, quests), Is.True);
+        }
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            Assert.That(context.Quest.Select(quest => quest.Id).OrderBy(id => id).ToArray(), Is.EqualTo(new[] { 880002, 880003, 880010 }));
+        }
+    }
+
     private static GameEventMetadata Event(int id, string start, string end, StampEvent card) {
         return new GameEventMetadata(id, GameEventType.StampEvent, AttendGiftReplay.ParseTime(start), AttendGiftReplay.ParseTime(end), TimeSpan.Zero,
             TimeSpan.Zero, [], card, "", "", "", "");

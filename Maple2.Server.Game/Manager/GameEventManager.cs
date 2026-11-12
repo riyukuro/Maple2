@@ -49,23 +49,27 @@ public sealed class GameEventManager {
         using GameStorage.Request db = session.GameStorage.Context();
         foreach (GameEventUserValue userValue in db.GetEventUserValues(session.CharacterId)) {
             // A stamp card's claims are the account's (below); one stored for the character is not read.
-            GameEventUserValue? loaded = StampValueTypes.Contains(userValue.Type) ? null : LoadValue(userValue, events, now);
-            if (loaded == null) {
+            if (StampValueTypes.Contains(userValue.Type)) {
                 db.RemoveGameEventUserValue(userValue, session.CharacterId);
                 continue;
             }
-            Add(loaded);
+            GameEventUserValue? loaded = LoadValue(userValue, events, now);
+            if (loaded != null) {
+                Add(loaded);
+            } else if (Outdated(userValue, events, now)) {
+                db.RemoveGameEventUserValue(userValue, session.CharacterId);
+            }
         }
 
         // A stamp card's quests are the account's, so its claims are too: they are stored for the account, whatever
         // the character that claimed, and stay when that character is deleted.
         foreach (GameEventUserValue userValue in db.GetAccountEventValues(session.AccountId)) {
             GameEventUserValue? loaded = LoadValue(userValue, events, now);
-            if (loaded == null) {
+            if (loaded != null) {
+                Add(loaded);
+            } else if (Outdated(userValue, events, now)) {
                 db.RemoveAccountEventValue(userValue, session.AccountId);
-                continue;
             }
-            Add(loaded);
         }
 
         void Add(GameEventUserValue loaded) {
@@ -79,7 +83,7 @@ public sealed class GameEventManager {
         }
     }
 
-    // A stored value as it is loaded: null (dropped) when its event is not live or it has run out. A value that
+    // A stored value as it is loaded: null (not read) when its event is not live or it has run out. A value that
     // lasts as long as its event is first moved to the event's end (FollowEventEnd), then tested: tested at its
     // stored end, a value of an event whose end was moved while it was live would be dropped after the old end.
     public static GameEventUserValue? LoadValue(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
@@ -89,6 +93,16 @@ public sealed class GameEventManager {
         }
         GameEventUserValue loaded = FollowEventEnd(userValue, gameEvent);
         return loaded.ExpirationTime < now ? null : loaded;
+    }
+
+    // A stored value that is not loaded is deleted only once it has run out. While its event is absent (taken out
+    // of the event list, or a replay switched off) before the value's end, the value stays stored, unread: an event
+    // that comes back before that end is the same run and finds its claims again. After that end the world server
+    // starts a new run (GameStorage BeginEventRun).
+    public static bool Outdated(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
+        GameEvent? gameEvent = events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
+        long end = gameEvent == null ? userValue.ExpirationTime : FollowEventEnd(userValue, gameEvent).ExpirationTime;
+        return end < now;
     }
 
     // The values stored for the account instead of the character.

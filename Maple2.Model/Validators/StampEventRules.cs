@@ -53,6 +53,14 @@ public static class StampEventRules {
         return int.TryParse(claimed, out int value) && value != 0;
     }
 
+    // The quests a new run of the card deletes: its own stamps' quests that are stamp event missions and that no
+    // other card has as a stamp. Any other quest id in a card's data is left alone, and so is a quest two cards
+    // share, which the other card still shows as done.
+    public static int[] RunQuests(StampEvent card, IEnumerable<StampEvent> otherCards, Func<int, bool> isStampQuest) {
+        HashSet<int> shared = Quests(otherCards);
+        return card.Stamps.Select(stamp => stamp.QuestId).Where(questId => !shared.Contains(questId) && isStampQuest(questId)).Distinct().ToArray();
+    }
+
     // The quests of the cards: the server starts them and completes them when their conditions are met.
     public static HashSet<int> Quests(IEnumerable<StampEvent> stampEvents) {
         return stampEvents.SelectMany(stampEvent => stampEvent.Stamps).Select(stamp => stamp.QuestId).ToHashSet();
