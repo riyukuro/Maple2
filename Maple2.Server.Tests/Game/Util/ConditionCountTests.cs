@@ -57,6 +57,15 @@ public class ConditionCountTests {
         Assert.That(QuestRules.CountsAsDaily(Basic(QuestType.WorldQuest, repeat)), Is.EqualTo(expected));
     }
 
+    // An opened box counts for openItemBox when its item id is one of the row's codes.
+    [TestCase(20302745, true)]
+    [TestCase(20302746, false)]
+    public void OpenItemBox_CountsTheListedBox(int boxItemId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.openItemBox, 200,
+            new ConditionMetadata.Parameters(Integers: [20302745]), null);
+        Assert.That(condition.Check(null!, codeLong: boxItemId), Is.EqualTo(expected));
+    }
+
     // A completed daily mission counts for quest_guide, whatever the mission; other quests do not.
     [TestCase(QuestType.DailyMission, true)]
     [TestCase(QuestType.EpicQuest, false)]

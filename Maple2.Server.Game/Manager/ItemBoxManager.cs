@@ -47,7 +47,20 @@ public class ItemBoxManager {
         return true;
     }
 
-    public ItemBoxError Open(Item item, int count = 1, int index = -1) {
+    // Each box opened counts for the openItemBox condition, with the box's item id as the code (quest 80020127
+    // lists the Lucky Box 20302745).
+    private ItemBoxError Counted(Item item, Func<ItemBoxError> open) {
+        int before = BoxCount;
+        ItemBoxError error = open();
+        if (BoxCount > before) {
+            session.ConditionUpdate(ConditionType.openItemBox, counter: BoxCount - before, codeLong: item.Id);
+        }
+        return error;
+    }
+
+    public ItemBoxError Open(Item item, int count = 1, int index = -1) => Counted(item, () => OpenBox(item, count, index));
+
+    private ItemBoxError OpenBox(Item item, int count, int index) {
         if (string.IsNullOrEmpty(item.Metadata.Function?.Parameters)) {
             logger.Error("Item {ItemId} has no parameters for item box function", item.Id);
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
@@ -108,7 +121,10 @@ public class ItemBoxManager {
         return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
     }
 
-    public ItemBoxError OpenLulluBox(Item item, int count = 1, bool autoPay = false) {
+    public ItemBoxError OpenLulluBox(Item item, int count = 1, bool autoPay = false) =>
+        Counted(item, () => OpenLulluBoxes(item, count, autoPay));
+
+    private ItemBoxError OpenLulluBoxes(Item item, int count, bool autoPay) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
 
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
@@ -169,7 +185,9 @@ public class ItemBoxManager {
         return ItemBoxError.ok;
     }
 
-    public ItemBoxError OpenLulluBoxSimple(Item item, int count = 1) {
+    public ItemBoxError OpenLulluBoxSimple(Item item, int count = 1) => Counted(item, () => OpenLulluBoxesSimple(item, count));
+
+    private ItemBoxError OpenLulluBoxesSimple(Item item, int count) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
 
@@ -214,7 +232,9 @@ public class ItemBoxManager {
 
     // UIItemPetBoxDialog: each open takes one item with the tag of the xml parameter itemTag and rolls the boxes of
     // unCommonBoxId (the list the dialog previews as special) and, when present, commonBoxId.
-    public ItemBoxError OpenPetBox(Item item, int count = 1) {
+    public ItemBoxError OpenPetBox(Item item, int count = 1) => Counted(item, () => OpenPetBoxes(item, count));
+
+    private ItemBoxError OpenPetBoxes(Item item, int count) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
         if (!parameters.TryGetValue("itemTag", out string? tagName) || !Enum.TryParse(tagName, out ItemTag tag) || tag == ItemTag.None) {
