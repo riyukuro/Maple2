@@ -833,13 +833,19 @@ public partial class FieldManager {
         }
     }
 
+    private static bool FightsNpc(FieldNpc attacker, FieldNpc target) {
+        NpcMetadataBasic own = attacker.Value.Metadata.Basic;
+        NpcMetadataBasic other = target.Value.Metadata.Basic;
+        return NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
+    }
+
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {
         // A friendly npc (e.g. a cannon a player fires by InteractNpc) sides with the players: its hostile
-        // targets are the mobs and its friendly targets the players.
-        if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 } and not FieldPet) {
+        // targets are the mobs it fights (NpcTargetRules.FightsNpc) and its friendly targets the players.
+        if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 } friendlyCaster and not FieldPet) {
             switch (targetType) {
                 case ApplyTargetType.Hostile:
-                    return prisms.Filter(Mobs.Values, limit, ignore);
+                    return prisms.Filter(Mobs.Values.Where(mob => FightsNpc(friendlyCaster, mob)), limit, ignore);
                 case ApplyTargetType.Friendly:
                     return prisms.Filter(Players.Values, limit, ignore);
             }
@@ -854,8 +860,12 @@ public partial class FieldManager {
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
             case ApplyTargetType.Hostile:
-                if (caster is FieldNpc) {
+                if (caster is FieldPet) {
                     return prisms.Filter(Players.Values, limit, ignore);
+                }
+                if (caster is FieldNpc monster) {
+                    // The players and the friendly npcs the monster fights (a barrier a script waits on to fall).
+                    return prisms.Filter(Players.Values.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc))), limit, ignore);
                 } else if (caster is FieldPlayer casterPlayer) {
                     //TODO Include other players if PVP is Active
                     // In a rank duel's fight the opponent is hostile too.

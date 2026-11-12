@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using static Maple2.Model.Metadata.AiMetadata;
@@ -197,7 +198,7 @@ public class BattleState {
         if (actor.Field.Players.TryGetValue(TargetId, out FieldPlayer? targetPlayer)) {
             return !NpcTargetRules.CanTarget(targetPlayer.IsDead, invisibleFromNpc: false);
         }
-        if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc)) {
+        if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc) || actor.Field.Mobs.TryGetValue(TargetId, out targetNpc)) {
             return !NpcTargetRules.CanTarget(targetNpc.IsDead, invisibleFromNpc: false);
         }
         return true;
@@ -215,7 +216,7 @@ public class BattleState {
                 return false;
             }
             target = targetPlayer;
-        } else if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc)) {
+        } else if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc) || actor.Field.Mobs.TryGetValue(TargetId, out targetNpc)) {
             if (!NpcTargetRules.CanTarget(targetNpc.IsDead, invisibleFromNpc: false)) {
                 return false;
             }
@@ -242,6 +243,12 @@ public class BattleState {
         }
 
         return friendlyType;
+    }
+
+    private bool FightsNpc(FieldNpc target) {
+        NpcMetadataBasic own = actor.Value.Metadata.Basic;
+        NpcMetadataBasic other = target.Value.Metadata.Basic;
+        return NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
     }
 
     private void FindNewTarget() {
@@ -273,9 +280,25 @@ public class BattleState {
             }
         }
 
-        if (friendlyType == 1) {
+        // A monster's side also holds the friendly npcs it fights (NpcTargetRules.FightsNpc): a barrier or an
+        // escorted npc a script waits on to be killed.
+        int ownFriendly = actor.Value.Metadata.Basic.Friendly;
+        if (friendlyType == 0 && ownFriendly == 0 && actor is not FieldPet) {
             foreach (FieldNpc npc in actor.Field.Npcs.Values) {
-                if (npc.Value.Metadata.Basic.Friendly != 0 || !NpcTargetRules.CanTarget(npc.IsDead, invisibleFromNpc: false)) {
+                if (!FightsNpc(npc) || !NpcTargetRules.CanTarget(npc.IsDead, invisibleFromNpc: false)) {
+                    continue;
+                }
+                if (ShouldTargetActor(npc, sightSquared, sightHeightUp, sightHeightDown, ref nextTargetDistance, candidates)) {
+                    nextTarget = npc;
+                }
+            }
+        }
+
+        // The monsters' side: a friendly npc's enemies, a monster's allies. The field keeps the monsters in Mobs
+        // (Npcs holds the friendly npcs only).
+        if (friendlyType == 1) {
+            foreach (FieldNpc npc in actor.Field.Mobs.Values) {
+                if (npc == actor || (ownFriendly != 0 && !FightsNpc(npc)) || !NpcTargetRules.CanTarget(npc.IsDead, invisibleFromNpc: false)) {
                     continue;
                 }
 

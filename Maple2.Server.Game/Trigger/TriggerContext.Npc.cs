@@ -232,9 +232,24 @@ public partial class TriggerContext {
 
     public bool MonsterDead(int[] spawnIds, bool autoTarget, bool negate) {
         DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}, negate:{Negate}", string.Join(", ", spawnIds), autoTarget, negate);
-        IEnumerable<FieldNpc> matchingMobs = OfSpawnPoints(Field.Npcs.Values, Field.Mobs.Values, npc => npc.SpawnPointId, spawnIds);
+        IEnumerable<FieldNpc> npcs = Field.Npcs.Values.Where(npc => !NotWaitedOn(Field.MapId, npc.SpawnPointId));
+        IEnumerable<FieldNpc> matchingMobs = OfSpawnPoints(npcs, Field.Mobs.Values, npc => npc.SpawnPointId, spawnIds);
         return AllDead(matchingMobs.Select(mob => mob.IsDead), negate);
     }
+
+    // Friendly npcs that monster_dead does not wait on, as before friendly npcs were looked at: nothing on their
+    // map kills them, so the script would stall. No monster can walk to them on the navmesh and they cast nothing
+    // that ends themselves: 02000213 starts its first scene on the death of spawn point 201 (an event npc on a
+    // ledge above the monsters), and 02000349 and 52000076 bring up their fog on the death of spawn point 1098 (a
+    // dummy spawned when the escort reaches the box). 52010038's core dummy (2097) is not here: its death is the
+    // fail, and the script goes on with the timer while it stands.
+    private static readonly HashSet<(int MapId, int SpawnPointId)> UnkilledFriendlies = [
+        (02000213, 201),
+        (02000349, 1098),
+        (52000076, 1098),
+    ];
+
+    public static bool NotWaitedOn(int mapId, int spawnPointId) => UnkilledFriendlies.Contains((mapId, spawnPointId));
 
     // The npcs and the monsters of the listed spawn points. A spawn point a script waits on can hold a friendly
     // npc: 02000066 fails its waves on monster_dead spawn_ids="99", the friendly barrier the players guard, and

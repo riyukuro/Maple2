@@ -12,6 +12,21 @@ public class NpcTargetRulesTests {
         Assert.That(NpcTargetRules.CanTarget(dead, invisible), Is.EqualTo(expected));
     }
 
+    // A monster (1/2) and a battle npc (friendly 1, 2/1) fight each other; a monster leaves alone a talk npc
+    // (friendly 2), a guarded object of 2/4 and another monster; a monster of 4/2 hits only the 2/4 npcs.
+    [TestCase(0, 1, 1, 1, true)]
+    [TestCase(1, 2, 0, 2, true)]
+    [TestCase(0, 1, 2, 1, false)]
+    [TestCase(0, 1, 1, 4, false)]
+    [TestCase(0, 4, 1, 4, true)]
+    [TestCase(0, 4, 1, 1, false)]
+    [TestCase(0, 1, 0, 2, false)]
+    [TestCase(1, 2, 1, 1, false)]
+    [TestCase(2, 2, 0, 2, true)]
+    public void FightsNpc_OtherSideAndASharedGroupBit(int attackerFriendly, int attackGroup, int targetFriendly, int defenseGroup, bool expected) {
+        Assert.That(NpcTargetRules.FightsNpc(attackerFriendly, attackGroup, targetFriendly, defenseGroup), Is.EqualTo(expected));
+    }
+
     // isKeepBattle holds a target that is out of sight, never one that is gone (dead or off the field).
     [TestCase(false, false, false, false)]
     [TestCase(false, false, true, false)]

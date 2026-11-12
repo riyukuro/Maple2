@@ -52,6 +52,20 @@ public class TriggerLookupTests {
         });
     }
 
+    // The friendly npcs nothing on their map kills are not waited on (an empty spawn point counts as dead); the
+    // core of 52010038 and a spawn point of another map are.
+    [Test]
+    public void MonsterDead_SkipsTheFriendliesNothingKills() {
+        Assert.Multiple(() => {
+            Assert.That(TriggerContext.NotWaitedOn(2000213, 201), Is.True);
+            Assert.That(TriggerContext.NotWaitedOn(2000349, 1098), Is.True);
+            Assert.That(TriggerContext.NotWaitedOn(52000076, 1098), Is.True);
+            Assert.That(TriggerContext.NotWaitedOn(52010038, 2097), Is.False);
+            Assert.That(TriggerContext.NotWaitedOn(2000066, 99), Is.False);
+            Assert.That(TriggerContext.NotWaitedOn(2000213, 1099), Is.False);
+        });
+    }
+
     // 'monster_in_combat' (02000066 spawn_ids="5001"): a monster of a listed spawn point that is in battle.
     [Test]
     public void MonsterInCombat_LooksAtTheListedSpawnPoints() {
