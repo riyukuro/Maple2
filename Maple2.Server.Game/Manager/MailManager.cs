@@ -5,6 +5,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -17,7 +18,6 @@ public sealed class MailManager {
     private readonly GameSession session;
     private DateTime lastFetch;
     private long lastReceivedMail;
-    private int unreadMail;
 
     private readonly SortedList<long, Mail> inbox;
 
@@ -32,6 +32,10 @@ public sealed class MailManager {
 
     public void Notify(bool force = false) {
         if (Fetch(force) || force) {
+            int unreadMail;
+            lock (inbox) {
+                unreadMail = MailRules.UnreadCount(inbox.Values, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            }
             session.Send(MailPacket.Notify(unreadMail, unreadMail > 0));
         }
     }
@@ -94,12 +98,13 @@ public sealed class MailManager {
 
         lock (session.Item) {
             MailError error = CollectInternal(db, mail);
-            if (error != MailError.none) {
-                return error;
-            }
-
             inboxMail.Update(mail);
-            return MailError.none;
+            // The list is sent from the inbox copy: what was given must not be listed again.
+            inboxMail.Items.Clear();
+            foreach (Item item in mail.Items) {
+                inboxMail.Items.Add(item);
+            }
+            return error;
         }
     }
 
@@ -116,10 +121,6 @@ public sealed class MailManager {
             using GameStorage.Request db = session.GameStorage.Context();
             db.BindAccountMailsToCharacter(accountId, characterId);
             foreach (Mail mail in db.GetAllMail(characterId, lastReceivedMail)) {
-                if (mail.ReadTime == 0) {
-                    unreadMail++;
-                }
-
                 newMail = true;
                 inbox.Add(mail.Id, mail);
             }
@@ -153,33 +154,39 @@ public sealed class MailManager {
 
     // Items on input mail will be cleared.
     private MailError CollectInternal(GameStorage.Request db, Mail mail) {
-        if (mail.MesoCollected() && mail.MeretCollected() && mail.GameMeretCollected() && mail.Items.Count == 0) {
-            return MailError.s_mail_error_already_receive;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        MailError refused = MailRules.CollectError(mail, now);
+        if (refused != MailError.none) {
+            return refused;
         }
 
-        // Validate that collection is possible
-        foreach (IGrouping<InventoryType, Item> group in mail.Items.GroupBy(item => item.Inventory)) {
-            int requireSlots = group.Count();
-            int freeSlots = session.Item.Inventory.FreeSlots(group.Key);
+        // Nothing is given unless every item fits (existing stacks count) and can be added now.
+        if (mail.Items.Count > 0 && !session.Item.Inventory.CanAdd(mail.Items)) {
+            return MailError.s_mail_error_receiveitem_to_inven;
+        }
 
-            if (requireSlots > freeSlots) {
-                return MailError.s_mail_error_receiveitem_to_inven;
+        // Chosen here: collecting an unread mail marks it read first. The collected packet carries the read time
+        // and the client takes a time of 0 as not collected.
+        if (mail.ReadTime == 0) {
+            MailError readError = ReadInternal(db, mail);
+            if (readError != MailError.none) {
+                return readError;
             }
         }
 
         bool collectMeso = false;
         if (!mail.MesoCollected()) { // Allow mesos to be collected regardless and just overflow.
-            mail.MesoCollectTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            mail.MesoCollectTime = now;
             collectMeso = true;
         }
         bool collectMeret = false;
         if (!mail.MeretCollected() && session.Currency.CanAddMeret(mail.Meret) == mail.Meret) {
-            mail.MeretCollectTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            mail.MeretCollectTime = now;
             collectMeret = true;
         }
         bool collectGameMeret = false;
         if (!mail.GameMeretCollected() && session.Currency.CanAddGameMeret(mail.GameMeret) == mail.GameMeret) {
-            mail.GameMeretCollectTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            mail.GameMeretCollectTime = now;
             collectGameMeret = true;
         }
 
@@ -190,9 +197,9 @@ public sealed class MailManager {
             }
         }
 
-        // Collect the mail only after we have fully validated everything.
         if (collectMeso) {
             session.Currency.Meso += mail.Meso;
+            session.Send(MailPacket.CollectMeso(mail.Id, now));
         }
         if (collectMeret) {
             session.Currency.Meret += mail.Meret;
@@ -201,23 +208,25 @@ public sealed class MailManager {
             session.Currency.GameMeret += mail.GameMeret;
         }
 
+        // The slot of an attachment is its place in the list (Mail.WriteTo).
+        MailError error = MailError.none;
         for (int i = mail.Items.Count - 1; i >= 0; i--) {
             Item item = mail.Items[i];
-            if (item.Amount <= 0) {
-                return MailError.s_mail_error_attachcount;
-            }
-
             if (!session.Item.Inventory.Add(item, notifyNew: true, commit: true)) {
                 logger.Error("Mail {MailId} was collected but items could not be added to inventory. Item: {Item}", mail.Id, item);
-                return MailError.s_mail_error_receiveitem_to_inven;
+                error = MailError.s_mail_error_receiveitem_to_inven;
+                break;
             }
 
             mail.Items.RemoveAt(i);
+            session.Send(MailPacket.CollectItem(mail.Id, (byte) i, now));
         }
 
-        session.Send(MailPacket.Collect(mail.Id));
-        session.Send(MailPacket.CollectRead(mail));
-        return MailError.none;
+        // What was given is always reported; the closing packet only when nothing is left behind.
+        if (error == MailError.none) {
+            session.Send(MailPacket.CollectRead(mail));
+        }
+        return error;
     }
     #endregion
 }

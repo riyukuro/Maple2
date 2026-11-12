@@ -1,3 +1,6 @@
+using Maple2.Model.Error;
+using Maple2.Model.Game;
+
 namespace Maple2.Server.Game.Util;
 
 public static class MailRules {
@@ -7,5 +10,39 @@ public static class MailRules {
 
     public static bool CanSend(string title, string content) {
         return title.Length is > 0 and <= MaxTitleLength && content.Length is > 0 and <= MaxContentLength;
+    }
+
+    // CMailInfo::IsExpired: a mail is expired once the server time reaches its expiry.
+    public static bool IsExpired(Mail mail, long now) {
+        return mail.ExpiryTime > 0 && now >= mail.ExpiryTime;
+    }
+
+    // The badge counts what the list shows as unread: mails without a read time that are not expired.
+    public static int UnreadCount(IEnumerable<Mail> mails, long now) {
+        return mails.Count(mail => mail.ReadTime == 0 && !IsExpired(mail, now));
+    }
+
+    public static bool HasUncollected(Mail mail) {
+        return mail.Items.Count > 0 || !mail.MesoCollected() || !mail.MeretCollected() || !mail.GameMeretCollected();
+    }
+
+    // What refuses a collect before anything is given.
+    public static MailError CollectError(Mail mail, long now) {
+        if (!HasUncollected(mail)) {
+            return MailError.s_mail_error_already_receive;
+        }
+        if (IsExpired(mail, now)) {
+            return MailError.s_mail_error_receive_expired;
+        }
+        if (mail.Items.Any(item => item.Amount <= 0)) {
+            return MailError.s_mail_error_attachcount;
+        }
+        return MailError.none;
+    }
+
+    // Read-all and collect-all (chosen here): a mail that is already read or already collected is passed over and
+    // the rest of the list is still done; any other error ends the list and is shown.
+    public static bool BulkSkips(MailError error) {
+        return error is MailError.s_mail_error_alreadyread or MailError.s_mail_error_already_receive;
     }
 }

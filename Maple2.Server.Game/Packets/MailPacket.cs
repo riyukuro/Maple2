@@ -64,19 +64,32 @@ public static class MailPacket {
         return pWriter;
     }
 
-    public static ByteWriter Collect(long mailId, bool success = true) {
+    // OnMail mode 10 reads the id, a byte, a slot byte and a time. Byte 1: the attachment in that slot (0-4) gets the
+    // time as its receive time. Byte 0: the meso gets it as its collect time and the slot byte is not used.
+    public static ByteWriter CollectItem(long mailId, byte slot, long time) {
         var pWriter = Packet.Of(SendOp.Mail);
         pWriter.Write<Command>(Command.Collect);
         pWriter.WriteLong(mailId);
-        pWriter.WriteBool(success);
-        if (success) {
-            pWriter.WriteByte(); // assert(<= 4)
-            pWriter.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds()); // Collection time
-        }
+        pWriter.WriteByte(1);
+        pWriter.WriteByte(slot);
+        pWriter.WriteLong(time);
 
         return pWriter;
     }
 
+    public static ByteWriter CollectMeso(long mailId, long time) {
+        var pWriter = Packet.Of(SendOp.Mail);
+        pWriter.Write<Command>(Command.Collect);
+        pWriter.WriteLong(mailId);
+        pWriter.WriteByte(0);
+        pWriter.WriteByte(0);
+        pWriter.WriteLong(time);
+
+        return pWriter;
+    }
+
+    // OnMail mode 11 gives the time to the three currencies and to every attachment slot that has none yet. A time
+    // of 0 claims nothing (the client reads 0 as not collected), so the mail must have a read time by now.
     public static ByteWriter CollectRead(Mail mail) {
         var pWriter = Packet.Of(SendOp.Mail);
         pWriter.Write<Command>(Command.CollectRead);

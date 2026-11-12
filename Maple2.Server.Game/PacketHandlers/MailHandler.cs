@@ -145,7 +145,7 @@ public class MailHandler : FieldPacketHandler {
             long mailId = packet.ReadLong();
 
             MailError error = session.Mail.Read(mailId);
-            if (error != MailError.none) {
+            if (error != MailError.none && !MailRules.BulkSkips(error)) {
                 session.Send(MailPacket.Error(error));
                 return;
             }
@@ -159,7 +159,7 @@ public class MailHandler : FieldPacketHandler {
             long mailId = packet.ReadLong();
 
             MailError error = session.Mail.Collect(mailId);
-            if (error != MailError.none) {
+            if (error != MailError.none && !MailRules.BulkSkips(error)) {
                 session.Send(MailPacket.Error(error));
                 return;
             }
