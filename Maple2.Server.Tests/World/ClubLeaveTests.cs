@@ -82,4 +82,31 @@ public class ClubLeaveTests {
         Assert.That(stored!.LeaderId, Is.EqualTo(ids[0]));
         Assert.That(stored.Members.Keys, Is.EquivalentTo(ids.Take(2)));
     }
+
+    // A failed write leaves the club in memory as it was: the member stays and so does the leader.
+    [Test]
+    public void FailedDelete_KeepsTheMember() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assume.That(db.DeleteClubMember(manager.Club.Id, ids[2]), Is.True);
+        }
+
+        Assert.That(manager.Leave(ids[2]), Is.EqualTo(ClubError.s_club_err_unknown));
+
+        Assert.That(manager.Club.Members.Keys, Is.EquivalentTo(ids));
+        Assert.That(manager.Club.LeaderId, Is.EqualTo(ids[0]));
+    }
+
+    [Test]
+    public void FailedSave_KeepsTheLeader() {
+        using (var context = new Ms2Context(test.Options)) {
+            context.Club.Remove(context.Club.Single(club => club.Id == manager.Club.Id));
+            context.SaveChanges();
+        }
+
+        Assert.That(manager.Leave(ids[0]), Is.EqualTo(ClubError.s_club_err_unknown));
+
+        Assert.That(manager.Club.Members.Keys, Is.EquivalentTo(ids));
+        Assert.That(manager.Club.LeaderId, Is.EqualTo(ids[0]));
+        Assert.That(manager.Club.Leader.CharacterId, Is.EqualTo(ids[0]));
+    }
 }

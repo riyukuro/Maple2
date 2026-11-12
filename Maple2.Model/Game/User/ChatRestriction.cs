@@ -84,6 +84,13 @@ public sealed class ChatRestriction {
         return WebUtility.HtmlDecode(Tag.Replace(message, string.Empty)).Length;
     }
 
+    // The line types whose text the client takes from the input box. The client builds the others itself, with no
+    // length cap: the whisper reject notice, the party and chaos DPS reports it sends as party lines (onNotice,
+    // uipartydialog.cpp:1342-1367, uichaosdpsdialog.cpp:238-262) and the mini game lines (statemicrogame.cpp:457).
+    public static bool LimitsLength(ChatType type) {
+        return type is not (ChatType.WhisperReject or ChatType.Party or ChatType.MicroGame);
+    }
+
     // Lines longer than the input box takes did not come from its box: they are dropped. 0 is no limit.
     public static bool TooLong(ConstantsTable constants, string message) {
         return constants.MaxChatLength > 0 && VisibleLength(message) > constants.MaxChatLength;

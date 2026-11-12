@@ -41,7 +41,7 @@ public class UserChatHandler : FieldPacketHandler {
             return;
         }
 
-        if (type != ChatType.WhisperReject && ChatRestriction.TooLong(Constants, message)) {
+        if (ChatRestriction.LimitsLength(type) && ChatRestriction.TooLong(Constants, message)) {
             return;
         }
         if (ChatRestriction.Covers(type)) {
@@ -412,8 +412,9 @@ public class UserChatHandler : FieldPacketHandler {
                 PackageId = hall.PackageId,
                 HallId = hall.PackageHallId,
                 CeremonyTime = hall.CeremonyTime,
-                Groom = marriage.Partner1.Name,
-                Bride = marriage.Partner2.Name,
+                // The hall's fixed roles, as in the invitation mail: the session's partners are relative to it.
+                Groom = hall.ReserverName,
+                Bride = hall.PartnerName,
             },
         };
 

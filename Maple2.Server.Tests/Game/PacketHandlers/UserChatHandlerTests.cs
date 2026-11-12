@@ -242,6 +242,30 @@ public class UserChatHandlerTests {
         Assert.That(test.World.Chats, Has.Count.EqualTo(1));
     }
 
+    // The party and chaos DPS reports are party lines the client builds itself, well past the input box limit; mini
+    // game lines come from a string key. Neither is held to MaxChatLength.
+    [Test]
+    public void ClientBuiltLines_PassMaxChatLength() {
+        GameSession session = Login(meret: 0);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MaxChatLength = 5 });
+        var manager = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
+        typeof(Maple2.Server.Game.Manager.PartyManager).GetProperty("Party")!
+            .SetValue(manager, new Maple2.Model.Game.Party.Party(31, session.AccountId, session.CharacterId, session.PlayerName));
+        session.Party = manager;
+        string report = "[00:42] 1. " + session.PlayerName + " 123456 2. other 654321 total 01:30";
+
+        Say(session, ChatType.Party, report);
+        Say(session, ChatType.MicroGame, "abcdefgh");
+
+        ChatRequest request = test.World.Chats.Single();
+        Assert.That(request.Message, Is.EqualTo(report));
+        Assert.That(request.Party.PartyId, Is.EqualTo(31));
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat), Has.Length.EqualTo(1));
+        Assert.That(ChatRestriction.LimitsLength(ChatType.Normal), Is.True);
+        Assert.That(ChatRestriction.LimitsLength(ChatType.Guild), Is.True);
+        Assert.That(ChatRestriction.LimitsLength(ChatType.WhisperReject), Is.False);
+    }
+
     // The fifth equal line within SameChat_CheckTime goes nowhere; the sender gets s_chat_restrict_samechat with
     // the seconds.
     [Test]
@@ -278,25 +302,36 @@ public class UserChatHandlerTests {
         return session;
     }
 
-    private static void Reserve(GameSession session, long ceremonyTime) {
+    private const string OtherName = "partner";
+    private const long PartnerId = 9001;
+
+    // The engagement as storage loads it for the session (GetMarriage): Partner1 is the other person and Partner2 the
+    // session's own character. The hall keeps the fixed roles: the reserver and the partner.
+    private static void Reserve(GameSession session, long ceremonyTime, bool senderReserved = true) {
         session.Marriage.Marriage = new Marriage {
             Id = 77,
             Status = MaritalStatus.Engaged,
-            Partner1 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(1, 1, "groom", "", "", Gender.Male, Job.Newbie, 20), "", new AchievementInfo(), []) },
-            Partner2 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(2, 2, "bride", "", "", Gender.Female, Job.Newbie, 20), "", new AchievementInfo(), []) },
+            Partner1 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(PartnerId, PartnerId, OtherName, "", "", Gender.Female, Job.Newbie, 20), "", new AchievementInfo(), []) },
+            Partner2 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(session.AccountId, session.CharacterId, session.PlayerName, "", "", Gender.Male, Job.Newbie, 20), "", new AchievementInfo(), []) },
         };
         session.Marriage.WeddingHall = new WeddingHall {
-            Id = 9, MarriageId = 77, ReserverAccountId = 1, ReserverCharacterId = 1, ReserverName = "groom", PartnerName = "bride",
+            Id = 9, MarriageId = 77,
+            ReserverAccountId = senderReserved ? session.AccountId : PartnerId,
+            ReserverCharacterId = senderReserved ? session.CharacterId : PartnerId,
+            ReserverName = senderReserved ? session.PlayerName : OtherName,
+            PartnerName = senderReserved ? OtherName : session.PlayerName,
             CeremonyTime = ceremonyTime, PackageId = 3, PackageHallId = 4,
         };
     }
 
     // The wedding megaphone (kind 25) takes the item and hands the reservation to the world with the item id.
-    [Test]
-    public void WeddingLine_CarriesTheReservationAndTakesTheItem() {
+    // The groom is the hall's reserver and the bride the partner, whichever of the two sends the line.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void WeddingLine_CarriesTheReservationAndTakesTheItem(bool senderReserved) {
         GameSession session = LoginWithMegaphone(ItemFunction.WeddingChat);
         long ceremony = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600;
-        Reserve(session, ceremony);
+        Reserve(session, ceremony, senderReserved);
 
         Say(session, ChatType.Wedding, "come");
 
@@ -309,8 +344,8 @@ public class UserChatHandlerTests {
         Assert.That(request.Wedding.PackageId, Is.EqualTo(3));
         Assert.That(request.Wedding.HallId, Is.EqualTo(4));
         Assert.That(request.Wedding.CeremonyTime, Is.EqualTo(ceremony));
-        Assert.That(request.Wedding.Groom, Is.EqualTo("groom"));
-        Assert.That(request.Wedding.Bride, Is.EqualTo("bride"));
+        Assert.That(request.Wedding.Groom, Is.EqualTo(senderReserved ? session.PlayerName : OtherName));
+        Assert.That(request.Wedding.Bride, Is.EqualTo(senderReserved ? OtherName : session.PlayerName));
         Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Empty);
         Assert.That(session.SuperChatId, Is.EqualTo(0));
     }

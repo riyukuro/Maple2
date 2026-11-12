@@ -172,45 +172,47 @@ public class ClubManager : IDisposable {
             return ClubError.s_club_err_null_member;
         }
 
-        bool leaderLeft = characterId == Club.LeaderId;
-        if (leaderLeft) {
-            FindNewLeader(characterId);
+        // The database first: a failed write leaves the member, the leader and every channel as they were.
+        long oldLeaderId = Club.LeaderId;
+        ClubMember oldLeader = Club.Leader;
+        ClubMember? newLeader = characterId == oldLeaderId
+            ? Club.Members.Values.FirstOrDefault(other => other.CharacterId != characterId)
+            : null;
+        if (!Club.Members.TryRemove(member.CharacterId, out _)) {
+            return ClubError.s_club_err_unknown;
+        }
+        if (newLeader != null) {
+            Club.Leader = newLeader;
+            Club.LeaderId = newLeader.CharacterId;
         }
 
+        bool saved;
+        using (GameStorage.Request db = GameStorage.Context()) {
+            // The leader left: one SaveClub stores the new leader and drops the member row in one transaction, so the
+            // club row never names a character who is no member (loading the club picks the leader among the members).
+            saved = newLeader != null ? db.SaveClub(Club) : db.DeleteClubMember(Club.Id, member.CharacterId);
+        }
+        if (!saved) {
+            Club.Leader = oldLeader;
+            Club.LeaderId = oldLeaderId;
+            Club.Members.TryAdd(member.CharacterId, member);
+            return ClubError.s_club_err_unknown;
+        }
+
+        if (newLeader != null) {
+            BroadcastLeader(newLeader);
+        }
+        // The member who left gets it too: their channel drops the club from the session.
         Broadcast(new ClubRequest {
             RemoveMember = new ClubRequest.Types.RemoveMember {
                 CharacterId = characterId,
             },
             ClubId = Club.Id,
-        });
-
-        if (!Club.Members.TryRemove(member.CharacterId, out _)) {
-            return ClubError.s_club_err_unknown;
-        }
-
-        using GameStorage.Request db = GameStorage.Context();
-        // The leader left: one SaveClub stores the new leader and drops the member row in one transaction, so the
-        // club row never names a character who is no member (loading the club picks the leader among the members).
-        if (leaderLeft && Club.LeaderId != characterId) {
-            if (!db.SaveClub(Club)) {
-                return ClubError.s_club_err_unknown;
-            }
-        } else if (!db.DeleteClubMember(Club.Id, member.CharacterId)) {
-            return ClubError.s_club_err_unknown;
-        }
-
+        }, member);
         return ClubError.none;
     }
 
-    private void FindNewLeader(long characterId) {
-        ClubMember? newLeader = Club.Members.Values.FirstOrDefault(member => member.CharacterId != characterId);
-        if (newLeader == null) {
-            // disband?
-            return;
-        }
-
-        Club.Leader = newLeader;
-        Club.LeaderId = newLeader.CharacterId;
+    private void BroadcastLeader(ClubMember newLeader) {
         Broadcast(new ClubRequest {
             UpdateLeader = new ClubRequest.Types.UpdateLeader {
                 CharacterId = newLeader.CharacterId,
@@ -298,12 +300,13 @@ public class ClubManager : IDisposable {
         Dispose();
     }
 
-    public void Broadcast(ClubRequest request) {
+    public void Broadcast(ClubRequest request, ClubMember? also = null) {
         if (request.ClubId > 0 && request.ClubId != Club.Id) {
             throw new InvalidOperationException($"Broadcasting {request.ClubCase} for incorrect guild: {request.ClubId} => {Club.Id}");
         }
 
-        foreach (IGrouping<short, ClubMember> group in Club.Members.Values.GroupBy(member => member.Info.Channel)) {
+        IEnumerable<ClubMember> receivers = also == null ? Club.Members.Values : Club.Members.Values.Append(also);
+        foreach (IGrouping<short, ClubMember> group in receivers.GroupBy(member => member.Info.Channel)) {
             if (!ChannelClients.TryGetClient(group.Key, out ChannelClient? client)) {
                 continue;
             }
