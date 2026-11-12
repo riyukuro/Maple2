@@ -5,6 +5,8 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -144,13 +146,83 @@ public class UgcMapPackageTests {
         }
     }
 
+    // Furnishing storage that cannot take the set: refused before the package is used, the home unchanged. With one
+    // open slot the three cubes of the set go on one new stack.
+    [TestCase(0, false)]
+    [TestCase(1, true)]
+    public void Install_NeedsStorageRoom(int slots, bool installed) {
+        (GameSession session, Plot plot) = Start();
+        typeof(FurnishingManager).GetField("storage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session.Item.Furnishing, new ItemCollection((short) slots));
+
+        Use(session, "false");
+
+        Assert.That(plot.Cubes, Has.Count.EqualTo(installed ? 3 : 0));
+        Assert.That(Packages(session), Is.EqualTo(installed ? 1 : 2));
+    }
+
+    // A home with a cube and full storage: refused, the cube stays placed (nothing is taken half-way).
+    [Test]
+    public void Install_KeepsTheHomeWhenStorageIsFull() {
+        (GameSession session, Plot plot) = Start();
+        Place(session, plot, -1, -1, 1);
+        System.Reflection.FieldInfo field = typeof(FurnishingManager).GetField("storage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        field.SetValue(session.Item.Furnishing, new ItemCollection(0));
+
+        Use(session, "true");
+
+        Assert.That(plot.Cubes.Keys, Is.EqualTo(new[] { new Vector3B(-1, -1, 1) }));
+        Assert.That(Packages(session), Is.EqualTo(2));
+    }
+
+    // A package without a size: the plain use is refused (the client asks indoorSizeDifferent); "true" builds it and
+    // keeps the home's size.
+    [Test]
+    public void Install_APackageWithoutASize() {
+        (GameSession session, Plot plot) = Start();
+        var cache = (Dictionary<string, ExportedUgcMapMetadata>) typeof(MapMetadataStorage)
+            .GetField("ExportedUgcCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(test.MapMetadata)!;
+        cache["59300901"] = cache["59300901"] with { IndoorSize = [] };
+
+        Use(session, "false");
+        Assert.That(plot.Cubes, Is.Empty);
+        Assert.That(Packages(session), Is.EqualTo(2));
+
+        Use(session, "true");
+        Home home = session.Player.Value.Home;
+        Assert.That((home.Area, home.Height), Is.EqualTo(((byte) 5, (byte) 4)));
+        Assert.That(plot.Cubes, Has.Count.EqualTo(3));
+        Assert.That(Packages(session), Is.EqualTo(1));
+    }
+
+    // Stacks join the first stack of the same item and url (a maid item only an empty one) while it has room; else
+    // they take a new slot.
+    [Test]
+    public void StorageTakes() {
+        var a = new UgcMapPackageRules.Stack(1, null, false, 1, 3);
+        Assert.That(UgcMapPackageRules.StorageTakes([a with { Amount = 1 }], 0, [a, a]), Is.True);
+        Assert.That(UgcMapPackageRules.StorageTakes([a with { Amount = 2 }], 0, [a, a]), Is.False);
+        Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a, a]), Is.True);
+        Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a with { ItemId = 2 }]), Is.False);
+        Assert.That(UgcMapPackageRules.StorageTakes([], 1, [a, a with { Url = "u" }]), Is.False);
+        var maid = new UgcMapPackageRules.Stack(5, null, true, 1, 9);
+        Assert.That(UgcMapPackageRules.StorageTakes([maid with { Amount = 0 }], 1, [maid, maid]), Is.True);
+        Assert.That(UgcMapPackageRules.StorageTakes([maid with { Amount = 1 }], 1, [maid, maid]), Is.False);
+    }
+
     [TestCase(true, 4, 3, 5, null)]
     [TestCase(false, 5, 4, 0, null)]
     [TestCase(false, 4, 4, 0, StringCode.s_err_ugcmap_package_not_a_indoor_for_this_package_item)]
     [TestCase(false, 5, 3, 0, StringCode.s_err_ugcmap_package_not_a_indoor_for_this_package_item)]
     [TestCase(false, 9, 9, 1, StringCode.s_err_ugcmap_package_clear_indoor_first)]
     public void Refusal(bool confirmed, int area, int height, int cubes, StringCode? expected) {
-        Assert.That(UgcMapPackageRules.Refusal(confirmed, area, height, cubes, (5, 4)), Is.EqualTo(expected));
+        Assert.That(UgcMapPackageRules.Refusal(confirmed, area, height, cubes, ((byte) 5, (byte) 4)), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Refusal_WithoutASize() {
+        Assert.That(UgcMapPackageRules.Refusal(false, 9, 9, 0, null), Is.EqualTo(StringCode.s_err_ugcmap_package_not_a_indoor_for_this_package_item));
+        Assert.That(UgcMapPackageRules.Refusal(true, 9, 9, 0, null), Is.Null);
     }
 
     [Test]

@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -203,6 +204,14 @@ public class FurnishingManager {
             }
 
             return itemUid;
+        }
+    }
+
+    // Whether storage takes all these cubes (UgcMapPackageRules.StorageTakes).
+    public bool StorageTakes(IEnumerable<UgcMapPackageRules.Stack> incoming) {
+        lock (session.Item) {
+            return UgcMapPackageRules.StorageTakes(storage.Select(item => new UgcMapPackageRules.Stack(item.Id, item.Template?.Url,
+                item.Metadata.Housing?.MaidId > 0, item.Amount, item.Metadata.Property.SlotMax)), storage.OpenSlots, incoming);
         }
     }
 

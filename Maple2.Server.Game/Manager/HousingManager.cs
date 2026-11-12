@@ -427,21 +427,48 @@ public class HousingManager {
     // An interior package (item function UGCMapPackage, UIInteriorBuildDialog::OnUseItem) builds its exported map in
     // the owner's home: the cubes there go back to storage, a home smaller than the package grows to its size, and
     // each cube of the package is put into storage and placed from there at the home's base cell plus its offset
-    // (UgcMapPackageRules.Origin). A cube that cannot be placed stays in storage. The number placed is returned.
-    public int InstallPackage(Plot plot, ExportedUgcMapMetadata package) {
-        if (session.Field is null || UgcMapPackageRules.Size(package) is not var (area, height)) {
-            return 0;
+    // (UgcMapPackageRules.Origin). A cube that cannot be placed stays in storage. A package without a size keeps the
+    // home's size. The whole install holds the plot's edit lock, so a build helper's edit waits for it.
+    // Refused (nothing used, nothing changed) when furnishing storage cannot take the home's cubes and the package's
+    // (s_err_ugcmap_package_cant_use) or consume fails; otherwise null with the number placed.
+    public StringCode? InstallPackage(Plot plot, ExportedUgcMapMetadata package, Func<bool> consume, out int placed) {
+        placed = 0;
+        if (session.Field is null) {
+            return StringCode.s_err_ugcmap_package_cant_use;
         }
-        foreach (PlotCube cube in plot.Cubes.Values.ToList()) {
-            if (TryRemoveCube(plot, cube.Position, out _)) {
-                session.Field.Broadcast(CubePacket.RemoveCube(session.Player.ObjectId, cube.Position));
+        lock (plot.EditLock) {
+            List<PlotCube> old = plot.Cubes.Values.ToList();
+            var incoming = new List<UgcMapPackageRules.Stack>();
+            incoming.AddRange(old.Select(cube => new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url,
+                cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax)));
+            foreach (ExportedUgcMapMetadata.Cube cube in package.Cubes) {
+                if (session.ItemMetadata.TryGet(cube.ItemId, out ItemMetadata? metadata) && metadata.Install != null && metadata.Housing != null) {
+                    incoming.Add(new UgcMapPackageRules.Stack(cube.ItemId, null, metadata.Housing.MaidId > 0, 1, metadata.Property.SlotMax));
+                }
+            }
+            if (!session.Item.Furnishing.StorageTakes(incoming)) {
+                return StringCode.s_err_ugcmap_package_cant_use;
+            }
+            if (!consume()) {
+                return StringCode.s_err_ugcmap_package_failed_to_consume_package_item;
+            }
+            placed = BuildPackage(plot, package, old);
+        }
+        return null;
+    }
+
+    private int BuildPackage(Plot plot, ExportedUgcMapMetadata package, List<PlotCube> old) {
+        FieldManager field = session.Field!;
+        foreach (PlotCube cube in old) {
+            if (RemoveCube(plot, cube.Position, out _, null)) {
+                field.Broadcast(CubePacket.RemoveCube(session.Player.ObjectId, cube.Position));
             }
         }
 
-        if (Home.Area < area || Home.Height < height) {
+        if (UgcMapPackageRules.Size(package) is var (area, height) && (Home.Area < area || Home.Height < height)) {
             Home.SetArea(Math.Max(Home.Area, area));
             Home.SetHeight(Math.Max(Home.Height, height));
-            session.Field.Broadcast(CubePacket.UpdateHomeAreaAndHeight(Home.Area, Home.Height));
+            field.Broadcast(CubePacket.UpdateHomeAreaAndHeight(Home.Area, Home.Height));
         }
 
         Vector3B origin = UgcMapPackageRules.Origin(Home.Area);
@@ -457,17 +484,17 @@ public class HousingManager {
                 continue;
             }
             Vector3B position = origin + cube.OffsetPosition;
-            if (!TryPlaceCube(new PlotCube(itemMetadata, itemUid) { Type = PlotCube.CubeType.Default }, plot, itemMetadata, position, cube.Rotation, out PlotCube? plotCube)) {
+            if (!PlaceCube(new PlotCube(itemMetadata, itemUid) { Type = PlotCube.CubeType.Default }, plot, itemMetadata, position, cube.Rotation, out PlotCube? plotCube, false, null)) {
                 continue;
             }
-            session.Field.Broadcast(plotCube.Position.Z == 0
+            field.Broadcast(plotCube.Position.Z == 0
                 ? CubePacket.ReplaceCube(session.Player.ObjectId, plotCube)
                 : CubePacket.PlaceCube(session.Player.ObjectId, plot, plotCube));
             placed++;
         }
 
         Vector3 safe = Home.CalculateSafePosition(plot.Cubes.Values.ToList());
-        foreach (FieldPlayer fieldPlayer in session.Field.Players.Values) {
+        foreach (FieldPlayer fieldPlayer in field.Players.Values) {
             fieldPlayer.Session.Send(PortalPacket.MoveByPortal(fieldPlayer, safe, default));
         }
         session.Item.Furnishing.SendStorageCount();

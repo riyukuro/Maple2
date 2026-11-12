@@ -226,7 +226,7 @@ public class ItemUseHandler : FieldPacketHandler {
 
     // An interior package (UgcMapPackageRules): the text is "false" or "true". The client's checks are made again, with
     // its messages: the owner's indoor home, a package the server has, and for "false" a home of the package's size
-    // with no cubes. The package is used up, then built (HousingManager.InstallPackage).
+    // with no cubes. Storage room is checked, then the package is used up and built (HousingManager.InstallPackage).
     private static void HandleUgcMapPackage(GameSession session, Item item, IByteReader packet) {
         if (UgcMapPackageRules.Confirmed(packet.ReadUnicodeString()) is not { } confirmed) {
             return;
@@ -247,21 +247,18 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
         string name = item.Metadata.Function?.Parameters.Trim() ?? "";
-        if (name.Length == 0 || !session.MapMetadata.TryGetExportedUgc(name, out ExportedUgcMapMetadata? package)
-                || UgcMapPackageRules.Size(package) is not { } size) {
+        if (name.Length == 0 || !session.MapMetadata.TryGetExportedUgc(name, out ExportedUgcMapMetadata? package)) {
             Refuse(StringCode.s_err_ugcmap_package_not_a_valid_package_item);
             return;
         }
         Home owner = session.Player.Value.Home;
-        if (UgcMapPackageRules.Refusal(confirmed, owner.Area, owner.Height, plot.Cubes.Count, size) is { } refusal) {
+        if (UgcMapPackageRules.Refusal(confirmed, owner.Area, owner.Height, plot.Cubes.Count, UgcMapPackageRules.Size(package)) is { } refusal) {
             Refuse(refusal);
             return;
         }
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
-            Refuse(StringCode.s_err_ugcmap_package_failed_to_consume_package_item);
-            return;
+        if (session.Housing.InstallPackage(plot, package, () => session.Item.Inventory.Consume(item.Uid, 1), out _) is { } failed) {
+            Refuse(failed);
         }
-        session.Housing.InstallPackage(plot, package);
     }
 
     private static void HandleStoryBook(GameSession session, Item item) {

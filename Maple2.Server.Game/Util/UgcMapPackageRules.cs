@@ -26,14 +26,42 @@ public static class UgcMapPackageRules {
     };
 
     // What refuses the install of a valid package in the owner's home; null when it goes ahead. A plain use is
-    // refused where the client would have asked: a home smaller than the package, or cubes in the home.
-    public static StringCode? Refusal(bool confirmed, int homeArea, int homeHeight, int cubes, (byte Area, byte Height) size) {
+    // refused where the client would have asked: a home smaller than the package or a package without a size
+    // (indoorSizeDifferent, uiinteriorbuilddialog.cpp:239), or cubes in the home.
+    public static StringCode? Refusal(bool confirmed, int homeArea, int homeHeight, int cubes, (byte Area, byte Height)? size) {
         if (confirmed) {
             return null;
         }
-        if (homeArea < size.Area || homeHeight < size.Height) {
+        if (size is not { } known || homeArea < known.Area || homeHeight < known.Height) {
             return StringCode.s_err_ugcmap_package_not_a_indoor_for_this_package_item;
         }
         return cubes != 0 ? StringCode.s_err_ugcmap_package_clear_indoor_first : null;
+    }
+
+    // A furnishing storage stack: the item, its template url, whether it is a maid's item, its amount and stack size.
+    public record struct Stack(int ItemId, string? Url, bool Maid, int Amount, int SlotMax);
+
+    // Whether the furnishing storage takes every incoming cube, one at a time, as FurnishingManager.AddStorage adds
+    // them: onto the first stack of the same item and template (a maid item only onto an empty stack), which must
+    // have room; with no such stack into a new slot. Each incoming cube counts as staying in storage.
+    public static bool StorageTakes(IEnumerable<Stack> stored, int openSlots, IEnumerable<Stack> incoming) {
+        List<Stack> stacks = stored.ToList();
+        foreach (Stack add in incoming) {
+            int index = stacks.FindIndex(stack => stack.ItemId == add.ItemId && stack.Url == add.Url && (!add.Maid || stack.Amount == 0));
+            if (index < 0) {
+                if (openSlots <= 0) {
+                    return false;
+                }
+                openSlots--;
+                stacks.Add(add with { Amount = 1 });
+                continue;
+            }
+            Stack join = stacks[index];
+            if (join.Amount + 1 > join.SlotMax) {
+                return false;
+            }
+            stacks[index] = join with { Amount = join.Amount + 1 };
+        }
+        return true;
     }
 }
