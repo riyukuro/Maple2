@@ -13,41 +13,20 @@ namespace Maple2.Server.Game.Model;
 /// or the round time running out. A spawn gives its score once all its monsters are dead, as in Dark Stream. With
 /// the time score type "remain", clearing the round adds the round's whole seconds left times the rate.
 /// </remarks>
-public class SpringFarmGame {
+public class SpringFarmGame : ArcadeGame {
     public const int ArcadeId = 1;
     public const string RemainTimeScore = "remain";
-
-    public int LifeCount { get; }
-    public int Lives { get; private set; }
-    public int Score { get; private set; }
-    public bool Ended { get; private set; }
-    public int Round { get; private set; }
-    // The last round the script cleared.
-    public int RoundsCleared { get; private set; }
 
     private readonly Dictionary<int, int> spawnScores = new();
     private readonly Dictionary<int, int> interactScores = new();
     // The objects that keep their state when used (Ui, Telescope) that have scored in this game.
     private readonly HashSet<string> scoredObjects = new();
-    // The characters in the field at start_game: the end pays only them.
-    private readonly HashSet<long> players = new();
     private string timeScoreType = string.Empty;
     private int timeScoreRate;
     private long roundEndTick;
     private bool roundOpen;
 
-    public SpringFarmGame(int lifeCount, IEnumerable<long>? characterIds = null) {
-        LifeCount = Math.Max(lifeCount, 0);
-        Lives = LifeCount;
-        if (characterIds != null) {
-            players.UnionWith(characterIds);
-        }
-    }
-
-    /// <summary>
-    /// Whether the character played this game (was in the field at start_game).
-    /// </summary>
-    public bool Plays(long characterId) => players.Contains(characterId);
+    public SpringFarmGame(int lifeCount, IEnumerable<long>? characterIds = null) : base(ArcadeId, lifeCount, 0, characterIds) { }
 
     public void SetInteractScore(int interactId, int score) {
         interactScores[interactId] = score;
@@ -58,7 +37,7 @@ public class SpringFarmGame {
     }
 
     public void StartRound(int round, string scoreType, int scoreRate, int roundDuration, long nowTick) {
-        Round = round;
+        Opened(round);
         timeScoreType = scoreType;
         timeScoreRate = scoreRate;
         roundEndTick = nowTick + Math.Max(roundDuration, 0);
@@ -101,7 +80,7 @@ public class SpringFarmGame {
         if (Ended) {
             return 0;
         }
-        RoundsCleared = Math.Max(RoundsCleared, round);
+        Cleared(round);
         if (!roundOpen || round != Round) {
             return 0;
         }
@@ -120,37 +99,8 @@ public class SpringFarmGame {
     }
 
     /// <summary>
-    /// A player died in the game: one life is lost.
-    /// </summary>
-    /// <returns>Whether a life was lost.</returns>
-    public bool Died() {
-        if (Ended || Lives <= 0) {
-            return false;
-        }
-        Lives--;
-        return true;
-    }
-
-    /// <summary>
-    /// Ends the game (once): the script's end_game, or the last life lost.
-    /// </summary>
-    /// <returns>Whether this call ended it.</returns>
-    public bool End() {
-        if (Ended) {
-            return false;
-        }
-        Ended = true;
-        return true;
-    }
-
-    public readonly record struct Reward(float ExpRate, int Meso);
-
-    /// <summary>
     /// The reward of a game (table/Server/arcadeReward.xml): the row of the rounds cleared, or of the most rounds
     /// below them. Its exp rate scales the arcade exp curve at the character's level.
     /// </summary>
-    public static Reward RewardOf(ArcadeRewardTable table, int roundsCleared) {
-        ArcadeRewardTable.Entry? entry = table.Of(ArcadeId, roundsCleared);
-        return entry == null ? new Reward(0, 0) : new Reward(entry.ExpRate, entry.Meso);
-    }
+    public static Reward RewardOf(ArcadeRewardTable table, int roundsCleared) => RewardOf(table, ArcadeId, roundsCleared);
 }

@@ -12,7 +12,9 @@ namespace Maple2.Server.Game.Packets;
 //    dialog at the top). 1: an int score. 2: closes the score dialog and opens the result dialog in arcade mode,
 //    which reads five ints (the game's score, the best score before it, the exp, the meso, the habi) and a byte
 //    count of ItemEntity items, as the Dark Stream result. 5: the life bar's init, life and max life (ints).
-//    6: life and max life. 9: the lobby's season (an int, kept when not 0) and a count of (arcade id, score) ints,
+//    6: life and max life. 7: the couple dance dialog's direction buttons (the Three Two One picks): a bool, then
+//    when true an int, the seconds the buttons show; false hides them. 8: the text effect, a byte type; type 0 is an
+//    int count of wins in a row, shown when above 0. 9: the lobby's season (an int, kept when not 0) and a count of (arcade id, score) ints,
 //    the player's own scores (ids above 6 are skipped). 13: closes the score dialog.
 public static class ArcadePacket {
     private enum Command : byte {
@@ -21,6 +23,8 @@ public static class ArcadePacket {
         Result = 2,
         LifeInit = 5,
         Life = 6,
+        Buttons = 7,
+        TextEffect = 8,
         Scores = 9,
         CloseScore = 13,
     }
@@ -75,6 +79,24 @@ public static class ArcadePacket {
         pWriter.WriteByte((byte) Command.Life);
         pWriter.WriteInt(life);
         pWriter.WriteInt(maxLife);
+        return pWriter;
+    }
+
+    public static ByteWriter Buttons(bool show, int seconds = 0) {
+        var pWriter = Packet.Of(SendOp.PlayArcade);
+        pWriter.WriteByte((byte) Command.Buttons);
+        pWriter.WriteBool(show);
+        if (show) {
+            pWriter.WriteInt(seconds);
+        }
+        return pWriter;
+    }
+
+    public static ByteWriter Streak(int count) {
+        var pWriter = Packet.Of(SendOp.PlayArcade);
+        pWriter.WriteByte((byte) Command.TextEffect);
+        pWriter.WriteByte(0);
+        pWriter.WriteInt(count);
         return pWriter;
     }
 

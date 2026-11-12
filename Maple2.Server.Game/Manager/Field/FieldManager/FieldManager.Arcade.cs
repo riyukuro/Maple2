@@ -7,10 +7,14 @@ using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Game.Manager.Field;
 
-// The Spring Farm arcade game of a field (SpringFarmGame): the score dialog and the life bar follow the game, and
-// its end gives each player of the game (in the field at start_game and still in it) the reward row of the rounds
-// cleared and the result.
+// The arcade games of a field (SpringFarmGame, BoomBoomOceanGame, ThreeTwoOneGame): the score dialog and the life
+// bar follow the game, and its end gives each player of the game (in the field at start_game and still in it) the
+// reward row of the rounds cleared and the result, then closes the life bar (HideAndSeek 3).
 public partial class FieldManager {
+    // The portal the Boom Boom Ocean and Three Two One scripts move the players to at the end: it stands in the box
+    // their fail script watches, which then takes the players out of the field.
+    public const int ArcadeFailPortal = 44;
+
     public void SpringFarmScoreChanged() {
         if (SpringFarm is { } game) {
             Broadcast(ArcadePacket.Score(game.Score));
@@ -36,14 +40,102 @@ public partial class FieldManager {
         }
     }
 
+    public void EndSpringFarm() {
+        if (SpringFarm is { } game) {
+            EndArcade(game);
+        }
+    }
+
+    // Boom Boom Ocean: a hit by a skill or a buff the game scores, on a game player. A negative score also takes a
+    // life.
+    public void BoomBoomOceanScored(FieldPlayer player, int id) {
+        if (BoomBoomOcean is not { } game || !game.Plays(player.Value.Character.Id) || !game.Scored(id, out bool lostLife)) {
+            return;
+        }
+        Broadcast(ArcadePacket.Score(game.Score));
+        if (lostLife) {
+            ArcadeLifeLost(game);
+        }
+    }
+
+    public void BoomBoomOceanDied(FieldPlayer player) {
+        if (BoomBoomOcean is { } game && game.Plays(player.Value.Character.Id) && game.Died()) {
+            ArcadeLifeLost(game);
+        }
+    }
+
+    // The script's end_game: the open round's time score, then the end.
+    public void EndBoomBoomOcean() {
+        if (BoomBoomOcean is not { Ended: false } game) {
+            return;
+        }
+        if (game.CloseRound(FieldTick) > 0) {
+            Broadcast(ArcadePacket.Score(game.Score));
+        }
+        EndArcade(game);
+    }
+
+    // Three Two One: the players' picks are decided at result_round; result_round2 gives the score of a won round
+    // or takes a life.
+    public void ThreeTwoOnePicked(FieldPlayer player, int direction) {
+        ThreeTwoOne?.Pick(player.Value.Character.Id, direction);
+    }
+
+    public bool ThreeTwoOneResult(int direction) {
+        return ThreeTwoOne?.ResultRound(direction, Players.Values.Select(player => player.Value.Character.Id)) == true;
+    }
+
+    public void ThreeTwoOneResult2() {
+        if (ThreeTwoOne is not { } game) {
+            return;
+        }
+        int scoreBefore = game.Score;
+        bool lostLife = game.ResultRound2();
+        if (game.Score != scoreBefore) {
+            Broadcast(ArcadePacket.Score(game.Score));
+        }
+        Broadcast(ArcadePacket.Streak(game.Streak));
+        if (lostLife) {
+            ArcadeLifeLost(game);
+        }
+    }
+
+    public void EndThreeTwoOne() {
+        if (ThreeTwoOne is { } game) {
+            EndArcade(game);
+        }
+    }
+
+    // A life lost in a Boom Boom Ocean or Three Two One game: the last one ends the game, and the players go to the
+    // portal of the fail box, as the scripts' own end does.
+    private void ArcadeLifeLost(ArcadeGame game) {
+        Broadcast(ArcadePacket.Life(game.Lives, game.LifeCount));
+        if (game.Lives > 0) {
+            return;
+        }
+        if (game is BoomBoomOceanGame boomBoomOcean && boomBoomOcean.CloseRound(FieldTick) > 0) {
+            Broadcast(ArcadePacket.Score(game.Score));
+        }
+        EndArcade(game);
+        if (!TryGetPortal(ArcadeFailPortal, out FieldPortal? portal)) {
+            return;
+        }
+        foreach (FieldPlayer player in Players.Values) {
+            if (game.Plays(player.Value.Character.Id)) {
+                player.MoveToPortal(portal);
+            }
+        }
+    }
+
     // The reward of the rounds cleared (table/Server/arcadeReward.xml): the arcade exp curve at the player's level
     // times the row's rate, and the row's meso. Then the game's score is kept as the player's best of the arcade
     // season when it is higher (ArcadeBest.Replaces), and the result shows the best before the game.
-    public void EndSpringFarm() {
-        if (SpringFarm is not { } game || !game.End()) {
+    // The life bar closes with HideAndSeek 3 for the player's own object, which also shows the hud again.
+    private void EndArcade(ArcadeGame game) {
+        if (!game.End()) {
             return;
         }
-        SpringFarmGame.Reward reward = SpringFarmGame.RewardOf(ServerTableMetadata.ArcadeRewardTable, game.RoundsCleared);
+        ArcadeGame.Reward reward = game.RewardOf(ServerTableMetadata.ArcadeRewardTable);
         DateTime nowTime = DateTime.Now;
         int seasonId = ArcadeBest.SeasonAt(TableMetadata.SeasonDataTable.Arcade, nowTime);
         long now = nowTime.ToEpochSeconds();
@@ -58,12 +150,13 @@ public partial class FieldManager {
             ArcadeBest? best;
             // Without an arcade season there is no best to keep (the lobby lists none).
             using (GameStorage.Request db = GameStorage.Context()) {
-                best = seasonId == 0 ? null : db.GetArcadeBest(player.Value.Character.Id, SpringFarmGame.ArcadeId, seasonId);
+                best = seasonId == 0 ? null : db.GetArcadeBest(player.Value.Character.Id, game.Id, seasonId);
                 if (seasonId != 0 && ArcadeBest.Replaces(best, game.Score)) {
-                    db.SaveArcadeScore(player.Value.Character.Id, SpringFarmGame.ArcadeId, seasonId, game.Score, now);
+                    db.SaveArcadeScore(player.Value.Character.Id, game.Id, seasonId, game.Score, now);
                 }
             }
             player.Session.Send(ArcadePacket.Result(game.Score, best?.Score ?? 0, (int) Math.Min(exp, int.MaxValue), reward.Meso, 0, []));
+            player.Session.Send(HideAndSeekPacket.End(player.ObjectId));
         }
     }
 }

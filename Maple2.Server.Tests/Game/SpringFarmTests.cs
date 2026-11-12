@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Xml;
@@ -310,6 +311,76 @@ public class SpringFarmGameTests {
         Assert.That(table.Entries[2].Values, Is.EquivalentTo(new[] { new ArcadeRewardTable.Entry(0, 3f, 30) }));
     }
     #endregion
+
+    #region Other arcades
+    // Three Two One: the players win a round when every game player in the field picked a direction other than the
+    // NPC's; a pick of the NPC's direction, a missing pick, a pick after result_round and a non-player's pick lose.
+    [Test]
+    public void ThreeTwoOne_RoundRules() {
+        var game = new ThreeTwoOneGame(3, 5, 10000, [7, 8]);
+        Assert.That(game.Score, Is.EqualTo(10000));
+        game.StartRound(1);
+        Assert.That(game.Pick(7, 1), Is.True);
+        Assert.That(game.Pick(8, 2), Is.True);
+        Assert.That(game.Pick(9, 2), Is.False);
+        Assert.That(game.ResultRound(3, [7, 8, 9]), Is.True);
+        Assert.That(game.Pick(7, 3), Is.False);
+        Assert.That(game.ResultRound2(), Is.False);
+        Assert.That(game.ResultRound2(), Is.False);
+        Assert.That((game.Score, game.Streak, game.Lives), Is.EqualTo((11000, 1, 5)));
+
+        game.StartRound(2);
+        game.Pick(7, 1);
+        game.Pick(8, 3);
+        Assert.That(game.ResultRound(3, [7, 8]), Is.False);
+        Assert.That(game.ResultRound2(), Is.True);
+        Assert.That((game.Score, game.Streak, game.Lives), Is.EqualTo((11000, 0, 4)));
+
+        // A player who left the field does not count; one still in it without a pick loses the round.
+        game.StartRound(3);
+        game.Pick(7, 2);
+        Assert.That(game.ResultRound(1, [7]), Is.True);
+        game.StartRound(4);
+        Assert.That(game.ResultRound(1, [7, 8]), Is.False);
+        // Nobody of the game in the field: lost.
+        game.StartRound(5);
+        Assert.That(game.ResultRound(1, []), Is.False);
+        Assert.That(ThreeTwoOneGame.IsArcade(2), Is.False);
+        Assert.That(ThreeTwoOneGame.IsArcade(4), Is.True);
+    }
+
+    // Boom Boom Ocean: the score stays at 0 or above; a negative score takes a life, a positive one does not; the
+    // round's time score is given once.
+    [Test]
+    public void BoomBoomOcean_ScoreRules() {
+        var game = new BoomBoomOceanGame(2);
+        game.SetSkillScore(1, -500);
+        game.SetSkillScore(2, 1000);
+        Assert.That(game.Scored(1, out bool lost), Is.True);
+        Assert.That((game.Score, lost, game.Lives), Is.EqualTo((0, true, 1)));
+        Assert.That(game.Scored(2, out lost), Is.True);
+        Assert.That((game.Score, lost, game.Lives), Is.EqualTo((1000, false, 1)));
+        Assert.That(game.Scored(3, out _), Is.False);
+
+        game.StartRound(1, 1500, 1033, 0);
+        Assert.That(game.ClearRound(1, 20_000), Is.EqualTo(1033));
+        Assert.That(game.ClearRound(1, 20_000), Is.EqualTo(0));
+        Assert.That(game.CloseRound(20_000), Is.EqualTo(0));
+        Assert.That(BoomBoomOceanGame.TimeScore(10, 999), Is.EqualTo(0));
+    }
+
+    // The reward row is the arcade's own.
+    [Test]
+    public void Reward_OfTheArcade() {
+        var table = new ArcadeRewardTable(new Dictionary<int, IReadOnlyDictionary<int, ArcadeRewardTable.Entry>> {
+            [1] = new Dictionary<int, ArcadeRewardTable.Entry> { [0] = new(0, 0.5f, 100) },
+            [2] = new Dictionary<int, ArcadeRewardTable.Entry> { [0] = new(0, 1.5f, 200) },
+        });
+        Assert.That(new BoomBoomOceanGame(1).RewardOf(table), Is.EqualTo(new ArcadeGame.Reward(1.5f, 200)));
+        Assert.That(new SpringFarmGame(1).RewardOf(table), Is.EqualTo(new ArcadeGame.Reward(0.5f, 100)));
+        Assert.That(new ThreeTwoOneGame(3, 1, 0).RewardOf(table), Is.EqualTo(new ArcadeGame.Reward(0, 0)));
+    }
+    #endregion
 }
 
 // The lobby's c2s 0x84 (PlayArcadeHandler), the field's end of the game and the trigger actions, on a
@@ -343,6 +414,9 @@ public class SpringFarmSessionTests {
             [SpringFarmGame.ArcadeId] = new Dictionary<int, ArcadeRewardTable.Entry> {
                 [0] = new(0, 0.5f, 100),
                 [2] = new(2, 2.5f, 300),
+            },
+            [BoomBoomOceanGame.ArcadeId] = new Dictionary<int, ArcadeRewardTable.Entry> {
+                [3] = new(3, 1f, 70),
             },
         }));
         test.Start();
@@ -381,6 +455,18 @@ public class SpringFarmSessionTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.PlayArcade));
         Assert.That(reader.ReadByte(), Is.EqualTo(mode));
         return reader;
+    }
+
+    // The end's packets close with the life bar's close (HideAndSeek 3, the player's object): the result is the one
+    // before it.
+    private byte[] ResultOf(List<byte[]> sent) {
+        Assert.That(sent, Has.Count.GreaterThanOrEqualTo(2));
+        var close = new ByteReader(sent[^1], 0);
+        Assert.That(close.Read<SendOp>(), Is.EqualTo(SendOp.HideAndSeek));
+        Assert.That(close.ReadByte(), Is.EqualTo(3));
+        Assert.That(close.ReadInt(), Is.EqualTo(session.Player.ObjectId));
+        Assert.That(close.Available, Is.EqualTo(0));
+        return sent[^2];
     }
 
     private void SaveBest(int arcadeId, int season, int score) {
@@ -523,8 +609,8 @@ public class SpringFarmSessionTests {
         Assert.That(session.Player.Value.Character.Exp - exp, Is.EqualTo(250));
         Assert.That(session.Currency.Meso - meso, Is.EqualTo(300));
         List<byte[]> sent = test.TakeSent();
-        Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ExpUp, SendOp.Meso, SendOp.PlayArcade }));
-        ByteReader reader = Arcade(sent[2], 2);
+        Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ExpUp, SendOp.Meso, SendOp.PlayArcade, SendOp.HideAndSeek }));
+        ByteReader reader = Arcade(ResultOf(sent), 2);
         Assert.That(Enumerable.Range(0, 5).Select(_ => reader.ReadInt()), Is.EqualTo(new[] { 500, 400, 250, 300, 0 }));
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
         Assert.That(Best()!.Score, Is.EqualTo(500));
@@ -544,7 +630,7 @@ public class SpringFarmSessionTests {
 
         session.Field!.EndSpringFarm();
 
-        byte[] result = test.TakeSent().Last();
+        byte[] result = ResultOf(test.TakeSent());
         ByteReader reader = Arcade(result, 2);
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(reader.ReadInt(), Is.EqualTo(900));
@@ -582,7 +668,7 @@ public class SpringFarmSessionTests {
 
         session.Field!.EndSpringFarm();
 
-        ByteReader reader = Arcade(test.TakeSent().Last(), 2);
+        ByteReader reader = Arcade(ResultOf(test.TakeSent()), 2);
         Assert.That(new[] { reader.ReadInt(), reader.ReadInt() }, Is.EqualTo(new[] { 500, 0 }));
         Assert.That(Best(0), Is.Null);
         Assert.That(Best(), Is.Null);
@@ -601,7 +687,7 @@ public class SpringFarmSessionTests {
         session.Field.SpringFarmDied();
         sent = test.TakeSent();
         Assert.That(Arcade(sent[0], 6).ReadInt(), Is.EqualTo(0));
-        Arcade(sent.Last(), 2);
+        Arcade(ResultOf(sent), 2);
         Assert.That(session.Field.SpringFarm!.Ended, Is.True);
 
         session.Field.SpringFarmDied();
@@ -610,10 +696,23 @@ public class SpringFarmSessionTests {
     #endregion
 
     #region Triggers
+    private const int TriggerId = 9000;
+
     private TriggerContext Context() {
         var owner = (FieldTrigger) RuntimeHelpers.GetUninitializedObject(typeof(FieldTrigger));
         GC.SuppressFinalize(owner);
         typeof(FieldEntity<TriggerModel>).GetField("<Field>k__BackingField", Any)!.SetValue(owner, session.Field);
+        typeof(FieldEntity<TriggerModel>).GetField("<Value>k__BackingField", Any)!.SetValue(owner, new TriggerModel(TriggerId, "main", Vector3.Zero, Vector3.Zero));
+        // The test field is built without its initializers: the trigger user values the Three Two One result sets,
+        FieldInfo userValues = typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!;
+        if (userValues.GetValue(session.Field) == null) {
+            userValues.SetValue(session.Field, new TriggerUserValues());
+        }
+        // and the portals the last life lost looks up (none: the players stay).
+        FieldInfo portals = typeof(FieldManager).GetField("fieldPortals", Any)!;
+        if (portals.GetValue(session.Field) == null) {
+            portals.SetValue(session.Field, new System.Collections.Concurrent.ConcurrentDictionary<int, FieldPortal>());
+        }
         var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
         typeof(TriggerContext).GetField("owner", Any)!.SetValue(context, owner);
         return context;
@@ -662,9 +761,177 @@ public class SpringFarmSessionTests {
 
         Run(context, """<action name="arcade_spring_farm_end_game" />""");
         sent = test.TakeSent();
-        Assert.That(Arcade(sent.Last(), 2).ReadInt(), Is.EqualTo(470));
+        Assert.That(Arcade(ResultOf(sent), 2).ReadInt(), Is.EqualTo(470));
         Assert.That(game.Ended, Is.True);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    private void Pick(int direction) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(PlayArcadeHandler.Pick);
+            writer.WriteInt(direction);
+        }));
+    }
+
+    private int ThreeTwoOneResult() => session.Field!.UserValues.Get(TriggerId, TriggerContext.ThreeTwoOneResultKey);
+
+    // The Three Two One script (field 51000005, arcade 4): start_game opens the score dialog at the starting score
+    // and the life bar; start_round (round, then ui_duration, by name) shows the buttons; the c2s pick and
+    // result_round set ThreeTwoOneResult; result_round2 adds a won round's score and shows the wins in a row.
+    [Test]
+    public void ThreeTwoOne_ScriptRound() {
+        TriggerContext context = Context();
+        Run(context, """<action name="arcade_three_two_one2_start_game" type="StartGame" life_count="2" init_score="10000" />""");
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent, Has.Count.EqualTo(3));
+        Assert.That(Arcade(sent[0], 0).ReadInt(), Is.EqualTo(4));
+        Assert.That(Arcade(sent[1], 1).ReadInt(), Is.EqualTo(10000));
+        ByteReader life = Arcade(sent[2], 5);
+        Assert.That(new[] { life.ReadInt(), life.ReadInt(), life.ReadInt() }, Is.EqualTo(new[] { 1, 2, 2 }));
+        ThreeTwoOneGame game = session.Field!.ThreeTwoOne!;
+        Assert.That(game.Plays(test.CharacterId), Is.True);
+
+        Run(context, """<action name="arcade_three_two_one2_start_round" type="StartRound" round="1" ui_duration="4" />""");
+        Assert.That(game.Round, Is.EqualTo(1));
+        ByteReader buttons = Arcade(test.TakeSent().Single(), 7);
+        Assert.That(buttons.ReadBool(), Is.True);
+        Assert.That(buttons.ReadInt(), Is.EqualTo(4));
+        Assert.That(buttons.Available, Is.EqualTo(0));
+
+        Pick(2);
+        Run(context, """<action name="arcade_three_two_one2_result_round" type="ResultRound" result_direction="1" />""");
+        ByteReader hide = Arcade(test.TakeSent().Single(), 7);
+        Assert.That(hide.ReadBool(), Is.False);
+        Assert.That(hide.Available, Is.EqualTo(0));
+        Assert.That(ThreeTwoOneResult(), Is.EqualTo(1));
+
+        Run(context, """<action name="arcade_three_two_one2_result_round2" type="ResultRound2" round="1" />""");
+        sent = test.TakeSent();
+        Assert.That(sent, Has.Count.EqualTo(2));
+        Assert.That(Arcade(sent[0], 1).ReadInt(), Is.EqualTo(11000));
+        ByteReader streak = Arcade(sent[1], 8);
+        Assert.That(streak.ReadByte(), Is.EqualTo(0));
+        Assert.That(streak.ReadInt(), Is.EqualTo(1));
+        Run(context, """<action name="arcade_three_two_one2_clear_round" type="ClearRound" round="1" />""");
+        Assert.That(game.RoundsCleared, Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A round lost (the NPC's direction picked, or no pick) takes a life and ends the streak; the last life ends the
+    // game with the result and the life bar's close.
+    [Test]
+    public void ThreeTwoOne_LossesEndTheGame() {
+        TriggerContext context = Context();
+        Run(context, """<action name="arcade_three_two_one_start_game" type="StartGame" life_count="2" init_score="10000" />""");
+        Run(context, """<action name="arcade_three_two_one_start_round" type="StartRound" round="1" ui_duration="4" />""");
+        Pick(3);
+        Run(context, """<action name="arcade_three_two_one_result_round" type="ResultRound" result_direction="3" />""");
+        Assert.That(ThreeTwoOneResult(), Is.EqualTo(0));
+        test.TakeSent();
+        Run(context, """<action name="arcade_three_two_one_result_round2" type="ResultRound2" round="1" />""");
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent, Has.Count.EqualTo(2));
+        ByteReader streak = Arcade(sent[0], 8);
+        Assert.That(new[] { (int) streak.ReadByte(), streak.ReadInt() }, Is.EqualTo(new[] { 0, 0 }));
+        ByteReader life = Arcade(sent[1], 6);
+        Assert.That(new[] { life.ReadInt(), life.ReadInt() }, Is.EqualTo(new[] { 1, 2 }));
+
+        // No pick: lost.
+        Run(context, """<action name="arcade_three_two_one_start_round" type="StartRound" round="2" ui_duration="4" />""");
+        Run(context, """<action name="arcade_three_two_one_result_round" type="ResultRound" result_direction="1" />""");
+        Assert.That(ThreeTwoOneResult(), Is.EqualTo(0));
+        test.TakeSent();
+        Run(context, """<action name="arcade_three_two_one_result_round2" type="ResultRound2" round="2" />""");
+        sent = test.TakeSent();
+        Assert.That(Arcade(sent[1], 6).ReadInt(), Is.EqualTo(0));
+        ByteReader result = Arcade(ResultOf(sent), 2);
+        Assert.That(new[] { result.ReadInt(), result.ReadInt(), result.ReadInt(), result.ReadInt() }, Is.EqualTo(new[] { 10000, 0, 0, 0 }));
+        Assert.That(session.Field!.ThreeTwoOne!.Ended, Is.True);
+
+        // The fail script's end_game after it: nothing more.
+        Run(context, """<action name="arcade_three_two_one_end_game" type="EndGame" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A pick outside 1 to 3, or before a round opens, is dropped; without a game the pick does nothing.
+    [Test]
+    public void ThreeTwoOne_PickDropped() {
+        Pick(1);
+        Assert.That(Sent(), Is.Empty);
+        TriggerContext context = Context();
+        Run(context, """<action name="arcade_three_two_one3_start_game" type="StartGame" life_count="5" init_score="10000" />""");
+        Assert.That(Arcade(test.TakeSent()[0], 0).ReadInt(), Is.EqualTo(5));
+        Run(context, """<action name="arcade_three_two_one3_start_round" type="StartRound" round="1" ui_duration="4" />""");
+        Pick(4);
+        Run(context, """<action name="arcade_three_two_one3_result_round" type="ResultRound" result_direction="1" />""");
+        Assert.That(ThreeTwoOneResult(), Is.EqualTo(0));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The Boom Boom Ocean script (field 51000003, arcade 2): start_game opens the score dialog (type 2) and the life
+    // bar; a scored skill's hit on a game player takes its score and a life, a scored buff adds its score; end_game
+    // adds the open round's time score and gives arcade 2's reward row of the rounds cleared.
+    [Test]
+    public void BoomBoomOcean_Script() {
+        TriggerContext context = Context();
+        SetTick(10_000);
+        Run(context, """<action name="arcade_boom_boom_ocean_start_game" life_count="20" />""");
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent, Has.Count.EqualTo(2));
+        Assert.That(Arcade(sent[0], 0).ReadInt(), Is.EqualTo(2));
+        ByteReader life = Arcade(sent[1], 5);
+        Assert.That(new[] { life.ReadInt(), life.ReadInt(), life.ReadInt() }, Is.EqualTo(new[] { 1, 20, 20 }));
+        Run(context, """<action name="arcade_boom_boom_ocean_set_skill_score" id="49210001" score="-500" />""");
+        Run(context, """<action name="arcade_boom_boom_ocean_set_skill_score" id="70000080" score="1000" />""");
+        BoomBoomOceanGame game = session.Field!.BoomBoomOcean!;
+
+        Run(context, """<action name="arcade_boom_boom_ocean_start_round" round="3" round_duration="20000" time_score_rate="10" />""");
+        session.Field.BoomBoomOceanScored(session.Player, 70000080);
+        Assert.That(Arcade(test.TakeSent().Single(), 1).ReadInt(), Is.EqualTo(1000));
+        session.Field.BoomBoomOceanScored(session.Player, 49210001);
+        sent = test.TakeSent();
+        Assert.That(Arcade(sent[0], 1).ReadInt(), Is.EqualTo(500));
+        ByteReader lost = Arcade(sent[1], 6);
+        Assert.That(new[] { lost.ReadInt(), lost.ReadInt() }, Is.EqualTo(new[] { 19, 20 }));
+        session.Field.BoomBoomOceanScored(session.Player, 12345);
+        Assert.That(Sent(), Is.Empty);
+
+        // 12.5 s in: 12 whole seconds at 10.
+        SetTick(22_500);
+        Run(context, """<action name="arcade_boom_boom_ocean_clear_round" round="3" />""");
+        Assert.That(Arcade(test.TakeSent().Single(), 1).ReadInt(), Is.EqualTo(620));
+        Assert.That(game.RoundsCleared, Is.EqualTo(3));
+
+        // The next round runs past its time: 20 s at most.
+        Run(context, """<action name="arcade_boom_boom_ocean_start_round" round="4" round_duration="20000" time_score_rate="10" />""");
+        SetTick(60_000);
+        long meso = session.Currency.Meso;
+        Run(context, """<action name="arcade_boom_boom_ocean_end_game" />""");
+        sent = test.TakeSent();
+        Assert.That(Arcade(sent[0], 1).ReadInt(), Is.EqualTo(820));
+        ByteReader result = Arcade(ResultOf(sent), 2);
+        Assert.That(Enumerable.Range(0, 4).Select(_ => result.ReadInt()), Is.EqualTo(new[] { 820, 0, 100, 70 }));
+        Assert.That(session.Currency.Meso - meso, Is.EqualTo(70));
+        Assert.That(game.Ended, Is.True);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // Boom Boom Ocean: a death takes a life; a hit on a character not in the game scores nothing.
+    [Test]
+    public void BoomBoomOcean_DeathAndOtherPlayer() {
+        var game = new BoomBoomOceanGame(2, [test.CharacterId]);
+        game.SetSkillScore(49210001, -500);
+        session.Field!.BoomBoomOcean = game;
+        session.Field.BoomBoomOceanDied(session.Player);
+        ByteReader life = Arcade(test.TakeSent().Single(), 6);
+        Assert.That(new[] { life.ReadInt(), life.ReadInt() }, Is.EqualTo(new[] { 1, 2 }));
+
+        session.Field.BoomBoomOcean = new BoomBoomOceanGame(2, [test.CharacterId + 1]);
+        session.Field.BoomBoomOcean.SetSkillScore(49210001, -500);
+        session.Field.BoomBoomOceanScored(session.Player, 49210001);
+        session.Field.BoomBoomOceanDied(session.Player);
+        Assert.That(Sent(), Is.Empty);
     }
     #endregion
 }

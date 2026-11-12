@@ -13,11 +13,14 @@ namespace Maple2.Server.Game.PacketHandlers;
 // Client senders, the arcade lobby (client/ms2/uiarcademaindialog.cpp): mode 9 when the lobby opens and its season
 // is not the current arcade season (:307, Encode4(9), so the mode byte and three zero bytes), mode 10 with an int
 // arcade id from a game button (:559, after the client's own checks: not dead, not already in the game's field).
+// The Three Two One direction buttons (client/ms2/uimicrogamecoupledance.cpp, the dialog PlayArcade 7 shows): mode 11
+// with an int direction, 2, 1 or 3 for the dialog's first, second and third button (SendPlayArcade).
 public class PlayArcadeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.PlayArcade;
 
     public const byte Scores = 9;
     public const byte Enter = 10;
+    public const byte Pick = 11;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -33,6 +36,9 @@ public class PlayArcadeHandler : FieldPacketHandler {
                 return;
             case Enter:
                 HandleEnter(session, packet.ReadInt());
+                return;
+            case Pick:
+                session.Field?.ThreeTwoOnePicked(session.Player, packet.ReadInt());
                 return;
         }
     }

@@ -76,6 +76,9 @@ public partial class FieldManager {
     public DarkStreamGame? DarkStream { get; set; }
     // The Spring Farm arcade game of the field, from the script's start_game on.
     public SpringFarmGame? SpringFarm { get; set; }
+    // The Boom Boom Ocean and Three Two One arcade games of the field, from the script's start_game on.
+    public BoomBoomOceanGame? BoomBoomOcean { get; set; }
+    public ThreeTwoOneGame? ThreeTwoOne { get; set; }
 
 
     #region Helpers

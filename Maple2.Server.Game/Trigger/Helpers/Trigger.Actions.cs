@@ -95,8 +95,8 @@ public partial class Trigger {
         public void Execute(TriggerContext context) => context.ArcadeThreeTwoOneStartGame(lifeCount, initScore);
     }
 
-    public class ArcadeThreeTwoOneStartRound(int uiDuration, int round) : IAction {
-        public void Execute(TriggerContext context) => context.ArcadeThreeTwoOneStartRound(uiDuration, round);
+    public class ArcadeThreeTwoOneStartRound(int round, int uiDuration) : IAction {
+        public void Execute(TriggerContext context) => context.ArcadeThreeTwoOneStartRound(round, uiDuration);
     }
 
     public class ArcadeThreeTwoOne2ClearRound(int round) : IAction {
@@ -119,8 +119,8 @@ public partial class Trigger {
         public void Execute(TriggerContext context) => context.ArcadeThreeTwoOne2StartGame(lifeCount, initScore);
     }
 
-    public class ArcadeThreeTwoOne2StartRound(int uiDuration, int round) : IAction {
-        public void Execute(TriggerContext context) => context.ArcadeThreeTwoOne2StartRound(uiDuration, round);
+    public class ArcadeThreeTwoOne2StartRound(int round, int uiDuration) : IAction {
+        public void Execute(TriggerContext context) => context.ArcadeThreeTwoOne2StartRound(round, uiDuration);
     }
 
     public class ArcadeThreeTwoOne3ClearRound(int round) : IAction {
@@ -143,8 +143,8 @@ public partial class Trigger {
         public void Execute(TriggerContext context) => context.ArcadeThreeTwoOne3StartGame(lifeCount, initScore);
     }
 
-    public class ArcadeThreeTwoOne3StartRound(int uiDuration, int round) : IAction {
-        public void Execute(TriggerContext context) => context.ArcadeThreeTwoOne3StartRound(uiDuration, round);
+    public class ArcadeThreeTwoOne3StartRound(int round, int uiDuration) : IAction {
+        public void Execute(TriggerContext context) => context.ArcadeThreeTwoOne3StartRound(round, uiDuration);
     }
 
     public class ChangeBackground(string dds) : IAction {

@@ -111,6 +111,11 @@ public class BuffManager : IUpdatable {
             return;
         }
 
+        // Boom Boom Ocean: a buff the game scores (the pickups), each time a game player gets it.
+        if (Actor is FieldPlayer arcadePlayer) {
+            arcadePlayer.Field.BoomBoomOceanScored(arcadePlayer, id);
+        }
+
         if (type != EventConditionType.Activate) {
             CooldownTimes[id] = startTick + additionalEffect.Property.CooldownTime;
         }
