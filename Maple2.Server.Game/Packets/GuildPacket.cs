@@ -404,28 +404,16 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    // s_guild_notify_achieve_progress
-    // - {0} has obtained a trophy. {1}
-    public static ByteWriter AchievementProgress(string playerName, int trophyId, int value) {
+    // CGuildManager::OnPacketMemberAchievement: the line in the guild chat for a trophy grade a member earned.
+    // Kind 2 is s_guild_notify_achieve_progress; any other kind is s_guild_notify_achieve_complete, and KMS2 sends 3
+    // for the trophy's last grade.
+    public static ByteWriter Achievement(string playerName, int trophyId, int grade, bool lastGrade) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.Achievement);
         pWriter.WriteUnicodeString(playerName);
         pWriter.WriteInt(trophyId);
-        pWriter.WriteInt(value);
-        pWriter.WriteShort(2);
-
-        return pWriter;
-    }
-
-    // s_guild_notify_achieve_complete
-    // - {0} has completed the final tier of a trophy! {1}
-    public static ByteWriter AchievementComplete(string playerName, int trophyId, int value) {
-        var pWriter = Packet.Of(SendOp.Guild);
-        pWriter.Write<Command>(Command.Achievement);
-        pWriter.WriteUnicodeString(playerName);
-        pWriter.WriteInt(trophyId);
-        pWriter.WriteInt(value);
-        pWriter.WriteShort();
+        pWriter.WriteInt(grade);
+        pWriter.WriteShort((short) (lastGrade ? 3 : 2));
 
         return pWriter;
     }

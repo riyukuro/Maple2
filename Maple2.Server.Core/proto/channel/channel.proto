@@ -190,6 +190,13 @@ message GuildRequest {
     string guild_name = 2;
     bool joined = 3;
   }
+  // Guild 35: a member earned a trophy grade.
+  message TrophyNotice {
+    string name = 1;
+    int32 trophy_id = 2;
+    int32 grade = 3;
+    bool last_grade = 4;
+  }
 
   int64 guild_id = 1;
   repeated int64 receiver_ids = 2;
@@ -216,6 +223,7 @@ message GuildRequest {
     UseBuff use_buff = 22;
     OpenEvent open_event = 23;
     Recall recall = 24;
+    TrophyNotice trophy_notice = 25;
   }
 }
 

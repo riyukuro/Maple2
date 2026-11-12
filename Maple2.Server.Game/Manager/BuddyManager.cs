@@ -79,12 +79,17 @@ public class BuddyManager : IDisposable {
         return blocked.TryGetValue(characterId, out Buddy? buddy);
     }
 
+    // The count that ends the list (Buddy 19): KMS2 leaves out the blocked entries and the requests the player sent.
+    public static int ListCount(IEnumerable<BuddyType> types) {
+        return types.Count(type => type is not (BuddyType.OutRequest or BuddyType.Blocked));
+    }
+
     public void Load() {
         session.Send(BuddyPacket.StartList());
         if (buddies.Count + blocked.Count > 0) {
             session.Send(BuddyPacket.Load(buddies.Values, blocked.Values));
         }
-        session.Send(BuddyPacket.EndList(buddies.Count));
+        session.Send(BuddyPacket.EndList(ListCount(buddies.Values.Select(buddy => buddy.Type))));
         // The option lives in the client's own settings; ask for it once per session.
         session.Send(BuddyPacket.AskAutoReject());
     }

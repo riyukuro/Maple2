@@ -67,8 +67,10 @@ public class MailCollectPacketTests {
             new Mail { Id = 4, Type = MailType.WeddingInvite },
             new Mail { Id = 5, Type = MailType.Ad },
             new Mail { Id = 6, Type = MailType.System, ExpiryTime = Now },
+            new Mail { Id = 7, Type = MailType.Guild },
         ];
-        Assert.That(MailRules.UnreadCount(mails, Now), Is.EqualTo(4));
+        Assert.That((byte) MailType.Guild, Is.EqualTo(2));
+        Assert.That(MailRules.UnreadCount(mails, Now), Is.EqualTo(5));
         Assert.That(MailRules.UnreadAlarmCount(mails, Now), Is.EqualTo(2));
     }
 

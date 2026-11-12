@@ -859,6 +859,24 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Guild 35: every member, the requestor too, is told of a trophy grade the requestor earned.
+    public GuildError TrophyNotice(long requestorId, int trophyId, int grade, bool lastGrade) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        Broadcast(new GuildRequest {
+            TrophyNotice = new GuildRequest.Types.TrophyNotice {
+                Name = requestor.Name,
+                TrophyId = trophyId,
+                Grade = grade,
+                LastGrade = lastGrade,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     public GuildError UpdateNotice(long requestorId, string message) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;

@@ -540,6 +540,14 @@ public sealed class TestGameSession {
             return PartyWorld?.Invoke(request) ?? new PartyResponse();
         }
 
+        // The guild requests handed to the world.
+        public readonly List<GuildRequest> GuildRequests = [];
+
+        public override GuildResponse Guild(GuildRequest request, CallOptions options) {
+            GuildRequests.Add(request);
+            return new GuildResponse();
+        }
+
         public readonly List<MailNotificationRequest> MailNotifications = [];
 
         public override MailNotificationResponse MailNotification(MailNotificationRequest request, CallOptions options) {

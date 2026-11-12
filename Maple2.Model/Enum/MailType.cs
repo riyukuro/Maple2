@@ -2,6 +2,7 @@
 
 public enum MailType : byte {
     Player = 1,
+    Guild = 2, // a guild mail: listed with the player mails, no sender menu
     System = 101,
     BlackMarketSale = 102,
     BlackMarketFail = 103,

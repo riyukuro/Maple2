@@ -670,4 +670,47 @@ public class TrophyWiringTests {
         Assert.That(any.Conditions[0].Counter, Is.EqualTo(8));
     }
     #endregion
+
+    #region guild notice
+    [Test]
+    public void GradeEarned_IsToldToTheGuildWithTheLastGradeMarked() {
+        GameSession session = Start(TestGameSession.Trophy(Trophy, ConditionType.jump, [1, 2]));
+        session.Player.Value.Character.GuildId = 77;
+
+        session.ConditionUpdate(ConditionType.jump);
+        session.ConditionUpdate(ConditionType.jump);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.World.GuildRequests.Select(request => request.RequestorId), Is.All.EqualTo(session.CharacterId));
+        Assert.That(test.World.GuildRequests.Select(request => (request.TrophyNotice.GuildId, request.TrophyNotice.TrophyId,
+            request.TrophyNotice.Grade, request.TrophyNotice.LastGrade)), Is.EqualTo(new[] {
+            (77L, Trophy, 1, false),
+            (77L, Trophy, 2, true),
+        }));
+    }
+
+    [Test]
+    public void GradeEarned_WithoutAGuildTellsNobody() {
+        GameSession session = Start(TestGameSession.Trophy(Trophy, ConditionType.jump, [1]));
+
+        session.ConditionUpdate(ConditionType.jump);
+
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.World.GuildRequests, Is.Empty);
+    }
+
+    [Test]
+    public void GuildNotice_KindIs3ForTheLastGradeAnd2Before() {
+        byte[] progress = Maple2.Server.Game.Packets.GuildPacket.Achievement("a", Trophy, 1, false).ToArray();
+        byte[] complete = Maple2.Server.Game.Packets.GuildPacket.Achievement("a", Trophy, 2, true).ToArray();
+        // op, mode 35, name (length 1), trophy id, grade, kind
+        Assert.That(progress.Length, Is.EqualTo(2 + 1 + 4 + 4 + 4 + 2));
+        Assert.That(progress[2], Is.EqualTo(35));
+        Assert.That(BitConverter.ToInt32(progress, 7), Is.EqualTo(Trophy));
+        Assert.That(BitConverter.ToInt32(progress, 11), Is.EqualTo(1));
+        Assert.That(BitConverter.ToInt16(progress, 15), Is.EqualTo(2));
+        Assert.That(BitConverter.ToInt32(complete, 11), Is.EqualTo(2));
+        Assert.That(BitConverter.ToInt16(complete, 15), Is.EqualTo(3));
+    }
+    #endregion
 }

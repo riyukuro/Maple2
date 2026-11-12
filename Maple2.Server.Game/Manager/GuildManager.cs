@@ -200,6 +200,8 @@ public class GuildManager : IDisposable {
         BeginListen(member);
         Guild.AchievementInfo += member.Info.AchievementInfo;
         session.Send(GuildPacket.Joined(requestorName, member));
+        // KMS2 follows the join notice with the new member's data (Guild 32).
+        session.Send(GuildPacket.UpdateMember(member.Info));
         return true;
     }
 

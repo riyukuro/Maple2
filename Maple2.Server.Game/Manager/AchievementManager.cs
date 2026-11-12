@@ -10,6 +10,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.World.Service;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -112,6 +113,28 @@ public sealed class AchievementManager {
     /// <param name="achievement">Trophy entry from player</param>
     /// <param name="count">Count amount to increment on for the trophy.</param>
     /// <returns>False if there is no rank up possible or condition value has not been met.</returns>
+    // KMS2 tells the whole guild of each trophy grade a member earns (Guild 35).
+    private void NotifyGuild(int trophyId, int grade, bool lastGrade) {
+        long guildId = session.Player.Value.Character.GuildId;
+        if (guildId == 0) {
+            return;
+        }
+
+        try {
+            session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                TrophyNotice = new GuildRequest.Types.TrophyNotice {
+                    GuildId = guildId,
+                    TrophyId = trophyId,
+                    Grade = grade,
+                    LastGrade = lastGrade,
+                },
+            });
+        } catch (Exception ex) {
+            logger.Warning(ex, "Guild trophy notice failed: {TrophyId}", trophyId);
+        }
+    }
+
     private bool RankUp(ConditionType conditionType, Achievement achievement, long count = 1) {
         // Are there more conditions that should be added here?
         if (conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level) {
@@ -133,6 +156,7 @@ public sealed class AchievementManager {
             }
             achievement.Grades.Add(achievement.CurrentGrade, DateTime.Now.ToEpochSeconds());
             newGradesCount++;
+            NotifyGuild(achievement.Id, achievement.CurrentGrade, achievement.Completed);
 
             if (achievement.Grades.Count < achievement.Metadata.Grades.Count) {
                 achievement.CurrentGrade++;

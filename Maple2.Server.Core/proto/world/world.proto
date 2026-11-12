@@ -293,6 +293,13 @@ message GuildRequest {
     int32 map_id = 2;
     int64 end_time = 3;
   }
+  // The requestor earned a trophy grade: Guild 35 to every member.
+  message TrophyNotice {
+    int64 guild_id = 1;
+    int32 trophy_id = 2;
+    int32 grade = 3;
+    bool last_grade = 4;
+  }
   // A quest reward of the requestor for the guild (completeReward guildExp and guildFund).
   message AddExpFund {
     int64 guild_id = 1;
@@ -369,6 +376,7 @@ message GuildRequest {
     Recall recall = 28;
     AddExpFund add_exp_fund = 29;
     SpendFund spend_fund = 30;
+    TrophyNotice trophy_notice = 31;
   }
 }
 

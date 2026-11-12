@@ -751,7 +751,7 @@ public class GuildHandler : PacketHandler<GameSession> {
             Mail? mail = db.CreateMail(new Mail {
                 SenderId = session.CharacterId,
                 ReceiverId = receiverId,
-                Type = MailType.Player,
+                Type = MailType.Guild,
                 SenderName = session.PlayerName,
                 Title = title,
                 Content = content,
