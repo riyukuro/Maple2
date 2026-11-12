@@ -176,7 +176,10 @@ public class WeddingHandler : FieldPacketHandler {
         WeddingError error = session.Marriage.AcceptProposal(otherPlayer);
         if (error != WeddingError.none) {
             session.Send(WeddingPacket.Error(error));
-            otherPlayer.Session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_decline_propose));
+            // The ring is the proposer's: without it the proposer is told so (the notice names the item), not that the
+            // answer was no.
+            otherPlayer.Session.Send(WeddingPacket.Error(error == WeddingError.s_wedding_result_err_not_find_propose_item
+                ? error : WeddingError.s_wedding_result_decline_propose));
         }
     }
 

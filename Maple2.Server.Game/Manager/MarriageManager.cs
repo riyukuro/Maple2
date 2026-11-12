@@ -731,34 +731,16 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_not_buddy;
         }
 
-        if (!target.Session.Item.Inventory.Find(Constant.ProposalItemId).Any()) {
-            return WeddingError.s_wedding_result_err_not_find_propose_item;
-        }
-
+        // Only the proposer holds the ring (WeddingManager::CheckPropose; the answer box checks no item).
         return WeddingError.s_wedding_msg_box_propose_to;
     }
 
+    // This player accepts the proposal of target. The proposal uses up one ring of the proposer, the only one the
+    // client asks for (WeddingManager::CheckPropose, weddingmanager.cpp:1047); the one who accepts needs none.
     public WeddingError AcceptProposal(FieldPlayer target) {
-        // Find the proposal items of each player
-        Item? proposalItem = session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
-        if (proposalItem == null) {
+        Item? ring = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
+        if (ring == null || !target.Session.Item.Inventory.Consume(ring.Uid, 1)) {
             return WeddingError.s_wedding_result_err_not_find_propose_item;
-        }
-
-        Item? otherProposalItem = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
-        if (otherProposalItem == null) {
-            return WeddingError.s_wedding_result_err_not_find_propose_item;
-        }
-
-        // Remove the proposal items from each player
-        if (!session.Item.Inventory.Consume(proposalItem.Uid, 1)) {
-            return WeddingError.s_wedding_result_err_not_find_propose_item;
-
-        }
-
-        if (!target.Session.Item.Inventory.Consume(otherProposalItem.Uid, 1)) {
-            // TODO: Something is broken about this
-            //return WeddingError.s_wedding_result_err_not_find_propose_item;
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
