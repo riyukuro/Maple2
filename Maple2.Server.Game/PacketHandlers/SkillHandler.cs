@@ -170,7 +170,7 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Debug("Cast refused, skill {SkillId} is not for field {MapId}", record.SkillId, session.Field.MapId);
             return false;
         }
-        if (SkillCastRules.RideRefuses(record.Metadata.Property.UnrideOnUse,
+        if (SkillCastRules.RideRefuses(record.Metadata.Property.UnrideOnUse, record.Metadata.Property.MainType,
                 session.Ride.Ride is { Action: RideOnActionDefault } ride && ride.OwnerId == session.Player.ObjectId)) {
             Logger.Debug("Cast refused, skill {SkillId} is not cast from a ride", record.SkillId);
             return false;

@@ -27,7 +27,9 @@ public record BeginCondition(
     BeginConditionWeapon[]? Weapon,
     BeginConditionTarget? Target,
     BeginConditionTarget? Owner,
-    BeginConditionTarget? Caster);
+    BeginConditionTarget? Caster,
+    // Seconds a recharge skill is not cast again after a use (defaultRechargingCooldownTime).
+    float RechargeGap = 0);
 
 public record BeginConditionWeapon(
     ItemType LeftHand,

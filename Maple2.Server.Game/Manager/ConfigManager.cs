@@ -252,7 +252,7 @@ public class ConfigManager {
     // Why a cast comes too early, null when it does not (SkillCastRules.TimingRefusal): before the motion of the
     // last accepted cast lets the next one in, or (cooldown: a job skill) before the cooldown of the last accepted
     // cast of it or of its cooldown group ends. The cooldown is not checked when the server does not know its
-    // length: a skill with recharge uses, and a cast whose cooldown a buff's invoke effect shortens (the group
+    // length: a skill with recharge uses (it has its own check, RechargeShortfall), and a cast whose cooldown a buff's invoke effect shortens (the group
     // reductions of buffs and the caster's cooldown reduction are counted, SkillCastRules.CooldownMs). A cast that only arrives early draws once from the session's lag budget, for the longer of the two.
     // clockTurnedFast: this cast's tick is the first of a fast time of the client's clock (to be logged).
     public string? CastTimingRefusal(SkillMetadata skill, bool cooldown, int castTick, long tick, out bool clockTurnedFast) {
@@ -261,8 +261,30 @@ public class ConfigManager {
             ? SkillCastRules.MotionShortfall(last, skill.Id, skill.Property.ImmediateActive, AttackSpeed, castTick, tick) : 0;
         long cooldownMs = cooldown && skill.State.RechargeMaxCount <= 0 && !CooldownReduced(skill)
             ? SkillCastRules.CooldownShortfall(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick, AttackSpeed) : 0;
+        long rechargeMs = RechargeShortfall(skill, castTick, tick);
+        cooldownMs = Math.Max(cooldownMs, rechargeMs);
         string? reason = SkillCastRules.TimingRefusal(Math.Max(motionMs, cooldownMs), CastClock.IsFast(tick), Lag, tick);
-        return reason == null ? null : $"{(cooldownMs >= motionMs ? "cooldown" : "motion")}: {reason}";
+        return reason == null ? null : $"{(cooldownMs < motionMs ? "motion" : rechargeMs >= cooldownMs && rechargeMs > 0 ? "recharge" : "cooldown")}: {reason}";
+    }
+
+    // The time a recharge skill's cast comes too early by: with no use left, or within the skill's gap after its
+    // last use (SkillCastRules.RechargeEmptyShortfall, RechargeGapShortfall). Not checked for a skill that uses an
+    // item (its cooldown is checked on its own), one that counts its uses on its origin skill, or a cast whose
+    // cooldown a buff's invoke effect shortens.
+    private long RechargeShortfall(SkillMetadata skill, int castTick, long tick) {
+        if (skill.State.RechargeMaxCount <= 0 || skill.State.RechargeShared || skill.Data.Consume.UseItem || CooldownReduced(skill)) {
+            return 0;
+        }
+        if (!skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown) || cooldown.RechargeMs <= 0) {
+            return 0;
+        }
+        (long endTick, int usesOut) = SkillCastRules.SettleRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs, tick);
+        if (usesOut <= 0) {
+            return 0;
+        }
+        long gapMs = lastCasts.TryGetValue(skill.Id, out SkillCastRules.LastCast last)
+            ? SkillCastRules.RechargeGapShortfall(skill.Data.Condition.RechargeGap, castTick, last.CastTick, tick, last.ServerTick) : 0;
+        return Math.Max(gapMs, SkillCastRules.RechargeEmptyShortfall(usesOut, skill.State.RechargeMaxCount, endTick, tick));
     }
 
     private bool CooldownReduced(SkillMetadata skill) {

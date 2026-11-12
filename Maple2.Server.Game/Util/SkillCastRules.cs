@@ -283,9 +283,33 @@ public static class SkillCastRules {
     // A skill that names fields is cast only in one of them: the client does not send it elsewhere (cast check
     // answer 0x17). A code of 0 names no field.
     // The client does not cast a skill that takes its caster off the ride (kinds unrideOnUse) while it rides: it
-    // asks to get off and casts once it is off (MyPC::FUN_141525580). Chosen here: only on the caster's own item
-    // ride; a passenger and a ride a buff gave are not refused.
-    public static bool RideRefuses(bool unrideOnUse, bool onOwnItemRide) => unrideOnUse && onOwnItemRide;
+    // asks to get off and casts once it is off (MyPC::FUN_141525580). A skill of one of the client's unride main
+    // types counts as one whatever its unrideOnUse says (SkillData::IsUnrideOnUse). Chosen here: only on the
+    // caster's own item ride; a passenger and a ride a buff gave are not refused.
+    public static bool RideRefuses(bool unrideOnUse, int mainType, bool onOwnItemRide) {
+        return (unrideOnUse || PlayedClientSkills.UnrideMainType(mainType)) && onOwnItemRide;
+    }
+
+    // The client does not cast a recharge skill while its cooldown runs and either no use is left or the skill's
+    // defaultRechargingCooldownTime has not passed since its last use (MyPC::vfunc_102 with
+    // CSkillSystem::CanUseRechargeSkill). The time a cast comes too early by, by the server's count of the uses:
+    // usesOut and endTick are the settled record (SettleRecharge), 0 uses out is no cooldown.
+    // Chosen here: a cast is taken up to JobCooldownSlackMs before a use comes back.
+    public static long RechargeEmptyShortfall(int usesOut, int maxCount, long endTick, long tick) {
+        if (maxCount <= 0 || usesOut < maxCount) {
+            return 0;
+        }
+        return Math.Max(0, endTick - JobCooldownSlackMs - tick);
+    }
+
+    // The time a recharge skill's cast comes before its gap after the last use is over (ArrivalShortfall).
+    // Chosen here: the cast is taken from ShortCooldownShare of the gap on, as for a short cooldown.
+    public static long RechargeGapShortfall(float gapSeconds, int castTick, int lastCastTick, long serverTick, long lastServerTick) {
+        if (gapSeconds <= 0) {
+            return 0;
+        }
+        return ArrivalShortfall(castTick, lastCastTick, serverTick, lastServerTick, (long) (gapSeconds * 1000 * ShortCooldownShare));
+    }
 
     public static bool MapRefuses(int[] maps, int mapId) {
         return maps.Any(code => code != 0) && Array.IndexOf(maps, mapId) < 0;

@@ -467,9 +467,68 @@ public class SkillCastRulesTests {
 
     [Test]
     public void UnrideSkillIsNotCastFromOwnRide() {
-        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: true, onOwnItemRide: true), Is.True);
-        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: false, onOwnItemRide: true), Is.False, "a skill cast from the ride");
-        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: true, onOwnItemRide: false), Is.False);
+        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: true, mainType: 0, onOwnItemRide: true), Is.True);
+        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: false, mainType: 0, onOwnItemRide: true), Is.False, "a skill cast from the ride");
+        Assert.That(SkillCastRules.RideRefuses(unrideOnUse: true, mainType: 0, onOwnItemRide: false), Is.False);
+    }
+
+    [Test]
+    public void UnrideMainTypesLeaveTheRideWithoutTheFlag() {
+        int[] unride = [1, 4, 7, 11, 12, 13, 14, 15, 17, 18, 19];
+        for (int mainType = 0; mainType <= 40; mainType++) {
+            Assert.That(SkillCastRules.RideRefuses(unrideOnUse: false, mainType, onOwnItemRide: true), Is.EqualTo(unride.Contains(mainType)), $"main type {mainType}");
+            Assert.That(SkillCastRules.RideRefuses(unrideOnUse: false, mainType, onOwnItemRide: false), Is.False);
+        }
+    }
+
+    [Test]
+    public void PlayedClientSkillDataIsReadFromTheFirstBasic() {
+        // Made-up rows.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="100"><basic mainType="4"><stateAttr rechargeMaxCount="6" /></basic></skill>
+              <skill id="101" originID="100"><basic><stateAttr rechargeMaxCount="6" rechargeShareOrigin="1" /></basic></skill>
+              <skill id="102" originID="100"><basic mainType="2" feature="X"><stateAttr rechargeMaxCount="3" /></basic></skill>
+              <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /></basic></skill>
+              <skill id="0"><basic mainType="1" /></skill>
+              <skill id="100"><basic mainType="9" /></skill>
+              <skill id="104" />
+            </ms2>
+            """);
+        Dictionary<int, PlayedClientSkills.Entry> read = PlayedClientSkills.Read([document]);
+        Assert.That(read.Keys.OrderBy(id => id), Is.EqualTo(new[] { 100, 101, 102, 103, 104 }));
+        Assert.That(read[100], Is.EqualTo(new PlayedClientSkills.Entry(4, 6, false)));
+        Assert.That(read[101], Is.EqualTo(new PlayedClientSkills.Entry(0, 6, true)), "uses counted on the origin skill");
+        Assert.That(read[102], Is.EqualTo(new PlayedClientSkills.Entry(2, 3, false)));
+        Assert.That(read[103], Is.EqualTo(new PlayedClientSkills.Entry(0, 0, false)), "no origin: its own uses");
+        Assert.That(read[104], Is.EqualTo(new PlayedClientSkills.Entry(0, 0, false)));
+        Assert.That(PlayedClientSkills.IsSkillFile("skilldata/010.xml"), Is.True);
+        Assert.That(PlayedClientSkills.IsSkillFile("skill/10/10000001.xml"), Is.False);
+    }
+
+    [Test]
+    public void RechargeSkillIsNotCastWithNoUseLeft() {
+        // 3 uses, the running cooldown ends at 10000.
+        Assert.That(SkillCastRules.RechargeEmptyShortfall(2, 3, 10_000, 5_000), Is.EqualTo(0), "a use is left");
+        Assert.That(SkillCastRules.RechargeEmptyShortfall(3, 3, 10_000, 5_000), Is.EqualTo(10_000 - SkillCastRules.JobCooldownSlackMs - 5_000));
+        Assert.That(SkillCastRules.RechargeEmptyShortfall(3, 3, 10_000, 10_000 - SkillCastRules.JobCooldownSlackMs), Is.EqualTo(0));
+        Assert.That(SkillCastRules.RechargeEmptyShortfall(3, 0, 10_000, 5_000), Is.EqualTo(0), "no recharge skill");
+        // The uses the server counts out come back as the client's do.
+        (long end, int uses) = SkillCastRules.SettleRecharge(10_000, 3, 10_000, 10_000);
+        Assert.That(SkillCastRules.RechargeEmptyShortfall(uses, 3, end, 10_000), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void RechargeSkillWaitsItsGapAfterAUse() {
+        // A gap of 4 s (longer than the clock's cast-back allowance, ClockRate.CastBackMs); the last use at
+        // client tick 1000, arrived at 50000.
+        long required = (long) (4000 * SkillCastRules.ShortCooldownShare);
+        Assert.That(required - ClockRate.CastBackMs, Is.GreaterThan(200));
+        Assert.That(SkillCastRules.RechargeGapShortfall(4f, 1000 + 4000, 1000, 54_000, 50_000), Is.EqualTo(0));
+        Assert.That(SkillCastRules.RechargeGapShortfall(4f, 1000 + 200, 1000, 50_200, 50_000), Is.EqualTo(SkillCastRules.ClientRefused), "early by the client's own ticks");
+        Assert.That(SkillCastRules.RechargeGapShortfall(4f, 1000 + 4000, 1000, 50_200, 50_000), Is.EqualTo(required - 200), "only arrives early");
+        Assert.That(SkillCastRules.RechargeGapShortfall(0, 1000 + 1, 1000, 50_001, 50_000), Is.EqualTo(0), "no gap");
     }
 
     [Test]

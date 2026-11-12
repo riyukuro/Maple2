@@ -346,7 +346,8 @@ public static class MapperExtensions {
                 new ItemType(1, (byte) weapon.rh))).ToArray(),
             Target: Convert(beginCondition.skillTarget),
             Owner: Convert(beginCondition.skillOwner),
-            Caster: Convert(beginCondition.skillCaster));
+            Caster: Convert(beginCondition.skillCaster),
+            RechargeGap: beginCondition.defaultRechargingCooldownTime);
     }
 
     // We use this default to avoid writing useless checks

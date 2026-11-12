@@ -14,8 +14,16 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly SkillParser parser;
     private readonly SkillMoveTypes moveTypes;
 
-    public SkillMapper(M2dReader xmlReader, string language) {
+    // The played client's own skill data (PlayedClientSkills); empty without a played client.
+    private readonly Dictionary<int, PlayedClientSkills.Entry> played = [];
+
+    public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
+        if (playedReader != null) {
+            played = PlayedClientSkills.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)));
+            Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses)");
+        }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
     }
@@ -25,6 +33,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         List<long> cubeMagicPaths = [];
         foreach ((int id, string name, SkillData data) in parser.Parse()) {
             if (data.basic == null) continue; // Old_JobChange_01
+            PlayedClientSkills.Entry? client = played.TryGetValue(id, out PlayedClientSkills.Entry entry) ? entry : null;
             Debug.Assert(data.basic.kinds.groupIDs.Length <= 1);
 
 
@@ -142,14 +151,16 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     ReleaseObjectWeapon: data.basic.kinds.releaseObjectWeapon,
                     Emotion: data.basic.kinds.emotion,
                     SkillGroup: data.basic.kinds.groupIDs.FirstOrDefault(),
-                    MaxLevel: levels.Keys.Max()),
+                    MaxLevel: levels.Keys.Max(),
+                    MainType: client?.MainType ?? 0),
                 State: new SkillMetadataState(
                     InBattle: data.basic.stateAttr.battle == 1,
                     SuperArmor: (SuperArmor) data.basic.stateAttr.superArmor,
                     UseInGameTime: data.basic.stateAttr.useInGameTime == 1,
                     IgnoreReduceCooldown: data.basic.stateAttr.ignoreReduceCooldown == 1,
                     CooldownGroupId: data.basic.stateAttr.cooldownGroupID,
-                    RechargeMaxCount: data.basic.stateAttr.rechargeMaxCount),
+                    RechargeMaxCount: client?.RechargeMaxCount ?? data.basic.stateAttr.rechargeMaxCount,
+                    RechargeShared: client?.RechargeShared ?? false),
                 Levels: levels
             );
         }

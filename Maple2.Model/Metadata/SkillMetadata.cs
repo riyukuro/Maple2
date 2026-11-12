@@ -37,7 +37,9 @@ public record SkillMetadataProperty(
     //bool HoldAttack, // 10700171,10700252
     int SkillGroup,
     short MaxLevel,
-    string Emotion);
+    string Emotion,
+    // The played client's main type of the skill (PlayedClientSkills); 0 when it has none or no played client was given.
+    int MainType = 0);
 
 public record SkillMetadataState(
     bool InBattle,
@@ -45,7 +47,10 @@ public record SkillMetadataState(
     bool UseInGameTime,
     int CooldownGroupId,
     bool IgnoreReduceCooldown,
-    int RechargeMaxCount);
+    // The played client's count when a played client was given (PlayedClientSkills), else the data pack's.
+    int RechargeMaxCount,
+    // The skill counts its recharge uses on its origin skill (PlayedClientSkills).
+    bool RechargeShared = false);
 
 public record SkillMetadataLevel(
     BeginCondition Condition,
