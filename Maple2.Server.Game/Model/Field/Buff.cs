@@ -226,6 +226,9 @@ public class Buff : IUpdatable, IByteSerializable {
         if (record.HpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Health].Add(record.HpAmount);
             targetUpdated.Add(BasicAttribute.Health);
+            if (record.HpAmount < 0 && Owner is FieldPlayer player) {
+                player.DelayHpRegen();
+            }
         }
         if (record.SpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Spirit].Add(record.SpAmount);

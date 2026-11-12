@@ -77,7 +77,7 @@ public class FieldPlayer : Actor<Player> {
 
     // Key: Attribute, Value: RegenAttribute, RegenInterval
     private readonly Dictionary<BasicAttribute, Tuple<BasicAttribute, BasicAttribute>> regenStats;
-    private readonly Dictionary<BasicAttribute, long> lastRegenTime;
+    private readonly RegenClock regenClock = new();
 
     private readonly Dictionary<ActorState, float> stateSyncDistanceTracking;
     private long StateSyncTimeTracking { get; set; }
@@ -132,7 +132,6 @@ public class FieldPlayer : Actor<Player> {
         Animation = Session.Animation;
 
         regenStats = new Dictionary<BasicAttribute, Tuple<BasicAttribute, BasicAttribute>>();
-        lastRegenTime = new Dictionary<BasicAttribute, long>();
 
         stateSyncDistanceTracking = new Dictionary<ActorState, float>();
         StateSyncTimeTracking = 0;
@@ -226,10 +225,7 @@ public class FieldPlayer : Actor<Player> {
                 continue;
             }
 
-            lastRegenTime.TryGetValue(attribute, out long regenTime);
-
-            if (tickCount - regenTime > Math.Max(interval.Current, Constant.MinStatIntervalTick)) {
-                lastRegenTime[attribute] = tickCount;
+            if (regenClock.TryTick(attribute, tickCount, interval.Current)) {
                 switch (attribute) {
                     case BasicAttribute.Health:
                         RecoverHp((int) regen.Total);
@@ -562,9 +558,7 @@ public class FieldPlayer : Actor<Player> {
 
         Stat stat = Stats.Values[BasicAttribute.Health];
         stat.Add(-amount);
-        if (!IsDead) {
-            lastRegenTime[BasicAttribute.Health] = Field.FieldTick + Constants.RecoveryHPWaitTick;
-        }
+        DelayHpRegen();
         Session.Send(StatsPacket.Update(this, BasicAttribute.Health));
 
         Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
@@ -636,9 +630,25 @@ public class FieldPlayer : Actor<Player> {
 
         Stats.Values[BasicAttribute.Stamina].Add(-amount);
         if (!IsDead) {
-            lastRegenTime[BasicAttribute.Stamina] = Field.FieldTick + Constants.RecoveryEPWaitTick;
+            regenClock.Hit(BasicAttribute.Stamina, Field.FieldTick, Constants.RecoveryEPWaitTick);
         }
         Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Stamina));
+    }
+
+    /// <summary>
+    /// The player lost health (a skill hit, a DoT, a fall, a skill's HP cost): the next health regen tick comes
+    /// RecoveryHPWaitTick plus one HpRegenInterval later. See <see cref="RegenClock"/>.
+    /// </summary>
+    public void DelayHpRegen() {
+        if (!IsDead) {
+            regenClock.Hit(BasicAttribute.Health, Field.FieldTick, Constants.RecoveryHPWaitTick);
+        }
+    }
+
+    protected override void OnDamageReceived(IActor caster, long amount) {
+        if (amount > 0) {
+            DelayHpRegen();
+        }
     }
 
     public void CheckRegen() {
