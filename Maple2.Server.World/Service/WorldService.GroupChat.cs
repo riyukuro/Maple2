@@ -104,6 +104,7 @@ public partial class WorldService {
             Chat = new GroupChatRequest.Types.Chat {
                 Message = chat.Message,
                 RequesterName = member.Name,
+                ItemUids = { chat.ItemUids },
             },
         });
 

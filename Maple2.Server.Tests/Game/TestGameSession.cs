@@ -675,6 +675,14 @@ public sealed class TestGameSession {
             return new ChatResponse();
         }
 
+        // The group chat requests handed to the world.
+        public readonly List<GroupChatRequest> GroupChats = [];
+
+        public override GroupChatResponse GroupChat(GroupChatRequest request, CallOptions options) {
+            GroupChats.Add(request);
+            return new GroupChatResponse();
+        }
+
         // What PlayerInfo.SendUpdate sent to the world.
         public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
 

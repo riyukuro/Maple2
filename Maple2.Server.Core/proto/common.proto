@@ -188,6 +188,8 @@ message GroupChatRequest {
   message Chat {
     string message = 1;
     string requester_name = 2;
+    // The sender's items linked in the line, for GroupChat 0xb.
+    repeated int64 item_uids = 3;
   }
 
   message Disband {}

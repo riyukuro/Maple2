@@ -20,6 +20,7 @@ public static class GroupChatPacket {
         LoginNotice = 8,
         LogoutNotice = 9,
         Chat = 10,
+        ItemLinks = 11,
         Error = 13,
     }
 
@@ -117,6 +118,24 @@ public static class GroupChatPacket {
         pWriter.WriteInt(groupChatId);
         pWriter.WriteUnicodeString(memberName);
         pWriter.WriteUnicodeString(message);
+
+        return pWriter;
+    }
+
+    // CGroupChatManager 0xb: the chat and the sender, whom the client must hold as a member, then the linked
+    // items as UIGroupMessengerBrowser::ReadItemLinks reads them (the same item block as MessengerBrowser).
+    public static ByteWriter ItemLinks(int groupChatId, string memberName, ICollection<Item> items) {
+        var pWriter = Packet.Of(SendOp.GroupChat);
+        pWriter.Write<Command>(Command.ItemLinks);
+        pWriter.WriteInt(groupChatId);
+        pWriter.WriteUnicodeString(memberName);
+        pWriter.WriteInt(items.Count);
+        foreach (Item item in items) {
+            pWriter.WriteLong(item.Uid);
+            pWriter.WriteInt(item.Id);
+            pWriter.WriteInt(item.Rarity);
+            pWriter.WriteClass<Item>(item);
+        }
 
         return pWriter;
     }

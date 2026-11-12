@@ -1,4 +1,5 @@
 ﻿using Grpc.Core;
+using Maple2.Database.Storage;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.GroupChat;
@@ -91,11 +92,22 @@ public partial class ChannelService {
     }
 
     private GroupChatResponse ChatGroupChat(int groupChatId, IEnumerable<long> receiverIds, GroupChatRequest.Types.Chat chat) {
+        // The group messenger keeps its own linked items (UIGroupMessengerBrowser::ReadItemLinks), filled only by
+        // GroupChat 0xb: without it a link in the line has no rarity colour, tooltip or preview.
+        Item[] items = [];
+        if (chat.ItemUids.Count > 0) {
+            using GameStorage.Request db = gameStorage.Context();
+            items = chat.ItemUids.Select(db.GetItem).OfType<Item>().ToArray();
+        }
+
         foreach (long characterId in receiverIds) {
             if (!server.GetSession(characterId, out GameSession? session)) {
                 continue;
             }
 
+            if (items.Length > 0) {
+                session.Send(GroupChatPacket.ItemLinks(groupChatId, chat.RequesterName, items));
+            }
             session.Send(GroupChatPacket.Chat(chat.RequesterName, groupChatId, chat.Message));
         }
         return new GroupChatResponse();

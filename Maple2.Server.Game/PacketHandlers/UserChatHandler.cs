@@ -426,7 +426,7 @@ public class UserChatHandler : FieldPacketHandler {
         }
     }
 
-    private static ICollection<long> LinkedItemUids(GameSession session, string message) {
+    internal static ICollection<long> LinkedItemUids(GameSession session, string message) {
         List<long> itemUids = [];
 
         MatchCollection matches = Regex.Matches(message, "<A HREF=\"event:[^\"]+\">[^<]+</A>");

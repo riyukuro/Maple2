@@ -177,6 +177,8 @@ public class GroupChatHandler : FieldPacketHandler {
             World.GroupChat(new GroupChatRequest {
                 Chat = new GroupChatRequest.Types.Chat {
                     Message = message,
+                    // Only items the sender holds, as for other chat lines.
+                    ItemUids = { UserChatHandler.LinkedItemUids(session, message) },
                 },
                 GroupChatId = groupChatId,
                 RequesterId = session.CharacterId,
