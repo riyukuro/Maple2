@@ -40,7 +40,7 @@ public partial class MovementState {
         }
     }
 
-    private void SkillCastFaceTarget(SkillRecord cast, IActor target, int faceTarget) {
+    private void SkillCastFaceTarget(SkillMetadata metadata, byte motion, IActor target, int faceTarget) {
         Vector3 offset = target.Position - actor.Position;
         float distance = offset.LengthSquared();
         // A target on the caster's own spot (the caster itself, or one standing on it) gives no direction: keep the facing.
@@ -49,11 +49,11 @@ public partial class MovementState {
         }
 
         if (faceTarget != 1) {
-            if (!cast.Motion.MotionProperty.FaceTarget || cast.Metadata.Data.AutoTargeting is null) {
+            if (!metadata.Data.Motions[motion].MotionProperty.FaceTarget || metadata.Data.AutoTargeting is null) {
                 return;
             }
 
-            SkillMetadataAutoTargeting autoTargeting = cast.Metadata.Data.AutoTargeting;
+            SkillMetadataAutoTargeting autoTargeting = metadata.Data.AutoTargeting;
             if (!AutoTargetFace.Passes(offset, actor.Transform.FrontAxis, autoTargeting.MaxDegree, autoTargeting.MaxDistance, autoTargeting.MaxHeight)) {
                 return;
             }
@@ -81,6 +81,13 @@ public partial class MovementState {
 
         Velocity = new Vector3(0, 0, 0);
 
+        // The npc turns before the cast goes out: the cast and the control entry sent with it carry the new facing.
+        if (task.FacePos != new Vector3(0, 0, 0)) {
+            actor.Transform.LookTo(Vector3.Normalize(task.FacePos - actor.Position));
+        } else if (actor.BattleState.Target is not null && actor.Field.SkillMetadata.TryGet(id, level, out SkillMetadata? metadata) && motion < metadata.Data.Motions.Length) {
+            SkillCastFaceTarget(metadata, motion, actor.BattleState.Target, task.FaceTarget);
+        }
+
         SkillRecord? cast = actor.CastSkill(id, level, uid, (int) actor.Field.FieldTick, motionPoint: motion);
 
         if (cast is null) {
@@ -93,12 +100,6 @@ public partial class MovementState {
             task.Cancel();
 
             return;
-        }
-
-        if (task.FacePos != new Vector3(0, 0, 0)) {
-            actor.Transform.LookTo(Vector3.Normalize(task.FacePos - actor.Position));
-        } else if (actor.BattleState.Target is not null) {
-            SkillCastFaceTarget(cast, actor.BattleState.Target, task.FaceTarget);
         }
 
         CastTask = task;

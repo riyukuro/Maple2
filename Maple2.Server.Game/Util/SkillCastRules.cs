@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
@@ -98,6 +99,10 @@ public static class SkillCastRules {
     // Chosen here: the time between two arrivals may be this much shorter than the time between the two casts. It
     // is longer than for cooldowns because this check is on every skill, and two casts held up together arrive at once.
     public const long MotionArrivalAllowanceMs = 1000;
+
+    // The rotation a cast carries: the one given with it, else (an npc's cast gives none) the caster's own. The client
+    // takes the cast's facing from its z (CSceneStateGame::OnSkillUse).
+    public static Vector3 CastRotation(in Vector3 given, in Vector3 caster) => given == default ? caster : given;
 
     // The last accepted cast that plays a motion: the times of its keys, its speed and when it came.
     public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick, int MoveType = 0);
