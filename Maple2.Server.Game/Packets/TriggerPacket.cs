@@ -210,7 +210,7 @@ public static class TriggerPacket {
         EmotionLoop = 8,
         FaceEmotion = 9,
         PlayerRotation = 10,
-        Unknown = 11,
+        LookAt = 11,
         TypingGame = 12,
     }
 
@@ -295,22 +295,26 @@ public static class TriggerPacket {
         return pWriter;
     }
 
-    public static ByteWriter UiPlayerRotation(in Vector3S rotation, bool rotateXY = false) {
+    // Client FUN_1418642e0 (triggerservice.cpp): the local player turns to rotation.z; with immediate the whole
+    // rotation is set at once instead of turning over time.
+    public static ByteWriter UiPlayerRotation(in Vector3S rotation, bool immediate = false) {
         var pWriter = Packet.Of(SendOp.Trigger);
         pWriter.Write<Command>(Command.Ui);
         pWriter.Write<UiCommand>(UiCommand.PlayerRotation);
         pWriter.Write<Vector3S>(rotation);
-        pWriter.WriteBool(rotateXY);
+        pWriter.WriteBool(immediate);
 
         return pWriter;
     }
 
-    public static ByteWriter UiUnknown(in Vector3 unknown, bool flag = false) {
+    // Client FUN_1418643c0 (triggerservice.cpp): the local player looks at the point (PCBase::LookAtPoint);
+    // with immediate it turns there at once.
+    public static ByteWriter UiLookAt(in Vector3 point, bool immediate = false) {
         var pWriter = Packet.Of(SendOp.Trigger);
         pWriter.Write<Command>(Command.Ui);
-        pWriter.Write<UiCommand>(UiCommand.Unknown);
-        pWriter.Write<Vector3S>(unknown);
-        pWriter.WriteBool(flag);
+        pWriter.Write<UiCommand>(UiCommand.LookAt);
+        pWriter.Write<Vector3S>(point);
+        pWriter.WriteBool(immediate);
 
         return pWriter;
     }

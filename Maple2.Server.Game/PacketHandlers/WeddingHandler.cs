@@ -303,7 +303,7 @@ public class WeddingHandler : FieldPacketHandler {
             return;
         }
 
-        var ceremony = new WeddingCeremony(marriage.Id, marriage.Partner1.CharacterId, marriage.Partner2.CharacterId);
+        var ceremony = new WeddingCeremony(marriage.Id, marriage.Partner1.CharacterId, marriage.Partner2.CharacterId, hall.ReserverCharacterId);
         if (!WeddingCeremony.CanEnter(ceremony.IsCouple(session.CharacterId), hall.Public, hall.GuestList.ContainsKey(session.CharacterId))) {
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_common));
             return;

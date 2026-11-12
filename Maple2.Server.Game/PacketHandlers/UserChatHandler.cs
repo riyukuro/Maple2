@@ -41,7 +41,7 @@ public class UserChatHandler : FieldPacketHandler {
             return;
         }
 
-        if (ChatRestriction.LimitsLength(type) && ChatRestriction.TooLong(Constants, message)) {
+        if (ChatRestriction.Rejects(Constants, type, message)) {
             return;
         }
         if (ChatRestriction.Covers(type)) {

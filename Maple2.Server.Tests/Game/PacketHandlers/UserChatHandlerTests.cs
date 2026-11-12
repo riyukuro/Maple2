@@ -266,13 +266,36 @@ public class UserChatHandlerTests {
         Assert.That(ChatRestriction.LimitsLength(ChatType.WhisperReject), Is.False);
     }
 
+    // The client-built kinds still have a cap, ChatRestriction.ClientBuiltMaxLength with the html counted: a party
+    // line past it, or a mini game line, goes nowhere; one at the cap goes out.
+    [Test]
+    public void ClientBuiltLines_PastTheHardCap_AreDropped() {
+        GameSession session = Login(meret: 0);
+        var manager = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
+        typeof(Maple2.Server.Game.Manager.PartyManager).GetProperty("Party")!
+            .SetValue(manager, new Maple2.Model.Game.Party.Party(31, session.AccountId, session.CharacterId, session.PlayerName));
+        session.Party = manager;
+        string atCap = new string('a', ChatRestriction.ClientBuiltMaxLength);
+
+        Say(session, ChatType.Party, atCap + "a");
+        Say(session, ChatType.MicroGame, "<b>" + atCap + "</b>");
+        Say(session, ChatType.WhisperReject, atCap + "a");
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat), Is.Empty);
+
+        Say(session, ChatType.Party, atCap);
+        Assert.That(test.World.Chats.Single().Message, Is.EqualTo(atCap));
+    }
+
     // The fifth equal line within SameChat_CheckTime goes nowhere; the sender gets s_chat_restrict_samechat with
     // the seconds.
     [Test]
     public void FifthEqualLine_SendsTheRestrictNotice() {
         GameSession session = Login(meret: 0);
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
-            SameChat_CheckTime = 60000, SameChat_CheckCount = 5, SameChat_RestrictTime = 10000,
+            SameChat_CheckTime = 60000,
+            SameChat_CheckCount = 5,
+            SameChat_RestrictTime = 10000,
         });
 
         for (int i = 0; i < 5; i++) {
@@ -315,12 +338,15 @@ public class UserChatHandlerTests {
             Partner2 = new MarriagePartner { Info = new PlayerInfo(new CharacterInfo(session.AccountId, session.CharacterId, session.PlayerName, "", "", Gender.Male, Job.Newbie, 20), "", new AchievementInfo(), []) },
         };
         session.Marriage.WeddingHall = new WeddingHall {
-            Id = 9, MarriageId = 77,
+            Id = 9,
+            MarriageId = 77,
             ReserverAccountId = senderReserved ? session.AccountId : PartnerId,
             ReserverCharacterId = senderReserved ? session.CharacterId : PartnerId,
             ReserverName = senderReserved ? session.PlayerName : OtherName,
             PartnerName = senderReserved ? OtherName : session.PlayerName,
-            CeremonyTime = ceremonyTime, PackageId = 3, PackageHallId = 4,
+            CeremonyTime = ceremonyTime,
+            PackageId = 3,
+            PackageHallId = 4,
         };
     }
 

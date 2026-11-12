@@ -31,6 +31,7 @@ public static class WeddingPacket {
         SendInvite = 29,
         MutualAgree = 30,
         MutualCancel = 31,
+        Emotion = 39,
     }
 
     public static ByteWriter UpdateMarriage(Marriage marriage) {
@@ -214,6 +215,21 @@ public static class WeddingPacket {
     }
 
     // Client: WeddingManager::OnMode1f (weddingmanager.cpp:358): a byte; closes the open box of that question.
+    // Client: WeddingManager::OnMode27 (weddingmanager.cpp:333). Result 2 (OnMode27Accept) puts the local player
+    // in the wedding emotion state with the weddingemotion row id; the client sends that state to the others.
+    // keepItem false puts a held item down first; without loop the row's animations play once, so no time
+    // follows. The hall triggers' WeddingSetUserEmotion sends it to one of the couple.
+    public static ByteWriter Emotion(int emotionId) {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.WriteByte((byte) Command.Emotion);
+        pWriter.WriteByte(2);
+        pWriter.WriteInt(emotionId);
+        pWriter.WriteBool(false); // keepItem
+        pWriter.WriteBool(false); // loop: an int time in ms would follow
+
+        return pWriter;
+    }
+
     public static ByteWriter MutualCancel(WeddingAgreeType type) {
         var pWriter = Packet.Of(SendOp.Wedding);
         pWriter.WriteByte((byte) Command.MutualCancel);

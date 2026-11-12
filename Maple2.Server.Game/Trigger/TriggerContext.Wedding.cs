@@ -18,18 +18,21 @@ public partial class TriggerContext {
     // notice and moving everyone out. Left without effect.
     public void WeddingBroken() { }
 
-    // Moves the players of one role. Guest: the players in the box who are not the couple each go to a random
-    // portal of the list, in this hall (the hall scripts' own note on the action). Groom and Bride, like the four
-    // actions below, need to know which of the couple is the groom, which the server does not store (each of the
-    // two sees the other as the partner), so they are left without effect, as is a move to another map.
+    // Moves the players of one role to a random portal of the list, in this hall (the hall scripts' own note on
+    // the action; a move to another map is left without effect). Guest: the players in the box who are not the
+    // couple. Groom and Bride: that one of the couple, when in the box. The groom is the one who reserved the
+    // hall (WeddingCeremony.GroomId), as in the invitation mail.
     public void WeddingMoveUser(string type, int mapId, int[] portalIds, int boxId) {
         DebugLog("[WeddingMoveUser] type:{Type}, mapId:{MapId}, boxId:{BoxId}", type, mapId, boxId);
         WeddingCeremony? ceremony = Field.Wedding;
-        if (ceremony == null || type != WeddingGuest || portalIds.Length == 0 || (mapId != 0 && mapId != Field.MapId)) {
+        if (ceremony == null || portalIds.Length == 0 || (mapId != 0 && mapId != Field.MapId)) {
             return;
         }
 
-        foreach (FieldPlayer player in WeddingGuests(PlayersInBox(boxId), ceremony, player => player.Session.CharacterId)) {
+        IEnumerable<FieldPlayer> players = type == WeddingGuest
+            ? WeddingGuests(PlayersInBox(boxId), ceremony, player => player.Session.CharacterId)
+            : WeddingRole(PlayersInBox(boxId), ceremony, type, player => player.Session.CharacterId);
+        foreach (FieldPlayer player in players.ToList()) {
             if (Field.TryGetPortal(portalIds[Random.Shared.Next(portalIds.Length)], out FieldPortal? portal)) {
                 player.MoveToPortal(portal);
             }
@@ -40,6 +43,17 @@ public partial class TriggerContext {
 
     public static IEnumerable<T> WeddingGuests<T>(IEnumerable<T> players, WeddingCeremony ceremony, Func<T, long> characterId) =>
         players.Where(player => !ceremony.IsCouple(characterId(player)));
+
+    // The player of a role (Groom or Bride) among players: none for another type or an unknown groom.
+    public static IEnumerable<T> WeddingRole<T>(IEnumerable<T> players, WeddingCeremony ceremony, string type, Func<T, long> characterId) {
+        long roleId = ceremony.RoleId(type);
+        return players.Where(player => roleId != 0 && characterId(player) == roleId);
+    }
+
+    private FieldPlayer? WeddingRolePlayer(string type) {
+        long roleId = Field.Wedding?.RoleId(type) ?? 0;
+        return roleId != 0 && Field.TryGetPlayerById(roleId, out FieldPlayer? player) ? player : null;
+    }
 
     // Asks the couple a question: Wedding 0x1e to each of the two in the room. The answers arrive as Wedding
     // 0x1e from the client and WeddingMutualAgreeResult reads them.
@@ -72,13 +86,42 @@ public partial class TriggerContext {
         }
     }
 
-    public void WeddingSetUserEmotion(string type, int id) { }
+    // The groom or the bride plays a weddingemotion row (Wedding 0x27). The client puts its own player in the
+    // emotion state and sends that to the others, so only the one of the role gets it.
+    public void WeddingSetUserEmotion(string type, int id) {
+        DebugLog("[WeddingSetUserEmotion] type:{Type}, id:{Id}", type, id);
+        WeddingRolePlayer(type)?.Session.Send(WeddingPacket.Emotion(id));
+    }
 
-    public void WeddingSetUserLookAt(string type, string lookAtType, bool immediate) { }
+    // The groom or the bride looks at the other role's player (trigger Ui 0xb on the client's own player).
+    public void WeddingSetUserLookAt(string type, string lookAtType, bool immediate) {
+        DebugLog("[WeddingSetUserLookAt] type:{Type}, lookAtType:{LookAtType}", type, lookAtType);
+        FieldPlayer? player = WeddingRolePlayer(type);
+        FieldPlayer? target = WeddingRolePlayer(lookAtType);
+        if (player == null || target == null || player == target) {
+            return;
+        }
 
-    public void WeddingSetUserRotation(string type, Vector3 rotation, bool immediate) { }
+        player.Session.Send(TriggerPacket.UiLookAt(target.Position, immediate));
+    }
 
-    public void WeddingUserToPatrol(string patrolName, string type, int patrolIndex) { }
+    // The groom or the bride turns to rotation (trigger Ui 10 on the client's own player).
+    public void WeddingSetUserRotation(string type, Vector3 rotation, bool immediate) {
+        DebugLog("[WeddingSetUserRotation] type:{Type}, rotation:{Rotation}", type, rotation);
+        WeddingRolePlayer(type)?.Session.Send(TriggerPacket.UiPlayerRotation(rotation, immediate));
+    }
+
+    // The groom or the bride walks the patrol path, the way MoveUserPath moves a player. patrolIndex is the
+    // hall scripts' index of the path (1 groom, 2 bride) and names nothing more.
+    public void WeddingUserToPatrol(string patrolName, string type, int patrolIndex) {
+        DebugLog("[WeddingUserToPatrol] patrol:{Patrol}, type:{Type}", patrolName, type);
+        long roleId = Field.Wedding?.RoleId(type) ?? 0;
+        if (roleId == 0) {
+            return;
+        }
+
+        Field.MovePlayerAlongPath(patrolName, player => player.Session.CharacterId == roleId);
+    }
 
     // The vow is done: the engaged couple is married from now. Runs once per ceremony and only with both of the
     // couple in the room, which is the state the trigger reaches it in.

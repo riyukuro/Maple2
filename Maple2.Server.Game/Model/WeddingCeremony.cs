@@ -32,12 +32,32 @@ public sealed class WeddingCeremony {
     private readonly Dictionary<WeddingAgreeType, Dictionary<long, bool>> asked = new();
     private bool complete;
 
-    public WeddingCeremony(long marriageId, long partner1Id, long partner2Id) {
+    // groomId: the one of the couple who reserved the hall, the groom of the invitation mail and the hall link;
+    // the other is the bride. 0 when unknown: then neither role names anyone.
+    public WeddingCeremony(long marriageId, long partner1Id, long partner2Id, long groomId = 0) {
         MarriageId = marriageId;
         couple = [partner1Id, partner2Id];
+        GroomId = Array.IndexOf(couple, groomId) >= 0 && groomId != 0 ? groomId : 0;
     }
 
     public IReadOnlyList<long> Couple => couple;
+    public readonly long GroomId;
+
+    // Trigger attribute entryType values that name one of the couple.
+    public const string RoleGroom = "Groom";
+    public const string RoleBride = "Bride";
+
+    // The character of a role (Groom or Bride), or 0 for any other type or an unknown groom.
+    public long RoleId(string type) {
+        if (GroomId == 0) {
+            return 0;
+        }
+        return type switch {
+            RoleGroom => GroomId,
+            RoleBride => couple[0] == GroomId ? couple[1] : couple[0],
+            _ => 0,
+        };
+    }
 
     // The hall's completion gifts for this ceremony (CompleteGifts), set when the room is made.
     public IReadOnlyList<WeddingPackage.HallData.Item> Gifts { get; set; } = [];

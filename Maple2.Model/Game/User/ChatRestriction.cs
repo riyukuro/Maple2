@@ -95,4 +95,16 @@ public sealed class ChatRestriction {
     public static bool TooLong(ConstantsTable constants, string message) {
         return constants.MaxChatLength > 0 && VisibleLength(message) > constants.MaxChatLength;
     }
+
+    // The cap on the lines the client builds itself (the types LimitsLength leaves out), counted with their html.
+    // The longest is the DPS report of a full party: the prefix, 10 rows of " [<b>n. name</b> - meter]" and the
+    // total time come to about 650 characters with the English strings (s_partydps_notice_history_*); this is three
+    // times that.
+    public const int ClientBuiltMaxLength = 2000;
+
+    // A line the client could not have sent: past the input box for a typed type, past ClientBuiltMaxLength for
+    // the others.
+    public static bool Rejects(ConstantsTable constants, ChatType type, string message) {
+        return LimitsLength(type) ? TooLong(constants, message) : message.Length > ClientBuiltMaxLength;
+    }
 }
