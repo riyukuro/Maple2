@@ -297,6 +297,27 @@ public class GameEvent : IByteSerializable {
                     writer.Write<RewardItem>(rewardItem);
                 }
                 break;
+            case LongTermAttendGift longTermAttend:
+                // LongTermAttendGiftContext::Read (gameeventcontext.cpp): the tag, the end time, an int and a flag
+                // (0 and true in KMS2), the reward rows, then begin, end, title, merat and maxattendance.
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(longTermAttend.EventTag);
+                writer.WriteLong(EndTime);
+                writer.WriteInt();
+                writer.WriteBool(true);
+                writer.WriteInt(longTermAttend.Rewards.Length);
+                foreach (LongTermAttendGift.Reward reward in longTermAttend.Rewards) {
+                    writer.WriteInt(reward.Day);
+                    writer.WriteByte();
+                    WriteItemEntity(writer, reward.Item01);
+                    WriteItemEntity(writer, reward.Item02);
+                }
+                writer.WriteLong(StartTime);
+                writer.WriteLong(EndTime);
+                writer.WriteUnicodeString(longTermAttend.Title);
+                writer.WriteInt(longTermAttend.Merat);
+                writer.WriteInt(longTermAttend.MaxAttendance);
+                break;
             case SaleAutoFishing fishing:
                 writer.WriteInt(Id);
                 writer.WriteInt(fishing.Discount);
@@ -314,13 +335,17 @@ public class GameEvent : IByteSerializable {
     private static void WriteItemEntities(IByteWriter writer, RewardItem[] items) {
         writer.WriteInt(items.Length);
         foreach (RewardItem item in items) {
-            writer.WriteInt(item.ItemId);
-            writer.WriteShort(item.Rarity);
-            writer.WriteInt(item.Amount);
-            writer.WriteBool(false);
-            writer.WriteBool(false);
-            writer.WriteBool(false);
-            writer.WriteBool(false);
+            WriteItemEntity(writer, item);
         }
+    }
+
+    private static void WriteItemEntity(IByteWriter writer, RewardItem item) {
+        writer.WriteInt(item.ItemId);
+        writer.WriteShort(item.Rarity);
+        writer.WriteInt(item.Amount);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
     }
 }

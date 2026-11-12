@@ -286,6 +286,28 @@ public record TimeRunEvent(
 
 
 /// <summary>
+/// Long-term attendance calendar: a day is attended with an attend point (one a day) or for Merat merets, and
+/// each reward row is claimed once its day is attended.
+/// </summary>
+/// <param name="Title">value1 info title: the dialog's title string key.</param>
+/// <param name="EventTag">value1 info eventTag: the dialog's frame name.</param>
+/// <param name="MaxAttendance">value1 info maxattendance: the days of the calendar.</param>
+/// <param name="Merat">value1 info merat: the merets one missed day costs.</param>
+/// <param name="Rewards">value2 reward rows.</param>
+public record LongTermAttendGift(
+    string Title,
+    string EventTag,
+    int MaxAttendance,
+    int Merat,
+    LongTermAttendGift.Reward[] Rewards) : GameEventData {
+    // count = the attended day the row is claimed on; item01 and item02 are "id,rank,count".
+    public record Reward(
+        int Day,
+        RewardItem Item01,
+        RewardItem Item02);
+}
+
+/// <summary>
 /// Enables Maple Survival (Mushking Royale). Possibly does not work.
 /// </summary>
 public record MapleSurvivalOpenPeriod : GameEventData;
@@ -350,6 +372,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(Gallery), "Gallery")]
 [JsonDerivedType(typeof(BingoEvent), "BingoEvent")]
 [JsonDerivedType(typeof(TimeRunEvent), "TimeRunEvent")]
+[JsonDerivedType(typeof(LongTermAttendGift), "LongTermAttendGift")]
 [JsonDerivedType(typeof(MapleSurvivalOpenPeriod), "MapleSurvivalOpenPeriod")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
 [JsonDerivedType(typeof(Ontime), "Ontime")]

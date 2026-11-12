@@ -90,11 +90,11 @@ public class AttendGiftReplayTests {
         ];
 
         Assert.That(AttendGiftReplay.Pick(events, Now)?.Id, Is.EqualTo(702));
-        GameEventMetadata? picked = AttendGiftReplay.Pick(events, Now, ClientRank);
+        GameEventMetadata? picked = AttendGiftReplay.Pick(events, Now, clientRank: ClientRank);
         Assert.That(picked?.Id, Is.EqualTo(700));
         Assert.That(((AttendGift) picked!.Data).Items.Select(item => ClientRank(item.ItemId)), Has.None.EqualTo(0));
         Assert.That(AttendGiftReplay.Candidates(events, Now).Select(e => e.Id), Is.EqualTo(new[] { 702, 701, 700 }));
-        Assert.That(AttendGiftReplay.Pick(events[1..], Now, ClientRank), Is.Null);
+        Assert.That(AttendGiftReplay.Pick(events[1..], Now, clientRank: ClientRank), Is.Null);
     }
 
     [Test]

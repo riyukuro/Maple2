@@ -48,6 +48,12 @@ public enum GameEventUserValueType {
 
     CollectItemGroup = 2200, // Meta Badge event. Serves as a flag for tiers
 
+    // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
+    LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
+    LongTermAttendPoints = 2701,
+    LongTermAttendDays = 2702, // days attended
+    LongTermAttendPointTime = 2703, // when the last attend point was given, unix seconds; KMS2 sends it, the client does not read it
+
     // Bingo - TODO: These are not the actual confirmed values. Just using it as a way to store this data for now.
     BingoUid = 4000,
     BingoRewardsClaimed = 4001,

@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -126,6 +127,29 @@ public sealed class GameEventManager {
 
             userValue = Get(GameEventUserValueType.DTRewardTotalTime, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
             Set(gameEvent.Id, GameEventUserValueType.DTRewardTotalTime, userValue.Long() + 1);
+        }
+    }
+
+    // One attend point a day for each live long-term attendance event (chosen here: the client does not say how
+    // points are earned). As in KMS2: the points, then the time of the grant, then EventReward 27. Called on the
+    // client's EventReward 27 (sent when the event loads) and at the daily reset for players online.
+    public void GrantLongTermAttendPoints() {
+        foreach (GameEvent gameEvent in session.FindEvent(GameEventType.LongTermAttendGift)) {
+            if (gameEvent.Metadata.Data is not LongTermAttendGift) {
+                continue;
+            }
+            DateTime now = DateTime.Now;
+            DateTime? lastGrant = long.TryParse(Peek(GameEventUserValueType.LongTermAttendPointTime, gameEvent.Id), out long seconds)
+                ? seconds.FromEpochSeconds() : null;
+            if (!LongTermAttendRules.PointDue(lastGrant, now)) {
+                continue;
+            }
+
+            GameEventUserValue points = Get(GameEventUserValueType.LongTermAttendPoints, gameEvent.Id, gameEvent.EndTime);
+            Set(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points.Int() + 1);
+            Get(GameEventUserValueType.LongTermAttendPointTime, gameEvent.Id, gameEvent.EndTime);
+            Set(gameEvent.Id, GameEventUserValueType.LongTermAttendPointTime, now.ToEpochSeconds());
+            session.Send(EventRewardPacket.LongTermAttendPoint());
         }
     }
 

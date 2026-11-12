@@ -866,6 +866,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // that read the quests are handled, with the time of the reset.
         DateTime resetTime = DateTime.Now;
         Scheduler.Schedule(() => Quest.ResetAllianceMissions(resetTime));
+        // Long-term attendance: the day's attend point, on the session's own queue like the handler's grant.
+        Scheduler.Schedule(() => GameEvent.GrantLongTermAttendPoints());
         // Pet fusion count
         Player.Value.Character.PetFusionCount = 0;
         Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();

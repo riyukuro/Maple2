@@ -4,6 +4,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -65,9 +66,18 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimBingoReward:
                 HandleClaimBingoReward(session, packet);
                 return;
+            case Command.LongTermAttendOpen:
+                session.GameEvent.GrantLongTermAttendPoints();
+                return;
+            case Command.LongTermAttend:
+                HandleLongTermAttend(session, packet);
+                return;
+            case Command.ClaimLongTermAttendReward:
+                HandleClaimLongTermAttendReward(session, packet);
+                return;
             // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
-            // stamp, item box, snowman, level-up package, burning level-up, item collection and long-term attend
-            // events, and GameEvent writes none of them), so the client's dialogs have no event to show and
+            // stamp, item box, snowman, level-up package, burning level-up and item collection events, and
+            // GameEvent writes none of them), so the client's dialogs have no event to show and
             // there is nothing to pay out. The client has no refusal text for them: read and logged.
             // Client writers:
             //   0, 1   uistampeventdialog.cpp:319, :331
@@ -77,32 +87,97 @@ public class EventRewardHandler : FieldPacketHandler {
             //   15     uileveluppackagewidgetdialog.cpp:580
             //   16     uicharacterlistdialog.cpp:2093
             //   19     uicollectitemgroupeventdialog.cpp:415
-            //   25     uilongtermattendgiftdialog.cpp:511
-            //   26     uilongtermattendgiftdialog.cpp:385 (1), :535 (0)
-            //   27     gameeventcli.cpp:1194, uilongtermattendgiftdialog.cpp:348
             case Command.ClaimStampReward: // stamp count, special flag
                 Logger.Debug("EventReward {Command} from {CharacterId}: count {Count}, special {Special}", command, session.CharacterId, packet.ReadInt(), packet.ReadByte());
                 return;
             case Command.ClaimStampCompleteReward: // all stamps collected; no body
             case Command.OpenEventBox: // the event box dialog's open button; no body
-            case Command.LongTermAttendOpen: // sent when the long-term attend event starts or its dialog asks again; no body
                 Logger.Debug("EventReward {Command} from {CharacterId}", command, session.CharacterId);
                 return;
             case Command.VipGmClick: // always 1; sent by any player when the buddy event page opens, not a GM mode
             case Command.ClaimSnowmanDailyReward: // snowman index
             case Command.ClaimSnowmanAccumReward: // snowman index
-            case Command.LongTermAttend: // 1 = catch up a missed day with merat, 0 = with an attend point
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
                 return;
             case Command.ClaimLevelUpEventReward: // event id
             case Command.ClaimCollectItemGroupReward: // event id
-            case Command.ClaimLongTermAttendReward: // day
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 return;
             case Command.SetEventCharacter: // character id picked in the character list
                 Logger.Debug("EventReward {Command} from {CharacterId}: character {Target}", command, session.CharacterId, packet.ReadLong());
                 return;
         }
+    }
+
+    // Long-term attendance. 27 (no body; gameeventcli.cpp:1194 when the event loads,
+    // uilongtermattendgiftdialog.cpp:348 when the dialog asks again) gives the day's attend point. 26 + byte
+    // (uilongtermattendgiftdialog.cpp:385 sends 1, :535 sends 0) attends one missed day with a point (0) or for
+    // the event's merat price in merets (1). 25 + int day (:511) claims the reward row of an attended day. As in
+    // KMS2 the user values are updated first, then the reply (26 sends the points, then the days attended).
+    private void HandleLongTermAttend(GameSession session, IByteReader packet) {
+        bool withMerat = packet.ReadByte() == 1;
+        GameEvent? gameEvent = session.FindEvent(GameEventType.LongTermAttendGift).FirstOrDefault();
+        if (gameEvent?.Metadata.Data is not LongTermAttendGift gift) {
+            return;
+        }
+
+        int points = session.GameEvent.Get(GameEventUserValueType.LongTermAttendPoints, gameEvent.Id, gameEvent.EndTime).Int();
+        int attended = session.GameEvent.Get(GameEventUserValueType.LongTermAttendDays, gameEvent.Id, gameEvent.EndTime).Int();
+        int missed = LongTermAttendRules.MissedDays(gameEvent.Metadata.StartTime, DateTime.Now, attended, gift.MaxAttendance);
+        LongTermAttendRules.AttendStep step = LongTermAttendRules.CheckAttend(withMerat, points, missed, session.Currency.Meret, gift.Merat);
+        switch (step) {
+            case LongTermAttendRules.AttendStep.Point:
+                session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points - 1);
+                break;
+            case LongTermAttendRules.AttendStep.Merat:
+                session.Currency.Meret -= gift.Merat;
+                break;
+            default:
+                // The client checks the same before it sends; it has no reply for a refusal.
+                Logger.Debug("LongTermAttend from {CharacterId} refused: {Step}", session.CharacterId, step);
+                return;
+        }
+
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendDays, attended + 1);
+        session.Send(EventRewardPacket.LongTermAttend());
+    }
+
+    private void HandleClaimLongTermAttendReward(GameSession session, IByteReader packet) {
+        int day = packet.ReadInt();
+        GameEvent? gameEvent = session.FindEvent(GameEventType.LongTermAttendGift).FirstOrDefault();
+        if (gameEvent?.Metadata.Data is not LongTermAttendGift gift || session.Field == null) {
+            return;
+        }
+
+        int attended = session.GameEvent.Get(GameEventUserValueType.LongTermAttendDays, gameEvent.Id, gameEvent.EndTime).Int();
+        GameEventUserValue claimed = session.GameEvent.Get(GameEventUserValueType.LongTermAttendClaimedDays, gameEvent.Id, gameEvent.EndTime);
+        LongTermAttendGift.Reward? reward = LongTermAttendRules.CheckClaim(gift, day, attended, claimed.Value);
+        if (reward == null) {
+            Logger.Debug("ClaimLongTermAttendReward from {CharacterId} refused: day {Day}", session.CharacterId, day);
+            return;
+        }
+
+        // Both items of the row, as the data gives them; an empty slot gives nothing.
+        var items = new List<Item>();
+        foreach (RewardItem rewardItem in new[] { reward.Item01, reward.Item02 }) {
+            if (rewardItem.ItemId == 0) {
+                continue;
+            }
+            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item == null) {
+                Logger.Error("ClaimLongTermAttendReward: event {EventId} day {Day} item {ItemId} could not be made", gameEvent.Id, day, rewardItem.ItemId);
+                return;
+            }
+            items.Add(item);
+        }
+
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendClaimedDays, LongTermAttendRules.AddClaimedDay(claimed.Value, day));
+        foreach (Item item in items) {
+            if (!session.Item.Inventory.Add(item, true)) {
+                session.Item.MailItem(item);
+            }
+        }
+        session.Send(EventRewardPacket.ClaimLongTermAttendReward());
     }
 
     private void HandleClaimTimeRunStepReward(GameSession session, IByteReader packet) {

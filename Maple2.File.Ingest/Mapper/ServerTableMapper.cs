@@ -994,7 +994,14 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
             // Only add events that are not expired
             if (endTime < now) {
-                ended.Add(metadata);
+                // The replay also reads ends written to the second (the long-term attendance rows), which the
+                // parse above leaves at DateTime.MinValue.
+                ended.Add(replayAttendGift
+                    ? metadata with {
+                        StartTime = AttendGiftReplay.ParseTime(data.eventStart),
+                        EndTime = AttendGiftReplay.ParseTime(data.eventEnd),
+                    }
+                    : metadata);
                 continue;
             }
             results.Add(id, metadata);
@@ -1006,17 +1013,19 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             int ClientRank(int itemId) =>
                 ItemMapper.ItemMetadataById.TryGetValue(itemId, out ItemMetadata? item) && !item.Property.NotInPlayedClient
                     ? item.Property.Rank ?? 0 : 0;
-            GameEventMetadata? replay = AttendGiftReplay.Pick(ended, now, ClientRank);
-            int[] passed = AttendGiftReplay.Candidates(ended, now).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
-            if (passed.Length > 0) {
-                Console.WriteLine($"{AttendGiftReplay.Option}: AttendGift {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data");
-            }
-            if (replay == null) {
-                Console.WriteLine($"{AttendGiftReplay.Option}: no ended AttendGift event to replay");
-            } else if (!results.ContainsKey(replay.Id)) {
-                GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
-                results.Add(moved.Id, moved);
-                Console.WriteLine($"{AttendGiftReplay.Option}: AttendGift {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
+            foreach (GameEventType type in AttendGiftReplay.Types) {
+                GameEventMetadata? replay = AttendGiftReplay.Pick(ended, now, type, ClientRank);
+                int[] passed = AttendGiftReplay.Candidates(ended, now, type).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
+                if (passed.Length > 0) {
+                    Console.WriteLine($"{AttendGiftReplay.Option}: {type} {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data");
+                }
+                if (replay == null) {
+                    Console.WriteLine($"{AttendGiftReplay.Option}: no ended {type} event to replay");
+                } else if (!results.ContainsKey(replay.Id)) {
+                    GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
+                    results.Add(moved.Id, moved);
+                    Console.WriteLine($"{AttendGiftReplay.Option}: {type} {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
+                }
             }
         }
         return new GameEventTable(results);
@@ -1555,6 +1564,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                         itemId: timerunEventItemId,
                         amount: timerunEventItemCount,
                         rarity: timerunEventItemGrade));
+            case GameEventType.LongTermAttendGift:
+                return LongTermAttendGiftReader.Parse(value1, value2);
             case GameEventType.MapleSurvivalOpenPeriod:
                 return new MapleSurvivalOpenPeriod();
             case GameEventType.ShutdownMapleSurvival:

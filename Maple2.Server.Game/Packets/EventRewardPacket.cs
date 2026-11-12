@@ -16,6 +16,29 @@ public static class EventRewardPacket {
         OpenBingo = 20,
         UpdateBingo = 21,
         ClaimBingoReward = 23,
+        ClaimLongTermAttendReward = 25,
+        LongTermAttend = 26,
+        LongTermAttendPoint = 27,
+    }
+
+    // The long-term attendance replies carry nothing: the dialog redraws from the user values sent before them
+    // (25: the reward list, 26: the calendar and the list, 27: the point count).
+    public static ByteWriter ClaimLongTermAttendReward() {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.Write<Command>(Command.ClaimLongTermAttendReward);
+        return pWriter;
+    }
+
+    public static ByteWriter LongTermAttend() {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.Write<Command>(Command.LongTermAttend);
+        return pWriter;
+    }
+
+    public static ByteWriter LongTermAttendPoint() {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.Write<Command>(Command.LongTermAttendPoint);
+        return pWriter;
     }
 
     public static ByteWriter Unknown1(List<RewardItem> items) {
