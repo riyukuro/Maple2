@@ -58,6 +58,17 @@ public class TradeHandlerTests {
         Send(taker, 10, writer => writer.WriteLong(1000));
     }
 
+    // A new request from giver to taker. Its time-out is set far off, so it does not end the request mid-test.
+    private TradeManager Request() {
+        giverTest.SetServerTable(giverTest.ServerTableMetadata.ConstantsTable with { TradeRequestDuration = 30 });
+        var request = new TradeManager(giver, taker);
+        giver.Trade = request;
+        taker.Trade = request;
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+        return request;
+    }
+
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
     private static string[] Modes(List<byte[]> sent) => sent.Select(packet => $"{TestGameSession.Op(packet)} {packet[2]}").ToArray();
 
@@ -248,6 +259,84 @@ public class TradeHandlerTests {
             Assert.That(taker.Currency.Meso, Is.EqualTo(5000), $"round {round}");
             Assert.That(giver.Trade, Is.Null, $"round {round}");
             Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty, $"round {round}");
+        }
+    }
+
+    // A third player is not part of a request: it cannot acknowledge it, and a cancel from it (even holding the
+    // trade, as an acknowledge naming a trader once gave it) leaves the two players' trade and offers alone.
+    [Test]
+    public void ThirdPlayer_CannotAcknowledgeOrCancel() {
+        var thirdTest = new TestGameSession();
+        thirdTest.Start();
+        GameSession third = thirdTest.Session;
+        Offer();
+        TradeManager trade = giver.Trade!;
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+
+        Assert.That(trade.IsTrader(third), Is.False);
+        Assert.That(trade.Acknowledge(third), Is.False);
+        third.Trade = trade;
+        Send(third, 7);
+
+        Assert.That(third.Trade, Is.Null);
+        Assert.That(giver.Trade, Is.SameAs(trade));
+        Assert.That(taker.Trade, Is.SameAs(trade));
+        Assert.That(giverTest.TakeSent(), Is.Empty);
+        Assert.That(takerTest.TakeSent(), Is.Empty);
+        Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
+        Assert.That(giver.Item.Inventory.Find(20000001), Is.Empty);
+
+        // The request of a new trade: only the player asked can acknowledge it.
+        Send(giver, 7);
+        TradeManager request = Request();
+        Assert.That(request.Acknowledge(third), Is.False);
+        Assert.That(request.Acknowledge(giver), Is.False);
+        Assert.That(giverTest.TakeSent(), Is.Empty);
+        Assert.That(request.Acknowledge(taker), Is.True);
+        Assert.That(request.Acknowledge(taker), Is.False);
+        Assert.That(giverTest.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(TradePacket.Acknowledge()) }));
+        request.Dispose();
+    }
+
+    // An accept after the request ended (cancelled or timed out) starts nothing.
+    [Test]
+    public void Accept_AfterTheRequestEndedStartsNothing() {
+        Send(giver, 7);
+        TradeManager request = Request();
+        Assert.That(request.Acknowledge(taker), Is.True);
+        request.Dispose();
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+
+        request.Accept(taker);
+        request.Decline(taker);
+
+        Assert.That(giverTest.TakeSent(), Is.Empty);
+        Assert.That(takerTest.TakeSent(), Is.Empty);
+        Assert.That(giver.Trade, Is.Null);
+        Assert.That(taker.Trade, Is.Null);
+    }
+
+    // An accept and the end of the request at the same moment: the trade either never starts, or starts and is
+    // then ended for both; a started trade is never left on a request that was dropped.
+    [Test]
+    public void Accept_RacingTheEndOfTheRequest() {
+        Send(giver, 7);
+        string start = Hex(TradePacket.StartTrade(taker.CharacterId));
+        string end = Hex(TradePacket.EndTrade(false));
+        for (int round = 0; round < 40; round++) {
+            TradeManager request = Request();
+            Assert.That(request.Acknowledge(taker), Is.True);
+            giverTest.TakeSent();
+
+            System.Threading.Tasks.Parallel.Invoke(() => request.Accept(taker), request.Dispose);
+
+            string[] toGiver = giverTest.TakeSent().Select(Convert.ToHexString).ToArray();
+            Assert.That(toGiver, Is.EqualTo(Array.Empty<string>()).Or.EqualTo(new[] { start, end }), $"round {round}");
+            Assert.That(takerTest.TakeSent().Count, Is.EqualTo(toGiver.Length), $"round {round}");
+            Assert.That(giver.Trade, Is.Null, $"round {round}");
+            Assert.That(taker.Trade, Is.Null, $"round {round}");
         }
     }
 }

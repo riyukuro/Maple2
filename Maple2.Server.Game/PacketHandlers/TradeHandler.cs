@@ -106,8 +106,15 @@ public class TradeHandler : FieldPacketHandler {
             return;
         }
 
-        session.Trade = target.Session.Trade;
-        session.Trade.Acknowledge(session);
+        // Only the player the request was sent to gets the trade: anyone else naming a trader is refused and
+        // holds nothing it could cancel.
+        TradeManager trade = target.Session.Trade;
+        if (!trade.Acknowledge(session)) {
+            session.Send(TradePacket.Error(s_trade_error_decline));
+            return;
+        }
+
+        session.Trade = trade;
     }
 
     // Sent instead of Acknowledge when the client cannot show the request (another message box is open).
@@ -133,7 +140,16 @@ public class TradeHandler : FieldPacketHandler {
     }
 
     private static void HandleCancel(GameSession session) {
-        session.Trade?.Dispose();
+        TradeManager? trade = session.Trade;
+        if (trade == null) {
+            return;
+        }
+        if (!trade.IsTrader(session)) {
+            session.Trade = null;
+            return;
+        }
+
+        trade.Dispose();
     }
 
     private static void HandleAddItem(GameSession session, IByteReader packet) {

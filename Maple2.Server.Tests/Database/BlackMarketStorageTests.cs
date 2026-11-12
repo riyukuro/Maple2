@@ -66,7 +66,7 @@ public class BlackMarketStorageTests {
     [TearDown]
     public void TearDown() {
         using var context = new Ms2Context(options);
-        long[] mails = context.Mail.Where(mail => mail.ReceiverId == buyerA || mail.ReceiverId == buyerB).Select(mail => mail.Id).ToArray();
+        long[] mails = context.Mail.Where(mail => mail.ReceiverId == buyerA || mail.ReceiverId == buyerB || mail.ReceiverId == seller).Select(mail => mail.Id).ToArray();
         long[] items = context.BlackMarketListing.Where(row => row.CharacterId == seller).Select(row => row.ItemUid).ToArray();
         context.Item.RemoveRange(context.Item.Where(item => item.ItemId == ItemId && (mails.Contains(item.OwnerId) || items.Contains(item.Id))));
         context.Item.RemoveRange(context.Item.Where(item => item.ItemId == ItemId && listings.Contains(item.OwnerId)));
@@ -97,13 +97,28 @@ public class BlackMarketStorageTests {
     // The amount bought, 0 when refused.
     private int Buy(long listingId, int quantity, long buyer, long price = Price) {
         using GameStorage.Request db = storage.Context();
-        BlackMarketListing? after = db.BuyBlackMarketListing(listingId, quantity, price, new Mail { ReceiverId = buyer }, out Mail? mail, out _);
+        BlackMarketListing? after = db.BuyBlackMarketListing(listingId, quantity, price, new Mail { ReceiverId = buyer },
+            left => new Mail { ReceiverId = seller, Meso = quantity * left.Price }, out Mail? mail, out Mail? sellerMail, out _);
         if (after == null) {
             Assert.That(mail, Is.Null);
+            Assert.That(sellerMail, Is.Null);
             return 0;
         }
         Assert.That(mail!.Items.Sum(item => item.Amount), Is.EqualTo(quantity));
+        Assert.That(sellerMail!.Id, Is.Not.EqualTo(0).And.Not.EqualTo(mail.Id));
         return quantity;
+    }
+
+    private BlackMarketListing? Take(long listingId, long characterId, out Mail? mail) {
+        using GameStorage.Request db = storage.Context();
+        return db.TakeBlackMarketListing(listingId, characterId, left => new Mail { ReceiverId = characterId, Meso = left.Quantity }, out mail);
+    }
+
+    // The mesos mailed to the seller and the items of the listed kind in the seller's mails.
+    private (long Meso, int Items) SellerMails() {
+        using GameStorage.Request db = storage.Context();
+        ICollection<Mail> mails = db.GetAllMail(seller);
+        return (mails.Sum(mail => mail.Meso), mails.SelectMany(mail => mail.Items).Where(item => item.Id == ItemId).Sum(item => item.Amount));
     }
 
     private int Mailed(long buyer) {
@@ -146,6 +161,67 @@ public class BlackMarketStorageTests {
         }
         Assert.That(Buy(listing.Id, 1, buyerB), Is.EqualTo(0));
         Assert.That((Mailed(buyerA), Mailed(buyerB)), Is.EqualTo((3, 1)));
+        // The seller's mail of each sale was stored with it.
+        Assert.That(SellerMails(), Is.EqualTo((4 * Price, 0)));
+    }
+
+    // The seller's mail cannot be made (the maker throws, or the mail cannot be stored): the buy does not happen.
+    // The listing, its stack and the mails are as before, and the same buy with a good mail still works.
+    [TestCase(true, 4)]
+    [TestCase(true, 3)]
+    [TestCase(false, 4)]
+    [TestCase(false, 3)]
+    public void Buy_SellerMailFailsChangesNothing(bool throws, int quantity) {
+        BlackMarketListing listing = List(4);
+
+        using (GameStorage.Request db = storage.Context()) {
+            BlackMarketListing? after = db.BuyBlackMarketListing(listing.Id, quantity, Price, new Mail { ReceiverId = buyerA },
+                _ => throws ? throw new InvalidOperationException("no mail") : null!, out Mail? mail, out Mail? sellerMail, out bool gone);
+            Assert.That(after, Is.Null);
+            Assert.That(mail, Is.Null);
+            Assert.That(sellerMail, Is.Null);
+            Assert.That(gone, Is.False);
+        }
+
+        Assert.That(Listed(listing.Id), Is.EqualTo(4));
+        using (GameStorage.Request db = storage.Context()) {
+            BlackMarketListing kept = db.GetBlackMarketListing(listing.Id)!;
+            Assert.That(kept.Item.Amount, Is.EqualTo(4));
+            Assert.That(kept.Item.Uid, Is.EqualTo(listing.Item.Uid));
+            Assert.That(db.GetAllMail(buyerA), Is.Empty);
+            Assert.That(db.GetAllMail(seller), Is.Empty);
+        }
+        Assert.That(Buy(listing.Id, quantity, buyerA), Is.EqualTo(quantity));
+        Assert.That(SellerMails(), Is.EqualTo((quantity * Price, 0)));
+    }
+
+    // The mail of a take-back cannot be made: the listing stays as it was, the item stays the listing's, and
+    // nothing is mailed. A take-back with a good mail then returns the whole stack in that mail.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Take_MailFailsChangesNothing(bool throws) {
+        BlackMarketListing listing = List(4);
+
+        using (GameStorage.Request db = storage.Context()) {
+            BlackMarketListing? taken = db.TakeBlackMarketListing(listing.Id, seller,
+                _ => throws ? throw new InvalidOperationException("no mail") : null!, out Mail? failed);
+            Assert.That(taken, Is.Null);
+            Assert.That(failed, Is.Null);
+        }
+
+        Assert.That(Listed(listing.Id), Is.EqualTo(4));
+        using (GameStorage.Request db = storage.Context()) {
+            BlackMarketListing kept = db.GetBlackMarketListing(listing.Id)!;
+            Assert.That(kept.Item.Amount, Is.EqualTo(4));
+            Assert.That(kept.Item.Uid, Is.EqualTo(listing.Item.Uid));
+            Assert.That(db.GetAllMail(seller), Is.Empty);
+        }
+
+        BlackMarketListing? back = Take(listing.Id, seller, out Mail? mail);
+        Assert.That(back, Is.Not.Null);
+        Assert.That(mail!.Items.Select(item => (item.Uid, item.Amount)), Is.EqualTo(new[] { (listing.Item.Uid, 4) }));
+        Assert.That(Listed(listing.Id), Is.EqualTo(0));
+        Assert.That(SellerMails(), Is.EqualTo((4L, 4)));
     }
 
     // Two buyers at once on a listing of four: together they never get more than four, and what is left is listed.
@@ -182,10 +258,7 @@ public class BlackMarketStorageTests {
             BlackMarketListing? taken = null;
             Parallel.Invoke(
                 () => got = Buy(listing.Id, 3, buyerA),
-                () => {
-                    using GameStorage.Request db = storage.Context();
-                    taken = db.TakeBlackMarketListing(listing.Id, seller);
-                });
+                () => taken = Take(listing.Id, seller, out _));
 
             Assert.That(taken, Is.Not.Null, $"round {round}");
             Assert.That(got + taken!.Quantity, Is.EqualTo(4), $"round {round}");
@@ -193,8 +266,7 @@ public class BlackMarketStorageTests {
             Assert.That(Listed(listing.Id), Is.EqualTo(0), $"round {round}");
             bought += got;
             Assert.That(Mailed(buyerA), Is.EqualTo(bought), $"round {round}");
-            using GameStorage.Request other = storage.Context();
-            Assert.That(other.TakeBlackMarketListing(listing.Id, seller), Is.Null, $"round {round}");
+            Assert.That(Take(listing.Id, seller, out _), Is.Null, $"round {round}");
         }
     }
 
@@ -202,9 +274,10 @@ public class BlackMarketStorageTests {
     public void Take_OnlyTheSellersOwn() {
         BlackMarketListing listing = List(4);
 
-        using (GameStorage.Request db = storage.Context()) {
-            Assert.That(db.TakeBlackMarketListing(listing.Id, buyerA), Is.Null);
-        }
+        Assert.That(Take(listing.Id, buyerA, out Mail? mail), Is.Null);
+        Assert.That(mail, Is.Null);
         Assert.That(Listed(listing.Id), Is.EqualTo(4));
+        using GameStorage.Request db = storage.Context();
+        Assert.That(db.GetAllMail(buyerA), Is.Empty);
     }
 }

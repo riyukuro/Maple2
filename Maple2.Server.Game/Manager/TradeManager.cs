@@ -70,28 +70,35 @@ public class TradeManager : IDisposable {
     }
 
     // Called by |receiver| to acknowledge trade request.
-    public void Acknowledge(GameSession caller) {
-        if (state != TradeState.Requested || !IsReceiver(caller)) {
-            return;
-        }
-
+    // False when |caller| is not the one asked or the request is over; the state is tested inside the lock, so
+    // a request that timed out or was cancelled at the same moment is not brought back.
+    public bool Acknowledge(GameSession caller) {
         lock (mutex) {
+            if (state != TradeState.Requested || !IsReceiver(caller)) {
+                return false;
+            }
+
             state = TradeState.Acknowledged;
         }
         sender.Session.Send(TradePacket.Acknowledge());
+        return true;
     }
+
+    // The trade's two players; nobody else may act on it.
+    public bool IsTrader(GameSession caller) => caller == sender.Session || caller == receiver.Session;
 
     // Called by |receiver| to accept trade request.
     public void Accept(GameSession caller) {
-        if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
-            return;
-        }
-
         lock (mutex) {
+            if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
+                return;
+            }
+
             state = TradeState.Started;
+            // Sent inside the lock: a cancel at the same moment sends its end of the trade after the start.
+            sender.Session.Send(TradePacket.StartTrade(receiver.Session.CharacterId));
+            receiver.Session.Send(TradePacket.StartTrade(sender.Session.CharacterId));
         }
-        sender.Session.Send(TradePacket.StartTrade(receiver.Session.CharacterId));
-        receiver.Session.Send(TradePacket.StartTrade(sender.Session.CharacterId));
     }
 
     // Called by |receiver| when it cannot show the trade request.
@@ -109,11 +116,11 @@ public class TradeManager : IDisposable {
     }
 
     public void Decline(GameSession caller) {
-        if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
-            return;
-        }
-
         lock (mutex) {
+            if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
+                return;
+            }
+
             state = TradeState.Completed;
         }
         sender.Session.Send(TradePacket.Decline(receiver.Session.PlayerName));
@@ -399,7 +406,6 @@ public class TradeManager : IDisposable {
         throw new ArgumentException($"Invalid trader: {caller}");
     }
 
-    private bool IsTrader(GameSession caller) => caller == sender.Session || caller == receiver.Session;
     private bool IsReceiver(GameSession caller) => caller == receiver.Session;
 
     private class Trader {

@@ -120,8 +120,9 @@ public sealed class BlackMarketManager {
 
         // The row is taken first, and the item read after it: a buyer racing with the take-back either finds the
         // listing gone or has its part out of the item before the rest is mailed back.
-        BlackMarketListing? listing = db.TakeBlackMarketListing(listingId, session.CharacterId);
-        if (listing == null) {
+        // The mail and the item's move into it are part of the same step: a mail that fails leaves the listing.
+        BlackMarketListing? listing = db.TakeBlackMarketListing(listingId, session.CharacterId, CancelMail, out Mail? mail);
+        if (listing == null || mail == null) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
             return;
         }
@@ -137,6 +138,11 @@ public sealed class BlackMarketManager {
             logger.Error(ex, "Failed to drop black market listing {ListingId} from the search", listingId);
         }
 
+        session.Send(BlackMarketPacket.Remove(listingId));
+        session.Mail.Notify(true);
+    }
+
+    private Mail CancelMail(BlackMarketListing listing) {
         long deposit = listing.ExpiryTime < DateTime.Now.ToEpochSeconds() ? listing.Deposit : 0;
 
         var mail = new Mail {
@@ -162,17 +168,7 @@ public sealed class BlackMarketManager {
         mail.SetContent(StringCode.s_blackmarket_mail_to_cancel_content);
         mail.SetSenderName(StringCode.s_blackmarket_mail_to_sender);
 
-        mail = db.CreateMail(mail);
-        if (mail == null) {
-            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
-            logger.Error("Failed to create black market mail for {CharacterId}", session.CharacterId);
-            return;
-        }
-
-        mail.Items.Add(listing.Item);
-        db.SaveItems(mail.Id, listing.Item);
-        session.Send(BlackMarketPacket.Remove(listingId));
-        session.Mail.Notify(true);
+        return mail;
     }
 
     public void Purchase(long listingId, int quantity) {
@@ -208,10 +204,15 @@ public sealed class BlackMarketManager {
         // The listing above is only a look. The buy itself is one transaction that takes the count from the row
         // while it still holds it at this price, so two buyers cannot both get the last of a listing; the one
         // that comes second pays nothing and is told the count is short.
+        // The seller's mail (the mesos of the sale) is stored in that transaction too: a buy without it would
+        // leave the seller without the item and without the mesos.
         Mail? receivingMail;
+        Mail? sellerMail;
         bool gone;
+        bool sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
         using (GameStorage.Request db = session.GameStorage.Context()) {
-            listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity), out receivingMail, out gone);
+            listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity),
+                after => SellerMail(after, quantity, sellerIsPremium), out receivingMail, out sellerMail, out gone);
         }
         if (listing == null || receivingMail == null) {
             session.Send(BlackMarketPacket.Error(gone ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
@@ -232,15 +233,11 @@ public sealed class BlackMarketManager {
             logger.Error(ex, "Failed to report the purchase of black market listing {ListingId}", listingId);
         }
 
-        // KMS2 order: Meso, the purchase answer, then the mail notice. The buyer's side is done here, so a
-        // seller mail that fails below is logged and no longer answered with an error after the success.
+        // KMS2 order: Meso, the purchase answer, then the mail notice.
         session.Send(BlackMarketPacket.Purchase(listingId, quantity));
         session.Mail.Notify(true);
 
-        // Seller Mail
-        Mail? sellerMail = CreateSellerMail(listing, quantity);
         if (sellerMail == null) {
-            logger.Error("Failed to create black market sale mail for {CharacterId}", listing.CharacterId);
             return;
         }
 
@@ -274,17 +271,14 @@ public sealed class BlackMarketManager {
         return receivingMail;
     }
 
-    private Mail? CreateSellerMail(BlackMarketListing listing, int quantity) {
-        using GameStorage.Request db = session.GameStorage.Context();
-
+    // The seller's mail for quantity sold of listing, which holds the count left after the sale.
+    private static Mail SellerMail(BlackMarketListing listing, int quantity, bool sellerIsPremium) {
         float costRate = Lua.CalcBlackMarketCostRate();
         long tax = (long) (costRate * (quantity * listing.Price));
 
-        bool sellerIsPremium = false;
         long savings = tax;
-        if (session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds()) {
+        if (sellerIsPremium) {
             savings = (long) (tax * Constant.BlackMarketPremiumClubDiscount);
-            sellerIsPremium = true;
         }
         long revenue = quantity * listing.Price - savings;
         List<(string, string)> contentArgs = [
@@ -330,7 +324,7 @@ public sealed class BlackMarketManager {
         mail.SetTitle(StringCode.s_blackmarket_mail_to_seller_title);
         mail.SetSenderName(StringCode.s_blackmarket_mail_to_sender);
 
-        return db.CreateMail(mail);
+        return mail;
     }
 
     private void CreateRefundErrorMail(Item item, long refund) {
