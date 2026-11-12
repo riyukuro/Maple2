@@ -600,6 +600,9 @@ message ClubRequest {
     int32 buff_level = 3;
   }
 
+  // The login server deletes the character requestor_id: it leaves every club it is in first.
+  message DeleteCharacter { }
+
   int64 requestor_id = 1;
   oneof club {
     Create create = 2;
@@ -610,6 +613,7 @@ message ClubRequest {
     Rename rename = 7;
     ChangeLeader change_leader = 8;
     Buff buff = 9;
+    DeleteCharacter delete_character = 10;
   }
 }
 

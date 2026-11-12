@@ -163,7 +163,8 @@ public class ClubManager : IDisposable {
         return true;
     }
 
-    public bool RemoveMember(long characterId) {
+    // A deleted character (deleted) leaves without a notice: Club 0x1c drops the row, where 0x12 also prints one.
+    public bool RemoveMember(long characterId, bool deleted = false) {
         if (!Club.Members.TryRemove(characterId, out ClubMember? member)) {
             return false;
         }
@@ -173,6 +174,8 @@ public class ClubManager : IDisposable {
         if (session.CharacterId == characterId) {
             session.Send(ClubPacket.Leave(Id));
             RemoveClub();
+        } else if (deleted) {
+            session.Send(ClubPacket.DeletedMember(Id, member.Name));
         } else {
             session.Send(ClubPacket.LeaveNotice(Id, member.Name));
         }

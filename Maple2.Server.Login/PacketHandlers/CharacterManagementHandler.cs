@@ -399,7 +399,25 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         return true;
     }
 
-    private static void DeleteCharacter(LoginSession session, GameStorage.Request db, long characterId) {
+    private void DeleteCharacter(LoginSession session, GameStorage.Request db, long characterId) {
+        // The world takes the character out of its clubs first (the other members get Club 0x1c, a leader hands the
+        // club on): the club rows name the character, so deleting it first would take a led club with it.
+        try {
+            Maple2.Server.World.Service.ClubResponse response = World.Club(new ClubRequest {
+                RequestorId = characterId,
+                DeleteCharacter = new ClubRequest.Types.DeleteCharacter(),
+            });
+            if (response.Error != 0) {
+                Logger.Warning("Delete of character {CharacterId}: the world could not take it out of its clubs ({Error})", characterId, response.Error);
+                session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_destroy));
+                return;
+            }
+        } catch (RpcException ex) {
+            Logger.Warning("Delete of character {CharacterId}: the world was not reached ({Status})", characterId, ex.StatusCode);
+            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_destroy));
+            return;
+        }
+
         if (!db.DeleteCharacter(session.AccountId, characterId)) {
             session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_destroy));
             return;

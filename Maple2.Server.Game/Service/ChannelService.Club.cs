@@ -76,6 +76,10 @@ public partial class ChannelService {
 
     private ClubResponse StagedClubInviteReply(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.StagedClubInviteReply stagedClubInviteReply) {
         foreach (long receiverId in receiverIds) {
+            // The member who declined gets Club 4 from its own handler, not the notice that names it.
+            if (receiverId == stagedClubInviteReply.CharacterId) {
+                continue;
+            }
             if (!server.GetSession(receiverId, out GameSession? session)) {
                 return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
             }
@@ -141,7 +145,7 @@ public partial class ChannelService {
                 continue;
             }
 
-            manager.RemoveMember(remove.CharacterId);
+            manager.RemoveMember(remove.CharacterId, remove.Deleted);
         }
 
         return new ClubResponse();

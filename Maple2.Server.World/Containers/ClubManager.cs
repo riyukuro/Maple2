@@ -167,7 +167,7 @@ public class ClubManager : IDisposable {
         return ClubError.none;
     }
 
-    public ClubError Leave(long characterId) {
+    public ClubError Leave(long characterId, bool deleted = false) {
         if (!Club.Members.TryGetValue(characterId, out ClubMember? member)) {
             return ClubError.s_club_err_null_member;
         }
@@ -206,6 +206,7 @@ public class ClubManager : IDisposable {
         Broadcast(new ClubRequest {
             RemoveMember = new ClubRequest.Types.RemoveMember {
                 CharacterId = characterId,
+                Deleted = deleted,
             },
             ClubId = Club.Id,
         }, member);

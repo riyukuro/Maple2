@@ -129,9 +129,11 @@ public class ClubHandler : FieldPacketHandler {
             },
         });
 
+        // The replier gets Club 4 for its own reply: a refused reply carries the error code, a decline result 0 (the
+        // client drops the club). An accept needs no answer: Club 1 comes once every member has accepted.
         var error = (ClubError) response.Error;
-        if (error != ClubError.none) {
-            session.Send(ClubPacket.Error(error));
+        if (error != ClubError.none || reply != Maple2.Model.Enum.ClubResponse.Accept) {
+            session.Send(ClubPacket.StagedInviteResult(clubId, error));
         }
     }
 

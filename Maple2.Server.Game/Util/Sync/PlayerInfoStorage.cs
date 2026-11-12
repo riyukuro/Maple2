@@ -30,6 +30,12 @@ public class PlayerInfoStorage {
         if (cache.TryGetValue(characterId, out info)) {
             return true;
         }
+        // A name lookup that found no character gives id 0 (a whisper to an unknown name): that is a normal not-found,
+        // not a request the World would refuse.
+        if (characterId <= 0) {
+            logger.Debug("No PlayerInfo for character id {CharacterId}", characterId);
+            return false;
+        }
 
         // Fetch PlayerInfo from World server.
         try {

@@ -36,6 +36,8 @@ public partial class WorldService {
                 return Task.FromResult(ChangeLeader(request.RequestorId, request.ChangeLeader));
             case ClubRequest.ClubOneofCase.Buff:
                 return Task.FromResult(Buff(request.RequestorId, request.Buff));
+            case ClubRequest.ClubOneofCase.DeleteCharacter:
+                return Task.FromResult(DeleteCharacter(request.RequestorId));
             default:
                 return Task.FromResult(new ClubResponse { Error = (int) ClubError.s_club_err_unknown });
         }
@@ -258,6 +260,24 @@ public partial class WorldService {
         }
 
         manager.SetBuff(buff.BuffId, buff.BuffLevel);
+        return new ClubResponse();
+    }
+
+    // The character is about to be deleted: it leaves each club as a member who leaves would (a club of two is
+    // disbanded, a leader hands the club to another member), and the other members get Club 0x1c instead of 0x12.
+    // This runs before the character row goes, so the club rows that name it are already changed.
+    private ClubResponse DeleteCharacter(long characterId) {
+        foreach (ClubManager manager in clubLookup.TryGetByCharacterId(characterId)) {
+            ClubError error = manager.Club.Members.Count <= 2
+                ? clubLookup.Disband(manager.Club.Id)
+                : manager.Leave(characterId, deleted: true);
+            if (error != ClubError.none) {
+                return new ClubResponse {
+                    Error = (int) error,
+                };
+            }
+        }
+
         return new ClubResponse();
     }
 

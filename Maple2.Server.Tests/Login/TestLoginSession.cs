@@ -139,6 +139,15 @@ public sealed class TestLoginSession {
             PlayerUpdates.Add(request);
             return new PlayerUpdateResponse();
         }
+
+        // The club requests; ClubError is what the world answers (0: done).
+        public readonly List<ClubRequest> Clubs = [];
+        public int ClubError;
+
+        public override Maple2.Server.World.Service.ClubResponse Club(ClubRequest request, CallOptions options) {
+            Clubs.Add(request);
+            return new Maple2.Server.World.Service.ClubResponse { Error = ClubError };
+        }
     }
 
     private sealed class ErrorSink(List<string> errors) : Serilog.Core.ILogEventSink {

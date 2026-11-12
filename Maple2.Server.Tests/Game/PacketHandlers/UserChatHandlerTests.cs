@@ -418,4 +418,51 @@ public class UserChatHandlerTests {
         Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Not.Empty);
         Assert.That(session.SuperChatId, Is.EqualTo(0));
     }
+
+    // A whisper to a name no character has: the lookup gives id 0, which is a plain not-found (the whisper error
+    // alert) and not a request the world refuses, so nothing is asked of the world and no error is logged.
+    [Test]
+    public void WhisperToAnUnknownName_IsNotFoundWithoutAWorldRequest() {
+        GameSession session = Login(meret: 0);
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteInt((int) ChatType.WhisperTo);
+            writer.WriteUnicodeString("hi");
+            writer.WriteUnicodeString("nobody");
+            writer.WriteLong();
+        }));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(ChatPacket.Alert(StringCode.s_whisper_err_target).ToArray()) }));
+        Assert.That(test.World.PlayerInfoAsked, Is.Empty);
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The storage itself: id 0 is not found, the world is not asked, and nothing at Error level is logged.
+    [Test]
+    public void PlayerInfoOfIdZero_IsNotFoundWithoutAnError() {
+        test = new TestGameSession();
+        var errors = new List<string>();
+        ILogger before = Log.Logger;
+        try {
+            Log.Logger = new LoggerConfiguration().WriteTo.Sink(new ErrorLines(errors)).CreateLogger();
+            var storage = new Maple2.Server.Game.Util.Sync.PlayerInfoStorage(test.World);
+
+            Assert.That(storage.GetOrFetch(0, out PlayerInfo? info), Is.False);
+            Assert.That(info, Is.Null);
+        } finally {
+            Log.Logger = before;
+        }
+        Assert.That(test.World.PlayerInfoAsked, Is.Empty);
+        Assert.That(errors, Is.Empty);
+    }
+
+    private sealed class ErrorLines(List<string> errors) : Serilog.Core.ILogEventSink {
+        public void Emit(Serilog.Events.LogEvent logEvent) {
+            if (logEvent.Level >= Serilog.Events.LogEventLevel.Error) {
+                errors.Add(logEvent.RenderMessage());
+            }
+        }
+    }
 }

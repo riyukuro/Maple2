@@ -161,8 +161,14 @@ public class GroupChatManager : IDisposable {
         }
 
         bool wasOnline = member.Info.Online;
+        string oldName = member.Name;
+        string oldPicture = member.Info.Picture;
         member.Info.Update(type, info);
 
+        // The client finds the member by the name it holds, so the packet carries the name from before the update.
+        if (member.Info.Picture != oldPicture) {
+            session.Send(GroupChatPacket.MemberPicture(groupChat.Id, oldName, member.Info.Picture));
+        }
         if (member.Info.Online != wasOnline) {
             session.Send(member.Info.Online
                 ? GroupChatPacket.LoginNotice(member.Name, groupChat.Id)

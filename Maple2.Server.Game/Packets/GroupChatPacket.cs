@@ -21,6 +21,7 @@ public static class GroupChatPacket {
         LogoutNotice = 9,
         Chat = 10,
         ItemLinks = 11,
+        MemberPicture = 12,
         Error = 13,
     }
 
@@ -90,6 +91,17 @@ public static class GroupChatPacket {
         pWriter.WriteInt(groupChatId);
         pWriter.WriteBool(false); // is not member?
         pWriter.WriteUnicodeString(memberName);
+
+        return pWriter;
+    }
+
+    // Client 2525 OnPacketMemberPicture: the chat, then the member by name, gets the new profile picture.
+    public static ByteWriter MemberPicture(int groupChatId, string memberName, string picture) {
+        var pWriter = Packet.Of(SendOp.GroupChat);
+        pWriter.Write<Command>(Command.MemberPicture);
+        pWriter.WriteInt(groupChatId);
+        pWriter.WriteUnicodeString(memberName);
+        pWriter.WriteUnicodeString(picture);
 
         return pWriter;
     }

@@ -362,6 +362,8 @@ message ClubRequest {
 
   message RemoveMember {
     int64 character_id = 1;
+    // The character was deleted (Club 0x1c) instead of leaving (Club 0x12).
+    bool deleted = 2;
   }
 
   message Disband { }

@@ -13,6 +13,7 @@ public static class ClubPacket {
         UpdateClub = 0,
         Establish = 1,
         Create = 2,
+        StagedInviteResult = 4,
         DeleteStagedClub = 5,
         Invited = 6,
         Invite = 7,
@@ -32,6 +33,7 @@ public static class ClubPacket {
         UpdateMember = 24,
         Rename = 26,
         UpdateMemberName = 27,
+        DeletedMember = 28,
         ErrorNotice = 29,
         Join = 30,
     }
@@ -182,6 +184,16 @@ public static class ClubPacket {
         return pWriter;
     }
 
+    // Client 2525 CClubCli::FUN_140b14110: the member row goes and the dialog refreshes, with no notice.
+    public static ByteWriter DeletedMember(long clubId, string playerName) {
+        var pWriter = Packet.Of(SendOp.Club);
+        pWriter.Write<Command>(Command.DeletedMember);
+        pWriter.WriteLong(clubId);
+        pWriter.WriteUnicodeString(playerName);
+
+        return pWriter;
+    }
+
     public static ByteWriter NotifyLogin(long clubId, string memberName) {
         var pWriter = Packet.Of(SendOp.Club);
         pWriter.Write<Command>(Command.NotifyLogin);
@@ -241,6 +253,17 @@ public static class ClubPacket {
         pWriter.WriteLong(clubId);
         pWriter.WriteUnicodeString(oldName);
         pWriter.WriteUnicodeString(newName);
+
+        return pWriter;
+    }
+
+    // Client 2525 FUN_140b16a70, the answer to the replier's staged invite reply (Club 3): result 0 drops the club
+    // from the replier's list (a decline), any other result is a club error code the client prints.
+    public static ByteWriter StagedInviteResult(long clubId, ClubError result) {
+        var pWriter = Packet.Of(SendOp.Club);
+        pWriter.Write<Command>(Command.StagedInviteResult);
+        pWriter.WriteLong(clubId);
+        pWriter.WriteByte((byte) result);
 
         return pWriter;
     }
