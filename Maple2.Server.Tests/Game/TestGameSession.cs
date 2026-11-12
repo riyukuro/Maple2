@@ -395,6 +395,7 @@ public sealed class TestGameSession {
         session.Stats = Uninitialized<StatsManager>();
         typeof(StatsManager).GetField("<Values>k__BackingField", Any)!.SetValue(session.Stats, new Stats(new Dictionary<BasicAttribute, long>(), 0));
         session.GameEvent = new GameEventManager(session);
+        session.Mentoring = new MentoringManager(session);
 
         Session = session;
         return session;

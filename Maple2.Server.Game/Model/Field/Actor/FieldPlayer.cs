@@ -73,6 +73,8 @@ public class FieldPlayer : Actor<Player> {
     // The client makes a revived player invincible for UserRevivalInvincibleTick (CSceneStateGame::OnRevival,
     // scenestategame.cpp:7408). Monster damage is ours, so the server keeps the same window.
     private long revivalInvincibleUntil;
+    private readonly HealthSyncClock healthSync = new();
+    private long healthSyncTick; // the tick of the last Update
 
     private long battleTick;
     // The party buffs follow the party members in the field; checked once a second.
@@ -218,6 +220,10 @@ public class FieldPlayer : Actor<Player> {
 
     public override void Update(long tickCount) {
         base.Update(tickCount);
+        healthSyncTick = tickCount;
+        if (healthSync.Due(tickCount)) {
+            SendHealth();
+        }
         Session.GameEvent.Update(tickCount);
         scheduler.InvokeAll();
 
@@ -497,16 +503,12 @@ public class FieldPlayer : Actor<Player> {
         base.ApplyDamage(caster, damage, attack);
         if (Stats.Values[BasicAttribute.Health].Current != healthBefore) {
             // The health a hit takes goes to the world like any other health change, so the party frames of
-            // members in other fields follow it (only heals, regen and non-skill damage were sent).
-            Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
-                AccountId = Session.AccountId,
-                CharacterId = Session.CharacterId,
-                Health = new HealthUpdate {
-                    CurrentHp = Stats.Values[BasicAttribute.Health].Current,
-                    TotalHp = Stats.Values[BasicAttribute.Health].Total,
-                },
-                Async = true,
-            });
+            // members in other fields follow it (only heals, regen and non-skill damage were sent). Hits in a
+            // fight are many: the first goes at once, the rest are held and the latest health goes from Update
+            // when the interval ends; the hit that takes the last health goes at once.
+            if (healthSync.Changed(healthSyncTick, force: Stats.Values[BasicAttribute.Health].Current <= 0)) {
+                SendHealth();
+            }
         }
         if (caster is not FieldPlayer) {
             // A hit by a monster's or the map's skill counts for skill_damage_npc with the skill id as the code
@@ -519,6 +521,18 @@ public class FieldPlayer : Actor<Player> {
                 Session.ConditionUpdate(ConditionType.skill_die, codeLong: damage.SkillMetadata.Id);
             }
         }
+    }
+
+    private void SendHealth() {
+        Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+            AccountId = Session.AccountId,
+            CharacterId = Session.CharacterId,
+            Health = new HealthUpdate {
+                CurrentHp = Stats.Values[BasicAttribute.Health].Current,
+                TotalHp = Stats.Values[BasicAttribute.Health].Total,
+            },
+            Async = true,
+        });
     }
 
     // A hit kills when it takes a living player's health to 0; a later hit in the same tick finds no health left.
@@ -651,15 +665,8 @@ public class FieldPlayer : Actor<Player> {
             Session.Send(StatsPacket.Update(this, BasicAttribute.Health));
         }
 
-        Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
-            AccountId = Session.AccountId,
-            CharacterId = Session.CharacterId,
-            Health = new HealthUpdate {
-                CurrentHp = Stats.Values[BasicAttribute.Health].Current,
-                TotalHp = Stats.Values[BasicAttribute.Health].Total,
-            },
-            Async = true,
-        });
+        healthSync.Sent(healthSyncTick);
+        SendHealth();
     }
 
     /// <summary>
@@ -676,15 +683,8 @@ public class FieldPlayer : Actor<Player> {
         DelayHpRegen();
         Session.Send(StatsPacket.Update(this, BasicAttribute.Health));
 
-        Session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
-            AccountId = Session.AccountId,
-            CharacterId = Session.CharacterId,
-            Health = new HealthUpdate {
-                CurrentHp = Stats.Values[BasicAttribute.Health].Current,
-                TotalHp = Stats.Values[BasicAttribute.Health].Total,
-            },
-            Async = true,
-        });
+        healthSync.Sent(healthSyncTick);
+        SendHealth();
         Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
     }
 

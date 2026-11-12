@@ -164,10 +164,11 @@ public static class MentorPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown16() {
+    // CMentoringManager::OnError (mentoringmanager.cpp:500): a byte result, which picks the notice, and an int.
+    public static ByteWriter Error(MentorError error) {
         var pWriter = Packet.Of(SendOp.Mentor);
         pWriter.Write<Command>(Command.Unknown16);
-        pWriter.WriteBool(false); // true = Character is not a returning user
+        pWriter.WriteByte((byte) error);
         pWriter.WriteInt(0);
 
         return pWriter;
