@@ -47,7 +47,7 @@ public class HousingManager {
 
     public void SetName(string name) {
         if (session.Field is null) return;
-        if (name.Length > Constant.HomeNameMaxLength) {
+        if (!TrophyReportRules.HomeNameAllowed(name, Constant.HomeNameMaxLength)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_center));
             return;
         }
@@ -374,8 +374,9 @@ public class HousingManager {
 
     public void InitNewHome(string characterName, ExportedUgcMapMetadata? template) {
         Home.NewHomeDefaults(characterName);
-        // A new home is at decoration level 1: the first count of interior_level (see InteriorCheckIn).
-        session.ConditionUpdate(ConditionType.interior_level);
+        // A new home is at decoration level 1: the first report of interior_level (see InteriorCheckIn). The trophy
+        // keeps the highest level, so a home that is created again reports nothing new.
+        session.ConditionUpdate(ConditionType.interior_level, counter: TrophyReportRules.InteriorLevelCount(Home.DecorationLevel));
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (template is null) {
@@ -465,16 +466,14 @@ public class HousingManager {
         session.Send(CubePacket.DesignRankReward(Home));
 
         // interior_exp_offset (trophy 23500023) adds the decoration exp of the check-in; interior_level (trophies
-        // 23500020-23500022) adds 1 when the check-in raised the decoration level. KMS2 sends them in this order
-        // after the check-in answer.
+        // 23500020-23500022) takes the home's decoration level and keeps the highest, so a home that is ahead of its
+        // trophy catches up here. KMS2 sends them in this order after the check-in answer.
         bool gained = Home.DecorationLevel != levelBefore || Home.DecorationExp != expBefore;
         long expCounted = TrophyReportRules.InteriorExpCounted(decorationScore, gained);
         if (expCounted > 0) {
             session.ConditionUpdate(ConditionType.interior_exp_offset, counter: expCounted);
         }
-        if (TrophyReportRules.InteriorLevelRaised(levelBefore, Home.DecorationLevel)) {
-            session.ConditionUpdate(ConditionType.interior_level);
-        }
+        session.ConditionUpdate(ConditionType.interior_level, counter: TrophyReportRules.InteriorLevelCount(Home.DecorationLevel));
     }
 
     public void InteriorReward(byte rewardId) {

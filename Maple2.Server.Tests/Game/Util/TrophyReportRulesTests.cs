@@ -28,18 +28,35 @@ public class TrophyReportRulesTests {
         Assert.That(TrophyReportRules.CountsAsGoHome(alreadyInOwnHome: true), Is.False);
     }
 
-    // KMS2: a check-in that left the home at level 3 with 50 exp moved interior_exp_offset to 450, and one that
-    // raised the level from 1 to 3 moved interior_level from 1 to 2.
+    // KMS2: a check-in that left the home at level 3 with 50 exp moved interior_exp_offset to 450. interior_level
+    // takes the home's level and keeps the highest: KMS2 trophies end at the home's level (2 at level 2, 4 at level 4).
     [Test]
     public void InteriorTrophiesCountTheCheckIn() {
         Assert.That(TrophyReportRules.InteriorExpCounted(450, homeGainedExp: true), Is.EqualTo(450));
         Assert.That(TrophyReportRules.InteriorExpCounted(450, homeGainedExp: false), Is.EqualTo(0));
         Assert.That(TrophyReportRules.InteriorExpCounted(0, homeGainedExp: true), Is.EqualTo(0));
-        Assert.That(TrophyReportRules.InteriorLevelRaised(1, 3), Is.True);
-        Assert.That(TrophyReportRules.InteriorLevelRaised(3, 4), Is.True);
-        Assert.That(TrophyReportRules.InteriorLevelRaised(3, 3), Is.False);
+        Assert.That(TrophyReportRules.InteriorLevelCount(3), Is.EqualTo(3));
+        Assert.That(TrophyReportRules.InteriorLevelCount(-1), Is.EqualTo(0));
         Assert.That(AchievementManager.Advances(ConditionType.interior_exp_offset, 900, 450), Is.True);
-        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 1, 1), Is.True);
+        // A level 1 home that skipped to 3, or an older home at 7 whose trophy holds 1, catches up in one report.
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 1, 3), Is.True);
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 1, 7), Is.True);
+        // A check-in that did not raise the level reports nothing.
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 3, 3), Is.False);
+    }
+
+    // A home is created when its name is empty. An empty name would create it again (decoration level back to 1),
+    // so it is refused; and the creation report of level 1 counts only when the trophy holds nothing yet.
+    [Test]
+    public void HomeCreationCountsInteriorLevelOnce() {
+        Assert.That(TrophyReportRules.HomeNameAllowed("", 16), Is.False);
+        Assert.That(TrophyReportRules.HomeNameAllowed("  ", 16), Is.False);
+        Assert.That(TrophyReportRules.HomeNameAllowed("Home", 16), Is.True);
+        Assert.That(TrophyReportRules.HomeNameAllowed(new string('a', 17), 16), Is.False);
+        long created = TrophyReportRules.InteriorLevelCount(1);
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 0, created), Is.True);
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 1, created), Is.False);
+        Assert.That(AchievementManager.Advances(ConditionType.interior_level, 4, created), Is.False);
     }
 
     // hero_achieve_grade: a grade gained by a trophy inside the code range (21240001) or on the code list (21100019)

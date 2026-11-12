@@ -25,9 +25,17 @@ public static class TrophyReportRules {
         return homeGainedExp && decorationScore > 0 ? decorationScore : 0;
     }
 
-    // Whether a check-in counts for interior_level: once when the decoration level rose, by however many levels.
-    public static bool InteriorLevelRaised(long levelBefore, long levelAfter) {
-        return levelAfter > levelBefore;
+    // The count a home reports for interior_level: its decoration level. The trophy keeps the highest (see
+    // AchievementManager.Advances), so a repeated report adds nothing and a home that is ahead of its trophy catches
+    // up with one report.
+    public static long InteriorLevelCount(long decorationLevel) {
+        return Math.Max(decorationLevel, 0);
+    }
+
+    // Whether a home may take this name. An empty name is what marks a home as not created yet, so taking one would
+    // create the home again at decoration level 1.
+    public static bool HomeNameAllowed(string name, int maxLength) {
+        return !string.IsNullOrWhiteSpace(name) && name.Length <= maxLength;
     }
 
     // Whether a clear that left the record at totalClears is the dungeon's first. A colosseum record keeps the round
