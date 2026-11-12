@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotRecast.Core.Numerics;
@@ -63,5 +63,21 @@ public class AgentNavigationTests {
         Assert.That(end.Z, Is.EqualTo(8).Within(0.01));
         Assert.That(end.Y, Is.EqualTo(0).Within(0.01));
         Assert.That(path.All(point => Math.Abs(point.Y) < 0.01), Is.True);
+    }
+
+    // A point over the mesh lands on it; one beyond the search box across, or a NaN one, is refused instead of kept as it is.
+    [Test]
+    public void SnapToMesh_RefusesPointsOffTheMesh() {
+        var query = new DtNavMeshQuery(FlatQuad());
+        var filter = new DtQueryDefaultFilter();
+
+        Assert.That(AgentNavigation.SnapToMesh(query, filter, new RcVec3f(5, 3, 5), out RcVec3f onMesh), Is.True);
+        Assert.That(onMesh.X, Is.EqualTo(5).Within(0.01));
+        Assert.That(onMesh.Y, Is.EqualTo(0).Within(0.01));
+        Assert.That(onMesh.Z, Is.EqualTo(5).Within(0.01));
+
+        Assert.That(AgentNavigation.SnapToMesh(query, filter, new RcVec3f(30, 0, 30), out RcVec3f offMesh), Is.False);
+        Assert.That(offMesh.X, Is.EqualTo(30));
+        Assert.That(AgentNavigation.SnapToMesh(query, filter, new RcVec3f(float.NaN, 0, 5), out _), Is.False);
     }
 }

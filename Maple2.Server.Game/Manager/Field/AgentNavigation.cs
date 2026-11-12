@@ -182,20 +182,39 @@ public sealed class AgentNavigation {
 
     public bool HasPath => currentPath != null && currentPath.Count > 0;
 
-    public bool UpdatePosition() {
-        if (!field.FindNearestPoly(npc.Position, out _, out RcVec3f position)) {
-            Logger.Error("Failed to find valid position from {Source} => {Position}", npc.Position, position);
+    // The search box around a point for its nearest poly, in navmesh space: 200 across and 400 up and down in game units.
+    public static readonly RcVec3f NearestPolyExtents = new(2, 4, 2);
+
+    // The point's place on the navmesh, if a poly lies within NearestPolyExtents. Detour's FindNearestPoly reports
+    // success with poly ref 0 and the point itself when none does, so the ref is what tells an off-mesh point.
+    public static bool SnapToMesh(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f point, out RcVec3f position) {
+        position = point;
+        if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z)) {
             return false;
         }
 
-        agent.npos = position;
-        npc.Position = DotRecastHelper.FromNavMeshSpace(position);
+        DtStatus status = query.FindNearestPoly(point, NearestPolyExtents, filter, out long nearestRef, out RcVec3f nearest, out _);
+        if (status.Failed() || nearestRef == 0) {
+            return false;
+        }
+
+        position = nearest;
         return true;
     }
 
+    // Puts the npc on the navmesh at its position. Off the mesh it stays where it is.
+    public bool UpdatePosition() {
+        return UpdatePosition(npc.Position);
+    }
+
+    // Moves the npc to the position's place on the navmesh. A position off the mesh (a walk or a skill's cast move
+    // past a ledge, or a NaN one) is refused and the npc stays where it is; the caller decides on any fallback.
     public bool UpdatePosition(Vector3 position) {
-        if (!field.FindNearestPoly(position, out _, out RcVec3f rcPosition)) {
-            Logger.Error("Failed to find valid position from {Source} => {Position}", npc.Position, rcPosition);
+        if (!SnapToMesh(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(position), out RcVec3f rcPosition)) {
+            if (!float.IsFinite(position.X) || !float.IsFinite(position.Y) || !float.IsFinite(position.Z)) {
+                Logger.Error("Invalid position {Position} for npc {NpcId} (object {ObjectId}) at {Source}",
+                    position, npc.Value.Metadata.Id, npc.ObjectId, npc.Position);
+            }
             return false;
         }
 

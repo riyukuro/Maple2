@@ -417,7 +417,7 @@ public partial class FieldManager : IField {
             return false;
         }
 
-        DtStatus status = Navigation.Crowd.GetNavMeshQuery().FindNearestPoly(point, new RcVec3f(2, 4, 2), Navigation.Crowd.GetFilter(0), out nearestRef, out position, out _);
+        DtStatus status = Navigation.Crowd.GetNavMeshQuery().FindNearestPoly(point, AgentNavigation.NearestPolyExtents, Navigation.Crowd.GetFilter(0), out nearestRef, out position, out _);
         if (status.Failed()) {
             logger.Warning("Failed to find nearest poly from position {Source} in field {MapId}", point, MapId);
             return false;
