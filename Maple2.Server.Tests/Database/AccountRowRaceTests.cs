@@ -8,9 +8,10 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Maple2.Server.Tests.Database;
 
-// The game entry's online and channel write (LoadPlayer) stores the whole account row as it read it. Another write to
-// the row between the read and the save is kept: the row version (LastModified) refuses the stale row, so the entry
-// fails, instead of the row read before being written back. The other write is made from a second
+// The World's machine id write at an account's first login (UpdateMachineId) and the game entry's online and channel
+// write (LoadPlayer) store the whole account row as they read it. Another write to the row between the read and the
+// save is kept: the row version (LastModified) refuses the stale row, so the machine id is stored at a later login and
+// the entry fails, instead of the row read before being written back. The other write is made from a second
 // connection just before the save; the row version is MySQL's (ON UPDATE CURRENT_TIMESTAMP): the tests need
 // MS2_TEST_GAME_DB.
 public class AccountRowRaceTests {
@@ -57,6 +58,21 @@ public class AccountRowRaceTests {
     }
 
     [Test]
+    public void MachineId_OtherWriteBetween_IsKept() {
+        Guid before = Stored().MachineId;
+        racer.Once = () => SetLevels(7);
+        bool stored;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            stored = db.UpdateMachineId(test.AccountId, Guid.NewGuid());
+        }
+        Assert.Multiple(() => {
+            Assert.That(stored, Is.False);
+            Assert.That(Stored().PrestigeLevelsGained, Is.EqualTo(7));
+            Assert.That(Stored().MachineId, Is.EqualTo(before));
+        });
+    }
+
+    [Test]
     public void LoadPlayer_OtherWriteBetween_IsKept() {
         racer.Once = () => SetLevels(7);
         Assert.Throws<DbUpdateConcurrencyException>(() => {
@@ -66,13 +82,18 @@ public class AccountRowRaceTests {
         Assert.That(Stored().PrestigeLevelsGained, Is.EqualTo(7));
     }
 
-    // No other write: it stores as before.
+    // No other write: both store as before.
     [Test]
     public void NoOtherWrite_Stores() {
+        Guid machineId = Guid.NewGuid();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.UpdateMachineId(test.AccountId, machineId), Is.True);
+        }
         using (GameStorage.Request db = test.Storage.Context()) {
             Assert.That(db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1), Is.Not.Null);
         }
         Assert.Multiple(() => {
+            Assert.That(Stored().MachineId, Is.EqualTo(machineId));
             Assert.That(Stored().Online, Is.True);
             Assert.That(Stored().PrestigeLevelsGained, Is.EqualTo(1));
         });
