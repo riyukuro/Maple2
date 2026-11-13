@@ -1,5 +1,5 @@
 using System;
-﻿using Maple2.Model.Enum;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;

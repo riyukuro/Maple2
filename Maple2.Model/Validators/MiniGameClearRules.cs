@@ -1,4 +1,4 @@
-﻿namespace Maple2.Model.Validators;
+namespace Maple2.Model.Validators;
 
 // useropen_minigame_clear: the row reads "complete any mini-game and claim your reward" (70200061) and lists the
 // three mini-game fields a player can open (81000001, 81000002, 81000003) as its codes. Their triggers end a game

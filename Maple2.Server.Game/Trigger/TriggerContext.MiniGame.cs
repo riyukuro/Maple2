@@ -9,6 +9,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
+using Serilog;
 using Locale = Maple2.Server.Game.Trigger.Helpers.Locale;
 
 namespace Maple2.Server.Game.Trigger;
@@ -116,17 +117,22 @@ public partial class TriggerContext {
         IEnumerable<FieldPlayer> players = PlayersInBox(winnerBoxId);
         foreach (FieldPlayer player in players) {
             // Only a player who was in the box at the game's start has a record, and leaving the field drops it, so
-            // a player who comes back in is not paid; the record's flag pays a game once if the action runs again.
+            // a player who comes back in is not paid.
             MiniGameUserRecord? record = player.Session.MiniGameRecord;
-            if (record == null || record.RewardGiven) {
+            if (record == null) {
                 continue;
             }
-            record.RewardGiven = true;
 
             if (!MiniGameClearRules.CountsAsUserOpenClear(contentType)) {
                 record.Add(player.Session.GetRewardContent(rewardId));
                 continue;
             }
+            // The user-opened games' reward counts toward a daily cap, so the record's flag pays a game once if the
+            // action runs again. Every script calls this action once per game, right before end_mini_game.
+            if (record.RewardGiven) {
+                continue;
+            }
+            record.RewardGiven = true;
             player.Session.ConditionUpdate(ConditionType.useropen_minigame_clear, codeLong: Field.MapId);
             GiveExtraReward(player.Session, record, rewardId);
         }
@@ -140,6 +146,11 @@ public partial class TriggerContext {
         int paidToday = PetFusionRules.DailyCount(character.MassiveExtraRewardCount, character.MassiveExtraRewardTime,
             PetFusionRules.LastResetTime());
         if (!MiniGameClearRules.CanPayExtraReward(paidToday, maxPerDay)) {
+            return;
+        }
+        if (!session.TableMetadata.RewardContentTable.BaseEntries.ContainsKey(rewardId)) {
+            // No reward row: nothing to pay, so neither the count nor the "you got a bonus" notice.
+            Log.Logger.Warning("MiniGameGiveReward: reward content {RewardId} has no row", rewardId);
             return;
         }
 
