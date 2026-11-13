@@ -80,7 +80,8 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
     private void HandleSelect(LoginSession session, IByteReader packet) {
         long characterId = packet.ReadLong();
-        packet.ReadShort(); // 01 00, world? channel?
+        // The channel picked on the server list (UIServerListDialog::EnterGame), 0 when none was picked.
+        short channel = packet.ReadShort();
 
         try {
             using GameStorage.Request db = GameStorage.Context();
@@ -101,6 +102,10 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 MachineId = session.MachineId.ToString(),
                 Server = Server.World.Service.Server.Game,
             };
+            if (channel > 0) {
+                request.Channel = channel;
+                request.ExactChannel = true;
+            }
 
             Logger.Information("Logging in to game as {Request}", request);
 

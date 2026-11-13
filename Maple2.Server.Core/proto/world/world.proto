@@ -97,6 +97,9 @@ message MigrateOutRequest {
   optional MigrationType type = 14;
   // The summoned pet's item uid, 0 for none; the target game server summons it again.
   int64 pet_uid = 15;
+  // The channel was picked by the player (the character select, a channel change): when it is not active the
+  // move is refused (Unavailable) instead of going to the first channel.
+  bool exact_channel = 16;
 }
 
 enum MigrationType {

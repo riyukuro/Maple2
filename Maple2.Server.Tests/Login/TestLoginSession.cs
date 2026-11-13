@@ -126,8 +126,14 @@ public sealed class TestLoginSession {
             return new MigrateInResponse();
         }
 
+        // Thrown by MigrateOut after the move is recorded, as the world server refuses a move.
+        public RpcException? MigrateOutError;
+
         public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
             Moves.Add(request);
+            if (MigrateOutError != null) {
+                throw MigrateOutError;
+            }
             return new MigrateOutResponse { IpAddress = "127.0.0.1", Port = 20002, Token = 1 };
         }
 
