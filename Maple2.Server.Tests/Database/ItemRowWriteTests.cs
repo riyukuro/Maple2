@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
@@ -120,7 +120,8 @@ public class ItemRowWriteTests {
     }
 
     // Two saves of one object that overlap: the one in a transaction ends after the other was kept, so the order the
-    // row was written in is not known; neither is kept, and the next save writes the row.
+    // row was written in is not known; neither is kept, and the next save writes the row, even with the values one of
+    // them wrote.
     [Test]
     public void OverlappingSaves_KeepNothing() {
         Item item = test.Store(TestGameSession.Metadata(Stackable), 10);
@@ -133,10 +134,26 @@ public class ItemRowWriteTests {
             item.Amount = 8;
             Assume.That(slow.Commit(), Is.True);
         }
-        item.Amount = 9;
+        // 8, the values the slow save wrote: had it kept them, the row changed behind the server would stay.
         SetAmount(item.Uid, 77);
         Assert.That(Save(test.CharacterId, [item]), Is.True);
-        Assert.That(Amount(item.Uid), Is.EqualTo(9));
+        Assert.That(Amount(item.Uid), Is.EqualTo(8));
+    }
+
+    // UpdateItem (a blueprint's confirmed picture) writes the item's values on the row it has: the row keeps its owner.
+    [Test]
+    public void UpdateItem_KeepsTheOwner() {
+        Item item = test.Store(TestGameSession.Metadata(Stackable), 10);
+        item.Amount = 6;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.UpdateItem(item), Is.True);
+        }
+        using var context = new Ms2Context(test.Options);
+        Maple2.Database.Model.Item row = context.Item.AsNoTracking().Single(r => r.Id == item.Uid);
+        Assert.Multiple(() => {
+            Assert.That(row.Amount, Is.EqualTo(6));
+            Assert.That(row.OwnerId, Is.EqualTo(test.CharacterId));
+        });
     }
 
     // A transaction rolled back after its save (or a commit whose answer was lost): nothing is kept.

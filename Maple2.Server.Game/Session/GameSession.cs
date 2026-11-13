@@ -67,6 +67,10 @@ public sealed partial class GameSession : Core.Network.Session {
     internal static TimeSpan ResetWait { get; set; } = TimeSpan.FromSeconds(60); // tests shorten it
     // A save slower than this is logged (one line), so a slow database shows before saves start to fail.
     private const long SlowSaveMs = 500;
+    // The session's first save is logged (one line): its time and the item rows it wrote (rows of items unchanged
+    // since their load are not written, see GameStorage.SaveItems).
+    private bool firstSaveLogged;
+    private int lastSaveItemRows;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -1789,6 +1793,11 @@ public sealed partial class GameSession : Core.Network.Session {
             if (watch.ElapsedMilliseconds > SlowSaveMs) {
                 Logger.Warning("Save took {Ms} ms AccountId={AccountId} CharacterId={CharacterId}", watch.ElapsedMilliseconds, AccountId, CharacterId);
             }
+            if (!firstSaveLogged) {
+                firstSaveLogged = true;
+                Logger.Information("First save took {Ms} ms, {ItemRows} item rows written AccountId={AccountId} CharacterId={CharacterId}",
+                    watch.ElapsedMilliseconds, lastSaveItemRows, AccountId, CharacterId);
+            }
         }
         Logger.Error("Save: not stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         return false;
@@ -1820,6 +1829,7 @@ public sealed partial class GameSession : Core.Network.Session {
             Logger.Error("Save: a component was not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
         }
+        lastSaveItemRows = db.ItemRowsWritten;
         return tokens.Kept = db.Commit();
 
         void TrySaveComponent(Action<GameStorage.Request> action) {

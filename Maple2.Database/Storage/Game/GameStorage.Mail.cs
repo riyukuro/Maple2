@@ -143,8 +143,7 @@ public partial class GameStorage {
                 item.OwnerId = 0;
                 written.Add(item.Id);
             }
-            ForgetRowsNowAndAtEnd(written.ToArray());
-            return SaveChanges();
+            return WriteForgetting(written.ToArray(), SaveChanges);
         }
 
         public Mail? UpdateMail(Mail mail) {

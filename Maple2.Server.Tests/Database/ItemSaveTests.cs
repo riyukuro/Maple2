@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
@@ -120,6 +120,133 @@ public class ItemSaveTests {
         item.Amount = 10;
         using (GameStorage.Request db = test.Storage.Context()) {
             Assert.That(db.SaveItems(test.CharacterId, item), Is.True);
+        }
+        Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(10));
+    }
+
+    // A load keeps the values each row was loaded with as stored: the first save after the login writes only the
+    // rows changed since. Each loader (the bag, the equips, storage and furnishing opened later, a single item).
+    [Test]
+    public void LoginLoad_FirstSaveWritesOnlyChanged() {
+        // In their bag slots, as a row the bag stored has them (a row without one gets one at the load, a change).
+        Item[] bag = [test.Store(TestGameSession.Metadata(50000331), 2), test.Store(TestGameSession.Metadata(50000332), 2)];
+        for (short slot = 0; slot < bag.Length; slot++) {
+            bag[slot].Slot = slot;
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assume.That(db.SaveItems(test.CharacterId, bag), Is.True);
+        }
+        long kept = bag[0].Uid, changed = bag[1].Uid;
+        long equipped = test.Store(TestGameSession.Metadata(50000333, EquipSlot.CP), 1, ItemGroup.Outfit, EquipSlot.CP).Uid;
+        StartSaving();
+        Assume.That(session.Item.Inventory.Get(kept), Is.Not.Null);
+        Assume.That(session.Item.Equips.Get(equipped), Is.Not.Null);
+        session.Item.Inventory.Get(changed)!.Amount = 5;
+        SetStoredAmount(kept, 77);
+        SetStoredAmount(changed, 77);
+        SetStoredAmount(equipped, 77);
+        Assert.That(session.SessionSave(), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(Stored(kept)?.Amount, Is.EqualTo(77), "unchanged since the load: not written");
+            Assert.That(Stored(equipped)?.Amount, Is.EqualTo(77), "equipped, unchanged: not written");
+            Assert.That(Stored(changed)?.Amount, Is.EqualTo(5), "changed after the load: written");
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    private Item Loaded(Func<GameStorage.Request, IEnumerable<Item>> load, long uid) {
+        using GameStorage.Request db = test.Storage.Context();
+        return load(db).Single(item => item.Uid == uid);
+    }
+
+    [Test]
+    public void LaterLoads_AreSeeded() {
+        ItemMetadata metadata = TestGameSession.Metadata(50000334);
+        test.Register(metadata);
+        long storage, furnishing;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            storage = db.CreateItem(test.AccountId, new Item(metadata, amount: 2))!.Uid;
+            furnishing = db.CreateItem(test.AccountId, new Item(metadata, amount: 2) { Group = ItemGroup.Furnishing })!.Uid;
+        }
+        long single = test.Store(metadata, 2).Uid;
+        (long Owner, Item Item)[] loads = [
+            (test.AccountId, Loaded(db => db.GetStorage(test.AccountId), storage)),
+            (test.AccountId, Loaded(db => db.GetItemGroups(test.AccountId, ItemGroup.Furnishing)[ItemGroup.Furnishing], furnishing)),
+            (test.CharacterId, Loaded(db => [db.GetItem(single)!], single)),
+        ];
+        foreach ((long owner, Item item) in loads) {
+            SetStoredAmount(item.Uid, 77);
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.SaveItems(owner, item), Is.True);
+        }
+        Assert.That(loads.Select(load => Stored(load.Item.Uid)?.Amount), Is.All.EqualTo(77));
+    }
+
+    // A created item has no loaded values: its first save writes its row (as an item a mail or the market made).
+    [Test]
+    public void CreatedItem_FirstSaveWrites() {
+        Item item = test.Store(TestGameSession.Metadata(50000335), 2);
+        SetStoredAmount(item.Uid, 77);
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.SaveItems(test.CharacterId, item), Is.True);
+        Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(2));
+    }
+
+    // A load in a transaction reads the transaction's own writes, which a rollback takes back: nothing is seeded, so
+    // the item's save writes the amount it was loaded with (the row holds 2 again). Two rules keep it: no seed in a
+    // transaction, and the rollback's forget of the row is a write after the load; either one alone keeps it.
+    [Test]
+    public void LoadInTransaction_IsNotSeeded() {
+        Item item = test.Store(TestGameSession.Metadata(50000336), 2);
+        Item loaded;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.BeginTransaction();
+            item.Amount = 9;
+            Assume.That(db.SaveItems(test.CharacterId, item), Is.True);
+            loaded = db.GetInventory(test.CharacterId).Values.SelectMany(items => items).Single(row => row.Uid == item.Uid);
+            db.Rollback();
+        }
+        Assume.That(Stored(item.Uid)?.Amount, Is.EqualTo(2));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveItems(test.CharacterId, loaded), Is.True);
+        }
+        Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(9));
+    }
+
+    // A Find of a row the request already tracks gives the row as tracked, not as the DB holds it now (here changed
+    // behind it): nothing is seeded, and the item's save writes its amount.
+    [Test]
+    public void LoadOfATrackedRow_IsNotSeeded() {
+        Item item = test.Store(TestGameSession.Metadata(50000337), 2);
+        Item loaded;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            item.Amount = 6;
+            Assume.That(db.UpdateItem(item), Is.True); // the row stays tracked at 6
+            SetStoredAmount(item.Uid, 77);
+            loaded = db.GetItem(item.Uid)!;
+        }
+        Assume.That(loaded.Amount, Is.EqualTo(6));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveItems(test.CharacterId, loaded), Is.True);
+        }
+        Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(6));
+    }
+
+    // A row written by another write after the load (a split of another object of the row) is not skipped: its
+    // seed no longer counts.
+    [Test]
+    public void WriteAfterLoad_ForgetsTheSeed() {
+        Item item = test.Store(TestGameSession.Metadata(50000338), 10);
+        Item loaded = Loaded(db => db.GetInventory(test.CharacterId).Values.SelectMany(items => items), item.Uid);
+        Item? piece;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            piece = db.SplitItem(test.CharacterId, item, 3);
+        }
+        Assume.That(piece, Is.Not.Null);
+        Assume.That(Stored(item.Uid)?.Amount, Is.EqualTo(7));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveItems(test.CharacterId, loaded), Is.True); // loaded.Amount is 10, as loaded
         }
         Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(10));
     }
