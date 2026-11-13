@@ -17,6 +17,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
 
     // The played client's own skill data (PlayedClientSkills); empty without a played client.
     private readonly Dictionary<int, PlayedClientSkills.Entry> played = [];
+    // The played client's skill-hit effects by skill and level (PlayedClientActionAdditionals), and the effect ids and
+    // levels of the data pack, which the ones added must have; empty without a played client.
+    private readonly Dictionary<(int SkillId, short Level), PlayedClientActionAdditionals.LevelUses> clientEffects = [];
+    private readonly HashSet<(int Id, short Level)> packEffects = [];
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -24,6 +28,14 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             played = PlayedClientSkills.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)));
             Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses, {played.Values.Count(entry => entry.Weapons.Length > 0)} with hand weapons)");
+            clientEffects = PlayedClientActionAdditionals.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), out int unsupported);
+            foreach ((int effectId, IList<Maple2.File.Parser.Xml.AdditionalEffect.AdditionalEffectData> datas) in new AdditionalEffectParser(xmlReader).Parse()) {
+                foreach (Maple2.File.Parser.Xml.AdditionalEffect.AdditionalEffectData data in datas) {
+                    packEffects.Add((effectId, data.BasicProperty.level));
+                }
+            }
+            Console.WriteLine($"Skill levels with effects in the played client's skill data: {clientEffects.Count} ({unsupported} effect rows left out for a condition the ingest does not read)");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -32,6 +44,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     protected override IEnumerable<StoredSkillMetadata> Map() {
         List<long> magicPaths = [];
         List<long> cubeMagicPaths = [];
+        int clientAdded = 0, clientUnmatched = 0, clientSkills = 0;
         foreach ((int id, string name, SkillData data) in parser.Parse()) {
             if (data.basic == null) continue; // Old_JobChange_01
             PlayedClientSkills.Entry? client = played.TryGetValue(id, out PlayedClientSkills.Entry entry) ? entry : null;
@@ -131,6 +144,20 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         QuestIds: level.upgrade.questIDs)
                 ));
 
+            // The played client's effects of a level or attack that the data pack's rows lack (PlayedClientActionAdditionals).
+            bool clientAddedHere = false;
+            foreach (short value in levels.Keys.ToArray()) {
+                if (!clientEffects.TryGetValue((id, value), out PlayedClientActionAdditionals.LevelUses? uses)) {
+                    continue;
+                }
+                levels[value] = PlayedClientActionAdditionals.Merge(levels[value], uses, (effectId, level) => packEffects.Contains((effectId, level)),
+                    out int added, out int unmatched);
+                clientAdded += added;
+                clientUnmatched += unmatched;
+                clientAddedHere |= added > 0;
+            }
+            if (clientAddedHere) clientSkills++;
+
             yield return new StoredSkillMetadata(
                 Id: id,
                 Name: name,
@@ -170,6 +197,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     SuperArmorApplyField: data.basic.stateAttr.superArmorApplyFieldType),
                 Levels: levels
             );
+        }
+        if (clientEffects.Count > 0) {
+            Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");
         }
     }
 
