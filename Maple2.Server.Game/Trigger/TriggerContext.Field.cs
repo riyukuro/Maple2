@@ -305,9 +305,11 @@ public partial class TriggerContext {
 
     private void UpdateMesh(ArraySegment<int> triggerIds, bool visible, int delay, int interval, int fade = 0) {
         int intervalTotal = 0;
+        // A trigger that names a mesh range the map lacks is one warning per call, not one per mesh id.
+        List<int>? missing = null;
         foreach (int triggerId in triggerIds) {
             if (!Objects.Meshes.TryGetValue(triggerId, out TriggerObjectMesh? mesh)) {
-                logger.Warning("Invalid mesh: {Id}", triggerId);
+                (missing ??= []).Add(triggerId);
                 continue;
             }
             if (mesh.Visible == visible) {
@@ -322,12 +324,31 @@ public partial class TriggerContext {
             }
         }
 
+        if (missing != null) {
+            missing.Sort();
+            logger.Warning("Invalid mesh: {Count} of {Total} ids not on the map: {Ids}", missing.Count, triggerIds.Count, MeshIdList(missing));
+        }
+
         void UpdateSetMesh(TriggerObjectMesh mesh) {
             mesh.Visible = visible;
             mesh.Fade = fade;
             Broadcast(TriggerPacket.Update(mesh));
             // TODO: Should Fade be reset after sending packet?
         }
+    }
+
+    // Ids as ranges: "6009, 6018-6030, 6051-6200".
+    public static string MeshIdList(IReadOnlyList<int> ids) {
+        var parts = new List<string>();
+        for (int i = 0; i < ids.Count;) {
+            int j = i;
+            while (j + 1 < ids.Count && ids[j + 1] == ids[j] + 1) {
+                j++;
+            }
+            parts.Add(i == j ? $"{ids[i]}" : $"{ids[i]}-{ids[j]}");
+            i = j + 1;
+        }
+        return string.Join(", ", parts);
     }
 
     public void SetRope(int triggerId, bool visible, bool animationEffect, int animationDelay) {

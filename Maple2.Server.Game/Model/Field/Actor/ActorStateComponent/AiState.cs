@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Collections.Concurrent;
+using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -271,6 +272,22 @@ public class AiState {
         Push(definition);
     }
 
+    // An AI script that names a skill index the npc lacks hits it on every tick; the warning is logged once per npc,
+    // script and index.
+    private static readonly ConcurrentDictionary<(int NpcId, string Script, int Idx), byte> MissingSkillsLogged = new();
+
+    public static bool FirstMissingSkill(int npcId, string script, int idx) => MissingSkillsLogged.TryAdd((npcId, script, idx), 0);
+
+    private void WarnMissingSkill(int idx) {
+        string script = AiMetadata?.Name ?? "";
+        if (!FirstMissingSkill(actor.Value.Id, script, idx)) {
+            return;
+        }
+
+        Logger.Warning("Missing skillIdx {Idx} in {NpcName}[{NpcId}] script '{Script}' (logged once per npc, script and index). Xml.m2d/m2h might be out of date. Check the MS2 Hub resources!",
+            idx, actor.Value.Metadata.Name, actor.Value.Id, script);
+    }
+
     private SkillMetadata? TryGetSkill(int idx, short levelOverride = 0) {
         // idx starts at 1
         if (idx < 1 || idx > actor.Skills.Length) {
@@ -278,7 +295,7 @@ public class AiState {
             actor.AppendDebugMessage($"{AiMetadata!.Name}\n");
             actor.AppendDebugMessage($"Invalid Skill Idx {idx}\n");
 
-            Logger.Warning($"Missing skillIdx {idx} in {actor.Value.Metadata.Name}[{actor.Value.Id}] script '{AiMetadata!.Name}'. Xml.m2d/m2h might be out of date. Check the MS2 Hub resources!");
+            WarnMissingSkill(idx);
 
             return null;
         }
@@ -294,7 +311,7 @@ public class AiState {
             actor.AppendDebugMessage($"{AiMetadata!.Name}\n");
             actor.AppendDebugMessage($"Missing Skill Idx {idx}\n");
 
-            Logger.Warning($"Missing skillIdx {idx} in {actor.Value.Metadata.Name}[{actor.Value.Id}] script '{AiMetadata!.Name}'. Xml.m2d/m2h might be out of date. Check the MS2 Hub resources!");
+            WarnMissingSkill(idx);
         }
 
         return skill;
