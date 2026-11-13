@@ -6,6 +6,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 using StoredItem = Maple2.Model.Game.Item;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -17,7 +18,7 @@ public class InventoryDeleteListTests {
 
     private GameSession Start() {
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(ItemId));
+        test.Register(TestGameSession.Metadata(ItemId, slotMax: 10));
         return test.Start();
     }
 
@@ -85,6 +86,29 @@ public class InventoryDeleteListTests {
             Assert.That(afterRollback, Is.EqualTo(1));
             Assert.That(Deletes(session), Is.Empty);
             Assert.That(Owner(item.Uid), Is.Zero);
+        });
+    }
+
+    // A new item whose commit add fails, and whose row's undo fails too, has its row written to owner 0 at the next
+    // bag save. Before, the row stayed the character's at slot -1 while the caller mailed the item as a new row, so
+    // the next load gave it twice.
+    [Test]
+    public void FailedAddAndFailedUndo_RowGoesAtTheNextSave() {
+        GameSession session = Start();
+        Held(session);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                               && entry.Entity.GetType().Name == "Item");
+        bool added = session.Item.Inventory.Add(session.Field!.ItemDrop.CreateItem(ItemId)!, commit: true);
+        test.FailSave = null;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(added, Is.False);
+            Assert.That(session.Item.Inventory.Find(ItemId).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That(context.Item.Where(row => row.ItemId == ItemId && row.OwnerId == test.CharacterId).Sum(row => row.Amount), Is.EqualTo(1));
         });
     }
 }

@@ -360,10 +360,7 @@ public class InventoryManager {
                     add.Amount = amountBefore;
                     add.Slot = slotBefore;
                     if (justCreated) {
-                        using GameStorage.Request undo = session.GameStorage.Context();
-                        if (!undo.SaveItems(0, add)) {
-                            logger.Error("Item {ItemId} x{Amount}: the row {Uid} made for a failed add was not given back", add.Id, add.Amount, add.Uid);
-                        }
+                        DeleteNow(add);
                     }
                     logger.Error("Item {ItemId} x{Amount}: the bag add was not saved", add.Id, amountBefore);
                     session.Send(ItemInventoryPacket.Error(s_err_inventory));
@@ -978,14 +975,25 @@ public class InventoryManager {
         }
 
         if (commit) {
-            lock (session.Item) {
-                using GameStorage.Request db = session.GameStorage.Context();
-                db.SaveItems(0, item);
-            }
+            DeleteNow(item);
         } else {
             delete.Add(item);
         }
         CountDestroyed(item);
+    }
+
+    // Writes item's row to owner 0 at once. A write that fails puts it on the delete list, so the next bag save
+    // writes it again: a row made for a failed add stayed the character's at slot -1 when its undo failed too, while
+    // the caller mailed or dropped the item as a new row, and the next load gave the item a second time. Chosen
+    // here: a crash before that save still leaves the row.
+    private void DeleteNow(Item item) {
+        lock (session.Item) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            if (!db.SaveItems(0, item)) {
+                logger.Error("Item {ItemId} x{Amount}: row {Uid} not written to owner 0; written again at the next save", item.Id, item.Amount, item.Uid);
+                delete.Add(item);
+            }
+        }
     }
 
     private void CountDestroyed(Item item) {
