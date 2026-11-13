@@ -28,6 +28,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<bool>("ActiveGoldPass")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<long>("Birthday")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreationTime")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime(6)");

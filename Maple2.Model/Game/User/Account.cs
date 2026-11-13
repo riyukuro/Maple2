@@ -19,6 +19,9 @@ public class Account {
     public IList<PrestigeMission> PrestigeMissions { get; set; }
     public IList<int> PrestigeRewardsClaimed { get; set; }
     public long PremiumTime { get; set; }
+    // The birthday as unix seconds of 12:00 UTC on its month and day in 2000 (the year is not kept); 0 = none.
+    // Set only by the GM command; the client reads it as the character's birthday (BirthdayRules).
+    public long Birthday { get; set; }
     public IList<int> PremiumRewardsClaimed { get; set; }
     // The VIP goods shop's purchase counts (VipGoodsRules).
     public IList<VipGoodsPurchase> VipGoodsPurchases { get; set; }

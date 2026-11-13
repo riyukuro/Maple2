@@ -358,7 +358,7 @@ public static class FieldPacket {
         writer.WriteInt(); // count for long list
         writer.Write<MentorRole>(character.MentorRole); // charObj+0x11cc
         writer.WriteBool(false); // read and discarded by client
-        writer.WriteLong(); // Birthday (charObj+0x11e8, set by BirthdayCard 0x111)
+        writer.WriteLong(account.Birthday); // Birthday (charObj+0x11e8, set by BirthdayCard 0x111)
         writer.WriteInt(session.SuperChatId); // charObj+0x11f0, set/cleared by SuperWorldChat (0x112)
         // charObj+0x11f4/+0x11f8: today's pet fusion count and when it was stored (PC::IsDailyCountExpired).
         (int petFusionCount, long petFusionTime) = PetFusionRules.LoginCount(character.PetFusionCount, character.PetFusionTime,

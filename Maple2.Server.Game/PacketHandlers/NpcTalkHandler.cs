@@ -113,6 +113,15 @@ public class NpcTalkHandler : FieldPacketHandler {
         }
 
         session.ScriptMetadata.TryGet(npc.Value.Id, out ScriptMetadata? metadata);
+        // The birthday card npc (kind 88, KR 11003587) has no Job state: its job condition (birthday) offers the card,
+        // which the client opens only for a talk with no script (UITalkManager, OpenTalkUi); otherwise it talks its pick
+        // script (11003587's script 10, whose npcScriptCondition birthday="!1" the parser does not read). A quest it
+        // offers is still talked first.
+        if (npc.Value.Metadata.Basic.Kind == 88 && options == 0 && session.Quest.GetAvailableQuests(npc.Value.Id).Count == 0
+            && NpcTalkUtil.MeetsWindowJobCondition(session, npc.Value.Id)) {
+            session.Send(NpcTalkPacket.Respond(npc, NpcTalkType.Dialog, default));
+            return;
+        }
         ScriptState? scriptState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Script, metadata, npc.Value.Id, npc.MaidUid);
         ScriptState? selectState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Select, metadata, npc.Value.Id, npc.MaidUid);
         ScriptState? questState = NpcTalkUtil.GetInitialScriptType(session, ScriptStateType.Quest, metadata, npc.Value.Id);
@@ -140,8 +149,10 @@ public class NpcTalkHandler : FieldPacketHandler {
         switch (npc.Value.Metadata.Basic.Kind) {
             case >= 30 and < 40: // Beauty
             case 2: // Storage
-            case 86: // TODO: BlackMarket
-            case 88: // TODO: Birthday
+            // With no pick script the client opens these itself (CNpc::GetTalkUiId): 86 the black market,
+            // 88 the birthday card (BirthdayCardHandler).
+            case 86: // BlackMarket
+            case 88: // Birthday
             case 501:
                 talkType |= NpcTalkType.Dialog;
                 break;

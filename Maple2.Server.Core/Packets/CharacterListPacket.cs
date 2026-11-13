@@ -206,7 +206,7 @@ public static class CharacterListPacket {
         writer.WriteInt(); // count for long list
         writer.WriteByte(); // MentorRole (charObj+0x11cc)
         writer.WriteBool(false); // read and discarded by client
-        writer.WriteLong(); // Birthday (charObj+0x11e8, set by BirthdayCard 0x111)
+        writer.WriteLong(account.Birthday); // Birthday (charObj+0x11e8, set by BirthdayCard 0x111)
         writer.WriteInt(); // SuperChatId (charObj+0x11f0, set/cleared by SuperWorldChat 0x112)
         // charObj+0x11f4 and +0x11f8: the daily pet compose count and its time. The character list reads them
         // into its own copy of the user block (UICharacterListDialog::CCharacterInfo::Read) and never uses

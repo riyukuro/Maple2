@@ -25,6 +25,7 @@ public class PlayerCommand : GameCommand {
         AddCommand(new InventoryCommand(session));
         AddCommand(new TrophyCommand(session, achievementMetadataStorage));
         AddCommand(new MasteryCommand(session));
+        AddCommand(new BirthdayCommand(session));
     }
 
     private class MasteryCommand : Command {
@@ -373,6 +374,40 @@ public class PlayerCommand : GameCommand {
             ctx.Console.Out.WriteLine($"Player: {session.Player.ObjectId} ({session.PlayerName})");
             ctx.Console.Out.WriteLine($"  Position: {session.Player.Position}");
             ctx.Console.Out.WriteLine($"  Rotation: {session.Player.Rotation}");
+        }
+    }
+
+    // The account birthday (BirthdayRules): only this command sets it; the client has no way to.
+    private class BirthdayCommand : Command {
+        private readonly GameSession session;
+
+        public BirthdayCommand(GameSession session) : base("birthday", "Set the account birthday (month and day; 0 0 clears it).") {
+            this.session = session;
+
+            var month = new Argument<int>("month", "Month, 1-12 (0 clears).");
+            var day = new Argument<int>("day", "Day of the month (0 clears).");
+
+            AddArgument(month);
+            AddArgument(day);
+            this.SetHandler<InvocationContext, int, int>(Handle, month, day);
+        }
+
+        private void Handle(InvocationContext ctx, int month, int day) {
+            long birthday;
+            if (month == 0 && day == 0) {
+                birthday = 0;
+            } else if (BirthdayRules.Of(month, day) is { } value) {
+                birthday = value;
+            } else {
+                ctx.Console.Error.WriteLine($"Invalid date: {month}-{day}");
+                ctx.ExitCode = 1;
+                return;
+            }
+
+            session.Player.Value.Account.Birthday = birthday;
+            session.Field?.Broadcast(BirthdayCardPacket.Set(session.Player.ObjectId, birthday));
+            ctx.Console.Out.WriteLine(birthday == 0 ? "Birthday cleared." : $"Birthday set to {month:D2}-{day:D2}.");
+            ctx.ExitCode = 0;
         }
     }
 

@@ -92,6 +92,13 @@ public static class NpcTalkUtil {
         return null;
     }
 
+    // An npc whose job is a window the client opens itself (CNpc::GetTalkUiId) has no Job state in its script: its
+    // job condition row says when that window is offered. True when the npc has such a row and the player meets it.
+    public static bool MeetsWindowJobCondition(GameSession session, int npcId) {
+        return session.ServerTableMetadata.JobConditionTable.Entries.TryGetValue(npcId, out JobConditionMetadata? jobCondition)
+               && MeetsJobCondition(session, jobCondition);
+    }
+
     private static bool MeetsJobCondition(GameSession session, JobConditionMetadata jobCondition) {
         if (session.Field is null) return false;
         if (jobCondition.StartedQuestId > 0 &&
@@ -132,7 +139,10 @@ public static class NpcTalkUtil {
             return false;
         }
 
-        // TODO: Check if it's the player's birthday
+        // The client's birthday test (BirthdayRules): the account birthday falls in the current month.
+        if (jobCondition.IsBirthday && !BirthdayRules.IsBirthdayMonth(session.Player.Value.Account.Birthday, DateTime.Now)) {
+            return false;
+        }
 
         if (jobCondition.MapId > 0 && session.Field?.MapId != jobCondition.MapId) {
             return false;

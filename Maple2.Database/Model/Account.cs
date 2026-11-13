@@ -22,6 +22,7 @@ internal class Account {
     public IList<PrestigeMission> PrestigeMissions { get; set; } = [];
     public IList<int> PrestigeRewardsClaimed { get; set; } = [];
     public long PremiumTime { get; set; }
+    public long Birthday { get; set; }
     public IList<int> PremiumRewardsClaimed { get; set; } = []; // TODO: clear list on daily reset
     // Null when the account bought no limited VIP goods.
     public IList<VipGoodsPurchase>? VipGoodsPurchases { get; set; }
@@ -69,6 +70,7 @@ internal class Account {
                 Awarded = mission.Awarded,
             }).ToList(),
             PremiumTime = other.PremiumTime,
+            Birthday = other.Birthday,
             PremiumRewardsClaimed = other.PremiumRewardsClaimed,
             VipGoodsPurchases = other.VipGoodsPurchases.Count == 0 ? null : other.VipGoodsPurchases.Select(purchase => new VipGoodsPurchase {
                 GoodsId = purchase.GoodsId,
@@ -112,6 +114,7 @@ internal class Account {
                 Awarded = mission.Awarded,
             }).ToList(),
             PremiumTime = other.PremiumTime,
+            Birthday = other.Birthday,
             PremiumRewardsClaimed = other.PremiumRewardsClaimed,
             VipGoodsPurchases = other.VipGoodsPurchases?.Select(purchase => new Maple2.Model.Game.VipGoodsPurchase {
                 GoodsId = purchase.GoodsId,
