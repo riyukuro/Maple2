@@ -35,10 +35,19 @@ public class SkillState {
         // The attack's shots are swept when every path of it flies and sweeps (NpcProjectileRules.Swept).
         bool swept = flies && NpcProjectileRules.Swept(attack.Arrow, paths!);
         var shots = new List<(MagicPath Path, IActor? Homing, Vector3 Direction)>();
+
+        // A Range or Chain arrow bounces on from every first hit (BounceChain, as the client builds it for its own
+        // casts; an npc's the server builds). Each object's chain is built once per cast, so the chain a path's
+        // target packet draws is the one its hit takes; every chained object takes the attack's hit once, at full
+        // damage (the data has no per-bounce rate, and the player path gives none).
+        BounceChain.PerCast<IActor>? chain = BounceChain.For<IActor>(attack.Arrow, target => target.ObjectId,
+            last => actor.Field.GetBounceTargets(cast, last));
         if (attack.MagicPathId != 0) {
             if (actor.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths)) {
                 // Each path takes its own target of the list (NpcProjectileRules.PathTargets).
                 int[] pathTargets = NpcProjectileRules.PathTargets(magicPaths.Count, attackTargets.Count);
+                // The chained records' uids follow the paths' own (2 + path index).
+                long chainUid = 2 + magicPaths.Count;
                 for (int pathIndex = 0; pathIndex < magicPaths.Count; pathIndex++) {
                     MagicPath path = magicPaths[pathIndex];
                     int targetIndex = pathTargets[pathIndex];
@@ -53,18 +62,12 @@ public class SkillState {
                     TargetRecord targetRecord = NpcProjectileRules.PathRecord(pathIndex, targetId);
                     targets.Add(targetRecord);
 
-                    // TODO: chaining
-                    // While chaining
-                    // while (packet.ReadBool()) {
-                    //     targetRecord = new TargetRecord {
-                    //         PrevUid = targetRecord.Uid,
-                    //         Uid = packet.ReadLong(),
-                    //         TargetId = packet.ReadInt(),
-                    //         Unknown = packet.ReadByte(),
-                    //         Index = packet.ReadByte(),
-                    //     };
-                    //     targets.Add(targetRecord);
-                    // }
+                    // Only a record that names its target has a hit to bounce from.
+                    if (chain != null && targetId != 0) {
+                        List<int> chained = chain.Of(pathTarget!).Skip(1).Select(hit => hit.ObjectId).ToList();
+                        targets.AddRange(NpcProjectileRules.ChainRecords(targetRecord, chained, chainUid));
+                        chainUid += chained.Count;
+                    }
                     if (pathTarget != null) {
                         // if attack.direction == 3, use direction to target, if attack.direction == 0, use rotation maybe?
                         cast.Position = actor.Position;
@@ -102,14 +105,14 @@ public class SkillState {
         }
 
         foreach ((MagicPath path, IActor? homing, Vector3 direction) in shots) {
-            Fire(cast, path, homing, direction);
+            Fire(cast, path, homing, direction, chain);
         }
 
         // A swept shot hits what it passes (Fire), not the attack range at the caster.
         if (resolvedTargets.Count > 0 && !swept) {
             int limit = attack.TargetCount > 0 ? attack.TargetCount : 1;
-            for (int i = 0; i < resolvedTargets.Count && i < limit; i++) {
-                IActor target = resolvedTargets[i];
+            List<IActor> firsts = resolvedTargets.Take(limit).ToList();
+            foreach (IActor target in chain != null ? chain.Hits(firsts) : firsts) {
                 cast.Targets.TryAdd(target.ObjectId, target);
             }
 
@@ -167,7 +170,7 @@ public class SkillState {
 
     // Flies one shot along a straight path and hits the actors its arrow box sweeps (NpcProjectileRules), with a
     // copy of the cast as it is now, so a later attack point of the cast does not change it.
-    private void Fire(SkillRecord cast, MagicPath path, IActor? homing, Vector3 direction) {
+    private void Fire(SkillRecord cast, MagicPath path, IActor? homing, Vector3 direction, BounceChain.PerCast<IActor>? chain) {
         var shot = new SkillRecord(cast.Metadata, cast.CastUid, actor) {
             TargetUid = cast.TargetUid,
             ServerTick = cast.ServerTick,
@@ -224,8 +227,11 @@ public class SkillState {
 
             if (hit.Count > 0) {
                 shot.Targets.Clear();
-                foreach (int id in hit) {
-                    shot.Targets.TryAdd(id, hitActors[id]);
+                // A bouncing shot's hit bounces on from where it hit (chain); a chained object that died since the
+                // chain was drawn takes no hit.
+                List<IActor> firsts = hit.Select(id => hitActors[id]).ToList();
+                foreach (IActor target in chain != null ? chain.Hits(firsts, target => target.IsDead) : firsts) {
+                    shot.Targets.TryAdd(target.ObjectId, target);
                 }
                 shot.ImpactPosition = next;
                 actor.TargetAttack(shot);

@@ -73,6 +73,27 @@ public static class NpcProjectileRules {
         };
     }
 
+    // The records of a bounce chain after a path's record, as the client links them (StateSkill FUN_1417f3e80 for its
+    // own casts; the target packet FUN_14171c1d0 hangs a record under the one its PrevUid names and draws a shot from
+    // it): one per chained object, each linked to the one before, its index the bounce number (1 for the first
+    // bounce). Uids run on from firstUid.
+    public static List<Maple2.Server.Game.Model.Skill.TargetRecord> ChainRecords(Maple2.Server.Game.Model.Skill.TargetRecord root,
+            IReadOnlyList<int> chainedIds, long firstUid) {
+        var records = new List<Maple2.Server.Game.Model.Skill.TargetRecord>();
+        Maple2.Server.Game.Model.Skill.TargetRecord last = root;
+        for (int i = 0; i < chainedIds.Count; i++) {
+            var record = new Maple2.Server.Game.Model.Skill.TargetRecord {
+                PrevUid = last.Uid,
+                Uid = firstUid + i,
+                TargetId = chainedIds[i],
+                Index = (byte) (i + 1),
+            };
+            records.Add(record);
+            last = record;
+        }
+        return records;
+    }
+
     // The target of the target packet each path of an attack takes: the path's own index when there is one, else
     // none (-1). A path homes on its target only for an overlap arrow.
     public static int[] PathTargets(int pathCount, int targetCount) {

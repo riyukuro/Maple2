@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
 
@@ -47,5 +48,56 @@ public static class BounceChain {
             last = next;
         }
         return hits;
+    }
+
+    // The chains of one cast (an npc's, built by the server): each first hit's chain is built once, so the chain a
+    // target packet draws is the one its hit takes later. Null for an arrow that does not bounce around its hits.
+    public static PerCast<T>? For<T>(SkillMetadataArrow arrow, Func<T, int> idOf, Func<T, IReadOnlyList<T>> near,
+            Func<IReadOnlyList<T>, T>? pick = null) where T : class {
+        return arrow.BounceCount > 0 && PicksAround(arrow.BounceType) ? new PerCast<T>(arrow, idOf, near, pick) : null;
+    }
+
+    public sealed class PerCast<T> where T : class {
+        private readonly SkillMetadataArrow arrow;
+        private readonly Func<T, int> idOf;
+        private readonly Func<T, IReadOnlyList<T>> near;
+        private readonly Func<IReadOnlyList<T>, T>? pick;
+        private readonly Dictionary<int, List<T>> chains = [];
+
+        internal PerCast(SkillMetadataArrow arrow, Func<T, int> idOf, Func<T, IReadOnlyList<T>> near, Func<IReadOnlyList<T>, T>? pick) {
+            this.arrow = arrow;
+            this.idOf = idOf;
+            this.near = near;
+            this.pick = pick;
+        }
+
+        // The first hit and the objects its chain bounces to, in chain order (an object may come back in a chain
+        // that may overlap).
+        public IReadOnlyList<T> Of(T first) {
+            if (!chains.TryGetValue(idOf(first), out List<T>? hits)) {
+                hits = Build(first, arrow.BounceCount, arrow.BounceType, arrow.BounceOverlap, near, pick);
+                chains[idOf(first)] = hits;
+            }
+            return hits;
+        }
+
+        // The objects the first hits and their chains hit, each once, in order; a chained object for which skip
+        // holds (one that died since the chain was drawn) takes no hit, a first hit always does.
+        public List<T> Hits(IEnumerable<T> firsts, Func<T, bool>? skip = null) {
+            var seen = new HashSet<int>();
+            var result = new List<T>();
+            foreach (T first in firsts) {
+                IReadOnlyList<T> chain = Of(first);
+                for (int i = 0; i < chain.Count; i++) {
+                    if (i > 0 && skip != null && skip(chain[i])) {
+                        continue;
+                    }
+                    if (seen.Add(idOf(chain[i]))) {
+                        result.Add(chain[i]);
+                    }
+                }
+            }
+            return result;
+        }
     }
 }
