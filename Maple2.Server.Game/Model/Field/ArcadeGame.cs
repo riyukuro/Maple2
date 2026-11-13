@@ -36,6 +36,12 @@ public abstract class ArcadeGame {
 
     public IReadOnlyCollection<long> Players => players;
 
+    /// <summary>
+    /// Whether the character still has the game's score dialog and life bar open: a player of a game not yet ended.
+    /// The end closes them with the Result; a player who leaves before it gets no Result.
+    /// </summary>
+    public bool OpenFor(long characterId) => !Ended && Plays(characterId);
+
     protected void Opened(int round) {
         Round = round;
     }

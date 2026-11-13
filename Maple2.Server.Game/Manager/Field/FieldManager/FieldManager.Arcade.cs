@@ -127,6 +127,20 @@ public partial class FieldManager {
         }
     }
 
+    // A game player who leaves before the end gets no Result (mode 2, which closes the score dialog): the score dialog
+    // closes with mode 13 (CloseDialog 0x4ee4, scenestategame.cpp:8289) and the life bar with HideAndSeek 3, as at
+    // the end.
+    public void ArcadeLeave(FieldPlayer player) {
+        foreach (ArcadeGame? game in new ArcadeGame?[] { SpringFarm, BoomBoomOcean, ThreeTwoOne }) {
+            if (game?.OpenFor(player.Value.Character.Id) != true) {
+                continue;
+            }
+            player.Session.Send(ArcadePacket.CloseScore());
+            player.Session.Send(HideAndSeekPacket.End(player.ObjectId));
+            return;
+        }
+    }
+
     // The reward of the rounds cleared (table/Server/arcadeReward.xml): the arcade exp curve at the player's level
     // times the row's rate, and the row's meso. Then the game's score is kept as the player's best of the arcade
     // season when it is higher (ArcadeBest.Replaces), and the result shows the best before the game.

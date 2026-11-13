@@ -1590,6 +1590,7 @@ public partial class FieldManager {
             PvpZone?.Leave(fieldPlayer);
             Survival?.Leave(fieldPlayer);
             HideAndSeek?.Leave(fieldPlayer);
+            ArcadeLeave(fieldPlayer);
             Arena?.Left(this);
             // Last, and guarded: a failed send to the world must not cut the leave short.
             try {

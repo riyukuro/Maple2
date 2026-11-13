@@ -188,6 +188,17 @@ public class SpringFarmGameTests {
         Assert.That(ArcadeBest.SeasonAt(seasons, new DateTime(2026, 1, 1)), Is.EqualTo(40001));
         Assert.That(ArcadeBest.SeasonAt(seasons, new DateTime(2026, 1, 8)), Is.EqualTo(0));
     }
+    // The score dialog and life bar are open for a player of a game not yet ended.
+    [Test]
+    public void OpenFor_PlayersUntilTheEnd() {
+        var game = new SpringFarmGame(3, [7]);
+        Assert.Multiple(() => {
+            Assert.That(game.OpenFor(7), Is.True);
+            Assert.That(game.OpenFor(8), Is.False);
+        });
+        game.End();
+        Assert.That(game.OpenFor(7), Is.False);
+    }
     #endregion
 
     #region Packets
@@ -744,6 +755,26 @@ public class SpringFarmSessionTests {
 
         session.Field.SpringFarmDied();
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+    // A game player who leaves before the end: the score dialog closes (mode 13, no payload) and the life bar with
+    // HideAndSeek 3 for the player's object. After the end, or for a character not in the game, nothing goes.
+    [Test]
+    public void Leave_ClosesTheScoreAndLifeBarBeforeTheEnd() {
+        SpringFarmGame game = StartGame();
+        session.Field!.ArcadeLeave(session.Player);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent, Has.Count.EqualTo(2));
+        ByteReader close = Arcade(sent[0], 13);
+        Assert.That(close.Available, Is.EqualTo(0));
+        Assert.That(ResultOf(sent), Is.SameAs(sent[0]));
+
+        game.End();
+        session.Field.ArcadeLeave(session.Player);
+        Assert.That(Sent(), Is.Empty);
+
+        StartGame(player: test.CharacterId + 1);
+        session.Field.ArcadeLeave(session.Player);
+        Assert.That(Sent(), Is.Empty);
     }
     #endregion
 
