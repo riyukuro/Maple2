@@ -1,8 +1,10 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
+using M2dXmlGenerator;
 using Maple2.File.IO;
 using Maple2.File.Ingest.Helpers;
+using Maple2.File.Ingest.Utils;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Skill;
 using Maple2.Model.Enum;
@@ -41,7 +43,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 .Select(file => playedReader.GetXmlDocument(file)));
             Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses, {played.Values.Count(entry => entry.Weapons.Length > 0)} with hand weapons)");
             clientEffects = PlayedClientActionAdditionals.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
-                .Select(file => playedReader.GetXmlDocument(file)), out int unsupported);
+                .Select(file => playedReader.GetXmlDocument(file)), out int unsupported, ClientListedRows.Available, SelectLevel);
             foreach ((int effectId, IList<Maple2.File.Parser.Xml.AdditionalEffect.AdditionalEffectData> datas) in new AdditionalEffectParser(xmlReader).Parse()) {
                 foreach (Maple2.File.Parser.Xml.AdditionalEffect.AdditionalEffectData data in datas) {
                     packEffects.Add((effectId, data.BasicProperty.level));
@@ -61,13 +63,13 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             }
             Console.WriteLine($"Skill levels with effects in the played client's skill data: {clientEffects.Count} ({unsupported} effect rows left out for a condition the ingest does not read)");
             clientAttackMethods = PlayedClientSkills.ReadAttackMethods(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
-                .Select(file => playedReader.GetXmlDocument(file)), out int duplicateLevels);
-            Console.WriteLine($"Skill attacks in the played client's skill data: {clientAttackMethods.Count} ({clientAttackMethods.Values.Count(entry => entry.Method == 1)} of attack method type 1, {duplicateLevels} duplicate levels left out)");
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill attacks in the played client's skill data: {clientAttackMethods.Count} ({clientAttackMethods.Values.Count(entry => entry.Method == 1)} of attack method type 1)");
             clientSplashActive = PlayedClientSkills.ReadSplashActive(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
-                .Select(file => playedReader.GetXmlDocument(file)));
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill attacks with splash skills to fire in the played client's skill data: {clientSplashActive.Count}");
             clientCooldowns = PlayedClientSkills.ReadLevelCooldowns(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
-                .Select(file => playedReader.GetXmlDocument(file)));
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill levels with a cooldown in the played client's skill data: {clientCooldowns.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
@@ -75,6 +77,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         directions = new SkillAttackDirections(xmlReader);
         Console.WriteLine($"Skill attacks with a target order other than nearest first: {directions.Count} ({directions.Conflicts} given two orders)");
     }
+
+    // Of two of a skill's levels with the same value, the one the client's FUN_14028faa0 keeps
+    // (CFeatureManager::SelectFeatureElement).
+    private static System.Xml.XmlElement SelectLevel(System.Xml.XmlElement a, System.Xml.XmlElement b) =>
+        PlayedNpcStats.SelectFeatureElement(a, b, feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale);
 
     protected override IEnumerable<StoredSkillMetadata> Map() {
         List<long> magicPaths = [];

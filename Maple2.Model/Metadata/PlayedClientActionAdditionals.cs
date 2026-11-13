@@ -34,39 +34,29 @@ public static class PlayedClientActionAdditionals {
     private static readonly HashSet<string> ActorConditions = ["caster", "target"];
     private static readonly HashSet<string> BuffTestFields = ["hasBuffCount", "hasBuffID", "hasBuffOwner", "hasNotBuffID", "hasNotBuffOwner"];
 
-    public static Dictionary<(int SkillId, short Level), LevelUses> Read(IEnumerable<XmlDocument> skillFiles, out int unsupported) {
+    // The skills and levels are the client's pick (PlayedClientSkills.SelectSkills).
+    public static Dictionary<(int SkillId, short Level), LevelUses> Read(IEnumerable<XmlDocument> skillFiles, out int unsupported,
+            Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
         unsupported = 0;
         var result = new Dictionary<(int, short), LevelUses>();
-        foreach (XmlDocument file in skillFiles) {
-            XmlNodeList? skills = file.SelectNodes("ms2/skill");
-            if (skills == null) {
-                continue;
-            }
-            foreach (XmlElement skill in skills.OfType<XmlElement>()) {
-                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0) {
-                    continue;
-                }
-                foreach (XmlElement level in Children(skill, "level")) {
-                    if (!short.TryParse(level.GetAttribute("value"), out short value) || result.ContainsKey((id, value))) {
-                        continue;
-                    }
-                    Use[] own = Uses(level, ref unsupported);
-                    var attacks = new Dictionary<(int, int), AttackUses>();
-                    int motionIndex = 0;
-                    foreach (XmlElement motion in Children(level, "motion")) {
-                        int attackIndex = 0;
-                        foreach (XmlElement attack in Children(motion, "attack")) {
-                            Use[] uses = Uses(attack, ref unsupported);
-                            if (uses.Length > 0) {
-                                attacks[(motionIndex, attackIndex)] = new AttackUses(attack.GetAttribute("point"), uses);
-                            }
-                            attackIndex++;
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in PlayedClientSkills.SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                Use[] own = Uses(level, ref unsupported);
+                var attacks = new Dictionary<(int, int), AttackUses>();
+                int motionIndex = 0;
+                foreach (XmlElement motion in Children(level, "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in Children(motion, "attack")) {
+                        Use[] uses = Uses(attack, ref unsupported);
+                        if (uses.Length > 0) {
+                            attacks[(motionIndex, attackIndex)] = new AttackUses(attack.GetAttribute("point"), uses);
                         }
-                        motionIndex++;
+                        attackIndex++;
                     }
-                    if (own.Length > 0 || attacks.Count > 0) {
-                        result[(id, value)] = new LevelUses(own, attacks);
-                    }
+                    motionIndex++;
+                }
+                if (own.Length > 0 || attacks.Count > 0) {
+                    result[(id, value)] = new LevelUses(own, attacks);
                 }
             }
         }

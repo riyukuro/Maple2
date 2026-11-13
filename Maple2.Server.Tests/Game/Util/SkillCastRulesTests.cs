@@ -610,18 +610,18 @@ public class SkillCastRulesTests {
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
+              <skill id="100"><basic mainType="9" /></skill>
               <skill id="100"><basic mainType="4"><stateAttr rechargeMaxCount="6" /></basic></skill>
               <skill id="101" originID="100"><basic><stateAttr rechargeMaxCount="6" rechargeShareOrigin="1" /></basic></skill>
               <skill id="102" originID="100"><basic mainType="2" feature="X"><stateAttr rechargeMaxCount="3" /><condition sp="20"><weapon lh="0" rh="32" /><weapon lh="41" rh="30" /></condition></basic></skill>
               <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /></basic></skill>
               <skill id="0"><basic mainType="1" /></skill>
-              <skill id="100"><basic mainType="9" /></skill>
               <skill id="104" />
             </ms2>
             """);
         Dictionary<int, PlayedClientSkills.Entry> read = PlayedClientSkills.Read([document]);
         Assert.That(read.Keys.OrderBy(id => id), Is.EqualTo(new[] { 100, 101, 102, 103, 104 }));
-        Assert.That(Kept(read[100]), Is.EqualTo((4, 6, false)));
+        Assert.That(Kept(read[100]), Is.EqualTo((4, 6, false)), "the last <skill> of an id");
         Assert.That(Kept(read[101]), Is.EqualTo((0, 6, true)), "uses counted on the origin skill");
         Assert.That(Kept(read[102]), Is.EqualTo((2, 3, false)));
         Assert.That(Kept(read[103]), Is.EqualTo((0, 0, false)), "no origin: its own uses");
@@ -633,29 +633,28 @@ public class SkillCastRulesTests {
         Assert.That(PlayedClientSkills.IsSkillFile("skill/10/10000001.xml"), Is.False);
     }
 
-    // Every attack of the client's levels, by level, motion place and attack place, 0 kept; the first <skill> of an id
-    // and the first <level> of a value count.
+    // Every attack of the client's levels, by level, motion place and attack place, 0 kept; the last <skill> of an id
+    // counts (AddSkill), and of two levels of a value the first without a feature pick.
     [Test]
     public void PlayedClientAttackMethods() {
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
+              <skill id="200"><level value="3"><motion><attack attackMethodType="1" /></motion></level></skill>
               <skill id="200">
                 <level value="1"><motion><attack point="p0" attackMethodType="1" /><attack point="p1" /></motion><motion><attack attackMethodType="2" /></motion></level>
                 <level value="2"><motion><attack /></motion></level>
                 <level value="1"><motion><attack attackMethodType="2" /></motion></level>
               </skill>
-              <skill id="200"><level value="3"><motion><attack attackMethodType="1" /></motion></level></skill>
             </ms2>
             """);
-        Dictionary<(int, short, int, int), (int, string)> read = PlayedClientSkills.ReadAttackMethods([document], out int duplicateLevels);
+        Dictionary<(int, short, int, int), (int, string)> read = PlayedClientSkills.ReadAttackMethods([document]);
         Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), (int, string)> {
             [(200, 1, 0, 0)] = (1, "p0"),
             [(200, 1, 0, 1)] = (0, "p1"),
             [(200, 1, 1, 0)] = (2, ""),
             [(200, 2, 0, 0)] = (0, ""),
         }));
-        Assert.That(duplicateLevels, Is.EqualTo(1), "the second level 1");
     }
 
     [Test]
@@ -664,12 +663,12 @@ public class SkillCastRulesTests {
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
+              <skill id="10400071"><level value="3"><motion><attack splashActiveSkillID="2" /></motion></level></skill>
               <skill id="10400071">
                 <level value="1"><motion><attack point="p0" splashActiveSkillID="10400292" /><attack point="p1" /></motion></level>
                 <level value="2"><motion><attack point="p0" splashActiveSkillID="10400292, 10400293" /></motion></level>
                 <level value="1"><motion><attack point="p0" splashActiveSkillID="1" /></motion></level>
               </skill>
-              <skill id="10400071"><level value="3"><motion><attack splashActiveSkillID="2" /></motion></level></skill>
             </ms2>
             """);
         Dictionary<(int, short, int, int), (int[] Ids, string Point)> read = PlayedClientSkills.ReadSplashActive([document]);
@@ -685,7 +684,9 @@ public class SkillCastRulesTests {
     public void LevelCooldownIsTheClientsMilliseconds() {
         // Sticky Monster 10600281 and Holy Symbol 10400051 as the played client gives them (SkillLevelData::Load reads
         // the level's cooldown in milliseconds): 40 s and 120 s, where the data pack's beginCondition says 60 s and 180 s.
-        // A level without the attribute is left to the data pack; a later <level> or <skill> of a value read is not read.
+        // A level without the attribute is left to the data pack. The last <skill> of an id counts (AddSkill); a level
+        // the feature filter does not let in is skipped, and of two levels of a value the feature pick decides
+        // (FUN_14028faa0). The level 2 and 3 rows and the features are made up.
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
@@ -693,17 +694,28 @@ public class SkillCastRulesTests {
                 <level value="1" cooldown="40000" stringParam="92,283,712" />
                 <level value="2" sp="10" />
                 <level value="1" cooldown="1000" />
-                <level value="2" cooldown="2000" />
+                <level value="2" cooldown="30000" feature="New" />
+                <level value="3" cooldown="5000" feature="Off" />
               </skill>
+              <skill id="10400051"><level value="1" cooldown="3000" /></skill>
               <skill id="10400051"><level value="1" cooldown="120000" /></skill>
-              <skill id="10400051"><level value="2" cooldown="3000" /></skill>
             </ms2>
             """);
-        Dictionary<(int Skill, short Level), int> read = PlayedClientSkills.ReadLevelCooldowns([document]);
+        Dictionary<(int Skill, short Level), int> read = PlayedClientSkills.ReadLevelCooldowns([document],
+            level => level.GetAttribute("feature") != "Off", (a, b) => b.GetAttribute("feature") == "New" ? b : a);
+        Dictionary<(int Skill, short Level), int> unfiltered = PlayedClientSkills.ReadLevelCooldowns([document]);
         Assert.Multiple(() => {
-            Assert.That(read.Keys, Is.EquivalentTo(new[] { (10600281, (short) 1), (10400051, (short) 1) }));
-            Assert.That(read[(10600281, 1)], Is.EqualTo(40000));
-            Assert.That(read[(10400051, 1)], Is.EqualTo(120000));
+            Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short), int> {
+                [(10600281, 1)] = 40000,
+                [(10600281, 2)] = 30000,
+                [(10400051, 1)] = 120000,
+            }));
+            // Without a filter or a pick, every level counts and the first of a value is kept.
+            Assert.That(unfiltered, Is.EquivalentTo(new Dictionary<(int, short), int> {
+                [(10600281, 1)] = 40000,
+                [(10600281, 3)] = 5000,
+                [(10400051, 1)] = 120000,
+            }));
             // The length the server counts from them with no rate held.
             Assert.That(SkillCastRules.CooldownMs(read[(10600281, 1)] / 1000f, false, 0f, 0), Is.EqualTo(40000));
             Assert.That(SkillCastRules.CooldownMs(read[(10400051, 1)] / 1000f, false, 0f, 0), Is.EqualTo(120000));

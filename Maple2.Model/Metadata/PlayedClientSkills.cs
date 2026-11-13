@@ -24,68 +24,87 @@ public static class PlayedClientSkills {
 
     public static Dictionary<int, Entry> Read(IEnumerable<XmlDocument> skillFiles) {
         var entries = new Dictionary<int, Entry>();
-        foreach (XmlDocument file in skillFiles) {
-            XmlNodeList? skills = file.SelectNodes("ms2/skill");
-            if (skills == null) {
-                continue;
-            }
-            foreach (XmlNode node in skills) {
-                if (node is not XmlElement skill || !int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || entries.ContainsKey(id)) {
-                    continue;
-                }
-                XmlElement? basic = skill.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "basic");
-                XmlElement? state = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "stateAttr");
-                int origin = Number(skill, "originID");
-                XmlElement? condition = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "condition");
-                (int, int)[] weapons = condition?.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "weapon")
-                    .Select(weapon => (Number(weapon, "lh"), Number(weapon, "rh"))).ToArray() ?? [];
-                entries[id] = new Entry(
-                    MainType: Number(basic, "mainType"),
-                    RechargeMaxCount: Number(state, "rechargeMaxCount"),
-                    RechargeShared: Number(state, "rechargeShareOrigin") != 0 && origin != 0 && origin != id,
-                    Weapons: weapons);
-            }
+        foreach ((int id, (XmlElement skill, _)) in SelectSkills(skillFiles)) {
+            XmlElement? basic = skill.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "basic");
+            XmlElement? state = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "stateAttr");
+            int origin = Number(skill, "originID");
+            XmlElement? condition = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "condition");
+            (int, int)[] weapons = condition?.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "weapon")
+                .Select(weapon => (Number(weapon, "lh"), Number(weapon, "rh"))).ToArray() ?? [];
+            entries[id] = new Entry(
+                MainType: Number(basic, "mainType"),
+                RechargeMaxCount: Number(state, "rechargeMaxCount"),
+                RechargeShared: Number(state, "rechargeShareOrigin") != 0 && origin != 0 && origin != id,
+                Weapons: weapons);
         }
         return entries;
     }
 
-    // The attackMethodType of every attack of the client's levels, by skill id, level, the motion's place in the level
-    // and the attack's place in the motion (0 kept, so that a level the client has overrides the data pack's). The
-    // first <skill> of an id and the first <level> of a value are read, as in Read.
-    // Each attack's type with its point, so the ingest takes it only for the data pack's attack of the same point.
-    // The first <level> of a value is kept; duplicateLevels counts the later ones (the client's FUN_14028faa0 picks
-    // among them by feature, which this does not do; KR has none).
-    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (int Method, string Point)> ReadAttackMethods(
-            IEnumerable<XmlDocument> skillFiles, out int duplicateLevels) {
-        var methods = new Dictionary<(int, short, int, int), (int, string)>();
-        duplicateLevels = 0;
-        var skillIds = new HashSet<int>();
+    // The client's pick of the <skill> elements and their <level> elements: SkillDataTable::LoadSkillFile adds every
+    // <skill> of each file and AddSkill (commonfiles/skilloverlapcompare.cpp:1295) replaces an id it has, so the last
+    // <skill> of an id is the one kept. SkillData::Load (skilloverlapcompare.cpp:882) takes its levels through
+    // FUN_14028faa0 (commonutil.cpp:1747): a <level> the feature or locale does not let in is skipped, and of two with
+    // the same value text the one select picks takes the place (the first one is kept without select).
+    public static Dictionary<int, (XmlElement Skill, List<(short Value, XmlElement Level)> Levels)> SelectSkills(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null,
+            Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var skillsById = new Dictionary<int, XmlElement>();
         foreach (XmlDocument file in skillFiles) {
             XmlNodeList? skills = file.SelectNodes("ms2/skill");
             if (skills == null) {
                 continue;
             }
             foreach (XmlElement skill in skills.OfType<XmlElement>()) {
-                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || !skillIds.Add(id)) {
+                if (int.TryParse(skill.GetAttribute("id"), out int id) && id != 0) {
+                    skillsById[id] = skill;
+                }
+            }
+        }
+        var result = new Dictionary<int, (XmlElement, List<(short, XmlElement)>)>();
+        foreach ((int id, XmlElement skill) in skillsById) {
+            var slots = new List<XmlElement>();
+            var slotByKey = new Dictionary<string, int>();
+            foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
+                if (available != null && !available(level)) {
                     continue;
                 }
-                var levelValues = new HashSet<short>();
-                foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
-                    if (!short.TryParse(level.GetAttribute("value"), out short value)) {
-                        continue;
+                string key = level.GetAttribute("value");
+                if (slotByKey.TryGetValue(key, out int slot)) {
+                    if (select != null && select(slots[slot], level) == level) {
+                        slots[slot] = level;
                     }
-                    if (!levelValues.Add(value)) {
-                        duplicateLevels++;
-                        continue;
+                    continue;
+                }
+                slotByKey[key] = slots.Count;
+                slots.Add(level);
+            }
+            var levels = new List<(short, XmlElement)>();
+            foreach (XmlElement level in slots) {
+                if (short.TryParse(level.GetAttribute("value"), out short value)) {
+                    levels.Add((value, level));
+                }
+            }
+            result[id] = (skill, levels);
+        }
+        return result;
+    }
+
+    // The attackMethodType of every attack of the client's levels, by skill id, level, the motion's place in the level
+    // and the attack's place in the motion (0 kept, so that a level the client has overrides the data pack's), with
+    // the attack's point, so the ingest takes it only for the data pack's attack of the same point. The skills and
+    // levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (int Method, string Point)> ReadAttackMethods(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var methods = new Dictionary<(int, short, int, int), (int, string)>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        methods[(id, value, motionIndex, attackIndex++)] = (Number(attack, "attackMethodType"), attack.GetAttribute("point"));
                     }
-                    int motionIndex = 0;
-                    foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
-                        int attackIndex = 0;
-                        foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
-                            methods[(id, value, motionIndex, attackIndex++)] = (Number(attack, "attackMethodType"), attack.GetAttribute("point"));
-                        }
-                        motionIndex++;
-                    }
+                    motionIndex++;
                 }
             }
         }
@@ -94,42 +113,28 @@ public static class PlayedClientSkills {
 
     // The splashActiveSkillID list of every attack of the client's levels that has one (SkillAttackData::Load,
     // skillattackdata.cpp:597, a comma list), by skill id, level, the motion's place in the level and the attack's
-    // place in the motion, with the attack's point. The data pack's skill data has no such attribute. The first
-    // <skill> of an id and the first <level> of a value are read, as in ReadAttackMethods.
+    // place in the motion, with the attack's point. The data pack's skill data has no such attribute. The skills and
+    // levels are the client's pick (SelectSkills).
     public static Dictionary<(int Skill, short Level, int Motion, int Attack), (int[] Ids, string Point)> ReadSplashActive(
-            IEnumerable<XmlDocument> skillFiles) {
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
         var result = new Dictionary<(int, short, int, int), (int[], string)>();
-        var skillIds = new HashSet<int>();
-        foreach (XmlDocument file in skillFiles) {
-            XmlNodeList? skills = file.SelectNodes("ms2/skill");
-            if (skills == null) {
-                continue;
-            }
-            foreach (XmlElement skill in skills.OfType<XmlElement>()) {
-                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || !skillIds.Add(id)) {
-                    continue;
-                }
-                var levelValues = new HashSet<short>();
-                foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
-                    if (!short.TryParse(level.GetAttribute("value"), out short value) || !levelValues.Add(value)) {
-                        continue;
-                    }
-                    int motionIndex = 0;
-                    foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
-                        int attackIndex = 0;
-                        foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
-                            int[] ids = attack.GetAttribute("splashActiveSkillID")
-                                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                                .Select(text => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId) ? skillId : 0)
-                                .Where(skillId => skillId > 0)
-                                .ToArray();
-                            if (ids.Length > 0) {
-                                result[(id, value, motionIndex, attackIndex)] = (ids, attack.GetAttribute("point"));
-                            }
-                            attackIndex++;
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        int[] ids = attack.GetAttribute("splashActiveSkillID")
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .Select(text => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId) ? skillId : 0)
+                            .Where(skillId => skillId > 0)
+                            .ToArray();
+                        if (ids.Length > 0) {
+                            result[(id, value, motionIndex, attackIndex)] = (ids, attack.GetAttribute("point"));
                         }
-                        motionIndex++;
+                        attackIndex++;
                     }
+                    motionIndex++;
                 }
             }
         }
@@ -139,25 +144,14 @@ public static class PlayedClientSkills {
     // The cooldown of each of the client's levels that gives one, in milliseconds, by skill id and level
     // (SkillLevelData::Load reads the level's cooldown attribute; SkillLevelData::GetCooldown is the length the
     // client's skill slot counts down and its tooltip shows). The data pack's beginCondition cooldownTime differs
-    // for 95 KR skills. A level without the attribute is left out (the client counts 0 there). The first <skill> of
-    // an id and the first <level> of a value are read, as in ReadSplashActive.
-    public static Dictionary<(int Skill, short Level), int> ReadLevelCooldowns(IEnumerable<XmlDocument> skillFiles) {
+    // for 95 KR skills. A level without the attribute is left out (the client counts 0 there). The skills and levels
+    // are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level), int> ReadLevelCooldowns(IEnumerable<XmlDocument> skillFiles,
+            Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
         var result = new Dictionary<(int, short), int>();
-        var skillIds = new HashSet<int>();
-        foreach (XmlDocument file in skillFiles) {
-            XmlNodeList? skills = file.SelectNodes("ms2/skill");
-            if (skills == null) {
-                continue;
-            }
-            foreach (XmlElement skill in skills.OfType<XmlElement>()) {
-                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || !skillIds.Add(id)) {
-                    continue;
-                }
-                var levelValues = new HashSet<short>();
-                foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
-                    if (!short.TryParse(level.GetAttribute("value"), out short value) || !levelValues.Add(value) || !level.HasAttribute("cooldown")) {
-                        continue;
-                    }
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                if (level.HasAttribute("cooldown")) {
                     result[(id, value)] = Number(level, "cooldown");
                 }
             }
