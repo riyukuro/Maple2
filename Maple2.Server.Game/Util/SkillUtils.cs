@@ -207,7 +207,13 @@ public static class SkillUtils {
         }
 
         ownedBy ??= caster;
-        return condition.Caster.Check(caster, ownedBy, eventType, eventSkillId, eventBuffId) && condition.Owner.Check(owner, ownedBy, eventType, eventSkillId, eventBuffId) && condition.Target.Check(target, ownedBy, eventType, eventSkillId, eventBuffId);
+        // The event belongs to the sub-condition that names it. A sibling without eventCondition (0) then holds for
+        // that event too: 90000296 has eventCondition 6 on owner and only NpcRanks on target. Chosen here; before,
+        // such a target required event 0 and the proc never fired.
+        bool named = Names(condition.Caster) || Names(condition.Owner) || Names(condition.Target);
+        return condition.Caster.Check(caster, ownedBy, eventType, eventSkillId, eventBuffId, named) && condition.Owner.Check(owner, ownedBy, eventType, eventSkillId, eventBuffId, named) && condition.Target.Check(target, ownedBy, eventType, eventSkillId, eventBuffId, named);
+
+        static bool Names(BeginConditionTarget? sub) => sub != null && sub.Event.Type != EventConditionType.Activate;
     }
 
     // applyPvPZoneType (4,823 effect levels on 1,699 effects; no skill uses it): 1 holds outside PvP zones, 2 only in
@@ -227,12 +233,12 @@ public static class SkillUtils {
     // buff's caster. The client only loads the flag; its one reader of the same field family, the range select's
     // targetHasBuffOwner, takes a buff cast by the searching actor (CBaseCollision, HasEnabledWithIdAndCaster). Before,
     // the test compared the holder's object id with 0 and never failed.
-    private static bool Check(this BeginConditionTarget? condition, IActor target, IActor ownedBy, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0) {
+    private static bool Check(this BeginConditionTarget? condition, IActor target, IActor ownedBy, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0, bool eventNamedElsewhere = false) {
         if (condition == null) {
             return true;
         }
 
-        if (condition.Event.Type != eventType) {
+        if (condition.Event.Type != eventType && !(eventNamedElsewhere && condition.Event.Type == EventConditionType.Activate)) {
             return false;
         }
 
