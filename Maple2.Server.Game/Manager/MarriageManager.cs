@@ -128,6 +128,26 @@ public sealed class MarriageManager {
         ReloadPartner(Partner.CharacterId);
     }
 
+    // A Blessing Charm (function WeddingExpItem): the weddingExpItem reward row's exp in this player's line of the
+    // marriage's exp log. False, and the charm is kept, for a player whose marriage does not count it or whose last
+    // use is younger than the row's limit (MarriageExpRules.Cooldown).
+    public bool UseWeddingExpItem() {
+        if (Marriage.Id == 0 || !MarriageExpRules.CountsWeddingExp(Marriage.Status)
+            || !session.TableMetadata.WeddingTable.Rewards.TryGetValue(MarriageExpType.weddingExpItem, out WeddingReward? reward)
+            || reward.Amount <= 0) {
+            return false;
+        }
+
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            if (!db.AddWeddingExpItem(Marriage.Id, session.CharacterId, reward.Amount, MarriageExpRules.Cooldown(reward.Limit), DateTime.Now)) {
+                return false;
+            }
+        }
+        Reload();
+        ReloadPartner(Partner.CharacterId);
+        return true;
+    }
+
     public void ClearProposal() {
         lock (ProposalLock) {
             long partnerId = proposalTo != 0 ? proposalTo : proposalFrom;

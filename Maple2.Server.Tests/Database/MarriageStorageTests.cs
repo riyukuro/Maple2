@@ -141,6 +141,40 @@ public class MarriageStorageTests {
         });
     }
 
+    private bool UseCharm(long characterId, DateTime time) {
+        using GameStorage.Request db = storage.Context();
+        return db.AddWeddingExpItem(marriageId, characterId, 350, MarriageExpRules.Cooldown(MarriageExpLimit.month), time);
+    }
+
+    // A Blessing Charm (WeddingExpItem): 350 in the user's own line (9 the groom's, 10 the bride's as each partner is
+    // sent them), again only 30 days after that partner's last use; the other partner's use does not count against it.
+    // Before, the server took the charm and added nothing.
+    [Test]
+    public void BlessingCharm_OncePer30DaysPerPartner() {
+        Marry();
+        DateTime now = DateTime.Now;
+        Assert.Multiple(() => {
+            Assert.That(UseCharm(first, now), Is.True);
+            Assert.That(UseCharm(second, now), Is.True);
+            Assert.That(UseCharm(first, now.AddDays(29)), Is.False);
+            Assert.That(UseCharm(first, now.AddDays(30)), Is.True);
+        });
+
+        Marriage ofSecond = Load(second);
+        Assert.That(ofSecond.ExpHistory.Select(exp => (exp.Type, exp.Amount)), Is.EqualTo(new[] {
+            (MarriageExpType.weddingExpItem, 350L), (MarriageExpType.WeddingExpItemBride, 350L), (MarriageExpType.weddingExpItem, 350L),
+        }));
+        Assert.That(Load(first).ExpHistory.Select(exp => exp.Type).First(), Is.EqualTo(MarriageExpType.WeddingExpItemBride));
+    }
+
+    [Test]
+    public void BlessingCharm_OnlyAMarriageCountsIt() {
+        Assert.That(UseCharm(first, DateTime.Now), Is.False); // engaged
+        Marry();
+        Assert.That(UseCharm(second + 100, DateTime.Now), Is.False);
+        Assert.That(Load(first).ExpHistory, Is.Empty);
+    }
+
     // An engagement, a stranger, a missing row or no amount add nothing (the filed states: MarriageExpRulesTests).
     [Test]
     public void WeddingMission_OnlyAMarriageCountsIt() {

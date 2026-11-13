@@ -132,6 +132,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.FestivalEvent:
                 HandleFestivalEvent(session, item);
                 break;
+            case ItemFunction.WeddingExpItem:
+                HandleWeddingExpItem(session, item);
+                break;
             case ItemFunction.HongBao:
                 HandleHongBao(session, item);
                 break;
@@ -790,6 +793,19 @@ public class ItemUseHandler : FieldPacketHandler {
         // Reactor mode 5 is the client's only use of a reactor's create animation (state 0x3d, sub state 0x9e);
         // chosen here: the placer plays it once the reactor stands.
         session.Send(ReactorPacket.StartReact(metadata.Id));
+    }
+
+    // A Blessing Charm (function WeddingExpItem, no parameter): the client has no rule of its own for it and sends the
+    // plain use. The marriage's exp log gets the reward table's weddingExpItem exp (350 in KR) in this partner's line,
+    // once in 30 days; the charm is taken only then (under the item lock, so the charm the exp was given for is the one
+    // taken).
+    private static void HandleWeddingExpItem(GameSession session, Item item) {
+        lock (session.Item) {
+            if (session.Item.Inventory.Get(item.Uid) == null || !session.Marriage.UseWeddingExpItem()) {
+                return;
+            }
+            session.Item.Inventory.Consume(item.Uid, 1);
+        }
     }
 
     // A festival item (FestivalEvent, unit_140d1ae30 FUN_140d1f030): the client sends the plain use only in a field

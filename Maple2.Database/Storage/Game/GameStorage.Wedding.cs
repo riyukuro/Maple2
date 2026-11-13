@@ -73,6 +73,31 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // A Blessing Charm used by one partner (function WeddingExpItem): its line by the stored order, refused like a
+        // wedding mission's and while this partner's last use is younger than the cooldown.
+        public bool AddWeddingExpItem(long marriageId, long characterId, long amount, TimeSpan? cooldown, DateTime time) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || amount <= 0 || !MarriageExpRules.CountsWeddingExp(model.Status)
+                || (model.Partner1Id != characterId && model.Partner2Id != characterId)) {
+                return false;
+            }
+
+            MarriageExpType type = MarriageExpRules.WeddingExpItem(characterId, model.Partner1Id);
+            if (!MarriageExpRules.Ready(model.ExpHistory.Select(exp => (exp.Type, exp.Time)), type, cooldown, time)) {
+                return false;
+            }
+
+            model.ExpHistory = new List<Model.MarriageExp>(model.ExpHistory) {
+                new() {
+                    Type = type,
+                    Amount = amount,
+                    Time = time,
+                },
+            };
+            Context.Marriage.Update(model);
+            return Context.TrySaveChanges();
+        }
+
         // The vow was completed: an engaged couple becomes married at the given time. Refused for any other
         // state, so a ceremony cannot marry a couple twice or bring back a marriage that is being ended.
         public bool SetMarried(long marriageId, DateTime time) {
