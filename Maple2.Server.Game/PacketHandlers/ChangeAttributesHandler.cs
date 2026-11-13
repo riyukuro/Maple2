@@ -23,7 +23,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         KeepCurrent = 3,
         StageItem = 4,
         OpenDialog = 6,
-        Unknown5 = 7,
+        Debug = 7,
         ForceFill = 8,
     }
 
@@ -42,11 +42,11 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             case Command.Select:
                 HandleSelect(session, packet);
                 return;
-            case Command.Unknown5: // GM button of the pet remake page (GM level 50 or more)
+            case Command.Debug: // GM buttons of the remake dialog and the pet remake page (GM level 50 or more)
                 if (!GmCheck.Allow(session, OpCode, (int) command)) {
                     return;
                 }
-                HandleUnknown5(session, packet);
+                HandleDebug(packet);
                 return;
             case Command.ForceFill: // GM buttons of the remake dialog (GM level 50 or more)
                 if (!GmCheck.Allow(session, OpCode, (int) command)) {
@@ -265,17 +265,16 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         }
     }
 
-    private static void HandleUnknown5(GameSession session, IByteReader packet) {
-        long itemUid = packet.ReadLong();
-        packet.ReadLong(); // unknown
-        bool useLock = packet.ReadBool();
-        if (useLock) {
-            byte index = packet.ReadByte();
-            BasicAttribute attribute = BasicAttributeIds.ServerStat(packet.ReadShort());
-        }
-
-        packet.ReadBool();
-        packet.ReadInt();
+    // RemakeOptionDebug::vfunc_1 (itemremakescrolldata.cpp:453+, 0x1406175b0): the RemakeOption of mode 0 (i64 uid,
+    // i64, the locks) then u8 kind and i32 value. Writers: unit_14129cfa0_itemremakeoptiondialog.cpp:438 (kind 1,
+    // value 300) and :480 (kind 2), tabcontentspetremakeoption.cpp:1028 (kind 0) and :1062 (kind 2). The server does
+    // nothing with it.
+    internal static void HandleDebug(IByteReader packet) {
+        packet.ReadLong(); // item uid
+        packet.ReadLong();
+        ItemRemakeRules.ReadLocks(packet);
+        packet.ReadByte(); // kind
+        packet.ReadInt(); // value
     }
 
     private static void HandleForceFill(GameSession session, IByteReader packet) {
