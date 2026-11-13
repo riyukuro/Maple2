@@ -15,6 +15,7 @@ public static class DungeonMissionPacket {
         Update = 1,
         Stage = 3,
         SetAbandon = 4,
+        GiveUp = 5,
     }
 
     public static ByteWriter Load(IDictionary<int, DungeonMission> missions) {
@@ -45,6 +46,14 @@ public static class DungeonMissionPacket {
         var pWriter = Packet.Of(SendOp.DungeonMission);
         pWriter.WriteByte((byte) Command.Stage);
         pWriter.WriteByte(stage);
+
+        return pWriter;
+    }
+
+    // RoomStageDungeonCli::OnGiveUp (mode 5) reads nothing more and shows the s_party_notify_dungeon_giveup notice.
+    public static ByteWriter GiveUp() {
+        var pWriter = Packet.Of(SendOp.DungeonMission);
+        pWriter.WriteByte((byte) Command.GiveUp);
 
         return pWriter;
     }
