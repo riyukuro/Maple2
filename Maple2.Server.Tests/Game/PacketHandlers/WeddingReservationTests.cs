@@ -185,6 +185,52 @@ public class WeddingReservationTests {
         Assert.That(Modes(accepter), Is.Empty);
     }
 
+    // A hall already stored for this marriage, held by both partners as on login.
+    private void Hold(long ceremonyTime) {
+        WeddingHall? held;
+        using (GameStorage.Request db = proposer.Storage.Context()) {
+            held = db.CreateWeddingHall(Reservation(proposer, ceremonyTime), proposer.Session.Marriage.Marriage);
+        }
+        Assume.That(held, Is.Not.Null);
+        proposer.Session.Marriage.WeddingHall = held!;
+        accepter.Session.Marriage.WeddingHall = held!;
+    }
+
+    // The client refuses a new reservation only while the reserved ceremony is ahead (WeddingProxy::CheckVisit);
+    // a couple still inside the promise limit whose ceremony time has passed reserves anew, and the new hall
+    // takes the old one's place.
+    [Test]
+    public void Reserve_AfterAPassedCeremony_StoresTheNewHall() {
+        Hold(Now - 3600);
+        Assert.That(proposer.Session.Marriage.ReserveHall(Reservation(proposer, Now + 86400)), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        Answer(accepter, 7);
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(proposer.Session.Marriage.WeddingHall.CeremonyTime, Is.EqualTo(Now + 86400).Within(5));
+            Assert.That(proposer.Session.Currency.Meret, Is.EqualTo(1000 - Cost));
+        });
+    }
+
+    [Test]
+    public void Reserve_WhileTheCeremonyIsAhead_Is0x2b() {
+        Hold(Now + 2 * 86400);
+        Assert.That(proposer.Session.Marriage.ReserveHall(Reservation(proposer, Now + 86400)), Is.EqualTo(WeddingError.s_wedding_result_already_reservation));
+        Assert.Multiple(() => {
+            Assert.That(Modes(accepter), Is.Empty);
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(proposer.Session.Currency.Meret, Is.EqualTo(1000));
+        });
+    }
+
+    // The store refuses a second row while the first one's ceremony is ahead, whoever calls it.
+    [Test]
+    public void CreateWeddingHall_WhileTheCeremonyIsAhead_StoresNothing() {
+        Hold(Now + 2 * 86400);
+        using GameStorage.Request db = proposer.Storage.Context();
+        Assert.That(db.CreateWeddingHall(Reservation(proposer, Now + 86400), proposer.Session.Marriage.Marriage), Is.Null);
+        Assert.That(StoredHalls(), Is.EqualTo(1));
+    }
+
     [Test]
     public void Reserve_ADayAhead_IsAsked() {
         Assert.That(proposer.Session.Marriage.ReserveHall(Reservation(proposer, Now + 86400)), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));

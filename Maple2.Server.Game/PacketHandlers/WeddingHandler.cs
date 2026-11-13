@@ -205,11 +205,6 @@ public class WeddingHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Marriage.WeddingHall.Id != 0) {
-            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_already_reservation));
-            return;
-        }
-
         var hall = packet.ReadClass<WeddingHall>();
         bool useCoupon = packet.ReadBool();
 

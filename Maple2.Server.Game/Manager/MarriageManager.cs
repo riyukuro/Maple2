@@ -855,7 +855,7 @@ public sealed class MarriageManager {
 
     public WeddingError ReserveHall(WeddingHall hall, bool useCoupon = false) {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
-        WeddingError rule = WeddingReservationRules.CheckReserve(Marriage.Status, Marriage.CreationTime, hall.CeremonyTime,
+        WeddingError rule = WeddingReservationRules.CheckReserve(Marriage.Status, Marriage.CreationTime, HeldTime, hall.CeremonyTime,
             DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingPromiseLimitDay,
             session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
         if (rule != WeddingError.none) {
@@ -913,12 +913,15 @@ public sealed class MarriageManager {
         UnconfirmedReservation = null;
     }
 
+    // The ceremony time of the hall this marriage holds, 0 for none.
+    private long HeldTime => WeddingHall is { Id: not 0 } held ? held.CeremonyTime : 0;
+
     public WeddingError ConfirmReservation() {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
         if (UnconfirmedReservation == null || reservationAskedBy == 0 || reservationAskedBy != Partner.CharacterId) {
             return WeddingError.s_wedding_result_err_invalid_wedding_hall;
         }
-        if (WeddingHall is { Id: not 0 }) {
+        if (WeddingReservationRules.HoldsReservation(HeldTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             reservationAskedBy = 0;
             UnconfirmedReservation = null;
             return WeddingError.s_wedding_result_already_reservation;

@@ -273,6 +273,25 @@ public partial class GameStorage {
                 BeginTransaction();
             }
 
+            // A marriage has one hall row. The row of a ceremony whose time has passed gives way to the new
+            // reservation, as the client allows it (WeddingProxy::CheckVisit); a row still ahead refuses it.
+            Model.WeddingHall? held = Context.WeddingHall.FirstOrDefault(row => row.MarriageId == marriage.Id);
+            if (held != null) {
+                if (held.CeremonyTime > DateTime.Now) {
+                    if (own) {
+                        Rollback();
+                    }
+                    return null;
+                }
+                Context.WeddingHall.Remove(held);
+                if (!SaveChanges()) {
+                    if (own) {
+                        Rollback();
+                    }
+                    return null;
+                }
+            }
+
             Model.WeddingHall model = hall;
             model.MarriageId = marriage.Id;
             model.OwnerId = marriage.Partner1.CharacterId;

@@ -168,6 +168,51 @@ public class WeddingReservationPayTests(bool mysql) {
         });
     }
 
+    // The hall of a ceremony whose time has passed, stored for this marriage and held by both partners.
+    private void HoldPassedHall() {
+        WeddingHall passed = Reservation();
+        passed.CeremonyTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 3600;
+        WeddingHall? held;
+        using (GameStorage.Request db = payer.Storage.Context()) {
+            held = db.CreateWeddingHall(passed, payer.Session.Marriage.Marriage);
+        }
+        Assume.That(held, Is.Not.Null);
+        payer.Session.Marriage.WeddingHall = held!;
+        confirmer.Session.Marriage.WeddingHall = held!;
+    }
+
+    // A new reservation after a passed ceremony replaces the passed hall's row with the new one, paid once.
+    [Test]
+    public void Confirm_AfterAPassedCeremony_ReplacesTheRow() {
+        HoldPassedHall();
+        long passedId = payer.Session.Marriage.WeddingHall.Id;
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation()), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+
+        Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_propose_ok));
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0).And.Not.EqualTo(passedId));
+            Assert.That(StoredMeret(), Is.EqualTo(1000 - Cost));
+        });
+    }
+
+    // The new row is not stored: the passed hall's row stays (on MySQL the delete is rolled back with the add).
+    [Test]
+    public void HallNotStored_AfterAPassedCeremony_KeepsThePassedRow() {
+        if (!mysql) {
+            Assert.Ignore("the in-memory store has no transactions");
+        }
+        HoldPassedHall();
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation()), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        FailHallSave();
+
+        Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.Not.EqualTo(WeddingError.s_wedding_propose_ok));
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(StoredMeret(), Is.EqualTo(1000));
+        });
+    }
+
     // The hall row is not stored: no merets are taken, in the session or stored, and no hall is set.
     [Test]
     public void HallNotStored_TakesNoMerets() {
