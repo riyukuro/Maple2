@@ -266,33 +266,73 @@ public class PlayerConfigPersistTests {
         Assert.That(store.Loads, Is.EqualTo(2));
     }
 
-    // A login whose read failed, and one whose read fell in the retry time, play from an empty config: their
-    // logouts do not write it over the stored rows, and the next read that works gives the stored config back.
+    // A login whose read failed, and its next login that fell in the retry time, play from an empty config: their
+    // logouts do not write it over the stored row, and the next read that works gives the stored config back.
     [Test]
     public void UnreadCharacter_SaveDoesNotReplaceTheStoredRow() {
-        const long Other = CharacterId + 1;
         var store = new JsonStore();
-        PlayerConfigLookUp before = World(store);
-        Logout(before);
-        before.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 40000, StopTime = 1000, Charges = 1 }],
-            new DeathInfo(), Other);
-        string row = store.Rows[CharacterId], otherRow = store.Rows[Other];
+        Logout(World(store));
+        string row = store.Rows[CharacterId];
         store.FailLoad = true;
         long now = 0;
         PlayerConfigLookUp world = World(store, clockMs: () => now);
 
         Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
-        store.FailLoad = false;
-        Assert.That(world.Retrieve(Other, 1010).SkillCooldowns, Is.Empty, "read skipped in the retry time");
         world.Save([], [], new DeathInfo(), CharacterId);
-        world.Save([], [], new DeathInfo(), Other);
-        Assert.That((store.Rows[CharacterId], store.Rows[Other]), Is.EqualTo((row, otherRow)));
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs - 1;
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty, "read skipped in the retry time");
+        world.Save([], [], new DeathInfo(), CharacterId);
+        Assert.That(store.Rows[CharacterId], Is.EqualTo(row));
 
         now = PlayerConfigLookUp.LoadRetryMs;
         Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));
-        Assert.That(world.Retrieve(Other, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(30000));
         world.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 5000, StopTime = 1010, Charges = 1 }],
+            new DeathInfo(), CharacterId);
+        Assert.That(World(store).Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(5000));
+    }
+
+    // The retry time is the failed character's own: another character's login in it still reads its row.
+    [Test]
+    public void FailedRead_DoesNotHoldUpAnotherCharactersRead() {
+        const long Other = CharacterId + 1;
+        var store = new JsonStore();
+        World(store).Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 40000, StopTime = 1000, Charges = 1 }],
             new DeathInfo(), Other);
-        Assert.That(World(store).Retrieve(Other, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(5000));
+        store.FailLoad = true;
+        PlayerConfigLookUp world = World(store, clockMs: () => 0);
+
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        store.FailLoad = false;
+        Assert.That(world.Retrieve(Other, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(30000));
+        Assert.That(store.Loads, Is.EqualTo(2));
+    }
+
+    // A session that played on while its row was unread, then reads the row: the cooldown and death penalty it got
+    // in the meantime stay (the row's cooldown of the same skill ends sooner), the row's other cooldown and its buff
+    // come back, and the merged config is written.
+    [Test]
+    public void ReadAfterAFailedRead_MergesIntoWhatTheSessionHolds() {
+        var store = new JsonStore();
+        Logout(World(store));
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, clockMs: () => now);
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        world.Save([],
+            [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 50000, StopTime = 1010, Charges = 1 }],
+            new DeathInfo { Count = 3, MsRemaining = 40000, StopTime = 1010 }, CharacterId);
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs;
+
+        (List<BuffInfo> buffs, List<SkillCooldownInfo> cooldowns, DeathInfo death) = world.Retrieve(CharacterId, 1010);
+        Assert.That(cooldowns.Single().MsRemaining, Is.EqualTo(50000));
+        Assert.That((death.Count, death.MsRemaining), Is.EqualTo((3, 40000)));
+        Assert.That(buffs.Single().Id, Is.EqualTo(Buff));
+        Assert.That(world.RetrievePvpHold(CharacterId, 1010).Held.Single().SkillId, Is.EqualTo(Skill + 1));
+
+        (List<BuffInfo> _, List<SkillCooldownInfo> written, DeathInfo writtenDeath) = World(store).Retrieve(CharacterId, 1010);
+        Assert.That(written.Single().MsRemaining, Is.EqualTo(50000));
+        Assert.That(writtenDeath.Count, Is.EqualTo(3));
     }
 }

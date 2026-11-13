@@ -51,14 +51,16 @@ public class PlayerConfigLookUp {
     private readonly ConcurrentDictionary<long, PlayerConfigSave> pendingWrites = [];
     private readonly Action<Action> runWriter;
     private int writerRunning;
-    // After a failed read the store is not read again for a while: while the db is down a login does not wait on it
-    // again and again (the config of that login is the memory copy, or none).
+    // After a failed read of a character its row is not read again for a while: while the db is down its logins do
+    // not wait on it again and again (the config of that login is the memory copy, or none). The wait is the
+    // character's own, so one failed read holds up no other character's read.
     internal const long LoadRetryMs = 30_000;
     private readonly Func<long> clockMs;
-    private long loadRetryAt = long.MinValue;
+    private readonly ConcurrentDictionary<long, long> loadRetryAt = [];
     // Characters whose stored row was not read (the read failed, or fell in the retry time): their saves stay in
     // memory and are not written, so a config begun from nothing never replaces the stored row. The next read that
-    // works takes the stored row over the memory copy.
+    // works merges the stored row into the memory copy (MergeStored), so neither loses a cooldown, buff or death
+    // penalty, and writes the merged config.
     private readonly ConcurrentDictionary<long, byte> unread = [];
 
     public PlayerConfigLookUp(SkillMetadataStorage skillMetadataStorage, GameStorage gameStorage) : this(
@@ -169,13 +171,13 @@ public class PlayerConfigLookUp {
             return;
         }
         PlayerConfigSave? save = null;
-        bool read = clockMs() >= Interlocked.Read(ref loadRetryAt);
+        bool read = clockMs() >= loadRetryAt.GetValueOrDefault(characterId, long.MinValue);
         if (read) {
             try {
                 save = store.Load(characterId);
             } catch (Exception ex) {
                 read = false;
-                Interlocked.Exchange(ref loadRetryAt, clockMs() + LoadRetryMs);
+                loadRetryAt[characterId] = clockMs() + LoadRetryMs;
                 Logger.Warning(ex, "Player config of Character:{CharacterId} not read from the db; not read again for {Seconds} s",
                     characterId, LoadRetryMs / 1000);
             }
@@ -189,16 +191,59 @@ public class PlayerConfigLookUp {
                 unread.TryAdd(characterId, 0);
                 return;
             }
-            unread.TryRemove(characterId, out _);
+            bool wasUnread = unread.TryRemove(characterId, out _);
+            loadRetryAt.TryRemove(characterId, out _);
             if (save == null) {
                 skillCooldowns.TryAdd(characterId, []);
                 return;
             }
-            Keep(save.Buffs.Select(ToInfo), save.SkillCooldowns.Select(ToInfo),
-                new DeathInfo { Count = save.DeathCount, MsRemaining = save.DeathMsRemaining, StopTime = save.DeathStopTime },
-                characterId, save.PvpHeldCooldowns.Select(ToInfo), save.PvpStay);
+            var storedDeath = new DeathInfo { Count = save.DeathCount, MsRemaining = save.DeathMsRemaining, StopTime = save.DeathStopTime };
+            if (!wasUnread || !skillCooldowns.ContainsKey(characterId)) {
+                Keep(save.Buffs.Select(ToInfo), save.SkillCooldowns.Select(ToInfo), storedDeath, characterId,
+                    save.PvpHeldCooldowns.Select(ToInfo), save.PvpStay);
+                return;
+            }
+            // The character played on from the memory copy while its row was unread: what the session holds now
+            // and what the row holds both count.
+            MergeStored(characterId, save, storedDeath);
+            (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay) hold = pvpHolds.GetValueOrDefault(characterId, ([], false));
+            pendingWrites[characterId] = ToSave(buffs.GetValueOrDefault(characterId)?.Values ?? [], skillCooldowns[characterId].Values,
+                deaths.GetValueOrDefault(characterId), hold.Held.Values, hold.Stay);
+        }
+        StartWriter();
+    }
+
+    // Merges a stored row into the memory copy of a character: per buff and per (held) cooldown the one that ends
+    // later is kept, and one only the row has is added; of the death penalties the one of more deaths (the later end
+    // when even). Whether a PvP-zone stay runs is the memory copy's (the session's newest save).
+    private void MergeStored(long characterId, PlayerConfigSave save, DeathInfo storedDeath) {
+        ConcurrentDictionary<int, BuffInfo> buffList = buffs.GetOrAdd(characterId, _ => []);
+        foreach (BuffInfo stored in save.Buffs.Select(ToInfo)) {
+            if (!buffList.TryGetValue(stored.Id, out BuffInfo? kept) || EndMs(stored.StopTime, stored.MsRemaining) > EndMs(kept.StopTime, kept.MsRemaining)) {
+                buffList[stored.Id] = stored;
+            }
+        }
+        MergeCooldowns(skillCooldowns.GetOrAdd(characterId, _ => []), save.SkillCooldowns);
+        (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay) hold = pvpHolds.GetOrAdd(characterId, _ => ([], false));
+        MergeCooldowns(hold.Held, save.PvpHeldCooldowns);
+
+        DeathInfo? death = deaths.GetValueOrDefault(characterId);
+        if (death == null || storedDeath.Count > death.Count ||
+            (storedDeath.Count == death.Count && EndMs(storedDeath.StopTime, storedDeath.MsRemaining) > EndMs(death.StopTime, death.MsRemaining))) {
+            deaths[characterId] = storedDeath;
         }
     }
+
+    private static void MergeCooldowns(ConcurrentDictionary<int, SkillCooldownInfo> list, IEnumerable<PlayerConfigCooldown> stored) {
+        foreach (SkillCooldownInfo info in stored.Select(ToInfo)) {
+            if (!list.TryGetValue(info.SkillId, out SkillCooldownInfo? kept) || EndMs(info.StopTime, info.MsRemaining) > EndMs(kept.StopTime, kept.MsRemaining)) {
+                list[info.SkillId] = info;
+            }
+        }
+    }
+
+    // When a run-down timer ends: its stop time (epoch seconds) plus the milliseconds it had left then.
+    private static long EndMs(long stopTime, long msRemaining) => stopTime * 1000 + msRemaining;
 
     internal static PlayerConfigSave ToSave(IEnumerable<BuffInfo> saveBuffs, IEnumerable<SkillCooldownInfo> skillCooldownInfos, DeathInfo? death,
                                             IEnumerable<SkillCooldownInfo> pvpHeld, bool pvpStay) => new() {
