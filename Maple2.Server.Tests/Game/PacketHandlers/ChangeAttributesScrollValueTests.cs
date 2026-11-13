@@ -141,6 +141,21 @@ public class ChangeAttributesScrollValueTests {
             Assert.That(ChangeAttributesHandler.IsValidItem(new Item(data, rarity: 4)), Is.False);
         });
     }
+    // The item page takes armor and accessories but no weapon (item.cpp:1850, result 8). Before, the server
+    // changed a weapon's attributes.
+    [TestCase(11200001, true)] // earring
+    [TestCase(11300001, true)] // hat
+    [TestCase(11400001, true)] // clothes
+    [TestCase(12200001, true)] // overall
+    [TestCase(13000001, false)] // one-handed weapon
+    [TestCase(14000001, false)] // off-hand weapon
+    [TestCase(15000001, false)] // two-handed weapon
+    public void AttributeDialog_TakesNoWeapon(int id, bool valid) {
+        ItemMetadata data = TestGameSession.Metadata(id);
+        data = data with { Limit = data.Limit with { Level = 50 } };
+        Assert.That(ChangeAttributesHandler.IsValidItem(new Item(data, rarity: 4)), Is.EqualTo(valid));
+    }
+
     private static Item Rolled(int id, params BasicAttribute[] basics) {
         var random = new Dictionary<BasicAttribute, BasicOption>();
         foreach (BasicAttribute basic in basics) {

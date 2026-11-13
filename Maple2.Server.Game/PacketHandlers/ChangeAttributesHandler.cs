@@ -283,7 +283,10 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         if (item.Rarity is < Constant.ChangeAttributesMinRarity or > Constant.ChangeAttributesMaxRarity) {
             return false;
         }
-        if (!item.Type.IsWeapon && !item.Type.IsArmor && !item.Type.IsAccessory && !item.Type.IsCombatPet) {
+        // The item page takes armor and accessories only, no weapon (CItem::FUN_1405264c0, item.cpp:1850-1854:
+        // equip subtypes 13-17 and 22, CItemData::FUN_14053d600 itemdata.cpp:958, or 12 and 18-21, FUN_14053d5c0
+        // itemdata.cpp:943; result 8).
+        if (!item.Type.IsArmor && !item.Type.IsAccessory && !item.Type.IsCombatPet) {
             return false;
         }
         if (item.Metadata.Limit.Level < Constant.ChangeAttributesMinLevel) {
