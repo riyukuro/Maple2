@@ -582,37 +582,42 @@ public sealed class ShopManager {
             return;
         }
 
-        if (!buyBackItems.TryGetValue(id, out BuyBackItem? buyBackItem)) {
-            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
-            return;
-        }
+        // The bag lock is held from the room and meso checks to the meso take, so an item or meso change made under it
+        // on another thread cannot come between them (the take would throw with the item given). The save comes after
+        // the lock: a session save takes the account lock and then the bag lock, so this takes them in that order too.
+        lock (session.Item) {
+            if (!buyBackItems.TryGetValue(id, out BuyBackItem? buyBackItem)) {
+                session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+                return;
+            }
 
-        if (!session.Item.Inventory.CanAdd(buyBackItem.Item)) {
-            session.Send(ShopPacket.Error(ShopError.s_err_inventory));
-            return;
-        }
+            if (!session.Item.Inventory.CanAdd(buyBackItem.Item)) {
+                session.Send(ShopPacket.Error(ShopError.s_err_inventory));
+                return;
+            }
 
-        if (session.Currency.CanAddMeso(-buyBackItem.Price) != -buyBackItem.Price) {
-            session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
-            return;
-        }
+            if (session.Currency.CanAddMeso(-buyBackItem.Price) != -buyBackItem.Price) {
+                session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
+                return;
+            }
 
-        if (!buyBackItems.Remove(id)) {
-            logger.Error("Failed to remove buyback item {Id}", id);
-            return;
+            if (!buyBackItems.Remove(id)) {
+                logger.Error("Failed to remove buyback item {Id}", id);
+                return;
+            }
+            // KMS2 order: the entry leaves the list, the item comes back, then the mesos are taken.
+            session.Send(ShopPacket.RemoveBuyBackItem(id));
+            if (!session.Item.Inventory.Add(buyBackItem.Item, true, commit: true)) {
+                // The bag's write failed (its room was checked above; the add sent the bag's notice): the entry is listed
+                // again and no meso is taken. Before, the mesos were taken and the item, out of the list and not in the
+                // bag, was lost. Chosen here: the entry comes back with its id, listed as a sale lists it (Shop 7).
+                buyBackItems[id] = buyBackItem;
+                session.Send(ShopPacket.LoadBuyBackItem(buyBackItem));
+                logger.Error("Buy back of item {Uid} not written for {CharacterId}", buyBackItem.Item.Uid, session.CharacterId);
+                return;
+            }
+            session.Currency.Meso -= buyBackItem.Price;
         }
-        // KMS2 order: the entry leaves the list, the item comes back, then the mesos are taken.
-        session.Send(ShopPacket.RemoveBuyBackItem(id));
-        if (!session.Item.Inventory.Add(buyBackItem.Item, true, commit: true)) {
-            // The bag's write failed (its room was checked above; the add sent the bag's notice): the entry is listed
-            // again and no meso is taken. Before, the mesos were taken and the item, out of the list and not in the
-            // bag, was lost. Chosen here: the entry comes back with its id, listed as a sale lists it (Shop 7).
-            buyBackItems[id] = buyBackItem;
-            session.Send(ShopPacket.LoadBuyBackItem(buyBackItem));
-            logger.Error("Buy back of item {Uid} not written for {CharacterId}", buyBackItem.Item.Uid, session.CharacterId);
-            return;
-        }
-        session.Currency.Meso -= buyBackItem.Price;
         session.SavePurchase();
     }
 

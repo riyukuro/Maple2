@@ -627,8 +627,12 @@ public sealed class TestGameSession {
             return new MigrateOutResponse { IpAddress = MoveAddress, Port = MovePort, Token = 1 };
         }
 
+        // Called at each account lock taken (on the taking thread).
+        public Action? OnAcquire;
+
         public override LockResponse AcquireLock(LockRequest request, CallOptions options) {
             Acquired++;
+            OnAcquire?.Invoke();
             return new LockResponse();
         }
 

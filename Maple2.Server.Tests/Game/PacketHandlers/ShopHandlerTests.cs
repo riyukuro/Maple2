@@ -1,6 +1,9 @@
 using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -349,6 +352,62 @@ public class ShopHandlerTests {
             Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
             Assert.That(session.Currency.Meso, Is.EqualTo(mesos - 350));
         });
+    }
+
+    // The buy back runs under the bag lock from its room check to the meso take, so an item or meso change made under
+    // that lock on another thread (a field reward, a trade) cannot come between them. Before, only the bag calls held
+    // it: the mesos were checked, the item added, and then taken with the lock released, so a spend in between made
+    // the take throw with the item already given. Its save takes the account lock after the bag lock is released, the
+    // order of a session save (account lock, then bag lock).
+    [Test]
+    public void BuyBack_RunsUnderTheBagLock() {
+        GameSession session = Login();
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        long mesos = session.Currency.Meso;
+        var sent = new CapturingQueue(() => System.Threading.Monitor.IsEntered(session.Item));
+        FieldInfo queueField = typeof(Maple2.Server.Core.Network.Session).GetField("sendQueue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object queue = queueField.GetValue(session)!;
+        queueField.SetValue(session, new BlockingCollection<(byte[] packet, int length)>(sent));
+        var lockedAtAcquire = new List<bool>();
+        test.World.OnAcquire = () => lockedAtAcquire.Add(System.Threading.Monitor.IsEntered(session.Item));
+
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+        test.World.OnAcquire = null;
+        queueField.SetValue(session, queue);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
+            Assert.That(session.Currency.Meso, Is.LessThan(mesos));
+            Assert.That(sent.Sent.Select(entry => TestGameSession.Op(entry.Packet)), Does.Contain(SendOp.Shop).And.Contain(SendOp.Meso));
+            Assert.That(sent.Sent.Select(entry => entry.Locked), Is.All.True);
+            Assert.That(lockedAtAcquire, Is.Not.Empty);
+            Assert.That(lockedAtAcquire, Is.All.False);
+        });
+    }
+
+    // A send queue that records each packet with whether the bag lock was held when it was sent.
+    private sealed class CapturingQueue(Func<bool> locked) : IProducerConsumerCollection<(byte[] packet, int length)> {
+        private readonly ConcurrentQueue<(byte[] packet, int length)> queue = new();
+        public readonly List<(byte[] Packet, bool Locked)> Sent = [];
+
+        public bool TryAdd((byte[] packet, int length) item) {
+            Sent.Add((item.packet, locked()));
+            queue.Enqueue(item);
+            return true;
+        }
+        public bool TryTake(out (byte[] packet, int length) item) => queue.TryDequeue(out item);
+        public int Count => queue.Count;
+        public bool IsSynchronized => false;
+        public object SyncRoot => this;
+        public void CopyTo((byte[] packet, int length)[] array, int index) => queue.CopyTo(array, index);
+        public void CopyTo(Array array, int index) => ((ICollection) queue).CopyTo(array, index);
+        public (byte[] packet, int length)[] ToArray() => queue.ToArray();
+        public IEnumerator<(byte[] packet, int length)> GetEnumerator() => queue.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private void SystemShop(GameSession session, bool open) {
