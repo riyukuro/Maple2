@@ -203,4 +203,35 @@ public class MeretMarketListTests {
         long id = firstListing;
         AssertRefused(Send(18, id, 20000), 18, 0x7D, id);
     }
+
+    // A listing save the database refuses: the fee is taken first, so it must come back, once.
+    private void FailMarketSaves() =>
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "UgcMarketItem");
+
+    [Test]
+    public void ListingTheDatabaseRefusesIsCommonAndRefunded() {
+        Start(listings: 1); // one listing on sale: the fee is 30
+        FailMarketSaves();
+        AssertRefused(Send(13, itemUid, 500), 13, 0x68, itemUid);
+        Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(1));
+        Assert.That(session.UgcMarket.IsDesignListed(DesignUid), Is.False);
+    }
+
+    [Test]
+    public void RelistTheDatabaseRefusesIsCommonAndRestored() {
+        long ended = DateTime.Now.AddDays(-1).ToEpochSeconds();
+        Start(listings: 1, endTime: ended); // the listing still counts as on sale: the fee is 30
+        long id = firstListing;
+        FailMarketSaves();
+        AssertRefused(Send(18, id, 800), 18, 0x68, id);
+        Assert.That(session.UgcMarket.TryGetItem(id, out UgcMarketItem? item), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(item!.Price, Is.EqualTo(500));
+            Assert.That(item.ListingEndTime, Is.EqualTo(ended));
+            Assert.That(item.PromotionEndTime, Is.EqualTo(0));
+            Assert.That(item.Status, Is.EqualTo(UgcMarketListingStatus.Active));
+            Assert.That(item.Description, Is.EqualTo(string.Empty));
+            Assert.That(item.Tags, Is.Empty);
+        });
+    }
 }

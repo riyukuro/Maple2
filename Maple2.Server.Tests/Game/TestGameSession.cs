@@ -67,6 +67,13 @@ public sealed class TestGameSession {
     // What the session logged as an error. Several session methods catch and log (SavePurchase does), so a test
     // that expects a save should also expect this to be empty.
     public readonly List<string> Errors = [];
+    // A save this returns true for throws, as a database that refuses the write would; TrySaveChanges then answers
+    // false. In-memory store only.
+    public Func<DbContext, bool>? FailSave {
+        get => faults.Fail;
+        set => faults.Fail = value;
+    }
+    private readonly SaveFault faults = new();
 
     private readonly LRUCache<int, ItemMetadata> items = new(1024, 1);
     private readonly ScriptMetadataStorage scripts = new(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
@@ -84,6 +91,7 @@ public sealed class TestGameSession {
         Options = options ?? new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .AddInterceptors(faults)
             .Options;
         // ItemMetadataStorage's constructor runs SQL the in-memory provider lacks; TryGet looks in the cache first.
         typeof(MetadataStorage<int, ItemMetadata>).GetField("Cache", Any)!.SetValue(itemMetadata, items);
@@ -583,6 +591,17 @@ public sealed class TestGameSession {
     #endregion
 
     // The world's account lock, granted at once.
+    private sealed class SaveFault : SaveChangesInterceptor {
+        public Func<DbContext, bool>? Fail;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            if (eventData.Context != null && Fail?.Invoke(eventData.Context) == true) {
+                throw new DbUpdateException("The test made this save fail");
+            }
+            return result;
+        }
+    }
+
     public sealed class LockWorld : WorldClient {
         public int Acquired;
         public int Released;
