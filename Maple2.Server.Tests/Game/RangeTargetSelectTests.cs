@@ -461,6 +461,12 @@ public class RangeTargetSelectTests {
             Assert.That(frustumPrism.Contains(new Vector3(140, -290, 10)), Is.True, "frustum far width");
             Assert.That(frustumPrism.Contains(new Vector3(0, -310, 10)), Is.False, "frustum not past the distance");
             Assert.That(frustumPrism.Contains(new Vector3(0, -100, -20)), Is.True, "frustum below");
+            // The client's frustum (FrustumCollision vfunc_3/vfunc_4) starts add.z below with half the height plus half
+            // of add.z, so its corners span z -add.z to height; BaseCollision::TestShape bounds z by those corners
+            // (GetMinZ/GetMaxZ) before its planar test, the same span as the prism.
+            Assert.That(frustumPrism.Contains(new Vector3(0, -100, -40)), Is.False, "frustum not past add.z below");
+            Assert.That(frustumPrism.Contains(new Vector3(0, -100, 140)), Is.True, "frustum up to the height");
+            Assert.That(frustumPrism.Contains(new Vector3(0, -100, 160)), Is.False, "frustum not raised by add.z");
             Assert.That(cylinderPrism.Contains(new Vector3(0, 190, -20)), Is.True, "cylinder below, add.y not moving it");
             Assert.That(cylinderPrism.Contains(new Vector3(0, 0, -40)), Is.False, "cylinder not past add.z below");
             Assert.That(cylinderPrism.Contains(new Vector3(0, 0, 160)), Is.False, "cylinder not raised by add.z");
