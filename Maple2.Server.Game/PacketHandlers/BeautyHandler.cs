@@ -615,7 +615,7 @@ public class BeautyHandler : FieldPacketHandler {
                     return false;
                 }
 
-                session.Currency.Meret -= cost.Price;
+                session.Currency.ChangeMeret(-cost.Price);
                 break;
             case ShopCurrencyType.Item:
                 var ingredient = new ItemComponent(cost.PaymentItemId, -1, cost.Price, ItemTag.None);
@@ -631,7 +631,7 @@ public class BeautyHandler : FieldPacketHandler {
                     return false;
                 }
 
-                session.Currency[currencyType] -= cost.Price;
+                session.Currency.Change(currencyType, -cost.Price);
                 break;
         }
         return true;

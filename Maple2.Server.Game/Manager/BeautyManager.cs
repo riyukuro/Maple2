@@ -82,7 +82,7 @@ public sealed class BeautyManager : IDisposable {
         }
         int extended = BeautyRules.ExtendedSlots(owned, constants.BeautyStyleExpandSlotCount1time, constants.BeautyStyleMaxSlotCount);
 
-        session.Currency.Meret -= price;
+        session.Currency.ChangeMeret(-price);
         session.Player.Value.Unlock.HairSlotExpand = (short) extended;
         items.Expand((short) Slots);
         session.Send(BeautyPacket.SaveSlots((short) extended));

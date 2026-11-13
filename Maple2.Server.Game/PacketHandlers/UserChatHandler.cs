@@ -274,7 +274,7 @@ public class UserChatHandler : FieldPacketHandler {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
                 return;
             }
-            session.Currency.Meret -= meretCost;
+            session.Currency.ChangeMeret(-meretCost);
         }
 
         var request = new ChatRequest {
@@ -311,7 +311,7 @@ public class UserChatHandler : FieldPacketHandler {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
                 return;
             }
-            session.Currency.Meret -= meretCost;
+            session.Currency.ChangeMeret(-meretCost);
         }
 
         // The linked items go first, as in the other lines; channel chat sent none, so its item links showed nothing.

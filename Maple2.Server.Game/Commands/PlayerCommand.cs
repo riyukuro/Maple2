@@ -447,10 +447,10 @@ public class PlayerCommand : GameCommand {
                         session.Currency.ChangeMeso(amount);
                         break;
                     case "meret":
-                        session.Currency.Meret += amount;
+                        session.Currency.ChangeMeret(amount);
                         break;
                     case "gamemeret":
-                        session.Currency.GameMeret += amount;
+                        session.Currency.ChangeGameMeret(amount);
                         break;
                     default:
                         if (!Enum.TryParse(currency, true, out CurrencyType currencyType)) {
@@ -458,7 +458,7 @@ public class PlayerCommand : GameCommand {
                             ctx.ExitCode = 1;
                             return;
                         }
-                        session.Currency[currencyType] += amount;
+                        session.Currency.Change(currencyType, amount);
                         break;
                 }
                 ctx.ExitCode = 0;

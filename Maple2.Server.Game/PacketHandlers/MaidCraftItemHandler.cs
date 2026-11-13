@@ -278,7 +278,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 // before anything is given (the setter refuses a negative balance).
                 try {
                     if (cost > 0) {
-                        session.Currency.Meret -= cost;
+                        session.Currency.ChangeMeret(-cost);
                     }
                 } catch (ArgumentException) {
                     if (!field.SetMaidCraft(found, recipeId, start, duration)) {
@@ -297,7 +297,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 if (!whole) {
                     bool back = TakeBack(session, added, held);
                     if (cost > 0) {
-                        session.Currency.Meret += cost;
+                        session.Currency.ChangeMeret(cost);
                     }
                     Logger.Warning("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not added whole, {Cost} merets given back to {CharacterId}",
                         recipeId, maidUid, recipe.ProductItemId, cost, session.CharacterId);

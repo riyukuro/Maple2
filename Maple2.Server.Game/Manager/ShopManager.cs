@@ -699,7 +699,7 @@ public sealed class ShopManager {
                     return false;
                 }
 
-                session.Currency.Meret -= price;
+                session.Currency.ChangeMeret(-price);
                 break;
             case ShopCurrencyType.GameMeret:
                 if (session.Currency.CanAddGameMeret(-price) != -price) {
@@ -707,7 +707,7 @@ public sealed class ShopManager {
                     return false;
                 }
 
-                session.Currency.GameMeret -= price;
+                session.Currency.ChangeGameMeret(-price);
                 break;
             case ShopCurrencyType.GuildFund:
                 GuildError fundError = session.Guild.SpendFund(price);
@@ -747,7 +747,7 @@ public sealed class ShopManager {
                     return false;
                 }
 
-                session.Currency[currencyType] -= price;
+                session.Currency.Change(currencyType, -price);
                 break;
         }
         return true;

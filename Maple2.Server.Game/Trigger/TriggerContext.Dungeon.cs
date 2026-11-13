@@ -243,7 +243,7 @@ public partial class TriggerContext {
             player.Session.Currency.ChangeMeso(reward.Meso);
         }
         if (reward.Habi > 0) {
-            player.Session.Currency[CurrencyType.HaviFruit] += reward.Habi;
+            player.Session.Currency.Change(CurrencyType.HaviFruit, reward.Habi);
         }
         foreach (RewardItem rewardItem in reward.Items) {
             Item? item = Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);

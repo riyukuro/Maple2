@@ -90,7 +90,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         if (package != null) {
             PayPackage(session, metadata, package);
         } else {
-            session.Currency.Meret -= metadata.MeretCost;
+            session.Currency.ChangeMeret(-metadata.MeretCost);
         }
 
         session.Buffs.AddBuff(session.Player, session.Player, (int) metadata.Value, 1, session.Field.FieldTick);
@@ -149,7 +149,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         // Check if player has enough currency
         switch (currencyType) {
             case SmartPushCurrencyType.Meret:
-                session.Currency.Meret -= packageMetadata.MeretCost;
+                session.Currency.ChangeMeret(-packageMetadata.MeretCost);
                 break;
             case SmartPushCurrencyType.Meso:
                 session.Currency.ChangeMeso(-packageMetadata.MesoCost);

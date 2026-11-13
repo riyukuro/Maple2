@@ -235,10 +235,10 @@ public sealed class MailManager {
             session.Send(MailPacket.CollectMeso(mail.Id, now));
         }
         if (collectMeret) {
-            session.Currency.Meret += mail.Meret;
+            session.Currency.ChangeMeret(mail.Meret);
         }
         if (collectGameMeret) {
-            session.Currency.GameMeret += mail.GameMeret;
+            session.Currency.ChangeGameMeret(mail.GameMeret);
         }
 
         // The slot of an attachment is its place in the list (Mail.WriteTo).

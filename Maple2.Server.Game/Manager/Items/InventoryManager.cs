@@ -405,10 +405,10 @@ public class InventoryManager {
             case 90000016: // EventMeret (Secondary)
             case 90000020: // RedMeret
             case 90000004: // Meret
-                session.Currency.Meret += add.Amount;
+                session.Currency.ChangeMeret(add.Amount);
                 break;
             case 90000006: // ValorToken
-                session.Currency[CurrencyType.ValorToken] += add.Amount;
+                session.Currency.Change(CurrencyType.ValorToken, add.Amount);
                 break;
             case 90000008: // ExperienceOrb
                 session.Exp.AddExp(ExpType.expDrop, additionalExp: add.Amount);
@@ -422,16 +422,16 @@ public class InventoryManager {
                 session.Send(StatsPacket.Update(session.Player, BasicAttribute.Stamina));
                 break;
             case 90000013: // Rue
-                session.Currency[CurrencyType.Rue] += add.Amount;
+                session.Currency.Change(CurrencyType.Rue, add.Amount);
                 break;
             case 90000014: // HaviFruit
-                session.Currency[CurrencyType.HaviFruit] += add.Amount;
+                session.Currency.Change(CurrencyType.HaviFruit, add.Amount);
                 break;
             case 90000017: // Treva
-                session.Currency[CurrencyType.Treva] += add.Amount;
+                session.Currency.Change(CurrencyType.Treva, add.Amount);
                 break;
             case 90000027: // MesoToken
-                session.Currency[CurrencyType.MesoToken] += add.Amount;
+                session.Currency.Change(CurrencyType.MesoToken, add.Amount);
                 break;
             // case 90000005: // DungeonKey
             // case 90000007: // Karma
@@ -442,16 +442,16 @@ public class InventoryManager {
                 session.Guild.AddExpFund(0, add.Amount);
                 break;
             case 90000022: // ReverseCoin
-                session.Currency[CurrencyType.ReverseCoin] += add.Amount;
+                session.Currency.Change(CurrencyType.ReverseCoin, add.Amount);
                 break;
             case 90000023: // MentorPoint
-                session.Currency[CurrencyType.MentorToken] += add.Amount;
+                session.Currency.Change(CurrencyType.MentorToken, add.Amount);
                 break;
             case 90000024: // MenteePoint
-                session.Currency[CurrencyType.MenteeToken] += add.Amount;
+                session.Currency.Change(CurrencyType.MenteeToken, add.Amount);
                 break;
             case 90000025: // StarPoint
-                session.Currency[CurrencyType.StarPoint] += add.Amount;
+                session.Currency.Change(CurrencyType.StarPoint, add.Amount);
                 break;
                 // case 90000026: // Unknown (Blank)
         }
@@ -763,7 +763,7 @@ public class InventoryManager {
             }
 
             if (charge) {
-                session.Currency.Meret -= Constants.InventoryExpandPrice1Row;
+                session.Currency.ChangeMeret(-Constants.InventoryExpandPrice1Row);
             }
             session.Player.Value.Unlock.Expand[type] = newExpand;
 

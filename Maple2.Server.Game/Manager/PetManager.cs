@@ -275,7 +275,7 @@ public sealed class PetManager : IDisposable {
                 session.Send(PetPacket.Error(PetError.s_err_lack_merat_ask));
                 return;
             }
-            session.Currency.Meret -= cost;
+            session.Currency.ChangeMeret(-cost);
         }
 
         ItemPet.Name = name;

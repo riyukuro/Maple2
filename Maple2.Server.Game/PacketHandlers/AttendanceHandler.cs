@@ -220,7 +220,7 @@ public class AttendanceHandler : FieldPacketHandler {
                     session.Currency.ChangeMeso(-(attendGift.Pay!.Price));
                     break;
                 case AttendanceRules.PayStep.Meret:
-                    session.Currency.Meret -= attendGift.Pay!.Price;
+                    session.Currency.ChangeMeret(-attendGift.Pay!.Price);
                     break;
             }
             session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, paid + 1);

@@ -305,7 +305,7 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        session.Currency.Meret -= price;
+        session.Currency.ChangeMeret(-price);
     }
 
     // Party 32: the dungeon match search (PartyDungeonMatch.ReadSearch). World runs the matchmaker (the user's

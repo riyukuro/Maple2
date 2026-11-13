@@ -508,7 +508,7 @@ public sealed class NpcScriptManager {
         if (session.Currency.Meret < salary.Salary) {
             return false;
         }
-        session.Currency.Meret -= salary.Salary;
+        session.Currency.ChangeMeret(-salary.Salary);
         return true;
     }
 

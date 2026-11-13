@@ -135,10 +135,10 @@ public class UgcHandler : FieldPacketHandler {
                 session.Currency.ChangeMeso(fee.Amount);
                 break;
             case MeretMarketCurrencyType.Meret:
-                session.Currency.Meret += fee.Amount;
+                session.Currency.ChangeMeret(fee.Amount);
                 break;
             case MeretMarketCurrencyType.RedMeret:
-                session.Currency.GameMeret += fee.Amount;
+                session.Currency.ChangeGameMeret(fee.Amount);
                 break;
         }
     }
@@ -203,10 +203,10 @@ public class UgcHandler : FieldPacketHandler {
                         session.Currency.ChangeMeso(-price);
                         break;
                     case MeretMarketCurrencyType.Meret:
-                        session.Currency.Meret -= price;
+                        session.Currency.ChangeMeret(-price);
                         break;
                     case MeretMarketCurrencyType.RedMeret:
-                        session.Currency.GameMeret -= price;
+                        session.Currency.ChangeGameMeret(-price);
                         break;
                     default:
                         return UgcError.Refused;
@@ -311,7 +311,7 @@ public class UgcHandler : FieldPacketHandler {
             Logger.Fatal("Failed to create UGC resource for banner {BannerId}", bannerId);
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {bannerId}");
         }
-        session.Currency.Meret -= fee;
+        session.Currency.ChangeMeret(-fee);
         session.UgcFees.Paid(new UgcPendingFee(session.CharacterId, resource.Id, MeretMarketCurrencyType.Meret, fee, 0));
 
         UgcItemLook ugc = new() {

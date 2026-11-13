@@ -100,7 +100,7 @@ public class PremiumClubHandler : FieldPacketHandler {
             return;
         }
 
-        session.Currency.Meret -= premiumMetadata.Price;
+        session.Currency.ChangeMeret(-premiumMetadata.Price);
 
         foreach (PremiumClubTable.Item item in premiumMetadata.BonusItems) {
             Item? bonusItem = session.Field?.ItemDrop.CreateItem(item.Id, item.Rarity, item.Amount);

@@ -240,7 +240,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         marketItem = db.CreateUgcMarketItem(marketItem);
         if (marketItem == null) {
             Logger.Error("Failed to create UGC market item: {ItemUid}", itemUid);
-            session.Currency.Meret += listingFee; // nothing was listed: the fee goes back
+            session.Currency.ChangeMeret(listingFee); // nothing was listed: the fee goes back
             Refuse(MeretMarketError.Common);
             return;
         }
@@ -304,7 +304,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (!db.SaveUgcMarketItem(item)) {
             // Not stored: the listing stays as it was and the fee goes back.
             (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags) = before;
-            session.Currency.Meret += listingFee;
+            session.Currency.ChangeMeret(listingFee);
             Refuse(MeretMarketError.Common);
             return;
         }
@@ -548,7 +548,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         SoldUgcMarketItem? soldEntry = UgcMarketManager.RecordSale(db, ugcItem);
         if (soldEntry == null) {
             Logger.Fatal("Unable to create Sold Ugc Market Entry for {itemId}", ugcItem.Id);
-            session.Currency.Meret += ugcItem.Price;
+            session.Currency.ChangeMeret(ugcItem.Price);
             return null;
         }
         return item;
@@ -590,7 +590,7 @@ public class MeretMarketHandler : FieldPacketHandler {
             writeMail: () => WriteGiftMail(db, receiverId, session.PlayerName, message, item),
             pay: () => Pay(session, price, MeretMarketCurrencyType.Meret) == StringCode.s_empty_string,
             recordSale: () => UgcMarketManager.RecordSale(db, ugcItem) != null,
-            refund: () => session.Currency.Meret += price,
+            refund: () => session.Currency.ChangeMeret(price),
             undoMail: written => {
                 // The failed save's rows are still tracked here and would fail the delete too.
                 db.DiscardChanges();
@@ -832,13 +832,13 @@ public class MeretMarketHandler : FieldPacketHandler {
                 if (session.Currency.CanAddMeret(-price) != -price) {
                     return StringCode.s_err_lack_merat;
                 }
-                session.Currency.Meret -= price;
+                session.Currency.ChangeMeret(-price);
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.RedMeret:
                 if (session.Currency.CanAddGameMeret(-price) != -price) {
                     return StringCode.s_err_lack_merat_red;
                 }
-                session.Currency.GameMeret -= price;
+                session.Currency.ChangeGameMeret(-price);
                 return StringCode.s_empty_string;
             default:
                 return StringCode.s_err_lack_money;

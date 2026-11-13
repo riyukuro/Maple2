@@ -912,28 +912,28 @@ public sealed class MarriageManager {
             error = WeddingError.s_wedding_result_lack_coupon;
             return false;
         }
-        if (cost > 0 && partner.Session.Currency.CanAddMeret(-cost) != -cost) {
+        // The merets are checked and taken in one step before the save, so the save stores the paid balance; they are
+        // shown (the Meret update, the merets spent) once the save is done, and given back when it fails. Before, the
+        // balance was lowered and raised again by hand around the save, outside the wallet's lock: a meret change on
+        // the payer's packet thread in between was undone, and a spend there made the take after the save throw with
+        // the hall stored.
+        if (cost > 0 && !partner.Session.Currency.TryTakeMeret(cost, notify: false)) {
             error = WeddingError.s_wedding_result_err_lack_meratal;
             return false;
         }
-
-        // The stored currency is the session's: it is taken from the player for the save, and shown (the Meret
-        // update, the merets spent) once the save is done.
-        Currency currency = partner.Value.Currency;
-        currency.Meret -= cost;
         WeddingHall? hall = null;
         // The coupon's bag row is stored with the hall (it was used up in memory only, so a crash before the next
         // save gave it back while the hall stayed reserved).
         bool saved = partner.Session.TrySavePurchase(db =>
             (couponUid == 0 || partner.Session.Item.Inventory.SaveConsumed(db, couponUid, 1)) && (hall = storeHall(db)) != null);
-        currency.Meret += cost;
         if (!saved || hall == null) {
+            partner.Session.Currency.ReturnMeret(cost);
             logger.Error("Wedding hall not stored, nothing paid: payer {CharacterId}, cost {Cost}", partner.Value.Character.Id, cost);
             error = WeddingError.s_wedding_result_err_system;
             return false;
         }
         if (cost > 0) {
-            partner.Session.Currency.Meret -= cost;
+            partner.Session.Currency.NotifyMeretTaken(cost);
         }
         if (couponUid != 0) {
             if (!partner.Session.Item.Inventory.ConsumeStored(couponUid, 1)) {

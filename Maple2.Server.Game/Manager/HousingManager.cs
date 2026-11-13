@@ -370,7 +370,7 @@ public class HousingManager {
                 if (session.Currency.Meret < cost) {
                     return false;
                 }
-                session.Currency.Meret -= cost;
+                session.Currency.ChangeMeret(-cost);
                 return true;
         }
         return false;
@@ -384,7 +384,7 @@ public class HousingManager {
                 session.Currency.ChangeMeso(cost);
                 return;
             case 90000004 or 90000011 or 90000015 or 90000016:
-                session.Currency.Meret += cost;
+                session.Currency.ChangeMeret(cost);
                 return;
         }
     }
@@ -1206,7 +1206,7 @@ public class HousingManager {
                     session.Currency.ChangeMeso(-mesoCost);
                 }
                 if (meratCost != 0) {
-                    session.Currency.Meret -= meratCost;
+                    session.Currency.ChangeMeret(-meratCost);
                 }
                 Home.BuildMeso = meso;
                 Home.BuildMerat = merat;

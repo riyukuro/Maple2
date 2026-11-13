@@ -152,7 +152,7 @@ public class FurnishingManager {
                     session.Currency.ChangeMeso(-furnishingShopMetadata.Price);
                     break;
                 case FurnishingCurrencyType.Meret:
-                    session.Currency.SetMeret(session.Currency.Meret - furnishingShopMetadata.Price, reportSpent: false);
+                    session.Currency.ChangeMeret(-furnishingShopMetadata.Price, reportSpent: false);
                     break;
             }
         }
@@ -186,7 +186,7 @@ public class FurnishingManager {
                     session.Currency.ChangeMeso(furnishingShopMetadata.Price);
                     break;
                 case FurnishingCurrencyType.Meret:
-                    session.Currency.Meret += furnishingShopMetadata.Price;
+                    session.Currency.ChangeMeret(furnishingShopMetadata.Price);
                     break;
             }
         }

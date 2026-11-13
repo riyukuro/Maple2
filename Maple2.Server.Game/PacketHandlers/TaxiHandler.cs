@@ -156,7 +156,7 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        session.Currency.Meret -= price;
+        session.Currency.ChangeMeret(-price);
 
         session.Send(session.PrepareField(mapId)
             ? FieldEnterPacket.Request(session.Player)

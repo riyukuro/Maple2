@@ -282,7 +282,7 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
-            session.Currency.Meret -= Constants.StoreExpandPrice1Row;
+            session.Currency.ChangeMeret(-Constants.StoreExpandPrice1Row);
             expand += Constant.InventoryExpandRowCount;
 
             // The client's reader of the expansion (CStore::Dispatch 0xd) sets the store's capacity; the items and

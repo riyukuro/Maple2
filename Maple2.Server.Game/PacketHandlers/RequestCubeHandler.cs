@@ -915,7 +915,7 @@ public class RequestCubeHandler : FieldPacketHandler {
                 return;
             }
 
-            session.Currency.Meret -= blueprintCost;
+            session.Currency.ChangeMeret(-blueprintCost);
             // The room was checked under the same lock, so the add takes it; should it not, the paid item goes by mail,
             // and the request is answered with a failure so the client's upload dialog does not wait on it (before, no
             // answer was sent). Chosen here: no extra notice says the blueprint was mailed.

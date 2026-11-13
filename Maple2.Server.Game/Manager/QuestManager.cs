@@ -765,17 +765,17 @@ public sealed class QuestManager {
         }
 
         if (reward.Treva > 0) {
-            session.Currency[CurrencyType.Treva] += reward.Treva;
+            session.Currency.Change(CurrencyType.Treva, reward.Treva);
         }
 
         if (reward.Rue > 0) {
-            session.Currency[CurrencyType.Rue] += reward.Rue;
+            session.Currency.Change(CurrencyType.Rue, reward.Rue);
         }
 
         // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,
         // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token.
         if (reward.MenteeCoin > 0) {
-            session.Currency[CurrencyType.MenteeToken] += reward.MenteeCoin;
+            session.Currency.Change(CurrencyType.MenteeToken, reward.MenteeCoin);
         }
 
         // weddingExp: the wedding mission's intimacy, once for each partner who completes it.
@@ -1399,9 +1399,15 @@ public sealed class QuestManager {
     // The alliance's fame points, sent to the client (the alliance mission window's reputation).
     public void AddFamePoints(AllianceType alliance, int amount) {
         IDictionary<AllianceType, int> famePoints = session.Player.Value.Unlock.FamePoints;
-        int points = AllianceMissions.AddFame(famePoints.GetValueOrDefault(alliance), amount);
-        famePoints[alliance] = points;
-        session.Send(UserEnvPacket.FamePoint(alliance, points));
+        // A fame gain comes with a quest's completion, made on the packet thread or on the thread of a condition update
+        // (the field's): each gain reads and writes the points under the points' own lock (a leaf: only the points and
+        // their packet), so one cannot undo another.
+        int points;
+        lock (famePoints) {
+            points = AllianceMissions.AddFame(famePoints.GetValueOrDefault(alliance), amount);
+            famePoints[alliance] = points;
+            session.Send(UserEnvPacket.FamePoint(alliance, points));
+        }
         // The fame grade trophies (22500001 and on): code the alliance, target the grade. Every grade reached is
         // reported, so a gain that passes two grades counts both, and a character that held the fame before
         // fame_grade was counted gets its trophies at the next gain; a grade already counted moves nothing

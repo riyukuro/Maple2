@@ -183,7 +183,7 @@ public class RevivalHandler : FieldPacketHandler {
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
             }
         } else {
-            session.Currency.Meret -= cost;
+            session.Currency.ChangeMeret(-cost);
         }
         if (debuffCode != 0) {
             session.Player.Buffs.AddBuff(session.Player, session.Player, debuffCode, 1, session.Field.FieldTick);

@@ -311,7 +311,7 @@ public sealed class RankDuelField {
             }
             try {
                 if (change.Reward > 0) {
-                    player.Session.Currency[CurrencyType.ValorToken] += change.Reward;
+                    player.Session.Currency.Change(CurrencyType.ValorToken, change.Reward);
                 }
                 player.Session.Exp.AddExp(characterId == winner ? ExpType.rankDuelWin : ExpType.rankDuelLose);
             } catch (Exception ex) {

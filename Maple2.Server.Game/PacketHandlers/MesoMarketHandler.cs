@@ -239,7 +239,7 @@ public class MesoMarketHandler : FieldPacketHandler {
         }
 
         session.Player.Value.Account.MesoMarketPurchased++;
-        session.Currency[CurrencyType.MesoToken] -= listing.Price;
+        session.Currency.Change(CurrencyType.MesoToken, -listing.Price);
 
         foreach (Mail mail in new[] { mails.Value.Buyer, mails.Value.Seller }) {
             try {
