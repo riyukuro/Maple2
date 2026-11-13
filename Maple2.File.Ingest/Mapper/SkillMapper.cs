@@ -35,6 +35,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // played client.
     private readonly Dictionary<(int Skill, short Level), int> clientCooldowns = [];
     private int clientCooldownsTaken;
+    // The played client's level spirit and stamina costs (PlayedClientSkills.ReadLevelCosts); empty without a played
+    // client.
+    private readonly Dictionary<(int Skill, short Level), (int Sp, int Ep)> clientCosts = [];
+    private int clientCostsTaken;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -71,6 +75,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientCooldowns = PlayedClientSkills.ReadLevelCooldowns(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill levels with a cooldown in the played client's skill data: {clientCooldowns.Count}");
+            clientCosts = PlayedClientSkills.ReadLevelCosts(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill levels in the played client's skill data (spirit and stamina cost): {clientCosts.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -109,7 +116,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         Meso: level.consume.money,
                         UseItem: level.consume.useItem,
                         HpRate: level.consume.hpRate,
-                        Stat: level.consume.stat.ToDictionary()),
+                        Stat: WithClientCost(id, level.value, level.consume.stat.ToDictionary())),
                     Detect: new SkillMetadataDetect(
                         IncludeCaster: level.detectProperty?.includeCaster == 1,
                         Distance: level.detectProperty?.distance ?? 0),
@@ -265,6 +272,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientCooldowns.Count > 0) {
             Console.WriteLine($"Skill levels given the played client's cooldown over the data pack's: {clientCooldownsTaken}");
         }
+        if (clientCosts.Count > 0) {
+            Console.WriteLine($"Skill levels given the played client's spirit and stamina cost over the data pack's: {clientCostsTaken}");
+        }
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.
@@ -303,6 +313,17 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         clientCooldownsTaken++;
         return condition with { CooldownTime = seconds };
+    }
+
+    // The consume stats with the played client's level spirit and stamina cost (its level sp and ep, 0 when not
+    // given) where the client has the level; else the data pack's.
+    private Dictionary<BasicAttribute, long> WithClientCost(int skillId, short level, Dictionary<BasicAttribute, long> stat) {
+        if (!clientCosts.TryGetValue((skillId, level), out (int Sp, int Ep) cost)
+            || PlayedClientSkills.WithLevelCost(stat, cost) is not { } taken) {
+            return stat;
+        }
+        clientCostsTaken++;
+        return taken;
     }
 
     private static SkillMetadataRange Convert(RegionSkill region) {

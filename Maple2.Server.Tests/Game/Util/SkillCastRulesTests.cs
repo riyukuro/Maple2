@@ -722,6 +722,44 @@ public class SkillCastRulesTests {
         });
     }
 
+    [Test]
+    public void LevelCostIsTheClients() {
+        // Skill levels as the played client gives them (SkillLevelData::Load reads the level's sp and ep, 0 when not
+        // given): 10100041 costs 20 spirit where the data pack says 40, 10700271 costs 16 where the data pack charges
+        // none, 10600081 costs 40 stamina where the data pack says 60. The client checks the caster against them
+        // before it sends a cast (CSkillSystem::FUN_14176a530), so a caster with 25 spirit casts 10100041.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10100041"><level value="1" sp="20" cooldown="1000" /></skill>
+              <skill id="10700271"><level value="1" sp="16" /></skill>
+              <skill id="10600081"><level value="1" ep="40" /></skill>
+              <skill id="10000001"><level value="1" /></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level), (int Sp, int Ep)> read = PlayedClientSkills.ReadLevelCosts([document]);
+        Assert.Multiple(() => {
+            Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short), (int, int)> {
+                [(10100041, 1)] = (20, 0),
+                [(10700271, 1)] = (16, 0),
+                [(10600081, 1)] = (0, 40),
+                [(10000001, 1)] = (0, 0),
+            }));
+
+            Dictionary<BasicAttribute, long>? taken = PlayedClientSkills.WithLevelCost(
+                new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 40, [BasicAttribute.Health] = 5 }, read[(10100041, 1)]);
+            Assert.That(taken, Is.EquivalentTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 20, [BasicAttribute.Health] = 5 }));
+            Assert.That(SkillCastRules.SpiritCost(taken![BasicAttribute.Spirit], 0, 0f, 0f), Is.LessThanOrEqualTo(25), "25 spirit is enough");
+            Assert.That(SkillCastRules.SpiritCost(40, 0, 0f, 0f), Is.GreaterThan(25), "the data pack's 40 is not");
+
+            Assert.That(PlayedClientSkills.WithLevelCost(new Dictionary<BasicAttribute, long>(), read[(10700271, 1)]),
+                Is.EquivalentTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 16 }));
+            Assert.That(PlayedClientSkills.WithLevelCost(new Dictionary<BasicAttribute, long> { [BasicAttribute.Stamina] = 60 }, read[(10600081, 1)]),
+                Is.EquivalentTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Stamina] = 40 }));
+            Assert.That(PlayedClientSkills.WithLevelCost(new Dictionary<BasicAttribute, long>(), read[(10000001, 1)]), Is.Null, "the same: kept");
+        });
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]

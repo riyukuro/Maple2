@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Xml;
+using Maple2.Model.Enum;
 
 namespace Maple2.Model.Metadata;
 
@@ -155,6 +156,39 @@ public static class PlayedClientSkills {
                     result[(id, value)] = Number(level, "cooldown");
                 }
             }
+        }
+        return result;
+    }
+
+    // The spirit and stamina cost of each of the client's levels, by skill id and level (SkillLevelData::Load reads
+    // the level's sp and ep, 0 when not given, skillleveldata.cpp:926-927). The client checks the caster's spirit and
+    // stamina against them before it sends a cast (CSkillSystem::FUN_14176a530, skillslot.cpp:3108). The data pack's
+    // consume stat differs for 39 KR skills (469 levels). The skills and levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level), (int Sp, int Ep)> ReadLevelCosts(IEnumerable<XmlDocument> skillFiles,
+            Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var result = new Dictionary<(int, short), (int, int)>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                result[(id, value)] = (Number(level, "sp"), Number(level, "ep"));
+            }
+        }
+        return result;
+    }
+
+    // The consume stats with the client's level cost in place of the data pack's spirit and stamina (0 left out, as
+    // the data pack's are); the other stats are kept. Null when they are the same.
+    public static Dictionary<BasicAttribute, long>? WithLevelCost(IReadOnlyDictionary<BasicAttribute, long> stat, (int Sp, int Ep) cost) {
+        if (stat.GetValueOrDefault(BasicAttribute.Spirit) == cost.Sp && stat.GetValueOrDefault(BasicAttribute.Stamina) == cost.Ep) {
+            return null;
+        }
+        var result = new Dictionary<BasicAttribute, long>(stat);
+        result.Remove(BasicAttribute.Spirit);
+        result.Remove(BasicAttribute.Stamina);
+        if (cost.Sp != 0) {
+            result[BasicAttribute.Spirit] = cost.Sp;
+        }
+        if (cost.Ep != 0) {
+            result[BasicAttribute.Stamina] = cost.Ep;
         }
         return result;
     }
