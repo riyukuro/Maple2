@@ -1784,6 +1784,7 @@ public partial class FieldManager {
         }
 
         RankDuel?.Enter(added);
+        Arena?.Enter(added);
         PvpZone?.Enter(added);
         HideAndSeek?.Arrive(added);
     }

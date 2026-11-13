@@ -1,6 +1,8 @@
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -27,6 +29,19 @@ public sealed class ArenaMatchField {
         MatchId = matchId;
         Arena = arena;
         Characters = characters;
+    }
+
+    // A match character came into the field. The client's arena state (CPVPManager, the arena window's button) is
+    // still 2 from the match found (Pvp 11): only Pvp 10 takes it back to 0 (CSceneStateGame::OnPvp), and nothing
+    // else is sent once the match is joined, so the window kept Enter, whose join finds no match, and refused the next
+    // register (state not 0: s_individual_register_other_arena) until a relaunch. Chosen here: Pvp 10 on the entry,
+    // where the session is live (nothing in the client shows when the original sent it); a register inside the match
+    // field is refused with Pvp 10 as before. Maple Survival keeps its own window state (MapleSurvivalPacket).
+    public void Enter(FieldPlayer player) {
+        if (Arena.ArenaType == MapleSurvivalRules.Arena || !Characters.Contains(player.Value.Character.Id)) {
+            return;
+        }
+        player.Session.Send(PvpPacket.ArenaUnregistered());
     }
 
     // The zone's ranking, the winners first (winners: how many; the free-for-all's first place, the Red Arena's

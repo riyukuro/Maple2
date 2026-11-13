@@ -132,6 +132,23 @@ public class PvpZoneFieldTests {
     // 61000035's one punch round (type 5, box 701, 240 s, no effect) in a field that is no arena match: the points carry
     // mode 5, and at the end each participant still here gets PvpOnePunchReward<rank>Count of PvpOnePunchRewardItem
     // with no kill addition (UIPvPResultDialog::FUN_141344210) and no blood mine exp.
+    // A match character entering the arena match field gets Pvp 10 (the client's arena state back to 0, so the window
+    // shows Register after the match); a character not of the match gets nothing.
+    [Test]
+    public void Enter_MatchCharacterStateBackToZero() {
+        Arena arena = Start(_ => { }, players: 2, arenaMatch: false);
+        arena.Field.StartArena(4, PvpHandlerTests.Arenas.Entries[2], [arena.Tests[0].CharacterId], arena.Ended.Add);
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+
+        arena.Field.Arena!.Enter(arena.Player(0));
+        arena.Field.Arena!.Enter(arena.Player(1));
+
+        Assert.That(Pvp(arena.Tests[0]), Is.EqualTo(new[] { "B600" + "0A" }));
+        Assert.That(Pvp(arena.Tests[1]), Is.Empty);
+    }
+
     [Test]
     public void OnePunch_ModeAndRankTokens() {
         Arena arena = Start(field => field.StartPvpZone(5, 701, 0, 1, 0, [], _ => field.Players.Values), players: 4, arenaMatch: false);
