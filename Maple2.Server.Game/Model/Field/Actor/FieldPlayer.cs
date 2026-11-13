@@ -244,6 +244,7 @@ public class FieldPlayer : Actor<Player> {
             // Chosen here: an expired recall's notice is closed on this once-a-second tick (the notify dialog's
             // own timing is not decompiled; the answer is refused once the end time has passed).
             Session.CloseExpiredRecalls(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            Session.UgcMarket.ExpireDue(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
 
         if (Field.MapId == Constant.DefaultHomeMapId) {

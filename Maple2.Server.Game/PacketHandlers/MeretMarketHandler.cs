@@ -291,20 +291,23 @@ public class MeretMarketHandler : FieldPacketHandler {
             return;
         }
 
-        (long Price, long PromotionEndTime, long ListingEndTime, UgcMarketListingStatus Status, byte RelistKind, string Description, string[] Tags) before =
-            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.Description, item.Tags);
+        (long Price, long PromotionEndTime, long ListingEndTime, UgcMarketListingStatus Status, byte RelistKind, bool FreeRelistUsed, string Description, string[] Tags) before =
+            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.FreeRelistUsed, item.Description, item.Tags);
         item.Price = price;
         item.PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0;
         item.ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds();
         item.Status = UgcMarketListingStatus.Active;
         item.RelistKind = 0;
+        // The free relist is the first relist (s_meratmarket_free_resale_confirm); once relisted for the fee, a later
+        // expiry offers the paid relist only. Chosen here: the client does not show either way.
+        item.FreeRelistUsed = true;
         item.Description = description;
         item.Tags = tags;
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (!db.SaveUgcMarketItem(item)) {
             // Not stored: the listing stays as it was and the fee goes back.
-            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.Description, item.Tags) = before;
+            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.FreeRelistUsed, item.Description, item.Tags) = before;
             session.Currency.ChangeMeret(listingFee);
             Refuse(MeretMarketError.Common);
             return;

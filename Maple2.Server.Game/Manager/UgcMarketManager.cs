@@ -19,6 +19,8 @@ public sealed class UgcMarketManager {
     private IDictionary<long, PlayerInfo> favoriteDesigners;
 
     private readonly ILogger logger = Log.Logger.ForContext<UgcMarketManager>();
+    // Guards the listing set: the expiry check (ExpireDue) runs on the field's update, the requests on the session's.
+    private readonly object listingLock = new();
 
     public UgcMarketManager(GameSession session) {
         this.session = session;
@@ -40,7 +42,7 @@ public sealed class UgcMarketManager {
     public void Load() {
         using (GameStorage.Request db = session.GameStorage.Context()) {
             LoadSalesCounts(db);
-            ExpireEnded(db);
+            ExpireEnded(db, DateTime.Now.ToEpochSeconds());
         }
         session.Send(MeretMarketPacket.LoadPersonalListings(items.Values, SalesTotal(items.Values)));
     }
@@ -57,11 +59,31 @@ public sealed class UgcMarketManager {
 
     // The client takes a listing as expired only by its state (OnClickRemoveSale tests state 3), so a listing whose
     // time ran out is stored expired before the list goes out, with its kind: the free relist while it is unused.
-    private void ExpireEnded(GameStorage.Request db) {
-        long now = DateTime.Now.ToEpochSeconds();
-        List<UgcMarketItem> ended = items.Values.Where(listing => listing.ExpireIfEnded(now)).ToList();
+    private List<UgcMarketItem> ExpireEnded(GameStorage.Request db, long now) {
+        List<UgcMarketItem> ended;
+        lock (listingLock) {
+            ended = items.Values.Where(listing => listing.ExpireIfEnded(now)).ToList();
+        }
         if (ended.Count > 0 && !db.SaveUgcMarketItems(ended)) {
             logger.Error("Unable to store {Count} expired UGC market listings of account {AccountId}.", ended.Count, session.AccountId);
+            return [];
+        }
+        return ended;
+    }
+
+    // Once a second (FieldPlayer.Update): a listing whose time runs out while its seller is online is stored expired
+    // and sent as 0x15, which the client reads unasked (CMeratMarketMan::OnProductSaleStateChanged,
+    // meratmarketman.cpp:2364: it updates the product if it has it and refreshes My Shop), so the remove button
+    // offers the relist without a reload. A client without the product ignores it.
+    public void ExpireDue(long now) {
+        lock (listingLock) {
+            if (!items.Values.Any(listing => listing.Status == UgcMarketListingStatus.Active && listing.ListingEndTime <= now)) {
+                return;
+            }
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        foreach (UgcMarketItem item in ExpireEnded(db, now)) {
+            session.Send(MeretMarketPacket.UpdateExpiration(item));
         }
     }
 
@@ -110,7 +132,9 @@ public sealed class UgcMarketManager {
     }
 
     public void ListItem(UgcMarketItem item) {
-        items.Add(item.Id, item);
+        lock (listingLock) {
+            items.Add(item.Id, item);
+        }
         session.Send(MeretMarketPacket.ListItem(item));
         session.Send(MeretMarketPacket.UpdateExpiration(item));
     }
@@ -143,7 +167,9 @@ public sealed class UgcMarketManager {
             return;
         }
 
-        items.Remove(id);
+        lock (listingLock) {
+            items.Remove(id);
+        }
         session.Send(MeretMarketPacket.RemoveListing(id));
     }
 
@@ -190,11 +216,11 @@ public sealed class UgcMarketManager {
         if (!db.FreeRelistUgcMarketItem(id, session.AccountId, end)) {
             return MeretMarketError.Common;
         }
-        item.Status = UgcMarketListingStatus.Active;
-        item.ListingEndTime = end;
+        item.ListingEndTime = end; // before the state, so the expiry check never sees it on sale with the old end
         item.PromotionEndTime = 0;
         item.RelistKind = 0;
         item.FreeRelistUsed = true;
+        item.Status = UgcMarketListingStatus.Active;
 
         session.Send(MeretMarketPacket.FreeRelist(item));
         session.Send(MeretMarketPacket.UpdateExpiration(item));

@@ -45,7 +45,7 @@ public class UgcFreeRelistMySqlTests {
         context.UgcMarketItem.Where(row => row.AccountId == accountId).ExecuteDelete();
     }
 
-    private UgcMarketItem Game(UgcMarketListingStatus status, byte kind) {
+    private UgcMarketItem Game(UgcMarketListingStatus status, byte kind, bool freeRelistUsed = false) {
         ItemMetadata metadata = TestGameSession.Metadata(Design, EquipSlot.CP, slotMax: 1);
         return new UgcMarketItem(metadata) {
             Id = id,
@@ -62,6 +62,7 @@ public class UgcFreeRelistMySqlTests {
             Look = new UgcItemLook { Id = 5001, Name = "Listed", Url = "item/ugc/listed.png" },
             Blueprint = new ItemBlueprint(),
             RelistKind = kind,
+            FreeRelistUsed = freeRelistUsed,
         };
     }
 
@@ -97,24 +98,48 @@ public class UgcFreeRelistMySqlTests {
             Assert.That(row.FreeRelistUsed, Is.True);
         });
 
-        // Expired again (as a later expiry stores it): the relist is spent.
+        // Expired again, as the relisted copy's later expiry stores it (kind 0, the relist spent).
         using (GameStorage.Request db = storage.Context()) {
-            Assert.That(db.SaveUgcMarketItem(Game(UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind)), Is.True);
+            Assert.That(db.SaveUgcMarketItem(Game(UgcMarketListingStatus.Expired, 0, freeRelistUsed: true)), Is.True);
         }
         Assert.That(FreeRelist(accountId, end + 60), Is.False);
         Assert.That(Row().Status, Is.EqualTo(UgcMarketListingStatus.Expired));
     }
 
-    // A save from a copy made before the relist (FreeRelistUsed false) leaves the stored flag set.
+    // A copy made before the relist (FreeRelistUsed false), saved late (a logout save of an older session), is not
+    // written: the listing stays on sale with its relist spent.
     [Test]
-    public void StaleSaveKeepsTheRelistSpent() {
+    public void StaleSaveKeepsTheListingOnSale() {
         Insert(UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind);
-        Assert.That(FreeRelist(accountId, DateTime.Now.AddDays(30).ToEpochSeconds()), Is.True);
+        long end = DateTime.Now.AddDays(30).ToEpochSeconds();
+        Assert.That(FreeRelist(accountId, end), Is.True);
         using (GameStorage.Request db = storage.Context()) {
             Assert.That(db.SaveUgcMarketItems([Game(UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind)]), Is.True);
         }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveUgcMarketItem(Game(UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind)), Is.False);
+        }
+        DbListing row = Row();
+        Assert.Multiple(() => {
+            Assert.That(row.Status, Is.EqualTo(UgcMarketListingStatus.Active));
+            Assert.That(row.ListingEndTime.ToEpochSeconds(), Is.EqualTo(end));
+            Assert.That(row.RelistKind, Is.EqualTo(0));
+            Assert.That(row.FreeRelistUsed, Is.True);
+        });
+    }
+
+    // A paid relist's copy spends the free relist: its save writes the flag, and the free relist is refused after.
+    [Test]
+    public void PaidRelistSaveSpendsTheFreeRelist() {
+        Insert(UgcMarketListingStatus.Expired, UgcMarketItem.StoppedKind);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveUgcMarketItem(Game(UgcMarketListingStatus.Active, 0, freeRelistUsed: true)), Is.True);
+        }
         Assert.That(Row().FreeRelistUsed, Is.True);
-        Assert.That(Row().RelistKind, Is.EqualTo(UgcMarketItem.FreeRelistKind));
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveUgcMarketItem(Game(UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind, freeRelistUsed: true)), Is.True);
+        }
+        Assert.That(FreeRelist(accountId, DateTime.Now.AddDays(30).ToEpochSeconds()), Is.False);
     }
 
     [Test]

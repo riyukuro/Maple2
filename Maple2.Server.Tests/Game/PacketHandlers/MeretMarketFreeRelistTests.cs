@@ -213,7 +213,7 @@ public class MeretMarketFreeRelistTests {
             Is.EqualTo(new[] { Convert.ToHexString(MeretMarketPacket.Error(19, MeretMarketError.NotSale, ugcId: 31337).ToArray()) }));
     }
 
-    // The paid relist (18) of a stopped listing clears its kind.
+    // The paid relist (18) of a stopped listing clears its kind and spends the free relist: its next expiry is kind 0.
     [Test]
     public void PaidRelistClearsTheKind() {
         Start(DateTime.Now.AddDays(3).ToEpochSeconds());
@@ -232,7 +232,48 @@ public class MeretMarketFreeRelistTests {
             writer.WriteLong(0);
         }));
         UgcMarketItem stored = Stored();
-        Assert.That((stored.Status, stored.RelistKind, stored.FreeRelistUsed), Is.EqualTo((UgcMarketListingStatus.Active, (byte) 0, false)));
+        Assert.That((stored.Status, stored.RelistKind, stored.FreeRelistUsed), Is.EqualTo((UgcMarketListingStatus.Active, (byte) 0, true)));
+        test.TakeSent();
+        session.UgcMarket.ExpireDue(DateTime.Now.AddDays(SaleDays + 1).ToEpochSeconds());
+        (byte state, byte kind, _) = SaleState(test.TakeSent().Single(p => TestGameSession.Op(p) == SendOp.MeretMarket));
+        Assert.That((state, kind), Is.EqualTo(((byte) UgcMarketListingStatus.Expired, (byte) 0)));
+    }
+
+    // A listing whose time runs out while the seller is online is stored expired with the free relist and sent as
+    // 0x15 (read unasked by OnProductSaleStateChanged), once; a listing still on sale sends nothing.
+    [Test]
+    public void ExpiryWhileOnlinePushesTheSaleState() {
+        long end = DateTime.Now.AddMinutes(5).ToEpochSeconds();
+        Start(end);
+        Load();
+        session.UgcMarket.ExpireDue(end - 1);
+        Assert.That(test.TakeSent().Where(p => TestGameSession.Op(p) == SendOp.MeretMarket), Is.Empty);
+        Assert.That(Stored().Status, Is.EqualTo(UgcMarketListingStatus.Active));
+
+        session.UgcMarket.ExpireDue(end);
+        (byte state, byte kind, long sentEnd) = SaleState(test.TakeSent().Single(p => TestGameSession.Op(p) == SendOp.MeretMarket));
+        Assert.That((state, kind, sentEnd), Is.EqualTo(((byte) UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind, end)));
+        UgcMarketItem stored = Stored();
+        Assert.That((stored.Status, stored.RelistKind), Is.EqualTo((UgcMarketListingStatus.Expired, UgcMarketItem.FreeRelistKind)));
+
+        session.UgcMarket.ExpireDue(end + 60);
+        Assert.That(test.TakeSent().Where(p => TestGameSession.Op(p) == SendOp.MeretMarket), Is.Empty);
+        Assert.That(FreeRelist(listing).Select(p => p[2]), Is.EqualTo(new byte[] { 0x13, 0x15 }));
+    }
+
+    // A late save of a copy from before the free relist leaves the listing on sale (in-memory store).
+    [Test]
+    public void OlderCopyDoesNotUndoTheFreeRelist() {
+        Start(DateTime.Now.AddDays(-1).ToEpochSeconds());
+        Load();
+        UgcMarketItem older = Stored();
+        Assert.That((older.RelistKind, older.FreeRelistUsed), Is.EqualTo((UgcMarketItem.FreeRelistKind, false)));
+        FreeRelist(listing);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveUgcMarketItems([older]), Is.True);
+        }
+        UgcMarketItem stored = Stored();
+        Assert.That((stored.Status, stored.RelistKind, stored.FreeRelistUsed), Is.EqualTo((UgcMarketListingStatus.Active, (byte) 0, true)));
     }
 
     // CUgcMarketProduct's reader (0x140895690): the int after the three longs that end in the sale's end time is

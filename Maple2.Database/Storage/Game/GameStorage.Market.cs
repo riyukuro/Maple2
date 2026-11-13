@@ -148,25 +148,48 @@ public partial class GameStorage {
         }
 
         // A listing is saved from the seller's copy, which is as old as the seller's login. The sales count belongs
-        // to the buyers (AddUgcMarketSale), so a save leaves the stored count as it is; the free relist is only
-        // written by FreeRelistUgcMarketItem, so an older copy never gives it back.
+        // to the buyers (AddUgcMarketSale), so a save leaves the stored count as it is. The free relist is written
+        // only once it is spent, so no copy gives it back; a copy that has not seen a relist (free or paid) the
+        // stored row has (its FreeRelistUsed is false, the row's true) is older than that relist, and saving its
+        // state, kind and end time would take the relisted listing off sale again, so it is not saved.
         public bool SaveUgcMarketItems(ICollection<UgcMarketItem> items) {
+            HashSet<long> stale = CopiesBeforeRelist(items);
             foreach (UgcMarketItem item in items) {
-                Model.UgcMarketItem model = item;
-                Context.UgcMarketItem.Update(model);
-                Context.Entry(model).Property(listing => listing.SalesCount).IsModified = false;
-                Context.Entry(model).Property(listing => listing.FreeRelistUsed).IsModified = false;
+                if (stale.Contains(item.Id)) {
+                    continue;
+                }
+                Update(item);
             }
 
             return Context.TrySaveChanges();
         }
 
+        // False for a copy older than the listing's relist (see SaveUgcMarketItems): nothing is written.
         public bool SaveUgcMarketItem(UgcMarketItem item) {
+            if (CopiesBeforeRelist([item]).Count > 0) {
+                return false;
+            }
+            Update(item);
+            return Context.TrySaveChanges();
+        }
+
+        private void Update(UgcMarketItem item) {
             Model.UgcMarketItem model = item;
             Context.UgcMarketItem.Update(model);
             Context.Entry(model).Property(listing => listing.SalesCount).IsModified = false;
-            Context.Entry(model).Property(listing => listing.FreeRelistUsed).IsModified = false;
-            return Context.TrySaveChanges();
+            Context.Entry(model).Property(listing => listing.FreeRelistUsed).IsModified = model.FreeRelistUsed;
+        }
+
+        // The listings of these copies whose stored free relist is spent while the copy's is not.
+        private HashSet<long> CopiesBeforeRelist(ICollection<UgcMarketItem> items) {
+            List<long> ids = items.Where(item => !item.FreeRelistUsed).Select(item => item.Id).ToList();
+            if (ids.Count == 0) {
+                return [];
+            }
+            return Context.UgcMarketItem.AsNoTracking()
+                .Where(listing => ids.Contains(listing.Id) && listing.FreeRelistUsed)
+                .Select(listing => listing.Id)
+                .ToHashSet();
         }
 
         // The free first relist (MeretMarket 19): the account's listing goes on sale again until listingEnd and its
