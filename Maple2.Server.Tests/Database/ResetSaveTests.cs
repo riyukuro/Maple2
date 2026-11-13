@@ -8,9 +8,12 @@ using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game;
+using Maple2.Server.World.Service;
 using Maple2.Tools.Scheduler;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -243,6 +246,40 @@ public class ResetSaveTests {
             Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
             Assert.That(StoredMesoPurchased(), Is.EqualTo(0));
             Assert.That(Stored(), Is.EqualTo((0, 0)));
+        });
+    }
+
+    // A login whose load finds a reset being stored past its wait is a failed load as the others: the move error
+    // (0x0D: MoveResult) is sent and the session closed. The ResetRunningException used to escape the handler.
+    [Test]
+    public void Login_ResetRunning_FailedLoad() {
+        // The server's session tables EnterServer adds the session to.
+        object server = typeof(GameSession).GetField("server", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)!;
+        Type gameServer = typeof(Maple2.Server.Game.GameServer);
+        gameServer.GetField("mutex", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(server, new object());
+        gameServer.GetField("connectingSessions", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(server, new HashSet<GameSession>());
+        gameServer.GetField("sessions", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(server, new System.Collections.Concurrent.ConcurrentDictionary<long, GameSession>());
+        test.World.MigrateInAnswer = new MigrateInResponse { CharacterId = test.CharacterId, Channel = 1, MapId = 2000023 };
+        test.TakeSent();
+
+        TimeSpan wait = GameSession.ResetWait;
+        GameSession.ResetWait = TimeSpan.FromMilliseconds(500);
+        try {
+            using (new ResetHold(options, "DailyReset", test.AccountId, test.CharacterId)) {
+                Assert.DoesNotThrow(() => new ResponseKeyHandler { World = test.World }.Handle(session, TestGameSession.Packet(writer => {
+                    writer.WriteLong(test.AccountId);
+                    writer.WriteLong(77);
+                    writer.WriteBytes(Guid.NewGuid().ToByteArray());
+                })));
+            }
+        } finally {
+            GameSession.ResetWait = wait;
+        }
+        bool ended = Ended; // read before TakeSent, which opens the session again
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.MoveResult }));
+            Assert.That(ended, Is.True);
+            Assert.That(test.World.Released, Is.EqualTo(test.World.Acquired), "the account lock is let go");
         });
     }
 }

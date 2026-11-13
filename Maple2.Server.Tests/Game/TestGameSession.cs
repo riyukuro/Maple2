@@ -633,6 +633,13 @@ public sealed class TestGameSession {
             return PvpResponses.TryGetValue(request.PvpCase, out PvpResponse? response) ? response : new PvpResponse();
         }
 
+        // The answer to a login's MigrateIn (the game ResponseKeyHandler): this character, the given map.
+        public MigrateInResponse? MigrateInAnswer;
+
+        public override MigrateInResponse MigrateIn(MigrateInRequest request, CallOptions options) {
+            return MigrateInAnswer ?? throw new RpcException(new Status(StatusCode.NotFound, "no MigrateInAnswer set"));
+        }
+
         public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
             Moves.Add(request);
             return new MigrateOutResponse { IpAddress = MoveAddress, Port = MovePort, Token = 1 };

@@ -4,6 +4,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
+using Maple2.Database.Storage;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
@@ -42,6 +43,13 @@ public class ResponseKeyHandler : FieldPacketHandler {
 
             // Finalize
             session.Send(Packet.Of(SendOp.World));
+        } catch (ResetRunningException ex) {
+            // The load waited its time for a reset being stored (GameSession.ResetWait): a failed load as the others,
+            // the client told and the session closed, so the player can log in again once the reset is done. It
+            // used to escape the handler: no answer and the session left open, half entered.
+            Logger.Warning(ex, "Failed to login to game for accountId:{AccountId}: a reset is being stored", accountId);
+            session.Send(MigrationPacket.MoveResult(s_move_err_default));
+            session.Disconnect();
         } catch (Exception ex) when (ex is RpcException or InvalidOperationException) {
             Logger.Error(ex, "Failed to login to game for accountId:{AccountId}", accountId);
 #if DEBUG

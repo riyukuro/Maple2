@@ -64,7 +64,7 @@ public sealed partial class GameSession : Core.Network.Session {
     private static readonly TimeSpan TimedSaveRetryDelay = TimeSpan.FromSeconds(2);
     // How long a save that cannot come back later waits for a reset being stored (GetResetStamps): a daily reset over
     // 50k characters holds its lock about 1 to 5 s.
-    private static readonly TimeSpan ResetWait = TimeSpan.FromSeconds(60);
+    internal static TimeSpan ResetWait { get; set; } = TimeSpan.FromSeconds(60); // tests shorten it
     // A save slower than this is logged (one line), so a slow database shows before saves start to fail.
     private const long SlowSaveMs = 500;
 
