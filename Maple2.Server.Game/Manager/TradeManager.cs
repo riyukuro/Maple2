@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -201,7 +202,10 @@ public class TradeManager : IDisposable {
                     Refused(caller, offered, "a gem may not go with it");
                     return;
                 }
-                if (!caller.Item.Inventory.Remove(itemUid, out Item? item, amount)) {
+                // A part split off a stack stays the caller's row (at no slot) while it is in the window: the trade's
+                // end writes it to its new owner, and a crash before that loads it again. Before, it was owner 0 and
+                // the crash lost it (the stack's row was already lowered).
+                if (!caller.Item.Inventory.Remove(itemUid, out Item? item, amount, splitOwner: caller.CharacterId)) {
                     Refused(caller, offered, $"amount {amount} of {offered.Amount}");
                     return;
                 }
@@ -212,6 +216,9 @@ public class TradeManager : IDisposable {
                     // caller.Item.Inventory.Add(item); TODO: refund the item to inventory?
                     throw new InvalidOperationException("AddItem: Trade consistency error");
                 }
+                if (!SaveStacked(caller, item, results)) {
+                    return;
+                }
 
                 // KMS2 order: a locked side is unlocked before the change it is shown.
                 OnTradeModified();
@@ -220,6 +227,36 @@ public class TradeManager : IDisposable {
                     other.Session.Send(TradePacket.AddItem(false, result.Item));
                 }
             }
+    }
+
+    // The window stacked |item| onto items already in it: their new amounts and |item|'s row (at owner 0 when nothing
+    // of it is left) are written in one save, so the trade's end hands over what the window shows and leaves no row of
+    // |item| with the caller. Before, a stacked item's row stayed the caller's, and the caller loaded it again after
+    // the trade. A failed save takes the stack back and returns |item| to the bag; false then.
+    private bool SaveStacked(GameSession caller, Item item, IList<(Item Item, int Added)> results) {
+        (Item Item, int Added)[] onto = results.Where(result => !ReferenceEquals(result.Item, item)).ToArray();
+        if (onto.Length == 0) {
+            return true;
+        }
+        bool placed = item.Amount > 0;
+        using (GameStorage.Request db = caller.GameStorage.Context()) {
+            Item[] kept = onto.Select(result => result.Item).Concat(placed ? [item] : []).ToArray();
+            if (db.SaveItems(caller.CharacterId, kept, placed ? [] : [item])) {
+                return true;
+            }
+        }
+        foreach ((Item stack, int added) in onto) {
+            stack.Amount -= added;
+            item.Amount += added;
+        }
+        if (placed) {
+            GetTraders(caller).self.Items.Remove(item.Uid, out _);
+        }
+        logger.Error("Trade offer {Uid} ({ItemId}) of {CharacterId}: the window's stack was not written", item.Uid, item.Id, caller.CharacterId);
+        if (!caller.Item.AddOrMail(item, commit: true)) {
+            logger.Error("Trade item {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", item.Uid, item.Id, item.Amount, caller.CharacterId);
+        }
+        return false;
     }
 
     public void RemoveItem(GameSession caller, long itemUid, int tradeSlot) {
@@ -254,9 +291,8 @@ public class TradeManager : IDisposable {
                 self.Session.Send(TradePacket.RemoveItem(true, tradeSlot, itemUid));
                 other.Session.Send(TradePacket.RemoveItem(false, tradeSlot, itemUid));
                 // The room was checked under the same lock, so the add takes it; should it not, the item's row (the
-                // caller's own) goes to the mail and is not dropped. Written at once: a piece split off a stack is
-                // owner 0 while it is in the window, so a return kept only in memory was lost on a crash before the
-                // next save (the stack's row was already lowered).
+                // caller's own) goes to the mail and is not dropped. Written at once, so the piece's row and the
+                // lowered stack's are one stack again.
                 if (!caller.Item.AddOrMail(item, commit: true)) {
                     logger.Error("Trade item {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", item.Uid, item.Id, item.Amount, caller.CharacterId);
                 }

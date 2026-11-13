@@ -550,10 +550,12 @@ public class InventoryManager {
         }
     }
 
-    // notify false: a full remove without its ItemInventory packet; the caller sends it.
-    public bool Remove(long uid, [NotNullWhen(true)] out Item? removed, int amount = -1, bool notify = true) {
+    // notify false: a full remove without its ItemInventory packet; the caller sends it. |splitOwner| owns the row of a
+    // part split off a stack: 0 (the default) for a part that is sold or dropped, the character for one that is still
+    // theirs until a later write moves it (the trade window), so a crash before that write loads it again.
+    public bool Remove(long uid, [NotNullWhen(true)] out Item? removed, int amount = -1, bool notify = true, long splitOwner = 0) {
         lock (session.Item) {
-            return RemoveInternal(uid, amount, out removed, notify);
+            return RemoveInternal(uid, amount, out removed, notify, splitOwner);
         }
     }
 
@@ -889,7 +891,7 @@ public class InventoryManager {
     }
 
     #region Internal (No Locks)
-    private bool RemoveInternal(long uid, int amount, [NotNullWhen(true)] out Item? removed, bool notify = true) {
+    private bool RemoveInternal(long uid, int amount, [NotNullWhen(true)] out Item? removed, bool notify = true, long splitOwner = 0) {
         ItemCollection? items = tabs.Values.FirstOrDefault(collection => collection.Contains(uid));
         if (items == null || amount == 0) {
             removed = null;
@@ -907,7 +909,7 @@ public class InventoryManager {
             // Otherwise, we would just do a full remove.
             if (item.Amount > amount) {
                 using GameStorage.Request db = session.GameStorage.Context();
-                removed = db.SplitItem(0, item, amount);
+                removed = db.SplitItem(splitOwner, item, amount);
                 if (removed == null) {
                     return false;
                 }

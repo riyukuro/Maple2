@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -196,6 +198,107 @@ public class TradeHandlerTests {
             Assert.That(held, Is.EqualTo(3));
             Assert.That(giverTest.Errors, Is.Empty);
         });
+    }
+
+    // The rows of |characterId| holding item 20000001, as the next login loads them.
+    private int Held(long characterId) {
+        using GameStorage.Request db = giverTest.Storage.Context();
+        return db.GetItemGroups(characterId, ItemGroup.Default).TryGetValue(ItemGroup.Default, out List<Item>? rows)
+            ? rows.Where(row => row.Id == 20000001).Sum(row => row.Amount) : 0;
+    }
+
+    // Part of a stack in the window is still the giver's row until the trade ends: a crash then (no hand-over, no
+    // cancel) loads the whole stack again. Before, the piece's row was owner 0, so the crash lost it.
+    [Test]
+    public void OfferedPiece_StaysTheGiversRowUntilTheEnd() {
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(2);
+            writer.WriteInt(0);
+        });
+        int inTrade = Held(giver.CharacterId);
+
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+
+        Assert.Multiple(() => {
+            Assert.That(inTrade, Is.EqualTo(3));
+            Assert.That(Held(giver.CharacterId), Is.EqualTo(1));
+            Assert.That(Held(taker.CharacterId), Is.EqualTo(2));
+            Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty);
+        });
+    }
+
+    // A second stack of the same item offered after the first is stacked onto it in the window: its row is written
+    // to owner 0 with the first's new amount, so the giver keeps nothing of it after the trade and a crash during the
+    // trade loads both amounts once. Before, its row stayed the giver's and the giver loaded it again after the trade.
+    [Test]
+    public void StackedOffer_IsNotLeftWithTheGiver() {
+        Item second = giverTest.Store(TestGameSession.Metadata(20000001, type: 2), amount: 2);
+        // Its own bag slot, as a login loads two rows of one item (no stacking). Slot 7 is past the window's 5, so
+        // the window stacks it (an item whose bag slot is free in the window keeps that slot there).
+        second.Slot = 7;
+        var tabs = (Dictionary<InventoryType, ItemCollection>) typeof(InventoryManager)
+            .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(giver.Item.Inventory)!;
+        Assert.That(tabs[second.Inventory].Add(second), Is.Not.Empty);
+        foreach (long uid in new[] { item.Uid, second.Uid }) {
+            Send(giver, 8, writer => {
+                writer.WriteLong(uid);
+                writer.WriteInt(uid == item.Uid ? 3 : 2);
+                writer.WriteInt(0);
+            });
+        }
+        int inTrade = Held(giver.CharacterId);
+
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+
+        Assert.Multiple(() => {
+            Assert.That(inTrade, Is.EqualTo(5));
+            Assert.That(Held(giver.CharacterId), Is.Zero);
+            Assert.That(Held(taker.CharacterId), Is.EqualTo(5));
+            Assert.That(taker.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(5));
+            Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty);
+        });
+    }
+
+    // The stack's write fails: the window takes the stack back and the second stack goes back to the bag, so the
+    // window, the bag and the rows agree (3 offered, 2 held).
+    [Test]
+    public void StackedOffer_FailedWriteReturnsIt() {
+        Item second = giverTest.Store(TestGameSession.Metadata(20000001, type: 2), amount: 2);
+        second.Slot = 7;
+        var tabs = (Dictionary<InventoryType, ItemCollection>) typeof(InventoryManager)
+            .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(giver.Item.Inventory)!;
+        Assert.That(tabs[second.Inventory].Add(second), Is.Not.Empty);
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+        int failures = 1;
+        giverTest.FailSave = _ => failures-- > 0;
+        try {
+            Send(giver, 8, writer => {
+                writer.WriteLong(second.Uid);
+                writer.WriteInt(2);
+                writer.WriteInt(0);
+            });
+        } finally {
+            giverTest.FailSave = null;
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(item.Amount, Is.EqualTo(3));
+            Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(2));
+            Assert.That(Held(giver.CharacterId), Is.EqualTo(5));
+        });
+        Send(giver, 7);
+        Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(5));
     }
 
     // A cancel: each own item leaves the window and enters the bag, the mesos come back, then EndTrade (failed).
