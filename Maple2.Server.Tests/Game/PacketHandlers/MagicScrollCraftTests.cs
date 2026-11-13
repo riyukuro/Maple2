@@ -28,7 +28,7 @@ public class MagicScrollCraftTests {
         return metadata with { Property = metadata.Property with { Tag = ItemTag.CharmStone } };
     }
 
-    private GameSession Start(int stones, int otherStones, long meso) {
+    private GameSession Start(int stones, int otherStones, long meso, ItemComponent[]? required = null) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(ScrollId));
         if (stones > 0) test.Store(Stone(StoneId), stones);
@@ -36,7 +36,7 @@ public class MagicScrollCraftTests {
         test.Register(Stone(StoneId));
         test.SetTable(new EnchantScrollRecipeTable(new Dictionary<int, EnchantScrollRecipeTable.Entry> {
             [RecipeId] = new(RecipeId, 1, 1, new ItemComponent(ScrollId, 4, 1, ItemTag.None), Meso,
-                [new ItemComponent(StoneId, 4, 2000, ItemTag.CharmStone)], []),
+                required ?? [new ItemComponent(StoneId, 4, 2000, ItemTag.CharmStone)], []),
         }));
         GameSession session = test.Start();
         test.EnterMap(TestGameSession.Map(2000001));
@@ -85,6 +85,32 @@ public class MagicScrollCraftTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(meso));
         Assert.That(Count(session, ScrollId), Is.EqualTo(0));
         Assert.That(test.TakeSent().Exists(packet => TestGameSession.Op(packet) == SendOp.EnchantScroll), Is.False);
+    }
+
+    // Two rows with the same tag need a stone each: 10 stones do not pay for 6 + 6.
+    [TestCase(10, 10)]
+    [TestCase(12, 0)]
+    public void Craft_RowsSharingATagNeedTheirOwnStones(int stones, int left) {
+        ItemComponent[] required = [new ItemComponent(StoneId, 4, 6, ItemTag.CharmStone), new ItemComponent(StoneId, 4, 6, ItemTag.CharmStone)];
+        GameSession session = Start(stones, 0, Meso, required);
+
+        Craft(session);
+
+        Assert.That(Count(session, StoneId), Is.EqualTo(left));
+        Assert.That(Count(session, ScrollId), Is.EqualTo(left == 0 ? 1 : 0));
+        Assert.That(session.Currency.Meso, Is.EqualTo(left == 0 ? 0 : Meso));
+    }
+
+    // Without a field no reward can be made, so nothing is taken.
+    [Test]
+    public void Craft_WithoutAFieldTakesNothing() {
+        GameSession session = Start(2000, 0, Meso);
+        session.Field = null;
+
+        Craft(session);
+
+        Assert.That(Count(session, StoneId), Is.EqualTo(2000));
+        Assert.That(session.Currency.Meso, Is.EqualTo(Meso));
     }
 
     [Test]
