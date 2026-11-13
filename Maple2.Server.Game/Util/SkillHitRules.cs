@@ -217,8 +217,9 @@ public static class SkillHitRules {
     // Whether an arrow's point lies further from the cast than its paths fly: the longest path's distance (or
     // nonTargetMoveDistance) from its fire offset, and for a chain or range bounce each link's bounce radius (a link
     // starts where the one before it hit, BounceChain.PicksAround). Not checked when no path has a distance, or when
-    // a path fires from a fixed world point (the client's start is that point, magicdata.cpp:1411). A boomerang's
-    // way back homes on its owner (:1386), so its point may also lie that far from the owner's position now.
+    // a path fires from a fixed world point (the client's start is that point, magicdata.cpp:1411). Measured from the
+    // nearer of the cast and the owner's position now: the client starts a magic at the owner's fire node when it
+    // spawns (:1408), after any dash or leap of the motion, and a boomerang's way back homes on its owner (:1386).
     public static bool ReachTooFar(Vector3 point, Vector3 cast, SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths, Vector3 owner) {
         if (paths is not { Count: > 0 }) {
             return false;
@@ -236,10 +237,7 @@ public static class SkillHitRules {
         if (arrow.BounceType is BounceType.Chain or BounceType.Range) {
             reach += Math.Max(0, arrow.BounceCount) * Math.Max(0, arrow.BounceRadius);
         }
-        if (Vector3.Distance(point, cast) <= reach + TargetMargin) {
-            return false;
-        }
-        return arrow.BounceType != BounceType.Boomerang || Vector3.Distance(point, owner) > reach + TargetMargin;
+        return MathF.Min(Vector3.Distance(point, cast), Vector3.Distance(point, owner)) > reach + TargetMargin;
     }
 
     // What an arrow packet's points refuse its hits for: only a current point past the paths' reach (ReachTooFar).
@@ -249,10 +247,19 @@ public static class SkillHitRules {
         return ReachTooFar(current, cast, arrow, paths, owner) ? HitRefusal.Reach : HitRefusal.None;
     }
 
+    // How far from the server's player position a region packet's owner position is trusted. The client syncs the
+    // player's position right before it writes the packet (MyPC::FUN_14152e0c0, magicdata.cpp:1840), so a legit one is
+    // within a few units; the slack keeps a late sync and a mount's offset from its rider (:1837).
+    public const float RegionOwnerTrust = 2 * TargetMargin;
+
     // Where a region's area stands: the owner's position the packet carries (impactPosition2, magicdata.cpp:1831),
-    // when it lies within CastReach of the server's player position; the server's position otherwise.
+    // when it lies within RegionOwnerTrust of the server's player position; the server's position otherwise.
     public static Vector3 RegionCentre(Vector3 owner, Vector3 player) {
-        return Vector3.Distance(owner, player) <= CastReach ? owner : player;
+        return RegionOwnerTrusted(owner, player) ? owner : player;
+    }
+
+    public static bool RegionOwnerTrusted(Vector3 owner, Vector3 player) {
+        return Vector3.Distance(owner, player) <= RegionOwnerTrust;
     }
 
     // The most attacks an attack point packet declares for an attack.

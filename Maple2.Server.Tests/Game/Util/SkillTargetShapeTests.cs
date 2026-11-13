@@ -152,8 +152,23 @@ public class SkillTargetShapeTests {
         // A boomerang's way back homes on its owner, who ran 1500 on: its point near the owner is in reach.
         Vector3 owner = new(0, 1500, 0);
         Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1600, 0), Vector3.Zero, Arrow(BounceType.Boomerang, 2), paths, owner), Is.False);
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1600, 0), Vector3.Zero, Arrow(), paths, owner), Is.True, "a pierce does not come back");
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 2600, 0), Vector3.Zero, Arrow(), paths, owner), Is.True);
         Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 2600, 0), Vector3.Zero, Arrow(BounceType.Boomerang, 2), paths, owner), Is.True);
+    }
+
+    [Test]
+    public void ReachStartsWhereTheArrowSpawns() {
+        // A dash shot: the motion carries the player 300 on before the arrow spawns at the fire node
+        // (magicdata.cpp:1408), and the arrow flies its full 800: reach + 300 from the cast, in reach of the owner.
+        MagicPath[] paths = [Path(500, 800)];
+        Vector3 owner = new(0, 300, 0);
+        Vector3 point = new(0, 1100, 0);
+        Assert.That(SkillHitRules.ReachTooFar(point, Vector3.Zero, Arrow(), paths, owner), Is.False);
+        Assert.That(SkillHitRules.ArrowRefusal(point, Vector3.Zero, owner, Arrow(), paths), Is.EqualTo(HitRefusal.None));
+        // A backstep shot: the player steps 300 back, the arrow flies forward from there.
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, -1100, 0), Vector3.Zero, Arrow(), paths, new Vector3(0, -300, 0)), Is.False);
+        // Past reach of both the cast and the owner.
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1400, 0), Vector3.Zero, Arrow(), paths, owner), Is.True);
     }
 
     [Test]
@@ -179,5 +194,8 @@ public class SkillTargetShapeTests {
         Vector3 player = new(0, 0, 0);
         Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 200, 0), player), Is.EqualTo(new Vector3(0, 200, 0)));
         Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 2000, 0), player), Is.EqualTo(player), "too far: the server's");
+        // The client syncs right before it writes (magicdata.cpp:1840): past 300 the server's position stands in.
+        Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 300, 0), player), Is.EqualTo(new Vector3(0, 300, 0)));
+        Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 450, 0), player), Is.EqualTo(player));
     }
 }

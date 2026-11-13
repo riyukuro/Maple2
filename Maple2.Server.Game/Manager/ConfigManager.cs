@@ -56,6 +56,8 @@ public class ConfigManager {
     public readonly LogGate PointLog = new();
     public readonly LogGate HitLog = new();
     public readonly LogGate StepLog = new();
+    // Region target packets whose owner position lies past SkillHitRules.RegionOwnerTrust (the server position stands in).
+    public readonly LogGate RegionLog = new();
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;

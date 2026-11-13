@@ -456,6 +456,11 @@ public class SkillHandler : FieldPacketHandler {
             if (!SkillHitRules.FacingNear(direction.Z, record.Rotation.Z, session.Player.Rotation.Z)) {
                 packetRefusal = HitRefusal.Facing;
             }
+            if (!SkillHitRules.RegionOwnerTrusted(impactPosition2, session.Player.Position)
+                && session.Config.RegionLog.Count(session.Field.FieldTick) is > 0 and int unloggedRegions) {
+                Logger.Information("Region owner position {Owner} is {Distance} from the server's {Position}, the area stands at the server's: {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
+                    impactPosition2, Vector3.Distance(impactPosition2, session.Player.Position), session.Player.Position, unloggedRegions, targetUid, session.PlayerName, record);
+            }
             area = SkillHitRules.RegionArea(record.Attack, SkillHitRules.RegionCentre(impactPosition2, session.Player.Position), direction.Z);
         }
 
