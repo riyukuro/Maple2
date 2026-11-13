@@ -116,11 +116,13 @@ public static class CubePacket {
     public enum Edit : byte {
         Place = Command.PlaceCube,
         Remove = Command.RemoveCube,
+        Rotate = Command.RotateCube,
         Replace = Command.ReplaceCube,
     }
 
-    // A refused place, remove or replace as KMS2 answers it: the edit's own command, the error, then the two
-    // object ids of the answer that succeeds (10 bytes).
+    // A refused place, remove, rotate or replace as KMS2 answers it: the edit's own command, the error, then the two
+    // object ids of the answer that succeeds (10 bytes). The client reads a refused rotate the same way (ResponseCube
+    // case 0xe, scenestategame.cpp:10073: error, int, player object id, then ShowBuildNotice(error) for that player).
     public static ByteWriter EditError(Edit edit, UgcMapError error, int objectId) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.WriteByte((byte) edit);

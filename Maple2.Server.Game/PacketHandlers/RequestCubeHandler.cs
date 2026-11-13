@@ -302,8 +302,11 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (session.Field == null) return;
         var position = packet.Read<Vector3B>();
 
+        // No plot to build on here: the client's own answer for a cube not the player's (FUN_1410c6980 mode 4 failing,
+        // cubecraft_2.cpp:1146), 40 s_ugcmap_cant_remove_default_cube.
         Plot? plot = session.Housing.GetBuildFieldPlot(out GameSession owner);
         if (plot == null) {
+            session.Send(CubePacket.EditError(CubePacket.Edit.Remove, UgcMapError.s_ugcmap_cant_remove_default_cube, session.Player.ObjectId));
             return;
         }
 
@@ -337,13 +340,16 @@ public class RequestCubeHandler : FieldPacketHandler {
         var position = packet.Read<Vector3B>();
         bool clockwise = packet.ReadBool();
 
+        // No plot to build on here: the client's own answer for a cube not the player's (FUN_1410c6980 mode 3 failing,
+        // cubecraft_2.cpp:1091), 27 s_ugcmap_cant_rotate_default_cube.
         Plot? plot = session.Housing.GetBuildFieldPlot(out GameSession owner);
         if (plot == null) {
+            session.Send(CubePacket.EditError(CubePacket.Edit.Rotate, UgcMapError.s_ugcmap_cant_rotate_default_cube, session.Player.ObjectId));
             return;
         }
         // A build helper turns the owner's cube through the owner's manager, as a place or a remove.
         if (!owner.Housing.TryRotateCube(plot, position, clockwise, out PlotCube? cube)) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_rotate));
+            session.Send(CubePacket.EditError(CubePacket.Edit.Rotate, UgcMapError.s_ugcmap_no_cube_to_rotate, session.Player.ObjectId));
             return;
         }
 
