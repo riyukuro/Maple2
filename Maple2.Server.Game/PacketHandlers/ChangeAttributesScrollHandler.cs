@@ -205,15 +205,22 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         return ChangeAttributesHandler.CountsInStats(session, item.Uid);
     }
 
-    private ChangeAttributesScrollError IsCompatibleScroll(Item item, Item scroll, out ItemRemakeScrollMetadata? metadata) {
+    // The scroll's row: a scroll without one is refused with 10, as the client's test does for no row
+    // (FUN_140616170, itemremakescrolldata.cpp:287); 11 stays for a row without an option value. Before, it was 11.
+    internal static ChangeAttributesScrollError ScrollRow(ItemRemakeScrollTable table, Item scroll, out ItemRemakeScrollMetadata? metadata) {
         metadata = null;
-        if (!int.TryParse(scroll.Metadata.Function?.Parameters, out int remakeId)) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;
+        if (!int.TryParse(scroll.Metadata.Function?.Parameters, out int remakeId) || !table.Entries.TryGetValue(remakeId, out metadata)) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll;
         }
-        if (!TableMetadata.ItemRemakeScrollTable.Entries.TryGetValue(remakeId, out metadata)) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;
+        return ChangeAttributesScrollError.none;
+    }
+
+    private ChangeAttributesScrollError IsCompatibleScroll(Item item, Item scroll, out ItemRemakeScrollMetadata? metadata) {
+        ChangeAttributesScrollError error = ScrollRow(TableMetadata.ItemRemakeScrollTable, scroll, out metadata);
+        if (error != ChangeAttributesScrollError.none) {
+            return error;
         }
-        ChangeAttributesScrollError error = ScrollFits(item, metadata);
+        error = ScrollFits(item, metadata!);
         if (error != ChangeAttributesScrollError.none) {
             return error;
         }

@@ -26,7 +26,8 @@ public class ItemExchangeScrollUpgradeTests {
     private BagItem scroll = null!;
     private BagItem target = null!;
 
-    private GameSession Start(int targetId = TargetId, int enchants = 3, bool targetAsMaterial = false) {
+    private GameSession Start(int targetId = TargetId, int enchants = 3, bool targetAsMaterial = false,
+            TransferType rewardType = TransferType.Tradable, int rewardTradeMaxRarity = 4, int rewardTrades = 0) {
         test = new TestGameSession();
         test.SetTable(new ItemExchangeScrollTable(new Dictionary<int, ItemExchangeScrollMetadata> {
             [ScrollId] = new(new ItemComponent(ScrollId, 5, 1, ItemTag.None), new ItemComponent(RewardId, 5, 1, ItemTag.None), 0, 0,
@@ -41,7 +42,11 @@ public class ItemExchangeScrollUpgradeTests {
         scroll = test.Store(TestGameSession.Metadata(ScrollId, type: 1, slotMax: 1,
             function: new ItemMetadataFunction(ItemFunction.ItemExchangeScroll, "ItemExchangeScroll", $"{ScrollId}", false)));
         target = test.Store(TestGameSession.Metadata(targetId, type: 1, slotMax: 1));
-        test.Register(TestGameSession.Metadata(RewardId, type: 1, slotMax: 1));
+        ItemMetadata rewardRow = TestGameSession.Metadata(RewardId, type: 1, slotMax: 1);
+        test.Register(rewardRow with {
+            Limit = rewardRow.Limit with { TransferType = rewardType, TradeMaxRarity = rewardTradeMaxRarity },
+            Property = rewardRow.Property with { TradableCount = rewardTrades },
+        });
         GameSession session = test.Start();
         test.TakeSent();
         scroll = session.Item.Inventory.Get(scroll.Uid)!;
@@ -160,11 +165,11 @@ public class ItemExchangeScrollUpgradeTests {
         Assert.That(Answers(), Is.EqualTo(new[] { ((byte) 2, (short) ItemExchangeScrollError.s_itemslot_exchange_ok) }));
     }
 
-    // Chosen here: the reward keeps the target's transfer whole. Before, it came with a fresh transfer, so a bound
-    // target came back as a tradable item, and a limited one with its trades used up got them back.
+    // Chosen here: the reward keeps the stricter of the target's transfer and its own row's. Before, it came with a
+    // fresh transfer, so a bound target came back unbound, and a limited one with its trades used up got them back.
     [Test]
     public void BoundTarget_TheRewardStaysBound() {
-        GameSession session = Start();
+        GameSession session = Start(rewardTrades: 5);
         target.Transfer = new ItemTransfer(TransferFlag.Bind | TransferFlag.LimitTrade, 2, 1, new ItemBinding(test.CharacterId, "a"));
         Exchange(session);
         BagItem? reward = session.Item.Inventory.Find(RewardId).SingleOrDefault();
@@ -173,6 +178,23 @@ public class ItemExchangeScrollUpgradeTests {
             Assert.That(reward?.Transfer?.Flag, Is.EqualTo(TransferFlag.Bind | TransferFlag.LimitTrade));
             Assert.That(reward?.Transfer?.RemainTrades, Is.EqualTo(2));
             Assert.That(reward?.Transfer?.RepackageCount, Is.EqualTo(1));
+        });
+    }
+
+    // The reward is never more tradable than its own row: a freely tradable target gives an untradable reward when
+    // the reward's row is untradable, and free trade only when both are. Before (the target's transfer copied), the
+    // untradable reward came out tradable.
+    [TestCase(TransferType.Untradeable, 4, TransferFlag.None)]
+    [TestCase(TransferType.Tradable, 6, TransferFlag.Trade | TransferFlag.Split)]
+    public void TradableTarget_TheRewardKeepsItsOwnRule(TransferType rewardType, int tradeMaxRarity, TransferFlag expected) {
+        GameSession session = Start(rewardType: rewardType, rewardTradeMaxRarity: tradeMaxRarity);
+        target.Transfer = new ItemTransfer(TransferFlag.Trade | TransferFlag.Split);
+        Exchange(session);
+        BagItem? reward = session.Item.Inventory.Find(RewardId).SingleOrDefault();
+        Assert.Multiple(() => {
+            Assert.That(reward?.Transfer?.Flag, Is.EqualTo(expected));
+            Assert.That(reward?.Transfer?.RemainTrades, Is.Zero);
+            Assert.That(reward?.Transfer?.Binding, Is.Null);
         });
     }
 

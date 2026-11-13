@@ -34,6 +34,25 @@ public class ChangeAttributesScrollValueTests {
         Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, Row(item, value)), Is.EqualTo(ChangeAttributesScrollError.none));
     }
 
+    // A scroll whose remake id has no row is refused with 10 (FUN_140616170, itemremakescrolldata.cpp:287), as is
+    // one without a numeric id; a row is found by the scroll's parameter. Before, both were 11.
+    [Test]
+    public void MissingRow_InvalidScroll() {
+        Item Scroll(string parameter) => new(TestGameSession.Metadata(20300001,
+            function: new ItemMetadataFunction(ItemFunction.ItemRemakeScroll, "ItemRemakeScroll", parameter, false)));
+        Item item = Accessory();
+        var table = new ItemRemakeScrollTable(new Dictionary<int, ItemRemakeScrollMetadata> { [5] = Row(item, RollValueType.Normal) });
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesScrollHandler.ScrollRow(table, Scroll("6"), out _),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll));
+            Assert.That(ChangeAttributesScrollHandler.ScrollRow(table, Scroll("x"), out _),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll));
+            Assert.That(ChangeAttributesScrollHandler.ScrollRow(table, Scroll("5"), out ItemRemakeScrollMetadata? row),
+                Is.EqualTo(ChangeAttributesScrollError.none));
+            Assert.That(row, Is.Not.Null);
+        });
+    }
+
     // The item checks come first, as in the client, each with its own code (FUN_140616170: rank 5).
     [Test]
     public void NoValue_WrongRarity_ImpossibleRank() {

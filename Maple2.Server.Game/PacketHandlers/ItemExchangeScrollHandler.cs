@@ -158,12 +158,41 @@ public class ItemExchangeScroll : FieldPacketHandler {
             reward.Stats ??= new ItemStats();
             reward.Stats.CopyEmpowermentFrom(target.Stats);
         }
-        // Chosen here (the preview sets no transfer): the reward keeps the target's transfer whole (its trade rule,
-        // trades left, binding and repack count), as the same item upgraded, so an upgrade neither frees a bound or
-        // traded-out item nor takes the trades of a tradable one.
+        // Chosen here (the preview sets no transfer): the reward keeps the stricter of the target's transfer and its
+        // own row's, as the same item upgraded, so an upgrade neither frees a bound or traded-out item nor makes the
+        // reward more tradable than its own row allows.
         if (target.Transfer != null) {
-            reward.Transfer = target.Transfer.Clone();
+            reward.Transfer = StricterTransfer(target.Transfer, reward.Transfer ?? new ItemTransfer());
         }
+    }
+
+    // Each part of the two transfers at its stricter: free trade only when both trade freely, else limited trade when
+    // both may trade, with the fewer trades left, else none; bound when either is (the target's binding kept); the
+    // higher repack count; a socket transfer or dismantling only when both allow it.
+    internal static ItemTransfer StricterTransfer(ItemTransfer target, ItemTransfer reward) {
+        const TransferFlag trading = TransferFlag.Trade | TransferFlag.LimitTrade;
+        TransferFlag flag = (target.Flag | reward.Flag) & ~(trading | TransferFlag.Split);
+        int trades = 0;
+        if ((target.Flag & trading) != 0 && (reward.Flag & trading) != 0) {
+            if (target.Flag.HasFlag(TransferFlag.Trade) && reward.Flag.HasFlag(TransferFlag.Trade)
+                && !target.Flag.HasFlag(TransferFlag.LimitTrade) && !reward.Flag.HasFlag(TransferFlag.LimitTrade)) {
+                flag |= TransferFlag.Trade | (target.Flag & reward.Flag & TransferFlag.Split);
+            } else {
+                flag |= TransferFlag.LimitTrade;
+                trades = int.MaxValue;
+                if (target.Flag.HasFlag(TransferFlag.LimitTrade)) {
+                    trades = Math.Min(trades, target.RemainTrades);
+                }
+                if (reward.Flag.HasFlag(TransferFlag.LimitTrade)) {
+                    trades = Math.Min(trades, reward.RemainTrades);
+                }
+            }
+        }
+        return new ItemTransfer(flag, trades, Math.Max(target.RepackageCount, reward.RepackageCount),
+            (target.Binding ?? reward.Binding)?.Clone()) {
+            SocketTransfer = target.SocketTransfer && reward.SocketTransfer,
+            DisableBreak = target.DisableBreak || reward.DisableBreak,
+        };
     }
 
     // Client ItemExchangeSlot::vfunc_18 (itemexchangeslot.cpp:87): an item dropped on the target slot of a
