@@ -163,9 +163,10 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             }
         }
 
-        // constDamageByTargetSP: the spirit of a player hit (npcs have none) goes down to the value as well, unless
-        // the hit was taken by invincibility or refused (attackPossible).
-        if (attack.Damage.ConstDamageByTargetSp > 0 && this is FieldPlayer && !Buffs.Invincible && !refused) {
+        // constDamageByTargetSP: the spirit of a player hit (npcs have none) goes down to the value as well, when a hit
+        // landed: not when every hit missed, was blocked, or was taken by invincibility or refused (attackPossible).
+        if (attack.Damage.ConstDamageByTargetSp > 0 && this is FieldPlayer
+            && targetRecord.Damage.Any(hit => hit.Type is DamageType.Normal or DamageType.Critical)) {
             Stat spirit = Stats.Values[BasicAttribute.Spirit];
             long down = DamageCalculator.DownTo(spirit.Current, attack.Damage.ConstDamageByTargetSp);
             if (down > 0) {
@@ -181,7 +182,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 DamageDealers.TryAdd(caster.ObjectId, record);
             }
             record.AddDamage(DamageType.Normal, positiveDamage);
-            Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true } || (Buffs.DeathResistance && caster is not FieldPlayer { DeathPower: true })));
+            Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true } || attack.Damage.ConstDamageByTargetHp > 0 || (Buffs.DeathResistance && caster is not FieldPlayer { DeathPower: true })));
             Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
             OnDamageReceived(caster, positiveDamage);
         }
