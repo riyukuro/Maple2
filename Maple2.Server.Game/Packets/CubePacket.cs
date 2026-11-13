@@ -389,9 +389,11 @@ public static class CubePacket {
         return pWriter;
     }
 
+    // Client: CSceneStateGame::OnResponseCube case 0x1a reads nothing more: a modeless box (s_home_password_user_out_chat_msg,
+    // tagged userOutNotice) whose Exit button sends RequestMoveField 1. The server sends the visitor out after the delay.
     public static ByteWriter KickOut() {
         var pWriter = Packet.Of(SendOp.ResponseCube);
-        pWriter.Write<Command>(Command.KickOut);
+        pWriter.WriteByte((byte) Command.KickOut);
 
         return pWriter;
     }

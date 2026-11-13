@@ -38,4 +38,25 @@ public static class HomeVisitorRules {
     public static bool SentOutWithAll(long ownerAccountId, long senderAccountId, long visitorAccountId) {
         return ownerAccountId == senderAccountId && visitorAccountId != ownerAccountId;
     }
+
+    /// <summary>
+    /// How long a visitor told to leave (ResponseCube 0x1a, s_home_password_user_out_chat_msg) may stay before
+    /// the server sends it out. The box's Exit button leaves at once (RequestMoveField 1).
+    /// </summary>
+    public static readonly TimeSpan SendOutDelay = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// The visitors the timer still sends out: those whose field entry is still in the home. An entry is the
+    /// object id the home gave the visitor and the field player made for it; a visitor that left, or left and
+    /// came back (a new entry), is not touched.
+    /// </summary>
+    public static List<T> StillToSendOut<T>(IEnumerable<KeyValuePair<int, T>> told, IReadOnlyDictionary<int, T> inField) where T : class {
+        var result = new List<T>();
+        foreach ((int objectId, T entry) in told) {
+            if (inField.TryGetValue(objectId, out T? now) && ReferenceEquals(now, entry)) {
+                result.Add(entry);
+            }
+        }
+        return result;
+    }
 }

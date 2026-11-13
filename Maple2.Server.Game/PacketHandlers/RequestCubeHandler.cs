@@ -795,13 +795,27 @@ public class RequestCubeHandler : FieldPacketHandler {
 
 
     // UIHomeOptionDialog::SendRequestCubeMode49 (uihomeoptiondialog.cpp:278, the "send everyone out" button of the
-    // home options): no fields. The client shows its own notice; every visitor goes back to the return map.
+    // home options): no fields. The owner's client shows its own notice. Every visitor of another account gets
+    // ResponseCube 0x1a (leave within 10 seconds, or Exit now) and, if that same field entry is still in the home
+    // after the delay, goes back to the return map.
     private void HandleKickOut(GameSession session) {
         if (session.Field is not HomeFieldManager home) return;
-        foreach (FieldPlayer visitor in home.Players.Values) {
+        var told = new Dictionary<int, FieldPlayer>();
+        foreach ((int objectId, FieldPlayer visitor) in home.Players) {
             if (HomeVisitorRules.SentOutWithAll(home.OwnerId, session.AccountId, visitor.Value.Account.Id)) {
-                visitor.Session.ReturnField();
+                visitor.Session.Send(CubePacket.KickOut());
+                told[objectId] = visitor;
             }
+        }
+        if (told.Count == 0) return;
+
+        home.Scheduler.Schedule(() => SendOutStillThere(home, told), HomeVisitorRules.SendOutDelay);
+    }
+
+    // The send-everyone-out timer: only the field entries told to leave that are still in the home go.
+    internal static void SendOutStillThere(FieldManager home, IReadOnlyDictionary<int, FieldPlayer> told) {
+        foreach (FieldPlayer visitor in HomeVisitorRules.StillToSendOut(told, home.Players)) {
+            visitor.Session.ReturnField();
         }
     }
 
