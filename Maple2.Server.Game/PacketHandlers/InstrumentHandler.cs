@@ -166,7 +166,8 @@ public class InstrumentHandler : FieldPacketHandler {
         int masteryValue = score?.Metadata.Music?.MasteryValue ?? 1;
         int masteryValueMax = score?.Metadata.Music?.MasteryValueMax ?? 1;
 
-        // TODO: Prestige exp
+        // The prestige exp comes with the exp (ExperienceManager.AddExp): the reason s_msg_take_play_instrument_exp reads the
+        // server table's Exp_MusicMasteryLv1 row, 250 in KR, the same for all four levels.
         // The time counts up to the score's own length: a stop that comes late gives no more than the whole score.
         int scoreLength = score?.Music?.Length > 0 ? score.Music.Length : score?.Metadata.Music?.PlayTime ?? 0;
         long totalTickTime = InstrumentRules.PlayedMs(Environment.TickCount64 - session.Instrument.StartTick, scoreLength);
