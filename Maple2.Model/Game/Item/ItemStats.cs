@@ -76,6 +76,22 @@ public sealed class ItemStats : IByteSerializable, IByteDeserializable {
         MergeId = 0;
     }
 
+    // CItemStatus::CopyGroup4From (itemsocketsystemutil.cpp:2060): each Empowerment option of the other item is set on
+    // this one, and this item takes the other's crystal id when it has none.
+    public void CopyEmpowermentFrom(ItemStats other) {
+        Option source = other.options[(int) Type.Empowerment];
+        Option target = options[(int) Type.Empowerment];
+        foreach ((BasicAttribute attribute, BasicOption option) in source.Basic) {
+            target.Basic[attribute] = option;
+        }
+        foreach ((SpecialAttribute attribute, SpecialOption option) in source.Special) {
+            target.Special[attribute] = option;
+        }
+        if (source.Count != 0 && MergeId == 0) {
+            MergeId = other.MergeId;
+        }
+    }
+
     public Option this[Type type] {
         get => options[(int) type];
         set => options[(int) type] = value;

@@ -1,11 +1,13 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -51,7 +53,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
     // Client UIItemExchangeScrollDialog::SendItemExchangeScrollMode1 (uiitemexchangescrolldialog.cpp:575-598):
     // long scroll uid, long target uid, int count. The client refuses count 0 with code 7.
     private void HandleExchange(GameSession session, IByteReader packet) {
-        (long scrollItemUid, long _, int quantity) = ItemExchangeScrollRules.ReadExchange(packet);
+        (long scrollItemUid, long targetUid, int quantity) = ItemExchangeScrollRules.ReadExchange(packet);
         if (!ItemExchangeScrollRules.CountAllowed(quantity)) {
             session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_check));
             return;
@@ -67,6 +69,21 @@ public class ItemExchangeScroll : FieldPacketHandler {
             if (!int.TryParse(scrollItem.Metadata.Function?.Parameters, out int scrollId) || !TableMetadata.ItemExchangeScrollTable.Entries.TryGetValue(scrollId, out ItemExchangeScrollMetadata? scrollMetadata)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
                 return;
+            }
+
+            // An upgrade takes the target the dialog holds (m_uidTarget), once: the dialog sends count 1
+            // (FUN_140f54120, uiitemexchangescrolldialog.cpp:640).
+            Item? target = null;
+            if (scrollMetadata.Type == ItemExchangeScrollType.Upgrade) {
+                if (quantity != 1) {
+                    session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_check));
+                    return;
+                }
+                target = session.Item.Inventory.Get(targetUid);
+                if (ItemExchangeScrollRules.UpgradeRefusal(scrollMetadata, target) is { } refused) {
+                    session.Send(ItemExchangeScrollPacket.Error(refused));
+                    return;
+                }
             }
 
             // The fee of all exchanges, tested and taken as one amount.
@@ -92,6 +109,9 @@ public class ItemExchangeScroll : FieldPacketHandler {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
                 return;
             }
+            if (target != null) {
+                CarryUpgrade(session.ServerTableMetadata.EnchantOptionTable, target, rewardItem);
+            }
 
             if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
@@ -104,6 +124,10 @@ public class ItemExchangeScroll : FieldPacketHandler {
                     throw new InvalidOperationException($"Fatal: Consuming item: {scrolls[i].Uid}");
                 }
             }
+            if (target != null && !session.Item.Inventory.Consume(target.Uid, 1)) {
+                Logger.Fatal("Failed to consume item {ItemUid}", target.Uid);
+                throw new InvalidOperationException($"Fatal: Consuming item: {target.Uid}");
+            }
 
             session.Currency.ChangeMeso(-fee);
             if (!session.Item.Inventory.Add(rewardItem, true)) {
@@ -111,6 +135,28 @@ public class ItemExchangeScroll : FieldPacketHandler {
             }
         }
         session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_ok));
+    }
+
+    // The upgraded item keeps what the dialog's preview carries over from the target (FUN_140f514c0,
+    // uiitemexchangescrolldialog.cpp:284-291): its enchant level (SetEnchantLevel) and its Empowerment group
+    // (CopyGroup4From); the warning line says the enchant level and its experience are kept. The enchant's options are
+    // the new item's own for that level, summed as an enchant adds them (inferred: the preview sets only the level
+    // and the client works the options out from it).
+    public static void CarryUpgrade(EnchantOptionTable table, Item target, Item reward) {
+        if (target.Enchant is { Enchants: > 0 } enchant) {
+            ItemEnchant carried = enchant.Clone();
+            carried.BasicOptions.Clear();
+            for (int level = 1; level <= enchant.Enchants; level++) {
+                foreach ((BasicAttribute attribute, BasicOption option) in ItemEnchantManager.GetEnchant(table, reward, level).BasicOptions) {
+                    carried.BasicOptions[attribute] = carried.BasicOptions.TryGetValue(attribute, out BasicOption existing) ? existing + option : option;
+                }
+            }
+            reward.Enchant = carried;
+        }
+        if (target.Stats != null) {
+            reward.Stats ??= new ItemStats();
+            reward.Stats.CopyEmpowermentFrom(target.Stats);
+        }
     }
 
     // Client ItemExchangeSlot::vfunc_18 (itemexchangeslot.cpp:87): an item dropped on the target slot of a
@@ -121,11 +167,11 @@ public class ItemExchangeScroll : FieldPacketHandler {
         long itemUid = packet.ReadLong();
 
         Item? scrollItem;
-        bool hasTarget;
+        Item? target;
         // Both lookups under the item lock, as every other inventory read of this handler.
         lock (session.Item) {
             scrollItem = session.Item.Inventory.Get(scrollItemUid);
-            hasTarget = session.Item.Inventory.Get(itemUid) != null;
+            target = session.Item.Inventory.Get(itemUid);
         }
         if (scrollItem == null) {
             session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
@@ -135,8 +181,19 @@ public class ItemExchangeScroll : FieldPacketHandler {
             session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
             return;
         }
-        if (!hasTarget) {
+        if (target == null) {
             return; // the client looks the target up in its inventory and drops the reply without it
+        }
+        // An upgrade row answers a target it does not take with its code, so the dialog does not offer it.
+        if (scrollMetadata.Type == ItemExchangeScrollType.Upgrade) {
+            ItemExchangeScrollError? refused;
+            lock (session.Item) {
+                refused = ItemExchangeScrollRules.UpgradeRefusal(scrollMetadata, target);
+            }
+            if (refused != null) {
+                session.Send(ItemExchangeScrollPacket.Error(refused.Value));
+                return;
+            }
         }
 
         session.Send(ItemExchangeScrollPacket.SetTarget(scrollItemUid, itemUid, scrollMetadata.RequiredItems));

@@ -1640,9 +1640,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     Tag: ItemTag.None),
                 TradeCountDeduction: scroll.tradableCountDeduction,
                 RequiredMeso: scroll.require.meso,
-                RequiredItems: requiredItems));
+                RequiredItems: requiredItems,
+                Type: ExchangeScrollType(scroll.type),
+                MaxGrade: scroll.maxGrade,
+                RequireEquip: scroll.requireEquip is { id: > 0 } equip
+                    ? new ItemComponent(ItemId: equip.id, Rarity: (short) equip.rank, Amount: equip.count, Tag: ItemTag.None)
+                    : null));
         }
         return new ItemExchangeScrollTable(results);
+    }
+
+    // The type names the client reads for its row types (Parse_14021a270): exchange 1, upgrade 2, trading 3. The
+    // parser's other names ("updated") are no client type; such a row is read as an exchange (chosen here).
+    public static global::Maple2.Model.Metadata.ItemExchangeScrollType ExchangeScrollType(global::Maple2.File.Parser.Enum.ItemExchangeScrollType type) {
+        return type switch {
+            global::Maple2.File.Parser.Enum.ItemExchangeScrollType.upgrade => global::Maple2.Model.Metadata.ItemExchangeScrollType.Upgrade,
+            global::Maple2.File.Parser.Enum.ItemExchangeScrollType.trading => global::Maple2.Model.Metadata.ItemExchangeScrollType.Trading,
+            _ => global::Maple2.Model.Metadata.ItemExchangeScrollType.Exchange,
+        };
     }
 
     private PremiumClubTable ParsePremiumClubTable() {

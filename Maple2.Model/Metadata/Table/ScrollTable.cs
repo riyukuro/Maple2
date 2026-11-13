@@ -25,7 +25,19 @@ public record ItemExchangeScrollMetadata(
     ItemComponent RewardItem,
     int TradeCountDeduction,
     long RequiredMeso,
-    IReadOnlyList<ItemComponent> RequiredItems);
+    IReadOnlyList<ItemComponent> RequiredItems,
+    // The row's type (CExchangeItemInfo::m_eType, itemexchangescrolltable.cpp:108): an upgrade row takes a target
+    // item (RequireEquip), which may be enchanted up to MaxGrade, and gives the reward in its place.
+    ItemExchangeScrollType Type = ItemExchangeScrollType.Exchange,
+    int MaxGrade = 0,
+    ItemComponent? RequireEquip = null);
+
+// The client's row types (UIItemExchangeScrollDialog::FUN_140f52880, uiitemexchangescrolldialog.cpp: 1, 2, 3).
+public enum ItemExchangeScrollType {
+    Exchange = 1,
+    Upgrade = 2,
+    Trading = 3,
+}
 
 public record ItemRemakeScrollTable(IReadOnlyDictionary<int, ItemRemakeScrollMetadata> Entries) : Table;
 
