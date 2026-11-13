@@ -11,7 +11,7 @@ namespace Maple2.Server.Game.PacketHandlers;
 
 // The card game page (UICardReverseGameDialog): one byte, 0 when the page opens (uicardreversegamedialog.cpp:162),
 // 1 for the shuffle button (:281), 2 for a card click (:293; the card clicked stays in the client). The game is the one
-// of the Ui object the player used (InteractObjectHandler).
+// of the Ui object the player used (InteractObjectHandler), in that object's field only.
 public class CardReverseGameHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.CardReverseGame;
 
@@ -26,8 +26,12 @@ public class CardReverseGameHandler : FieldPacketHandler {
         if (game == null) {
             return;
         }
+        if (game.Field != session.Field) {
+            session.CardReverseGame = null;
+            return;
+        }
 
-        var command = packet.Read<Command>();
+        var command = (Command) packet.ReadByte();
         switch (command) {
             case Command.Load:
                 game.Reset();
@@ -55,18 +59,20 @@ public class CardReverseGameHandler : FieldPacketHandler {
         if (session.Field == null) {
             return;
         }
-        int index = game.Pick();
+        int index = game.Draw();
         if (index < 0) {
             return;
         }
 
+        // The card's item is made before the pick is used up: a card whose item id names no item keeps the pick.
         BonusGameTable.Drop.Item card = game.Drop.Items[index];
-        session.Send(CardReverseGamePacket.Pick(index));
         Item? item = session.Field.ItemDrop.CreateItem(card.ItemComponent.ItemId, card.ItemComponent.Rarity, card.ItemComponent.Amount);
         if (item == null) {
             Logger.Warning("CardReverseGame: no item {ItemId} for card {Index} of game {GameId}", card.ItemComponent.ItemId, index, game.Game.Id);
             return;
         }
+        game.Open(index);
+        session.Send(CardReverseGamePacket.Pick(index));
         if (!session.Item.Inventory.Add(item, true)) {
             session.Item.MailItem(item);
         }

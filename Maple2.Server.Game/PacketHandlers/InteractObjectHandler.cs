@@ -165,11 +165,9 @@ public class InteractObjectHandler : FieldPacketHandler {
             case InteractType.Ui:
                 SendAnswer(session, interact);
                 // The card game page (UICardReverseGameDialog) asks its deck once open (0x86 0); the object's ui value
-                // names the BonusGame row of the deck, e.g. 31000002 value 6.
-                if (CardReverseGame.Of(interact.Value.Ui, session.ServerTableMetadata.BonusGameTable,
-                        itemId => CardReverseGame.Readable(session.ItemMetadata, itemId)) is { } cardGame) {
-                    session.CardReverseGame = cardGame;
-                }
+                // names the BonusGame row of the deck, e.g. 31000002 value 6. Any other Ui object closes the last game.
+                session.CardReverseGame = CardReverseGame.Of(interact.Value.Ui, session.ServerTableMetadata.BonusGameTable, session.Field,
+                    itemId => CardReverseGame.Readable(session.ItemMetadata, itemId));
                 break;
             case InteractType.Telescope:
                 SendAnswer(session, interact);

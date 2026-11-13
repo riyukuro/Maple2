@@ -20,10 +20,10 @@ public class CardReverseGameTests {
     private const int CoinId = 30000536;
     private static readonly int[] CardIds = [11200047, 20000302, 40100023, 20000004];
 
-    private static BonusGameTable Table(int[]? cards = null) {
+    private static BonusGameTable Table(int[]? cards = null, int type = CardReverseGame.GameType) {
         cards ??= CardIds;
         return new BonusGameTable(
-            new Dictionary<int, BonusGameTable.Game> { [GameId] = new(GameId, new ItemComponent(CoinId, 1, 1, ItemTag.None), []) },
+            new Dictionary<int, BonusGameTable.Game> { [GameId] = new(GameId, type, new ItemComponent(CoinId, 1, 1, ItemTag.None), []) },
             new Dictionary<int, BonusGameTable.Drop> {
                 [GameId] = new(GameId, cards.Select((id, i) => new BonusGameTable.Drop.Item(new ItemComponent(id, i == 0 ? 4 : 1, i + 1, ItemTag.None), 100 * (i + 1), false)).ToArray()),
             });
@@ -42,6 +42,7 @@ public class CardReverseGameTests {
         Assert.That(CardReverseGame.Of(new InteractObjectMetadataUi("CardReverseGameDialog", "7"), Table()), Is.Null);
         Assert.That(CardReverseGame.Of(new InteractObjectMetadataUi("CardReverseGameDialog", "6"), Table([])), Is.Null);
         Assert.That(CardReverseGame.Of(null, Table()), Is.Null);
+        Assert.That(CardReverseGame.Of(new InteractObjectMetadataUi("CardReverseGameDialog", "6"), Table(type: 4)), Is.Null, "a roulette row");
     }
 
     // No pick before a shuffle; a shuffle gives three, each a card not yet opened.
@@ -140,6 +141,52 @@ public class CardReverseGameTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    private static GameSession StartAtObject(TestGameSession test, int[]? cards = null) {
+        test.Store(TestGameSession.Metadata(CoinId), 2);
+        foreach (int id in CardIds) {
+            test.Register(TestGameSession.Metadata(id));
+        }
+        test.SetServerTable(Table(cards));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(63000031));
+        Use(session, test, Row(31000002, new InteractObjectMetadataUi("CardReverseGameDialog", "6")), "ab");
+        return session;
+    }
+
+    private static void Use(GameSession session, TestGameSession test, InteractObjectMetadata row, string entityId) {
+        test.AddInteract(row, new InteractUiObject(entityId, new Ms2SimpleUiObject(row.Id, Vector3.Zero, Vector3.Zero)));
+        new InteractObjectHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteInt(1);
+            writer.WriteString(entityId);
+        }));
+        test.TakeSent();
+    }
+
+    // The game belongs to the object's field: after a map change the page's messages are dropped and take no coin.
+    [Test]
+    public void Game_OtherField_SendsNothing() {
+        var test = new TestGameSession();
+        GameSession session = StartAtObject(test);
+        test.EnterMap(TestGameSession.Map(63000032));
+
+        Send(session, 0);
+        Send(session, 1);
+        Assert.That(Sent(test), Is.Empty);
+        Assert.That(Coins(session), Is.EqualTo(2));
+        Assert.That(session.CardReverseGame, Is.Null);
+    }
+
+    // Another Ui object used ends the card game.
+    [Test]
+    public void Game_OtherUiObject_EndsTheGame() {
+        var test = new TestGameSession();
+        GameSession session = StartAtObject(test);
+        Assert.That(session.CardReverseGame, Is.Not.Null);
+        Use(session, test, Row(31000001, new InteractObjectMetadataUi("RouletteDialog", "6")), "cd");
+        Assert.That(session.CardReverseGame, Is.Null);
+    }
+
     // The deck sent holds only the cards the client has item data for: an id the server has no item of, or an item the
     // played client lacks (40000026 on a KR server pack with an older client), is left out, and the pick indices are
     // those of the cards sent. A deck with no such card is no game.
@@ -147,40 +194,39 @@ public class CardReverseGameTests {
     public void Of_LeavesOutCardsTheClientCannotRead() {
         var ui = new InteractObjectMetadataUi("CardReverseGameDialog", "6");
         int[] cards = [CardIds[0], 40000026, 99999999, CardIds[1]];
-        CardReverseGame game = CardReverseGame.Of(ui, Table(cards), id => id != 40000026 && id != 99999999)!;
+        CardReverseGame game = CardReverseGame.Of(ui, Table(cards), readable: id => id != 40000026 && id != 99999999)!;
         Assert.That(game.Drop.Items.Select(card => card.ItemComponent.ItemId), Is.EqualTo(new[] { CardIds[0], CardIds[1] }));
         game.Shuffle();
         Assert.That(new[] { game.Pick(), game.Pick() }, Is.EquivalentTo(new[] { 0, 1 }));
-        Assert.That(CardReverseGame.Of(ui, Table([40000026]), id => id != 40000026), Is.Null);
+        Assert.That(CardReverseGame.Of(ui, Table([40000026]), readable: id => id != 40000026), Is.Null);
     }
 
     // At the object: a card with no server item, or an item marked as not in the played client, is not in the deck sent.
     [Test]
     public void Game_DeckLeavesOutItemsNotInThePlayedClient() {
         var test = new TestGameSession();
-        test.Store(TestGameSession.Metadata(CoinId), 2);
-        foreach (int id in CardIds) {
-            test.Register(TestGameSession.Metadata(id));
-        }
         ItemMetadata absent = TestGameSession.Metadata(40000026);
         test.Register(absent with { Property = absent.Property with { NotInPlayedClient = true } });
-        test.SetServerTable(Table([CardIds[0], 40000026, 99999999, CardIds[1]]));
-        GameSession session = test.Start();
-        test.EnterMap(TestGameSession.Map(63000031));
-        test.AddInteract(Row(31000002, new InteractObjectMetadataUi("CardReverseGameDialog", "6")),
-            new InteractUiObject("ab", new Ms2SimpleUiObject(31000002, Vector3.Zero, Vector3.Zero)));
-        new InteractObjectHandler().Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteByte(12);
-            writer.WriteInt(1);
-            writer.WriteString("ab");
-        }));
-        test.TakeSent();
-
+        GameSession session = StartAtObject(test, [CardIds[0], 40000026, 99999999, CardIds[1]]);
         Send(session, 0);
         List<byte[]> sent = Sent(test);
         Assert.That(sent, Has.Count.EqualTo(1));
         Assert.That(BitConverter.ToInt32(sent[0], 11), Is.EqualTo(2), "two cards");
         Assert.That(session.CardReverseGame!.Drop.Items.Select(card => card.ItemComponent.ItemId), Is.EqualTo(new[] { CardIds[0], CardIds[1] }));
+    }
+
+    // A card whose item cannot be made keeps the pick: the paid shuffle still opens three cards.
+    [Test]
+    public void Pick_UnknownItem_KeepsThePick() {
+        var test = new TestGameSession();
+        GameSession session = StartAtObject(test);
+        BonusGameTable table = Table([99999999]);
+        session.CardReverseGame = new CardReverseGame(table.Games[GameId], table.Drops[GameId]) { Field = session.Field };
+        Send(session, 1);
+        Sent(test);
+        Send(session, 2);
+        Assert.That(Sent(test), Is.Empty);
+        Assert.That(session.CardReverseGame!.Picks, Is.EqualTo(CardReverseGame.PicksPerShuffle));
     }
 
     // The page's messages from a player who used no card game object are dropped.

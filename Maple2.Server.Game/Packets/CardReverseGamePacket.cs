@@ -17,7 +17,7 @@ public static class CardReverseGamePacket {
     // The cost item and count, then each card: item id, rank (byte), count (:187-196).
     public static ByteWriter Deck(BonusGameTable.Game game, BonusGameTable.Drop drop) {
         var pWriter = Packet.Of(SendOp.CardReverseGame);
-        pWriter.Write<Command>(Command.Deck);
+        pWriter.WriteByte((byte) Command.Deck);
         pWriter.WriteInt(game.ConsumeItem.ItemId);
         pWriter.WriteInt(game.ConsumeItem.Amount);
         pWriter.WriteInt(drop.Items.Length);
@@ -32,14 +32,14 @@ public static class CardReverseGamePacket {
     // The cards are shuffled: three picks (:224-233).
     public static ByteWriter Shuffle() {
         var pWriter = Packet.Of(SendOp.CardReverseGame);
-        pWriter.Write<Command>(Command.Shuffle);
+        pWriter.WriteByte((byte) Command.Shuffle);
         return pWriter;
     }
 
     // The deck index of the card the pick opened (:236-251).
     public static ByteWriter Pick(int index) {
         var pWriter = Packet.Of(SendOp.CardReverseGame);
-        pWriter.Write<Command>(Command.Pick);
+        pWriter.WriteByte((byte) Command.Pick);
         pWriter.WriteInt(index);
         return pWriter;
     }
@@ -47,7 +47,7 @@ public static class CardReverseGamePacket {
     // Result 0: too few of the cost item, the box naming it (string 0xc3f), the shuffle button on again (:252-262).
     public static ByteWriter LackCost() {
         var pWriter = Packet.Of(SendOp.CardReverseGame);
-        pWriter.Write<Command>(Command.Result);
+        pWriter.WriteByte((byte) Command.Result);
         pWriter.WriteByte(0);
         return pWriter;
     }

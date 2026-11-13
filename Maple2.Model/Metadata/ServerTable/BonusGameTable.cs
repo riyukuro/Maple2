@@ -7,8 +7,10 @@ public record BonusGameTable(
     IReadOnlyDictionary<int, BonusGameTable.Drop> Drops) : ServerTable {
 
 
+    // Type: the row's gameType (1 and 4 the roulettes, 5 the card game of CardReverseGameDialog).
     public record Game(
         int Id,
+        int Type,
         ItemComponent ConsumeItem,
         Game.Slot[] Slots) {
 

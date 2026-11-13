@@ -560,6 +560,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
             bonusGames.Add(id, new BonusGameTable.Game(
                 Id: id,
+                Type: type,
                 ConsumeItem: new ItemComponent(
                     ItemId: bonusGame.consumeItemID,
                     Rarity: 1,
