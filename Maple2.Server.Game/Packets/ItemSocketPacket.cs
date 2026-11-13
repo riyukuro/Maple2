@@ -32,7 +32,10 @@ public static class ItemSocketPacket {
         pWriter.WriteBool(success);
         pWriter.WriteLong(item.Uid);
         if (success) {
-            pWriter.WriteByte(item.Socket.MaxSlots);
+            // The row of the socket just unlocked, from 0 (FUN_140629140 m_nByte, "unlockSocketIndex"): the unlock
+            // page's setSocket plays the unlock effect on the row with this index, and the open sockets come first.
+            // Called after UnlockSlots++, so the new socket is the last open one. MaxSlots matched no row.
+            pWriter.WriteByte((byte) (item.Socket.UnlockSlots - 1));
             pWriter.WriteClass<ItemSocket>(item.Socket);
             // Used for mutating item trade info?
             pWriter.WriteBool(item.Transfer != null);
