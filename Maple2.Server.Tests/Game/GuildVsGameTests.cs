@@ -51,6 +51,21 @@ public class GuildVsGameTests {
         Assert.That(state.TakeReward(GuildVsGameState.NoTeam, "exp"), Is.False);
     }
 
+    // After the end (GuildVsGameEndGame) no round scores and no reward is given.
+    [Test]
+    public void NothingAfterTheEnd() {
+        var state = new GuildVsGameState();
+        state.Join(10);
+        state.Join(20);
+        state.ScoreRound(2, 1, 5);
+        state.End();
+
+        Assert.That(state.ScoreRound(3, 1, 5), Is.EqualTo(GuildVsGameState.NoTeam));
+        Assert.That(state.Score(GuildVsGameState.BlueTeam), Is.EqualTo(5));
+        Assert.That(state.TakeReward(GuildVsGameState.BlueTeam, "exp"), Is.False);
+        Assert.That(state.TakeReward(GuildVsGameState.RedTeam, "contribution"), Is.False);
+    }
+
     [Test]
     public void NumberMeshesShowEachDigit() {
         (int[] shown, int[] hidden) = TriggerContext.NumberMeshes(7, 1000, 2);

@@ -252,4 +252,30 @@ public class GuildFundTests {
         Guild stored = db.GetGuild(guild.Id)!;
         Assert.That((stored.Experience, stored.Funds), Is.EqualTo((40, 120)));
     }
+
+    // The amounts the guild got, as the Game notices them (the guild vs game's Guild 123): the fund stops at the
+    // level's fund max (1000 from 100: 900 of 950), the exp is whole; a stranger gets nothing added.
+    [Test]
+    public void AddExpFund_GivesWhatWasAdded() {
+        Assert.That(manager.AddExpFund(member.CharacterId, 7, 950, out int addedExp, out int addedFund), Is.EqualTo(GuildError.none));
+        Assert.That((addedExp, addedFund), Is.EqualTo((7, 900)));
+        Assert.That(StoredFunds(), Is.EqualTo(1000));
+
+        Assert.That(manager.AddExpFund(member.CharacterId, 0, 10, out addedExp, out addedFund), Is.EqualTo(GuildError.none));
+        Assert.That((addedExp, addedFund), Is.EqualTo((0, 0)));
+
+        Assert.That(manager.AddExpFund(Stranger, 7, 10, out addedExp, out addedFund), Is.EqualTo(GuildError.s_guild_err_null_member));
+        Assert.That((addedExp, addedFund), Is.EqualTo((0, 0)));
+    }
+
+    // The guild vs game's contribution: added to the member's week and total; refused for a stranger or no amount.
+    [Test]
+    public void AddContribution_AddsToTheWeekAndTotal() {
+        Assert.That(manager.AddContribution(member.CharacterId, 12), Is.EqualTo(GuildError.none));
+        Assert.That((member.WeeklyContribution, member.TotalContribution), Is.EqualTo((12, 12)));
+
+        Assert.That(manager.AddContribution(Stranger, 12), Is.EqualTo(GuildError.s_guild_err_null_member));
+        Assert.That(manager.AddContribution(member.CharacterId, 0), Is.Not.EqualTo(GuildError.none));
+        Assert.That((member.WeeklyContribution, member.TotalContribution), Is.EqualTo((12, 12)));
+    }
 }

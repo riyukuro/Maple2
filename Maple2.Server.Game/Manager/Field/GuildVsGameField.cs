@@ -22,6 +22,8 @@ public sealed class GuildVsGameState {
 
     // The team that scored the last round: 0 when the round was even; -1 before the first round.
     public int LastScorer { get; private set; } = -1;
+    // After GuildVsGameEndGame (GameCancel, Quit): no more rounds or rewards. A room plays one game (the script's
+    // CreateFieldGame has no reset).
     public bool Ended { get; private set; }
 
     // Chosen here: the teams by the guilds' arrival, the first guild to arrive blue and the second red; a player of
@@ -62,6 +64,9 @@ public sealed class GuildVsGameState {
     // Chosen here: a round (GuildVsGameScoreByUser) goes to the team with more players left in the box, which gains
     // the score; an even count gives no team the score. Returns the scorer, 0 for an even round.
     public int ScoreRound(int blueCount, int redCount, int score) {
+        if (Ended) {
+            return NoTeam;
+        }
         int scorer = blueCount > redCount ? BlueTeam : redCount > blueCount ? RedTeam : NoTeam;
         if (scorer != NoTeam) {
             scores[scorer] += score;
@@ -74,7 +79,7 @@ public sealed class GuildVsGameState {
     public int Winner => scores[BlueTeam] > scores[RedTeam] ? BlueTeam : scores[RedTeam] > scores[BlueTeam] ? RedTeam : NoTeam;
 
     // Whether this reward of the team is still to give; true once per team and kind.
-    public bool TakeReward(int team, string kind) => IsTeam(team) && rewarded.Add((team, kind));
+    public bool TakeReward(int team, string kind) => !Ended && IsTeam(team) && rewarded.Add((team, kind));
 
     public void End() => Ended = true;
 
@@ -120,43 +125,37 @@ public sealed class GuildVsGameField {
         return field.Players.Values.Where(player => player.TagId == team && player.Session.Guild.Guild?.Id == guildId).ToList();
     }
 
+    // The players in the box of each team who are still in its guild, as the rewards count them.
     public void ScoreByUser(TriggerBox box, int score) {
-        int blue = field.Players.Values.Count(player => player.TagId == GuildVsGameState.BlueTeam && box.Contains(player.Position));
-        int red = field.Players.Values.Count(player => player.TagId == GuildVsGameState.RedTeam && box.Contains(player.Position));
+        int blue = TeamPlayers(GuildVsGameState.BlueTeam).Count(player => box.Contains(player.Position));
+        int red = TeamPlayers(GuildVsGameState.RedTeam).Count(player => box.Contains(player.Position));
         int scorer = State.ScoreRound(blue, red, score);
         logger.Debug("Guild vs game round: blue {Blue}, red {Red}, scorer {Scorer}", blue, red, scorer);
     }
 
     // A reward of the team's guild (table/guildproperty.xml's mini game values at the guild's level): exp and fund
-    // for the guild, added by the World and noticed to the team (Guild 0x7b); guildCoin as guild coin items to each
-    // team player here.
-    public void GiveReward(string type, int team, bool isWin) {
+    // for the guild, added by the World off the field's thread and noticed to the team (Guild 0x7b) with what the
+    // World added (the fund stops at the guild's fund max; nothing added, no notice); guildCoin as guild coin items
+    // to each team player here. Returns the World's add, for tests.
+    public Task? GiveReward(string type, int team, bool isWin) {
         List<FieldPlayer> players = TeamPlayers(team);
         Guild? guild = players.FirstOrDefault()?.Session.Guild.Guild;
         if (guild == null || !State.TakeReward(team, type)) {
-            return;
+            return null;
         }
         GuildTable.Property? property = GuildRules.PropertyAt(field.TableMetadata.GuildTable.Properties, guild.Experience);
         if (property == null) {
-            return;
+            return null;
         }
 
         switch (type) {
             case "exp": {
                     int exp = isWin ? property.WinMiniGameExp : property.LoseMiniGameExp;
-                    if (exp > 0) {
-                        players[0].Session.Guild.AddExpFund(exp, 0);
-                        Send(players, GuildPacket.VsGameReward(RewardExp, exp));
-                    }
-                    break;
+                    return exp > 0 ? Notice(players, players[0].Session.Guild.AddExpFundAsync(exp, 0), RewardExp) : null;
                 }
             case "fund": {
                     int fund = isWin ? property.WinMiniGameFund : property.LoseMiniGameFund;
-                    if (fund > 0) {
-                        players[0].Session.Guild.AddExpFund(0, fund);
-                        Send(players, GuildPacket.VsGameReward(RewardFund, fund));
-                    }
-                    break;
+                    return fund > 0 ? Notice(players, players[0].Session.Guild.AddExpFundAsync(0, fund), RewardFund) : null;
                 }
             case "guildCoin": {
                     int coin = isWin ? property.WinMiniGameCoin : property.LoseMiniGameCoin;
@@ -175,7 +174,23 @@ public sealed class GuildVsGameField {
                 logger.Warning("Unknown guild vs game reward type {Type}", type);
                 break;
         }
+        return null;
     }
+
+    private static Task? Notice(List<FieldPlayer> players, Task<(int Exp, int Fund)?>? add, byte kind) {
+        return add?.ContinueWith(task => {
+            if (task.Result is not var (exp, fund)) {
+                return;
+            }
+            int amount = kind == RewardExp ? exp : fund;
+            if (amount > 0) {
+                Send(players, GuildPacket.VsGameReward(kind, amount));
+            }
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    // GuildVsGameEndGame: the game takes no more rounds or rewards.
+    public void End() => State.End();
 
     // Each team player here earns the guild contribution of a win or a loss (table/guildcontribution.xml).
     public void GiveContribution(int team, bool isWin) {

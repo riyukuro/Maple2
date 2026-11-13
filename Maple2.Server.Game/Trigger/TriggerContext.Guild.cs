@@ -35,7 +35,7 @@ public partial class TriggerContext {
     // The guild vs game of 66200001_gd (GuildVsGameField). Each action is a no-op on a field without the game.
     public void GuildVsGameEndGame() {
         DebugLog("[GuildVsGameEndGame]");
-        Field.GuildVsGame?.State.End();
+        Field.GuildVsGame?.End();
     }
 
     public void GuildVsGameGiveContribution(int teamId, bool isWin, string description) {

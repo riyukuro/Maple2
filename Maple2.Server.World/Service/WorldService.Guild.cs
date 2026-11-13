@@ -595,12 +595,12 @@ public partial class WorldService {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
         }
 
-        GuildError error = manager.AddExpFund(requestorId, add.Exp, add.Fund);
+        GuildError error = manager.AddExpFund(requestorId, add.Exp, add.Fund, out int addedExp, out int addedFund);
         if (error != GuildError.none) {
             return new GuildResponse { Error = (int) error };
         }
 
-        return new GuildResponse { GuildId = add.GuildId };
+        return new GuildResponse { GuildId = add.GuildId, AddedExp = addedExp, AddedFund = addedFund };
     }
 
     private GuildResponse SpendGuildFund(long requestorId, GuildRequest.Types.SpendFund spend) {

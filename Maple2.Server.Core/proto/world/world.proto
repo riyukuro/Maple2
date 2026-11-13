@@ -419,6 +419,9 @@ message GuildResponse {
   // donation: the member's count of today and the time of the last one
   int32 donation_count = 8;
   int64 donation_time = 9;
+  // add exp fund: what the guild got (the fund stops at the guild level's fund max)
+  int32 added_exp = 10;
+  int32 added_fund = 11;
 }
 
 message GroupChatInfoRequest {

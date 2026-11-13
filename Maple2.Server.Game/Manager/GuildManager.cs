@@ -595,6 +595,35 @@ public class GuildManager : IDisposable {
         }
     }
 
+    // The same off the caller's thread (a field's trigger): the exp and the fund the World added, null when it
+    // refused or failed.
+    public Task<(int Exp, int Fund)?>? AddExpFundAsync(long exp, long fund) {
+        if (Guild == null || (exp <= 0 && fund <= 0)) {
+            return null;
+        }
+
+        var request = new GuildRequest {
+            RequestorId = session.CharacterId,
+            AddExpFund = new GuildRequest.Types.AddExpFund {
+                GuildId = Guild.Id,
+                Exp = (int) Math.Clamp(exp, 0, int.MaxValue),
+                Fund = (int) Math.Clamp(fund, 0, int.MaxValue),
+            },
+        };
+        return Task.Run<(int Exp, int Fund)?>(() => {
+            try {
+                GuildResponse response = session.World.Guild(request);
+                if (response.Error != 0) {
+                    return null;
+                }
+                return (response.AddedExp, response.AddedFund);
+            } catch (Exception ex) {
+                logger.Warning(ex, "Guild exp and fund of {CharacterId} failed", session.CharacterId);
+                return null;
+            }
+        });
+    }
+
     // Guild 56 (CGuildManager::FUN_1413c3780, guildmanager.cpp:2533): the client copies the event over the
     // one it holds and prints s_guild_notify_open_event_user.
     public bool OpenEvent(string requestorName, GuildEvent opened) {

@@ -472,7 +472,12 @@ public class GuildManager : IDisposable {
     // A guild quest's reward for the guild (completeReward guildExp and guildFund), from the member who completed it.
     // As a check-in's, it is added under the guild lock and saved with the guild; the fund stops at the level's
     // fundMax (GuildRules.AddFund), the ceiling the client's donation check keeps it under.
-    public GuildError AddExpFund(long requestorId, int exp, int fund) {
+    public GuildError AddExpFund(long requestorId, int exp, int fund) => AddExpFund(requestorId, exp, fund, out _, out _);
+
+    // The exp and the fund the guild got: the fund stops at the guild level's fund max.
+    public GuildError AddExpFund(long requestorId, int exp, int fund, out int addedExp, out int addedFund) {
+        addedExp = 0;
+        addedFund = 0;
         if (!Guild.Members.ContainsKey(requestorId)) {
             return GuildError.s_guild_err_null_member;
         }
@@ -483,8 +488,11 @@ public class GuildManager : IDisposable {
         int guildExp;
         int guildFund;
         lock (guildLock) {
-            Guild.Experience += Math.Max(exp, 0);
+            addedExp = Math.Max(exp, 0);
+            Guild.Experience += addedExp;
+            int oldFund = Guild.Funds;
             Guild.Funds = GuildRules.AddFund(Guild.Funds, fund, GuildProperty().FundMax);
+            addedFund = Math.Max(Guild.Funds - oldFund, 0);
             guildExp = Guild.Experience;
             guildFund = Guild.Funds;
             // Stored now, as the check-in.
