@@ -346,8 +346,9 @@ public class ItemSocketHandler : FieldPacketHandler {
             ItemGemstone itemGemstone = item.Socket!.Sockets[socketSlot]!;
             // The price is taken only for a gemstone that exists and has a slot to go to.
             Item? gem = session.Field?.ItemDrop.CreateItem(itemGemstone.ItemId, rarity: Constant.GemstoneGrade);
+            SocketPrice? price = null;
             switch (GemstoneUnequipRules.TakeOut(gem != null, gem != null && session.Item.Inventory.CanAdd(gem),
-                        () => ConsumeGemstoneUnequipIngredients(itemGemstone))) {
+                        () => TakeGemstoneUnequipMesos(itemGemstone, item.Metadata.Property.SkinType, out price))) {
                 case GemstoneUnequipRules.Result.NoGemstone:
                     session.Send(ItemSocketPacket.Error(11, error: s_itemsocketsystem_error_server_default));
                     return;
@@ -358,8 +359,14 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return; // the price check sent its own error
             }
 
+            // The mesos are taken, then the gem goes to the bag, then the fragments (checked under this lock).
             if (!session.Item.Inventory.Add(gem!, true)) {
-                return; // Failed to add to inventory
+                price!.ReturnMesos(session);
+                session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
+                return;
+            }
+            if (!price!.TakeItems(session)) {
+                Logger.Fatal("Failed to take the take-off price of gem {ItemUid} after its check", gem!.Uid);
             }
 
             item.Socket!.Sockets[socketSlot] = null;
@@ -369,15 +376,17 @@ public class ItemSocketHandler : FieldPacketHandler {
         }
 
         #region Local Function
-        bool ConsumeGemstoneUnequipIngredients(ItemGemstone gemstone) {
+        // The client's price (FUN_1406284f0 with the gem's level and the item's skin type: free for an outfit).
+        bool TakeGemstoneUnequipMesos(ItemGemstone gemstone, int skinType, out SocketPrice? price) {
+            price = null;
             if (!TableMetadata.GemstoneUpgradeTable.Entries.TryGetValue(gemstone.ItemId, out GemstoneUpgradeTable.Entry? entry)) {
                 session.Send(ItemSocketPacket.Error(code: 12, error: s_itemsocketsystem_error_server_default));
                 return false;
             }
 
-            (string tag, int amount) = Lua.CalcGetGemStonePutOffPrice(Constant.GemstoneGrade, (ushort) entry.Level, 0);
-            var ingredient = new IngredientInfo(Enum.Parse<ItemTag>(tag), amount);
-            if (!session.Item.Inventory.Consume([ingredient])) {
+            (string tag, int amount) = Lua.CalcGetGemStonePutOffPrice(Constant.GemstoneGrade, (ushort) entry.Level, skinType);
+            price = SocketPrice.Check(session, [new IngredientInfo(Enum.Parse<ItemTag>(tag), amount)]);
+            if (price == null || !price.TakeMesos(session)) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_lack_price));
                 return false;
             }
@@ -555,4 +564,72 @@ public class ItemSocketHandler : FieldPacketHandler {
     }
 
     private static int FilledSockets(ItemSocket socket) => socket.Sockets.Count(gem => gem != null);
+
+    // A socket page's price (the unlock, the gem upgrade and the take-off). The client lets mesos make up crystal
+    // fragments (ItemTagKey 96, CrystalPiece) the player is short of, 1000 for each, and sends the request when the
+    // mesos cover them (FUN_140526320; RequestUnlock, FUN_140f76970, FUN_140f71530); any other tag must be held in
+    // full. Checked first under lock(session.Item), so the items it takes stay held; the mesos are taken first (the
+    // one step another thread can change) and given back once if a later step fails.
+    private sealed class SocketPrice {
+        public const long MesosPerChip = 1000;
+
+        private readonly IngredientInfo[] items;
+        public long Mesos { get; }
+
+        private SocketPrice(IngredientInfo[] items, long mesos) {
+            this.items = items;
+            Mesos = mesos;
+        }
+
+        public static SocketPrice? Check(GameSession session, IEnumerable<IngredientInfo> price) {
+            var items = new List<IngredientInfo>();
+            long mesos = 0;
+            foreach (IngredientInfo ingredient in price) {
+                if (ingredient.Amount <= 0) {
+                    continue;
+                }
+                long held = session.Item.Inventory.Find(ingredient.Tag).Sum(item => (long) item.Amount);
+                if (held >= ingredient.Amount) {
+                    items.Add(ingredient);
+                    continue;
+                }
+                if (ingredient.Tag != ItemTag.CrystalPiece) {
+                    return null;
+                }
+                mesos += (ingredient.Amount - held) * MesosPerChip;
+                if (held > 0) {
+                    items.Add(new IngredientInfo(ingredient.Tag, (int) held));
+                }
+            }
+            if (session.Currency.Meso < mesos) {
+                return null;
+            }
+            return new SocketPrice(items.ToArray(), mesos);
+        }
+
+        public bool TakeMesos(GameSession session) {
+            return Mesos == 0 || session.Currency.TryTakeMeso(Mesos);
+        }
+
+        public void ReturnMesos(GameSession session) {
+            session.Currency.ReturnMeso(Mesos);
+        }
+
+        // The items checked, still held under the same lock.
+        public bool TakeItems(GameSession session) {
+            return items.Length == 0 || session.Item.Inventory.Consume(items);
+        }
+
+        // Mesos, then items; the mesos come back when the items cannot be taken.
+        public bool Take(GameSession session) {
+            if (!TakeMesos(session)) {
+                return false;
+            }
+            if (!TakeItems(session)) {
+                ReturnMesos(session);
+                return false;
+            }
+            return true;
+        }
+    }
 }
