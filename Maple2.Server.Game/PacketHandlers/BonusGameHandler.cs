@@ -86,6 +86,7 @@ public class BonusGameHandler : FieldPacketHandler {
 
 
         IList<KeyValuePair<Item, int>> rewardedItems = new List<KeyValuePair<Item, int>>(); // Item, Index on wheel
+        List<(BonusGameTable.Drop.Item Drop, Item Won)> wins = [];
         for (int spin = 0; spin < spins; spin++) {
             (BonusGameTable.Drop.Item DropItem, int Index) result = dropItems.Get();
             Item? createdItem = session.Field?.ItemDrop.CreateItem(result.DropItem.ItemComponent.ItemId, result.DropItem.ItemComponent.Rarity, result.DropItem.ItemComponent.Amount);
@@ -102,9 +103,24 @@ public class BonusGameHandler : FieldPacketHandler {
                 session.Item.MailItem(createdItem);
             }
             rewardedItems.Add(new KeyValuePair<Item, int>(createdItem, result.Index));
+            wins.Add((result.DropItem, createdItem));
         }
 
         session.Send(BonusGamePacket.Spin(rewardedItems));
         session.BonusGameId = 0;
+        SendDropNotices(session, wins);
+    }
+
+    // A won item whose BonusGameDrop row has notice="1" is announced with ItemDropNotice (0xBA, client
+    // CSceneStateGame::OnItemDropNotice: string 0x342 with the player's name and the item link). The notice is sent
+    // after the item is held (in the bag or the mail), so its link carries the item's uid.
+    // Chosen here: the notice goes to every player of the winner's channel; no data or client code names who hears it.
+    internal static void SendDropNotices(GameSession session, IEnumerable<(BonusGameTable.Drop.Item Drop, Item Won)> wins) {
+        string name = session.Player.Value.Character.Name;
+        foreach ((BonusGameTable.Drop.Item drop, Item won) in wins) {
+            if (drop.Notice) {
+                session.ChannelBroadcast(ItemDropNoticePacket.Notice(name, won));
+            }
+        }
     }
 }
