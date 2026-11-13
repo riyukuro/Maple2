@@ -39,6 +39,24 @@ public static class StatsPacket {
         return pWriter;
     }
 
+    // The stat lists of a heal or a dot on any actor. A player's client reads a list (PCBase/PC/MyPC::vfunc_90: u8 count,
+    // count x (u8 type, 3 values)), but an npc's reads one stat: CNpc::vfunc_90 (npcactorandvibrate.cpp:2253) takes the
+    // byte as a mode, 1 = (u8 type, 3 values), anything else = 3 x (long health, int attack speed). Two stats in one
+    // packet would be read as the second form, so a non-player gets one packet per stat.
+    public static IEnumerable<ByteWriter> Updates(IActor entity, IReadOnlyList<BasicAttribute> attributes) {
+        if (attributes.Count == 0) {
+            yield break;
+        }
+        if (entity is FieldPlayer) {
+            yield return Update(entity, attributes.ToArray());
+            yield break;
+        }
+        foreach (BasicAttribute attribute in attributes) {
+            yield return Update(entity, attribute);
+        }
+    }
+
+    // Players only for more than one stat (see Updates).
     public static ByteWriter Update(IActor entity, params BasicAttribute[] attributes) {
         var pWriter = Packet.Of(SendOp.Stat);
         pWriter.WriteInt(entity.ObjectId);

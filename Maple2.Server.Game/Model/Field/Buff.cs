@@ -338,7 +338,9 @@ public class Buff : IUpdatable, IByteSerializable {
         }
 
         if (updated.Count > 0) {
-            Field.Broadcast(StatsPacket.Update(Owner, updated.ToArray()));
+            foreach (ByteWriter packet in StatsPacket.Updates(Owner, updated)) {
+                Field.Broadcast(packet);
+            }
         }
         Field.Broadcast(SkillDamagePacket.Heal(record));
     }
@@ -389,7 +391,9 @@ public class Buff : IUpdatable, IByteSerializable {
         }
 
         if (targetUpdated.Count > 0) {
-            Field.Broadcast(StatsPacket.Update(Owner, targetUpdated.ToArray()));
+            foreach (ByteWriter packet in StatsPacket.Updates(Owner, targetUpdated)) {
+                Field.Broadcast(packet);
+            }
         }
         Field.Broadcast(SkillDamagePacket.DotDamage(record));
         if (record.RecoverHp != 0) {
