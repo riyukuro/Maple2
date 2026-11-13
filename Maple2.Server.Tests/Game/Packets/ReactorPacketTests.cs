@@ -46,6 +46,19 @@ public class ReactorPacketTests {
             Is.EqualTo(new byte[] { 4, 1, 0, 0, 0, 4, 3, 2, 1, 3, 0 }));
     }
 
+    // The connected players go behind a u8 count: never more ids than the count says (ReactorRules.MaxConnected).
+    [Test]
+    public void UpdateState_CountsAtMost255Players() {
+        long[] players = new long[300];
+        for (int i = 0; i < players.Length; i++) {
+            players[i] = i + 1;
+        }
+        byte[] bytes = Bytes(ReactorPacket.UpdateState(77, 2, 0, players));
+        Assert.That(bytes[17], Is.EqualTo(255));
+        Assert.That(bytes.Length, Is.EqualTo(1 + 4 + 4 + 8 + 1 + 255 * 8 + 4));
+        Assert.That(BitConverter.ToInt64(bytes, 18 + 254 * 8), Is.EqualTo(255));
+    }
+
     [Test]
     public void GameEvent_ReactorIsNamedAndLaidOutForTheClient() {
         var metadata = new GameEventMetadata(900080, GameEventType.reactor, DateTime.UnixEpoch, DateTime.UnixEpoch.AddSeconds(1000),
