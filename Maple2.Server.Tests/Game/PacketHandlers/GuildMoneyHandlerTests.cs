@@ -25,7 +25,7 @@ using GuildManager = Maple2.Server.Game.Manager.GuildManager;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // The guild requests that cost meso, on the channel: a refusal takes nothing and asks the world nothing, and a
-// refusal by the world gives the meso back.
+// refusal by the world gives the meso back. Also the guild vs game join's refusals on the channel.
 public class GuildMoneyHandlerTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int DonateMeso = 10000;
@@ -104,6 +104,28 @@ public class GuildMoneyHandlerTests {
 
     private string[] GuildAnswers() => test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild).Select(Convert.ToHexString).ToArray();
     private static string Hex(ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+
+    // Guild 120 (the guild vs game's Enter) from where a match move is refused: dead or in a dungeon. The World is
+    // not asked and the client's open game is cleared (Guild 119 with 0).
+    [TestCase(false)]
+    [TestCase(true)]
+    public void VsGameJoin_RefusedWhereTheMoveIs(bool dungeon) {
+        Join();
+        if (dungeon) {
+            test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
+        } else {
+            typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", Any)!.SetValue(session.Player, true);
+        }
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(120)));
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.GuildRequests, Is.Empty);
+            Assert.That(test.World.Moves, Is.Empty);
+            Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.VsGameOpen(0)) }));
+        });
+    }
 
     // A donation the channel refuses: no count, more than the day allows, more meso than the player has, or no
     // guild. No meso is taken and the world is not asked.

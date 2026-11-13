@@ -1324,6 +1324,12 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (session.Field?.GuildVsGame is { MatchId: > 0 }) {
             return;
         }
+        // As the rank duel and Maple Survival joins: no move while dead, from a dungeon, a refused instance or a
+        // rank duel or arena field (the World is not asked).
+        if (!PvpHandler.CanLeave(session)) {
+            session.Send(GuildPacket.VsGameOpen(0));
+            return;
+        }
 
         GuildResponse? response = VsGameRequest(session, new GuildRequest {
             RequestorId = session.CharacterId,

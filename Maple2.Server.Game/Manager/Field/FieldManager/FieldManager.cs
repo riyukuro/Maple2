@@ -1063,6 +1063,9 @@ public partial class FieldManager : IField {
         }
         // An arena match whose field goes before its zone ended: the World lets its characters go.
         Arena?.Close();
+        // A guild vs game match whose field goes before its game ended (no one came, or all left): the World frees
+        // both guilds now, not at the match's lifetime.
+        GuildVsGame?.End();
 
         logger.Debug("Disposing FieldManager {MapId}", MapId);
 

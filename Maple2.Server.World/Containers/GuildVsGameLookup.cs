@@ -1,4 +1,4 @@
-using Maple2.Database.Storage;
+﻿using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Event;
@@ -48,11 +48,12 @@ public sealed class GuildVsGameLookup : IDisposable {
     private int nextMatchId;
 
     public GuildVsGameLookup(ChannelClientLookup channelClients, GuildLookup guildLookup, ServerTableMetadataStorage serverTableMetadata)
-        : this(ChannelField(channelClients), GuildNotify(guildLookup), EventOpen(serverTableMetadata), () => Environment.TickCount64, true) {
+        : this(ChannelField(channelClients), GuildNotify(guildLookup), EventOpen(serverTableMetadata), () => Environment.TickCount64, true, FirstIdFromClock()) {
         channelClients.ChannelInactive += EndChannel;
     }
 
-    public GuildVsGameLookup(MakeField makeField, Notify notify, Func<bool> isOpen, Func<long> tick, bool tickTimer = false) {
+    public GuildVsGameLookup(MakeField makeField, Notify notify, Func<bool> isOpen, Func<long> tick, bool tickTimer = false, int lastMatchId = 0) {
+        nextMatchId = lastMatchId;
         this.makeField = makeField;
         this.notify = notify;
         this.isOpen = isOpen;
@@ -65,6 +66,10 @@ public sealed class GuildVsGameLookup : IDisposable {
     public void Dispose() {
         timer?.Dispose();
     }
+
+    // The ids of a World start begin after the clock's seconds (below 2^30), so a match field left on a channel from
+    // an earlier start (its VsGameEnd) cannot end a new match of the same id.
+    private static int FirstIdFromClock() => (int) (DateTimeOffset.UtcNow.ToUnixTimeSeconds() & 0x3FFFFFFF);
 
     // The task of the last match made (tests wait on it).
     public Task LastStep { get; private set; } = Task.CompletedTask;
@@ -148,6 +153,14 @@ public sealed class GuildVsGameLookup : IDisposable {
     // The timer: when no GuildVsGameOpen event is on, the tickets are canceled (Guild 117); a match past its
     // lifetime ends.
     public void Tick() {
+        try {
+            TickInternal();
+        } catch (Exception ex) {
+            logger.Error(ex, "Guild vs game tick failed");
+        }
+    }
+
+    private void TickInternal() {
         List<long> canceled = [];
         List<Match> expired;
         lock (mutex) {

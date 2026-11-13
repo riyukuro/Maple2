@@ -68,6 +68,23 @@ public class GuildVsGameLookupTests {
         Assert.That(lookup.Register(1), Is.EqualTo(GuildError.s_guild_err_isNotVsGameTime));
     }
 
+    // A World start's ids follow the id it is given (the clock's seconds in the server), so an old field's end
+    // names no match of this start.
+    [Test]
+    public void IdsFollowTheFirstId() {
+        using var seeded = new GuildVsGameLookup((matchId, blue, red) => {
+            made.Add((matchId, blue, red));
+            return (MigrationError.ok, 2, 66200001, 30);
+        }, (guildId, notice) => notices.Add((guildId, notice)), () => open, () => tick, lastMatchId: 500000);
+        seeded.Register(1);
+        seeded.Register(2);
+        seeded.LastStep.Wait();
+        seeded.End(1);
+
+        Assert.That(made, Is.EqualTo(new[] { (500001, 1L, 2L) }));
+        Assert.That(seeded.MatchOf(1)?.Id, Is.EqualTo(500001));
+    }
+
     [Test]
     public void FailedFieldCancelsTheMatch() {
         makeError = MigrationError.s_move_err_FailCreateDungeon;
