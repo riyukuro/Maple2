@@ -4,6 +4,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -11,10 +13,13 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.World.Service;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -32,6 +37,8 @@ public class ShopHandlerTests {
     private const int FurnishingProductId = 18;
     private const int EventMeretProductId = 19;
     private const int GameMeretProductId = 20;
+    private const int GuildFundProductId = 21;
+    private const long GuildId = 39990009;
     private const int FurnishingItemId = 50400001;
     private const int ShopItemId = 20000001;
     private const int ProductItemId = 20000002;
@@ -69,6 +76,7 @@ public class ShopHandlerTests {
                 [FurnishingProductId] = Product(FurnishingProductId, price: 30, stock: 0, itemId: FurnishingItemId),
                 [EventMeretProductId] = Product(EventMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.EventMeret),
                 [GameMeretProductId] = Product(GameMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.GameMeret),
+                [GuildFundProductId] = Product(GuildFundProductId, price: 500, stock: 0, currency: ShopCurrencyType.GuildFund),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -640,5 +648,59 @@ public class ShopHandlerTests {
         Buy(session, AnyFameProductId, 1);
         Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 10));
         Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(1));
+    }
+
+    // The session as the master of a guild, without the World's guild load.
+    private void JoinAsMaster(GameSession session) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var manager = (GuildManager) RuntimeHelpers.GetUninitializedObject(typeof(GuildManager));
+        GC.SuppressFinalize(manager);
+        typeof(GuildManager).GetField("session", any)!.SetValue(manager, session);
+        typeof(GuildManager).GetField("tokenSource", any)!.SetValue(manager, new CancellationTokenSource());
+        typeof(GuildManager).GetField("logger", any)!.SetValue(manager, Log.Logger);
+        var info = new PlayerInfo(new CharacterInfo(session.AccountId, session.CharacterId, "Self", "", "", Gender.Male, Job.Newbie, 20), "",
+            new AchievementInfo(), []);
+        var self = new GuildMember { GuildId = GuildId, Info = info, Rank = 0, JoinTime = 1000 };
+        var guild = new Guild(GuildId, "Guild", self) { Funds = 10000 };
+        guild.Members[self.CharacterId] = self;
+        typeof(GuildManager).GetProperty("Guild", any)!.SetValue(manager, guild);
+        session.Guild = manager;
+    }
+
+    // A guild-fund product goes to the guild storage: the World takes the fund and stores the item in one call
+    // (SpendFund with the item), nothing goes in the bag, and Shop 4 ends with its to-guild-storage flag set
+    // (UIShopDialog::ReadPurchaseResult shows s_msg_take_item_to_guild_storage).
+    [Test]
+    public void Buy_OfAGuildFundProduct_GoesToTheGuildStorage() {
+        GameSession session = Login();
+        JoinAsMaster(session);
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = GuildId };
+
+        Buy(session, GuildFundProductId, 2);
+
+        GuildRequest.Types.SpendFund spend = test.World.GuildRequests.Single().SpendFund;
+        Assert.Multiple(() => {
+            Assert.That((spend.GuildId, spend.Amount, spend.ItemId, spend.Rarity, spend.ItemAmount),
+                Is.EqualTo((GuildId, 2 * 500, ProductItemId, 1, 2)));
+            Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+            List<byte[]> sent = test.TakeSent();
+            Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Shop }));
+            Assert.That(Convert.ToHexString(sent[0]), Does.EndWith("04" + "022D3101" + "02000000" + "E8030000" + "01" + "01"));
+        });
+    }
+
+    // The World refuses (not the master, not enough fund): the shop error, nothing stored, nothing in the bag.
+    [TestCase(GuildError.s_guild_err_not_enough_guild_fund, ShopError.s_guild_err_not_enough_guild_fund)]
+    [TestCase(GuildError.s_guild_err_no_authority, ShopError.s_guild_err_buy_no_master)]
+    public void Buy_OfAGuildFundProduct_RefusedByTheWorld_GivesNothing(GuildError error, ShopError shopError) {
+        GameSession session = Login();
+        JoinAsMaster(session);
+        test.World.GuildWorld = _ => new GuildResponse { Error = (int) error };
+
+        Buy(session, GuildFundProductId, 1);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(shopError)) }));
+        Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
     }
 }

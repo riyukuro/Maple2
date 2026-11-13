@@ -90,6 +90,8 @@ public partial class WorldService {
                 return Task.FromResult(AddGuildExpFund(request.RequestorId, request.AddExpFund));
             case GuildRequest.GuildOneofCase.SpendFund:
                 return Task.FromResult(SpendGuildFund(request.RequestorId, request.SpendFund));
+            case GuildRequest.GuildOneofCase.StorageGift:
+                return Task.FromResult(GiftGuildStorage(request.RequestorId, request.StorageGift));
             case GuildRequest.GuildOneofCase.TakeMailTurn:
                 return Task.FromResult(TakeGuildMailTurn(request.RequestorId, request.TakeMailTurn));
             case GuildRequest.GuildOneofCase.Donate:
@@ -663,12 +665,27 @@ public partial class WorldService {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
         }
 
-        GuildError error = manager.SpendFund(requestorId, spend.Amount);
+        GuildError error = manager.SpendFund(requestorId, spend.Amount,
+            new RewardItem(spend.ItemId, (short) spend.Rarity, spend.ItemAmount));
         if (error != GuildError.none) {
             return new GuildResponse { Error = (int) error };
         }
 
         return new GuildResponse { GuildId = spend.GuildId };
+    }
+
+    private GuildResponse GiftGuildStorage(long requestorId, GuildRequest.Types.StorageGift gift) {
+        if (!guildLookup.TryGet(gift.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.StorageGift(requestorId, gift.ItemId, (short) gift.Rarity, gift.Amount, gift.ReceiverName,
+            out GuildMember? receiver);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = gift.GuildId, ReceiverName = receiver!.Name };
     }
 
     private GuildResponse TakeGuildMailTurn(long requestorId, GuildRequest.Types.TakeMailTurn take) {
@@ -762,6 +779,13 @@ public partial class WorldService {
                 guild.Npcs.Select(npc => new GuildInfo.Types.Npc {
                     Type = (int) npc.Type,
                     Level = npc.Level,
+                }),
+            },
+            Storage = {
+                guild.StorageSnapshot().Select(item => new GuildInfo.Types.StorageItem {
+                    ItemId = item.ItemId,
+                    Rarity = item.Rarity,
+                    Amount = item.Amount,
                 }),
             },
         };

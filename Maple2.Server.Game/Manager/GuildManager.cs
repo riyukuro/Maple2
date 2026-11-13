@@ -147,6 +147,9 @@ public class GuildManager : IDisposable {
             int time = info.Events.FirstOrDefault(opened => opened.Id == eventId)?.Time ?? 0;
             guild.Events.Add(new GuildEvent(eventId, time));
         }
+        foreach (GuildInfo.Types.StorageItem item in info.Storage) {
+            guild.SetStored(item.ItemId, (short) item.Rarity, item.Amount);
+        }
         foreach (GuildMember member in members) {
             if (guild.Members.TryAdd(member.CharacterId, member)) {
                 BeginListen(member);
@@ -559,8 +562,9 @@ public class GuildManager : IDisposable {
         return 0;
     }
 
-    // A guild shop buy paid from the guild fund: the world checks the master and the fund under the guild's lock.
-    public GuildError SpendFund(int amount) {
+    // A guild shop buy paid from the guild fund: the world checks the master and the fund under the guild's lock,
+    // and stores the product (amount above 0) in the guild storage in the same save.
+    public GuildError SpendFund(int amount, RewardItem product = default) {
         if (Guild == null) {
             return GuildError.s_guild_err_null_guild;
         }
@@ -571,11 +575,41 @@ public class GuildManager : IDisposable {
                 SpendFund = new GuildRequest.Types.SpendFund {
                     GuildId = Guild.Id,
                     Amount = amount,
+                    ItemId = product.ItemId,
+                    Rarity = product.Rarity,
+                    ItemAmount = product.Amount,
                 },
             });
             return (GuildError) response.Error;
         } catch (Grpc.Core.RpcException ex) {
             logger.Error(ex, "Guild fund spend of {CharacterId} failed", session.CharacterId);
+            return GuildError.s_guild_err_unknown;
+        }
+    }
+
+    // Guild 109: the World checks and takes the stored item and sends it by mail. The error and, on success, the
+    // receiver's name as the World knows it.
+    public GuildError StorageGift(RewardItem item, string receiverName, out string receiver) {
+        receiver = string.Empty;
+        if (Guild == null) {
+            return GuildError.s_guild_err_null_guild;
+        }
+
+        try {
+            GuildResponse response = session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                StorageGift = new GuildRequest.Types.StorageGift {
+                    GuildId = Guild.Id,
+                    ItemId = item.ItemId,
+                    Rarity = item.Rarity,
+                    Amount = item.Amount,
+                    ReceiverName = receiverName,
+                },
+            });
+            receiver = response.ReceiverName;
+            return (GuildError) response.Error;
+        } catch (Grpc.Core.RpcException ex) {
+            logger.Error(ex, "Guild storage gift of {CharacterId} failed", session.CharacterId);
             return GuildError.s_guild_err_unknown;
         }
     }

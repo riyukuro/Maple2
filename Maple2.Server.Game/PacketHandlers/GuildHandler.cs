@@ -1173,33 +1173,31 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     // Guild 109 (CGuildManager::FUN_1413bb490, guildmanager.cpp:1046): an item of the guild storage for a
     // member. Body: the item (ItemEntity::Write, commonstruct_wa.cpp:84: int id, short rank, int count,
-    // 4 bools), then the receiver's name. The server keeps no guild storage, so the storage holds 0 of
-    // every item and the gift is refused with the result byte (OnPacketStorageGiftResult, :2963).
+    // 4 bools), then the receiver's name. The World checks and takes the stored item and mails it (the
+    // constant guildStorageItemMail); the answer is the result byte with the receiver's name on success
+    // (OnPacketStorageGiftResult, :2963).
     private void HandleSendGift(GameSession session, IByteReader packet) {
         var gift = packet.Read<RewardItem>();
         string playerName = packet.ReadUnicodeString();
-        Guild? guild = session.Guild.Guild;
-        if (guild == null) {
+        if (session.Guild.Guild == null) {
             return; // The client's reader drops 109 outside a guild.
         }
 
-        bool receiverIsMember = guild.Members.Values.Any(member => member.Name == playerName);
-        const int stored = 0;
-        GuildError error = GuildRules.CheckStorageGift(gift.Amount, stored, receiverIsMember);
-        if (error == GuildError.none) {
-            error = GuildError.s_guild_err_unknown; // not reached while nothing is stored
-        }
-        session.Send(GuildPacket.StorageGift(error));
+        GuildError error = session.Guild.StorageGift(gift, playerName, out string receiver);
+        session.Send(GuildPacket.StorageGift(error, receiver));
     }
 
     // CGuildManager::SendGuildMode112: sent once when the storage log is opened, with no body; the client
-    // asks again until it gets an answer. No guild storage gift is handled (Guild 109), so the log is empty.
+    // asks again until it gets an answer. The log is read from the stored guild row, where the World writes it.
     private void HandleUpdateGiftLog(GameSession session) {
-        if (session.Guild.Guild == null) {
+        Guild? guild = session.Guild.Guild;
+        if (guild == null) {
             return; // Not in a guild.
         }
 
-        session.Send(GuildPacket.StorageHistory());
+        using GameStorage.Request db = session.GameStorage.Context();
+        Guild? stored = db.GetGuild(guild.Id);
+        session.Send(GuildPacket.StorageHistory(stored?.StorageLogSnapshot() ?? []));
     }
 
     // CGuildManager::FUN_1413b8540: the count of donations. One donation costs the guildDonateMeso constant

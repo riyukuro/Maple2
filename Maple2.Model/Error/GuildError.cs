@@ -92,6 +92,9 @@ public enum GuildError : byte {
     s_guild_err_isNotVsGameTime = 47,
     [Description("You need at least {0} players online.")]
     s_guild_err_requireOnlineUserCount = 48,
+    // Guild 109 result 54 (OnPacketStorageGiftResult): the text takes the constant guildStorageGiftNeedPeriod.
+    [Description("The receiver joined the guild too recently for a storage gift.")]
+    s_guild_storage_not_enough_gift_need_period = 54,
 
     [Description("Undefined Guild Error")]
     s_guild_err_none = byte.MaxValue,

@@ -48,6 +48,8 @@ public class GuildFundTests {
             GameStorage = test.Storage,
             ChannelClients = new ChannelClientLookup(),
             TableMetadata = test.TableMetadata,
+            ItemMetadata = test.ItemMetadata,
+            ServerTableMetadata = test.ServerTableMetadata,
         };
     }
 

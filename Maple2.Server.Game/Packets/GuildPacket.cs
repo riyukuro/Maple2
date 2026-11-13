@@ -86,8 +86,9 @@ public static class GuildPacket {
         OpenEvent = 99,
         // 96, 104, 107
         StorageGift = 109,
+        StorageItem = 110,
         StorageHistory = 112,
-        Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
+        Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71)
         VsGameMatchCanceled = 117,
         VsGameTicket = 118,
         VsGameOpen = 119,
@@ -832,8 +833,6 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    // CGuildManager::OnPacketStorageHistory (0x70): a count, then per row the giver, the receiver, the item and
-    // the time. The server keeps no guild storage log, so only the empty list can be written.
     // CGuildManager::OnPacketPvpHistory (guildmanager.cpp:2805): a count, then per row a byte and, when it
     // is 1, the history row. The server runs no guild PvP, so only the empty list can be written.
     public static ByteWriter PvpHistory() {
@@ -924,10 +923,32 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter StorageHistory() {
+    // CGuildManager::FUN_1413c3e50 (0x6e): one storage entry; the client sets the amount of its id and rarity
+    // (SetStorageItem; 0 removes it), redraws the storage page and asks for the log (112) again when it is opened.
+    public static ByteWriter StorageItem(RewardItem item) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.StorageItem);
+        Guild.WriteStorageItem(pWriter, item);
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketStorageHistory (0x70, guildmanager.cpp:2980): a count, then per row the giver and
+    // the receiver (Unk_GFRecord: account id, character id, name), the item and the time.
+    public static ByteWriter StorageHistory(IReadOnlyCollection<GuildStorageLog> log) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.StorageHistory);
-        pWriter.WriteInt(0);
+        pWriter.WriteInt(log.Count);
+        foreach (GuildStorageLog entry in log) {
+            pWriter.WriteLong(entry.GiverAccountId);
+            pWriter.WriteLong(entry.GiverCharacterId);
+            pWriter.WriteUnicodeString(entry.GiverName);
+            pWriter.WriteLong(entry.ReceiverAccountId);
+            pWriter.WriteLong(entry.ReceiverCharacterId);
+            pWriter.WriteUnicodeString(entry.ReceiverName);
+            Guild.WriteStorageItem(pWriter, new RewardItem(entry.ItemId, entry.Rarity, entry.Amount));
+            pWriter.WriteLong(entry.Time);
+        }
 
         return pWriter;
     }

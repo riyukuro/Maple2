@@ -67,6 +67,8 @@ public partial class ChannelService {
                 return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds, GuildPacket.VsGameOpen(request.VsGameOpen.GameId)));
             case GuildRequest.GuildOneofCase.VsGameCanceled:
                 return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds, GuildPacket.VsGameMatchCanceled()));
+            case GuildRequest.GuildOneofCase.UpdateStorage:
+                return Task.FromResult(UpdateGuildStorage(request.GuildId, request.ReceiverIds, request.UpdateStorage));
             case GuildRequest.GuildOneofCase.ApplicationResult:
                 return Task.FromResult(GuildApplicationResult(request.GuildId, request.ReceiverIds, request.ApplicationResult));
             default:
@@ -187,6 +189,21 @@ public partial class ChannelService {
             }
 
             session.Guild.UpdateGuildExpFunds(guild.ContributorId, guild.GuildExp, guild.GuildFund);
+        }
+
+        return new GuildResponse();
+    }
+
+    // A storage change World stored (a guild-fund product put in, a gift given): the amount left and Guild 110.
+    private GuildResponse UpdateGuildStorage(long guildId, IEnumerable<long> receiverIds, GuildRequest.Types.UpdateStorage update) {
+        var item = new RewardItem(update.ItemId, (short) update.Rarity, update.Amount);
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Guild.Guild is not { } guild || guild.Id != guildId) {
+                continue;
+            }
+
+            guild.SetStored(item.ItemId, item.Rarity, item.Amount);
+            session.Send(GuildPacket.StorageItem(item));
         }
 
         return new GuildResponse();

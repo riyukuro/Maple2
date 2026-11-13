@@ -22,6 +22,9 @@ internal class Guild {
     public IList<GuildBuff> Buffs { get; set; } = [];
     public IList<GuildPoster> Posters { get; set; } = [];
     public IList<GuildNpc> Npcs { get; set; } = [];
+    // Null in the rows from before the columns.
+    public IList<GuildStorageItem>? Storage { get; set; }
+    public IList<GuildStorageLogEntry>? StorageLog { get; set; }
 
     public long LeaderId { get; set; }
     public IList<GuildMember>? Members { get; set; }
@@ -60,6 +63,23 @@ internal class Guild {
                 Type = npc.Type,
                 Level = npc.Level,
             }).ToArray(),
+            Storage = other.StorageSnapshot().Select(item => new GuildStorageItem {
+                ItemId = item.ItemId,
+                Rarity = item.Rarity,
+                Amount = item.Amount,
+            }).ToArray(),
+            StorageLog = other.StorageLogSnapshot().Select(entry => new GuildStorageLogEntry {
+                GiverAccountId = entry.GiverAccountId,
+                GiverCharacterId = entry.GiverCharacterId,
+                GiverName = entry.GiverName,
+                ReceiverAccountId = entry.ReceiverAccountId,
+                ReceiverCharacterId = entry.ReceiverCharacterId,
+                ReceiverName = entry.ReceiverName,
+                ItemId = entry.ItemId,
+                Rarity = entry.Rarity,
+                Amount = entry.Amount,
+                Time = entry.Time,
+            }).ToArray(),
             LeaderId = other.LeaderCharacterId,
         };
     }
@@ -71,6 +91,8 @@ internal class Guild {
         builder.Property(guild => guild.Buffs).HasJsonConversion();
         builder.Property(guild => guild.Posters).HasJsonConversion();
         builder.Property(guild => guild.Npcs).HasJsonConversion();
+        builder.Property(guild => guild.Storage).HasJsonConversion();
+        builder.Property(guild => guild.StorageLog).HasJsonConversion();
         // rows from before the column are listed; the value is always written on insert
         builder.Property(guild => guild.Listed).HasDefaultValue(true).ValueGeneratedNever();
 
@@ -105,4 +127,23 @@ internal class GuildPoster {
 internal class GuildNpc {
     public GuildNpcType Type { get; set; }
     public int Level { get; set; }
+}
+
+internal class GuildStorageItem {
+    public int ItemId { get; set; }
+    public short Rarity { get; set; }
+    public int Amount { get; set; }
+}
+
+internal class GuildStorageLogEntry {
+    public long GiverAccountId { get; set; }
+    public long GiverCharacterId { get; set; }
+    public string GiverName { get; set; } = string.Empty;
+    public long ReceiverAccountId { get; set; }
+    public long ReceiverCharacterId { get; set; }
+    public string ReceiverName { get; set; } = string.Empty;
+    public int ItemId { get; set; }
+    public short Rarity { get; set; }
+    public int Amount { get; set; }
+    public long Time { get; set; }
 }

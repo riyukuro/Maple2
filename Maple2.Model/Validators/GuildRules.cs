@@ -453,14 +453,27 @@ public static class GuildRules {
         return result;
     }
 
-    // Guild 109 (CGuildManager::FUN_1413bb490, guildmanager.cpp:1046): the client's own tests before it
-    // sends, made again: a count, the storage holds it, and a receiver in the guild.
-    public static GuildError CheckStorageGift(int count, int stored, bool receiverIsMember) {
+    // Guild 109 (CGuildManager::FUN_1413bb490, guildmanager.cpp:1046): the client's own tests before it sends, made
+    // again in its order: the master, a receiver in the guild, a count, no more than a stack (the item's slotMax) and
+    // no more than stored, and an OnlyToMe item (tag 215) for the master alone. The server adds the guild's need
+    // period (constant guildStorageGiftNeedPeriod, days): a receiver who joined later gets result 54, the one
+    // result besides 0 the client prints (OnPacketStorageGiftResult, :2963).
+    public static GuildError CheckStorageGift(bool isMaster, bool receiverIsMember, int count, int slotMax, int stored,
+            bool onlyToMe, bool toSelf, long receiverJoinTime, int needPeriodDays, long now) {
+        if (!isMaster) {
+            return GuildError.s_guild_err_no_master;
+        }
         if (!receiverIsMember) {
             return GuildError.s_guild_err_null_member;
         }
-        if (count <= 0 || stored < count) {
+        if (count <= 0 || count > slotMax || count > stored) {
             return GuildError.s_guild_err_unknown;
+        }
+        if (onlyToMe && !toSelf) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (now - receiverJoinTime < needPeriodDays * 86400L) {
+            return GuildError.s_guild_storage_not_enough_gift_need_period;
         }
         return GuildError.none;
     }
@@ -552,6 +565,8 @@ public static class GuildRules {
     // last level. The row carries the level's capacity, fund cap and check-in rewards.
     // The cap a guild has without a guild.xml row (a level 1 guild's).
     public const byte DefaultCapacity = 60;
+    // The rows of the storage gift log the client keeps (its history deque holds 50).
+    public const int StorageLogCapacity = 50;
 
     public static GuildTable.Property? PropertyAt(IReadOnlyDictionary<short, GuildTable.Property> properties, int experience) {
         GuildTable.Property? last = null;

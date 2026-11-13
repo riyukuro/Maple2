@@ -55,7 +55,58 @@ public class Guild : IByteSerializable {
     }
     public required IList<GuildPoster> Posters { get; init; }
     public required IList<GuildNpc> Npcs { get; init; }
-    public required IList<RewardItem> Bank { get; init; }
+    // The guild storage: what guild-fund shop products put in, what the master gives out (Guild 109). One row per
+    // item id and rarity, written under the list's lock (the World's guild lock, the channel's gRPC thread).
+    public required IList<RewardItem> Storage { get; init; }
+    // The gift log (Guild 112), oldest first; the client keeps 50 rows.
+    public required IList<GuildStorageLog> StorageLog { get; init; }
+
+    public int StoredAmount(int itemId, short rarity) {
+        lock (Storage) {
+            return Storage.FirstOrDefault(entry => entry.ItemId == itemId && entry.Rarity == rarity).Amount;
+        }
+    }
+
+    // Sets the stored amount of an item; 0 removes its row.
+    public void SetStored(int itemId, short rarity, int amount) {
+        lock (Storage) {
+            for (int i = 0; i < Storage.Count; i++) {
+                if (Storage[i].ItemId != itemId || Storage[i].Rarity != rarity) {
+                    continue;
+                }
+                if (amount > 0) {
+                    Storage[i] = new RewardItem(itemId, rarity, amount);
+                } else {
+                    Storage.RemoveAt(i);
+                }
+                return;
+            }
+            if (amount > 0) {
+                Storage.Add(new RewardItem(itemId, rarity, amount));
+            }
+        }
+    }
+
+    public RewardItem[] StorageSnapshot() {
+        lock (Storage) {
+            return Storage.ToArray();
+        }
+    }
+
+    public void AddStorageLog(GuildStorageLog entry) {
+        lock (StorageLog) {
+            StorageLog.Add(entry);
+            while (StorageLog.Count > Validators.GuildRules.StorageLogCapacity) {
+                StorageLog.RemoveAt(0);
+            }
+        }
+    }
+
+    public GuildStorageLog[] StorageLogSnapshot() {
+        lock (StorageLog) {
+            return StorageLog.ToArray();
+        }
+    }
 
     [SetsRequiredMembers]
     public Guild(long id, string name, long leaderAccountId, long leaderCharacterId, string leaderName) {
@@ -71,7 +122,8 @@ public class Guild : IByteSerializable {
         Events = new List<GuildEvent>();
         Posters = new List<GuildPoster>();
         Npcs = new List<GuildNpc>();
-        Bank = new List<RewardItem>();
+        Storage = new List<RewardItem>();
+        StorageLog = new List<GuildStorageLog>();
     }
 
     [SetsRequiredMembers]
@@ -143,13 +195,29 @@ public class Guild : IByteSerializable {
         writer.WriteBool(true);
         writer.WriteShort();
 
-        writer.WriteInt(Bank.Count);
-        foreach (RewardItem item in Bank) {
-            writer.Write<RewardItem>(item);
+        RewardItem[] storage = StorageSnapshot();
+        writer.WriteInt(storage.Length);
+        foreach (RewardItem item in storage) {
+            WriteStorageItem(writer, item);
         }
         // The client's guild reader ends with the storage list; nothing follows it.
     }
+
+    // The client's item entry (Guild 0 storage list, Guild 110, Guild 112): id, rarity, amount, 4 flags.
+    public static void WriteStorageItem(IByteWriter writer, RewardItem item) {
+        writer.WriteInt(item.ItemId);
+        writer.WriteShort(item.Rarity);
+        writer.WriteInt(item.Amount);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
+    }
 }
+
+// One gift: from the master to a member (accounts and characters as the log sends them), the item and the time.
+public record GuildStorageLog(long GiverAccountId, long GiverCharacterId, string GiverName, long ReceiverAccountId,
+    long ReceiverCharacterId, string ReceiverName, int ItemId, short Rarity, int Amount, long Time);
 
 [StructLayout(LayoutKind.Sequential, Pack = 4, Size = 16)]
 public readonly record struct GuildBuff(int Id, int Level, long ExpiryTime);

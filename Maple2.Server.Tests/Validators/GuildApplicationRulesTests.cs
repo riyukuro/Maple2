@@ -429,13 +429,23 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.RunningSkillEffects([new GuildBuff(1, 2, 0)], table, 100), Is.Empty, "never used");
     }
 
-    [TestCase(1, 1, true, GuildError.none)]
-    [TestCase(1, 0, true, GuildError.s_guild_err_unknown)]
-    [TestCase(0, 5, true, GuildError.s_guild_err_unknown)]
-    [TestCase(-1, 5, true, GuildError.s_guild_err_unknown)]
-    [TestCase(1, 1, false, GuildError.s_guild_err_null_member)]
-    public void StorageGift_Rules(int count, int stored, bool receiverIsMember, GuildError expected) {
-        Assert.That(GuildRules.CheckStorageGift(count, stored, receiverIsMember), Is.EqualTo(expected));
+    // In the client's order: the master, a member receiver, a count within a stack and the stored count, OnlyToMe to
+    // the master alone; then the server's need period (7 days here, joined at 0).
+    [TestCase(true, true, 1, 1, false, false, 8, GuildError.none)]
+    [TestCase(false, false, 1, 1, false, false, 8, GuildError.s_guild_err_no_master)]
+    [TestCase(true, false, 1, 1, false, false, 8, GuildError.s_guild_err_null_member)]
+    [TestCase(true, true, 0, 5, false, false, 8, GuildError.s_guild_err_unknown)]
+    [TestCase(true, true, -1, 5, false, false, 8, GuildError.s_guild_err_unknown)]
+    [TestCase(true, true, 2, 1, false, false, 8, GuildError.s_guild_err_unknown)]
+    [TestCase(true, true, 11, 20, false, false, 8, GuildError.s_guild_err_unknown)]
+    [TestCase(true, true, 1, 1, true, false, 8, GuildError.s_guild_err_unknown)]
+    [TestCase(true, true, 1, 1, true, true, 8, GuildError.none)]
+    [TestCase(true, true, 1, 1, false, false, 6, GuildError.s_guild_storage_not_enough_gift_need_period)]
+    [TestCase(true, true, 1, 1, false, false, 7, GuildError.none)]
+    public void StorageGift_Rules(bool isMaster, bool receiverIsMember, int count, int stored, bool onlyToMe, bool toSelf,
+            int daysJoined, GuildError expected) {
+        Assert.That(GuildRules.CheckStorageGift(isMaster, receiverIsMember, count, 10, stored, onlyToMe, toSelf, 0, 7,
+            daysJoined * 86400L), Is.EqualTo(expected));
     }
 
     [TestCase(false, false, false, true)]

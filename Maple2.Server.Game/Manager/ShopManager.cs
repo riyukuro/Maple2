@@ -520,13 +520,16 @@ public sealed class ShopManager {
 
         Item item = shopItem.Item.Clone();
         item.Amount = (int) itemCount;
+        // A product paid from the guild fund goes to the guild storage, not the bag: the World stores it with the
+        // fund in one save, and the result's last flag shows the client's storage notice (UIShopDialog::ReadPurchaseResult, uishopdialog.cpp:1841).
+        bool toGuildStorage = shopItem.Metadata.Cost.Type == ShopCurrencyType.GuildFund;
         // Room for all of it before the payment (Add takes all or none; a furnishing goes into furnishing storage).
-        if (!session.Item.Inventory.HasRoomFor(item)) {
+        if (!toGuildStorage && !session.Item.Inventory.HasRoomFor(item)) {
             session.Send(ShopPacket.Error(ShopError.s_err_inventory));
             return;
         }
 
-        if (!Pay(shopItem.Metadata.Cost, price)) {
+        if (!Pay(shopItem.Metadata.Cost, price, toGuildStorage ? new RewardItem(item.Id, (short) item.Rarity, item.Amount) : default)) {
             return;
         }
 
@@ -540,14 +543,14 @@ public sealed class ShopManager {
 
         // The room was checked above, so only a failed item write leaves part of it out of the bag: that part
         // (the amount the item keeps) goes by mail, as it is paid for.
-        if (!session.Item.AddOrMail(item, true, commit: true)) {
+        if (!toGuildStorage && !session.Item.AddOrMail(item, true, commit: true)) {
             logger.Error("Shop {ShopId} item {ItemId} x{Amount} was paid for and neither added nor mailed", activeShop.Id, item.Id, item.Amount);
         }
         // KMS2 order: the payment, the item, the bought count, then the result.
         if (shopItem.StockCount > 0) {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
-        session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price));
+        session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price, toGuildStorage));
         // The mesos, Treva or Valor Tokens paid in an NPC shop count for shop_buy, shop_buy_karma_token or
         // shop_buy_honor_token (trophies 23200004, 23200014, 23200012).
         if (ShopRules.BuyCondition(shopItem.Metadata.Cost.Type) is { } buyCondition && price > 0) {
@@ -683,7 +686,8 @@ public sealed class ShopManager {
         session.Currency.ChangeMeso(sellPrice);
     }
 
-    private bool Pay(ShopCost cost, int price) {
+    // `guildProduct`: the product the guild fund pays for, stored in the guild storage with the fund.
+    private bool Pay(ShopCost cost, int price, RewardItem guildProduct = default) {
         switch (cost.Type) {
             case ShopCurrencyType.Meso:
                 if (session.Currency.CanAddMeso(-price) != -price) {
@@ -703,7 +707,7 @@ public sealed class ShopManager {
                 }
                 break;
             case ShopCurrencyType.GuildFund:
-                GuildError fundError = session.Guild.SpendFund(price);
+                GuildError fundError = session.Guild.SpendFund(price, guildProduct);
                 if (fundError != GuildError.none) {
                     session.Send(ShopPacket.Error(fundError == GuildError.s_guild_err_not_enough_guild_fund
                         ? ShopError.s_guild_err_not_enough_guild_fund : ShopError.s_guild_err_buy_no_master));

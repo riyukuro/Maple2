@@ -931,6 +931,12 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<string>("Storage")
+                        .HasColumnType("json");
+
+                    b.Property<string>("StorageLog")
+                        .HasColumnType("json");
+
                     b.HasKey("Id");
 
                     b.HasIndex("LeaderId")

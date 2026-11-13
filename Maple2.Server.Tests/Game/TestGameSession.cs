@@ -79,6 +79,7 @@ public sealed class TestGameSession {
     private readonly ScriptMetadataStorage scripts = new(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
     private readonly Dictionary<int, GameEvent> events = new();
     private readonly ItemMetadataStorage itemMetadata = Uninitialized<ItemMetadataStorage>();
+    public ItemMetadataStorage ItemMetadata => itemMetadata;
     private BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
     private GameSession? started;
     private readonly LRUCache<int, MapMetadata> maps = new(64, 1);

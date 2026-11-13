@@ -223,6 +223,12 @@ message GuildRequest {
   // Guild 117: the guild's ticket was canceled.
   message VsGameCanceled {
   }
+  // Guild 110: the stored amount of an item (0: none left).
+  message UpdateStorage {
+    int32 item_id = 1;
+    int32 rarity = 2;
+    int32 amount = 3;
+  }
 
   int64 guild_id = 1;
   repeated int64 receiver_ids = 2;
@@ -255,6 +261,7 @@ message GuildRequest {
     VsGameTicket vs_game_ticket = 28;
     VsGameOpen vs_game_open = 29;
     VsGameCanceled vs_game_canceled = 30;
+    UpdateStorage update_storage = 31;
   }
 }
 

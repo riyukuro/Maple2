@@ -183,6 +183,11 @@ message GuildInfo {
     int32 type = 1;
     int32 level = 2;
   }
+  message StorageItem {
+    int32 item_id = 1;
+    int32 rarity = 2;
+    int32 amount = 3;
+  }
 
   int64 id = 1;
   string name = 2;
@@ -203,7 +208,8 @@ message GuildInfo {
   repeated Event events = 14;
   repeated Poster posters = 15;
   repeated Npc npcs = 16;
-  // bank
+  // The guild storage (the gift log is read from the guild row).
+  repeated StorageItem storage = 18;
 }
 
 message GuildInfoRequest {
@@ -317,6 +323,18 @@ message GuildRequest {
   message SpendFund {
     int64 guild_id = 1;
     int32 amount = 2;
+    // The product, when it goes to the guild storage (item_amount 0: none), stored in the same save.
+    int32 item_id = 3;
+    int32 rarity = 4;
+    int32 item_amount = 5;
+  }
+  // Guild 109: the master gives a stored item to a member, by system mail.
+  message StorageGift {
+    int64 guild_id = 1;
+    int32 item_id = 2;
+    int32 rarity = 3;
+    int32 amount = 4;
+    string receiver_name = 5;
   }
   // Guild 101: the master raises the guild house by one level, with the theme chosen for it.
   message UpgradeHouse {
@@ -423,6 +441,7 @@ message GuildRequest {
     VsGameUnregister vs_game_unregister = 36;
     VsGameJoin vs_game_join = 37;
     VsGameEnd vs_game_end = 38;
+    StorageGift storage_gift = 39;
   }
 }
 
@@ -447,6 +466,8 @@ message GuildResponse {
   int32 channel = 12;
   int32 map_id = 13;
   int32 room_id = 14;
+  // storage gift: the receiver's name
+  string receiver_name = 15;
 }
 
 message GroupChatInfoRequest {

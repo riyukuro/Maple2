@@ -9,6 +9,8 @@ namespace Maple2.Server.World.Containers;
 public class GuildLookup : IDisposable {
     private readonly GameStorage gameStorage;
     private readonly TableMetadataStorage tableMetadata;
+    private readonly ItemMetadataStorage itemMetadata;
+    private readonly ServerTableMetadataStorage serverTableMetadata;
     private readonly ChannelClientLookup channelClients;
     private readonly PlayerInfoLookup playerLookup;
 
@@ -16,10 +18,14 @@ public class GuildLookup : IDisposable {
 
     public GuildLookup(GameStorage gameStorage,
                        TableMetadataStorage tableMetadata,
+                       ItemMetadataStorage itemMetadata,
+                       ServerTableMetadataStorage serverTableMetadata,
                        ChannelClientLookup channelClients,
                        PlayerInfoLookup playerLookup) {
         this.gameStorage = gameStorage;
         this.tableMetadata = tableMetadata;
+        this.itemMetadata = itemMetadata;
+        this.serverTableMetadata = serverTableMetadata;
         this.channelClients = channelClients;
         this.playerLookup = playerLookup;
 
@@ -79,6 +85,8 @@ public class GuildLookup : IDisposable {
             GameStorage = gameStorage,
             ChannelClients = channelClients,
             TableMetadata = tableMetadata,
+            ItemMetadata = itemMetadata,
+            ServerTableMetadata = serverTableMetadata,
         });
 
         return GuildError.none;
@@ -124,6 +132,8 @@ public class GuildLookup : IDisposable {
             GameStorage = gameStorage,
             ChannelClients = channelClients,
             TableMetadata = tableMetadata,
+            ItemMetadata = itemMetadata,
+            ServerTableMetadata = serverTableMetadata,
         };
         return guilds.TryAdd(guild.Id, manager) ? manager : null;
     }

@@ -16,6 +16,8 @@ public class GuildManager : IDisposable {
     public required GameStorage GameStorage { get; init; }
     public required ChannelClientLookup ChannelClients { get; init; }
     public required TableMetadataStorage TableMetadata { get; init; }
+    public required ItemMetadataStorage ItemMetadata { get; init; }
+    public required ServerTableMetadataStorage ServerTableMetadata { get; init; }
 
     public readonly Guild Guild;
     private readonly ConcurrentDictionary<long, (string, DateTime)> pendingInvites;
@@ -510,8 +512,9 @@ public class GuildManager : IDisposable {
     }
 
     // A guild shop buy paid from the guild fund (shop currency 7). The client offers it to the master only and the
-    // fund must cover the price; the fund is saved before the answer and a failed save undoes it.
-    public GuildError SpendFund(long requestorId, int amount) {
+    // fund must cover the price. A guild-fund product goes to the guild storage (`product`, amount above 0), stored
+    // with the fund in the same save; a failed save undoes both. The fund is saved before the answer.
+    public GuildError SpendFund(long requestorId, int amount, RewardItem product = default) {
         if (!Guild.Members.ContainsKey(requestorId)) {
             return GuildError.s_guild_err_null_member;
         }
@@ -524,14 +527,28 @@ public class GuildManager : IDisposable {
                 return error;
             }
 
+            int oldStored = product.Amount > 0 ? Guild.StoredAmount(product.ItemId, product.Rarity) : 0;
+            if ((long) oldStored + product.Amount > int.MaxValue || product.Amount < 0) {
+                return GuildError.s_guild_err_unknown;
+            }
             int oldFunds = Guild.Funds;
             Guild.Funds -= amount;
+            if (product.Amount > 0) {
+                Guild.SetStored(product.ItemId, product.Rarity, oldStored + product.Amount);
+            }
             if (!TrySave()) {
                 Guild.Funds = oldFunds;
+                if (product.Amount > 0) {
+                    Guild.SetStored(product.ItemId, product.Rarity, oldStored);
+                }
                 return GuildError.s_guild_err_unknown;
             }
             guildExp = Guild.Experience;
             guildFund = Guild.Funds;
+            if (product.Amount > 0) {
+                // Under the lock, so the members get the amounts in the order they were stored.
+                BroadcastStorage(product.ItemId, product.Rarity, oldStored + product.Amount);
+            }
         }
 
         Broadcast(new GuildRequest {
@@ -542,6 +559,81 @@ public class GuildManager : IDisposable {
             },
         });
         return GuildError.none;
+    }
+
+    // Guild 109: the master gives a stored item to a member by the system mail of the constant guildStorageItemMail.
+    // The storage taken, the log row and the mail with its item are stored in one transaction before the answer; a
+    // failed store gives nothing and puts the storage and the log back. The members get the amount left (110), the
+    // receiver the mail notice.
+    public GuildError StorageGift(long requestorId, int itemId, short rarity, int amount, string receiverName, out GuildMember? receiver) {
+        receiver = null;
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        ConstantsTable constants = ServerTableMetadata.ConstantsTable;
+        Mail? mail;
+        lock (guildLock) {
+            receiver = Guild.Members.Values.FirstOrDefault(member => member.Name == receiverName);
+            int stored = Guild.StoredAmount(itemId, rarity);
+            ItemMetadata? metadata = ItemMetadata.TryGet(itemId, out ItemMetadata? found) && PlayedClientItems.CanCreate(found) ? found : null;
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            GuildError error = GuildRules.CheckStorageGift(requestorId == Guild.LeaderCharacterId, receiver != null, amount,
+                metadata?.Property.SlotMax ?? 0, stored, metadata?.Property.Tag == ItemTag.GuildStorageItemOnlyToMe,
+                receiver?.CharacterId == requestorId, receiver?.JoinTime ?? 0, constants.guildStorageGiftNeedPeriod, now);
+            if (error != GuildError.none) {
+                return error;
+            }
+            if (metadata == null || receiver == null) {
+                return GuildError.s_guild_err_unknown;
+            }
+
+            GuildStorageLog[] oldLog = Guild.StorageLogSnapshot();
+            Guild.SetStored(itemId, rarity, stored - amount);
+            Guild.AddStorageLog(new GuildStorageLog(requestor.AccountId, requestor.CharacterId, requestor.Name,
+                receiver.AccountId, receiver.CharacterId, receiver.Name, itemId, rarity, amount, now));
+            try {
+                using GameStorage.Request db = GameStorage.Context();
+                mail = db.GiftGuildStorageItem(Guild, new Mail {
+                    ReceiverId = receiver.CharacterId,
+                    Type = MailType.System,
+                    Content = constants.guildStorageItemMail.ToString(),
+                }, new Item(metadata, rarity, amount));
+            } catch (Exception) {
+                mail = null;
+            }
+            if (mail == null) {
+                Guild.SetStored(itemId, rarity, stored);
+                lock (Guild.StorageLog) {
+                    Guild.StorageLog.Clear();
+                    foreach (GuildStorageLog entry in oldLog) {
+                        Guild.StorageLog.Add(entry);
+                    }
+                }
+                return GuildError.s_guild_err_unknown;
+            }
+            BroadcastStorage(itemId, rarity, stored - amount);
+        }
+
+        if (MailNotifyRules.Notify(receiver.Info) && ChannelClients.TryGetClient(receiver.Info.Channel, out ChannelClient? client)) {
+            try {
+                client.MailNotification(new MailNotificationRequest {
+                    CharacterId = receiver.CharacterId,
+                    MailId = mail.Id,
+                });
+            } catch (RpcException) { /* the mail is listed at the next look */ }
+        }
+        return GuildError.none;
+    }
+
+    private void BroadcastStorage(int itemId, short rarity, int amount) {
+        Broadcast(new GuildRequest {
+            UpdateStorage = new GuildRequest.Types.UpdateStorage {
+                ItemId = itemId,
+                Rarity = rarity,
+                Amount = amount,
+            },
+        });
     }
 
     // A guild recall scroll: every member's channel offers the recall to its members but the requestor.

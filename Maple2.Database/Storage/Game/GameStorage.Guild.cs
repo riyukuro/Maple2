@@ -175,6 +175,40 @@ public partial class GameStorage {
             return Commit();
         }
 
+        // A guild storage gift (Guild 109): the guild row with the storage taken and the log row, the system mail and its
+        // item, in one transaction; nothing is stored when one write fails. The item row is made (owner 0) for its uid
+        // and moved to the mail by SaveItems. Returns the mail with its item, or null.
+        public Mail? GiftGuildStorageItem(Guild guild, Mail mail, Item item) {
+            if (!Context.Guild.Any(model => model.Id == guild.Id)) {
+                return null;
+            }
+
+            mail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            BeginTransaction();
+            Context.Guild.Update(guild);
+            Item? created = CreateItem(0, item);
+            if (created == null) {
+                Rollback();
+                return null;
+            }
+
+            Model.Mail model = mail;
+            model.Id = 0;
+            Context.Mail.Add(model);
+            if (!SaveChanges()) {
+                Rollback();
+                return null;
+            }
+            if (!SaveItems(model.Id, created) || !Commit()) {
+                Rollback();
+                return null;
+            }
+
+            Mail sent = model;
+            sent.Items.Add(created);
+            return sent;
+        }
+
         public bool DeleteGuild(long guildId) {
             BeginTransaction();
 
@@ -357,6 +391,10 @@ public partial class GameStorage {
                             Type = npc.Type,
                             Level = npc.Level,
                         }).ToList(),
+                        Storage = (guild.Storage ?? []).Select(item => new RewardItem(item.ItemId, item.Rarity, item.Amount)).ToList(),
+                        StorageLog = (guild.StorageLog ?? []).Select(entry => new GuildStorageLog(entry.GiverAccountId,
+                            entry.GiverCharacterId, entry.GiverName, entry.ReceiverAccountId, entry.ReceiverCharacterId,
+                            entry.ReceiverName, entry.ItemId, entry.Rarity, entry.Amount, entry.Time)).ToList(),
                     };
                 })
                 .FirstOrDefault();

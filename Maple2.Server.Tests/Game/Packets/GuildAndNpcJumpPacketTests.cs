@@ -330,15 +330,39 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(Length(300) - empty, Is.EqualTo(255 * 8));
     }
 
-    // CGuildManager::OnPacketStorageHistory (0x70): the row count; no rows.
+    // CGuildManager::OnPacketStorageHistory (0x70, guildmanager.cpp:2980): the row count, then per row the giver and
+    // the receiver (account, character, name), the item entry and the time.
     [Test]
-    public void StorageHistory_IsMode112WithZeroRows() {
-        ByteWriter writer = GuildPacket.StorageHistory();
+    public void StorageHistory_IsMode112WithItsRows() {
+        ByteWriter writer = GuildPacket.StorageHistory([]);
         var reader = new ByteReader(writer.Buffer, 0);
-
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
         Assert.That(reader.ReadByte(), Is.EqualTo(112));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+
+        writer = GuildPacket.StorageHistory([new GuildStorageLog(1, 2, "A", 3, 4, "B", 20301138, 1, 5, 1700000000)]);
+        reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(112));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That((reader.ReadLong(), reader.ReadLong(), reader.ReadUnicodeString()), Is.EqualTo((1L, 2L, "A")));
+        Assert.That((reader.ReadLong(), reader.ReadLong(), reader.ReadUnicodeString()), Is.EqualTo((3L, 4L, "B")));
+        Assert.That((reader.ReadInt(), reader.ReadShort(), reader.ReadInt()), Is.EqualTo((20301138, (short) 1, 5)));
+        Assert.That((reader.ReadBool(), reader.ReadBool(), reader.ReadBool(), reader.ReadBool()), Is.EqualTo((false, false, false, false)));
+        Assert.That(reader.ReadLong(), Is.EqualTo(1700000000L));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // FUN_1413c3e50 (0x6e): one item entry, the stored count of (id, rarity); 0 removes it.
+    [Test]
+    public void StorageItem_IsMode110WithOneEntry() {
+        ByteWriter writer = GuildPacket.StorageItem(new RewardItem(20301138, 1, 0));
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
+        Assert.That(reader.ReadByte(), Is.EqualTo(110));
+        Assert.That((reader.ReadInt(), reader.ReadShort(), reader.ReadInt()), Is.EqualTo((20301138, (short) 1, 0)));
+        Assert.That((reader.ReadBool(), reader.ReadBool(), reader.ReadBool(), reader.ReadBool()), Is.EqualTo((false, false, false, false)));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
