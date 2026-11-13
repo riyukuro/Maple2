@@ -119,6 +119,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.FIELD_METADATA, Table = ParseFieldMetaTable() };
         yield return new TableMetadata { Name = TableNames.WEAPON_ACTION, Table = ParseWeaponAction() };
         yield return new TableMetadata { Name = TableNames.QUEST_MASK_NPC, Table = ParseQuestMaskNpcTable() };
+        yield return new TableMetadata { Name = TableNames.STRING_COMMON, Table = ParseInventoryTabNames() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -2722,6 +2723,38 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         return new MaidTable(results, exps, recipes, groups);
+    }
+
+    // The played client's string/<language>/stringcommon.xml (else the data pack's): the inventory tab names.
+    private InventoryTabNameTable ParseInventoryTabNames() {
+        string name = $"string/{language}/{TableNames.STRING_COMMON}";
+        XmlDocument? document = null;
+        foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (reader != null && entry != null) {
+                document = reader.GetXmlDocument(entry);
+                break;
+            }
+        }
+        InventoryTabNameTable table = document == null ? InventoryTabNameTable.Empty : InventoryTabNames(document);
+        Console.WriteLine($"{name}: {table.Names.Count} of {InventoryTab.Count} inventory tab names");
+        return table;
+    }
+
+    // Each tab's <key id=... value=...> (InventoryTab.StringKey). Chosen here: a key listed twice keeps its last value,
+    // and a key's feature attribute is not tested (each tab key is listed once, the client's own tabs follow the features).
+    public static InventoryTabNameTable InventoryTabNames(XmlDocument document) {
+        var values = new Dictionary<string, string>();
+        foreach (XmlElement key in document.GetElementsByTagName("key").OfType<XmlElement>()) {
+            values[key.GetAttribute("id")] = key.GetAttribute("value");
+        }
+        var names = new Dictionary<int, string>();
+        for (int tab = 0; tab < InventoryTab.Count; tab++) {
+            if (InventoryTab.StringKey(tab) is { } id && values.TryGetValue(id, out string? value) && value.Length > 0) {
+                names[tab] = value;
+            }
+        }
+        return new InventoryTabNameTable(names);
     }
 
     // The played client's table/questmasknpc.xml (else the data pack's): the npc masks the client applies.

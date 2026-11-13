@@ -101,6 +101,9 @@ public static class TableNames {
     public const string WEAPON_ACTION = "weaponaction.xml";
     public const string QUEST_MASK_NPC = "questmasknpc.xml";
 
+    // Strings (string/<language>/)
+    public const string STRING_COMMON = "stringcommon.xml";
+
     public static readonly Dictionary<string, string> ItemOptionVariationTableNames = new Dictionary<string, string> {
         { "acc", ITEM_OPTION_VARIATION_ACC },
         { "armor", ITEM_OPTION_VARIATION_ARMOR },

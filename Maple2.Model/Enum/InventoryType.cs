@@ -52,4 +52,26 @@ public static class InventoryTab {
         };
         return tab is >= 0 and < Count;
     }
+
+    // The stringcommon key of the client's name for a tab (GetInventoryTabName, stringtable.cpp:931: common string ids
+    // 0x259-0x265 for tabs 0-12, then the keys of tabs 13 and 14). Null for a number outside the 15 tabs, which the
+    // client names with its empty string.
+    public static string? StringKey(int tab) => tab switch {
+        0 => "s_inventory_tab_equip",
+        1 => "s_inventory_tab_skin",
+        2 => "s_inventory_tab_summon",
+        3 => "s_inventory_tab_material",
+        4 => "s_inventory_tab_life",
+        5 => "s_inventory_tab_quest",
+        6 => "s_inventory_tab_gem",
+        7 => "s_inventory_tab_etc",
+        8 => "s_inventory_tab_mastery",
+        9 => "s_inventory_tab_pet",
+        10 => "s_inventory_tab_activeskill",
+        11 => "s_inventory_tab_coin",
+        12 => "s_inventory_tab_badge",
+        13 => "s_inventory_tab_lapenshard",
+        14 => "s_inventory_tab_piece",
+        _ => null,
+    };
 }

@@ -2,6 +2,7 @@
 using System.Numerics;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -824,8 +825,12 @@ public class HousingManager {
                 if (replaced != null && !session.Item.Furnishing.CanRetrieve(replaced)) {
                     Refuse(UgcMapError.s_ugcmap_cant_be_removed);
                 } else {
-                    // No furnishing-storage-full code was found in the client's ugcmap errors: the inventory one.
-                    notify.Send(NoticePacket.Message(StringCode.s_err_inventory_tab_full, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+                    // No furnishing-storage-full code was found in the client's ugcmap errors: the inventory one. The
+                    // client fills {0} with the tab name of the item it sends to storage (SendRetrieveFurnishingItem).
+                    // Chosen here: the old cube of a replace, else the cube bought here.
+                    ItemMetadata tabItem = replaced != null && session.ItemMetadata.TryGet(replaced.ItemId, out ItemMetadata? old) ? old : itemMetadata;
+                    notify.Send(NoticePacket.Message(new InterfaceText(StringCode.s_err_inventory_tab_full,
+                        tableMetadata.InventoryTabNameTable.Name(tabItem.Inventory())), NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
                 }
                 return false;
             }

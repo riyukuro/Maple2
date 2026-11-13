@@ -68,6 +68,7 @@ public class TableMetadataStorage {
     private readonly Lazy<FieldMetaTable> fieldMetaTable;
     private readonly Lazy<WeaponActionTable> weaponActionTable;
     private readonly Lazy<QuestMaskNpcTable> questMaskNpcTable;
+    private readonly Lazy<InventoryTabNameTable> inventoryTabNameTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -154,6 +155,7 @@ public class TableMetadataStorage {
     public FieldMetaTable FieldMetaTable => fieldMetaTable.Value;
     public WeaponActionTable WeaponActionTable => weaponActionTable.Value;
     public QuestMaskNpcTable QuestMaskNpcTable => questMaskNpcTable.Value;
+    public InventoryTabNameTable InventoryTabNameTable => inventoryTabNameTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -260,6 +262,8 @@ public class TableMetadataStorage {
         fieldMetaTable = Retrieve<FieldMetaTable>(context, TableNames.FIELD_METADATA);
         weaponActionTable = Retrieve<WeaponActionTable>(context, TableNames.WEAPON_ACTION);
         questMaskNpcTable = Retrieve<QuestMaskNpcTable>(context, TableNames.QUEST_MASK_NPC);
+        // A metadata db ingested before this table has no row: its notices name a tab by the server's type name.
+        inventoryTabNameTable = Retrieve(context, TableNames.STRING_COMMON, InventoryTabNameTable.Empty);
 
     }
 
@@ -277,6 +281,20 @@ public class TableMetadataStorage {
 
 #if !DEBUG
         // No lazy loading for RELEASE build.
+        _ = result.Value;
+#endif
+        return result;
+    }
+
+    // As Retrieve, but a missing row gives the fallback instead of throwing.
+    private static Lazy<T> Retrieve<T>(MetadataContext context, string key, T fallback) where T : Table {
+        var result = new Lazy<T>(() => {
+            lock (context) {
+                return context.TableMetadata.Find(key)?.Table as T ?? fallback;
+            }
+        });
+
+#if !DEBUG
         _ = result.Value;
 #endif
         return result;

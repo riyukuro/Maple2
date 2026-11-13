@@ -130,6 +130,7 @@ public sealed class TestGameSession {
         SetTable(new PrestigeMissionTable(new Dictionary<int, PrestigeMissionMetadata>()));
         SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata>()));
         SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
+        SetTable(InventoryTabNameTable.Empty);
         SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata>()));
         // A shop load reads the running game events (NpcShopShowItem).
         SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));

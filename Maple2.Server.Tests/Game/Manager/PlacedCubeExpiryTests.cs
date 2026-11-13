@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
+using Maple2.Model;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -308,6 +309,28 @@ public class PlacedCubeExpiryTests {
         Assert.That(test.TakeSentOps(), Does.Contain(SendOp.Notice));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(plot.Cubes, Is.Empty);
+    }
+
+    // The full-storage notice fills {0} with the client's name of the cube's tab, as the client does
+    // (GetInventoryTabName); a metadata db without the names sends the server's type name.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TheStorageFullNotice_NamesTheCubesTab(bool ingested) {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meso, 1000) });
+        InventoryType tab = metadata.Inventory();
+        const string name = "T\u00e4b \uc7a5";
+        if (ingested) {
+            test.SetTable(new InventoryTabNameTable(new Dictionary<int, string> { [tab.ToClient()] = name }));
+        }
+        session.Currency.Meso = 5000;
+        FillStorage(session, metadata);
+        test.TakeSent();
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
+        byte[] notice = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.Notice);
+        byte[] arg = System.Text.Encoding.Unicode.GetBytes(ingested ? name : tab.ToString());
+        Assert.That(Enumerable.Range(0, notice.Length - arg.Length + 1).Any(at => System.MemoryExtensions.SequenceEqual(System.MemoryExtensions.AsSpan(notice, at, arg.Length), arg)), Is.True);
     }
 
     // A paid cube whose storage item cannot be written is refunded.
