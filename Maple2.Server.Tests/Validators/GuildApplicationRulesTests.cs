@@ -33,6 +33,23 @@ public class GuildApplicationRulesTests {
         Assert.That(GuildRules.FindOwnApplication([], 3), Is.Null);
     }
 
+    // Guild 84: the accept page's script sends the request id ("requestSn"); a character id ("charSn") is still
+    // matched, but only against this guild's requests, and a request id wins over an equal character id.
+    [Test]
+    public void RespondIdIsTheRequestFirstThenTheApplicant() {
+        GuildApplicationRow[] guildRows = [
+            new GuildApplicationRow(Id: 1, GuildId: 3, ApplicantId: 2000, CreationTime: 0),
+            new GuildApplicationRow(Id: 2, GuildId: 3, ApplicantId: 1, CreationTime: 0),
+        ];
+
+        Assert.That(GuildRules.FindGuildApplication(guildRows, 2)?.ApplicantId, Is.EqualTo(1));
+        Assert.That(GuildRules.FindGuildApplication(guildRows, 2000)?.Id, Is.EqualTo(1));
+        // 1 is both a request id and a character id: the request wins.
+        Assert.That(GuildRules.FindGuildApplication(guildRows, 1)?.ApplicantId, Is.EqualTo(2000));
+        Assert.That(GuildRules.FindGuildApplication(guildRows, 5), Is.Null);
+        Assert.That(GuildRules.FindGuildApplication([], 1), Is.Null);
+    }
+
     private static GuildApplicationRow[] Rows(int count, long applicantId = 1) =>
         Enumerable.Range(1, count).Select(i => new GuildApplicationRow(Id: 100 + i, GuildId: i, ApplicantId: applicantId, CreationTime: 0)).ToArray();
 

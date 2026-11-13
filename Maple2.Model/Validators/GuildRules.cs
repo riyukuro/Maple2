@@ -137,6 +137,22 @@ public static class GuildRules {
         return byRequest;
     }
 
+    // Guild 84 (SendGuildMode84) carries one id of an accept page row, which shows both the request id and the
+    // character id. A live accept sent the request id; the character id is still taken, as the id of a request
+    // of this guild only: first as the request, then as the applicant.
+    public static GuildApplicationRow? FindGuildApplication(IEnumerable<GuildApplicationRow> guildRows, long id) {
+        GuildApplicationRow? byApplicant = null;
+        foreach (GuildApplicationRow row in guildRows) {
+            if (row.Id == id) {
+                return row;
+            }
+            if (row.ApplicantId == id) {
+                byApplicant ??= row;
+            }
+        }
+        return byApplicant;
+    }
+
     // Guild 71 (CGuildManager::SendGuildMail): one mail to every member but the sender.
     public static IList<long> MailReceivers(IEnumerable<long> memberIds, long senderId) {
         return memberIds.Where(id => id != senderId).Distinct().OrderBy(id => id).ToList();

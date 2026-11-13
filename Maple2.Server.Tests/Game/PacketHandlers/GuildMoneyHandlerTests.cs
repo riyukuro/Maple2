@@ -105,6 +105,32 @@ public class GuildMoneyHandlerTests {
     private string[] GuildAnswers() => test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild).Select(Convert.ToHexString).ToArray();
     private static string Hex(ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
+    // Guild 84 in the client writer's order (CGuildManager::SendGuildMode84): u8 0x54, i64 the id of the accept page
+    // row (the script sends the request id), u8 accept. The id goes to the World as it came; the answer echoes it.
+    [Test]
+    public void RespondApplication_SendsTheRowIdToTheWorld() {
+        Join();
+        session.Guild.Guild!.Ranks.Add(new GuildRank { Id = 0, Name = "Master", Permission = GuildPermission.InviteMembers });
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = 7, ApplicationId = 1, ApplicantName = "Applicant" };
+        IByteReader packet = TestGameSession.Packet(writer => {
+            writer.WriteByte(0x54);
+            writer.WriteLong(1);
+            writer.WriteByte(1);
+        });
+        handler.Handle(session, packet);
+
+        GuildRequest sent = test.World.GuildRequests.Single();
+        Assert.Multiple(() => {
+            Assert.That(packet.Available, Is.EqualTo(0));
+            Assert.That(sent.RequestorId, Is.EqualTo(session.CharacterId));
+            Assert.That(sent.RespondApplication.GuildId, Is.EqualTo(7));
+            Assert.That(sent.RespondApplication.Id, Is.EqualTo(1));
+            Assert.That(sent.RespondApplication.Accepted, Is.True);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Does.Contain(Convert.ToHexString(GuildPacket.RespondApplication(1, "Applicant", true).ToArray())));
+        });
+    }
+
     // Guild 120 (the guild vs game's Enter) from where a match move is refused: dead or in a dungeon. The World is
     // not asked and the client's open game is cleared (Guild 119 with 0).
     [TestCase(false)]

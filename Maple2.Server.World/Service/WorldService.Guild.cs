@@ -411,9 +411,10 @@ public partial class WorldService {
 
         using GameStorage.Request db = guildLookup.Storage();
         bool isMember = manager.Guild.Members.TryGetValue(requestorId, out GuildMember? requestor);
-        GuildApplicationRow? row = db.GetGuildApplication(respond.GuildId, respond.ApplicantId);
+        GuildApplicationRow? row = GuildRules.FindGuildApplication(db.GetGuildApplications(respond.GuildId), respond.Id);
+        long applicantId = row?.ApplicantId ?? 0;
         GuildError error = GuildRules.CheckRespond(isMember, manager.HasPermission(requestorId, GuildPermission.InviteMembers),
-            respond.GuildId, respond.ApplicantId, row, respond.Accepted, row == null ? 0 : db.GetGuildId(respond.ApplicantId));
+            respond.GuildId, applicantId, row, respond.Accepted, row == null ? 0 : db.GetGuildId(applicantId));
         if (error == GuildError.s_guild_err_has_guild && row != null) {
             // The applicant joined a guild in another way: the request is over and leaves the list.
             if (db.DeleteGuildApplication(row.Id)) {
@@ -423,13 +424,13 @@ public partial class WorldService {
         if (error != GuildError.none || requestor == null || row == null) {
             return new GuildResponse { Error = (int) (error != GuildError.none ? error : GuildError.s_guild_err_unknown) };
         }
-        if (!playerLookup.TryGet(respond.ApplicantId, out PlayerInfo? applicant)) {
+        if (!playerLookup.TryGet(applicantId, out PlayerInfo? applicant)) {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_user };
         }
 
         if (respond.Accepted) {
             // The member insert removes all requests of the new member in the same save.
-            IList<GuildApplicationRow> open = db.GetGuildApplicationsOf(respond.ApplicantId);
+            IList<GuildApplicationRow> open = db.GetGuildApplicationsOf(applicantId);
             error = manager.Join(requestor.Name, applicant);
             if (error != GuildError.none) {
                 return new GuildResponse { Error = (int) error };

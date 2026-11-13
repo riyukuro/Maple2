@@ -849,10 +849,13 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
-    // CGuildManager::SendGuildMode84: the applicant's character id (the "charSn" of the accept page row) and
-    // accept or reject. The sender needs the invite right, as for the list (85).
+    // CGuildManager::SendGuildMode84: one id of the accept page row and accept or reject. The page hands the
+    // script both the request id ("requestSn") and the character id ("charSn", uiguilddialog.cpp:2032-2036);
+    // the script passes back the request id (a live accept sent the row id), so the World matches the id
+    // against the guild's requests (GuildRules.FindGuildApplication). The sender needs the invite right, as for
+    // the list (85).
     private void HandleRespondApplication(GameSession session, IByteReader packet) {
-        long characterId = packet.ReadLong();
+        long id = packet.ReadLong();
         bool accepted = packet.ReadBool();
         if (session.Guild.Guild == null) {
             return; // Not in a guild.
@@ -867,7 +870,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 RequestorId = session.CharacterId,
                 RespondApplication = new GuildRequest.Types.RespondApplication {
                     GuildId = session.Guild.Id,
-                    ApplicantId = characterId,
+                    Id = id,
                     Accepted = accepted,
                 },
             });
@@ -877,7 +880,8 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             }
 
-            session.Send(GuildPacket.RespondApplication(characterId, response.ApplicantName, accepted));
+            // OnPacketJoinRequestAnswer reads the id only to show the line when it is above 0.
+            session.Send(GuildPacket.RespondApplication(id, response.ApplicantName, accepted));
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to respond to guild application");
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
