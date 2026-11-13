@@ -429,29 +429,16 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         return taken;
     }
 
-    // The played client's arrow where it has the attack at that place with the same point, else the data pack's. The
-    // bounce overlap is kept only for a bouncing arrow, as for the data pack's.
+    // The played client's arrow where it has the attack at that place with the same point, else the data pack's
+    // (PlayedClientSkills.TakeArrow).
     private SkillMetadataArrow WithClientArrow(int id, short level, int motion, int attack, string point, SkillMetadataArrow pack) {
         if (!clientArrows.TryGetValue((id, level, motion, attack), out (PlayedClientSkills.AttackArrow Arrow, string Point) played)) {
             return pack;
         }
-        if (played.Point != point) {
+        if (PlayedClientSkills.TakeArrow(played.Arrow, played.Point, point) is not { } taken) {
             arrowPointMismatches++;
             return pack;
         }
-        PlayedClientSkills.AttackArrow arrow = played.Arrow;
-        var taken = new SkillMetadataArrow(
-            Overlap: arrow.Overlap != 0,
-            Explosion: arrow.Explosion != 0,
-            RayPhysXTest: arrow.RayPhysxTest != 0,
-            NonTarget: (SkillTargetType) arrow.NonTarget,
-            BounceType: (BounceType) arrow.BounceType,
-            BounceCount: arrow.BounceCount,
-            BounceRadius: arrow.BounceRadius,
-            BounceOverlap: arrow.BounceType > 0 && arrow.BounceOverlap != 0,
-            Collision: arrow.Collision,
-            CollisionAdd: arrow.CollisionAdd,
-            RayType: arrow.RayType);
         if (taken != pack) {
             clientArrowsTaken++;
         }

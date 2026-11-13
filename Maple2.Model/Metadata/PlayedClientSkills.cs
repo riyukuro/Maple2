@@ -335,6 +335,26 @@ public static class PlayedClientSkills {
     public record AttackArrow(int Overlap, int Explosion, int RayPhysxTest, int NonTarget, int BounceType, int BounceCount, float BounceRadius,
         int BounceOverlap, Vector3 Collision, Vector3 CollisionAdd, int RayType);
 
+    // The arrow an attack takes from the played client's where it has the attack at that place with the same point,
+    // else null (the data pack's is kept). The bounce overlap is kept only for a bouncing arrow, as for the data pack's.
+    public static SkillMetadataArrow? TakeArrow(AttackArrow arrow, string playedPoint, string point) {
+        if (playedPoint != point) {
+            return null;
+        }
+        return new SkillMetadataArrow(
+            Overlap: arrow.Overlap != 0,
+            Explosion: arrow.Explosion != 0,
+            RayPhysXTest: arrow.RayPhysxTest != 0,
+            NonTarget: (SkillTargetType) arrow.NonTarget,
+            BounceType: (BounceType) arrow.BounceType,
+            BounceCount: arrow.BounceCount,
+            BounceRadius: arrow.BounceRadius,
+            BounceOverlap: arrow.BounceType > 0 && arrow.BounceOverlap != 0,
+            Collision: arrow.Collision,
+            CollisionAdd: arrow.CollisionAdd,
+            RayType: arrow.RayType);
+    }
+
     // A push type other than 0 is a push: the client tests SkillDamage::GetPush against 0 for the hit reaction and
     // super armor (pc.cpp:902, 929), so -1 and 3 count though they move nothing (pcbase.cpp:4135-4172).
     public static bool IsPush(int type) => type != 0;

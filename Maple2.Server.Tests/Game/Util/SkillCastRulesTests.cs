@@ -939,6 +939,20 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void ClientArrowIsTakenAtTheSamePoint() {
+        var bouncing = new PlayedClientSkills.AttackArrow(1, 1, 1, 1, 3, 160, 300, 1, new Vector3(30, 30, 100), new Vector3(0, 0, 50), 2);
+        Assert.That(PlayedClientSkills.TakeArrow(bouncing, "p0", "p0"), Is.EqualTo(new SkillMetadataArrow(
+            Overlap: true, Explosion: true, RayPhysXTest: true, NonTarget: SkillTargetType.Owner, BounceType: BounceType.Pierce,
+            BounceCount: 160, BounceRadius: 300, BounceOverlap: true, Collision: new Vector3(30, 30, 100),
+            CollisionAdd: new Vector3(0, 0, 50), RayType: 2)));
+        // Another point at that place: the data pack's arrow stays.
+        Assert.That(PlayedClientSkills.TakeArrow(bouncing, "p1", "p0"), Is.Null);
+        // An arrow that does not bounce keeps no bounce overlap, though the client's default gives it 1.
+        var straight = new PlayedClientSkills.AttackArrow(0, 0, 0, 0, 0, 0, 0, 1, Vector3.Zero, Vector3.Zero, 0);
+        Assert.That(PlayedClientSkills.TakeArrow(straight, "p0", "p0")?.BounceOverlap, Is.False);
+    }
+
+    [Test]
     public void AnyPushTypeButZeroIsAPush() {
         // The client takes push -1 (6 KR attacks) as a push for the hit reaction and super armor, as it does 3.
         foreach (int type in new[] { 1, 2, 3, 4, 5, 6, -1 }) {
