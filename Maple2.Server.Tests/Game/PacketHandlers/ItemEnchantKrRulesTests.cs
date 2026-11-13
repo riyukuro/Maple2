@@ -214,4 +214,35 @@ public class ItemEnchantKrRulesTests {
         Assume.That(item.Type.IsGreatsword, Is.True);
         Assert.That(Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(item).Single(c => c.Tag == ItemTag.Onix).Amount, Is.EqualTo(21780));
     }
+
+    // The copies a grade asks for are the staged item's own id at its own rarity; the client lists only those as
+    // catalysts (UIItemEnchantDialog::FUN_1419c9260). At +11 two of them make the try go ahead and are used up,
+    // a copy of another rarity is refused.
+    [TestCase(EnchantType.Ophelia)]
+    [TestCase(EnchantType.Peachy)]
+    public void FromEleven_CopiesOfTheSameIdAndRarityAreTaken(EnchantType type) {
+        GameSession session = Login(4, new ItemEnchant(enchants: 11), copies: 3);
+        session.Item.Inventory.Get(copyUids[2])!.Rarity = 5;
+        Assert.That(session.ItemEnchant.StageItem(type, gear.Uid), Is.True);
+        byte[] stage = test.TakeSent().Last(p => (SendOp) (p[0] | p[1] << 8) == SendOp.ItemEnchant);
+        var tail = new ByteReader(stage, stage.Length - 10);
+        Assert.Multiple(() => {
+            Assert.That(tail.ReadInt(), Is.EqualTo(gear.Id));
+            Assert.That(tail.ReadShort(), Is.EqualTo(4));
+            Assert.That(tail.ReadInt(), Is.EqualTo(2));
+        });
+
+        Assert.Multiple(() => {
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[2], true), Is.False);
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], true), Is.True);
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[1], true), Is.True);
+        });
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(copyUids[0]), Is.Null);
+            Assert.That(session.Item.Inventory.Get(copyUids[1]), Is.Null);
+            Assert.That(session.Item.Inventory.Get(copyUids[2]), Is.Not.Null);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }
