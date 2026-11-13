@@ -86,12 +86,43 @@ public class FieldNpc : Actor<Npc> {
     // The npc that summoned this one as its slave (a summon node without master="None"); null otherwise.
     public FieldNpc? Master { get; private set; }
 
+    // Set by an AI ride node: the npc ids of the slave this npc rides (its car); null when not riding.
+    public int[]? RideNpcIds { get; set; }
+    // The car position last taken and where that put this npc (a navmesh snap may leave it off the car's point):
+    // the npc is placed again only when either changes, so a parked car sends no control each tick.
+    private Vector3 rodeFrom = new(float.NaN);
+    private Vector3 rodeTo = new(float.NaN);
+
     // The live slaves of this npc, in summon order.
     public List<FieldNpc> Slaves() {
         lock (summons) {
             PruneSummons();
             return summons.Where(summon => summon.LeavesWithSummoner).Select(summon => summon.Npc).ToList();
         }
+    }
+
+    // A riding npc stays on its car (see AiRide): each tick it takes the position of its first live slave with a
+    // ride id. Not while jumping (the boss jumps onto the car before it rides it again).
+    private void FollowVehicle() {
+        int[]? rideIds = RideNpcIds;
+        if (rideIds == null || IsDead || MovementState.IsJumping) {
+            return;
+        }
+        List<FieldNpc> slaves = Slaves();
+        int index = AiRide.Vehicle(slaves.Select(slave => slave.Value.Id).ToList(), rideIds);
+        if (index < 0) {
+            return;
+        }
+        FieldNpc vehicle = slaves[index];
+        if (rodeFrom != vehicle.Position || rodeTo != Position) {
+            rodeFrom = vehicle.Position;
+            if (Navigation == null || !Navigation.UpdatePosition(vehicle.Position)) {
+                Position = vehicle.Position;
+            }
+            rodeTo = Position;
+            SendControl = true; // the Position setter does not mark the control dirty
+        }
+        Velocity = vehicle.Velocity;
     }
 
     public int SummonCount(int group) {
@@ -363,6 +394,7 @@ public class FieldNpc : Actor<Npc> {
         }
 
         MovementState.Update(tickCount);
+        FollowVehicle();
 
         if (!isSpawning && !isStunned) {
             TaskState.Update(tickCount);

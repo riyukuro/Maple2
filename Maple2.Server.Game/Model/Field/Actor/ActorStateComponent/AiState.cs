@@ -593,7 +593,9 @@ public class AiState {
         actor.Field.UserValues.Set(node.TriggerID, node.Key, node.Value);
     }
 
-    private void ProcessNode(RideNode node) { }
+    private void ProcessNode(RideNode node) {
+        actor.RideNpcIds = AiRide.Riding(node.IsRideOff, node.RideNpcIDs);
+    }
 
     private void ProcessNode(SetSlaveValueNode node) {
         if (node.IsKeepBattle) {
