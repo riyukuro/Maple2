@@ -267,10 +267,11 @@ public static class PlayedClientSkills {
     public static bool SameMotion(MotionTiming played, int motions, string sequenceName, string points) =>
         played.Points == points && (played.Motions == motions || (played.SequenceName.Length > 0 && played.SequenceName == sequenceName));
 
-    // The sequence a paired motion plays: the client's, but the data pack's where the client names none. The client
-    // plays no animation for an empty name (StateSkill, stateskill.cpp:2233-2250), where the server's actor cast stops
-    // when it has no sequence to play, so an empty name would stop the cast rather than play it bare.
-    public static string SequenceName(MotionTiming played, string pack) => played.SequenceName.Length > 0 ? played.SequenceName : pack;
+    // The sequence a paired motion plays: the client's, also where it names none. A level whose motions name no
+    // sequence (SkillLevelData::HasSequenceName) is cast without the skill state and fires its first attack at once
+    // (MyPC::vfunc_102 -> StateSkill::FireFirstAttack), which the npc cast does too (SkillCastRules.StartOf), so the
+    // data pack's name would play an animation and wait for keys the client never has (KR 50100036 and 50100480).
+    public static string SequenceName(MotionTiming played, string pack) => played.SequenceName;
 
     // The push of every attack of the client's levels, by skill id, level, the motion's place in the level and the
     // attack's place in the motion, with the attack's point. SkillDamage::Load reads it from the attack's <damage>

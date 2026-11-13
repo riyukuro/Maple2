@@ -868,8 +868,9 @@ public class SkillCastRulesTests {
     }
 
     [Test]
-    public void EmptyClientSequenceKeepsThePacks() {
-        Assert.That(PlayedClientSkills.SequenceName(new("", 1, 0, 0, "p0", 1), "Attack_Idle_A"), Is.EqualTo("Attack_Idle_A"));
+    public void EmptyClientSequenceIsTaken() {
+        // KR 50100036 names no sequence where the data pack names one: the client fires it at once, so it plays none.
+        Assert.That(PlayedClientSkills.SequenceName(new("", 1, 0, 0, "p0", 1), "Attack_Idle_A"), Is.Empty);
         Assert.That(PlayedClientSkills.SequenceName(new("Striker_GigantikBlow1_A", 1, 0, 0, "p0", 1), ""), Is.EqualTo("Striker_GigantikBlow1_A"));
     }
 
