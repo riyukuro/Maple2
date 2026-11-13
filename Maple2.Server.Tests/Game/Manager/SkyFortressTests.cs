@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Xml;
@@ -243,16 +243,99 @@ public class SkyFortressTests {
         Assert.That(packet, Is.EqualTo(new byte[] { 0x52, 0x00, 0x15, 7, 0, 0, 0, 2, 0, 0, 0 }));
     }
 
+    // The reset at its midnight: the old day's attacks go (the time is the midnight), 0x10B tells the client.
     [Test]
     public void DailyReset_ClearsAttackCount() {
         ReadyToAttack();
-        AttacksToday(AttackLimit);
+        test.Session.Player.Value.Character.MissionAttackCount = AttackLimit;
+        test.Session.Player.Value.Character.MissionAttackTime = PetFusionRules.LastResetTime() - 60;
         test.TakeSent();
-        test.Session.Quest.ResetMissionAttacks();
+        test.Session.Quest.ResetMissionAttacks(DateTime.Today);
         Assert.Multiple(() => {
-            Assert.That(test.Session.Quest.MissionAttackCount(), Is.Zero);
+            Assert.That(test.Session.Player.Value.Character.MissionAttackCount, Is.Zero);
+            Assert.That(test.Session.Player.Value.Character.MissionAttackTime, Is.EqualTo(PetFusionRules.LastResetTime()));
             Assert.That(test.TakeSent(), Is.EqualTo(new[] { new byte[] { 0x0B, 0x01 } }));
         });
+    }
+
+    // Attacks counted after the midnight (a reset that runs late) belong to the new day and stay.
+    [Test]
+    public void DailyReset_KeepsNewDayAttacks() {
+        ReadyToAttack();
+        AttacksToday(2);
+        test.TakeSent();
+        test.Session.Quest.ResetMissionAttacks(DateTime.Today);
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.EqualTo(2));
+            Assert.That(test.TakeSent(), Is.EqualTo(new[] { new byte[] { 0x0B, 0x01 } }));
+        });
+    }
+
+    // A reset that fires before its midnight waits for it on the session's queue: nothing cleared, nothing sent.
+    [Test]
+    public void DailyReset_EarlyFireWaitsForMidnight() {
+        ReadyToAttack();
+        var scheduler = new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger);
+        scheduler.Start();
+        typeof(Maple2.Server.Game.Session.GameSession).GetField(nameof(Maple2.Server.Game.Session.GameSession.Scheduler))!.SetValue(test.Session, scheduler);
+        AttacksToday(AttackLimit);
+        test.TakeSent();
+        test.Session.Quest.ResetMissionAttacks(DateTime.Today.AddHours(-1));
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.EqualTo(AttackLimit));
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(scheduler.Count, Is.EqualTo(1));
+            Assert.That(scheduler.Queued, Is.Zero);
+        });
+    }
+
+    private void Die() {
+        typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(test.Session.Player, true);
+        Assert.That(test.Session.Player.IsDead, Is.True);
+    }
+
+    // FUN_1409312f0: off the home field a dead player cannot move (0x0E or 0x0F); the attack is not answered or
+    // counted.
+    [Test]
+    public void Dead_RefusedOffHomeField() {
+        ReadyToAttack();
+        test.AddAchievement(TestGameSession.Trophy(22500041, ConditionType.mission_attack_system, [50]));
+        Die();
+        test.TakeSent();
+        Attack();
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.CanEnterSkyFortress(Target), Is.False);
+            Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.False);
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.Zero);
+            Assert.That(test.TrophyCounter(22500041), Is.Null);
+        });
+    }
+
+    // On the home field (62000000) the client skips the check.
+    [Test]
+    public void Dead_AllowedOnHomeField() {
+        Login(Seasons(RequireQuest), Constant.DefaultHomeMapId);
+        Hold(RequireQuest, QuestState.Completed);
+        Die();
+        Assert.That(test.Session.Quest.CanEnterSkyFortress(Target), Is.True);
+    }
+
+    // A field quest the played client has no row of decides nothing.
+    [Test]
+    public void MissionAttack_NotInPlayedClientQuestSkipped() {
+        Login(Seasons(RequireQuest));
+        Hold(RequireQuest, QuestState.Completed);
+        QuestMetadata data = TestGameSession.QuestData(AttackQuest, QuestType.FieldQuest);
+        data = data with { Basic = data.Basic with { ProgressMaps = [Target], Alliance = AllianceType.DarkWind, NotInPlayedClient = true } };
+        test.StartQuest(data).State = QuestState.Started;
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.FieldQuestAlliance(Target), Is.EqualTo(AllianceType.AnyFaction));
+            Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.False);
+        });
+        HoldFieldQuest(QuestState.Started, AllianceType.DarkWind, AttackQuest + 1);
+        Assert.That(test.Session.Quest.FieldQuestAlliance(Target), Is.EqualTo(AllianceType.DarkWind));
     }
 
     // The move to the sky fortress (Quest 0x0E) raises skyfortress_system only when it is prepared: a refused or failed

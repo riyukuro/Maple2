@@ -1094,8 +1094,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // Mini-Game M extra rewards
         Player.Value.Character.MassiveExtraRewardCount = 0;
         Player.Value.Character.MassiveExtraRewardTime = DateTime.Now.ToEpochSeconds();
-        // Sky fortress mission attacks
-        Quest.ResetMissionAttacks();
+        // Sky fortress mission attacks, on the session's queue (where the attacks are counted) with the reset's time.
+        Scheduler.Schedule(() => Quest.ResetMissionAttacks(resetTime));
     }
 
     public void WeeklyReset() {

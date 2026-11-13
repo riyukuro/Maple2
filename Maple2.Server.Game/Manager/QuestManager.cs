@@ -490,22 +490,25 @@ public sealed class QuestManager {
     private bool HasState(int questId, QuestState state) => TryGetQuest(questId, out Quest? quest) && quest.State == state;
 
     // CQuestManager::CanEnterSkyFortress (questmanager_2.cpp:1723), the server's part: the quest the sky fortress
-    // season (1) requires is rewarded (IsQuestRewarded, state 2), and the player is not on the target field already.
-    // A table stored before the seasons were read has none: the constant then names the same quest (91000013 in KR).
-    // Chosen here: the client's third check (the player on the home field 62000000 or FUN_1409312f0) is left to it.
+    // season (1) requires is rewarded (IsQuestRewarded, state 2), the player is not on the target field already, and
+    // off the home field 62000000 the player is not dead (FUN_1409312f0, accountsessionstate.cpp:971: the local PC is
+    // not dead). A table stored before the seasons were read has none: the constant then names the same quest
+    // (91000013 in KR). Chosen here: FUN_1409312f0's session flags (the client's own load state) are left to it.
     public bool CanEnterSkyFortress(int mapId) {
         FameTable fame = session.TableMetadata.FameTable;
         int questId = fame.SeasonRequireQuests == null ? session.ServerTableMetadata.ConstantsTable.FameContentsRequireQuestID : fame.SeasonRequireQuest(1);
-        return HasState(questId, QuestState.Completed) && session.Field?.MapId != mapId;
+        return HasState(questId, QuestState.Completed) && session.Field?.MapId != mapId
+            && (session.Field?.MapId == Constant.DefaultHomeMapId || !session.Player.IsDead);
     }
 
     // CQuestManager::FUN_1416d0800 (questmanager_2.cpp:1706): the alliance of the first quest in progress among the
-    // field quests of the field (QuestDataTable::FUN_14074d360, by the quest's first progress map); 0 when none.
+    // field quests of the field (QuestDataTable::FUN_14074d360, by the quest's first progress map); 0 when none. A
+    // quest the played client has no row of (NotInPlayedClient) is not in its table, so it decides nothing.
     // Chosen here: the server takes the held quests in id order.
     public AllianceType FieldQuestAlliance(int mapId) {
         foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).OrderBy(quest => quest.Id)) {
             QuestMetadataBasic basic = quest.Metadata.Basic;
-            if (quest.State != QuestState.Started || basic.Type != QuestType.FieldQuest || basic.ProgressMaps is not { Length: > 0 } maps || maps[0] != mapId) {
+            if (!PlayedClientQuests.Known(basic) || quest.State != QuestState.Started || basic.Type != QuestType.FieldQuest || basic.ProgressMaps is not { Length: > 0 } maps || maps[0] != mapId) {
                 continue;
             }
             return basic.Alliance;
@@ -539,11 +542,22 @@ public sealed class QuestManager {
     }
 
     // The daily reset of the attacks: 0x10B clears the client's count (ResetRefreshCount, questmanager_2.cpp:766).
-    // Chosen here: 0x10B is sent at the daily reset; the client also opens its daily mission window on it.
-    public void ResetMissionAttacks() {
+    // now is the time of the reset; it runs on the session's queue, where the attack requests are counted. A reset that
+    // fires before its midnight waits for it, as ResetDailyQuests does: cleared at once, the old day would allow a
+    // second set of attacks. Chosen here: 0x10B is sent at the daily reset (the client also opens its daily mission
+    // window on it); attacks already counted on the new day (stored at or after its midnight) are kept.
+    public void ResetMissionAttacks(DateTime now) {
+        DateTime day = AllianceMissions.ResetPeriodStart(2, 0, now);
+        if (now < day) {
+            session.Scheduler.Schedule(() => ResetMissionAttacks(day), day - now);
+            return;
+        }
         Character character = session.Player.Value.Character;
-        character.MissionAttackCount = 0;
-        character.MissionAttackTime = DateTime.Now.ToEpochSeconds();
+        long dayStart = new DateTimeOffset(day).ToUnixTimeSeconds();
+        if (character.MissionAttackTime < dayStart) {
+            character.MissionAttackCount = 0;
+            character.MissionAttackTime = dayStart;
+        }
         session.Send(QuestPacket.DailyReset());
     }
 
