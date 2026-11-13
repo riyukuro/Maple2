@@ -262,7 +262,8 @@ public class StorageInventoryHandlerTests {
         Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(5));
     }
 
-    // An expansion: the merets, then the new count of added slots and nothing else; no further than the constant.
+    // An expansion: the merets, then the new count of added slots and the expand effect (7, no payload); no
+    // further than the constant.
     [Test]
     public void Expand_AnswersWithTheAddedSlots() {
         GameSession session = Open();
@@ -280,10 +281,14 @@ public class StorageInventoryHandlerTests {
         List<byte[]> sent = test.TakeSent();
         Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.StorageInventory).Select(Convert.ToHexString), Is.EqualTo(new[] {
             Hex(StorageInventoryPacket.SlotsExpanded(6)),
+            Hex(StorageInventoryPacket.ExpandEffect()),
             Hex(StorageInventoryPacket.SlotsExpanded(12)),
+            Hex(StorageInventoryPacket.ExpandEffect()),
             Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_expand_max)),
         }));
         Assert.That(session.Currency.Meret, Is.EqualTo(1000 - 2 * 330));
+        // 7 is the command byte alone.
+        Assert.That(Convert.ToHexString(StorageInventoryPacket.ExpandEffect().ToArray()[2..]), Is.EqualTo("07"));
     }
 
     // The destroy request of a stored item (10, the item's uid): the storage's removal, and the item is in

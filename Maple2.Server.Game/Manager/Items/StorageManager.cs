@@ -265,9 +265,11 @@ public sealed class StorageManager : IDisposable {
             session.Currency.Meret -= Constants.StoreExpandPrice1Row;
             expand += Constant.InventoryExpandRowCount;
 
-            // The client's reader of the expansion (CStore::Dispatch 0xd) adds the slots to the open window; the
-            // items and the mesos stay as they are.
+            // The client's reader of the expansion (CStore::Dispatch 0xd) sets the store's capacity; the items and
+            // the mesos stay as they are. Dispatch 7 then shows the added slots in the open window with the expand
+            // effect, so it comes second: its slot rebuild reads the capacity 0xd set.
             session.Send(StorageInventoryPacket.SlotsExpanded(expand));
+            session.Send(StorageInventoryPacket.ExpandEffect());
         }
     }
 
