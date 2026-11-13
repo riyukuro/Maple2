@@ -18,6 +18,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Tools.Scheduler;
+using Maple2.Tools.VectorMath;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -578,5 +579,113 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Action("""<action name="set_skill" trigger_ids="801" enable="0" />""");
         ByteReader removed = Sent(SendOp.RegionSkill).Single();
         Assert.That((removed.ReadByte(), removed.ReadInt()), Is.EqualTo(((byte) 1, objectId)));
+    }
+}
+
+public class TriggerNpcTests : TriggerTestBase {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+    private ConcurrentDictionary<int, FieldNpc> mobs = null!;
+
+    [SetUp]
+    public void SetUpNpcs() {
+        Start();
+        mobs = new ConcurrentDictionary<int, FieldNpc>();
+        typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, mobs);
+        // The test field skips the FieldManager ctor: the npc effect table a removal clears is made here.
+        typeof(FieldManager).GetField(nameof(FieldManager.NpcEffects), Any)!.SetValue(Field,
+            Activator.CreateInstance(typeof(FieldManager).GetField(nameof(FieldManager.NpcEffects), Any)!.FieldType));
+        test.TakeSent();
+    }
+
+    // A monster of the spawn point; only what the trigger code reads is set.
+    private FieldNpc Mob(int objectId, int spawnPointId, bool dead = false) {
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        GC.SuppressFinalize(npc);
+        typeof(Actor<Npc>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(npc, objectId);
+        typeof(Actor<Npc>).GetField("<IsDead>k__BackingField", Any)!.SetValue(npc, dead);
+        FieldInfo summons = typeof(FieldNpc).GetField("summons", Any)!;
+        summons.SetValue(npc, Activator.CreateInstance(summons.FieldType));
+        typeof(Actor<Npc>).GetField("<Field>k__BackingField", Any)!.SetValue(npc, Field);
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc,
+            new Npc((NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata)), null));
+        typeof(Actor<Npc>).GetField("<Transform>k__BackingField", Any)!.SetValue(npc, new Transform());
+        typeof(Actor<Npc>).GetField("Logger", Any)!.SetValue(npc, Log.Logger);
+        npc.SpawnPointId = spawnPointId;
+        mobs[objectId] = npc;
+        return npc;
+    }
+
+    // monster_dead (4177): true once every monster of the spawn points is dead (none left counts as dead).
+    [Test]
+    public void MonsterDead_AllOfTheSpawnPoints() {
+        Mob(9001, 5);
+        Mob(9002, 6, dead: true);
+
+        Assert.That(Condition("""<condition name="monster_dead" spawn_ids="6" />"""), Is.True);
+        Assert.That(Condition("""<condition name="monster_dead" spawn_ids="5,6" />"""), Is.False);
+        Assert.That(Condition("""<condition name="monster_dead" spawn_ids="7" />"""), Is.True);
+        Assert.That(Condition("""<condition name="monster_dead" spawn_ids="5" negate="1" />"""), Is.True);
+    }
+
+    // destroy_monster (4237): the monsters of the listed spawn points leave the field (-1: all of them).
+    [Test]
+    public void DestroyMonster_BySpawnPoint() {
+        Mob(9001, 5);
+        Mob(9002, 6);
+        Mob(9003, 7);
+
+        Action("""<action name="destroy_monster" spawn_ids="5,6" />""");
+        Field.Scheduler.InvokeAll();
+        Assert.That(mobs.Keys, Is.EqualTo(new[] { 9003 }));
+        Assert.That(Sent(SendOp.FieldRemoveNpc).Select(r => r.ReadInt()).Order(), Is.EqualTo(new[] { 9001, 9002 }));
+
+        Mob(9004, 8);
+        Action("""<action name="destroy_monster" spawn_ids="-1" />""");
+        Field.Scheduler.InvokeAll();
+        Assert.That(mobs, Is.Empty);
+    }
+
+    // move_npc (3710): the npcs of the spawn point take the map's patrol of that name as a script path.
+    [Test]
+    public void MoveNpc_TakesTheNamedPatrol() {
+        var patrol = new MS2PatrolData("uuid", "MS2PatrolData_101", false, 1, false, []);
+        typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData> { patrol });
+        FieldNpc moved = Mob(9001, 5);
+        FieldNpc other = Mob(9002, 6);
+
+        Action("""<action name="move_npc" spawn_id="5" patrol_name="MS2PatrolData_102" />""");
+        Assert.That(moved.Patrol, Is.Null);
+
+        Action("""<action name="move_npc" spawn_id="5" patrol_name="MS2PatrolData_101" />""");
+        Assert.That((moved.Patrol, moved.OnScriptPath, other.Patrol), Is.EqualTo((patrol, true, (MS2PatrolData?) null)));
+    }
+
+    // spawn_monster (8884): with a delay each spawn point's spawn waits on the script's queue (the spawn itself
+    // needs the field's navmesh, which the test field has none of).
+    [Test]
+    public void SpawnMonster_DelayedSpawnsQueue() {
+        Action("""<action name="spawn_monster" spawn_ids="101,102" delay="1000" />""");
+        Assert.That(context.Events.Count, Is.EqualTo(2));
+    }
+
+    // set_dialogue (3571): type 1 is a balloon over the spawn point's npc, type 2 a cinematic talk of the npc id;
+    // time is in seconds.
+    [Test]
+    public void SetDialogue_BalloonOrTalk() {
+        Mob(9001, 5);
+
+        Action("""<action name="set_dialogue" type="1" spawn_id="5" script="abc" time="3" />""");
+        ByteReader balloon = Sent(SendOp.Cinematic).Single();
+        Assert.That((balloon.ReadByte(), balloon.ReadByte(), balloon.ReadInt(), balloon.ReadUnicodeString(), balloon.ReadInt()),
+            Is.EqualTo(((byte) 8, (byte) 0, 9001, "abc", 3000)));
+
+        Action("""<action name="set_dialogue" type="1" spawn_id="6" script="abc" time="3" />""");
+        Assert.That(Sent(SendOp.Cinematic), Is.Empty);
+
+        Action("""<action name="set_dialogue" type="2" spawn_id="11000001" script="def" time="2" />""");
+        ByteReader talk = Sent(SendOp.Cinematic).Single();
+        Assert.That((talk.ReadByte(), talk.ReadInt(), talk.ReadString(), talk.ReadUnicodeString(), talk.ReadInt()),
+            Is.EqualTo(((byte) 6, 11000001, "11000001", "def", 2000)));
     }
 }
