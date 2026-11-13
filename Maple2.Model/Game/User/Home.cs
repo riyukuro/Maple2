@@ -154,17 +154,28 @@ public class Home : IByteSerializable {
         return new Vector3(dimension, dimension, height);
     }
 
+    // The decoration exp as the game server adds it (CMasteryInteriorTable::AddMastery, masteryinteriortable.cpp:247):
+    // DecorationExp is the exp into the current grade, the grade's value the exp it takes to reach it from the one
+    // below. A grade reached starts again from 0 and the rest goes on to the next one; at the table's top grade no
+    // more exp is kept (the client shows the next grade's value as the bar's end, uiugchousingpointdialog.cpp:266).
     public void GainExp(long exp, IReadOnlyDictionary<int, MasteryUgcHousingTable.Entry> masteryTable) {
-        if (exp <= 0 || DecorationLevel >= Constant.HomeDecorationMaxLevel) {
-            return;
+        int maxGrade = 0;
+        foreach (int grade in masteryTable.Keys) {
+            maxGrade = Math.Max(maxGrade, grade);
         }
-
-        while (masteryTable.TryGetValue((int) DecorationLevel + 1, out MasteryUgcHousingTable.Entry? entry) && DecorationExp + exp >= entry.Exp) {
-            exp -= entry.Exp - DecorationExp;
+        while (exp > 0 && DecorationLevel < maxGrade) {
+            if (!masteryTable.TryGetValue((int) DecorationLevel + 1, out MasteryUgcHousingTable.Entry? entry)) {
+                return;
+            }
+            long sum = DecorationExp + exp;
+            if (sum < entry.Exp) {
+                DecorationExp = sum;
+                return;
+            }
+            DecorationExp = 0;
             DecorationLevel++;
+            exp = sum - entry.Exp;
         }
-
-        DecorationExp += exp;
     }
 
     public void WriteTo(IByteWriter writer) {
