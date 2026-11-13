@@ -1,4 +1,5 @@
 using System;
+using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Util;
 
@@ -19,6 +20,18 @@ public class ShopRulesTests {
         int quantity = reader.ReadInt();
         Assert.That(quantity, Is.EqualTo(-5));
         Assert.That(ShopRules.TryTotalPrice(100, quantity, out _), Is.False);
+    }
+
+    // The client's names: currency 3 is honor and 4 karma (uiworldshareinfoeventlistener.cpp:264), the shop's
+    // ValorToken and Treva; the other currencies have no shop_buy condition the server raises.
+    [TestCase(ShopCurrencyType.Meso, ConditionType.shop_buy)]
+    [TestCase(ShopCurrencyType.Treva, ConditionType.shop_buy_karma_token)]
+    [TestCase(ShopCurrencyType.ValorToken, ConditionType.shop_buy_honor_token)]
+    [TestCase(ShopCurrencyType.Rue, null)]
+    [TestCase(ShopCurrencyType.Item, null)]
+    [TestCase(ShopCurrencyType.Meret, null)]
+    public void BuyCondition_ByTheCurrencyPaid(ShopCurrencyType currency, ConditionType? expected) {
+        Assert.That(ShopRules.BuyCondition(currency), Is.EqualTo(expected));
     }
 
     [TestCase(100, 0)]

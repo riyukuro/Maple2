@@ -245,6 +245,8 @@ public static class ConditionUtil {
             case ConditionType.enter_otherhouse:
             case ConditionType.playtime:
             case ConditionType.shop_buy:
+            case ConditionType.shop_buy_karma_token:
+            case ConditionType.shop_buy_honor_token:
                 return true;
         }
         return false;
@@ -476,6 +478,8 @@ public static class ConditionUtil {
             case ConditionType.enter_otherhouse:
             case ConditionType.playtime:
             case ConditionType.shop_buy:
+            case ConditionType.shop_buy_karma_token:
+            case ConditionType.shop_buy_honor_token:
                 return true;
         }
         return false;

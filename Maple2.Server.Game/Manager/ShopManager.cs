@@ -543,9 +543,10 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
         session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price));
-        // The mesos paid in an NPC shop count for shop_buy (trophy 23200004).
-        if (shopItem.Metadata.Cost.Type == ShopCurrencyType.Meso && price > 0) {
-            session.ConditionUpdate(ConditionType.shop_buy, counter: price);
+        // The mesos, Treva or Valor Tokens paid in an NPC shop count for shop_buy, shop_buy_karma_token or
+        // shop_buy_honor_token (trophies 23200004, 23200014, 23200012).
+        if (ShopRules.BuyCondition(shopItem.Metadata.Cost.Type) is { } buyCondition && price > 0) {
+            session.ConditionUpdate(buyCondition, counter: price);
         }
 
         // Store the paid price and the bought stock now, not only at the next session save.

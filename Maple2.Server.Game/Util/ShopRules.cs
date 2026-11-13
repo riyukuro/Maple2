@@ -23,6 +23,18 @@ public static class ShopRules {
         return true;
     }
 
+    // The condition an NPC shop purchase counts for, by the currency paid; each counts the price. The client names
+    // currency 3 honor and 4 karma (the take messages, uiworldshareinfoeventlistener.cpp:264), which the shop pays as
+    // ValorToken and Treva; trophies 23200012 and 23200014 spend Valor Token and Treva.
+    public static ConditionType? BuyCondition(ShopCurrencyType currency) {
+        return currency switch {
+            ShopCurrencyType.Meso => ConditionType.shop_buy,
+            ShopCurrencyType.Treva => ConditionType.shop_buy_karma_token,
+            ShopCurrencyType.ValorToken => ConditionType.shop_buy_honor_token,
+            _ => null,
+        };
+    }
+
     public static bool RestockDue(long fixedRestockTime, long restockTime, long now) {
         return fixedRestockTime == 0 && restockTime < now;
     }

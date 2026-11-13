@@ -23,6 +23,8 @@ public class ShopHandlerTests {
     private const int PackProductId = 13;
     private const int FameProductId = 14;
     private const int AnyFameProductId = 15;
+    private const int TrevaProductId = 16;
+    private const int ValorProductId = 17;
     private const int ShopItemId = 20000001;
     private const int ProductItemId = 20000002;
 
@@ -32,15 +34,17 @@ public class ShopHandlerTests {
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
-    private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1, ShopItemMetadata.QuestAlliance? fame = null) {
+    private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1, ShopItemMetadata.QuestAlliance? fame = null,
+                                            ShopCurrencyType currency = ShopCurrencyType.Meso) {
         var requirements = new ShopItemMetadata.Requirement(0, new ShopItemMetadata.Achievement(0, 0), new ShopItemMetadata.Championship(0, 0),
             new ShopItemMetadata.GuildNpc(default, 0), fame ?? new ShopItemMetadata.QuestAlliance(default, 0));
-        return new ShopItemMetadata(id, ShopId, ProductItemId, 1, new ShopCost { Type = ShopCurrencyType.Meso, Amount = price }, stock, "", requirements,
+        return new ShopItemMetadata(id, ShopId, ProductItemId, 1, new ShopCost { Type = currency, Amount = price }, stock, "", requirements,
             null, sellUnit, default, "", false, false, 10000, false);
     }
 
-    private GameSession Login(long meso = 10000) {
+    private GameSession Login(long meso = 10000, params AchievementMetadata[] trophies) {
         test = new TestGameSession();
+        test.AddAchievement(trophies);
         test.SetServerTable(new ShopTable(new Dictionary<int, ShopMetadata> {
             [ShopId] = new(ShopId, 0, "shop", default, false, false, false, false, false, false, false, 0, false,
                 new ShopRestockData(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false)),
@@ -52,6 +56,8 @@ public class ShopHandlerTests {
                 [PackProductId] = Product(PackProductId, price: 40, stock: 50, sellUnit: 10),
                 [FameProductId] = Product(FameProductId, price: 10, stock: 0, fame: new ShopItemMetadata.QuestAlliance(AllianceType.MapleAlliance, 3)),
                 [AnyFameProductId] = Product(AnyFameProductId, price: 10, stock: 0, fame: new ShopItemMetadata.QuestAlliance(AllianceType.AnyFaction, 4)),
+                [TrevaProductId] = Product(TrevaProductId, price: 25, stock: 0, currency: ShopCurrencyType.Treva),
+                [ValorProductId] = Product(ValorProductId, price: 7, stock: 0, currency: ShopCurrencyType.ValorToken),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -94,6 +100,29 @@ public class ShopHandlerTests {
     }
 
     private static byte Sub(byte[] packet) => packet[2];
+
+    // The price paid counts for the trophy of the currency paid only: shop_buy for mesos, shop_buy_karma_token for
+    // Treva and shop_buy_honor_token for Valor Tokens (trophies 23200004, 23200014, 23200012).
+    [TestCase(ProductId, 0, 3 * 30)]
+    [TestCase(TrevaProductId, 1, 3 * 25)]
+    [TestCase(ValorProductId, 2, 3 * 7)]
+    public void Buy_CountsThePriceForTheTrophyOfItsCurrency(int productId, int paid, int price) {
+        ConditionType[] types = [ConditionType.shop_buy, ConditionType.shop_buy_karma_token, ConditionType.shop_buy_honor_token];
+        GameSession session = Login(trophies: types.Select((type, i) => TestGameSession.Trophy(23200100 + i, type, [100000])).ToArray());
+        test.SetServerTable(new ConstantsTable(HonorTokenMax: 30000, KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 1000;
+        session.Currency[CurrencyType.ValorToken] = 1000;
+
+        Buy(session, productId, 3);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(paid == 0 ? 10000 - price : 10000));
+        Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(paid == 1 ? 1000 - price : 1000));
+        Assert.That(session.Currency[CurrencyType.ValorToken], Is.EqualTo(paid == 2 ? 1000 - price : 1000));
+        for (int i = 0; i < types.Length; i++) {
+            Assert.That(test.TrophyCounter(23200100 + i) ?? 0, Is.EqualTo(i == paid ? price : 0), types[i].ToString());
+        }
+    }
 
     // KMS2: Meso, the bag add (ItemInventory 0 and 7), then Shop 4.
     [Test]
