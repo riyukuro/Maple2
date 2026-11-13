@@ -2220,10 +2220,13 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private WeddingTable ParseWeddingTable() {
         var rewardsResults = new Dictionary<MarriageExpType, WeddingReward>();
         foreach ((WeddingRewardType type, Parser.Xml.Table.WeddingReward reward) in parser.ParseWeddingReward()) {
-            rewardsResults.Add((MarriageExpType) type, new WeddingReward(
-                Type: (MarriageExpType) type,
+            if (WeddingRewardMapping.Type(type) is not MarriageExpType expType) {
+                continue;
+            }
+            rewardsResults[expType] = new WeddingReward(
+                Type: expType,
                 Amount: reward.rewardExp,
-                Limit: (MarriageExpLimit) reward.rewardLimit));
+                Limit: WeddingRewardMapping.Limit(reward.rewardLimit));
         }
 
         var packageResults = new Dictionary<int, WeddingPackage>();

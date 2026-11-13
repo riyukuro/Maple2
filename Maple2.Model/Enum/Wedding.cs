@@ -19,9 +19,15 @@ public enum MarriageExpType : short {
     logoutPanelty = 6,
     attendance = 7, // ??
 
-    // TODO: figure out the values for these
-    marriedLife,
-    weddingExpItem,
+    // Wedding reward table rows whose log type is not known yet: kept apart from the client's log types (1-13).
+    marriedLife = 101,
+    marriageRegister = 104,
+
+    // A Blessing Charm used (function WeddingExpItem): the client's log names it s_wedding_dialog_exp_9 and _10, the
+    // two lines of one source like the wedding missions' 11 and 12, so 9 the groom's and 10 the bride's use. The
+    // wedding reward table's weddingExpItem row is keyed by the groom's type.
+    weddingExpItem = 9,
+    WeddingExpItemBride = 10,
 
     // The types of the marriage's exp log the client reads (WeddingProxy::Read, weddingproxy.cpp:227) and shows as
     // s_wedding_dialog_exp_<type> (UIWeddingAffinityDialog::OnLoadComplete, uiweddingaffinitydialog.cpp:87): 11 the
@@ -30,10 +36,12 @@ public enum MarriageExpType : short {
     WeddingMissionBride = 12,
 }
 
+// The wedding reward table's rewardLimit, numbered as the parser reads it.
 public enum MarriageExpLimit {
-    none,
-    day,
-    month,
+    none = 0,
+    day = 1,
+    week = 2,
+    month = 3,
 }
 
 [Flags]
