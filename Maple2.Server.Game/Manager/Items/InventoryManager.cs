@@ -194,15 +194,18 @@ public class InventoryManager {
                 return false;
             }
 
+            // A currency or medal item that has a row (a mail attachment) is used up here; with commit its row is
+            // written to owner 0 at once, as a merged-away item's. On the delete list only, the row stayed the mail's
+            // until the next character save, and collecting the mail again gave it again.
             if (add.IsCurrency()) {
                 AddCurrency(add);
-                session.Item.Inventory.Discard(add);
+                session.Item.Inventory.Discard(add, commit);
                 return true;
             }
 
             if (add.Type.IsMedal) {
                 session.Survival.AddMedal(add);
-                session.Item.Inventory.Discard(add);
+                session.Item.Inventory.Discard(add, commit);
                 return true;
             }
 
