@@ -318,9 +318,13 @@ public sealed partial class GameSession : Core.Network.Session {
         // The same for a rank duel arrival whose match field is gone, and for a login on a rank duel map (the
         // character left the match by logging out): a rank duel field is entered only through its match.
         bool roomRuns = migrationType == MigrationType.PvpMatch ? server.HasPvpMatch(roomId) : server.HasDungeon(roomId);
-        if (FieldEntryRules.ArrivesInReturnField(migrationType, roomRuns)
-            || (roomId == 0 && FieldEntryRules.RankDuelMapWithoutMatch(fieldId, PvpMatchMaps.All(TableMetadata)))) {
-            Logger.Warning("Character:{CharacterId} arrives for dungeon or match Room:{RoomId} which is gone, enters the return field", characterId, roomId);
+        bool roomGone = FieldEntryRules.ArrivesInReturnField(migrationType, roomRuns);
+        if (roomGone || (roomId == 0 && FieldEntryRules.RankDuelMapWithoutMatch(fieldId, PvpMatchMaps.All(TableMetadata)))) {
+            if (roomGone) {
+                Logger.Warning("Character:{CharacterId} arrives for dungeon or match Room:{RoomId} which is gone, enters the return field", characterId, roomId);
+            } else {
+                Logger.Information("Character:{CharacterId} logs in on rank duel map {MapId} without its match, enters the return field", characterId, fieldId);
+            }
             migrationType = MigrationType.Normal;
             fieldId = player.Character.ReturnMaps.Peek();
             position = player.Character.ReturnPosition;
