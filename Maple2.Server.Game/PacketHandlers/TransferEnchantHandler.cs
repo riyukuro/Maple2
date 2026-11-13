@@ -72,13 +72,15 @@ public class TransferEnchantHandler : FieldPacketHandler {
             }
             session.Currency.Meso -= entry.NeedMeso;
 
-            using GameStorage.Request db = session.GameStorage.Context();
+            // Each output gets its row from the bag's add (the character's), or from the mail when the bag's write
+            // fails. Before, each row was made first with no owner and a failed write threw after the input and the
+            // meso were taken: that output and the ones after it were lost, and no result was sent. An output neither
+            // the bag nor the mail takes is logged (chosen here: the transform stands, as for other rewards).
             foreach (Item output in outputs) {
-                Item? saved = db.CreateItem(0, output);
-                if (saved == null) {
-                    throw new InvalidOperationException($"Failed to create transfer output item: {output.Id}");
+                if (!session.Item.AddOrMail(output, notifyNew: true)) {
+                    Logger.Error("TransferEnchant output {ItemId} x{Amount} of {CharacterId} neither added nor mailed",
+                        output.Id, output.Amount, session.CharacterId);
                 }
-                session.Item.AddOrMail(saved, true);
             }
 
             session.Send(TransferEnchantPacket.Result());
