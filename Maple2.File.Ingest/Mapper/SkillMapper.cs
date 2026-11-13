@@ -48,10 +48,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             var packIds = packEffects.Select(effect => effect.Id).ToHashSet();
             foreach ((int effectId, PlayedClientAdditionalEffects.Entry entry) in PlayedClientAdditionalEffects.Read(playedReader.Files
                          .Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available)) {
-                if (packIds.Contains(effectId) || entry.OwnLevels == null) {
+                if (packIds.Contains(effectId) || entry.Rows.Count == 0 || PlayedAdditionalRows.Unread(entry).Count > 0) {
                     continue;
                 }
-                foreach (short level in entry.OwnLevels.Keys) {
+                foreach (short level in entry.Rows.Keys) {
                     packEffects.Add((effectId, level));
                 }
             }

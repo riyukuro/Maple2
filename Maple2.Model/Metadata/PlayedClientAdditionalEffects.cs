@@ -24,18 +24,15 @@ public static class PlayedClientAdditionalEffects {
     // RemoveRecharge: each level's <RemoveRechargingCount skillID count>. SpecialAbilities: each level's
     // <SpecialAbility><v type value/></SpecialAbility> rows, one value per type, the last nonzero one, as the client
     // keeps them (AdditionalData's level load, additionalactionadditional.cpp:1227; turned into server stats by the
-    // ingest's ClientSpecialAbility); a level without the element has none. OwnLevels: every level's row, when each child
-    // of each level is one the ingest reads in full (BasicOnly), for an effect the data pack does not have; else null.
+    // ingest's ClientSpecialAbility); a level without the element has none. Effect and Rows: the <additional> row and
+    // each level's <level> row, which the ingest maps for an effect the data pack does not have.
     public sealed record Entry(int GroupId, Dictionary<short, AdditionalEffectMetadataInvokeEffect?> Levels) {
         public Dictionary<short, int> SkillUseDisable { get; init; } = [];
         public Dictionary<short, AdditionalEffectMetadataUpdate.RemoveRechargeUses> RemoveRecharge { get; init; } = [];
         public Dictionary<short, Dictionary<string, int>> SpecialAbilities { get; init; } = [];
-        public Dictionary<short, XmlElement>? OwnLevels { get; init; }
+        public XmlElement? Effect { get; init; }
+        public Dictionary<short, XmlElement> Rows { get; init; } = [];
     }
-
-    // The children of a level the ingest takes over whole for an effect only the client has: <Basic> (the server's
-    // BasicProperty), <UI> (the client's alone) and <RemoveRechargingCount>. 10600280 has no others.
-    public static readonly IReadOnlySet<string> BasicOnly = new HashSet<string> { "Basic", "UI", "RemoveRechargingCount" };
 
     public static bool IsAdditionalFile(string name) => name.StartsWith(AdditionalFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -57,8 +54,7 @@ public static class PlayedClientAdditionalEffects {
                 var useDisable = new Dictionary<short, int>();
                 var removeRecharge = new Dictionary<short, AdditionalEffectMetadataUpdate.RemoveRechargeUses>();
                 var specialAbilities = new Dictionary<short, Dictionary<string, int>>();
-                var own = new Dictionary<short, XmlElement>();
-                bool whole = true;
+                var rows = new Dictionary<short, XmlElement>();
                 int groupId = 0;
                 bool first = true;
                 foreach (XmlElement level in effect.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level" && available(child))) {
@@ -75,14 +71,14 @@ public static class PlayedClientAdditionalEffects {
                         removeRecharge[levelId] = new AdditionalEffectMetadataUpdate.RemoveRechargeUses(Number(remove, "skillID"), Number(remove, "count"));
                     }
                     specialAbilities[levelId] = SpecialAbility(Child(level, "SpecialAbility"));
-                    own[levelId] = level;
-                    whole &= level.ChildNodes.OfType<XmlElement>().All(child => BasicOnly.Contains(child.Name));
+                    rows[levelId] = level;
                 }
                 entries[id] = new Entry(groupId, levels) {
                     SkillUseDisable = useDisable,
                     RemoveRecharge = removeRecharge,
                     SpecialAbilities = specialAbilities,
-                    OwnLevels = whole && own.Count > 0 ? own : null,
+                    Effect = effect,
+                    Rows = rows,
                 };
             }
         }

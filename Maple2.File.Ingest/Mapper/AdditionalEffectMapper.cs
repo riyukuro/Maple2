@@ -12,6 +12,8 @@ namespace Maple2.File.Ingest.Mapper;
 
 public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     private readonly AdditionalEffectParser parser;
+    // The played client's own legacy rows (additionaleffect/<id>.xml in its pack), for the A/B only.
+    private readonly AdditionalEffectParser? playedParser;
     private readonly CooldownGroupRates groupRates;
     private readonly FinalStatusRows finals;
     private readonly ClientSpecialAbility specialAbility;
@@ -28,6 +30,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         finals = new FinalStatusRows(xmlReader);
         specialAbility = new ClientSpecialAbility(playedReader, xmlReader);
         if (playedReader != null) {
+            playedParser = new AdditionalEffectParser(playedReader);
             played = PlayedClientAdditionalEffects.Read(playedReader.Files.Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available);
             Console.WriteLine($"Additional effects in the played client's data: {played.Count} ({played.Values.Count(entry => entry.GroupId != 0)} in an effect group, " +
@@ -54,6 +57,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
         int packMasks = 0, masks = 0, changed = 0;
         var packIds = new HashSet<int>();
+        // The pack's metadata of the levels the played client also has, for the A/B of the played rows' mapping.
+        var shared = new Dictionary<(int Id, short Level), AdditionalEffectMetadata>();
         foreach ((int id, IList<AdditionalEffectData> datas) in parser.Parse()) {
             packIds.Add(id);
             foreach (AdditionalEffectData data in datas) {
@@ -62,7 +67,11 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 packMasks += packMask != 0 ? 1 : 0;
                 masks += mask != 0 ? 1 : 0;
                 changed += mask != packMask ? 1 : 0;
-                yield return Build(id, data, mask);
+                AdditionalEffectMetadata metadata = Build(id, data, mask);
+                if (played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.Rows.ContainsKey(data.BasicProperty.level)) {
+                    shared.TryAdd((id, data.BasicProperty.level), metadata);
+                }
+                yield return metadata;
             }
         }
         Console.WriteLine($"Additional effect levels with a skillUseDisable mask: {masks} ({packMasks} in the data pack, {changed} taken from the played client)");
@@ -70,53 +79,153 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                           $"client types without a server stat: {(specialAbility.Unmapped.Count == 0 ? "none" : string.Join(", ", specialAbility.Unmapped.Select(pair => $"{pair.Key} {pair.Value}")))}; " +
                           $"client rows dropped: {finalCounts.DroppedClientRows} not on a final stat's attribute; pack stats replaced by the client's: {finalCounts.ReplacedPackStats}; " +
                           $"StatusProperty ids left out: {finalCounts.StatusRows}; values cut to a whole number: {finalCounts.TruncatedValues})");
+        if (played.Count == 0) {
+            yield break;
+        }
+        Compare(shared);
 
-        // The played client's effects the data pack does not have, where every child of every level is one read in full
-        // (PlayedClientAdditionalEffects.BasicOnly): 10600280, the charge Focused Fire 10600181 puts on its caster.
+        // The played client's effects the data pack does not have, where every child of every level is one whose
+        // mapping the A/B proved (PlayedAdditionalRows.Gated) and every attribute has a pack name.
         int own = 0, ownLevels = 0;
+        var left = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach ((int id, PlayedClientAdditionalEffects.Entry entry) in played.OrderBy(pair => pair.Key)) {
-            if (packIds.Contains(id) || entry.OwnLevels == null) {
+            if (packIds.Contains(id) || entry.Rows.Count == 0) {
+                continue;
+            }
+            IReadOnlyCollection<string> unread = PlayedAdditionalRows.Unread(entry);
+            if (unread.Count > 0) {
+                foreach (string reason in unread) {
+                    left[reason] = left.GetValueOrDefault(reason) + 1;
+                }
                 continue;
             }
             own++;
-            foreach (AdditionalEffectData data in PlayedOnly(entry.OwnLevels)) {
+            foreach (AdditionalEffectData data in PlayedOnly(entry)) {
                 ownLevels++;
-                yield return Build(id, data, 0);
+                yield return Build(id, data, SkillUseDisableMask(id, data.BasicProperty.level, 0));
             }
         }
         Console.WriteLine($"Additional effects only the played client has, taken over: {own} ({ownLevels} levels; " +
-                          $"{played.Count(pair => !packIds.Contains(pair.Key) && pair.Value.OwnLevels == null)} left out for a child the ingest does not read)");
+                          $"{played.Count(pair => !packIds.Contains(pair.Key) && pair.Value.Rows.Count > 0) - own} left out for what the ingest does not map: " +
+                          $"{string.Join(", ", left.Select(pair => $"{pair.Key} {pair.Value}"))})");
     }
 
-    // A pack row for each played level, read by the pack's serializer from a level with its <Basic> as the
-    // BasicProperty, every other property element empty and an empty <stat> in <beginCondition> (no <RideeProperty>,
-    // <ModifyOverlapCountProperty>: Build reads them absent as none).
-    public static IEnumerable<AdditionalEffectData> PlayedOnly(IReadOnlyDictionary<short, System.Xml.XmlElement> levels) {
-        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(AdditionalEffectData), new System.Xml.Serialization.XmlRootAttribute("level"));
-        string[] empty = typeof(AdditionalEffectData).GetFields()
-            .Where(field => field.FieldType.IsClass && field.FieldType != typeof(string) && !field.FieldType.IsGenericType
-                            && field.Name is not (nameof(AdditionalEffectData.BasicProperty) or nameof(AdditionalEffectData.RideeProperty)
-                                or nameof(AdditionalEffectData.ModifyOverlapCountProperty)))
-            .Select(field => field.Name)
-            .ToArray();
-        foreach ((short level, System.Xml.XmlElement row) in levels.OrderBy(pair => pair.Key)) {
-            var document = new System.Xml.XmlDocument();
-            System.Xml.XmlElement root = document.CreateElement("level");
-            document.AppendChild(root);
-            System.Xml.XmlElement basic = document.CreateElement(nameof(AdditionalEffectData.BasicProperty));
-            if (row.ChildNodes.OfType<System.Xml.XmlElement>().FirstOrDefault(child => child.Name == "Basic") is { } played) {
-                foreach (System.Xml.XmlAttribute attribute in played.Attributes) {
-                    basic.SetAttribute(attribute.Name, attribute.Value);
+    // The A/B of the mapping: each played level of an effect the pack also has, mapped as an effect only the client
+    // has would be, against the pack's metadata and against the played client's own legacy rows
+    // (additionaleffect/<id>.xml in its pack), per child of the played level (PlayedAdditionalRows.Parts).
+    private void Compare(Dictionary<(int Id, short Level), AdditionalEffectMetadata> shared) {
+        var legacy = new Dictionary<(int Id, short Level), AdditionalEffectMetadata>();
+        if (playedParser != null) {
+            foreach ((int id, IList<AdditionalEffectData> datas) in playedParser.Parse()) {
+                foreach (AdditionalEffectData data in datas) {
+                    if (played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.Rows.ContainsKey(data.BasicProperty.level)) {
+                        // The played pack's rows leave out class elements the data pack's have empty: read as the
+                        // mapped rows are.
+                        legacy.TryAdd((id, data.BasicProperty.level), Build(id, Complete(data), SkillUseDisableMask(id, data.BasicProperty.level, 0)));
+                    }
                 }
             }
-            basic.SetAttribute("level", level.ToString());
-            root.AppendChild(basic);
-            foreach (string name in empty) {
+        }
+        // child -> (levels, equal to the pack, equal to the played legacy rows, levels with a legacy row)
+        var counts = new SortedDictionary<string, int[]>(StringComparer.Ordinal);
+        var samples = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (((int id, short level), AdditionalEffectMetadata pack) in shared.OrderBy(pair => pair.Key)) {
+            PlayedClientAdditionalEffects.Entry entry = played[id];
+            AdditionalEffectData data = PlayedOnly(entry, level);
+            AdditionalEffectMetadata mapped = Build(id, data, SkillUseDisableMask(id, level, 0));
+            Dictionary<string, string> mine = PlayedAdditionalRows.Parts(mapped);
+            Dictionary<string, string> theirs = PlayedAdditionalRows.Parts(pack);
+            Dictionary<string, string>? client = legacy.TryGetValue((id, level), out AdditionalEffectMetadata? legacyRow) ? PlayedAdditionalRows.Parts(legacyRow) : null;
+            var present = PlayedAdditionalRows.PartsOf(entry.Rows[level]).Where(mine.ContainsKey).ToHashSet();
+            if (present.Overlaps(PlayedAdditionalRows.StatusChildren)) {
+                present.Add("Status");
+            }
+            // A part of a child the level does not have is compared too ("<part> (no child)"): a pack row the
+            // mapping missed.
+            // SpecialAbility, FinalStatus, Offensive and Defensive are compared as Status.
+            foreach (string part in mine.Keys.Where(part => !PlayedAdditionalRows.StatusChildren.Contains(part) || part == "Status")) {
+                if (!present.Contains(part) && mine[part] == theirs[part] && (client == null || mine[part] == client[part])) {
+                    continue;
+                }
+                string key = present.Contains(part) ? part : part + " (no child)";
+                // levels, equal to the pack, then of the others: the played legacy row equal to the pack (a miss
+                // of the mapping), equal to the mapped row (the pack's data differs), neither, no legacy row.
+                int[] count = counts.TryGetValue(key, out int[]? found) ? found : counts[key] = new int[6];
+                count[0]++;
+                if (mine[part] == theirs[part]) {
+                    count[1]++;
+                    continue;
+                }
+                int kind = client == null ? 5 : client[part] == theirs[part] ? 2 : client[part] == mine[part] ? 3 : 4;
+                count[kind]++;
+                if (kind is 2 or 4 or 5) {
+                    List<string> list = samples.TryGetValue(key, out List<string>? existing) ? existing : samples[key] = [];
+                    if (list.Count < 4) {
+                        list.Add($"{id}/{level} ({(kind == 2 ? "miss" : kind == 4 ? "all differ" : "no legacy")}): mapped {mine[part]} pack {theirs[part]}" +
+                                 (client == null || kind == 2 ? "" : $" client {client[part]}"));
+                    }
+                }
+            }
+        }
+        Console.WriteLine($"Played additional rows mapped on the {shared.Count} levels the pack also has ({legacy.Count} with the played client's legacy row); " +
+                          "per child: levels, equal to the pack; of the others the legacy row equal to the pack (miss), to the mapped row (data), neither, none:");
+        foreach ((string part, int[] count) in counts) {
+            Console.WriteLine($"  {part}: {count[0]}, pack {count[1]}, miss {count[2]}, data {count[3]}, neither {count[4]}, none {count[5]}" +
+                              (PlayedAdditionalRows.Gated.Contains(part) ? " (taken over)" : ""));
+            foreach (string sample in samples.GetValueOrDefault(part) ?? []) {
+                Console.WriteLine($"    {sample}");
+            }
+        }
+    }
+
+    private static readonly System.Xml.Serialization.XmlSerializer LevelSerializer =
+        new(typeof(AdditionalEffectData), new System.Xml.Serialization.XmlRootAttribute("level"));
+
+    // The pack's class elements the serializer needs present (empty for none); <RideeProperty> and
+    // <ModifyOverlapCountProperty> are read absent as none.
+    private static readonly string[] Required = typeof(AdditionalEffectData).GetFields()
+        .Where(field => field.FieldType.IsClass && field.FieldType != typeof(string) && !field.FieldType.IsGenericType
+                        && field.Name is not (nameof(AdditionalEffectData.RideeProperty) or nameof(AdditionalEffectData.ModifyOverlapCountProperty)))
+        .Select(field => field.Name)
+        .ToArray();
+
+    // A pack row for each played level (PlayedAdditionalRows.ToPack), read by the pack's serializer.
+    public static IEnumerable<AdditionalEffectData> PlayedOnly(PlayedClientAdditionalEffects.Entry entry) {
+        return entry.Rows.Keys.Order().Select(level => PlayedOnly(entry, level));
+    }
+
+    public static AdditionalEffectData PlayedOnly(PlayedClientAdditionalEffects.Entry entry, short level) {
+        return Complete(PlayedAdditionalRows.ToPack(entry.Effect!, entry.Rows[level], level, new List<string>()));
+    }
+
+    // A parsed level written back and read again with the elements the converter needs.
+    private static AdditionalEffectData Complete(AdditionalEffectData data) {
+        var document = new System.Xml.XmlDocument();
+        using (System.Xml.XmlWriter writer = document.CreateNavigator()!.AppendChild()) {
+            LevelSerializer.Serialize(writer, data);
+        }
+        return Complete(document.DocumentElement!);
+    }
+
+    private static AdditionalEffectData Complete(System.Xml.XmlElement root) {
+        System.Xml.XmlDocument document = root.OwnerDocument;
+        foreach (string name in Required) {
+            if (root[name] == null) {
                 root.AppendChild(document.CreateElement(name));
             }
-            root[nameof(AdditionalEffectData.beginCondition)]!.AppendChild(document.CreateElement("stat"));
-            yield return (AdditionalEffectData) serializer.Deserialize(new System.Xml.XmlNodeReader(document))!;
         }
+        // Every <beginCondition> (the level's and each trigger skill's) with a <stat>, as the converter reads it.
+        foreach (System.Xml.XmlElement skill in root.ChildNodes.OfType<System.Xml.XmlElement>().Where(child => child.Name is nameof(AdditionalEffectData.conditionSkill) or nameof(AdditionalEffectData.splashSkill))) {
+            if (skill[nameof(AdditionalEffectData.beginCondition)] == null) {
+                skill.AppendChild(document.CreateElement(nameof(AdditionalEffectData.beginCondition)));
+            }
+        }
+        foreach (System.Xml.XmlElement begin in document.GetElementsByTagName(nameof(AdditionalEffectData.beginCondition)).OfType<System.Xml.XmlElement>()) {
+            if (begin["stat"] == null) {
+                begin.AppendChild(document.CreateElement("stat"));
+            }
+        }
+        return (AdditionalEffectData) LevelSerializer.Deserialize(new System.Xml.XmlNodeReader(document))!;
     }
 
     private AdditionalEffectMetadata Build(int id, AdditionalEffectData data, int mask) {

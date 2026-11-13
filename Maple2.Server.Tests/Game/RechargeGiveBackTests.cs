@@ -37,6 +37,9 @@ public class RechargeGiveBackTests {
           <additional id="10600222">
             <level level="1"><Basic durationTick="1000" /><Motion skillUseDisable="6" /></level>
           </additional>
+          <additional id="10600223">
+            <level level="1"><Basic durationTick="1000" /><Spread /></level>
+          </additional>
         </ms2>
         """;
 
@@ -57,9 +60,9 @@ public class RechargeGiveBackTests {
     [Test]
     public void TakesOverOnlyAnEffectItReadsWhole() {
         Dictionary<int, PlayedClientAdditionalEffects.Entry> played = Read();
-        Assert.That(played[10600280].OwnLevels, Is.Not.Null);
-        Assert.That(played[10600222].OwnLevels, Is.Null, "<Motion> is not read for an effect only the client has");
-        AdditionalEffectData data = AdditionalEffectMapper.PlayedOnly(played[10600280].OwnLevels!).Single();
+        Assert.That(PlayedAdditionalRows.Unread(played[10600280]), Is.Empty);
+        Assert.That(PlayedAdditionalRows.Unread(played[10600223]), Is.EqualTo(new[] { "Spread" }), "<Spread> is not read for an effect only the client has");
+        AdditionalEffectData data = AdditionalEffectMapper.PlayedOnly(played[10600280]).Single();
         Assert.Multiple(() => {
             Assert.That(data.BasicProperty.level, Is.EqualTo(1));
             Assert.That(data.BasicProperty.durationTick, Is.EqualTo(10000));
@@ -81,7 +84,7 @@ public class RechargeGiveBackTests {
         typeof(CooldownGroupRates).GetField("rates", Any)!.SetValue(rates, System.Activator.CreateInstance(typeof(CooldownGroupRates).GetField("rates", Any)!.FieldType));
         typeof(AdditionalEffectMapper).GetField("groupRates", Any)!.SetValue(mapper, rates);
         MethodInfo build = typeof(AdditionalEffectMapper).GetMethod("Build", Any)!;
-        var metadata = (AdditionalEffectMetadata) build.Invoke(mapper, [10600280, AdditionalEffectMapper.PlayedOnly(played[10600280].OwnLevels!).Single(), 0])!;
+        var metadata = (AdditionalEffectMetadata) build.Invoke(mapper, [10600280, AdditionalEffectMapper.PlayedOnly(played[10600280]).Single(), 0])!;
         Assert.Multiple(() => {
             Assert.That(metadata.Level, Is.EqualTo(1));
             Assert.That(metadata.Property.DurationTick, Is.EqualTo(10000));
