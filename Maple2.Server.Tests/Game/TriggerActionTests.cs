@@ -296,6 +296,33 @@ public class TriggerScriptConditionTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="wait_tick" wait_tick="60000" />"""), Is.False);
     }
 
+    // random_condition (5821): the state's weights split one roll. Four rows of 25 (as in KR trigger 02000066_bf
+    // alon.xml): a roll of 60 falls in the third share. 99 and 1: a roll of 99.5 takes the 1.
+    [TestCase(60f, new[] { 25f, 25f, 25f, 25f }, 2)]
+    [TestCase(10f, new[] { 25f, 25f, 25f, 25f }, 0)]
+    [TestCase(99.5f, new[] { 99f, 1f }, 1)]
+    [TestCase(50f, new[] { 99f, 1f }, 0)]
+    [TestCase(50f, new[] { 50f, 50f }, 1)]
+    public void RandomCondition_WeightsSplitTheRoll(float roll, float[] weights, int passing) {
+        Start();
+        SetRandom(roll);
+
+        int first = Array.FindIndex(weights, weight => Condition($"""<condition name="random_condition" weight="{weight}" />"""));
+
+        Assert.That(first, Is.EqualTo(passing));
+    }
+
+    // A pass in which no weight took the roll leaves it; the next pass rolls again.
+    [Test]
+    public void RandomCondition_NewPassRollsAgain() {
+        Start();
+        SetRandom(80f);
+        Assert.That(Condition("""<condition name="random_condition" weight="5" />"""), Is.False);
+
+        context.NewConditionPass();
+        SetRandom(3f);
+        Assert.That(Condition("""<condition name="random_condition" weight="5" />"""), Is.True);
+    }
 }
 
 public class TriggerInteractTests : TriggerTestBase {

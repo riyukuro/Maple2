@@ -387,13 +387,21 @@ public partial class TriggerContext : ITriggerContext {
             currentRandom = Random.Shared.NextSingle() * 100;
         }
 
+        // The state's random conditions split one roll by their weights (KR rows come as 99 and 1, or four of 25):
+        // a condition passes when the roll falls in its own share, below the weights before it plus its own.
         currentRandom -= rate;
-        if (currentRandom > rate) {
+        if (currentRandom >= 0f) {
             return false;
         }
 
         currentRandom = float.MaxValue; // Reset
         return true;
+    }
+
+    // Chosen here: one roll per pass over a state's conditions, so a set of weights that does not reach 100 keeps
+    // its odds on every tick instead of using up the roll.
+    internal void NewConditionPass() {
+        currentRandom = float.MaxValue;
     }
 
     public bool WaitAndResetTick(int waitTick) {

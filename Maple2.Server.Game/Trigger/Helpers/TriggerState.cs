@@ -49,6 +49,8 @@ public class TriggerState {
         LinkedList<ICondition> conditions = triggerState.Conditions;
         if (conditions.Count == 0 || Stopped) return null;
 
+        // A state run without a context (the missing-state tests) has no roll to reset.
+        triggerContext?.NewConditionPass();
         foreach (ICondition condition in conditions) {
             if (!CallCondition(condition)) continue;
 
