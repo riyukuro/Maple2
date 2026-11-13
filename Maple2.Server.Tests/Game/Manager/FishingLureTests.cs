@@ -138,4 +138,28 @@ public class FishingLureTests {
         Assert.That(FishingManager.LureSize(fish, [prize], 300, random), Is.Null);
         Assert.That(FishingManager.LureSize(fish, [], 0, random), Is.Null);
     }
+
+    [Test]
+    public void DropBoxes_SpotFishAndLures() {
+        FishTable.Spot low = new(2000001, 0, 79, [LiquidType.water], 1, 0, 41000001, 0, 10, 1);
+        FishTable.Spot top = low with { MinMastery = 1000, MaxMastery = 1189 };
+        FishTable.Fish bait = Fish(99000001, 1, LiquidType.all) with { IndividualDropBoxId = 381000005 };
+        FishTable.Lure lure = Lure(90000281) with {
+            GlobalDrop = new FishTable.Lure.Drop(41001001, 1, new FishTable.Range<int>(0, 1189)),
+            IndividualDrop = new FishTable.Lure.Drop(381000001, 0, new FishTable.Range<int>(1000, 1000)),
+        };
+        FishTable.Lure anySpot = Lure(90000298) with { IndividualDrop = new FishTable.Lure.Drop(381000004, 0, null) };
+
+        (List<int> global, List<int> individual) = FishingManager.DropBoxes(low, Fish(10000001, 1), []);
+        Assert.That(global, Is.EqualTo(new[] { 41000001 }));
+        Assert.That(individual, Is.Empty);
+
+        (global, individual) = FishingManager.DropBoxes(low, bait, [lure, anySpot]);
+        Assert.That(global, Is.EqualTo(new[] { 41000001, 41001001 }));
+        Assert.That(individual, Is.EqualTo(new[] { 381000005, 381000004 }));
+
+        (global, individual) = FishingManager.DropBoxes(top, bait, [lure]);
+        Assert.That(global, Is.EqualTo(new[] { 41000001, 41001001 }));
+        Assert.That(individual, Is.EqualTo(new[] { 381000005, 381000001 }));
+    }
 }

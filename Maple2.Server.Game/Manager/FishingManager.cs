@@ -439,7 +439,7 @@ public class FishingManager {
         success = FishingRules.IsCatch(success, bite, session.Field.FieldTick, biteTick);
         if (success) {
             Action report = AddFish(fishSize, hasAutoFish);
-            CatchItem(spotMetadata);
+            CatchItem(spotMetadata, selectedFish);
             session.Send(FishingPacket.LoadTiles([selectedTile], append: true));
             report();
         } else {
@@ -530,26 +530,54 @@ public class FishingManager {
         };
     }
 
-    private void CatchItem(FishTable.Spot spot) {
-        if (session.Field is null) return;
-        var items = new List<Item>();
+    // The drop boxes a catch opens, in order: the spot's, the fish's own (individualDropBoxID: the bait fish's items),
+    // then each held lure's. A lure box with a spot mastery range (globalDropFishingSpotMastery,
+    // individualDropFishingSpotMastery) counts at a spot whose mastery band starts in it: 0-1189 is every KR spot,
+    // 1000-1000 the top band (1000-1189). The drop ranks are 1 or empty on every KR row and are not read.
+    internal static (List<int> Global, List<int> Individual) DropBoxes(FishTable.Spot spot, FishTable.Fish fish, IEnumerable<FishTable.Lure> lures) {
+        var global = new List<int>();
+        var individual = new List<int>();
         if (spot.GlobalDropBoxId > 0) {
-            ICollection<Item> globalDropItems = session.Field.ItemDrop.GetGlobalDropItems(spot.GlobalDropBoxId, spot.SpotLevel, session);
-            foreach (Item item in globalDropItems) {
-                items.Add(item);
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
-                }
+            global.Add(spot.GlobalDropBoxId);
+        }
+        if (spot.IndividualDropBoxId > 0) {
+            individual.Add(spot.IndividualDropBoxId);
+        }
+        if (fish.IndividualDropBoxId > 0) {
+            individual.Add(fish.IndividualDropBoxId);
+        }
+        foreach (FishTable.Lure lure in lures) {
+            if (AtSpot(lure.GlobalDrop, spot)) {
+                global.Add(lure.GlobalDrop!.BoxId);
+            }
+            if (AtSpot(lure.IndividualDrop, spot)) {
+                individual.Add(lure.IndividualDrop!.BoxId);
             }
         }
+        return (global, individual);
 
-        if (spot.IndividualDropBoxId > 0) {
-            ICollection<Item> individualDropItems = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, spot.IndividualDropBoxId);
-            foreach (Item item in individualDropItems) {
-                items.Add(item);
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
-                }
+        static bool AtSpot(FishTable.Lure.Drop? drop, FishTable.Spot spot) {
+            if (drop == null || drop.BoxId <= 0) {
+                return false;
+            }
+            return drop.SpotMastery is not { } range || (range.Min <= spot.MinMastery && spot.MinMastery <= range.Max);
+        }
+    }
+
+    private void CatchItem(FishTable.Spot spot, FishTable.Fish fish) {
+        if (session.Field is null) return;
+        var items = new List<Item>();
+        (List<int> globalBoxes, List<int> individualBoxes) = DropBoxes(spot, fish, castLures);
+        foreach (int boxId in globalBoxes) {
+            items.AddRange(session.Field.ItemDrop.GetGlobalDropItems(boxId, spot.SpotLevel, session));
+        }
+        foreach (int boxId in individualBoxes) {
+            items.AddRange(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId));
+        }
+
+        foreach (Item item in items) {
+            if (!session.Item.Inventory.Add(item, true)) {
+                session.Item.MailItem(item);
             }
         }
 
