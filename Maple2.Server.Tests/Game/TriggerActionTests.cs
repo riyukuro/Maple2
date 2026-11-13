@@ -16,6 +16,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Tools.Scheduler;
@@ -232,6 +233,28 @@ public class TriggerFieldObjectTests : TriggerTestBase {
 
         Assert.That(Field.TriggerObjects.Sounds[701].Visible, Is.True);
         Assert.That(Updates().Select(update => (update.Id, update.Visible)), Is.EqualTo(new[] { (701, true) }));
+    }
+
+    // set_mesh_animation (288): each named mesh that changes is sent once; one already in that state is not.
+    [Test]
+    public void SetMeshAnimation_ChangedMeshes() {
+        Start(Mesh(1101), Mesh(1102, visible: true));
+
+        Action("""<action name="set_mesh_animation" trigger_ids="1101,1102" visible="1" />""");
+
+        Assert.That(Field.TriggerObjects.Meshes[1101].Visible, Is.True);
+        Assert.That(Updates().Select(update => (update.Id, update.Visible)), Is.EqualTo(new[] { (1101, true) }));
+    }
+
+    // set_random_mesh (361): the named meshes change (in a random order).
+    [Test]
+    public void SetRandomMesh_ChangesTheMeshes() {
+        Start(Mesh(1101), Mesh(1102));
+
+        Action("""<action name="set_random_mesh" trigger_ids="1101,1102" visible="1" />""");
+
+        Assert.That(Updates().Select(update => update.Id).Order(), Is.EqualTo(new[] { 1101, 1102 }));
+        Assert.That(Field.TriggerObjects.Meshes.Values.Select(mesh => mesh.Visible), Is.All.True);
     }
 }
 
@@ -562,6 +585,22 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That(Sent(SendOp.Breakable).Single().ReadByte(), Is.EqualTo(1));
     }
 
+    // set_visible_breakable_object (1164): the named breakables take the flag, sent in one batch (0) of each with
+    // its state and the flag.
+    [Test]
+    public void SetVisibleBreakableObject_Batch() {
+        StartWithBoxes();
+        FieldBreakable breakable = Field.AddBreakable("bb", new BreakableActor(false, 7001, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
+        test.TakeSent();
+
+        Action("""<action name="set_visible_breakable_object" trigger_ids="7001" visible="1" />""");
+
+        Assert.That(breakable.Visible, Is.True);
+        ByteReader batch = Sent(SendOp.Breakable).Single();
+        Assert.That((batch.ReadByte(), batch.ReadInt(), batch.ReadString(), batch.ReadByte(), batch.ReadBool()),
+            Is.EqualTo(((byte) 0, 1, "bb", (byte) breakable.State, true)));
+    }
+
     // set_skill (36171): an enabled trigger skill is placed as a region skill of the field; disabled, it is taken
     // off again.
     [Test]
@@ -813,5 +852,58 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="3" value="1" />"""), Is.True);
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="3" value="0" />"""), Is.False);
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="4" value="0" />"""), Is.True);
+    }
+
+    // create_widget (129), widget_value (237), widget_action (331): the field gets the widget of the type;
+    // its value is checked by name, and its action (SceneMovie Clear) clears the values. No widget: negate.
+    [Test]
+    public void Widget_CreateCheckAction() {
+        Start();
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new Dictionary<string, Widget>());
+        Assert.That(Condition("""<condition name="widget_value" type="SceneMovie" widget_name="IsStop" condition="1" negate="1" />"""), Is.True);
+
+        Action("""<action name="create_widget" type="SceneMovie" />""");
+        Assert.That(Field.Widgets["SceneMovie"], Is.TypeOf<SceneMovieWidget>());
+        Field.Widgets["SceneMovie"].Conditions["IsStop"] = 1;
+        Assert.That(Condition("""<condition name="widget_value" type="SceneMovie" widget_name="IsStop" condition="1" />"""), Is.True);
+
+        Action("""<action name="widget_action" type="SceneMovie" func="Clear" />""");
+        Assert.That(Condition("""<condition name="widget_value" type="SceneMovie" widget_name="IsStop" condition="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="widget_value" type="SceneMovie" widget_name="IsStop" condition="1" negate="1" />"""), Is.True);
+    }
+
+    // enable_spawn_point_pc (485): the player spawn point of the id is turned on or off.
+    [Test]
+    public void EnableSpawnPointPc_TogglesTheSpawn() {
+        Start();
+        var spawns = new ConcurrentDictionary<int, FieldPlayerSpawnPoint>();
+        typeof(FieldManager).GetField("fieldPlayerSpawnPoints", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Field, spawns);
+        spawns[1] = new FieldPlayerSpawnPoint(Field, 9001, new SpawnPointPC(1, Vector3.Zero, Vector3.Zero, true, false), 1);
+
+        Action("""<action name="enable_spawn_point_pc" spawn_id="1" is_enable="1" />""");
+        Assert.That(spawns[1].Enable, Is.True);
+        Action("""<action name="enable_spawn_point_pc" spawn_id="1" is_enable="0" />""");
+        Assert.That(spawns[1].Enable, Is.False);
+    }
+
+    // set_pc_emotion_loop (169): Trigger Ui (9) EmotionLoop (8) as the client reads it: byte loop flag, int
+    // duration, unicode sequence name.
+    [Test]
+    public void SetPcEmotionLoop_Packet() {
+        Start();
+
+        Action("""<action name="set_pc_emotion_loop" sequence_name="Sit_Down_A" duration="18000" loop="1" />""");
+        ByteReader sent = Sent(SendOp.Trigger).Single();
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadBool(), sent.ReadInt(), sent.ReadUnicodeString()),
+            Is.EqualTo(((byte) 9, (byte) 8, true, 18000, "Sit_Down_A")));
+    }
+
+    // check_dungeon_lobby_user_count (180): a field outside a dungeon has no lobby to fill: false, negate true.
+    [Test]
+    public void CheckDungeonLobbyUserCount_NotADungeon() {
+        Start();
+
+        Assert.That(Condition("""<condition name="check_dungeon_lobby_user_count" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_dungeon_lobby_user_count" negate="1" />"""), Is.True);
     }
 }
