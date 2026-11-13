@@ -854,12 +854,11 @@ public class HousingManager {
                 if (replaced != null && !session.Item.Furnishing.CanRetrieve(replaced)) {
                     Refuse(UgcMapError.s_ugcmap_cant_be_removed);
                 } else {
-                    // No furnishing-storage-full code was found in the client's ugcmap errors: the inventory one. The
-                    // client fills {0} with the tab name of the item it sends to storage (SendRetrieveFurnishingItem).
-                    // Chosen here: the old cube of a replace, else the cube bought here.
-                    ItemMetadata tabItem = replaced != null && session.ItemMetadata.TryGet(replaced.ItemId, out ItemMetadata? old) ? old : itemMetadata;
-                    notify.Send(NoticePacket.Message(new InterfaceText(StringCode.s_err_inventory_tab_full,
-                        tableMetadata.InventoryTabNameTable.Name(tabItem.Inventory())), NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+                    // What is full is the furnishing storage, which is none of the client's 15 inventory tabs: a cube's
+                    // own tab (FUN_14053e530) is the life tab, so the inventory notice named that tab. No
+                    // furnishing-storage-full code was found in the client's ugcmap errors. Chosen here: the storage
+                    // notice s_item_err_store_full, which takes no argument.
+                    notify.Send(NoticePacket.Message(StringCode.s_item_err_store_full, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
                 }
                 return false;
             }

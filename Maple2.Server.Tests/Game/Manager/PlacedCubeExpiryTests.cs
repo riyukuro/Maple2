@@ -9,6 +9,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
@@ -311,26 +312,20 @@ public class PlacedCubeExpiryTests {
         Assert.That(plot.Cubes, Is.Empty);
     }
 
-    // The full-storage notice fills {0} with the client's name of the cube's tab, as the client does
-    // (GetInventoryTabName); a metadata db without the names sends the server's type name.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TheStorageFullNotice_NamesTheCubesTab(bool ingested) {
+    // A cube the furnishing storage cannot take gets the storage-full notice, not the inventory-tab one: the
+    // inventory notice named the cube's own tab, the life tab, which is not what is full.
+    [Test]
+    public void TheStorageFullNotice_IsTheStorageNotice() {
         (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
             new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meso, 1000) });
-        InventoryType tab = metadata.Inventory();
-        const string name = "T\u00e4b \uc7a5";
-        if (ingested) {
-            test.SetTable(new InventoryTabNameTable(new Dictionary<int, string> { [tab.ToClient()] = name }));
-        }
+        test.SetTable(new InventoryTabNameTable(new Dictionary<int, string> { [metadata.Inventory().ToClient()] = "Life" }));
         session.Currency.Meso = 5000;
         FillStorage(session, metadata);
         test.TakeSent();
 
         Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
         byte[] notice = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.Notice);
-        byte[] arg = System.Text.Encoding.Unicode.GetBytes(ingested ? name : tab.ToString());
-        Assert.That(Enumerable.Range(0, notice.Length - arg.Length + 1).Any(at => System.MemoryExtensions.SequenceEqual(System.MemoryExtensions.AsSpan(notice, at, arg.Length), arg)), Is.True);
+        Assert.That(notice, Is.EqualTo(NoticePacket.Message(StringCode.s_item_err_store_full, NoticePacket.Flags.Message | NoticePacket.Flags.Alert).ToArray()));
     }
 
     // A paid cube whose storage item cannot be written is refunded.
