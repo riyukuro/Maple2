@@ -172,19 +172,43 @@ public class FinalStatusTests {
         Assert.That(counts.StatusRows, Is.EqualTo(1));
     }
 
-    // The pack's level already has a flat pap: the client's pap row is not added again, its finalAttackPower rate is.
+    // The level's own hp rate is replaced by the client's hpRate (the client keeps one value per type), not added to.
     [Test]
-    public void ClientRowOnAPackStatIsNotAddedTwice() {
+    public void ClientRowReplacesThePackStat() {
         var counts = new FinalStatusRows.Counts();
-        var stats = new ClientSpecialAbility.Stats { Values = new Dictionary<BasicAttribute, long> { [BasicAttribute.PhysicalAtk] = 5 } };
+        var stats = new ClientSpecialAbility.Stats { Rates = new Dictionary<BasicAttribute, float> { [BasicAttribute.Health] = 0.1f } };
+        FinalStatusRows.Row[] rows = [new("finalhprate", BasicAttribute.Health, true, 0.5f)];
+        FinalStatusRows.Apply(SpecialAbility(), stats, rows, new Dictionary<string, int> { ["hpRate"] = 500, ["offensive_x"] = 1 }, counts);
+        Assert.That(stats.Rates[BasicAttribute.Health], Is.EqualTo(0.5f).Within(1e-6));
+        Assert.That(counts.ReplacedPackStats, Is.EqualTo(1));
+        Assert.That(counts.DroppedClientRows, Is.EqualTo(1));
+    }
+
+    // finalAttackPower is over two attributes: it adds to the level's pap rate rather than replacing it.
+    [Test]
+    public void TwoAttributeTypeAddsBesideThePackStat() {
+        var counts = new FinalStatusRows.Counts();
+        var stats = new ClientSpecialAbility.Stats { Rates = new Dictionary<BasicAttribute, float> { [BasicAttribute.PhysicalAtk] = 0.1f } };
+        FinalStatusRows.Row[] rows = [new("finalpaprate", BasicAttribute.PhysicalAtk, true, 0.252f)];
+        FinalStatusRows.Apply(SpecialAbility(), stats, rows, new Dictionary<string, int> { ["finalAttackPower"] = 252 }, counts);
+        Assert.That(stats.Rates[BasicAttribute.PhysicalAtk], Is.EqualTo(0.352f).Within(1e-6));
+        Assert.That(stats.Rates[BasicAttribute.MagicalAtk], Is.EqualTo(0.252f).Within(1e-6));
+        Assert.That(counts.ReplacedPackStats, Is.EqualTo(0));
+    }
+
+    // With the client's level, a StatusProperty id is still left out and counted; only the client's hp rate is added.
+    [Test]
+    public void StatusPropertyIdIsCountedWithTheClient() {
+        var counts = new FinalStatusRows.Counts();
+        var stats = new ClientSpecialAbility.Stats();
         FinalStatusRows.Row[] rows = [
-            new("finalpaprate", BasicAttribute.PhysicalAtk, true, 0.252f),
-            new("finalpapvalue", BasicAttribute.PhysicalAtk, false, 5),
+            new("finalCapV", BasicAttribute.CriticalRate, false, 50000017, Status: true),
+            new("finalhprate", BasicAttribute.Health, true, 0.5f),
         ];
-        FinalStatusRows.Apply(SpecialAbility(), stats, rows, new Dictionary<string, int> { ["finalAttackPower"] = 252, ["pap"] = 5, ["offensive_x"] = 1 }, counts);
-        Assert.That(stats.Values, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.PhysicalAtk] = 5 }));
-        Assert.That(stats.Rates[BasicAttribute.PhysicalAtk], Is.EqualTo(0.252f).Within(1e-6));
-        Assert.That(counts.DoubledClientRows, Is.EqualTo(1));
+        Assert.That(FinalStatusRows.Apply(SpecialAbility(), stats, rows, new Dictionary<string, int> { ["cap"] = 5, ["hpRate"] = 500 }, counts), Is.True);
+        Assert.That(stats.Values, Is.Empty);
+        Assert.That(stats.Rates, Is.EqualTo(new Dictionary<BasicAttribute, float> { [BasicAttribute.Health] = 0.5f }));
+        Assert.That(counts.StatusRows, Is.EqualTo(1));
         Assert.That(counts.DroppedClientRows, Is.EqualTo(1));
     }
 

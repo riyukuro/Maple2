@@ -22,12 +22,12 @@ public sealed partial class FinalStatusRows {
 
     // What Apply left out, for the ingest log.
     public sealed class Counts {
-        // StatusProperty rows (ids, see Row) the pack fallback skipped.
+        // StatusProperty rows (ids, see Row) left out, in either path.
         public int StatusRows { get; set; }
         // Client rows not on an attribute of the level's final stats (the Develop levels' offensive_* and pen, ...).
         public int DroppedClientRows { get; set; }
-        // Client rows on an attribute the pack's level already has a stat of the same kind of (skipped).
-        public int DoubledClientRows { get; set; }
+        // Client rows of one attribute whose value replaced the pack level's stat of the same kind (none in KR).
+        public int ReplacedPackStats { get; set; }
         // Pack final values with a fraction, cut to a whole value (none in KR).
         public int TruncatedValues { get; set; }
     }
@@ -130,22 +130,32 @@ public sealed partial class FinalStatusRows {
     // Adds a level's final stats to its stats: the client level's rows on the final stats' attributes where the client
     // has the level (client not null; ClientSpecialAbility.BasicAttributes), else each final rate as the stat's rate and
     // each final value as its value (Chosen here; AdditionalEffectMapper.Status). StatusProperty rows are never added
-    // (Row). Chosen here: a client row on an attribute the pack's level already has a stat of the same kind (rate or
-    // value) of is skipped, since the client keeps one value per type and the pack's own row is already in. True where
-    // the client's rows were used.
+    // (Row). The client keeps one value per type (the last nonzero one), so a client type of one attribute (hpRate,
+    // pap) is the level's whole stat of its kind: where the pack's level already has a rate or value of that kind on the
+    // attribute, the client's value replaces it rather than adding to it. A type over two attributes (finalAttackPower,
+    // wapRate) is a stat of its own beside the plain ones and always adds (Chosen here). True where the client's rows
+    // were used.
     public static bool Apply(ClientSpecialAbility specialAbility, ClientSpecialAbility.Stats stats, IReadOnlyList<Row> rows, IReadOnlyDictionary<string, int>? client, Counts? counts = null) {
         counts ??= new Counts();
+        counts.StatusRows += rows.Count(row => row.Status);
         if (client != null) {
             var attributes = rows.Where(row => !row.Status).Select(row => row.Attribute).ToHashSet();
+            // The pack's own stats of the level, each replaced at most once (a later client type adds to the first).
             var packValues = stats.Values.Where(pair => pair.Value != 0).Select(pair => pair.Key).ToHashSet();
             var packRates = stats.Rates.Where(pair => pair.Value != 0).Select(pair => pair.Key).ToHashSet();
             foreach ((string type, int value) in client) {
                 IReadOnlyList<BasicAttribute> on = ClientSpecialAbility.BasicAttributes(type);
                 if (!on.Any(attributes.Contains)) {
                     counts.DroppedClientRows++;
-                } else if (specialAbility.Rate(type) is { } rate && on.Any((rate ? packRates : packValues).Contains)) {
-                    counts.DoubledClientRows++;
                 } else {
+                    if (on.Count == 1 && specialAbility.Rate(type) is { } rate && (rate ? packRates : packValues).Remove(on[0])) {
+                        if (rate) {
+                            stats.Rates.Remove(on[0]);
+                        } else {
+                            stats.Values.Remove(on[0]);
+                        }
+                        counts.ReplacedPackStats++;
+                    }
                     specialAbility.Add(stats, type, value);
                 }
             }
@@ -153,8 +163,9 @@ public sealed partial class FinalStatusRows {
         }
         foreach (Row row in rows) {
             if (row.Status) {
-                counts.StatusRows++;
-            } else if (row.Rate) {
+                continue;
+            }
+            if (row.Rate) {
                 stats.Rates[row.Attribute] = stats.Rates.GetValueOrDefault(row.Attribute) + row.Value;
             } else {
                 if (row.Value != MathF.Truncate(row.Value)) {

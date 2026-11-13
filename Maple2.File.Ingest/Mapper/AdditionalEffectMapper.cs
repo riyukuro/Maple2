@@ -68,8 +68,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         Console.WriteLine($"Additional effect levels with a skillUseDisable mask: {masks} ({packMasks} in the data pack, {changed} taken from the played client)");
         Console.WriteLine($"Additional effect levels with final stats: {finals.Count} ({finalClientLevels} from the played client's level, {finalPackLevels} from the data pack's rows; " +
                           $"client types without a server stat: {(specialAbility.Unmapped.Count == 0 ? "none" : string.Join(", ", specialAbility.Unmapped.Select(pair => $"{pair.Key} {pair.Value}")))}; " +
-                          $"client rows dropped: {finalCounts.DroppedClientRows} not on a final stat's attribute, {finalCounts.DoubledClientRows} on an attribute the pack's level already has; " +
-                          $"pack rows skipped: {finalCounts.StatusRows} StatusProperty ids; values cut to a whole number: {finalCounts.TruncatedValues})");
+                          $"client rows dropped: {finalCounts.DroppedClientRows} not on a final stat's attribute; pack stats replaced by the client's: {finalCounts.ReplacedPackStats}; " +
+                          $"StatusProperty ids left out: {finalCounts.StatusRows}; values cut to a whole number: {finalCounts.TruncatedValues})");
 
         // The played client's effects the data pack does not have, where every child of every level is one read in full
         // (PlayedClientAdditionalEffects.BasicOnly): 10600280, the charge Focused Fire 10600181 puts on its caster.
