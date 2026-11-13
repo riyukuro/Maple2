@@ -198,6 +198,11 @@ public class TradeManager : IDisposable {
                     Refused(caller, offered, "the summoned pet");
                     return;
                 }
+                // Nor the score being played (TryAddToTrade: s_trade_tradelimit_playing_score, shown by the client).
+                if (offered.Uid == (caller.Instrument?.Score?.Uid ?? 0)) {
+                    Refused(caller, offered, "the score being played");
+                    return;
+                }
                 if (SurvivalItemRules.IsMatchOnly(offered.Metadata)) { Refused(caller, offered, "survival match item"); return; }
                 if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
                     Refused(caller, offered, $"transfer {offered.Transfer.Flag}, {offered.Transfer.RemainTrades} trades left, bound {offered.Transfer.Binding != null}");

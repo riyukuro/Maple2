@@ -481,6 +481,31 @@ public class TradeHandlerTests {
         });
     }
 
+    // The score being played stays in the bag, as the client refuses it (s_trade_tradelimit_playing_score); once
+    // the play has stopped, it goes.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AddItem_TheScoreBeingPlayedStays(bool playing) {
+        if (playing) {
+            // The trade reads the score only; a field instrument needs a field the test session has none of.
+            var instrument = (Maple2.Server.Game.Model.FieldInstrument) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Maple2.Server.Game.Model.FieldInstrument));
+            instrument.Score = giver.Item.Inventory.Get(item.Uid);
+            giver.Instrument = instrument;
+        }
+
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+        giver.Instrument = null;
+
+        Assert.Multiple(() => {
+            Assert.That(giver.Item.Inventory.Get(item.Uid)?.Amount, playing ? Is.EqualTo(3) : Is.Null);
+            Assert.That(takerTest.TakeSent(), playing ? Is.Empty : Is.Not.Empty);
+        });
+    }
+
     // KMS2 order: a player who has locked is unlocked (mode 12) before the other player's change is shown.
     [Test]
     public void Offer_UnlocksTheOtherSideFirst() {
