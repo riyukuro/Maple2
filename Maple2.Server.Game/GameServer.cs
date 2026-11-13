@@ -302,23 +302,29 @@ public class GameServer : Server<GameSession> {
         return premiumMarketCache.TryGetValue(id, out PremiumMarketItem? item) ? item.AdditionalQuantities.FirstOrDefault(subItem => subItem.Id == subId) : null;
     }
 
-    public void DailyReset() {
-        foreach (GameSession session in sessions.Values) {
-            session.DailyReset();
-        }
-    }
+    public void DailyReset() => TakeResets();
 
-    public void WeeklyReset() {
-        foreach (GameSession session in sessions.Values) {
-            session.WeeklyReset();
-        }
-    }
+    public void WeeklyReset() => TakeResets();
 
     public void MonthlyReset() {
-        foreach (GameSession session in sessions.Values) {
-            session.MonthlyReset();
-        }
+        TakeResets();
         ReloadArchitectScores();
+    }
+
+    // The World's message after a reset: each session takes the resets stored since its state was read, once (a
+    // session's save may have taken them already). One session that fails does not stop the others'.
+    private void TakeResets() {
+        GameStorage.ResetStamps stamps;
+        using (GameStorage.Request db = gameStorage.Context()) {
+            stamps = db.GetResetStamps();
+        }
+        foreach (GameSession session in sessions.Values) {
+            try {
+                session.TakeResets(stamps);
+            } catch (Exception ex) {
+                Logger.Error(ex, "Reset not taken by {CharacterId}", session.CharacterId);
+            }
+        }
     }
 
     // The month's architect score of a home counts this month's commendations only, so the loaded copies (the home

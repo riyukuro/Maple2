@@ -268,6 +268,8 @@ public sealed partial class GameSession : Core.Network.Session {
             // A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100:
             // 90), stored with the entry's stamp.
             IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
+            // The resets the rows below hold: read first, with a share lock, in the load's transaction.
+            resetsSeen = new ResetsSeen(db.GetResetStamps());
             player = db.LoadPlayer(AccountId, CharacterId, objectId, GameServer.GetChannel(), lastSave =>
                 EventMailRules.ReturnUser(sendMail.Select(gameEvent => gameEvent.Metadata), CharacterId, lastSave,
                     DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
@@ -313,6 +315,8 @@ public sealed partial class GameSession : Core.Network.Session {
         AdventureProtect = new AdventureProtectManager(this);
         Ride = new RideManager(this);
         Mentoring = new MentoringManager(this);
+        // The managers are made: a reset stored since the load is taken now (by the entry's save at the latest).
+        resetsSeen!.Ready = true;
         // The entry's save is a gate: a character whose state cannot be stored does not play (see SessionSave). It
         // runs before anything of the entry is created at once (items, mails), so a refused entry leaves nothing.
         if (!EntrySave()) {
@@ -1107,6 +1111,49 @@ public sealed partial class GameSession : Core.Network.Session {
         server.Broadcast(packet);
     }
 
+    // The World's daily, weekly and monthly resets set the stored rows (GameStorage.RunReset) and their time; the
+    // session's state takes each reset once, when its time is later than the one the session's state holds: from
+    // the World's message to the channels (GameServer.TakeResets), or from this session's next save, which reads the
+    // times in its transaction before it writes (SaveRows, TrySavePurchase). The save used to write the state from
+    // before the reset back over the reset rows when it ran between the reset and the message, or when the message
+    // did not reach the session (a channel the message failed for, a session moving between channels, the World's
+    // reset at its start, which sends none), and the old values were then kept.
+    private ResetsSeen? resetsSeen;
+
+    private sealed class ResetsSeen(GameStorage.ResetStamps stamps) {
+        public GameStorage.ResetStamps Stamps = stamps;
+        // False while EnterServer makes the managers the resets change.
+        public bool Ready;
+    }
+
+    public void TakeResets(GameStorage.ResetStamps stamps) {
+        ResetsSeen? seen = resetsSeen;
+        if (seen == null) {
+            // A session whose state EnterServer did not read (a test's): the first times it sees are the ones it holds.
+            Interlocked.CompareExchange(ref resetsSeen, new ResetsSeen(stamps) { Ready = true }, null);
+            return;
+        }
+        // One at a time: a save waits here until a reset taken on another thread is done, before it writes.
+        lock (seen) {
+            if (!seen.Ready) {
+                return;
+            }
+            GameStorage.ResetStamps held = seen.Stamps;
+            seen.Stamps = new GameStorage.ResetStamps(Max(held.Daily, stamps.Daily), Max(held.Weekly, stamps.Weekly), Max(held.Monthly, stamps.Monthly));
+            if (stamps.Daily > held.Daily) {
+                DailyReset();
+            }
+            if (stamps.Weekly > held.Weekly) {
+                WeeklyReset();
+            }
+            if (stamps.Monthly > held.Monthly) {
+                MonthlyReset();
+            }
+        }
+
+        static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
+    }
+
     public void DailyReset() {
         // The new day's play time starts now, as KMS2 sends it at the reset; the client counts no play seconds
         // from a start on an earlier day.
@@ -1573,6 +1620,8 @@ public sealed partial class GameSession : Core.Network.Session {
             using GameStorage.Request db = GameStorage.Context();
             using var tokens = new RowTokens(Player);
             db.BeginTransaction();
+            // A reset stored since the session's state was read is taken first, so the rows written hold it.
+            TakeResets(db.GetResetStamps());
             // The currency and the purchase's rows are stored together or not at all (the request rolls back what it
             // did not commit); the session keeps both, and its next save stores them.
             if (!db.SaveCurrency(Player)) {
@@ -1622,6 +1671,8 @@ public sealed partial class GameSession : Core.Network.Session {
         using GameStorage.Request db = GameStorage.Context();
         using var tokens = new RowTokens(Player);
         db.BeginTransaction();
+        // A reset stored since the session's state was read is taken first, so the rows written hold it.
+        TakeResets(db.GetResetStamps());
         if (!db.SavePlayer(Player)) {
             Logger.Error("Save: player not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
