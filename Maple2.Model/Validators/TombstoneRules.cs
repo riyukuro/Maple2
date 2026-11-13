@@ -59,8 +59,9 @@ public static class TombstoneRules {
         return PetHolds(ownerDead, hasTombstone) && state != DeathState.Metal && !revivalBuff;
     }
 
-    // lastTick 0: no hit by this pet yet.
-    public static bool PetHitTooSoon(long tick, long lastTick) {
-        return lastTick != 0 && tick - lastTick < PET_HIT_INTERVAL_MS - PET_HIT_SLACK_MS;
+    // The client's revive state sends one hit after its 3000 ms run, so a hit must come at least the interval (less the
+    // slack) after the later of the pet's entry into the state and its last hit (lastTick 0: no hit yet).
+    public static bool PetHitTooSoon(long tick, long enteredTick, long lastTick) {
+        return tick - Math.Max(enteredTick, lastTick) < PET_HIT_INTERVAL_MS - PET_HIT_SLACK_MS;
     }
 }

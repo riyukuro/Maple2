@@ -86,10 +86,21 @@ public class TombstoneRulesTests {
 
     [Test]
     public void PetHitsComeOncePerState() {
-        Assert.That(TombstoneRules.PetHitTooSoon(10_000, 0), Is.False);
-        Assert.That(TombstoneRules.PetHitTooSoon(13_000, 10_000), Is.False);
-        Assert.That(TombstoneRules.PetHitTooSoon(12_500, 10_000), Is.False);
-        Assert.That(TombstoneRules.PetHitTooSoon(12_499, 10_000), Is.True);
-        Assert.That(TombstoneRules.PetHitTooSoon(10_001, 10_000), Is.True);
+        Assert.That(TombstoneRules.PetHitTooSoon(13_000, 1_000, 10_000), Is.False);
+        Assert.That(TombstoneRules.PetHitTooSoon(12_500, 1_000, 10_000), Is.False);
+        Assert.That(TombstoneRules.PetHitTooSoon(12_499, 1_000, 10_000), Is.True);
+        Assert.That(TombstoneRules.PetHitTooSoon(10_001, 1_000, 10_000), Is.True);
+    }
+
+    [Test]
+    public void ThePetsFirstHitWaitsForItsRevivePass() {
+        // No hit yet (lastTick 0): the floor runs from the pet's entry into its revive state, not from nothing.
+        Assert.That(TombstoneRules.PetHitTooSoon(10_000, 10_000, 0), Is.True);
+        Assert.That(TombstoneRules.PetHitTooSoon(12_499, 10_000, 0), Is.True);
+        Assert.That(TombstoneRules.PetHitTooSoon(12_500, 10_000, 0), Is.False);
+        Assert.That(TombstoneRules.PetHitTooSoon(13_000, 10_000, 0), Is.False);
+        // A later death: the new entry, not the last death's hit, starts the floor.
+        Assert.That(TombstoneRules.PetHitTooSoon(21_000, 20_000, 10_000), Is.True);
+        Assert.That(TombstoneRules.PetHitTooSoon(22_500, 20_000, 10_000), Is.False);
     }
 }

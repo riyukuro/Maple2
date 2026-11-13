@@ -58,6 +58,16 @@ public sealed class FieldPet : FieldNpc {
     }
 
     private long reviveHitTick;
+    private long reviveEnterTick; // 0 while the pet is out of its revive state
+
+    // Called each update after the revive state is set: the tick the pet entered SummonRevive, kept while it stays.
+    public void NoteReviveState(long tickCount) {
+        if (MovementState.State != ActorState.SummonRevive) {
+            reviveEnterTick = 0;
+        } else if (reviveEnterTick == 0) {
+            reviveEnterTick = tickCount;
+        }
+    }
 
     // The owner lies dead in this field with a tombstone: the pet stands in its revive state (FieldNpc.Update).
     public bool OwnerDown => owner != null && owner.Field == Field && TombstoneRules.PetHolds(owner.IsDead, owner.Tombstone != null);
@@ -73,7 +83,12 @@ public sealed class FieldPet : FieldNpc {
             refusal = "revival blocked";
             return false;
         }
-        if (TombstoneRules.PetHitTooSoon(tickCount, reviveHitTick)) {
+        // The client sends only from StateSummonRevive (statesummon.cpp:787): not from a dead, stunned or hit pet.
+        if (IsDead || MovementState.State != ActorState.SummonRevive || reviveEnterTick == 0) {
+            refusal = "pet not in its revive state";
+            return false;
+        }
+        if (TombstoneRules.PetHitTooSoon(tickCount, reviveEnterTick, reviveHitTick)) {
             refusal = "too soon";
             return false;
         }

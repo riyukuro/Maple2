@@ -11,12 +11,14 @@ public static class AiRide {
     // rideNpcIDs; -1 when none is alive (the rider then stays where it is until a car is summoned again).
     public static int Vehicle(IReadOnlyList<int> slaveNpcIds, IReadOnlyCollection<int> rideNpcIds) {
         for (int i = 0; i < slaveNpcIds.Count; i++) {
-            if (rideNpcIds.Contains(slaveNpcIds[i])) {
+            if (Rides(slaveNpcIds[i], rideNpcIds)) {
                 return i;
             }
         }
         return -1;
     }
+
+    public static bool Rides(int npcId, IReadOnlyCollection<int> rideNpcIds) => rideNpcIds.Contains(npcId);
 
     // What a ride node leaves on the rider: isRideOff="true" clears the ride, any other node rides the listed ids
     // (an empty list rides nothing).

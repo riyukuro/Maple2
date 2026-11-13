@@ -108,12 +108,10 @@ public class FieldNpc : Actor<Npc> {
         if (rideIds == null || IsDead || MovementState.IsJumping) {
             return;
         }
-        List<FieldNpc> slaves = Slaves();
-        int index = AiRide.Vehicle(slaves.Select(slave => slave.Value.Id).ToList(), rideIds);
-        if (index < 0) {
+        FieldNpc? vehicle = RideVehicle(rideIds);
+        if (vehicle == null) {
             return;
         }
-        FieldNpc vehicle = slaves[index];
         if (rodeFrom != vehicle.Position || rodeTo != Position) {
             rodeFrom = vehicle.Position;
             if (Navigation == null || !Navigation.UpdatePosition(vehicle.Position)) {
@@ -123,6 +121,19 @@ public class FieldNpc : Actor<Npc> {
             SendControl = true; // the Position setter does not mark the control dirty
         }
         Velocity = vehicle.Velocity;
+    }
+
+    // The first live slave in summon order whose npc id is a ride id (AiRide.Vehicle), found without a list per tick.
+    private FieldNpc? RideVehicle(int[] rideIds) {
+        lock (summons) {
+            foreach ((int _, FieldNpc npc, bool leavesWithSummoner) in summons) {
+                if (leavesWithSummoner && !npc.IsDead && (Field.Mobs.ContainsKey(npc.ObjectId) || Field.Npcs.ContainsKey(npc.ObjectId))
+                    && AiRide.Rides(npc.Value.Id, rideIds)) {
+                    return npc;
+                }
+            }
+        }
+        return null;
     }
 
     public int SummonCount(int group) {
@@ -385,6 +396,7 @@ public class FieldNpc : Actor<Npc> {
             MovementState.SetStunned(TakesStun());
             if (this is FieldPet { OwnerId: not 0 } pet) {
                 MovementState.SetSummonRevive(pet.OwnerDown);
+                pet.NoteReviveState(tickCount);
             }
             isStunned = MovementState.State is ActorState.Stun or ActorState.Hit or ActorState.SummonRevive; // held: no AI, no tasks
             if (!AiOff && !isStunned) {
