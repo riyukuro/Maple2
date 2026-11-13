@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -74,12 +75,26 @@ public class EmoteHandler : FieldPacketHandler {
         int emoteId = packet.ReadInt();
         string aniKey = packet.ReadUnicodeString();
 
-        if (!session.Player.Value.Unlock.Emotes.Contains(emoteId)) {
-            // Not sure if there is a way to prevent an emote from being used.
+        bool caught = session.Field?.HideAndSeek?.IsCaught(session.CharacterId) == true;
+        if (!UseAllowed(emoteId, session.Player.Value.Unlock.Emotes.Contains(emoteId), session.Field?.MapId ?? 0, caught)) {
             return;
         }
 
         session.ConditionUpdate(ConditionType.emotion, codeString: aniKey);
         session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnEmote, skillId: emoteId);
     }
+
+    // The two cheer emotions (90210001 Applaud, 90210002 Glowstick) are not learned: the client gives them to the
+    // player only on the performance map (field 2000064) and to a hider caught in Hide and Seek (its Info "death" flag;
+    // CSkillSystem::IsEmotionLearned). The server takes them there only, learned or not; every other emotion must be
+    // learned.
+    public static bool UseAllowed(int emoteId, bool learned, int mapId, bool caughtHider) {
+        if (emoteId is ApplaudEmoteId or GlowstickEmoteId) {
+            return mapId == Constant.PerformanceMapId || caughtHider;
+        }
+        return learned;
+    }
+
+    public const int ApplaudEmoteId = 90210001;
+    public const int GlowstickEmoteId = 90210002;
 }

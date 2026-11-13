@@ -362,6 +362,11 @@ public sealed class HideAndSeekField {
         }
     }
 
+    // Whether the hider was caught (the client's Info "death" flag, which also gives it the two cheer emotions).
+    public bool IsCaught(long characterId) {
+        lock (mutex) return state.IsCaught(characterId);
+    }
+
     public HideAndSeekField(FieldManager field, int triggerId) {
         this.field = field;
         this.triggerId = triggerId;

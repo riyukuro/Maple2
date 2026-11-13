@@ -633,12 +633,15 @@ public class HideAndSeekTests {
             Assert.That(first.Targets.ContainsKey(hider.ObjectId), Is.True);
             Assert.That(hiderTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.HideAndSeek && packet[2] == 4), Is.EqualTo(new[] { life }));
             Assert.That(state.IsCaught(hider.Value.Character.Id), Is.False);
+            Assert.That(game.IsCaught(hider.Value.Character.Id), Is.False);
         });
 
         Assert.That(game.Hit(seeker, hider, Record(HideAndSeekField.SeekSkillId), attack), Is.True);
         List<byte[]> sent = hiderTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.HideAndSeek).ToList();
         Assert.Multiple(() => {
             Assert.That(state.IsCaught(hider.Value.Character.Id), Is.True);
+            Assert.That(game.IsCaught(hider.Value.Character.Id), Is.True);
+            Assert.That(game.IsCaught(seeker.Value.Character.Id), Is.False);
             Assert.That(state.Kills(seeker.Value.Character.Id), Is.EqualTo(1));
             Assert.That(sent.Any(packet => packet.SequenceEqual(HideAndSeekPacket.Life(hider.ObjectId, 0, 2).ToArray())), Is.True);
             Assert.That(sent.Any(packet => packet.SequenceEqual(HideAndSeekPacket.End(hider.ObjectId).ToArray())), Is.True);
