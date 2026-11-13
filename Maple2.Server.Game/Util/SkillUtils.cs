@@ -32,17 +32,25 @@ public static class SkillUtils {
             return new Prism(IPolygon.Null, 0, 0);
         }
 
-        float boxWidth = range.Width + range.RangeAdd.X;
+        // The client's shapes take the range add (CSkillCollisionManager::GetCached sets it as the shape's size,
+        // skillcollisionmanager.cpp:208) as reach behind and below, never as width: a box runs from add.y behind the
+        // origin to the distance ahead and from add.z below it to the height above (CBoxCollision::vfunc_4,
+        // boxcollision.cpp:102-103); a frustum starts add.y behind and add.z below the origin with its near width there
+        // and its depth grown by add.y (CFrustumCollision::vfunc_3 and vfunc_4, frustumcollision.cpp:62, 95-96); a
+        // cylinder and a hole cylinder reach add.z below the origin and the height above it
+        // (unit_141083230_cylindercollision.cpp:29-30, holecylindercollision.cpp:52-59). add.x is never read.
+        float behind = range.Type is SkillRegion.Box or SkillRegion.Frustum ? range.RangeAdd.Y : 0;
+        float turned = adjustedAngle * MathF.PI / 180;
+        Vector2 start = origin - behind * new Vector2(-MathF.Sin(turned), MathF.Cos(turned));
         IPolygon polygon = range.Type switch {
-            // Box projects forward from caster (0 to distance), same as Frustum but with equal widths.
-            SkillRegion.Box => new Trapezoid(origin, boxWidth, boxWidth, range.Distance + range.RangeAdd.Y, adjustedAngle),
+            SkillRegion.Box => new Trapezoid(start, range.Width, range.Width, range.Distance + behind, adjustedAngle),
             SkillRegion.Cylinder => new Circle(origin, range.Distance),
-            SkillRegion.Frustum => new Trapezoid(origin, range.Width, range.EndWidth, range.Distance, adjustedAngle),
+            SkillRegion.Frustum => new Trapezoid(start, range.Width, range.EndWidth, range.Distance + behind, adjustedAngle),
             SkillRegion.HoleCylinder => new HoleCircle(origin, range.Width, range.EndWidth),
             _ => throw new ArgumentOutOfRangeException($"Invalid range type: {range.Type}"),
         };
 
-        return new Prism(polygon, bottom, range.Height + range.RangeAdd.Z);
+        return new Prism(polygon, bottom - range.RangeAdd.Z, range.Height + range.RangeAdd.Z);
     }
 
     public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle) =>

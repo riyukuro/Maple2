@@ -399,7 +399,10 @@ public class RangeTargetSelectTests {
     [Test]
     public void GetPrism_OffsetIsInFront() {
         SkillMetadataRange range = Range(null) with {
-            Type = SkillRegion.Box, Distance = 100, Width = 50, RangeOffset = new Vector3(0, 150, 0),
+            Type = SkillRegion.Box,
+            Distance = 100,
+            Width = 50,
+            RangeOffset = new Vector3(0, 150, 0),
         };
         SkillMetadataAttack Attack(int method, float rotate = 0) => new("p0", 0, 1, 0, 0, 0, 0, [], null,
             range with { RotateZDegree = rotate }, null!, null!, [], [], AttackMethodType: method);
@@ -424,11 +427,56 @@ public class RangeTargetSelectTests {
         });
     }
 
+    // The range add is reach behind and below, as in the client's shapes: 10700273's second hit (a box 550 deep and 100
+    // wide, add 0,70,0) reaches 550 ahead and 70 behind, not 620 ahead; a frustum starts add.y behind with its near
+    // width there; add.z reaches below the feet for every shape; add.x does not widen. Facing 0 is forward (0, -1).
+    [Test]
+    public void GetPrism_RangeAddIsBehindAndBelow() {
+        SkillMetadataRange box = Range(null) with {
+            Type = SkillRegion.Box,
+            Distance = 550,
+            Width = 100,
+            Height = 150,
+            RangeAdd = new Vector3(40, 70, 30),
+        };
+        SkillMetadataRange frustum = box with { Type = SkillRegion.Frustum, Distance = 300, Width = 100, EndWidth = 300 };
+        SkillMetadataRange cylinder = box with { Type = SkillRegion.Cylinder, Distance = 200 };
+        SkillMetadataRange hole = box with { Type = SkillRegion.HoleCylinder, Width = 100, EndWidth = 200 };
+        Prism boxPrism = box.GetPrism(Vector3.Zero, 0);
+        Prism frustumPrism = frustum.GetPrism(Vector3.Zero, 0);
+        Prism cylinderPrism = cylinder.GetPrism(Vector3.Zero, 0);
+        Prism holePrism = hole.GetPrism(Vector3.Zero, 0);
+        Assert.Multiple(() => {
+            Assert.That(boxPrism.Contains(new Vector3(0, -540, 10)), Is.True, "box ahead");
+            Assert.That(boxPrism.Contains(new Vector3(0, -600, 10)), Is.False, "box not past the distance");
+            Assert.That(boxPrism.Contains(new Vector3(0, 60, 10)), Is.True, "box behind");
+            Assert.That(boxPrism.Contains(new Vector3(0, 80, 10)), Is.False, "box not past add.y behind");
+            Assert.That(boxPrism.Contains(new Vector3(60, -100, 10)), Is.False, "box not widened by add.x");
+            Assert.That(boxPrism.Contains(new Vector3(0, -100, -20)), Is.True, "box below");
+            Assert.That(boxPrism.Contains(new Vector3(0, -100, -40)), Is.False, "box not past add.z below");
+            Assert.That(boxPrism.Contains(new Vector3(0, -100, 160)), Is.False, "box not raised by add.z");
+            // The frustum's near width 100 is at y 70 behind, its far width 300 at y -300.
+            Assert.That(frustumPrism.Contains(new Vector3(0, 60, 10)), Is.True, "frustum behind");
+            Assert.That(frustumPrism.Contains(new Vector3(0, 80, 10)), Is.False, "frustum not past add.y behind");
+            Assert.That(frustumPrism.Contains(new Vector3(140, -290, 10)), Is.True, "frustum far width");
+            Assert.That(frustumPrism.Contains(new Vector3(0, -310, 10)), Is.False, "frustum not past the distance");
+            Assert.That(frustumPrism.Contains(new Vector3(0, -100, -20)), Is.True, "frustum below");
+            Assert.That(cylinderPrism.Contains(new Vector3(0, 190, -20)), Is.True, "cylinder below, add.y not moving it");
+            Assert.That(cylinderPrism.Contains(new Vector3(0, 0, -40)), Is.False, "cylinder not past add.z below");
+            Assert.That(cylinderPrism.Contains(new Vector3(0, 0, 160)), Is.False, "cylinder not raised by add.z");
+            Assert.That(holePrism.Contains(new Vector3(150, 0, -20)), Is.True, "hole cylinder below");
+            Assert.That(holePrism.Contains(new Vector3(150, 0, 160)), Is.False, "hole cylinder not raised by add.z");
+        });
+    }
+
     // A region skill's area keeps the offset as it is, not turned to the facing: the client never searches for it.
     [Test]
     public void GetRegionPrism_KeepsTheOffset() {
         SkillMetadataRange range = Range(null) with {
-            Type = SkillRegion.Box, Distance = 100, Width = 50, RangeOffset = new Vector3(0, 150, 0),
+            Type = SkillRegion.Box,
+            Distance = 100,
+            Width = 50,
+            RangeOffset = new Vector3(0, 150, 0),
         };
         SkillMetadataAttack attack = new("p0", 0, 1, 0, 0, 0, 0, [], null, range, null!, null!, [], []);
         Prism region = attack.GetRegionPrism(Vector3.Zero, 0);
