@@ -453,10 +453,11 @@ public class ItemSocketHandler : FieldPacketHandler {
 
     private enum SocketState { None, Locked, Used, Empty }
     private static SocketState CheckSocketSlot(ItemSocket? itemSocket, byte slot) {
-        if (itemSocket == null || slot > itemSocket.MaxSlots) {
+        // Sockets holds the open sockets only (its length is UnlockSlots), so a slot from UnlockSlots up is locked.
+        if (itemSocket == null || slot >= itemSocket.MaxSlots) {
             return SocketState.None;
         }
-        if (slot > itemSocket.UnlockSlots) {
+        if (slot >= itemSocket.UnlockSlots) {
             return SocketState.Locked;
         }
         return itemSocket.Sockets[slot] != null ? SocketState.Used : SocketState.Empty;
