@@ -18,7 +18,8 @@ namespace Maple2.File.Ingest.Helpers;
 // replayed: one event each, with the ended play-time (DTReward) and daily login (DailyLoginReward) rows that give
 // its play item during it, moved by the same amount (Companions). An RPS, bingo or time run that no such row
 // feeds is not taken: nothing else gives its ticket, pencil or start item. The item box (ItemBox) is replayed
-// too, at its own time of day (the KR rows open the box for 17 minutes at 19:00).
+// too, at its own time of day (the KR rows open the box for 17 minutes at 19:00), and the snowman (Snowman), whose
+// snowflakes come from its promotionContents rows (read with it, so they move with it).
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -29,14 +30,14 @@ public static class AttendGiftReplay {
         GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
         GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
         GameEventType.TreeWatering, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
-        GameEventType.CoupleDance, GameEventType.ExchangeScrollSale, GameEventType.ItemBox,
+        GameEventType.CoupleDance, GameEventType.ExchangeScrollSale, GameEventType.ItemBox, GameEventType.Snowman,
     ];
 
     // The replayed types whose events are not taken without data (not read): the minigames, whose rules are all
-    // in it, and the item box, whose field and box are.
+    // in it, the item box, whose field and box are, and the snowman, whose snowmen are.
     public static readonly GameEventType[] NeedData = [
         GameEventType.StampEvent, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
-        GameEventType.CoupleDance, GameEventType.ItemBox,
+        GameEventType.CoupleDance, GameEventType.ItemBox, GameEventType.Snowman,
     ];
 
     // The item a round of the event takes: the RPS ticket, the bingo's daily pencil, the time run's start item
@@ -152,7 +153,8 @@ public static class AttendGiftReplay {
     // result dialog), and for a TreeWatering's water pot and rewards (an empty reward, item 0, is none). An RPS's
     // ticket and rewards, a bingo's pencils (no plus pencil: item 0) and rewards, a time run's start item and
     // rewards and a couple dance's daily and good-end rewards are items of the client's bags, dialogs and mails
-    // too; so are a play-time or daily login row's items, and the item box's box item (bound in its dialog).
+    // too; so are a play-time or daily login row's items, the item box's box item (bound in its dialog) and the
+    // snowmen's rewards.
     public static bool ClientHasRewards(GameEventMetadata gameEvent, Func<int, int> clientRank) {
         return gameEvent.Data switch {
             AttendGift attendGift => attendGift.Items.All(item => clientRank(item.ItemId) > 0),
@@ -182,6 +184,8 @@ public static class AttendGiftReplay {
             DTReward dtReward => dtReward.Entries.All(entry => clientRank(entry.Item.ItemId) > 0),
             DailyLoginReward daily => daily.Items.All(item => clientRank(item.ItemId) > 0),
             ItemBox box => clientRank(box.BoxItemId) > 0,
+            Snowman snowman => snowman.Snowmen.SelectMany(entry => entry.Rewards.Concat(entry.AccumRewards))
+                .All(item => clientRank(item.ItemId) > 0),
             _ => true,
         };
     }

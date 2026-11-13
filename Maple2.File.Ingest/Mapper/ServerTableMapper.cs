@@ -1138,6 +1138,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 continue;
             }
 
+            if (eventData is Snowman snowman) {
+                eventData = snowman with { Sources = SnowmanSources(data.eventStart, data.eventEnd) };
+            }
             GameEventMetadata metadata = MapGameEvent(id, data, eventType, eventData);
             DateTime endTime = metadata.EndTime;
 
@@ -1643,6 +1646,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new LoginNotice();
             case GameEventType.ItemBox:
                 return ReadItemBox(value1);
+            case GameEventType.Snowman:
+                return ReadSnowman(value1, value2);
             case GameEventType.Festival:
                 // GameEventFestival::vfunc_2 reads value1 and value2 as unsigned numbers (FUN_140718200).
                 return new Festival(
@@ -2026,6 +2031,91 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Title: root.GetAttribute("title"),
             Desc: root.GetAttribute("desc"),
             BannerPath: root.GetAttribute("bannerPath"));
+    }
+
+    // GameEventSnowman::vfunc_2 (gameevent.cpp) loads value1: the root's <option thema=""/> (none: no thema) and each
+    // <snowman>'s <condition snowflakeCount dailyMaxCount accumMaxCount/> and the <v itemID grade count/> of its
+    // <rewardItems> and <accumRewardItems>. A snowman without one of those nodes fails ReadSnowmanData and the
+    // event is not loaded; so is one without a snowman, as the dialog then has nothing to show. value2 is kept as
+    // it is: the event sends it with the snowmen (vfunc_3), and the dialog reads its layout from it.
+    public static Snowman? ReadSnowman(string value1, string value2) {
+        XmlElement? root = LoadElement(value1, "ms2");
+        if (root == null) {
+            return null;
+        }
+        string theme = (root.SelectSingleNode("option") as XmlElement)?.GetAttribute("thema") ?? string.Empty;
+        var snowmen = new List<Snowman.Entry>();
+        foreach (XmlElement node in root.SelectNodes("snowman")?.OfType<XmlElement>() ?? []) {
+            if (node.SelectSingleNode("condition") is not XmlElement condition
+                || node.SelectSingleNode("rewardItems") is not XmlElement rewards
+                || node.SelectSingleNode("accumRewardItems") is not XmlElement accumRewards) {
+                return null;
+            }
+            snowmen.Add(new Snowman.Entry(
+                Goal: int.TryParse(condition.GetAttribute("snowflakeCount"), out int goal) ? goal : 0,
+                DailyMax: int.TryParse(condition.GetAttribute("dailyMaxCount"), out int dailyMax) ? dailyMax : 0,
+                AccumMax: int.TryParse(condition.GetAttribute("accumMaxCount"), out int accumMax) ? accumMax : 0,
+                Rewards: ReadSnowmanItems(rewards),
+                AccumRewards: ReadSnowmanItems(accumRewards)));
+        }
+        if (snowmen.Count == 0 || snowmen.Count > short.MaxValue) {
+            return null;
+        }
+        return new Snowman(theme, snowmen.ToArray(), value2 ?? string.Empty, []);
+    }
+
+    // ItemEntity::vfunc_2 per <v>: itemID, grade (rank) and count.
+    private static RewardItem[] ReadSnowmanItems(XmlElement node) {
+        var items = new List<RewardItem>();
+        foreach (XmlElement value in node.SelectNodes("v")?.OfType<XmlElement>() ?? []) {
+            if (!int.TryParse(value.GetAttribute("itemID"), out int itemId) || itemId == 0) {
+                continue;
+            }
+            short grade = short.TryParse(value.GetAttribute("grade"), out short parsedGrade) ? parsedGrade : (short) 1;
+            int count = int.TryParse(value.GetAttribute("count"), out int parsedCount) ? parsedCount : 1;
+            items.Add(new RewardItem(itemId, grade, count));
+        }
+        return items.ToArray();
+    }
+
+    // The snowflake sources of a snowman event: the server table's promotionContents rows of promotionType Snowman
+    // (the locale's and the feature's, as the other server tables) whose startTime and endTime are the event's.
+    // Neither table names the other; the KR rows of each snowman event run over its exact dates.
+    private Snowman.Source[] SnowmanSources(string eventStart, string eventEnd) {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/promotionContents.xml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null) {
+            return [];
+        }
+        Snowman.Source[] sources = MapSnowmanSources(xmlReader.GetXmlDocument(entry), eventStart, eventEnd,
+            row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
+        Console.WriteLine($"Snowman {eventStart}..{eventEnd}: {sources.Length} snowflake sources");
+        return sources;
+    }
+
+    // Rows of a type the server does not count (not a ConditionType name, such as the 2019 rows' harvest, gathering,
+    // manufacturing and playinstrument_time, the last of which no handler counts) are left out, as are rows
+    // without a point or a chance. Rows that repeat one type, point and chance (the KR file lists the 2019 rows
+    // twice) are one source.
+    public static Snowman.Source[] MapSnowmanSources(XmlDocument document, string eventStart, string eventEnd, Func<XmlElement, bool> available) {
+        var sources = new List<Snowman.Source>();
+        foreach (XmlElement row in document.SelectNodes("ms2/promotion")?.OfType<XmlElement>() ?? []) {
+            if (row.GetAttribute("promotionType") != "Snowman" || !available(row)
+                || row.GetAttribute("startTime") != eventStart || row.GetAttribute("endTime") != eventEnd) {
+                continue;
+            }
+            if (!Enum.TryParse(row.GetAttribute("type"), out Maple2.Model.Enum.ConditionType type) || !Enum.IsDefined(type)
+                || type is Maple2.Model.Enum.ConditionType.playinstrument_time
+                || !int.TryParse(row.GetAttribute("point"), out int point) || point <= 0
+                || !int.TryParse(row.GetAttribute("prop"), out int prop) || prop <= 0) {
+                continue;
+            }
+            var source = new Snowman.Source(type, point, Math.Min(prop, 10000));
+            if (!sources.Contains(source)) {
+                sources.Add(source);
+            }
+        }
+        return sources.ToArray();
     }
 
     private static XmlElement? LoadElement(string value, string name) {

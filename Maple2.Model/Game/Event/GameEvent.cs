@@ -193,6 +193,30 @@ public class GameEvent : IByteSerializable {
                 writer.WriteUnicodeString(itemBox.BannerPath);
                 writer.WriteInt(Id);
                 break;
+            case Snowman snowman:
+                // GameEvent::vfunc_4 reads the id, SnowmanContext::Read (gameeventcontext.cpp) the event id, the
+                // thema, a short count of snowmen (goal, daily and accum limits, then a short count of items each for
+                // the daily and the accum rewards) and the end; GameEventSnowman::vfunc_4 then the layout (value2).
+                writer.WriteInt(Id);
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(snowman.Theme);
+                writer.WriteShort((short) snowman.Snowmen.Length);
+                foreach (Snowman.Entry entry in snowman.Snowmen) {
+                    writer.WriteInt(entry.Goal);
+                    writer.WriteInt(entry.DailyMax);
+                    writer.WriteInt(entry.AccumMax);
+                    writer.WriteShort((short) entry.Rewards.Length);
+                    foreach (RewardItem item in entry.Rewards) {
+                        WriteItemEntity(writer, item);
+                    }
+                    writer.WriteShort((short) entry.AccumRewards.Length);
+                    foreach (RewardItem item in entry.AccumRewards) {
+                        WriteItemEntity(writer, item);
+                    }
+                }
+                writer.WriteLong(EndTime);
+                writer.WriteUnicodeString(snowman.Layout);
+                break;
             case GuildVsGameOpen:
                 // GameEventGuildVsGameOpen reads only the base event's id.
                 writer.WriteInt(Id);

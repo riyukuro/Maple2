@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -87,18 +88,21 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.OpenEventBox:
                 HandleOpenEventBox(session);
                 return;
+            case Command.ClaimSnowmanDailyReward:
+                HandleClaimSnowman(session, packet.ReadByte(), false);
+                return;
+            case Command.ClaimSnowmanAccumReward:
+                HandleClaimSnowman(session, packet.ReadByte(), true);
+                return;
             // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
-            // snowman, level-up package and burning level-up events, and
-            // GameEvent writes none of them), so the client's dialogs have no event to show and
-            // there is nothing to pay out. The client has no refusal text for them: read and logged.
+            // level-up package and burning level-up events, and GameEvent writes none of them), so the client's
+            // dialogs have no event to show and there is nothing to pay out. The client has no refusal text for
+            // them: read and logged.
             // Client writers:
             //   5      uibuddyeventlistener.cpp:667 (needs client feature 0x82)
-            //   12, 13 uisnowmaneventdialog.cpp:343, :365
             //   15     uileveluppackagewidgetdialog.cpp:580
             //   16     uicharacterlistdialog.cpp:2093
             case Command.VipGmClick: // always 1; sent by any player when the buddy event page opens, not a GM mode
-            case Command.ClaimSnowmanDailyReward: // snowman index
-            case Command.ClaimSnowmanAccumReward: // snowman index
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
                 return;
             case Command.ClaimLevelUpEventReward: // event id
@@ -400,6 +404,76 @@ public class EventRewardHandler : FieldPacketHandler {
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay, today);
         StoreClaim(session, gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay);
         session.Send(EventRewardPacket.OpenEventBox(true));
+    }
+
+    // The snowman (Snowman): 12 + byte index (uisnowmaneventdialog.cpp:343) takes a snowman's daily reward once it
+    // has its goal, 13 + byte index (:365) its accum reward once all its completes reach the accum count. The server
+    // checks what the dialog's buttons test (SnowmanRules), gives the items (to the bag, else by mail) and stores
+    // the values; a daily claim starts the snowman again (its snowflakes to 0) and counts one more complete for the
+    // day and for the event. The reply (12 or 13 + the items) shows the reward notice (notify 20061). The
+    // client has no refusal text: a refused claim is logged and has no reply.
+    // Chosen here: the snowflakes and today's completes run out at the day's end, all completes and the accum
+    // claims at the event's end.
+    private void HandleClaimSnowman(GameSession session, byte index, bool accum) {
+        if (session.Field == null) {
+            return;
+        }
+        GameEvent? gameEvent = session.FindEvent(GameEventType.Snowman).Where(found => found.Metadata.Data is Snowman).MinBy(found => found.Id);
+        if (gameEvent?.Metadata.Data is not Snowman snowman || index >= snowman.Snowmen.Length) {
+            Logger.Debug("Snowman claim {Index} from {CharacterId} refused: no such snowman", index, session.CharacterId);
+            return;
+        }
+        Snowman.Entry entry = snowman.Snowmen[index];
+        int length = snowman.Snowmen.Length;
+        DateTime time = session.GameEvent.Clock();
+        long now = time.ToEpochSeconds();
+        long dayEnd = GameEventManager.DtRewardExpiry(time);
+        int[] snowflakes = SnowmanRules.Counts(session.GameEvent.Get(GameEventUserValueType.SnowflakeCount, gameEvent.Id, dayEnd, now).Value, length);
+        int[] daily = SnowmanRules.Counts(session.GameEvent.Get(GameEventUserValueType.DailyCompleteCount, gameEvent.Id, dayEnd, now).Value, length);
+        int[] accumCompletes = SnowmanRules.Counts(session.GameEvent.Get(GameEventUserValueType.AccumCompleteCount, gameEvent.Id, gameEvent.EndTime, now).Value, length);
+        HashSet<int> received = SnowmanRules.Indexes(session.GameEvent.Get(GameEventUserValueType.AccumCompleteRewardReceived, gameEvent.Id, gameEvent.EndTime, now).Value);
+
+        RewardItem[] rewards;
+        if (accum) {
+            if (!SnowmanRules.CanClaimAccum(entry, accumCompletes[index], received.Contains(index))) {
+                Logger.Debug("Snowman accum claim {Index} from {CharacterId} refused: {Count} completes", index, session.CharacterId, accumCompletes[index]);
+                return;
+            }
+            rewards = entry.AccumRewards;
+            received.Add(index);
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AccumCompleteRewardReceived, SnowmanRules.Join(received.Order()));
+            StoreClaim(session, gameEvent.Id, GameEventUserValueType.AccumCompleteRewardReceived);
+        } else {
+            if (!SnowmanRules.CanClaimDaily(entry, snowflakes[index], daily[index])) {
+                Logger.Debug("Snowman daily claim {Index} from {CharacterId} refused: {Snowflakes} snowflakes, {Daily} today", index, session.CharacterId, snowflakes[index], daily[index]);
+                return;
+            }
+            rewards = entry.Rewards;
+            snowflakes[index] = 0;
+            daily[index]++;
+            accumCompletes[index]++;
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.SnowflakeCount, SnowmanRules.Join(snowflakes));
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.DailyCompleteCount, SnowmanRules.Join(daily));
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AccumCompleteCount, SnowmanRules.Join(accumCompletes));
+            StoreClaim(session, gameEvent.Id, GameEventUserValueType.SnowflakeCount);
+            StoreClaim(session, gameEvent.Id, GameEventUserValueType.DailyCompleteCount);
+            StoreClaim(session, gameEvent.Id, GameEventUserValueType.AccumCompleteCount);
+        }
+
+        var given = new List<RewardItem>();
+        foreach (RewardItem rewardItem in rewards) {
+            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item == null) {
+                Logger.Error("Snowman: event {EventId} item {ItemId} could not be made", gameEvent.Id, rewardItem.ItemId);
+                continue;
+            }
+            if (!session.Item.AddOrMail(item, true)) {
+                Logger.Error("Snowman: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+                continue;
+            }
+            given.Add(rewardItem);
+        }
+        session.Send(EventRewardPacket.ClaimSnowmanReward(accum, given));
     }
 
     private void HandleClaimTimeRunFinalReward(GameSession session) {

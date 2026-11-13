@@ -26,6 +26,9 @@ public sealed class GameEventManager {
     // against one day (tests set it).
     internal Func<DateTime> Clock { get; set; } = () => DateTime.Now;
 
+    // A number in [0, max) for a chance (tests set it).
+    internal Func<int, int> Roll { get; set; } = Random.Shared.Next;
+
     public MapleopolyTurn Mapleopoly { get; } = new();
 
     private readonly ILogger logger = Log.Logger.ForContext<GameEventManager>();
@@ -116,9 +119,13 @@ public sealed class GameEventManager {
     // Chosen here: an item collection's claim is the account's as well, so that one set of condition items, which
     // stay with the player, is not claimed by every character of the account in turn.
     // So are the daily login mail's mark (UpdateDailyLoginReward) and the item box's day (EventRewardHandler).
+    // So are the snowman's values: the KR rows of the latest snowman event (900070) give snowflakes for the account
+    // (promotionContents isAccount 1).
     public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type)
         || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven
-            or GameEventUserValueType.ItemBoxReceivedDay;
+            or GameEventUserValueType.ItemBoxReceivedDay
+            or GameEventUserValueType.SnowflakeCount or GameEventUserValueType.DailyCompleteCount
+            or GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived;
 
     private static readonly GameEventUserValueType[] StampValueTypes = [
         GameEventUserValueType.StampCompleteRewardClaimed,
@@ -137,6 +144,7 @@ public sealed class GameEventManager {
                 or GameEventUserValueType.LongTermAttendDays or GameEventUserValueType.LongTermAttendPointTime,
             GameEventType.StampEvent => StampValueTypes.Contains(value.Type),
             GameEventType.CollectItemGroup => value.Type is GameEventUserValueType.CollectItemGroup,
+            GameEventType.Snowman => value.Type is GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived,
             _ => false,
         };
         if (!follows || value.ExpirationTime == gameEvent.EndTime) {
@@ -381,6 +389,40 @@ public sealed class GameEventManager {
                 .Where(value => value.Type == GameEventUserValueType.AttendanceItemStartEnd && value.ExpirationTime > now)
                 .Select(value => (value.EventId, value.ExpirationTime))
                 .ToList();
+        }
+    }
+
+    // Snowflakes (GameEventSnowman): each source of a running snowman event whose condition this is gives its points
+    // with its chance; the snowmen that can proceed take them (SnowmanRules.Gain) and the client is told
+    // (TaskEvent 4). The snowflakes and today's completes last the day ("reset daily at midnight", the dialog's
+    // help), so the dialog, which reads them again at the day's change, finds them gone.
+    // Chosen here: the sources' daily limits are not kept (the KR rows of 900070 allow 99999 a day).
+    public void SnowmanCondition(ConditionType type) {
+        foreach (GameEvent gameEvent in session.FindEvent(GameEventType.Snowman)) {
+            if (gameEvent.Metadata.Data is not Snowman snowman) {
+                continue;
+            }
+            int point = 0;
+            foreach (Snowman.Source source in snowman.Sources) {
+                if (source.Type == type && Roll(10000) < source.Prop) {
+                    point += source.Point;
+                }
+            }
+            if (point == 0) {
+                continue;
+            }
+
+            DateTime time = Clock();
+            long now = time.ToEpochSeconds();
+            long dayEnd = DtRewardExpiry(time);
+            int length = snowman.Snowmen.Length;
+            int[] snowflakes = SnowmanRules.Counts(Get(GameEventUserValueType.SnowflakeCount, gameEvent.Id, dayEnd, now).Value, length);
+            int[] daily = SnowmanRules.Counts(Get(GameEventUserValueType.DailyCompleteCount, gameEvent.Id, dayEnd, now).Value, length);
+            if (!SnowmanRules.Gain(snowman, snowflakes, daily, point)) {
+                continue;
+            }
+            Set(gameEvent.Id, GameEventUserValueType.SnowflakeCount, SnowmanRules.Join(snowflakes));
+            session.Send(TaskEventPacket.Snowflake());
         }
     }
 

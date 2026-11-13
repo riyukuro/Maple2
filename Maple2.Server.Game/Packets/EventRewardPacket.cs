@@ -13,6 +13,8 @@ public static class EventRewardPacket {
         ClaimTimeRunFinalReward = 3,
         ClaimTimeRunStepReward = 4,
         FlipGalleryCard = 7,
+        ClaimSnowmanDailyReward = 12,
+        ClaimSnowmanAccumReward = 13,
         ClaimGalleryQuestReward = 8,
         ClaimGalleryReward = 9,
         OpenBingo = 20,
@@ -75,6 +77,20 @@ public static class EventRewardPacket {
         var pWriter = Packet.Of(SendOp.EventReward);
         pWriter.WriteByte((byte) Command.OpenEventBox);
         pWriter.WriteBool(ok);
+
+        return pWriter;
+    }
+
+    // The snowman replies (UISnowmanEventDialog, uisnowmaneventdialog.cpp:548): mode 12 or 13, an int count, then
+    // per item the id and a short amount, listed in reward notify 20061.
+    public static ByteWriter ClaimSnowmanReward(bool accum, IReadOnlyList<RewardItem> items) {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.WriteByte((byte) (accum ? Command.ClaimSnowmanAccumReward : Command.ClaimSnowmanDailyReward));
+        pWriter.WriteInt(items.Count);
+        foreach (RewardItem item in items) {
+            pWriter.WriteInt(item.ItemId);
+            pWriter.WriteShort((short) Math.Min(item.Amount, ushort.MaxValue));
+        }
 
         return pWriter;
     }

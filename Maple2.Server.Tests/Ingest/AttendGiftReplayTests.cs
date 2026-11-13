@@ -132,13 +132,17 @@ public class AttendGiftReplayTests {
 
     private static DailyLoginReward Daily(int itemId) => new(0, [new RewardItem(itemId, 1, 15)]);
 
+    private static Snowman Snowman(RewardItem[] rewards, RewardItem[] accumRewards) =>
+        new("", [new Snowman.Entry(10, 1, 1, rewards, accumRewards)], "", []);
+
     [Test]
     public void Replay_TakesTheMinigames() {
         Assert.That(AttendGiftReplay.Types, Is.SupersetOf(new[] {
             GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent, GameEventType.CoupleDance,
-            GameEventType.ItemBox,
+            GameEventType.ItemBox, GameEventType.Snowman,
         }));
         Assert.That(AttendGiftReplay.NeedData, Does.Contain(GameEventType.ItemBox));
+        Assert.That(AttendGiftReplay.NeedData, Does.Contain(GameEventType.Snowman));
     }
 
     // Each minigame's play item and rewards must be items of the client's item data.
@@ -166,6 +170,9 @@ public class AttendGiftReplayTests {
             Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.DailyLoginReward, Daily(Unknown)), MinigameRank), Is.False);
             Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.ItemBox, new ItemBox(2000064, Prize, "", "", "")), MinigameRank), Is.True);
             Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.ItemBox, new ItemBox(2000064, Unknown, "", "", "")), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.Snowman, Snowman(prizes, prizes)), MinigameRank), Is.True);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.Snowman, Snowman(prizes, unknown)), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.Snowman, Snowman(unknown, prizes)), MinigameRank), Is.False);
         });
     }
 

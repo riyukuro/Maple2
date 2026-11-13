@@ -572,6 +572,30 @@ public record ItemBox(
     string Desc,
     string BannerPath) : GameEventData;
 
+// value1 <option thema=""/> and its <snowman> nodes (<condition snowflakeCount dailyMaxCount accumMaxCount/>,
+// <rewardItems>, <accumRewardItems>) as GameEventSnowman::ReadSnowmanData reads them (gameevent.cpp), and value2, the
+// dialog's layout the event list sends as it is (GameEventSnowman::vfunc_3). Sources are the server table's
+// promotionContents rows of promotionType Snowman that run over the same dates: each gives Point snowflakes with
+// the chance Prop / 10000 when the condition Type (a ConditionType name) is counted.
+public record Snowman(
+    string Theme,
+    Snowman.Entry[] Snowmen,
+    string Layout,
+    Snowman.Source[] Sources) : GameEventData {
+
+    public record Entry(
+        int Goal,
+        int DailyMax,
+        int AccumMax,
+        RewardItem[] Rewards,
+        RewardItem[] AccumRewards);
+
+    public record Source(
+        ConditionType Type,
+        int Point,
+        int Prop);
+}
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]
 [JsonDerivedType(typeof(StringBoard), "StringBoard")]
 [JsonDerivedType(typeof(StringBoardLink), "StringBoardLink")]
@@ -591,6 +615,7 @@ public record ItemBox(
 [JsonDerivedType(typeof(ActiveUser), "ActiveUser")]
 [JsonDerivedType(typeof(LoginNotice), "LoginNotice")]
 [JsonDerivedType(typeof(ItemBox), "ItemBox")]
+[JsonDerivedType(typeof(Snowman), "Snowman")]
 [JsonDerivedType(typeof(FieldEffect), "FieldEffect")]
 [JsonDerivedType(typeof(Festival), "Festival")]
 [JsonDerivedType(typeof(QuestTag), "QuestTag")]

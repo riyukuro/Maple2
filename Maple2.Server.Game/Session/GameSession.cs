@@ -1068,6 +1068,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public void ConditionUpdate(ConditionType conditionType, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
         Achievement.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
         Quest.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
+        GameEvent.SnowmanCondition(conditionType);
     }
 
     public IList<GameEvent> FindEvent(GameEventType type) => server.FindEvent(type);
