@@ -82,19 +82,24 @@ public static class InGameRankPacket {
         return pWriter;
     }
 
-    public static ByteWriter Pvp(GameRankingType type) {
+    // The rank duel boards (0x2b, 0x2c), as GameRanking::UserPvp reads them (gamerankingcli.cpp:1033): the header,
+    // then a count of rows, each a rank, the character id (its portrait), name and profile image, the rating (m_38,
+    // shown as the points, gamerankingcli.cpp:127-135) and an int the client reads but does not show (the season's
+    // best rating).
+    public static ByteWriter Pvp(GameRankingType type, IList<RankDuelRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(type);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(0); // rank
-        pWriter.WriteLong(0); // characterId
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // score
-        pWriter.WriteInt(); // rank tier
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (RankDuelRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(info.Rating);
+            pWriter.WriteInt(info.BestRating); // m_3c, read, not shown
+        }
 
         return pWriter;
     }

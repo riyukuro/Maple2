@@ -1861,6 +1861,27 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("rank-duel-record", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.RankDuelSeasonRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BestRating")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.HasKey("CharacterId", "Season");
+
+                    b.HasIndex("Season", "Rating");
+
+                    b.ToTable("rank-duel-season", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.ServerInfo", b =>
                 {
                     b.Property<string>("Key")
@@ -2669,6 +2690,15 @@ namespace Maple2.Server.World.Migrations
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.RankDuelRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.RankDuelSeasonRecord", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Character", null)
                         .WithMany()

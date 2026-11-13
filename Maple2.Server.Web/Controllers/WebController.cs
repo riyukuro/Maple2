@@ -80,6 +80,8 @@ public class WebController : ControllerBase {
             GameRankingType.ColosseumPersonal or GameRankingType.ColosseumPersonalPreviousSeason => PersonalColosseum(type, seasonId, rankingId, characterId),
             GameRankingType.GuildPvp or GameRankingType.GuildPvpPreviousSeason => GuildPvpBoard(type, seasonId, userName),
             GameRankingType.GuildPvpPersonal or GameRankingType.GuildPvpPersonalPreviousSeason => PersonalGuildPvp(type, seasonId, characterId),
+            GameRankingType.Pvp or GameRankingType.PvpPreviousSeason => RankDuelBoard(type, seasonId, userName),
+            GameRankingType.PvpPersonal or GameRankingType.PvpPersonalPreviousSeason => PersonalRankDuel(type, seasonId, characterId),
             GameRankingType.Arcade or GameRankingType.ArcadePreviousSeason => ArcadeBoard(type, rankingId, seasonId, userName),
             GameRankingType.ArcadePersonal or GameRankingType.ArcadePersonalPreviousSeason => PersonalArcade(type, rankingId, seasonId, characterId),
             GameRankingType.Ugc or GameRankingType.UgcPreviousSeason => HomeCommend(type, seasonId, userName),
@@ -413,6 +415,38 @@ public class WebController : ControllerBase {
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
             ByteWriter writer = DarkStreamRanking.Board(db, type, jobCode, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter RankDuelBoard(GameRankingType type, int seasonId, string userName) {
+        int season = RankDuelRanking.Season(type, seasonId, tableMetadata.SeasonDataTable.Pvp, DateTime.Now);
+        string cacheKey = $"RankDuel_{type}_{season}_{SearchKey(userName)}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = RankDuelRanking.Board(db, type, season, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalRankDuel(GameRankingType type, int seasonId, long characterId) {
+        int season = RankDuelRanking.Season(type, seasonId, tableMetadata.SeasonDataTable.Pvp, DateTime.Now);
+        string cacheKey = $"PersonalRankDuel_{type}_{season}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = RankDuelRanking.Personal(db, type, season, characterId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }

@@ -52,6 +52,17 @@ public partial class GameStorage {
             if (row == null) {
                 row = new Model.RankDuelRecord { CharacterId = characterId };
                 Context.RankDuelRecord.Add(row);
+            } else if (row.Season != 0 && row.Season != record.Season) {
+                // The record moves to another season: the closed season's standing is kept for its board.
+                int closed = row.Season;
+                if (!Context.RankDuelSeasonRecord.Any(r => r.CharacterId == characterId && r.Season == closed)) {
+                    Context.RankDuelSeasonRecord.Add(new Model.RankDuelSeasonRecord {
+                        CharacterId = characterId,
+                        Season = closed,
+                        Rating = row.Rating,
+                        BestRating = row.BestRating,
+                    });
+                }
             }
             row.Season = record.Season;
             row.Rating = record.Rating;
