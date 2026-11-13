@@ -13,7 +13,7 @@ public static class ExperienceUpPacket {
 
     public static ByteWriter Add(long gainedExp, long totalExp, long restExp, ExpMessageCode message, int parameter = 0, bool additional = false) {
         var pWriter = Packet.Of(SendOp.ExpUp);
-        pWriter.Write<Command>(Command.Add);
+        pWriter.WriteByte((byte) Command.Add);
         pWriter.WriteLong(gainedExp);
         pWriter.WriteShort((short) message);
         pWriter.WriteLong(totalExp);
@@ -26,7 +26,7 @@ public static class ExperienceUpPacket {
 
     public static ByteWriter SetRestExp(long restExp) {
         var pWriter = Packet.Of(SendOp.ExpUp);
-        pWriter.Write<Command>(Command.SetRestExp);
+        pWriter.WriteByte((byte) Command.SetRestExp);
         pWriter.WriteLong(restExp);
 
         return pWriter;
