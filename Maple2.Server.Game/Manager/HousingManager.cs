@@ -461,7 +461,8 @@ public class HousingManager {
             }
 
             session.FunctionCubeMetadata.TryGet(itemMetadata.Install.ObjectCubeId, out FunctionCubeMetadata? functionCubeMetadata);
-            PlotCube? plotCube = CreateCube(Home.Indoor, itemMetadata, functionCubeMetadata, null, template.BaseCubePosition + cube.OffsetPosition, cube.Rotation);
+            long expiryTime = session.Item.Furnishing.GetCube(itemUid)?.ExpiryTime ?? 0;
+            PlotCube? plotCube = CreateCube(Home.Indoor, itemMetadata, functionCubeMetadata, null, template.BaseCubePosition + cube.OffsetPosition, cube.Rotation, expiryTime);
             if (plotCube is null) {
                 logger.Error("Failed to create cube {cubeId} at position {position}.", cube.ItemId, template.BaseCubePosition + cube.OffsetPosition);
                 continue;
@@ -656,11 +657,14 @@ public class HousingManager {
         session.Send(CubePacket.DesignRankReward(Home));
     }
 
-    private PlotCube? CreateCube(PlotInfo plot, ItemMetadata itemMetadata, FunctionCubeMetadata? functionCubeMetadata, UgcItemLook? template, Vector3 position, float rotation) {
+    // The row is made with the expiry of the storage item the cube is placed from (TryAddCube sets the same value), so
+    // a placed cube keeps its end time even if the plot is never saved after it.
+    private PlotCube? CreateCube(PlotInfo plot, ItemMetadata itemMetadata, FunctionCubeMetadata? functionCubeMetadata, UgcItemLook? template, Vector3 position, float rotation, long expiryTime) {
         var result = new PlotCube(itemMetadata, 0, template) {
             Type = PlotCube.CubeType.Construction,
             Position = position,
             Rotation = rotation,
+            ExpiryTime = expiryTime,
         };
 
         using GameStorage.Request db = session.GameStorage.Context();
@@ -844,7 +848,17 @@ public class HousingManager {
             return true;
         }
 
-        result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation);
+        // The expiry the cube will take: its storage stack's, or for a cube bought here that of the new item, which the
+        // purchase then keeps (AddCube joins only a stack of that expiry).
+        Item? storedItem = helper == null ? session.Item.Furnishing.GetCube(cube.Id) : null;
+        long expiryTime;
+        if (storedItem is { Amount: > 0 }) {
+            expiryTime = storedItem.ExpiryTime;
+        } else {
+            expiryTime = session.Field.ItemDrop.CreateItem(cube.ItemId)?.ExpiryTime ?? 0;
+            cube.ExpiryTime = expiryTime;
+        }
+        result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation, expiryTime);
         if (result is null) {
             Refuse(UgcMapError.s_ugcmap_db);
             return false;

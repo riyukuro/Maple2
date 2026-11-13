@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Model.Common;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -116,5 +118,30 @@ public class PlacedCubeExpiryTests {
         Assert.That(session.Item.Furnishing.GetCube(itemUid)?.ExpiryTime, Is.EqualTo(Expiry));
         Assert.That((session.Item.Furnishing.GetCube(otherUid)?.Amount, session.Item.Furnishing.GetCube(otherUid)?.ExpiryTime),
             Is.EqualTo(((int?) 1, (long?) Other)));
+    }
+
+    // The cube row is made with the expiry: a server stop before the next plot save does not leave the row at 0.
+    [Test]
+    public void Placing_MakesTheRowWithTheExpiry() {
+        var test = new TestGameSession();
+        test.SetTable(new UgcHousingPointRewardTable(new Dictionary<int, UgcHousingPointRewardTable.Entry>()));
+        test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> { [1] = new(1, 0, 0) }));
+        test.SetTable(new FurnishingShopTable(new Dictionary<int, FurnishingShopTable.Entry>()));
+        ItemMetadata metadata = TestGameSession.Metadata(CubeItem) with {
+            Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false),
+            Install = new ItemMetadataInstall(true, 0, 0, false, MapAttribute.none),
+        };
+        test.Register(metadata);
+        GameSession session = test.Start();
+        session.Housing.InitNewHome("home", null);
+        session.Player.Value.Home.SetArea(5);
+        session.Player.Value.Home.SetHeight(4);
+        Plot plot = test.EnterHome();
+        long uid = session.Item.Furnishing.AddCube(new Maple2.Model.Game.Item(metadata) { ExpiryTime = Expiry });
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, uid), plot, metadata, new Vector3B(-4, -4, 1), 0, out PlotCube? placed), Is.True);
+
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetCube(placed!.Id)?.ExpiryTime, Is.EqualTo(Expiry));
     }
 }
