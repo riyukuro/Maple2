@@ -209,6 +209,10 @@ public class Item : IByteSerializable, IByteDeserializable {
         writer.WriteBool(false);
         writer.WriteInt(GachaDismantleId);
 
+        // The client reads the extra floats by the model's first slot (FD decal, HR hair) or type 1 subtype 13 (cap;
+        // CItemData::CreateExtraData, itemdata.cpp:1430-1451); the ctor picks the class by SlotNames[0] (HR, FD, CP),
+        // which gives the same class for every KR item the client has. The Default (color only) is for an item
+        // without one; none is made: the ctor, Clone, Mutate and the DB row always carry an appearance.
         writer.WriteClass<ItemAppearance>(Appearance ?? ItemAppearance.Default);
         writer.WriteClass<ItemStats>(Stats ?? ItemStats.Default);
         writer.WriteClass<ItemEnchant>(Enchant ?? ItemEnchant.Default);
