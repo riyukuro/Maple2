@@ -961,11 +961,17 @@ public partial class FieldManager {
             case ApplyTargetType.Friendly:
                 if (caster is FieldNpc) {
                     return prisms.Filter(Mobs.Values, limit, ignore);
-                } else if (caster is FieldPlayer) {
+                } else if (caster is FieldPlayer friendlyPlayer) {
+                    // The client's friendly filter (FilterTarget, basecollision.cpp:784) takes a player only while the
+                    // caster's hostility test (PC::vfunc_122) gives 0: on a pk field an enemy gets no heal. Chosen here: in a
+                    // field game off a pk field the friendly pool stays every player (the client test there is not the game's).
+                    IEnumerable<FieldPlayer> friends = PkField
+                        ? TargetPlayers.Where(player => !PlayerHostile(friendlyPlayer, player))
+                        : TargetPlayers;
                     if ((force & 1) != 0) {
-                        return prisms.Filter(TargetPlayers.Cast<IActor>().Concat(Mobs.Values), limit, ignore);
+                        return prisms.Filter(friends.Cast<IActor>().Concat(Mobs.Values), limit, ignore);
                     }
-                    return prisms.Filter(TargetPlayers, limit, ignore);
+                    return prisms.Filter(friends, limit, ignore);
                 }
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
@@ -981,8 +987,8 @@ public partial class FieldManager {
                         return prisms.Filter(Mobs.Values.Cast<IActor>().Concat(TargetPlayers), limit, ignore);
                     }
                     // In a rank duel's fight or a PvP zone the other side's players are hostile too; in Hide and Seek
-                    // the seekers' skills reach the hiders.
-                    if (RankDuel != null || PvpZone != null || Survival != null || HideAndSeek != null) {
+                    // the seekers' skills reach the hiders; on a pk field the players the pk rule makes hostile.
+                    if (FieldGameRuns || PkField) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>()
                             .Concat(TargetPlayers.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
                     }

@@ -14,6 +14,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
+using Maple2.Tools.Collision;
 
 namespace Maple2.Server.Tests.Game.Pvp;
 
@@ -50,6 +51,7 @@ public class PkFieldTests {
         MapMetadata map = TestGameSession.Map(Map);
         a.EnterMap(map with { Property = map.Property with { PkMode = pk } });
         FieldManager field = a.Session.Field!;
+        typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(tb.Session.Player, 2);
         field.Players[a.Session.Player.ObjectId] = a.Session.Player;
         field.Players[2] = tb.Session.Player;
@@ -77,6 +79,46 @@ public class PkFieldTests {
     private static void Join(FieldPlayer player, int partyId) {
         var party = new Party(partyId, 1, 1, "leader");
         typeof(PartyManager).GetField("<Party>k__BackingField", Any)!.SetValue(player.Session.Party, party);
+    }
+
+    // The pool a skill of the caster's targets around the origin (both players stand within it).
+    private static List<IActor> Pool(Scene scene, FieldPlayer caster, ApplyTargetType type) {
+        var prisms = new[] { new Prism(new Circle(Vector2.Zero, 500), -100, 300) };
+        MethodInfo pool = typeof(FieldManager).GetMethod("GetTargetPool", Any)!;
+        return ((IEnumerable<IActor>) pool.Invoke(scene.Field, [caster, prisms, type, 10, new List<IActor>()])!).ToList();
+    }
+
+    // A hostile skill on a pk field reaches the other player, but not a party member or a pvpOnOff holder; a friendly
+    // one reaches the player itself, and the other player only where the rule does not make it hostile.
+    [Test]
+    public void Pool_PkFieldHostileAndFriendly() {
+        Scene scene = Start(pk: true);
+        Assert.Multiple(() => {
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Does.Contain(scene.B).And.No.Contain(scene.A));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Friendly), Does.Contain(scene.A).And.No.Contain(scene.B));
+        });
+        Join(scene.A, 7);
+        Join(scene.B, 7);
+        Assert.Multiple(() => {
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Does.Not.Contain(scene.B));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Friendly), Does.Contain(scene.B));
+        });
+        Join(scene.B, 8);
+        Give(scene.B, Protection, pvpOnOff: true);
+        Assert.Multiple(() => {
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Does.Not.Contain(scene.B));
+            Assert.That(Pool(scene, scene.B, ApplyTargetType.Hostile), Does.Not.Contain(scene.A));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Friendly), Does.Contain(scene.B));
+        });
+    }
+
+    [Test]
+    public void Pool_PlainFieldNoPlayerHostile() {
+        Scene scene = Start(pk: false);
+        Assert.Multiple(() => {
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Does.Not.Contain(scene.B));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Friendly), Does.Contain(scene.B));
+        });
     }
 
     [Test]
