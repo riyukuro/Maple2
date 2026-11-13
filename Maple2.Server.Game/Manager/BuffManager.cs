@@ -535,7 +535,9 @@ public class BuffManager : IUpdatable {
             if (!buff.Enabled) {
                 continue;
             }
-            owner.ApplyEffects(buff.Metadata.Skills, caster, owner, type, skillId, buffId, target);
+            // A hasBuffOwner test in a buff's event skills takes the copies of whoever cast that buff: the holder for a
+            // buff of its own, the player for a debuff it put on an enemy (10300271 reaching 10 stacks on its target).
+            owner.ApplyEffects(buff.Metadata.Skills, caster, owner, type, skillId, buffId, ownedBy: buff.Caster, targets: [target]);
         }
     }
 

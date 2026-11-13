@@ -302,7 +302,8 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
     /// <summary>
     /// Filter effects before applying. This is needed instead of applying as iterating to ensure the current state of the actor is used.
     /// </summary>
-    public virtual void ApplyEffects(SkillEffectMetadata[] effects, IActor caster, IActor owner, EventConditionType type = EventConditionType.Activate, int skillId = 0, int buffId = 0, params IActor[] targets) {
+    // ownedBy: whose copies a hasBuffOwner test takes (the caster when null); a buff's event skills pass the buff's caster.
+    public virtual void ApplyEffects(SkillEffectMetadata[] effects, IActor caster, IActor owner, EventConditionType type = EventConditionType.Activate, int skillId = 0, int buffId = 0, IActor? ownedBy = null, params IActor[] targets) {
         var appliedEffects = new List<(IActor Owner, IActor Caster, SkillEffectMetadata Effect)>();
         long startTick = Field.FieldTick;
 
@@ -311,7 +312,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 foreach (IActor target in targets) {
                     IActor resultOwner = GetTarget(effect.Condition!.Target, caster, target, owner);
                     IActor resultCaster = GetOwner(effect.Condition.Owner, caster, target, owner);
-                    if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, type, skillId, buffId)) {
+                    if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, type, skillId, buffId, ownedBy)) {
                         appliedEffects.Add((resultOwner, resultCaster, effect));
                     }
                 }

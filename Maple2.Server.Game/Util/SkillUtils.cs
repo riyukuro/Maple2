@@ -126,7 +126,7 @@ public static class SkillUtils {
         }
     }
 
-    public static bool Check(this BeginCondition condition, IActor caster, IActor owner, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0) {
+    public static bool Check(this BeginCondition condition, IActor caster, IActor owner, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0, IActor? ownedBy = null) {
         if (condition.PvpZone != PvpZoneApply.Everywhere && !PvpZoneHolds(condition.PvpZone, owner.Field.Metadata.Property.Type)) {
             return false;
         }
@@ -198,7 +198,8 @@ public static class SkillUtils {
             }
         }
 
-        return condition.Caster.Check(caster, eventType, eventSkillId, eventBuffId) && condition.Owner.Check(owner, eventType, eventSkillId, eventBuffId) && condition.Target.Check(target, eventType, eventSkillId, eventBuffId);
+        ownedBy ??= caster;
+        return condition.Caster.Check(caster, ownedBy, eventType, eventSkillId, eventBuffId) && condition.Owner.Check(owner, ownedBy, eventType, eventSkillId, eventBuffId) && condition.Target.Check(target, ownedBy, eventType, eventSkillId, eventBuffId);
     }
 
     // applyPvPZoneType (4,823 effect levels on 1,699 effects; no skill uses it): 1 holds outside PvP zones, 2 only in
@@ -214,7 +215,11 @@ public static class SkillUtils {
         };
     }
 
-    private static bool Check(this BeginConditionTarget? condition, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0) {
+    // hasBuffOwner (Owned): the buff must be one ownedBy cast, the condition's caster or, for a buff's event skills, that
+    // buff's caster. The client only loads the flag; its one reader of the same field family, the range select's
+    // targetHasBuffOwner, takes a buff cast by the searching actor (CBaseCollision, HasEnabledWithIdAndCaster). Before,
+    // the test compared the holder's object id with 0 and never failed.
+    private static bool Check(this BeginConditionTarget? condition, IActor target, IActor ownedBy, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0) {
         if (condition == null) {
             return true;
         }
@@ -230,7 +235,7 @@ public static class SkillUtils {
                 if (buff.Level < level) {
                     continue;
                 }
-                if (owned && buff.Owner.ObjectId == 0) {
+                if (owned && buff.Caster.ObjectId != ownedBy.ObjectId) {
                     continue;
                 }
 
