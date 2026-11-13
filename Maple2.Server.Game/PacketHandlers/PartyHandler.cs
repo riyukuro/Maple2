@@ -258,8 +258,9 @@ public class PartyHandler : FieldPacketHandler {
             },
         });
 
+        // 0x20 (a listing with approval): "You requested to join {0}'s party." with the leader's name.
         if (response.Error != (int) PartyError.none) {
-            session.Send(PartyPacket.Error((PartyError) response.Error));
+            session.Send(PartyPacket.Error((PartyError) response.Error, response.LeaderName));
             return;
         }
 

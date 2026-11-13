@@ -368,6 +368,49 @@ public class PartyLookup : IDisposable {
         return refused != PartyError.none ? refused : manager.Join(joiner);
     });
 
+    // Party 0x17 (PartyManager::SendPartyMode23, partymanager.cpp:774-796): the party finder's Join. A listing that
+    // takes members without approval is joined at once. Otherwise the leader gets Party 0x2c with the joiner's name
+    // (OnPartyInviteSent, partymanager.cpp:1434: a messenger line with an "Invite to Party" link, texttohtml.cpp:670)
+    // and the joiner gets result 0x20 with the leader's name (partymanager.cpp:1401). The leader accepts by the link,
+    // which is the normal invite by name; the joiner accepts or declines that invite. A listing gone, changed or full
+    // meanwhile keeps its own error. LeaderName: the leader the request went to, for the joiner's 0x20.
+    public (PartyError Error, string LeaderName) JoinPartySearch(PlayerInfo joiner, int partyId, long partySearchId) => DungeonMatchStep(() => {
+        if (TryGetByCharacter(joiner.CharacterId, out _)) {
+            return (PartyError.s_party_err_already, "");
+        }
+        if (!TryGet(partyId, out PartyManager? manager)) {
+            return (PartyError.s_party_err_not_found, "");
+        }
+        PartySearch? search = manager.Party.Search;
+        if (search == null) {
+            return (PartyError.s_party_err_invalid_recruit, "");
+        }
+        if (search.Id != partySearchId) {
+            return (PartyError.s_party_err_wrong_recruit, "");
+        }
+        if (search.Size <= manager.Party.Members.Count) {
+            return (PartyError.s_party_err_full_limit_player, "");
+        }
+        if (search.NoApproval) {
+            return (manager.Join(joiner), "");
+        }
+        if (!manager.Party.Members.TryGetValue(manager.Party.LeaderCharacterId, out PartyMember? leader) || !leader.Info.Online) {
+            return (PartyError.s_party_err_wrong_recruit, "");
+        }
+        SendJoinRequest(manager, leader.Info, joiner.Name);
+        return (PartyError.s_party_request_invite, leader.Info.Name);
+    });
+
+    // Virtual: the tests' seam for the leader's channel call.
+    protected virtual void SendJoinRequest(PartyManager manager, PlayerInfo leader, string joinerName) {
+        manager.SendTo(new Channel.Service.PartyRequest {
+            PartyId = manager.Party.Id,
+            JoinRequest = new Channel.Service.PartyRequest.Types.JoinRequest {
+                Name = joinerName,
+            },
+        }, [leader]);
+    }
+
     // A join filled the party: its recruit closes.
     public void CheckDungeonRecruit(PartyManager manager) => DungeonMatchStep(() => {
         DungeonRecruit? recruit = DungeonRecruits.Get(manager.Party.Id);

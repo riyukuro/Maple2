@@ -689,6 +689,8 @@ message PartyResponse {
   reserved 4;
   // A DungeonRecruit refused for the party's cooldown: the time left (Party 40).
   int32 cooldown_milliseconds = 5;
+  // A party finder join that waits for the leader (Party result 0x20): the leader's name.
+  string leader_name = 6;
 }
 
 message ClubRequest {

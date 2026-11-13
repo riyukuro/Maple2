@@ -45,6 +45,8 @@ public partial class ChannelService {
                 return Task.FromResult(Recall(request.PartyId, request.ReceiverIds, request.Recall));
             case PartyRequest.PartyOneofCase.DungeonRecruit:
                 return Task.FromResult(DungeonRecruit(request.PartyId, request.ReceiverIds, request.DungeonRecruit));
+            case PartyRequest.PartyOneofCase.JoinRequest:
+                return Task.FromResult(JoinRequest(request.ReceiverIds, request.JoinRequest));
             default:
                 return Task.FromResult(new PartyResponse { Error = (int) PartyError.s_party_err_not_found });
         }
@@ -58,6 +60,17 @@ public partial class ChannelService {
         foreach (long characterId in receiverIds) {
             if (server.GetSession(characterId, out GameSession? session)) {
                 session.Send(notice);
+            }
+        }
+        return new PartyResponse();
+    }
+
+    // The party finder's join to a listing with approval: Party 0x2c to the leader (OnPartyInviteSent,
+    // partymanager.cpp:1434), whose messenger line links to the normal invite by name.
+    private PartyResponse JoinRequest(IEnumerable<long> receiverIds, PartyRequest.Types.JoinRequest join) {
+        foreach (long characterId in receiverIds) {
+            if (server.GetSession(characterId, out GameSession? session)) {
+                session.Send(PartyPacket.JoinRequest(join.Name));
             }
         }
         return new PartyResponse();

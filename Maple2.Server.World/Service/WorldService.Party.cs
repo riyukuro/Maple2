@@ -208,33 +208,16 @@ public partial class WorldService {
     }
 
     private PartyResponse JoinByPartySearch(long requestorId, PartyRequest.Types.JoinByPartySearch joinByPartySearch) {
-        if (!partyLookup.TryGet(joinByPartySearch.PartyId, out PartyManager? manager)) {
+        if (!playerLookup.TryGet(requestorId, out PlayerInfo? info)) {
             return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
         }
 
-        if (manager.Party.Search == null) {
-            return new PartyResponse { Error = (int) PartyError.s_party_err_invalid_recruit };
-        }
-
-        if (!manager.Party.Search.NoApproval) {
-            return new PartyResponse { Error = (int) PartyError.s_party_err_wrong_recruit };
-        }
-
-        if (manager.Party.Search.Id != joinByPartySearch.PartySearchId) {
-            return new PartyResponse { Error = (int) PartyError.s_party_err_wrong_recruit };
-        }
-
-        if (manager.Party.Search.Size <= manager.Party.Members.Count) {
-            return new PartyResponse { Error = (int) PartyError.s_party_err_full_limit_player };
-        }
-
-        if (!playerLookup.TryGet(requestorId, out PlayerInfo? info)) {
-            return new PartyResponse { Error = (int) PartyError.none };
-        }
-
-        PartyError error = manager.Join(info);
+        (PartyError error, string leaderName) = partyLookup.JoinPartySearch(info, joinByPartySearch.PartyId, joinByPartySearch.PartySearchId);
         if (error != PartyError.none) {
-            return new PartyResponse { Error = (int) error };
+            return new PartyResponse { Error = (int) error, LeaderName = leaderName };
+        }
+        if (!partyLookup.TryGet(joinByPartySearch.PartyId, out PartyManager? manager)) {
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_found };
         }
 
         return new PartyResponse { Party = ToPartyInfo(manager.Party) };

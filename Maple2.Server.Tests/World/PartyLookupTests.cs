@@ -5,6 +5,7 @@ using System.Threading;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Party;
 using Maple2.Server.World.Containers;
 using Maple2.Server.World.Service;
 
@@ -43,6 +44,10 @@ public class PartyLookupTests {
         }
 
         protected override void DestroyMatchedRoom(int lobbyRoomId) => Destroyed.Add(lobbyRoomId);
+
+        public readonly List<(long Leader, string Joiner)> JoinRequests = [];
+        protected override void SendJoinRequest(PartyManager manager, PlayerInfo leader, string joinerName) =>
+            JoinRequests.Add((leader.CharacterId, joinerName));
 
         public override PartyError MoveMembers(PartyManager from, PartyManager to) =>
             FailMoveFrom.Contains(from.Party.Id) ? PartyError.s_party_err_full_limit_player : base.MoveMembers(from, to);
@@ -848,5 +853,90 @@ public class PartyLookupTests {
         Assert.That(party.Leave(others[1]), Is.EqualTo(PartyError.none));
         Assert.That(party.Party.Vote, Is.Null);
         Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+    }
+
+    // Party 0x17, the party finder's Join (partymanager.cpp:774-796).
+    private static PartySearch List(PartyManager manager, int size, bool noApproval) {
+        manager.Party.Search = new PartySearch(77, "listing", size) {
+            PartyId = manager.Party.Id,
+            NoApproval = noApproval,
+            LeaderName = manager.Party.LeaderName,
+        };
+        return manager.Party.Search;
+    }
+
+    // With approval: the leader gets 0x2c with the joiner's name, the joiner 0x20 with the leader's; nobody joins yet.
+    [Test]
+    public void AJoinToAListingWithApprovalAsksTheLeader() {
+        PartyManager party = Party(2);
+        PartySearch search = List(party, 4, noApproval: false);
+        PlayerInfo joiner = Player();
+
+        (PartyError error, string leaderName) = lookup.JoinPartySearch(joiner, party.Party.Id, search.Id);
+        Assert.Multiple(() => {
+            Assert.That(error, Is.EqualTo(PartyError.s_party_request_invite));
+            Assert.That(leaderName, Is.EqualTo(Leader(party).Name));
+            Assert.That(lookup.JoinRequests, Is.EqualTo(new[] { (Leader(party).CharacterId, joiner.Name) }));
+            Assert.That(party.Party.Members, Has.Count.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void AJoinToAListingWithoutApprovalJoins() {
+        PartyManager party = Party(1);
+        PartySearch search = List(party, 4, noApproval: true);
+        PlayerInfo joiner = Player();
+
+        Assert.That(lookup.JoinPartySearch(joiner, party.Party.Id, search.Id).Error, Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Members.ContainsKey(joiner.CharacterId), Is.True);
+        Assert.That(lookup.JoinRequests, Is.Empty);
+    }
+
+    // The listing gone, changed or full meanwhile: its own error, and the leader is not asked.
+    [Test]
+    public void AJoinToAListingGoneOrFullMeanwhileIsRefused() {
+        PartyManager party = Party(2);
+        PartySearch search = List(party, 3, noApproval: false);
+
+        Assert.Multiple(() => {
+            Assert.That(lookup.JoinPartySearch(Player(), 999999, search.Id).Error, Is.EqualTo(PartyError.s_party_err_not_found));
+            Assert.That(lookup.JoinPartySearch(Player(), party.Party.Id, search.Id + 1).Error, Is.EqualTo(PartyError.s_party_err_wrong_recruit));
+        });
+        Assert.That(party.Join(Player()), Is.EqualTo(PartyError.none));
+        Assert.That(lookup.JoinPartySearch(Player(), party.Party.Id, search.Id).Error, Is.EqualTo(PartyError.s_party_err_full_limit_player));
+        party.Party.Search = null;
+        Assert.That(lookup.JoinPartySearch(Player(), party.Party.Id, search.Id).Error, Is.EqualTo(PartyError.s_party_err_invalid_recruit));
+
+        // The leader went offline: the listing is out of date.
+        PartyManager other = Party(2);
+        PartySearch otherSearch = List(other, 4, noApproval: false);
+        Leader(other).Channel = -1;
+        Assert.That(lookup.JoinPartySearch(Player(), other.Party.Id, otherSearch.Id).Error, Is.EqualTo(PartyError.s_party_err_wrong_recruit));
+        Assert.That(lookup.JoinRequests, Is.Empty);
+    }
+
+    // A player in a party is refused; the client shows s_party_err_already.
+    [Test]
+    public void AJoinerInAPartyIsRefusedByTheListing() {
+        PartyManager party = Party(1);
+        PartySearch search = List(party, 4, noApproval: false);
+        PartyManager other = Party(1);
+        Assert.That(lookup.JoinPartySearch(Leader(other), party.Party.Id, search.Id).Error, Is.EqualTo(PartyError.s_party_err_already));
+        Assert.That(lookup.JoinRequests, Is.Empty);
+    }
+
+    // The joiner's answer (OnPartyResultMessage, partymanager.cpp:1370): result byte 0x20 and the leader's name;
+    // the leader's line (partymanager.cpp:1434): 0x2c and the joiner's name.
+    [Test]
+    public void TheJoinAnswersAreTheClientsPackets() {
+        string Hex(string text) => System.Convert.ToHexString(System.BitConverter.GetBytes((short) text.Length)
+            .Concat(System.Text.Encoding.Unicode.GetBytes(text)).ToArray());
+        string op = System.Convert.ToHexString(System.BitConverter.GetBytes((short) Maple2.Server.Core.Constants.SendOp.Party));
+        Assert.Multiple(() => {
+            Assert.That(System.Convert.ToHexString(Maple2.Server.Game.Packets.PartyPacket.Error(PartyError.s_party_request_invite, "Lead").ToArray()),
+                Is.EqualTo(op + "00" + "20" + Hex("Lead")));
+            Assert.That(System.Convert.ToHexString(Maple2.Server.Game.Packets.PartyPacket.JoinRequest("Asker").ToArray()),
+                Is.EqualTo(op + "2C" + Hex("Asker")));
+        });
     }
 }

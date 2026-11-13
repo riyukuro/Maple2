@@ -369,6 +369,10 @@ message PartyRequest {
     int64 end_time = 4;
   }
   // The recruiting notice (DungeonHelp 0x0109) of party_id.
+  // Party 0x2c to the leader: a player asked to join through the party finder.
+  message JoinRequest {
+    string name = 1;
+  }
   message DungeonRecruit {
     int32 kind = 1;
     string leader_name = 2;
@@ -400,6 +404,7 @@ message PartyRequest {
     DungeonMatch dungeon_match = 17;
     LoadParty load_party = 18;
     DungeonRecruit dungeon_recruit = 19;
+    JoinRequest join_request = 20;
   }
 }
 
