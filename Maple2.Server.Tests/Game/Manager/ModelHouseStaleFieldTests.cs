@@ -436,6 +436,19 @@ public class ModelHouseStaleFieldTests {
         });
     }
 
+    // Runs edit once, in the first write of a leave's save that updates a cube row (between the save's read of the
+    // rows and its write), as a build helper's edit on another thread would land there.
+    private void DuringTheSave(Action edit) {
+        bool fired = false;
+        test.FailSave = context => {
+            if (!fired && context.ChangeTracker.Entries<UgcMapCube>().Any(entry => entry.State == EntityState.Modified && entry.Entity.Rotation == 0f)) {
+                fired = true;
+                edit();
+            }
+            return false;
+        };
+    }
+
     // A remove landing in every try's write, between its read of the rows and the write (the helper's delete is
     // written at once): the save leaves that cube out and writes the rest in the same try. Before, the update of the
     // missing row failed the whole write, and a remove in each of the 3 tries made the leave throw.
@@ -464,6 +477,36 @@ public class ModelHouseStaleFieldTests {
             Assert.That(plot.Cubes, Has.Count.EqualTo(2));
             Assert.That(Outdated(home), Is.False);
             Assert.That(Count(session, OldCube), Is.EqualTo((1, 2)));
+        });
+    }
+
+    // A cube copied by the save, then removed with a failed delete (a stray row) before the write: the save writes its
+    // row again, so the row stays a stray, and the next save deletes it. Before, the save cleared every stray it had
+    // read, so the row stayed with its item in storage too (a cube twice), and the field was outdated for its life.
+    [Test]
+    public void StrayAfterTheCopy_StaysAStray_AndTheNextSaveDeletesIt() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        PlotCube cube = plot.Cubes[new Vector3B(-1, -1, 0)];
+        DuringTheSave(() => {
+            lock (plot.EditLock) {
+                plot.Cubes.Remove(cube.Position);
+                plot.StrayRows.Add(cube.Id);
+            }
+        });
+        Commit(home, session);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(CubeRows(session), Does.Contain(cube.Id));
+            Assert.That(plot.StrayRows, Does.Contain(cube.Id));
+            Assert.That(Outdated(home), Is.False);
+        });
+        Commit(home, session);
+        Assert.Multiple(() => {
+            Assert.That(CubeRows(session), Does.Not.Contain(cube.Id));
+            Assert.That(plot.StrayRows, Is.Empty);
+            Assert.That(Outdated(home), Is.False);
         });
     }
 

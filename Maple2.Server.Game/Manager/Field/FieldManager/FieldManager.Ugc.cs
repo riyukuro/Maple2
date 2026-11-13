@@ -139,7 +139,10 @@ public partial class FieldManager {
             Dictionary<Vector3B, PlotCube> saved = results.ToDictionary(result => result.Position);
             lock (Plots) {
                 lock (plot.EditLock) {
-                    plot.StrayRows.ExceptWith(rows);
+                    // The stray rows the save deleted are gone. One it wrote again stays a stray (a cube copied, then
+                    // removed with a failed delete, has its row rewritten): the next save deletes it.
+                    HashSet<long> rewritten = saved.Values.Select(result => result.Id).ToHashSet();
+                    plot.StrayRows.ExceptWith(rows.Where(id => !rewritten.Contains(id)));
                     var turned = new List<(PlotCube Cube, float Rotation)>();
                     foreach ((Vector3B position, PlotCube cube) in held) {
                         // Only a cube still held as it was copied is replaced by its saved row.
