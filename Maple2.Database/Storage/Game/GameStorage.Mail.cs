@@ -97,7 +97,11 @@ public partial class GameStorage {
                 return null;
             }
 
-            SaveItems(model.Id, mail.Items.ToArray());
+            // The items move to the mail in the same transaction: a mail whose items were not saved is not sent.
+            if (!SaveItems(model.Id, mail.Items.ToArray())) {
+                Rollback();
+                return null;
+            }
             if (!Commit()) {
                 return null;
             }

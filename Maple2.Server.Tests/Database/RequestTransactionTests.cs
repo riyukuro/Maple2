@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
 using System.Reflection;
@@ -25,6 +26,8 @@ public class RequestTransactionTests {
     private readonly CommandHook hook = new();
     private long account;
     private long character;
+    private readonly List<long> itemUids = [];
+    private const int ItemId = 50000102;
 
     [SetUp]
     public void SetUp() {
@@ -32,7 +35,9 @@ public class RequestTransactionTests {
             Assert.Ignore("transactions need a real database: set MS2_TEST_GAME_DB");
         }
         hook.Before = null;
+        itemUids.Clear();
         test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(ItemId));
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MailExpiryDays = 30 });
         ServerVersion version = ServerVersion.AutoDetect(Connection);
         plain = new DbContextOptionsBuilder().UseMySql(Connection, version).Options;
@@ -52,6 +57,7 @@ public class RequestTransactionTests {
         hook.Before = null;
         using var context = new Ms2Context(plain);
         context.Mail.Where(mail => mail.ReceiverId == account || mail.ReceiverId == character).ExecuteDelete();
+        context.Item.Where(item => itemUids.Contains(item.Id)).ExecuteDelete();
     }
 
     private long[] Mails(long receiverId) {
@@ -104,6 +110,78 @@ public class RequestTransactionTests {
         Assert.Multiple(() => {
             Assert.That(Mails(account), Is.EqualTo(before));
             Assert.That(Mails(character), Is.Empty);
+        });
+    }
+
+    // An item of the character's, in a row of its own.
+    private Item CreateItem() {
+        using GameStorage.Request db = storage.Context();
+        Item? item = db.CreateItem(character, new Item(TestGameSession.Metadata(ItemId)));
+        Assert.That(item, Is.Not.Null);
+        itemUids.Add(item!.Uid);
+        return item;
+    }
+
+    private long ItemOwner(long uid) {
+        using var check = new Ms2Context(plain);
+        return check.Item.Where(item => item.Id == uid).Select(item => item.OwnerId).Single();
+    }
+
+    // The attachment's save fails: the mail is not sent (it used to be sent without the item), and the item stays
+    // where it was.
+    [Test]
+    public void MailWhoseItemSaveFailsIsNotSent() {
+        Item item = CreateItem();
+        hook.Before = command => {
+            if (command.CommandText.Contains("UPDATE `item`")) {
+                throw new InvalidOperationException("update refused");
+            }
+        };
+
+        using (GameStorage.Request db = storage.Context()) {
+            var mail = new Mail { ReceiverId = account };
+            mail.Items.Add(item);
+            Assert.That(db.CreateMail(mail), Is.Null);
+        }
+        hook.Before = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Mails(account), Is.Empty);
+            Assert.That(ItemOwner(item.Uid), Is.EqualTo(character));
+        });
+    }
+
+    // Mails sent one after the other on one request (the inventory's overflow mails): a mail that failed leaves no
+    // pending change behind, so the next mail's save does not move the failed mail's item to the mail that was
+    // rolled back.
+    [Test]
+    public void FailedMailLeavesNothingForTheNextSave() {
+        Item first = CreateItem();
+        Item second = CreateItem();
+        bool refuse = true;
+        hook.Before = command => {
+            if (refuse && command.CommandText.Contains("UPDATE `item`")) {
+                refuse = false;
+                throw new InvalidOperationException("update refused");
+            }
+        };
+
+        Mail? sent;
+        using (GameStorage.Request db = storage.Context()) {
+            var failed = new Mail { ReceiverId = account };
+            failed.Items.Add(first);
+            Assert.That(db.CreateMail(failed), Is.Null);
+            var next = new Mail { ReceiverId = account };
+            next.Items.Add(second);
+            sent = db.CreateMail(next);
+        }
+        hook.Before = null;
+
+        Assert.That(sent, Is.Not.Null);
+        Assert.Multiple(() => {
+            Assert.That(Mails(account), Is.EqualTo(new[] { sent!.Id }));
+            Assert.That(ItemOwner(first.Uid), Is.EqualTo(character));
+            Assert.That(ItemOwner(second.Uid), Is.EqualTo(sent!.Id));
         });
     }
 

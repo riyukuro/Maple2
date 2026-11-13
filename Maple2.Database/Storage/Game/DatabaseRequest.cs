@@ -28,7 +28,9 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
         return true;
     }
 
-    // Ends an open transaction without its writes, so the request can go on outside it.
+    // Ends an open transaction without its writes, so the request can go on outside it. The tracked entities are
+    // dropped too: a failed save leaves its changes pending, and the request's next save would write them again
+    // (an item moved to a mail that was rolled back).
     public void Rollback() {
         if (transaction == null) {
             return;
@@ -37,6 +39,7 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
         transaction.Rollback();
         transaction.Dispose();
         transaction = null;
+        Context.ChangeTracker.Clear();
     }
 
     public bool SaveChanges() {
