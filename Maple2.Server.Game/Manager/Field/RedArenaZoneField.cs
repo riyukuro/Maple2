@@ -31,10 +31,26 @@ public sealed class RedArenaZoneField : IPvpZoneField {
     private const float StageOffset = 150f;
 
     public int BoxId => state.BoxId;
+    // The zone's end as the trigger sees it (pvp_zone_ended). 65000001's enter.xml then sends WINNER (event ui type 3)
+    // to box 102, the stage, and later Bonus (type 6) to everyone off it; the box test is by position only. A fighter
+    // beaten by a death lies on the stage until the map's auto revival (autoRevivalTime 3) moves it to the player spawn
+    // on box 101, so the end waits until no beaten participant in the field is dead, at most EndHoldMs (chosen here).
+    // Before, the last loser got the champion's WINNER.
     public bool Ended {
         get {
-            lock (mutex) return state.Ended;
+            lock (mutex) return state.Ended && !Holding();
         }
+    }
+
+    private const long EndHoldMs = 10_000;
+    private long endTick;
+
+    private bool Holding() {
+        if (field.FieldTick >= endTick + EndHoldMs) {
+            return false;
+        }
+        return field.Players.Values.Any(player => player.IsDead && player.Value.Character.Id != state.Champion
+                                                  && state.IsParticipant(player.Value.Character.Id));
     }
 
     public RedArenaZoneField(FieldManager field, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId,
@@ -166,6 +182,7 @@ public sealed class RedArenaZoneField : IPvpZoneField {
     }
 
     private void End(RedArenaEvent @event) {
+        endTick = field.FieldTick;
         long champion = @event.Winner;
         if (champion != 0 && field.TryGetPlayerById(champion, out FieldPlayer? hero)) {
             field.Broadcast(MassiveEventPacket.Text(InterfaceText.Pvp(9, hero.Value.Character.Name), TextDurationMs));
@@ -182,7 +199,9 @@ public sealed class RedArenaZoneField : IPvpZoneField {
             bool won = characterId == champion;
             player.Session.Send(PvpPacket.WinLose(won));
             if (field.Arena != null) {
-                player.Session.Exp.AddExp(won ? ExpType.redDuelWin : ExpType.redDuelLose);
+                ExpType expType = won ? ExpType.redDuelWin : ExpType.redDuelLose;
+                long exp = player.Session.Exp.AddExp(expType);
+                logger.Information("Red Arena zone {BoxId}: {CharacterId} got {Exp} {ExpType} exp", state.BoxId, characterId, exp, expType);
             }
             if (!won) {
                 ranking.Add(characterId);
