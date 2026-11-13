@@ -15,7 +15,22 @@ namespace Maple2.File.Ingest.Helpers;
 // Read from the same files as the parser, by effect id and level; a level row that is not available for the locale
 // and features is skipped, and the first available row of a level is kept.
 public sealed partial class FinalStatusRows {
-    public sealed record Row(string Name, BasicAttribute Attribute, bool Rate, float Value);
+    // Status: a StatusProperty attribute (finalCap/Abp/Atp/EvpV/R). The client reads none of them (no final name is in
+    // its source), and the KR pack's only nonzero ones are effect ids (40500027 and 40600027: finalCapV 50000017;
+    // 40500032 and 40600032: 60011012), so they are never added as stats.
+    public sealed record Row(string Name, BasicAttribute Attribute, bool Rate, float Value, bool Status = false);
+
+    // What Apply left out, for the ingest log.
+    public sealed class Counts {
+        // StatusProperty rows (ids, see Row) the pack fallback skipped.
+        public int StatusRows { get; set; }
+        // Client rows not on an attribute of the level's final stats (the Develop levels' offensive_* and pen, ...).
+        public int DroppedClientRows { get; set; }
+        // Client rows on an attribute the pack's level already has a stat of the same kind of (skipped).
+        public int DoubledClientRows { get; set; }
+        // Pack final values with a fraction, cut to a whole value (none in KR).
+        public int TruncatedValues { get; set; }
+    }
 
     // The data pack's stat names (the parser's StatValue order).
     private static readonly Dictionary<string, BasicAttribute> Stats = new(StringComparer.OrdinalIgnoreCase) {
@@ -99,7 +114,7 @@ public sealed partial class FinalStatusRows {
             Match match = StatusName().Match(attribute.Name);
             if (match.Success && Number(attribute.Value) is var number && number != 0
                 && Stats.TryGetValue(match.Groups["stat"].Value, out BasicAttribute basic)) {
-                found.Add(new Row(attribute.Name, basic, match.Groups["kind"].Value == "R", number));
+                found.Add(new Row(attribute.Name, basic, match.Groups["kind"].Value == "R", number, Status: true));
             }
         }
         foreach (XmlAttribute attribute in stat?.Attributes.OfType<XmlAttribute>() ?? []) {
@@ -114,21 +129,37 @@ public sealed partial class FinalStatusRows {
 
     // Adds a level's final stats to its stats: the client level's rows on the final stats' attributes where the client
     // has the level (client not null; ClientSpecialAbility.BasicAttributes), else each final rate as the stat's rate and
-    // each final value as its value (Chosen here; AdditionalEffectMapper.Status). True where the client's rows were used.
-    public static bool Apply(ClientSpecialAbility specialAbility, ClientSpecialAbility.Stats stats, IReadOnlyList<Row> rows, IReadOnlyDictionary<string, int>? client) {
+    // each final value as its value (Chosen here; AdditionalEffectMapper.Status). StatusProperty rows are never added
+    // (Row). Chosen here: a client row on an attribute the pack's level already has a stat of the same kind (rate or
+    // value) of is skipped, since the client keeps one value per type and the pack's own row is already in. True where
+    // the client's rows were used.
+    public static bool Apply(ClientSpecialAbility specialAbility, ClientSpecialAbility.Stats stats, IReadOnlyList<Row> rows, IReadOnlyDictionary<string, int>? client, Counts? counts = null) {
+        counts ??= new Counts();
         if (client != null) {
-            var attributes = rows.Select(row => row.Attribute).ToHashSet();
+            var attributes = rows.Where(row => !row.Status).Select(row => row.Attribute).ToHashSet();
+            var packValues = stats.Values.Where(pair => pair.Value != 0).Select(pair => pair.Key).ToHashSet();
+            var packRates = stats.Rates.Where(pair => pair.Value != 0).Select(pair => pair.Key).ToHashSet();
             foreach ((string type, int value) in client) {
-                if (ClientSpecialAbility.BasicAttributes(type).Any(attributes.Contains)) {
+                IReadOnlyList<BasicAttribute> on = ClientSpecialAbility.BasicAttributes(type);
+                if (!on.Any(attributes.Contains)) {
+                    counts.DroppedClientRows++;
+                } else if (specialAbility.Rate(type) is { } rate && on.Any((rate ? packRates : packValues).Contains)) {
+                    counts.DoubledClientRows++;
+                } else {
                     specialAbility.Add(stats, type, value);
                 }
             }
             return true;
         }
         foreach (Row row in rows) {
-            if (row.Rate) {
+            if (row.Status) {
+                counts.StatusRows++;
+            } else if (row.Rate) {
                 stats.Rates[row.Attribute] = stats.Rates.GetValueOrDefault(row.Attribute) + row.Value;
             } else {
+                if (row.Value != MathF.Truncate(row.Value)) {
+                    counts.TruncatedValues++;
+                }
                 stats.Values[row.Attribute] = stats.Values.GetValueOrDefault(row.Attribute) + (long) row.Value;
             }
         }

@@ -189,6 +189,9 @@ public sealed class ClientSpecialAbility {
     // The basic stats a client type adds to (none for a special one).
     public static IReadOnlyList<BasicAttribute> BasicAttributes(string type) => Basic.TryGetValue(type, out BasicAttribute[]? attributes) ? attributes : [];
 
+    // Whether the client type is a rate (value type 2) or a value (1); null where the table has neither.
+    public bool? Rate(string type) => valueTypes.TryGetValue(type, out int valueType) && valueType is 1 or 2 ? valueType == 2 : null;
+
     // Adds the client's row to the stats; false (and counted in Unmapped) where the type has no server stat or no
     // value type in the table.
     public bool Add(Stats stats, string type, int value) {

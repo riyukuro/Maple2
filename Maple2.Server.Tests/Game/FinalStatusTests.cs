@@ -86,7 +86,7 @@ public class FinalStatusTests {
             Element("""<StatusProperty statChangeRate="0" finalCapV="50000017" finalCapR="0" finalAbpV="0" />"""),
             Element("""<Stat finalwapminrate="0.16" finalpapvalue="1" finalhprate="0" hprate="3" />"""));
         Assert.That(rows, Is.EqualTo(new[] {
-            new FinalStatusRows.Row("finalCapV", BasicAttribute.CriticalRate, false, 50000017),
+            new FinalStatusRows.Row("finalCapV", BasicAttribute.CriticalRate, false, 50000017, Status: true),
             new FinalStatusRows.Row("finalwapminrate", BasicAttribute.MinWeaponAtk, true, 0.16f),
             new FinalStatusRows.Row("finalpapvalue", BasicAttribute.PhysicalAtk, false, 1),
         }));
@@ -149,7 +149,7 @@ public class FinalStatusTests {
     public void EmptyClientLevelAddsNothingAndAMissingOneFallsBack() {
         ClientSpecialAbility specialAbility = SpecialAbility();
         var stats = new ClientSpecialAbility.Stats();
-        Assert.That(FinalStatusRows.Apply(specialAbility, stats, [new("finalCapV", BasicAttribute.CriticalRate, false, 50000017)], new Dictionary<string, int>()), Is.True);
+        Assert.That(FinalStatusRows.Apply(specialAbility, stats, [new("finalCapV", BasicAttribute.CriticalRate, false, 50000017, Status: true)], new Dictionary<string, int>()), Is.True);
         Assert.That(stats.Values, Is.Empty);
 
         FinalStatusRows.Row[] rows = [
@@ -158,5 +158,43 @@ public class FinalStatusTests {
         ];
         Assert.That(FinalStatusRows.Apply(specialAbility, stats, rows, null), Is.False);
         Assert.That(stats.Rates, Is.EqualTo(new Dictionary<BasicAttribute, float> { [BasicAttribute.PhysicalAtk] = 1, [BasicAttribute.MagicalAtk] = 1 }));
+    }
+
+    // 40500027 without a played client: its finalCapV 50000017 is an effect id, not a critical rate, and is skipped.
+    [Test]
+    public void StatusPropertyIdIsNotAStat() {
+        var counts = new FinalStatusRows.Counts();
+        var stats = new ClientSpecialAbility.Stats();
+        FinalStatusRows.Row[] rows = [new("finalCapV", BasicAttribute.CriticalRate, false, 50000017, Status: true)];
+        Assert.That(FinalStatusRows.Apply(SpecialAbility(), stats, rows, null, counts), Is.False);
+        Assert.That(stats.Values, Is.Empty);
+        Assert.That(stats.Rates, Is.Empty);
+        Assert.That(counts.StatusRows, Is.EqualTo(1));
+    }
+
+    // The pack's level already has a flat pap: the client's pap row is not added again, its finalAttackPower rate is.
+    [Test]
+    public void ClientRowOnAPackStatIsNotAddedTwice() {
+        var counts = new FinalStatusRows.Counts();
+        var stats = new ClientSpecialAbility.Stats { Values = new Dictionary<BasicAttribute, long> { [BasicAttribute.PhysicalAtk] = 5 } };
+        FinalStatusRows.Row[] rows = [
+            new("finalpaprate", BasicAttribute.PhysicalAtk, true, 0.252f),
+            new("finalpapvalue", BasicAttribute.PhysicalAtk, false, 5),
+        ];
+        FinalStatusRows.Apply(SpecialAbility(), stats, rows, new Dictionary<string, int> { ["finalAttackPower"] = 252, ["pap"] = 5, ["offensive_x"] = 1 }, counts);
+        Assert.That(stats.Values, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.PhysicalAtk] = 5 }));
+        Assert.That(stats.Rates[BasicAttribute.PhysicalAtk], Is.EqualTo(0.252f).Within(1e-6));
+        Assert.That(counts.DoubledClientRows, Is.EqualTo(1));
+        Assert.That(counts.DroppedClientRows, Is.EqualTo(1));
+    }
+
+    // A fractional pack value is cut to a whole one and counted.
+    [Test]
+    public void FractionalPackValueIsCounted() {
+        var counts = new FinalStatusRows.Counts();
+        var stats = new ClientSpecialAbility.Stats();
+        FinalStatusRows.Apply(SpecialAbility(), stats, [new("finalpapvalue", BasicAttribute.PhysicalAtk, false, 2.5f)], null, counts);
+        Assert.That(stats.Values[BasicAttribute.PhysicalAtk], Is.EqualTo(2));
+        Assert.That(counts.TruncatedValues, Is.EqualTo(1));
     }
 }
