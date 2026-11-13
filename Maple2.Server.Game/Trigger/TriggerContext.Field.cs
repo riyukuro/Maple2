@@ -429,16 +429,15 @@ public partial class TriggerContext {
         }
     }
 
-    public void RemoveBuff(int boxId, int buffId, bool ignorePlayer) {
-        DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, ignorePlayer:{ignorePlayer}", boxId, buffId, ignorePlayer);
-        if (!ignorePlayer) {
-            foreach (IActor player in PlayersInBox(boxId)) {
-                player.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
-            }
-        } else {
-            foreach (IActor monster in MonstersInBox(boxId)) {
-                monster.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
-            }
+    // The third argument is is_player (arg3), not add_buff's ignore_player: the 17 KR removes that set it take off
+    // effects the players hold. 10 undo an add_buff to players in the same map (70002151, 70002122 in 02020101 and
+    // 02020111), deathflower's 62100021-62100023 come from random_additional_effect on pc targets, and 73000004 is
+    // the players' mount interact of 02020301/52100301. The 96 removes without it that pair with an add_buff undo one
+    // to players too, and none pairs with an add_buff to monsters, so either way the players in the box lose it.
+    public void RemoveBuff(int boxId, int buffId, bool isPlayer) {
+        DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, isPlayer:{IsPlayer}", boxId, buffId, isPlayer);
+        foreach (IActor player in PlayersInBox(boxId)) {
+            player.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
         }
     }
 

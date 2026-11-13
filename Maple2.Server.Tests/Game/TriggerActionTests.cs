@@ -27,6 +27,8 @@ using Maple2.Tools.Scheduler;
 using Maple2.Tools.VectorMath;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -719,6 +721,21 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
     }
 
+    // remove_buff is_player (17 KR uses: 02020101, 02020111, 02020144, 02020145, 02020301, 52100301): each takes off an
+    // effect the players hold, so the player in the box loses it too.
+    [Test]
+    public void RemoveBuff_IsPlayerTakesItFromThePlayers() {
+        StartWithBoxes();
+        WithEffect(70000107);
+        Action("""<action name="add_buff" box_ids="1" skill_id="70000107" level="1" ignore_player="0" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.True);
+
+        Action("""<action name="remove_buff" box_id="2" skill_id="70000107" is_player="1" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.True);
+        Action("""<action name="remove_buff" box_id="1" skill_id="70000107" is_player="1" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+    }
+
     // add_buff: ignore_player gives the effect to the monsters in the boxes, not the players; the skill-set flag
     // gives nothing.
     [Test]
@@ -822,7 +839,7 @@ public class TriggerNpcTests : TriggerTestBase {
     }
 
     // A monster of the spawn point; only what the trigger code reads is set.
-    private FieldNpc Mob(int objectId, int spawnPointId, bool dead = false) {
+    private FieldNpc Mob(int objectId, int spawnPointId, bool dead = false, AnimationMetadata? animation = null) {
         var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
         GC.SuppressFinalize(npc);
         typeof(Actor<Npc>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(npc, objectId);
@@ -833,7 +850,7 @@ public class TriggerNpcTests : TriggerTestBase {
         var metadata = (NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata));
         typeof(NpcMetadata).GetField("<Property>k__BackingField", Any)!.SetValue(metadata,
             new NpcMetadataProperty([], new NpcMetadataCapsule(10, 100), null));
-        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc, new Npc(metadata, animation));
         typeof(FieldNpc).GetField(nameof(FieldNpc.AiExtraData), Any)!.SetValue(npc, new ConcurrentDictionary<string, int>());
         typeof(FieldNpc).GetField(nameof(FieldNpc.BattleState), Any)!.SetValue(npc, new BattleState(npc));
         typeof(Actor<Npc>).GetField("<Transform>k__BackingField", Any)!.SetValue(npc, new Transform());
@@ -888,6 +905,31 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That((moved.Patrol, moved.OnScriptPath, other.Patrol), Is.EqualTo((patrol, true, (MS2PatrolData?) null)));
     }
 
+    // npc_to_patrol_in_box (96): each npc of npc_id in the box takes the path (spawn_id names where it came from and
+    // picks nothing); another npc id, an npc out of the box, a path the map lacks and box 0 move nothing.
+    [Test]
+    public void NpcToPatrolInBox_TheNpcIdInTheBox() {
+        SetTriggers(new Ms2TriggerBox(Vector3.Zero, new Vector3(300, 300, 300), 1, true),
+            new Ms2TriggerBox(new Vector3(5000, 0, 0), new Vector3(300, 300, 300), 2, true));
+        var patrol = new MS2PatrolData("uuid", "MS2PatrolData_101", false, 1, false, []);
+        typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData> { patrol });
+        context = NewContext();
+        FieldNpc boat = Mob(9001, 5);
+        FieldNpc other = Mob(9002, 5);
+        FieldNpc far = Mob(9003, 5);
+        far.Position = new Vector3(5000, 0, 0);
+        foreach ((FieldNpc npc, int id) in new[] { (boat, 21000001), (other, 21000002), (far, 21000001) }) {
+            typeof(NpcMetadata).GetField("<Id>k__BackingField", Any)!.SetValue(npc.Value.Metadata, id);
+        }
+
+        Action("""<action name="npc_to_patrol_in_box" box_id="0" npc_id="21000001" spawn_id="interactObject" patrol_name="MS2PatrolData_101" />""");
+        Action("""<action name="npc_to_patrol_in_box" box_id="1" npc_id="21000001" spawn_id="interactObject" patrol_name="MS2PatrolData_102" />""");
+        Assert.That(boat.Patrol, Is.Null);
+
+        Action("""<action name="npc_to_patrol_in_box" box_id="1" npc_id="21000001" spawn_id="interactObject" patrol_name="MS2PatrolData_101" />""");
+        Assert.That((boat.Patrol, boat.OnScriptPath, other.Patrol, far.Patrol), Is.EqualTo((patrol, true, (MS2PatrolData?) null, (MS2PatrolData?) null)));
+    }
+
     // spawn_monster (8884): with a delay each spawn point's spawn waits on the script's queue (the spawn itself
     // needs the field's navmesh, which the test field has none of).
     [Test]
@@ -914,6 +956,27 @@ public class TriggerNpcTests : TriggerTestBase {
         ByteReader talk = Sent(SendOp.Cinematic).Single();
         Assert.That((talk.ReadByte(), talk.ReadInt(), talk.ReadString(), talk.ReadUnicodeString(), talk.ReadInt()),
             Is.EqualTo(((byte) 6, 11000001, "11000001", "def", 2000)));
+    }
+
+    // add_balloon_talk (584): a balloon of the Trigger table over the spawn point's npc, with the duration and delay in
+    // ms; spawn id 0 (94 of the KR uses) puts it over each player's own character. A spawn point without an npc sends
+    // nothing.
+    [Test]
+    public void AddBalloonTalk_OverTheNpcOrThePlayer() {
+        Mob(9001, 5);
+
+        Action("""<action name="add_balloon_talk" spawn_id="5" msg="abc" duration="3000" delay_tick="500" />""");
+        ByteReader balloon = Sent(SendOp.Cinematic).Single();
+        Assert.That((balloon.ReadByte(), balloon.ReadByte(), balloon.ReadInt(), balloon.ReadUnicodeString(), balloon.ReadInt(), balloon.ReadInt()),
+            Is.EqualTo(((byte) 8, (byte) 0, 9001, "abc", 3000, 500)));
+
+        Action("""<action name="add_balloon_talk" spawn_id="6" msg="abc" duration="3000" />""");
+        Assert.That(Sent(SendOp.Cinematic), Is.Empty);
+
+        Action("""<action name="add_balloon_talk" spawn_id="0" msg="def" duration="2000" />""");
+        ByteReader own = Sent(SendOp.Cinematic).Single();
+        Assert.That((own.ReadByte(), own.ReadByte(), own.ReadInt(), own.ReadUnicodeString(), own.ReadInt(), own.ReadInt()),
+            Is.EqualTo(((byte) 8, (byte) 0, test.Session.Player.ObjectId, "def", 2000, 0)));
     }
 
     // npc_detected (1413): an npc of the spawn points stands in the box; box 0 is the whole field and spawn id 0
@@ -1026,6 +1089,118 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That(other.Rotation.Z, Is.EqualTo(0).Within(1e-3));
     }
 
+    // The npc lookups by spawn point (EnumerateNpcs) also read the field's npc table, which the skipped ctor did not make.
+    private void WithNpcTable() {
+        typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+    }
+
+    // The npc's hp: the stats hold only the health stat, at current of total.
+    private static void Health(FieldNpc npc, long current, long total) {
+        var stats = (StatsManager) RuntimeHelpers.GetUninitializedObject(typeof(StatsManager));
+        typeof(StatsManager).GetField("<Values>k__BackingField", Any)!.SetValue(stats, new Stats(new Dictionary<BasicAttribute, long>(), 0));
+        stats.Values[BasicAttribute.Health].Total = total;
+        stats.Values[BasicAttribute.Health].Current = current;
+        typeof(Actor<Npc>).GetField("<Stats>k__BackingField", Any)!.SetValue(npc, stats);
+    }
+
+    // npc_hp (99): the hp of the spawn point's npc in percent of its max (is_relative, every shipped use) or in
+    // points, against the value; no npc of the spawn point fails, and a negative hp counts as 0.
+    [Test]
+    public void NpcHp_PercentOrPoints() {
+        WithNpcTable();
+        Health(Mob(9001, 5), 250, 1000);
+
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="1" value="25" compare="lowerEqual" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="1" value="24" compare="lowerEqual" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="1" value="25" compare="lower" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="1" value="20" compare="higher" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="1" value="25" compare="higherEqual" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="0" value="250" compare="lowerEqual" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="5" is_relative="0" value="249" compare="lowerEqual" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="6" is_relative="1" value="100" compare="lowerEqual" />"""), Is.False);
+
+        Health(Mob(9002, 7), -40, 1000);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="7" is_relative="0" value="0" compare="higherEqual" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_hp" spawn_id="7" is_relative="0" value="0" compare="lower" />"""), Is.False);
+    }
+
+    // A monster that can take an emote task: its model has the sequences, and the task queue is its own.
+    private FieldNpc Emoting(int objectId, int spawnPointId, params string[] sequences) {
+        var animation = new AnimationMetadata("model", sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) (i + 1), 1f, []))
+            .ToDictionary(sequence => sequence.Name));
+        FieldNpc npc = Mob(objectId, spawnPointId, animation: animation);
+        object movement = RuntimeHelpers.GetUninitializedObject(typeof(MovementState));
+        typeof(MovementState).GetField("actor", Any)!.SetValue(movement, npc);
+        typeof(FieldNpc).GetField(nameof(FieldNpc.MovementState), Any)!.SetValue(npc, movement);
+        typeof(FieldNpc).GetField(nameof(FieldNpc.TaskState), Any)!.SetValue(npc, new TaskState(npc));
+        return npc;
+    }
+
+    private static MovementState.NpcEmoteTask? EmoteTask(FieldNpc npc) {
+        return typeof(FieldNpc).GetField("idleTask", Any)!.GetValue(npc) as MovementState.NpcEmoteTask;
+    }
+
+    // set_npc_emotion_loop (605): the spawn point's npc plays the sequence for the duration (ms); a sequence its
+    // model lacks plays nothing.
+    [Test]
+    public void SetNpcEmotionLoop_PlaysForTheDuration() {
+        WithNpcTable();
+        FieldNpc npc = Emoting(9001, 5, "Talk_A");
+        FieldNpc other = Emoting(9002, 6, "Talk_A");
+
+        Action("""<action name="set_npc_emotion_loop" spawn_id="5" sequence_name="Bore_A" duration="4000" />""");
+        Assert.That(EmoteTask(npc), Is.Null);
+
+        Action("""<action name="set_npc_emotion_loop" spawn_id="5" sequence_name="Talk_A" duration="4000" />""");
+        MovementState.NpcEmoteTask task = EmoteTask(npc)!;
+        Assert.That((task.Sequence, typeof(MovementState.NpcEmoteTask).GetProperty("Duration", Any)!.GetValue(task)), Is.EqualTo(("Talk_A", 4000f)));
+        Assert.That(EmoteTask(other), Is.Null);
+    }
+
+    // set_npc_emotion_sequence (700): the spawn point's npc plays the names of the list once each, in order; a name its
+    // model lacks is left out.
+    [Test]
+    public void SetNpcEmotionSequence_PlaysTheList() {
+        WithNpcTable();
+        FieldNpc npc = Emoting(9001, 5, "Bore_A", "ChatUp_A");
+
+        Action("""<action name="set_npc_emotion_sequence" spawn_id="5" sequence_name="Bore_A,Dance_A,ChatUp_A" duration_tick="2400" />""");
+        MovementState.NpcEmoteTask task = EmoteTask(npc)!;
+        Assert.That(task.Sequence, Is.EqualTo("Bore_A"));
+        Assert.That((task.TryNext(out string next), next), Is.EqualTo((true, "ChatUp_A")));
+        Assert.That(task.TryNext(out _), Is.False);
+
+        Action("""<action name="set_npc_emotion_sequence" spawn_id="6" sequence_name="Bore_A" duration_tick="2400" />""");
+        Assert.That(EmoteTask(npc), Is.SameAs(task));
+    }
+
+    // change_monster (222): the npcs of the first spawn point leave the field and the second one spawns; with no such
+    // spawn point on the map (the test map has none) only the warning is left.
+    [Test]
+    public void ChangeMonster_RemovesThenSpawns() {
+        WithNpcTable();
+        var entities = Field.Entities;
+        typeof(MapEntityMetadata).GetField("<NpcSpawns>k__BackingField", Any)!.SetValue(entities, new List<SpawnPointNPC>());
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(entities, new Dictionary<int, EventSpawnPointNPC>());
+        var warnings = new LogSink();
+        typeof(TriggerContext).GetField("logger", Any)!.SetValue(context, new LoggerConfiguration().WriteTo.Sink(warnings).CreateLogger());
+        Mob(9001, 5);
+        Mob(9002, 5);
+        Mob(9003, 6);
+
+        Action("""<action name="change_monster" from_spawn_id="5" to_spawn_id="7" />""");
+        Field.Scheduler.InvokeAll();
+        Assert.That(mobs.Keys, Is.EqualTo(new[] { 9003 }));
+        Assert.That(Sent(SendOp.FieldRemoveNpc).Select(r => r.ReadInt()).Order(), Is.EqualTo(new[] { 9001, 9002 }));
+        Assert.That(warnings.Events.Where(e => e.Level == LogEventLevel.Warning).Select(e => e.Properties["SpawnId"].ToString()),
+            Is.EqualTo(new[] { "7" }));
+    }
+
+    private sealed class LogSink : ILogEventSink {
+        public readonly List<LogEvent> Events = [];
+        public void Emit(LogEvent logEvent) => Events.Add(logEvent);
+    }
+
     // check_npc_additional_effect (51): a monster of the spawn point holds the effect at the level or above.
     [Test]
     public void CheckNpcAdditionalEffect_HeldBySpawnPoint() {
@@ -1040,6 +1215,166 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="5" additional_effect_id="70000107" level="2" />"""), Is.False);
         Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="6" additional_effect_id="70000107" level="1" />"""), Is.False);
         Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="6" additional_effect_id="70000107" level="1" negate="1" />"""), Is.True);
+    }
+}
+
+public class TriggerItemTests : TriggerTestBase {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private const int Coin = 30000001;
+    private const int Potion = 30000002;
+    private const int BoxId = 900002;
+
+    // A field whose map has item spawn point 9001 (box BoxId, 30 s) and 9002 (no box, no lifetime).
+    [SetUp]
+    public void SetUpItems() {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(Coin), TestGameSession.Metadata(Potion));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [BoxId] = TestGameSession.DropBox([(Coin, 3)]),
+        }));
+        test.Start();
+        SetTriggers();
+        typeof(MapEntityMetadata).GetField("<EventItemSpawns>k__BackingField", Any)!.SetValue(Field.Entities, new Dictionary<int, EventSpawnPointItem> {
+            [9001] = new(9001, new Vector3(100, 200, 300), Vector3.Zero, 30, BoxId, 0, 0, true),
+            [9002] = new(9002, new Vector3(-100, 0, 0), Vector3.Zero, 0, 0, 0, 0, true),
+        });
+        context = NewContext();
+        test.TakeSent();
+    }
+
+    private List<(int ItemId, int Amount, long Receiver, Vector3 Position, short Kind, bool Fixed)> Drops() {
+        return Sent(SendOp.FieldAddItem).Select(reader => {
+            reader.ReadInt();
+            int itemId = reader.ReadInt();
+            int amount = reader.ReadInt();
+            long receiver = reader.ReadLong();
+            var position = new Vector3(reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat());
+            reader.ReadInt();
+            reader.ReadByte();
+            reader.ReadInt();
+            return (itemId, amount, receiver, position, reader.ReadShort(), reader.ReadBool());
+        }).ToList();
+    }
+
+    // create_item (298): each spawn point drops its box's items, and the item_id item too, at its own place for anyone
+    // (receiver 0), fixed, as a trigger drop (1062) that lasts the spawn point's lifetime. A spawn point the map lacks
+    // drops nothing.
+    [Test]
+    public void CreateItem_DropsAtTheSpawnPoints() {
+        Action("""<action name="create_item" spawn_ids="9001,9002,9003" />""");
+        Assert.That(Drops(), Is.EqualTo(new[] { (Coin, 3, 0L, new Vector3(100, 200, 300), ItemDropKind.Trigger, true) }));
+
+        Action("""<action name="create_item" spawn_ids="9002" trigger_id="0" item_id="30000002" />""");
+        Assert.That(Drops(), Is.EqualTo(new[] { (Potion, 1, 0L, new Vector3(-100, 0, 0), ItemDropKind.Trigger, true) }));
+
+        Action("""<action name="create_item" spawn_ids="9003" item_id="30000002" />""");
+        Assert.That(Drops(), Is.Empty);
+    }
+}
+
+public class TriggerAchievementTests : TriggerTestBase {
+    private const int Trophy = 90000001;
+    private const int OtherTrophy = 90000002;
+
+    // Two trophies of the trigger condition, one per code; box 1 holds the player at the origin, box 2 is far off.
+    [SetUp]
+    public void SetUpTrophies() {
+        test = new TestGameSession();
+        test.AddAchievement(CodeTrophy(Trophy, "oxquiz_correct"), CodeTrophy(OtherTrophy, "ddstop_pass"));
+        test.Start();
+        SetTriggers(new Ms2TriggerBox(Vector3.Zero, new Vector3(300, 300, 300), 1, true),
+            new Ms2TriggerBox(new Vector3(5000, 0, 0), new Vector3(300, 300, 300), 2, true));
+        test.Session.Player.Position = Vector3.Zero;
+        context = NewContext();
+        test.TakeSent();
+    }
+
+    private static AchievementMetadata CodeTrophy(int id, string code) {
+        var grade = new AchievementMetadataGrade(1, new ConditionMetadata(ConditionType.trigger,
+            10, new ConditionMetadata.Parameters(Strings: [code]), null), null);
+        return new AchievementMetadata(id, $"{id}", false, AchievementCategory.Life, [], new Dictionary<int, AchievementMetadataGrade> { [1] = grade }, false);
+    }
+
+    // set_achievement (518): each player in the box (trigger_id; 0 is the whole field) counts the trigger condition of
+    // the achieve code; an empty type is the trigger condition (6 KR uses leave it out). A player out of the box
+    // counts nothing.
+    [Test]
+    public void SetAchievement_PlayersInTheBoxCountTheCode() {
+        Action("""<action name="set_achievement" trigger_id="1" type="trigger" achieve="oxquiz_correct" />""");
+        Assert.That((test.TrophyCounter(Trophy), test.TrophyCounter(OtherTrophy)), Is.EqualTo(((long?) 1, (long?) null)));
+
+        Action("""<action name="set_achievement" trigger_id="2" type="trigger" achieve="oxquiz_correct" />""");
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+
+        Action("""<action name="set_achievement" trigger_id="0" achieve="oxquiz_correct" />""");
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(2));
+
+        Action("""<action name="set_achievement" trigger_id="1" type="trigger" achieve="ddstop_pass" />""");
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.EqualTo(1));
+    }
+}
+
+public class TriggerFieldGameTests : TriggerTestBase {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+    // A field whose map has no hideAndSeek.xml row, with the trigger user values a new game sets.
+    [SetUp]
+    public void SetUpField() {
+        test = new TestGameSession();
+        test.SetServerTable(new HideAndSeekTable(new Dictionary<int, HideAndSeekTable.Field>()));
+        test.Start();
+        SetTriggers();
+        typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!.SetValue(Field, new TriggerUserValues());
+        context = NewContext();
+        test.TakeSent();
+    }
+
+    private FieldSpawnGroup? SpawnGroup(int groupId) =>
+        ((ConcurrentDictionary<int, FieldSpawnGroup>) typeof(FieldManager).GetField("fieldSpawnGroups", Any)!.GetValue(Field)!).GetValueOrDefault(groupId);
+
+    private static bool Active(FieldSpawnGroup group) => (bool) typeof(FieldSpawnGroup).GetField("active", Any)!.GetValue(group)!;
+
+    // start_combine_spawn (356): each listed group of the field's own map turns on (is_start 1) or off; a group of
+    // another map whose spawn point the field lacks, and a group of no map, are not made. The groups here have no
+    // count, so nothing spawns.
+    [Test]
+    public void StartCombineSpawn_TogglesTheFieldsGroups() {
+        test.SetServerTable(new CombineSpawnTable(
+            new Dictionary<int, Dictionary<int, SpawnGroupMetadata>> {
+                [Field.MapId] = new() { [10] = new SpawnGroupMetadata(10, CombineSpawnGroupType.npc, 0, 0, Field.MapId) },
+                [82000012] = new() { [30] = new SpawnGroupMetadata(30, CombineSpawnGroupType.npc, 0, 0, 82000012) },
+            },
+            new Dictionary<int, Dictionary<int, SpawnNpcMetadata>> { [30] = new() { [1] = new SpawnNpcMetadata(1, 30, 100, 900) } },
+            new Dictionary<int, Dictionary<int, SpawnInteractObjectMetadata>>()));
+        typeof(MapEntityMetadata).GetField("<NpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities, new List<SpawnPointNPC>());
+        typeof(MapEntityMetadata).GetField("<RegionSpawns>k__BackingField", Any)!.SetValue(Field.Entities, new Dictionary<int, Ms2RegionSpawn>());
+        typeof(FieldManager).GetField("fieldSpawnGroups", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldSpawnGroup>());
+
+        Action("""<action name="start_combine_spawn" group_id="10,30,99" is_start="1" />""");
+        Assert.That((SpawnGroup(10) is { } group && Active(group), SpawnGroup(30), SpawnGroup(99)), Is.EqualTo((true, (FieldSpawnGroup?) null, (FieldSpawnGroup?) null)));
+
+        Action("""<action name="start_combine_spawn" group_id="10" is_start="0" />""");
+        Assert.That(Active(SpawnGroup(10)!), Is.False);
+    }
+
+    private string? GameConstant(string key) {
+        var state = (HideAndSeekState) typeof(HideAndSeekField).GetField("state", Any)!.GetValue(Field.HideAndSeek)!;
+        return state.Constant(key);
+    }
+
+    // field_game_constant (308): a constant of the field's Hide and Seek game; one of another region (locale CN) is
+    // skipped, one without a locale or of the server's own is kept. Before a game is made the action does nothing.
+    [Test]
+    public void FieldGameConstant_SetsTheGamesConstant() {
+        Action("""<action name="field_game_constant" key="RequireUserCount" value="4" feature="MassiveHideAndSeek" />""");
+        Assert.That(Field.HideAndSeek, Is.Null);
+
+        Field.StartHideAndSeek(1);
+        Action("""<action name="field_game_constant" key="RequireUserCount" value="4" feature="MassiveHideAndSeek" />""");
+        Action("""<action name="field_game_constant" key="EnterableSeconds" value="90" locale="CN" />""");
+        Action($"""<action name="field_game_constant" key="DivideTeamsSeconds" value="7" locale="{Maple2.Tools.Locale.Read()}" />""");
+        Assert.That((GameConstant("RequireUserCount"), GameConstant("EnterableSeconds"), GameConstant("DivideTeamsSeconds")),
+            Is.EqualTo(("4", (string?) null, "7")));
     }
 }
 
@@ -1323,6 +1658,22 @@ public class TriggerInterfaceTests : TriggerTestBase {
     public void DungeonTimeout_NoTimer() {
         Start();
 
+        Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.False);
+    }
+
+    // dungeon_timeout: true once the room timer's time ran out; not before, and not after dungeon_set_end_time.
+    [Test]
+    public void DungeonTimeout_AfterTheTime() {
+        Start();
+        Field.SetRoomTimer(RoomTimerType.Clock, 60_000, false);
+        Field.RoomTimer!.Clock.Start(100_000);
+        FieldInfo tick = typeof(FieldManager).GetField("<FieldTick>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        tick.SetValue(Field, 160_000L);
+        Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.False);
+        tick.SetValue(Field, 160_001L);
+        Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.True);
+        Field.RoomTimer.End();
         Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.False);
     }
 }
