@@ -329,6 +329,15 @@ public class MaidTests {
     private static Maid Hired(long expiryTime) =>
         new() { Uid = 1, OwnerId = 5, ItemId = CubeItemId, MaidId = MaidId, CreationTime = 0, ExpiryTime = expiryTime };
 
+    // The debug craft (MaidCraftItem 5) needs the Debug permission: a game master without it is refused.
+    [Test]
+    public void DebugCraftNeedsDebug() {
+        Assert.That(MaidRules.CanDebugCraft(AdminPermissions.None), Is.False);
+        Assert.That(MaidRules.CanDebugCraft(AdminPermissions.GameMaster), Is.False);
+        Assert.That(MaidRules.CanDebugCraft(AdminPermissions.Debug), Is.True);
+        Assert.That(MaidRules.CanDebugCraft(AdminPermissions.Admin), Is.True);
+    }
+
     // npcScriptCondition maid_expired / maid_ready_to_pay: "1", "!1" or absent; absent is no condition.
     [Test]
     public void ConditionFlagKeepsAbsentApart() {

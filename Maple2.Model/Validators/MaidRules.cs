@@ -241,6 +241,10 @@ public static class MaidRules {
         return workbenchType <= 0 || ownedCubes.Any(cube => cube.Metadata.Property.IconCode == workbenchType);
     }
 
+    // MaidCraftItem 5, the craft dialog's debug craft (OnCraftAdmin; the button is shown only in debug mode), is for
+    // AdminPermissions.Debug.
+    public static bool CanDebugCraft(AdminPermissions permissions) => permissions.HasFlag(AdminPermissions.Debug);
+
     // Whether the owner may start recipe with maid (the request names it): the maid crafts nothing yet, its group
     // lists the recipe at a level it has. The contract and the ingredients are checked after (CraftExpired,
     // CraftNotEnough).

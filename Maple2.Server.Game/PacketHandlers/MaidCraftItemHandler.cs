@@ -20,14 +20,16 @@ namespace Maple2.Server.Game.PacketHandlers;
 // The maid craft dialog's requests (UIManufactureDialog, client/ms2/ui/uimanufacturedialog.cpp), each for a maid of the
 // owner's home, named by its uid. Mode 4 starts a recipe of table/maidrecipe.xml, 6 receives a finished product, 7
 // receives it at once for merets (the cost is the client's Lua calcManufactureCompleteByMerat of the seconds left), 10
-// cancels a craft. Mode 5 (the dialog's debug craft), 8 and 9 (the jackpot receive; its rates are server-only) are not
-// handled. All maid and inventory changes run on the field
-// thread of the maid's field, after the maid is found still placed there and owned by the requester.
+// cancels a craft. Mode 5 is the dialog's debug craft, for AdminPermissions.Debug. Mode 8 is never sent (no caller of
+// CManufactureManager::SendRequest8) and 9, the jackpot receive, is not handled: its rates are server-only. All maid
+// and inventory changes run on the field thread of the maid's field, after the maid is found still placed there and
+// owned by the requester.
 public class MaidCraftItemHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.MaidCraftItem;
 
     private enum Command : byte {
         Craft = 4,
+        DebugCraft = 5,
         Receive = 6,
         MeretReceive = 7,
         Cancel = 10,
@@ -45,7 +47,12 @@ public class MaidCraftItemHandler : FieldPacketHandler {
         var command = packet.Read<Command>();
         switch (command) {
             case Command.Craft:
-                HandleCraft(session, packet);
+                HandleCraft(session, packet, false);
+                return;
+            case Command.DebugCraft:
+                if (MaidRules.CanDebugCraft(session.Player.AdminPermissions)) {
+                    HandleCraft(session, packet, true);
+                }
                 return;
             case Command.Receive:
                 HandleReceive(session, packet);
@@ -59,7 +66,12 @@ public class MaidCraftItemHandler : FieldPacketHandler {
         }
     }
 
-    private void HandleCraft(GameSession session, IByteReader packet) {
+    // Mode 4, and mode 5 with |debug|: the dialog's OnCraftAdmin (uimanufacturedialog.cpp:308), whose button the
+    // dialog shows only in debug mode (selectItem gets IsDebugMode, uimanufacturedialog.cpp:632). The client sends
+    // it without the ingredient and meso checks of SendRequest4 (manufacturemanager.cpp:346) and has no reader for a
+    // mode 5 answer, so it is answered as mode 4 (OnCraftResult). Chosen here: a debug craft needs no ingredients
+    // and no workbench and takes nothing; the recipe, the contract and the lead time are as for mode 4.
+    private void HandleCraft(GameSession session, IByteReader packet, bool debug) {
         int recipeId = packet.ReadInt();
         long maidUid = packet.ReadLong();
         FieldManager? field = session.Field;
@@ -92,7 +104,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 .Where(plot => plot.OwnerId == session.AccountId)
                 .SelectMany(plot => plot.Cubes.Values)
                 .ToList();
-            if (!MaidRules.HasWorkbench(recipe.WorkbenchType, ownedCubes)) {
+            if (!debug && !MaidRules.HasWorkbench(recipe.WorkbenchType, ownedCubes)) {
                 session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough));
                 return;
             }
@@ -101,7 +113,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             // craft is stored before anything is taken, so a craft another channel started first takes nothing.
             lock (session.Item) {
                 IList<Item> owned = session.Item.Inventory.Filter(item => recipe.Ingredients.Any(ingredient => MaidRules.Fills(ingredient, item)));
-                List<(long Uid, int Amount)>? taken = MaidRules.TakeIngredients(owned, recipe, reduceRate);
+                List<(long Uid, int Amount)>? taken = debug ? [] : MaidRules.TakeIngredients(owned, recipe, reduceRate);
                 if (taken == null) {
                     session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough));
                     return;
