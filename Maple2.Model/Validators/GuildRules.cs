@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -5,6 +6,25 @@ using Maple2.Model.Metadata;
 namespace Maple2.Model.Validators;
 
 public static class GuildRules {
+    // give_guild_exp type: the id of a GuildGainExp table the data does not ship. The trigger scripts' own note
+    // on the action says 2 is the massive event, and boxID 0 is the whole map. Every use is type 2: the massive
+    // event maps 61000001-61000022 when the game starts, the individual arenas Red Arena 65000001, Crimson Tear Mine
+    // 65000002 and Treasure Island 65000003, and the wedding mini game room 84000007_wd.
+    public const int MassiveEventGainExp = 2;
+
+    // What a massive event pays a guild with a member in it, from the row of the guild's level: the mini game
+    // rows of guildproperty.xml, the lose (taking part) ones, as the action runs when the game starts, before
+    // anyone wins. The pay is chosen here (no GuildGainExp table), so it must not be farmable: only a field of an
+    // instancefield row of type massiveEvent pays (the 61000xxx maps, opened by the schedule). The arenas, which a
+    // player queues for again at once, and the wedding room have no such row and pay nothing; so does any type that
+    // is not the massive event.
+    public static (int Exp, int Fund) GainExpFund(GuildTable.Property? property, int type, InstanceType? fieldType) {
+        if (property == null || type != MassiveEventGainExp || fieldType != InstanceType.massiveEvent) {
+            return (0, 0);
+        }
+        return (property.LoseMiniGameExp, property.LoseMiniGameFund);
+    }
+
     // A guild name a new guild or a rename takes (the ban words are checked apart): not blank, min to max letters
     // (the constants GuildNameLengthMin and GuildNameLengthMax) and the letters a name may have.
     public static bool IsGuildName(string name, int min, int max) {
