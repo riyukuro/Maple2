@@ -108,4 +108,14 @@ public class PlayedAdditionalRowsTests {
             Assert.That(PlayedAdditionalRows.Gated, Does.Contain("Shield"));
         });
     }
+
+    // <additional>: skillGroupType goes to <BasicProperty> by its name; an attribute with no pack name is listed.
+    [Test]
+    public void ListsAnEffectAttributeItDoesNotRead() {
+        (XmlElement row, List<string> unread) = Pack("""<additional id="10600280" mainType="2" skillGroupType="1" other="1"><level level="1"><Basic durationTick="10000" /></level></additional>""");
+        Assert.Multiple(() => {
+            Assert.That(row["BasicProperty"]!.GetAttribute("skillGroupType"), Is.EqualTo("1"));
+            Assert.That(unread, Is.EquivalentTo(new[] { "additional.other" }));
+        });
+    }
 }

@@ -8,8 +8,8 @@ namespace Maple2.File.Ingest.Helpers;
 // The played client's own row of an additional effect level (additional/<nnn>.xml, AdditionalData::Load,
 // additionalactionadditional.cpp:707) written as the data pack's row (additionaleffect/<id>.xml), so the pack's
 // serializer and the mapper's one Build read it. The names were matched on the effects both data sets have:
-// - <additional isDebuff mainType category>: <BasicProperty buffType> 2 for a debuff, buffSubType 1 << mainType,
-//   buffCategory;
+// - <additional isDebuff mainType category skillGroupType>: <BasicProperty buffType> 2 for a debuff, buffSubType
+//   1 << mainType, buffCategory, skillGroupType;
 // - <Basic> and the children of the same class (SameClass): <BasicProperty>, <MotionProperty>, ... as they are;
 // - <Condition>: <beginCondition>, its owner attributes on <owner>, its id lists as the pack's child rows (Condition);
 // - <Additional>: a <conditionSkill> with its owner, caster and target tests in a <beginCondition> (Additional);
@@ -180,6 +180,15 @@ public static class PlayedAdditionalRows {
         }
         if (additional.HasAttribute("category")) {
             basic.SetAttribute("buffCategory", additional.GetAttribute("category"));
+        }
+        // skillGroupType keeps its name on <BasicProperty> (no server read); any other attribute has no pack name.
+        if (additional.HasAttribute("skillGroupType")) {
+            basic.SetAttribute("skillGroupType", additional.GetAttribute("skillGroupType"));
+        }
+        foreach (XmlAttribute attribute in additional.Attributes) {
+            if (attribute.Name is not ("id" or "isDebuff" or "mainType" or "category" or "skillGroupType")) {
+                unread.Add("additional." + attribute.Name);
+            }
         }
         root.AppendChild(basic);
 
