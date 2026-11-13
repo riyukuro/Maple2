@@ -413,7 +413,39 @@ public sealed class QuestManager {
             }
         }
 
+        if (require.GroupId != 0 && !GroupPicks(require.GroupId, DateTime.Now).Contains(metadata.Id)) {
+            return false;
+        }
+
+        if (require.UnrequireGroup != null && !UnrequiredGroupsFree(require.UnrequireGroup, DateTime.Now)) {
+            return false;
+        }
+
         return require.SelectableQuest.Length <= 0 || SelectableQuests(require.SelectableQuest);
+    }
+
+    // The quests of a group the client accepts now (QuestGroupPick): the pick over the group's quests in id order,
+    // seeded by the first one's repeat.
+    public List<int> GroupPicks(int groupId, DateTime now) {
+        IReadOnlyList<int> ids = session.QuestMetadata.GetGroup(groupId);
+        if (ids.Count == 0 || !session.QuestMetadata.TryGet(ids[0], out QuestMetadata? first)) {
+            return [];
+        }
+        return QuestGroupPick.Pick(ids, first.Basic.Repeat, groupId, now);
+    }
+
+    // unrequireGroup (CanAcceptQuest, questdata.cpp:520): no picked quest of the groups is in progress, and none is
+    // completed unless it may be started again (the client's vfunc_o10_21 on it; CanStartAgain is its repeat rule).
+    private bool UnrequiredGroupsFree(IEnumerable<int> groupIds, DateTime now) {
+        foreach (int groupId in groupIds) {
+            foreach (int questId in GroupPicks(groupId, now)) {
+                if (TryGetQuest(questId, out Quest? quest) && (quest.State == QuestState.Started
+                                                                || quest.State == QuestState.Completed && !CanStartAgain(quest))) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /// <summary>

@@ -8,6 +8,7 @@ namespace Maple2.Database.Storage;
 public class QuestMetadataStorage(MetadataContext context) : MetadataStorage<int, QuestMetadata>(context, CACHE_SIZE), ISearchable<QuestMetadata> {
     private const int CACHE_SIZE = 8000; // 4.903 quests are in the database with NA feature, 7.2k quests in xmls
     private bool isInitialized;
+    private Dictionary<int, int[]>? groups;
 
     public bool TryGet(int id, [NotNullWhen(true)] out QuestMetadata? quest) {
         if (Cache.TryGet(id, out quest)) {
@@ -51,6 +52,15 @@ public class QuestMetadataStorage(MetadataContext context) : MetadataStorage<int
             isInitialized = true;
             return allQuestsList;
         }
+    }
+
+    // require groupID: the ids of a group's quests the played client has, in id order, as the client's group list
+    // (QuestDataTable m_390, built from its id-ordered quest map, questdata.cpp:2421; locked quests too).
+    public IReadOnlyList<int> GetGroup(int groupId) {
+        groups ??= GetQuests().Where(quest => quest.Require.GroupId != 0 && PlayedClientQuests.Known(quest.Basic))
+            .GroupBy(quest => quest.Require.GroupId)
+            .ToDictionary(group => group.Key, group => group.Select(quest => quest.Id).Order().ToArray());
+        return groups.TryGetValue(groupId, out int[]? ids) ? ids : [];
     }
 
     public IEnumerable<QuestMetadata> GetQuestsByNpc(int npcId) {
