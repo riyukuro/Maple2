@@ -1666,6 +1666,16 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(PropertySent(), Is.EqualTo(((byte) 2, (byte) 4)));
     }
 
+    // set_gravity (29): the Gravity (1) property is added with the value.
+    [Test]
+    public void SetGravity_AddsTheProperty() {
+        StartWithProperties();
+
+        Action("""<action name="set_gravity" gravity="-0.5" />""");
+        ByteReader reader = Sent(SendOp.FieldProperty).Single();
+        Assert.That((reader.ReadByte(), reader.ReadByte(), reader.ReadFloat()), Is.EqualTo(((byte) 1, (byte) 1, -0.5f)));
+    }
+
     // set_ambient_light (82): the AmbientLight (8) property is added.
     [Test]
     public void SetAmbientLight_AddsTheProperty() {
@@ -1831,9 +1841,9 @@ public class TriggerDungeonTests : TriggerTestBase {
     private const int Room = 20003001;
     private DungeonRoomRecord record = null!;
 
-    private void StartRoom() {
+    private void StartRoom(int roundId = 0) {
         test = new TestGameSession();
-        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 2000023);
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 2000023) with { RoundId = roundId };
         test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [Room] = room }));
         test.Start();
         // The player's run is not in the room's results, so the clear grants no rewards (the test has no reward tables).
@@ -1923,6 +1933,106 @@ public class TriggerDungeonTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="1" />"""), Is.True);
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="0" />"""), Is.False);
     }
+
+    // dungeon_fail (33): the room's result is Fail and the players get the result; a room with a result keeps it
+    // (a second fail, or a fail after a clear, sends nothing). Outside a dungeon nothing happens.
+    [Test]
+    public void DungeonFail_FailsTheRoomOnce() {
+        StartRoom();
+        Action("""<action name="dungeon_fail" />""");
+        Assert.That(record.State, Is.EqualTo(DungeonState.Fail));
+        Assert.That(test.TakeSent(), Is.Not.Empty);
+        Action("""<action name="dungeon_fail" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        StartRoom();
+        Action("""<action name="dungeon_clear" />""");
+        test.TakeSent();
+        Action("""<action name="dungeon_fail" />""");
+        Assert.That(record.State, Is.EqualTo(DungeonState.Clear));
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        Start();
+        Action("""<action name="dungeon_fail" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // dungeon_enable_give_up (28): the room's give-up switch (DungeonRewardHandler's give-up asks it), and the
+    // players' give-up button (DungeonMission SetAbandon).
+    [Test]
+    public void DungeonEnableGiveUp_TheRoomSwitch() {
+        StartRoom();
+        var room = (DungeonFieldManager) Field;
+        Action("""<action name="dungeon_enable_give_up" is_enable="1" />""");
+        Assert.That(room.GiveUpEnabled, Is.True);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(DungeonMissionPacket.SetAbandon(true)) }));
+
+        Action("""<action name="dungeon_enable_give_up" is_enable="0" />""");
+        Assert.That(room.GiveUpEnabled, Is.False);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(DungeonMissionPacket.SetAbandon(false)) }));
+    }
+
+    // dungeon_clear_round (27): the players' user record keeps the round reached (0 is the Colosseum's lost round).
+    [Test]
+    public void DungeonClearRound_TheUserRecord() {
+        StartRoom();
+        Action("""<action name="dungeon_clear_round" round="3" />""");
+        Assert.That(test.Session.Dungeon.UserRecord!.Round, Is.EqualTo(3));
+        Action("""<action name="dungeon_clear_round" round="0" />""");
+        Assert.That(test.Session.Dungeon.UserRecord!.Round, Is.EqualTo(0));
+    }
+
+    // dungeon_round (23): round N of the room's round data (entry N-1) asks for no more gear score than the player
+    // has; a round past the data, or a room without round data, does not pass.
+    [Test]
+    public void DungeonRound_ByTheGearScore() {
+        test = new TestGameSession();
+        test.SetTable(new DungeonRoundDataTable(new Dictionary<int, DungeonRoundMetadata[]> { [7] = [new(0, 100), new(0, 500)] }));
+        StartRoomOn(test, 7);
+        test.Session.Stats.Values.GearScore = 300;
+
+        Assert.That(Condition("""<condition name="dungeon_round" round="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_round" round="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_round" round="3" />"""), Is.False);
+        test.Session.Stats.Values.GearScore = 500;
+        Assert.That(Condition("""<condition name="dungeon_round" round="2" />"""), Is.True);
+
+        test = new TestGameSession();
+        test.SetTable(new DungeonRoundDataTable(new Dictionary<int, DungeonRoundMetadata[]>()));
+        StartRoomOn(test, 7);
+        Assert.That(Condition("""<condition name="dungeon_round" round="1" />"""), Is.False);
+    }
+
+    private void StartRoomOn(TestGameSession session, int roundId) {
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 2000023) with { RoundId = roundId };
+        session.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [Room] = room }));
+        session.Start();
+        record = session.EnterDungeon(room);
+        SetTriggers();
+        context = NewContext();
+        session.TakeSent();
+    }
+
+    // dungeon_set_end_time (28), dungeon_close_timer (19), dungeon_stop_timer: the room timer's time function ends
+    // (no timeout after it), its window closes (Cancel), and its time stops with the window closed (Stop).
+    [Test]
+    public void DungeonTimerRows_TheRoomTimer() {
+        StartRoom();
+        Field.SetRoomTimer(RoomTimerType.Clock, 60_000, false);
+        test.TakeSent();
+
+        Action("""<action name="dungeon_set_end_time" />""");
+        Assert.That((Field.RoomTimer!.Clock.Ended, Field.RoomTimer.Closed, Field.RoomTimer.Clock.Stopped), Is.EqualTo((true, false, false)));
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        Action("""<action name="dungeon_close_timer" />""");
+        Assert.That((Field.RoomTimer.Closed, Field.RoomTimer.Clock.Stopped), Is.EqualTo((true, false)));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(RoomTimerPacket.Cancel()) }));
+
+        Action("""<action name="dungeon_stop_timer" />""");
+        Assert.That(Field.RoomTimer.Clock.Stopped, Is.True);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(RoomTimerPacket.Stop()) }));
+    }
 }
 
 public class TriggerRoundUiTests : TriggerTestBase {
@@ -1938,5 +2048,53 @@ public class TriggerRoundUiTests : TriggerTestBase {
         ByteReader reader = Sent(SendOp.MassiveEvent).Single();
         Assert.That((reader.ReadByte(), reader.ReadInt(), reader.ReadBool(), reader.ReadInt()), Is.EqualTo(((byte) 7, 3, expected, 5000)));
         Assert.That(reader.Available, Is.Zero);
+    }
+}
+
+// The wedding hall's and the mini games' rows on a plain test field.
+public class TriggerRoomRowTests : TriggerTestBase {
+    // wedding_hall_state (48): weddingComplete with success 1 passes once the vow is complete, with success 0 before;
+    // another state, or a field without a ceremony, does not pass.
+    [Test]
+    public void WeddingHallState_TheVow() {
+        Start();
+        Assert.That(Condition("""<condition name="wedding_hall_state" hall_state="weddingComplete" success="0" />"""), Is.False);
+
+        var ceremony = new WeddingCeremony(1, 100, 200, 100);
+        Field.Wedding = ceremony;
+        Assert.That(Condition("""<condition name="wedding_hall_state" hall_state="weddingComplete" success="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="wedding_hall_state" hall_state="weddingComplete" success="1" />"""), Is.False);
+
+        ceremony.TryComplete();
+        Assert.That(Condition("""<condition name="wedding_hall_state" hall_state="weddingComplete" success="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="wedding_hall_state" hall_state="weddingComplete" success="0" />"""), Is.False);
+        Assert.That(Condition("""<condition name="wedding_hall_state" hall_state="weddingStart" success="1" />"""), Is.False);
+    }
+
+    // mini_game_give_exp (30): each player in the box with a game record gets the mini game exp at exp_rate, and the
+    // record's exp reward counts it; a player without a record, or out of the box, gets none.
+    [Test]
+    public void MiniGameGiveExp_TheRecordedPlayersInTheBox() {
+        Start(new Ms2TriggerBox(Vector3.Zero, new Vector3(300, 300, 300), 1, true),
+            new Ms2TriggerBox(new Vector3(5000, 0, 0), new Vector3(300, 300, 300), 2, true));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.miniGame] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.Session.Player.Value.Character.Level = 50;
+        test.Session.Player.Position = Vector3.Zero;
+
+        Action("""<action name="mini_game_give_exp" box_id="1" exp_rate="2" />""");
+        Assert.That(test.Session.Player.Value.Character.Exp, Is.Zero);
+
+        test.Session.MiniGameRecord = new MiniGameUserRecord(test.Session.CharacterId) { TotalRounds = 1, ShowResult = false, MinRound = 1 };
+        Action("""<action name="mini_game_give_exp" box_id="2" exp_rate="2" />""");
+        Assert.That(test.Session.Player.Value.Character.Exp, Is.Zero);
+
+        Action("""<action name="mini_game_give_exp" box_id="1" exp_rate="2" />""");
+        long gained = test.Session.Player.Value.Character.Exp;
+        Assert.That(gained, Is.EqualTo(1000));
+        Assert.That(test.Session.MiniGameRecord.Rewards[DungeonRewardType.Exp], Is.EqualTo(1000));
     }
 }

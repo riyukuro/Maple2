@@ -124,4 +124,25 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
             Is.EqualTo(new[] { dummy.ObjectId }));
         Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddNpc), Is.EqualTo(1));
     }
+
+    // wedding_user_to_patrol (24): the groom or the bride of the room's ceremony walks the path behind a dummy npc,
+    // as move_user_path moves a player; the other role, or a room without a ceremony, moves no one.
+    [Test]
+    public void WeddingUserToPatrol_TheRolePlayer() {
+        StartSpawns();
+        var patrol = new MS2PatrolData("uuid", "MS2PatrolData_101", false, 1, false,
+            [new MS2WayPoint("w1", true, new Vector3(500, 0, 0), Vector3.Zero, "", "", 0, false)]);
+        typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData> { patrol });
+        long groom = test.Session.CharacterId;
+
+        Action("""<action name="wedding_user_to_patrol" patrol_name="MS2PatrolData_101" entry_type="Groom" patrol_index="1" />""");
+        Field.Wedding = new WeddingCeremony(1, groom, groom + 1, groom);
+        Action("""<action name="wedding_user_to_patrol" patrol_name="MS2PatrolData_101" entry_type="Bride" patrol_index="2" />""");
+        Assert.That(Field.Npcs, Is.Empty);
+
+        Action("""<action name="wedding_user_to_patrol" patrol_name="MS2PatrolData_101" entry_type="Groom" patrol_index="1" />""");
+        FieldNpc dummy = Field.Npcs.Values.Single();
+        Assert.That((dummy.Position, dummy.Patrol), Is.EqualTo((new Vector3(100, 200, 0), patrol)));
+        Assert.That(Sent(SendOp.FollowNpc).Select(reader => reader.ReadInt()), Is.EqualTo(new[] { dummy.ObjectId }));
+    }
 }
