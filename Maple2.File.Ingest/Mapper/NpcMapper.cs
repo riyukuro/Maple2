@@ -150,7 +150,8 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
                     PropertyTags: data.basic.propertyTags,
                     SummonNpcIds: summonNpcIds.GetValueOrDefault(id),
                     StringId: string.IsNullOrEmpty(data.basic.stringID) ? null : data.basic.stringID,
-                    NotInPlayedClient: notInPlayedClient),
+                    NotInPlayedClient: notInPlayedClient,
+                    RaceStrings: data.basic.raceString),
                 Property: new NpcMetadataProperty(
                     Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
                     Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),

@@ -827,8 +827,8 @@ public class FieldNpc : Actor<Npc> {
             player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
             Field.Survival?.NpcKill(player);
             player.Session.Exp.OnKill(Value.Metadata.Basic.Level, Environment.TickCount64);
-            foreach (string tag in Value.Metadata.Basic.MainTags) {
-                player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
+            foreach (string race in NpcKillRules.RaceCodes(Value.Metadata.Basic)) {
+                player.Session.ConditionUpdate(ConditionType.npc_race, codeString: race);
             }
             UpdateSpawner(player);
         }

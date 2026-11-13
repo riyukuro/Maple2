@@ -80,7 +80,10 @@ public record NpcMetadataBasic(
     string? StringId = null,
     // The played client has no NPC data for this NPC (PlayedClientNpcs): the server does not spawn it. False
     // without a played client or in rows ingested before the field existed.
-    bool NotInPlayedClient = false) {
+    bool NotInPlayedClient = false,
+    // The basic raceString list (animal, plant, spirit...): the codes of the npc_race trophies. Null in rows
+    // ingested before the field existed.
+    string[]? RaceStrings = null) {
     public bool HasPropertyTag(string tag) => PropertyTags != null && PropertyTags.Contains(tag, StringComparer.OrdinalIgnoreCase);
 }
 
