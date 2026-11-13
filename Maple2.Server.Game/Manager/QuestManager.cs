@@ -224,17 +224,31 @@ public sealed class QuestManager {
             // takes the Start packet as a new quest in place of the completed one. The times of the last completion
             // are kept beside the new ones for an abandon.
             quest = held;
+            (long lastStartTime, long lastEndTime, bool track, QuestState state, long startTime, long endTime,
+                SortedDictionary<int, Quest.Condition> conditions) = (quest.LastStartTime, quest.LastEndTime, quest.Track,
+                quest.State, quest.StartTime, quest.EndTime, quest.Conditions);
             quest.LastStartTime = quest.StartTime;
             quest.LastEndTime = quest.EndTime;
             quest.Track = true;
             quest.State = QuestState.Started;
             quest.StartTime = DateTime.Now.ToEpochSeconds();
             quest.EndTime = 0;
-            quest.Conditions.Clear();
+            quest.Conditions = new SortedDictionary<int, Quest.Condition>();
             for (int i = 0; i < metadata.Conditions.Length; i++) {
                 quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
             }
             QuestRules.CountLevelAtStart(quest.Conditions.Values, session.Player.Value.Character.Level);
+            // The started row is stored before the accept items, which get their rows at once (AddOrMail): left to
+            // the next session save, a crash or a failed save kept the stored row completed, so the quest could be
+            // started again and its accept items given again. Not stored: the quest stays completed, nothing given.
+            long heldOwnerId = metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
+            Quest started = quest;
+            if (!session.TrySavePurchase(db => db.SaveQuests(heldOwnerId, [started]))) {
+                (quest.LastStartTime, quest.LastEndTime, quest.Track, quest.State, quest.StartTime, quest.EndTime, quest.Conditions) =
+                    (lastStartTime, lastEndTime, track, state, startTime, endTime, conditions);
+                logger.Error("Failed to store the started quest {questId}", metadata.Id);
+                return QuestError.s_quest_error_accept_fail;
+            }
         } else {
             quest = new Quest(metadata) {
                 Track = true,

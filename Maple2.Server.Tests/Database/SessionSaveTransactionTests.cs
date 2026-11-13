@@ -6,7 +6,9 @@ using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Items;
@@ -73,6 +75,7 @@ public class SessionSaveTransactionTests {
         commit.Fail = false;
         using var context = new Ms2Context(plain);
         context.Quest.Where(quest => quest.OwnerId == test.CharacterId && quest.Id == QuestId).ExecuteDelete();
+        context.DungeonRecord.Where(record => record.OwnerId == test.CharacterId).ExecuteDelete();
         context.Mail.Where(mail => mail.ReceiverId == test.CharacterId).ExecuteDelete();
         context.Item.Where(item => item.OwnerId == test.CharacterId).ExecuteDelete();
         context.ItemStorage.Where(info => info.AccountId == test.AccountId).ExecuteDelete();
@@ -113,7 +116,7 @@ public class SessionSaveTransactionTests {
         session.Currency.Meso = 4321;
         RefuseOnce("UPDATE `item`");
 
-        session.SessionSave();
+        SaveOnce();
         hook.Before = null;
 
         Assert.That(StoredMeso(), Is.EqualTo(0));
@@ -137,7 +140,7 @@ public class SessionSaveTransactionTests {
         session.Currency.Meso = 4321;
         RefuseOnce("UPDATE `account`");
 
-        session.SessionSave();
+        SaveOnce();
         hook.Before = null;
 
         Assert.Multiple(() => {
@@ -233,7 +236,8 @@ public class SessionSaveTransactionTests {
             .Select(quest => (QuestState?) quest.State).SingleOrDefault();
     }
 
-    private int FailedSaveRun => (int) typeof(GameSession).GetField("failedSaveRun", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)!;
+    // One try of the save, without the session save's second try and end: what one failed save stores.
+    private bool SaveOnce() => (bool) typeof(GameSession).GetMethod("Save", BindingFlags.NonPublic | BindingFlags.Instance, Type.EmptyTypes)!.Invoke(session, null)!;
     private bool Ended => (int) typeof(Maple2.Server.Core.Network.Session).GetField("disconnecting", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)! == 1;
 
     // A completion whose quest row is refused pays nothing: the reward items get their rows at once, so the completed
@@ -255,7 +259,7 @@ public class SessionSaveTransactionTests {
         RefuseAlways("UPDATE `quest`");
 
         Assert.That(session.Quest.Complete(quest), Is.False);
-        session.SessionSave();
+        SaveOnce();
         Assert.Multiple(() => {
             Assert.That(quest.State, Is.EqualTo(QuestState.Started));
             Assert.That(session.Item.Inventory.Find(RewardItemId).Sum(item => item.Amount), Is.EqualTo(0));
@@ -284,7 +288,7 @@ public class SessionSaveTransactionTests {
         RefuseAlways("UPDATE `character-config`");
 
         Assert.That(session.Config.UnequipLapenshard(LapenshardSlot.Red1), Is.False);
-        session.SessionSave();
+        SaveOnce();
         Assert.Multiple(() => {
             Assert.That(session.Item.Inventory.Find(LapenshardId).Count(), Is.EqualTo(0));
             Assert.That(StoredLapenshards()[LapenshardSlot.Red1], Is.EqualTo(LapenshardId));
@@ -297,49 +301,173 @@ public class SessionSaveTransactionTests {
         Assert.That(session.Item.Inventory.Find(LapenshardId).Count(), Is.EqualTo(1));
     }
 
-    // A refused progress row fails the whole save, and the session keeps its state: two failed saves in a row leave the
-    // session on, a stored save starts the count again, and the third failed save in a row ends the session (the
-    // stored state is the last full save; the session's own memory is not written in part).
+    // A save refused once (a passing error such as a deadlock) is tried again at once, and the second try stores it.
     [Test]
-    public void Save_ThirdFailedSaveInARow_EndsTheSession() {
+    public void SessionSave_RefusedOnce_SecondTryStores() {
+        session.Currency.Meso = 4321;
+        session.Config.InstantReviveCount += 1;
+        RefuseOnce("UPDATE `character-config`");
+
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((false, 4321L)));
+    }
+
+    // A save whose second try fails too ends the session: the stored state is the last full save, and the session's
+    // own memory is not written in part. It used to play on until the third failed save in a row, while the items it
+    // made were stored at once and the items it used up were not.
+    [Test]
+    public void SessionSave_RefusedTwice_EndsTheSession() {
         session.Currency.Meso = 4321;
         session.Config.InstantReviveCount += 1;
         RefuseAlways("UPDATE `character-config`");
 
-        session.SessionSave();
-        session.SessionSave();
-        Assert.That((FailedSaveRun, Ended, StoredMeso()), Is.EqualTo((2, false, 0L)));
-
-        hook.Before = null;
-        session.SessionSave();
-        Assert.That((FailedSaveRun, Ended, StoredMeso()), Is.EqualTo((0, false, 4321L)));
-
-        session.Currency.Meso = 1234;
-        session.Config.InstantReviveCount += 1;
-        RefuseAlways("UPDATE `character-config`");
-        session.SessionSave();
-        session.SessionSave();
-        Assert.That(Ended, Is.False);
-        session.SessionSave();
+        Assert.That(session.SessionSave(), Is.False);
         Assert.Multiple(() => {
-            Assert.That((FailedSaveRun, Ended), Is.EqualTo((3, true)));
-            Assert.That(StoredMeso(), Is.EqualTo(4321));
-            Assert.That(session.Currency.Meso, Is.EqualTo(1234));
+            Assert.That(Ended, Is.True);
+            Assert.That(StoredMeso(), Is.EqualTo(0));
+            Assert.That(session.Currency.Meso, Is.EqualTo(4321));
         });
     }
 
-    // A save that throws out of its transaction (a deadlock on the commit) is a failed save too: it is counted, and
-    // the third in a row ends the session.
+    // A save that throws out of its transaction (a deadlock on the commit) is a failed save too.
     [Test]
-    public void Save_CommitThrows_CountsAsFailed() {
+    public void SessionSave_CommitThrows_EndsTheSession() {
         session.Currency.Meso = 4321;
         commit.Fail = true;
 
-        session.SessionSave();
-        Assert.That((FailedSaveRun, StoredMeso()), Is.EqualTo((1, 0L)));
-        session.SessionSave();
-        session.SessionSave();
-        Assert.That((FailedSaveRun, Ended), Is.EqualTo((3, true)));
+        Assert.That(session.SessionSave(), Is.False);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((true, 0L)));
+    }
+
+    // The entry's save is a gate: a character whose dungeon row the database refuses on each try is not let in.
+    // The entry is refused (EnterServer answers false and the connection is closed by its caller) and nothing of the
+    // character's state is stored.
+    [Test]
+    public void EntrySave_DungeonRowRefused_RefusesTheEntry() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            DungeonRecord? record = db.CreateDungeonRecord(new DungeonRecord(99000001), test.CharacterId);
+            Assume.That(record, Is.Not.Null);
+            session.Dungeon.Records[record!.DungeonId] = record;
+        }
+        Assume.That(session.EntrySave(), Is.True);
+        session.Currency.Meso = 4321;
+        RefuseAlways("UPDATE `dungeon-record`");
+
+        Assert.That(session.EntrySave(), Is.False);
+        Assert.That(StoredMeso(), Is.EqualTo(0));
+
+        hook.Before = null;
+        Assert.That(session.EntrySave(), Is.True);
+        Assert.That(StoredMeso(), Is.EqualTo(4321));
+    }
+
+    // The timed save runs on the field thread and ends the session when it fails twice; while the session changes
+    // field or channel it does not run (that move saves on its own).
+    [Test]
+    public void TimedSave_Refused_EndsTheSession() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        session.Currency.Meso = 4321;
+        session.Config.InstantReviveCount += 1;
+        RefuseAlways("UPDATE `character-config`");
+
+        session.State = SessionState.ChangeMap;
+        session.TimedSaveOnField(session.Field!);
+        Assert.That((Ended, test.Errors.Count), Is.EqualTo((false, 0)));
+
+        session.State = SessionState.Connected;
+        session.TimedSaveOnField(session.Field!);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((true, 0L)));
+    }
+
+    // A repeatable quest started again stores its started row before its accept items are given: refused, the quest
+    // stays completed and nothing is given. The started row used to be left to the next session save while the accept
+    // items got their rows at once, so a failed save let the quest be started again and the items given again.
+    [Test]
+    public void Start_QuestRowRefused_AcceptItemsNotGivenTwice() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        QuestMetadata data = TestGameSession.QuestData(QuestId);
+        data = data with {
+            Basic = data.Basic with { Repeat = 1 },
+            AcceptReward = data.AcceptReward with { EssentialItem = [new QuestMetadataReward.Item(RewardItemId, 1, 2)] },
+        };
+        test.Register(data);
+        Quest quest = test.StartQuest(data);
+        Assume.That(session.Quest.Complete(quest), Is.True);
+        Assume.That((StoredQuest(QuestId), StoredItems(RewardItemId)), Is.EqualTo(((QuestState?) QuestState.Completed, 0)));
+        RefuseAlways("UPDATE `quest`");
+
+        Assert.That(session.Quest.Start(QuestId, true), Is.EqualTo(QuestError.s_quest_error_accept_fail));
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Item.Inventory.Find(RewardItemId).Sum(item => item.Amount), Is.EqualTo(0));
+            Assert.That(StoredQuest(QuestId), Is.EqualTo(QuestState.Completed));
+            Assert.That(StoredItems(RewardItemId), Is.EqualTo(0));
+        });
+
+        hook.Before = null;
+        Assert.That(session.Quest.Start(QuestId, true), Is.EqualTo(QuestError.none));
+        Assert.That((StoredQuest(QuestId), StoredItems(RewardItemId)), Is.EqualTo(((QuestState?) QuestState.Started, 2)));
+        Assert.That(session.Quest.Start(QuestId, true), Is.EqualTo(QuestError.s_quest_error_accept_fail));
+        Assert.That(StoredItems(RewardItemId), Is.EqualTo(2));
+    }
+
+    // A lapenshard put on stores the config with the shard worn and the bag without it together: refused, the shard
+    // stays in the bag and is not worn. The bag's change used to be left to the next session save, so an equip and an
+    // unequip with no save between left two shards after the next login.
+    [Test]
+    public void EquipLapenshard_ConfigRowRefused_NoLapenshardDuplicate() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        Item shard = test.Store(TestGameSession.Metadata(LapenshardId), 1);
+        Assert.That(session.Item.Inventory.Add(shard), Is.True);
+        Assume.That(session.SessionSave(), Is.True);
+        Assume.That(StoredItems(LapenshardId), Is.EqualTo(1));
+        RefuseAlways("UPDATE `character-config`");
+
+        Assert.That(session.Config.EquipLapenshard(shard.Uid, LapenshardSlot.Red1), Is.False);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(LapenshardId).Count(), Is.EqualTo(1));
+            Assert.That(StoredLapenshards(), Does.Not.ContainKey(LapenshardSlot.Red1));
+            Assert.That(StoredItems(LapenshardId), Is.EqualTo(1));
+        });
+
+        hook.Before = null;
+        Assert.That(session.Config.EquipLapenshard(shard.Uid, LapenshardSlot.Red1), Is.True);
+        Assert.That((StoredLapenshards()[LapenshardSlot.Red1], StoredItems(LapenshardId)), Is.EqualTo((LapenshardId, 0)));
+        Assert.That(session.Config.UnequipLapenshard(LapenshardSlot.Red1), Is.True);
+        Assert.That((StoredLapenshards().ContainsKey(LapenshardSlot.Red1), StoredItems(LapenshardId)), Is.EqualTo((false, 1)));
+    }
+
+    private int DeleteEntries(long uid) =>
+        ((List<Item>) typeof(Maple2.Server.Game.Manager.Items.InventoryManager).GetField("delete", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(session.Item.Inventory)!).Count(item => item.Uid == uid);
+
+    // A use stored with its own rows (SaveConsumed in the use's transaction, ConsumeStored once it committed): the
+    // stack's row holds the lower amount once, and the session save writes the same amount again, not a second
+    // decrement; the last ones given up have their row at owner 0 already and are not put on the delete list.
+    [Test]
+    public void SaveConsumed_ThenConsumeStored_RowsMatchTheBag() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        Item stack = test.Store(TestGameSession.Metadata(ItemId), 3);
+        Assert.That(session.Item.Inventory.Add(stack), Is.True);
+        Assume.That(session.SessionSave(), Is.True);
+        Assume.That(StoredItems(ItemId), Is.EqualTo(3));
+
+        Assert.That(session.TrySavePurchase(db => session.Item.Inventory.SaveConsumed(db, stack.Uid, 1)), Is.True);
+        Assert.That((StoredItems(ItemId), session.Item.Inventory.Find(ItemId).Sum(item => item.Amount)), Is.EqualTo((2, 3)));
+        Assert.That(session.Item.Inventory.ConsumeStored(stack.Uid, 1), Is.True);
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That((StoredItems(ItemId), session.Item.Inventory.Find(ItemId).Sum(item => item.Amount)), Is.EqualTo((2, 2)));
+
+        Assert.That(session.TrySavePurchase(db => session.Item.Inventory.SaveConsumed(db, stack.Uid, 2)), Is.True);
+        Assert.That(StoredItems(ItemId), Is.EqualTo(0));
+        Assert.That(session.Item.Inventory.ConsumeStored(stack.Uid, 2), Is.True);
+        Assert.That((DeleteEntries(stack.Uid), session.Item.Inventory.Find(ItemId).Count()), Is.EqualTo((0, 0)));
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That((StoredItems(ItemId), DeleteEntries(stack.Uid)), Is.EqualTo((0, 0)));
     }
 
     // The test session skips the save at Dispose; these tests make the one MigrationSave runs.
@@ -386,7 +514,7 @@ public class SessionSaveTransactionTests {
         session.Currency.Meso = 4321;
         RefuseOnce("UPDATE `item`");
 
-        session.SessionSave();
+        SaveOnce();
         hook.Before = null;
 
         Assert.That((session.Player.Value.Account.LastModified, session.Player.Value.Character.LastModified), Is.EqualTo((account, character)));

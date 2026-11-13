@@ -55,9 +55,9 @@ public sealed partial class GameSession : Core.Network.Session {
     public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
-    // Saves in a row that stored nothing: logged with each failure; the third ends the session (SessionSave).
-    private int failedSaveRun;
-    private const int FailedSaveRunEnd = 3;
+    // The timed save while the player stays on one map (TimedSave): a part that cannot be stored is found within
+    // this time, not only at the next field entry.
+    private static readonly TimeSpan TimedSaveInterval = TimeSpan.FromMinutes(5);
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -170,6 +170,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Scheduler = new EventQueue(Logger);
         Scheduler.ScheduleRepeated(() => Send(TimeSyncPacket.Request()), TimeSpan.FromSeconds(1));
         Scheduler.ScheduleRepeated(TstPollCommands, TimeSpan.FromSeconds(1)); // test hook
+        Scheduler.ScheduleRepeated(TimedSave, TimedSaveInterval, skipFirst: true);
 
         OnLoop += Scheduler.InvokeAll;
         GroupChats = new ConcurrentDictionary<int, GroupChatManager>();
@@ -306,6 +307,12 @@ public sealed partial class GameSession : Core.Network.Session {
         AdventureProtect = new AdventureProtectManager(this);
         Ride = new RideManager(this);
         Mentoring = new MentoringManager(this);
+        // The entry's save is a gate: a character whose state cannot be stored does not play (see SessionSave). It
+        // runs before anything of the entry is created at once (items, mails), so a refused entry leaves nothing.
+        if (!EntrySave()) {
+            Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
+            return false;
+        }
         CommandHandler.RegisterCommands(); // Refresh commands with proper permissions
         GroupChatInfoResponse groupChatInfoRequest = World.GroupChatInfo(new GroupChatInfoRequest {
             CharacterId = CharacterId,
@@ -886,7 +893,10 @@ public sealed partial class GameSession : Core.Network.Session {
             ConditionUpdate(ConditionType.enter_otherhouse);
         }
 
-        SessionSave();
+        // A save that cannot be stored ends the session: nothing more is done on it.
+        if (!SessionSave()) {
+            return false;
+        }
 
         // Update the client with the latest channel list.
         ChannelsResponse response = World.Channels(new ChannelsRequest());
@@ -1430,25 +1440,64 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    // A session whose saves fail three times in a row is ended: what it gave or took since its last stored save is
-    // in its memory only, and every reward or item it hands out from then on would be one more that the next login
-    // does not know of (a quest reward mailed at once while the quest row is not stored is claimable again). Ending
-    // it is the one step that closes every such path; refusing each reward and item action instead would have to
-    // reach every handler that gives one. The cut takes the lost-connection path: Dispose tries one last full save
+    // A session whose save fails (after one immediate try again, for a passing error such as a deadlock) is ended:
+    // what it gave or took since its last stored save is in its memory only, and items made since are stored at once
+    // while the items it used up are written by the save (a stack's lower amount, a removed item). Played on, every
+    // box opened or reward handed out would come back at the next login, again each session. Ending it is the one
+    // step that closes every such path; refusing each reward and item action instead would have to reach every
+    // handler that gives one. The cut takes the lost-connection path: Dispose tries one last full save
     // (MigrationSave), and the next login starts from the last stored state, whole, with no part written alone.
-    public void SessionSave() {
+    // False when the session was ended: the caller does nothing more with it.
+    public bool SessionSave() {
+        if (SaveTwice()) {
+            return true;
+        }
+        Logger.Fatal("SessionSave: not stored after a second try, the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
+            AccountId, CharacterId);
+        Cut();
+        return false;
+    }
+
+    // The first save after the player is loaded (EnterServer): a character whose state cannot be stored (a row the
+    // database refuses each time) is not let in, and stays out until its row is fixed. The entry is refused before
+    // anything of it is created, so nothing is given that a later save could not match.
+    internal bool EntrySave() {
+        if (SaveTwice()) {
+            return true;
+        }
+        Logger.Fatal("EntrySave: the character's state cannot be stored, the entry is refused AccountId={AccountId} CharacterId={CharacterId}",
+            AccountId, CharacterId);
+        return false;
+    }
+
+    private bool SaveTwice() {
         try {
             AcquireLock(AccountId, 5);
-            Save();
+            return Save() || Save();
         } catch (Exception ex) {
-            failedSaveRun++;
             Logger.Error(ex, "SessionSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return false;
         } finally {
             ReleaseLock(AccountId);
         }
-        if (failedSaveRun >= FailedSaveRunEnd) {
-            Cut();
+    }
+
+    // The timed save, from the session's queue: it runs on the player's field thread, where the packets that change
+    // the player are handled, and not while the session changes field or channel (State is ChangeMap then; that
+    // move saves on its own).
+    private void TimedSave() {
+        FieldManager? field = Field;
+        if (State != SessionState.Connected || field == null) {
+            return;
         }
+        field.Scheduler.Schedule(() => TimedSaveOnField(field));
+    }
+
+    internal void TimedSaveOnField(FieldManager field) {
+        if (State != SessionState.Connected || Field != field) {
+            return;
+        }
+        SessionSave();
     }
 
     /// <summary>
@@ -1495,30 +1544,19 @@ public sealed partial class GameSession : Core.Network.Session {
     // gates an item, a currency or a reward (the config's lapenshards, skill and stat points; survival medals; the
     // home; event, achievement and quest rewards claimed; dungeon records), so storing one without the others would
     // let a reward be taken twice, or an item be lost, after the next login. A save that failed anywhere (an
-    // exception, or a write the database refused) is rolled back whole; the session keeps its state and the next
-    // save tries again. The saves that failed in a row are counted, and the third ends the session (see SessionSave).
+    // exception, or a write the database refused) is rolled back whole; the session keeps its state (SessionSave
+    // tries once again, then ends the session).
     private bool Save() {
-        bool stored;
         try {
-            stored = SaveRows();
+            if (SaveRows()) {
+                return true;
+            }
         } catch (Exception ex) {
             // A throw anywhere in the save (a deadlock on a write, the rollback or the commit) is a failed save too.
             Logger.Error(ex, "Save failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-            stored = false;
         }
-        if (stored) {
-            failedSaveRun = 0;
-        } else {
-            failedSaveRun++;
-            if (failedSaveRun >= FailedSaveRunEnd) {
-                Logger.Fatal("Save: {Count} saves in a row not stored, the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
-                    failedSaveRun, AccountId, CharacterId);
-            } else {
-                Logger.Error("Save: not stored ({Count} in a row) AccountId={AccountId} CharacterId={CharacterId}",
-                    failedSaveRun, AccountId, CharacterId);
-            }
-        }
-        return stored;
+        Logger.Error("Save: not stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+        return false;
     }
 
     private bool SaveRows() {

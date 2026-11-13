@@ -939,12 +939,22 @@ public class ConfigManager {
         if (!UnequipLapenshard(slot)) {
             return false;
         }
-
-        if (!session.Item.Inventory.Consume(itemUid, 1)) {
+        // The config with the shard worn and the bag row without it are stored together or not at all, as for the
+        // unequip: the bag's change was left to the next session save, so an equip and an unequip, then a crash or a
+        // failed save, left the old bag row beside the unequip's new one (two shards after the next login).
+        lapenshards[slot] = lapenshard.Id;
+        if (!session.TrySavePurchase(db => {
+                Save(db);
+                return session.Item.Inventory.SaveConsumed(db, itemUid, 1);
+            })) {
+            lapenshards.Remove(slot);
             return false;
         }
+        if (!session.Item.Inventory.ConsumeStored(itemUid, 1)) {
+            // Checked above on the same thread; the stored rows hold the equip, as the next login reads it.
+            Serilog.Log.Logger.ForContext<ConfigManager>().Error("Lapenshard {ItemUid} stored as worn but not taken from the bag of {CharacterId}", itemUid, session.CharacterId);
+        }
 
-        lapenshards[slot] = lapenshard.Id;
         session.Send(LapenshardPacket.Equip(slot, lapenshard.Id));
         RefreshLapenshardBuffs();
 

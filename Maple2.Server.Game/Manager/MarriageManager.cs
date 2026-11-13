@@ -921,7 +921,10 @@ public sealed class MarriageManager {
         Currency currency = partner.Value.Currency;
         currency.Meret -= cost;
         WeddingHall? hall = null;
-        bool saved = partner.Session.TrySavePurchase(db => (hall = storeHall(db)) != null);
+        // The coupon's bag row is stored with the hall (it was used up in memory only, so a crash before the next
+        // save gave it back while the hall stayed reserved).
+        bool saved = partner.Session.TrySavePurchase(db =>
+            (couponUid == 0 || partner.Session.Item.Inventory.SaveConsumed(db, couponUid, 1)) && (hall = storeHall(db)) != null);
         currency.Meret += cost;
         if (!saved || hall == null) {
             logger.Error("Wedding hall not stored, nothing paid: payer {CharacterId}, cost {Cost}", partner.Value.Character.Id, cost);
@@ -932,7 +935,7 @@ public sealed class MarriageManager {
             partner.Session.Currency.Meret -= cost;
         }
         if (couponUid != 0) {
-            if (!partner.Session.Item.Inventory.Consume(couponUid, 1)) {
+            if (!partner.Session.Item.Inventory.ConsumeStored(couponUid, 1)) {
                 logger.Error("Wedding hall {HallId} stored, but its coupon {Uid} was not used up", hall.Id, couponUid);
             }
             payer.couponItemUid = 0;

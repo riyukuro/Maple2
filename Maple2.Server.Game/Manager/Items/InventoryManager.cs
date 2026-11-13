@@ -1010,6 +1010,45 @@ public class InventoryManager {
         }
     }
 
+    // Writes the row of bag item uid as Consume(uid, amount) leaves it (the stack's lower amount, or the last ones given
+    // up: owner 0, as Save stores a removed item), in db's transaction; memory is not changed. For a use whose other
+    // rows are stored at once (a worn lapenshard, a stored wedding hall): the caller calls ConsumeStored once db
+    // committed. False when the bag does not hold amount of it.
+    public bool SaveConsumed(GameStorage.Request db, long uid, int amount) {
+        lock (session.Item) {
+            Item? item = tabs.Values.FirstOrDefault(collection => collection.Contains(uid))?.Get(uid);
+            if (item == null || amount <= 0 || item.IsExpired() || item.Amount < amount) {
+                return false;
+            }
+            if (item.Amount == amount) {
+                return db.SaveItems(0, item);
+            }
+            item.Amount -= amount;
+            try {
+                return db.SaveItems(session.CharacterId, item);
+            } finally {
+                item.Amount += amount;
+            }
+        }
+    }
+
+    // Consume(uid, amount) after SaveConsumed(db, uid, amount) committed: the row is already stored as this leaves it.
+    // A stack's lower amount is the amount the next bag save writes again (the same value, not a second decrement); the
+    // last ones given up are not put on the delete list, since their row is at owner 0 already.
+    public bool ConsumeStored(long uid, int amount) {
+        lock (session.Item) {
+            Item? item = tabs.Values.FirstOrDefault(collection => collection.Contains(uid))?.Get(uid);
+            bool last = item != null && item.Amount == amount;
+            if (!ConsumeInternal(uid, amount)) {
+                return false;
+            }
+            if (last) {
+                Forget(uid);
+            }
+            return true;
+        }
+    }
+
     // The list keeps what this save wrote until the save is kept: an entry is taken off once its write to owner 0 is
     // committed (at once without a transaction, at the commit of the session save's transaction), so a save that fails
     // or is rolled back writes it again next time. Before, the list was never emptied. Chosen here: an entry is taken
