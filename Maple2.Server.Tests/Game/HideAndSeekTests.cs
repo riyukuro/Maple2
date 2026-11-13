@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -477,6 +478,58 @@ public class HideAndSeekTests {
         });
     }
 
+    private static void SetEvents(HideAndSeekState state) {
+        state.SetConstant("EventHideAndSeekStart", "hideandseek_start", "ALL", "KR");
+        state.SetConstant("EventDailyQuestStart", "dailyquest_start", "ALL", "KR");
+        state.SetConstant("EventHideAndSeekWin", "hideandseek_win", "ALL", "KR");
+    }
+
+    // The trigger codes at the result: the start codes for both teams, the win code for the winners, each once per
+    // player per game; a new game (Split) raises them again.
+    [Test]
+    public void Events_OncePerPlayerPerGame() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        SetEvents(state);
+        state.Hit(seeker, hiders[0], 5000, 108_000);
+        state.Hit(seeker, hiders[1], 5000, 109_000);
+        Assert.Multiple(() => {
+            Assert.That(state.EventsOf(seeker), Is.EqualTo(new[] { "hideandseek_start", "dailyquest_start", "hideandseek_win" }));
+            Assert.That(state.EventsOf(hiders[0]), Is.EqualTo(new[] { "hideandseek_start", "dailyquest_start" }));
+            Assert.That(state.EventsOf(seeker), Is.Empty);
+            Assert.That(state.EventsOf(hiders[0]), Is.Empty);
+            Assert.That(state.EventsOf(12345), Is.Empty);
+        });
+        state.Split([seeker, hiders[0]], new Random(1));
+        Assert.That(state.EventsOf(seeker), Is.Not.Empty);
+    }
+
+    // A game that ended because a player left raises nothing, for the team left behind as well.
+    [Test]
+    public void Events_NoneAfterALeave() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        SetEvents(state);
+        state.Hit(seeker, hiders[0], 5000, 108_000);
+        Assert.That(state.Remove(hiders[1], 109_000), Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+        Assert.Multiple(() => {
+            Assert.That(state.RewardOf(seeker), Is.EqualTo("Loser"));
+            Assert.That(state.EventsOf(seeker), Is.Empty);
+            Assert.That(state.EventsOf(hiders[0]), Is.Empty);
+        });
+    }
+
+    // A code the field does not give is not raised.
+    [Test]
+    public void Events_OnlyTheFieldsCodes() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        state.SetConstant("EventHideAndSeekWin", "hideandseek_win", "ALL", "KR");
+        state.Hit(seeker, hiders[0], 5000, 108_000);
+        state.Hit(seeker, hiders[1], 5000, 109_000);
+        Assert.Multiple(() => {
+            Assert.That(state.EventsOf(seeker), Is.EqualTo(new[] { "hideandseek_win" }));
+            Assert.That(state.EventsOf(hiders[0]), Is.Empty);
+        });
+    }
+
     // The client sends where a seek shot landed: farther than the seek attack's range (750) it is pulled back onto
     // the line to the seeker.
     [Test]
@@ -524,6 +577,13 @@ public class HideAndSeekTests {
         b.Session.Field = field;
         a.Session.Ride = new Maple2.Server.Game.Manager.RideManager(a.Session);
         b.Session.Ride = new Maple2.Server.Game.Manager.RideManager(b.Session);
+        // Achieves 23400056 (hideandseek_start) and 23400057 (hideandseek_win) as the data has them (trigger, goal 10).
+        AchievementMetadata Event(int id, string code) => new(id, $"{id}", false, AchievementCategory.Life, [],
+            new Dictionary<int, AchievementMetadataGrade> {
+                [1] = new(1, new ConditionMetadata(ConditionType.trigger, 10, new ConditionMetadata.Parameters(Strings: [code]), null), null),
+            }, false);
+        a.AddAchievement(Event(23400056, "hideandseek_start"), Event(23400057, "hideandseek_win"));
+        b.AddAchievement(Event(23400056, "hideandseek_start"), Event(23400057, "hideandseek_win"));
         FieldInfo userValues = typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!;
         if (userValues.GetValue(field) == null) {
             userValues.SetValue(field, new TriggerUserValues());
@@ -542,6 +602,8 @@ public class HideAndSeekTests {
         field.StartHideAndSeek(1);
         HideAndSeekField game = field.HideAndSeek!;
         game.Constant("RequireUserCount", "2", "ALL");
+        game.Constant("EventHideAndSeekStart", "hideandseek_start", "ALL");
+        game.Constant("EventHideAndSeekWin", "hideandseek_win", "ALL");
         for (int i = 0; i < 20 && game.Step != HideAndSeekStep.LookingForATeams; i++) {
             game.Update(field.FieldTick);
         }
@@ -582,6 +644,14 @@ public class HideAndSeekTests {
             Assert.That(sent.Any(packet => packet.SequenceEqual(HideAndSeekPacket.End(hider.ObjectId).ToArray())), Is.True);
             Assert.That(game.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
             Assert.That(state.RewardOf(seeker.Value.Character.Id), Is.EqualTo("Winner"));
+        });
+        // The result raised the trigger codes once: both players started a game, the seeker won it.
+        TestGameSession seekerTest = aSeeks ? a : b;
+        Assert.Multiple(() => {
+            Assert.That(seekerTest.TrophyCounter(23400056), Is.EqualTo(1));
+            Assert.That(seekerTest.TrophyCounter(23400057), Is.EqualTo(1));
+            Assert.That(hiderTest.TrophyCounter(23400056), Is.EqualTo(1));
+            Assert.That(hiderTest.TrophyCounter(23400057), Is.Null);
         });
     }
 }

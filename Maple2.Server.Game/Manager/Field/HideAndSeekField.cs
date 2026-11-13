@@ -40,7 +40,7 @@ public sealed class HideAndSeekState {
     public const int SeekerLives = 3;
 
     // Every key the hide-and-seek fields give (61000023-61000029). The ones the game does not use (exp, the watch
-    // camera, the events) are kept for their own work.
+    // camera) are kept for their own work.
     public static readonly HashSet<string> Keys = [
         "BeginTriggerID", "EndTriggerID", "RequireUserCount", "EnterableSeconds", "GameRuleNoticeTick", "ShortOfUserTick",
         "DivideTeamsSeconds", "MoveGameAreaTick", "BeInHidingTeamsSeconds", "LookingForATeamsSeconds", "TeamMatchResultTick",
@@ -58,6 +58,8 @@ public sealed class HideAndSeekState {
     private readonly Dictionary<long, int> lives = [];
     private readonly Dictionary<long, int> kills = [];
     private readonly Dictionary<long, Hider> hiders = [];
+    // The players this game's trigger conditions (the Event* codes) were raised for.
+    private readonly HashSet<long> raised = [];
 
     public sealed class Hider(int rideId, int prop, long health) {
         public int RideId { get; } = rideId;
@@ -239,6 +241,7 @@ public sealed class HideAndSeekState {
         lives.Clear();
         kills.Clear();
         hiders.Clear();
+        raised.Clear();
         long[] order = characterIds.ToArray();
         random.Shuffle(order);
         int seekers = SeekerCount(order.Length);
@@ -263,6 +266,27 @@ public sealed class HideAndSeekState {
             return null;
         }
         return team == Winner && !EndedByLeave ? "Winner" : "Loser";
+    }
+
+    // The trigger condition codes (ConditionType trigger) to raise for a team player at the result: the start codes
+    // (EventHideAndSeekStart, EventDailyQuestStart) and, for a winner, EventHideAndSeekWin; each code only when the
+    // field gives it. Chosen here (no client code or data says when): they are raised once per player per game, at
+    // the result, and none for a game without a reward for the player (RewardOf null) or one that ended because a
+    // player left, so leaving cannot farm achieves 23400056-7 or the CN quests 80010530/80010540-3.
+    public IReadOnlyList<string> EventsOf(long characterId) {
+        string? reward = RewardOf(characterId);
+        if (reward == null || EndedByLeave || !raised.Add(characterId)) {
+            return [];
+        }
+        var codes = new List<string>();
+        foreach (string key in reward == "Winner"
+                     ? new[] { "EventHideAndSeekStart", "EventDailyQuestStart", "EventHideAndSeekWin" }
+                     : new[] { "EventHideAndSeekStart", "EventDailyQuestStart" }) {
+            if (Constant(key) is { Length: > 0 } code) {
+                codes.Add(code);
+            }
+        }
+        return codes;
     }
 
     // A player left: a team left empty ends the game: in MoveGameArea short of players (the script's only way out
@@ -627,6 +651,9 @@ public sealed class HideAndSeekField {
                 foreach (FieldPlayer player in field.Players.Values.Where(player => state.TeamOf(player.Value.Character.Id) != 0)) {
                     (int itemId, int count) = Reward(player);
                     player.Session.Send(HideAndSeekPacket.Result(player.ObjectId, ResultRound, itemId, count));
+                    foreach (string code in state.EventsOf(player.Value.Character.Id)) {
+                        player.Session.ConditionUpdate(ConditionType.trigger, codeString: code);
+                    }
                 }
                 logger.Information("Hide and Seek game on {MapId}: team {Winner} won{Left}", field.MapId, state.Winner,
                     state.EndedByLeave ? " (a player left)" : "");
