@@ -85,6 +85,7 @@ public class ProgressionOrderTests {
             [2] = 100000,
         }));
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { characterMaxLevel = 70, UserRevivalPaneltyMinLevel = 10 });
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
         GameSession session = test.Start();
         LoadConfig(test, session);
         test.TakeSent();

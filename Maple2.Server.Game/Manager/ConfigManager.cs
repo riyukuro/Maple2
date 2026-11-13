@@ -145,13 +145,10 @@ public class ConfigManager {
         statAttributes = new StatAttributes(statLimits);
         if (load.StatPoints != null) {
             foreach ((AttributePointSource source, int amount) in load.StatPoints) {
-                if (source == AttributePointSource.Prestige) {
-                    statAttributes.Sources[source] = RefreshPrestigeAttributePoints();
-                    continue;
-                }
                 statAttributes.Sources[source] = amount;
             }
         }
+        statAttributes.Sources[AttributePointSource.Prestige] = RefreshPrestigeAttributePoints();
         if (load.Allocation != null) {
             // Reset points if total points exceed the limit.
             if (load.Allocation.Values.Sum() > statAttributes.TotalPoints) {
@@ -164,7 +161,14 @@ public class ConfigManager {
         }
     }
 
+    // The prestige stat points: the statPoint rows up to the account's prestige level, held while the character is
+    // below AdventureLevelStartLevel. The adventure window shows those rows locked below that level and the
+    // character window gives the reason text with them only from it (uiadventureleveldialog.cpp:483,
+    // uipcinfodialog.cpp:778, Client::Constants AdventureLevelStartLevel +0x9298).
     private int RefreshPrestigeAttributePoints() {
+        if (session.Player.Value.Character.Level < Constants.AdventureLevelStartLevel) {
+            return 0;
+        }
         IEnumerable<PrestigeLevelRewardMetadata> entries = session.TableMetadata.PrestigeLevelRewardTable.Entries.Values.Where(entry => entry.Level <= session.Player.Value.Account.PrestigeLevel && entry.Type == PrestigeAwardType.statPoint);
         return entries.Sum(entry => entry.Value);
     }
@@ -589,6 +593,18 @@ public class ConfigManager {
     public void LoadStatAttributes() {
         session.Send(AttributePointPacket.Sources(statAttributes));
         session.Send(AttributePointPacket.Allocation(statAttributes));
+    }
+
+    public int StatPoints(AttributePointSource source) => statAttributes.Sources[source];
+
+    // Counts the prestige stat points again (a prestige or character level up); sends the sources when they change.
+    public void RecountPrestigeStatPoints() {
+        int points = RefreshPrestigeAttributePoints();
+        if (statAttributes.Sources[AttributePointSource.Prestige] == points) {
+            return;
+        }
+        statAttributes.Sources[AttributePointSource.Prestige] = points;
+        session.Send(AttributePointPacket.Sources(statAttributes));
     }
 
     public void AddStatPoint(AttributePointSource source, int amount) {

@@ -235,6 +235,7 @@ public sealed class ExperienceManager {
             session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
             session.Field?.Broadcast(JobPacket.Basic(session.Player, session.Config.Skill.SkillInfo));
             session.Stats.Refresh(levelUp: true);
+            session.Config.RecountPrestigeStatPoints();
             session.Config.LoadHotBars();
             session.AdventureProtect.Update();
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
@@ -305,18 +306,7 @@ public sealed class ExperienceManager {
         if (session.Field != null) {
             session.Player.Buffs.RefreshPrestigeBuffs();
         }
-        CheckPrestigeReward();
-    }
-
-    private void CheckPrestigeReward() {
-        if (!session.TableMetadata.PrestigeLevelRewardTable.Entries.TryGetValue(PrestigeLevel, out PrestigeLevelRewardMetadata? metadata)) {
-            return;
-        }
-
-        if (metadata.Type != PrestigeAwardType.statPoint) {
-            return;
-        }
-
-        session.Config.AddStatPoint(AttributePointSource.Prestige, metadata.Value);
+        // Every statPoint row up to the new level, also those of levels a gain passed over.
+        session.Config.RecountPrestigeStatPoints();
     }
 }
