@@ -925,6 +925,13 @@ public sealed class QuestManager {
         int points = AllianceMissions.AddFame(famePoints.GetValueOrDefault(alliance), amount);
         famePoints[alliance] = points;
         session.Send(UserEnvPacket.FamePoint(alliance, points));
+        // The fame grade trophies (22500001 and on): code the alliance, target the grade. Every grade reached is
+        // reported, so a gain that passes two grades counts both, and a character that held the fame before
+        // fame_grade was counted gets its trophies at the next gain; a grade already counted moves nothing
+        // (AchievementManager.Advances).
+        foreach (int grade in FameLogRules.ReachedGrades(session.TableMetadata.FameTable, alliance, points)) {
+            session.ConditionUpdate(ConditionType.fame_grade, targetLong: grade, codeLong: (int) alliance);
+        }
         if (amount > 0 && FameLogRules.Roll(Random.Shared)) {
             AddFameLog(alliance, points, Random.Shared);
         }

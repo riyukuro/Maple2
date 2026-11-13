@@ -95,6 +95,21 @@ public class FameLogRulesTests {
         Assert.That(FameLogRules.Grade(Read(), AllianceType.GreenHoods, points), Is.EqualTo(grade));
     }
 
+    // Every grade from 1 to the one of the points, for the fame_grade trophies.
+    [TestCase(0, new[] { 1 })]
+    [TestCase(9999, new[] { 1 })]
+    [TestCase(10000, new[] { 1, 2 })]
+    [TestCase(30000, new[] { 1, 2, 3 })]
+    public void ReachedGrades_UpToTheGrade(int points, int[] grades) {
+        Assert.That(FameLogRules.ReachedGrades(Read(), AllianceType.GreenHoods, points), Is.EqualTo(grades));
+    }
+
+    [Test]
+    public void ReachedGrades_NoneWithoutGrades() {
+        var table = new FameTable([], new Dictionary<int, AllianceType>());
+        Assert.That(FameLogRules.ReachedGrades(table, AllianceType.GreenHoods, 50000), Is.Empty);
+    }
+
     // Only the alliance's logs of the grade that are not held; none when all are held.
     [Test]
     public void Pick_OneNotHeldOfTheGrade() {

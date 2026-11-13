@@ -736,4 +736,69 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.Empty);
     }
     #endregion
+
+    #region fame_grade
+    // A fame grade trophy: code the alliances, target the grade, one count to complete (as 22500019 and 22500001).
+    private static AchievementMetadata FameTrophy(int id, int grade, params int[] alliances) {
+        var condition = new ConditionMetadata(ConditionType.fame_grade, 1,
+            new ConditionMetadata.Parameters(Integers: alliances), new ConditionMetadata.Parameters(Integers: [grade]));
+        return new AchievementMetadata(id, $"{id}", false, AchievementCategory.Life, [],
+            new Dictionary<int, AchievementMetadataGrade> { [1] = new AchievementMetadataGrade(1, condition, null) });
+    }
+
+    private GameSession StartWithFame(params AchievementMetadata[] trophies) {
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>(), GradeRows: [
+            new FameTable.Grade(AllianceType.GreenHoods, 1, 0),
+            new FameTable.Grade(AllianceType.GreenHoods, 2, 10000),
+            new FameTable.Grade(AllianceType.GreenHoods, 3, 30000),
+            new FameTable.Grade(AllianceType.DarkWind, 1, 0),
+            new FameTable.Grade(AllianceType.DarkWind, 2, 10000),
+        ]));
+        return Start(trophies);
+    }
+
+    private int Achieves() => Sent().Count(op => op == SendOp.Achieve);
+
+    [Test]
+    public void FameGrade_AGainPassingTwoGradesCountsBoth() {
+        GameSession session = StartWithFame(FameTrophy(Trophy, 2, (int) AllianceType.GreenHoods),
+            FameTrophy(OtherTrophy, 3, (int) AllianceType.GreenHoods));
+
+        session.Quest.AddFamePoints(AllianceType.GreenHoods, 9999);
+        Assert.That(test.TrophyCounter(Trophy), Is.Null);
+        Assert.That(Achieves(), Is.EqualTo(0));
+
+        session.Quest.AddFamePoints(AllianceType.GreenHoods, 20001);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.EqualTo(1));
+        Assert.That(Achieves(), Is.EqualTo(2));
+    }
+
+    // The Sky Fortress trophies take any of the five alliances; another alliance's grade does not count.
+    [Test]
+    public void FameGrade_AnyAllianceCodeAndOtherAlliance() {
+        GameSession session = StartWithFame(FameTrophy(Trophy, 2, 1, 2, 3, 4, 5),
+            FameTrophy(OtherTrophy, 2, (int) AllianceType.GreenHoods));
+
+        session.Quest.AddFamePoints(AllianceType.DarkWind, 10000);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null);
+        Assert.That(Achieves(), Is.EqualTo(1));
+    }
+
+    // A grade already counted moves nothing: a later gain sends no trophy update again.
+    [Test]
+    public void FameGrade_RepeatGainSendsNothing() {
+        GameSession session = StartWithFame(FameTrophy(Trophy, 2, (int) AllianceType.GreenHoods));
+
+        session.Quest.AddFamePoints(AllianceType.GreenHoods, 10000);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Achieves(), Is.EqualTo(1));
+
+        session.Quest.AddFamePoints(AllianceType.GreenHoods, 500);
+        session.Quest.AddFamePoints(AllianceType.GreenHoods, 25000);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(Achieves(), Is.EqualTo(0));
+    }
+    #endregion
 }

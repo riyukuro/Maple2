@@ -97,13 +97,15 @@ public sealed class AchievementManager {
     /// Whether a count moves a trophy that the player already has. The gear score counter keeps the highest score
     /// (RankUp), and every stats refresh reports the score (StatsManager.Refresh, also on each buff with stats), so a
     /// score at or below the counter changes nothing and sends no Update. The kill streak counter keeps the longest streak
-    /// the same way, and interior_level the highest home decoration level. Other conditions add the count.
+    /// the same way, interior_level the highest home decoration level, and fame_grade stays at 1 (each fame change
+    /// reports every grade reached again). Other conditions add the count.
     /// </summary>
     public static bool Advances(ConditionType conditionType, long counter, long count) {
         if (conditionType is ConditionType.interior_point) {
             return InteriorPointRules.Advances(counter, count);
         }
-        return conditionType is not (ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level) || count > counter;
+        return conditionType is not (ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade)
+            || count > counter;
     }
 
     /// <summary>
@@ -137,7 +139,7 @@ public sealed class AchievementManager {
 
     private bool RankUp(ConditionType conditionType, Achievement achievement, long count = 1) {
         // Are there more conditions that should be added here?
-        if (conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level) {
+        if (conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade) {
             achievement.Counter = Math.Max(achievement.Counter, count); // Using Math.Max to ensure gear score doesn't decrease.
         } else if (conditionType is ConditionType.interior_point) {
             achievement.Counter = InteriorPointRules.Counter(achievement.Counter, count);

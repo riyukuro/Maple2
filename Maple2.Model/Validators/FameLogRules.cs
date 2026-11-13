@@ -24,6 +24,13 @@ public static class FameLogRules {
         return grade;
     }
 
+    // The grades fame_grade reports for these points: 1 to the alliance's grade (Grade). A trophy of a grade counts
+    // once the alliance reaches or passes it, as the client takes a condition's fame grade from the points
+    // (CQuestManager::vfunc_o10_13: GetGradeByPoint of GetFamePoints); empty for an alliance without grades.
+    public static IEnumerable<int> ReachedGrades(FameTable table, AllianceType alliance, int points) {
+        return Enumerable.Range(1, Grade(table, alliance, points));
+    }
+
     // Whether this fame gain adds a log.
     public static bool Roll(Random random) {
         return random.Next(GAINS_PER_LOG) == 0;

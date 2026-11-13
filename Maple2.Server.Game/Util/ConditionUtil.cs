@@ -41,6 +41,7 @@ public static class ConditionUtil {
             case ConditionType.interact_object:
             case ConditionType.interact_object_rep:
             case ConditionType.donation_type: // code: the donated item's property type
+            case ConditionType.fame_grade: // code: the alliance
                 if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
                     return true;
@@ -247,6 +248,12 @@ public static class ConditionUtil {
                 break;
             case ConditionType.interact_object_rep:
                 // The interact type of the object (2 telescope: the binocular event quest 89050108).
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
+            case ConditionType.fame_grade:
+                // The alliance grade reached (2 to 5 in the fame grade trophies).
                 if (target.Integers != null && target.Integers.Contains((int) longValue)) {
                     return true;
                 }
