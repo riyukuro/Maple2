@@ -337,17 +337,12 @@ public class RequestCubeHandler : FieldPacketHandler {
         var position = packet.Read<Vector3B>();
         bool clockwise = packet.ReadBool();
 
-        Plot? plot = session.Housing.GetBuildFieldPlot(out _);
+        Plot? plot = session.Housing.GetBuildFieldPlot(out GameSession owner);
         if (plot == null) {
             return;
         }
-        PlotCube? cube;
-        lock (plot.EditLock) {
-            if (plot.Cubes.TryGetValue(position, out cube)) {
-                cube.Rotate(clockwise);
-            }
-        }
-        if (cube == null) {
+        // A build helper turns the owner's cube through the owner's manager, as a place or a remove.
+        if (!owner.Housing.TryRotateCube(plot, position, clockwise, out PlotCube? cube)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_rotate));
             return;
         }

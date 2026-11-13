@@ -307,6 +307,37 @@ public class ModelHouseStaleFieldTests {
         Assert.That(Outdated(home), Is.False);
     }
 
+    // A rotation writes its row at once, so it is kept even when the field is not saved at the leave (an outdated
+    // field), and the field stays current. Before, a rotation changed only the held cube and was saved at the leave.
+    [Test]
+    public void Rotation_WritesItsRowAtOnce() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        Assert.That(session.Housing.TryRotateCube(plot, new Vector3B(-1, -1, 0), true, out PlotCube? cube), Is.True);
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(cube!.Rotation, Is.EqualTo(270f));
+            Assert.That(db.GetCubeRotations(plot.Id)[cube.Id], Is.EqualTo(270f));
+            Assert.That(Outdated(home), Is.False);
+        });
+    }
+
+    // A rotation made in another instance of the home (its row has another rotation, the same ids) makes this field
+    // outdated: its leave would write the old rotation back. Before, only the row ids were compared.
+    [Test]
+    public void RotationElsewhere_MakesTheFieldOutdated() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        Assert.That(Outdated(home), Is.False);
+        long id = plot.Cubes.Values.First().Id;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SetCubeRotation(id, 90f), Is.True);
+        }
+        Assert.That(Outdated(home), Is.True);
+    }
+
     // The rule: a row the field neither holds nor saved, or a held cube without its row, makes the field outdated.
     [TestCase(new long[] { 1, 2 }, new long[] { 1, 2 }, new long[] { 1, 2 }, false)]
     [TestCase(new long[] { 1, 2 }, new long[] { 1 }, new long[] { 1, 2 }, false)] // removed here, saved row not yet deleted

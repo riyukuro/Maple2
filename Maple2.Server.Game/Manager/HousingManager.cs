@@ -695,6 +695,29 @@ public class HousingManager {
         logger.Error("Failed to delete cube {CubeId} at position {Position}.", cube.Id, cube.Position);
     }
 
+    // Turns the cube at the position and writes its rotation to its row at once, as a place or a remove writes its
+    // row: a field judged outdated saves nothing at the leave, and another instance's rotation is seen by Outdated.
+    // When the row cannot be written the cube is turned back and the rotation refused, so the held cube keeps its
+    // row's rotation (the field stays current).
+    public bool TryRotateCube(Plot plot, in Vector3B position, bool clockwise, [NotNullWhen(true)] out PlotCube? cube) {
+        lock (plot.EditLock) {
+            if (!plot.Cubes.TryGetValue(position, out cube)) {
+                return false;
+            }
+            cube.Rotate(clockwise);
+            if (plot.IsPlanner || plot.Id == 0 || cube.Id >= Constant.FurnishingBaseId) {
+                return true;
+            }
+            using GameStorage.Request db = session.GameStorage.Context();
+            if (!db.SetCubeRotation(cube.Id, cube.Rotation)) {
+                logger.Error("Failed to save the rotation of cube {CubeId} at position {Position}.", cube.Id, cube.Position);
+                cube.Rotate(!clockwise);
+                return false;
+            }
+            return true;
+        }
+    }
+
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
                              [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null) {
         lock (plot.EditLock) {

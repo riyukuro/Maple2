@@ -851,6 +851,23 @@ public partial class GameStorage {
             return Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfoId).Select(cube => cube.Id).ToHashSet();
         }
 
+        // The rotation of each cube row of the plot, by cube id.
+        public Dictionary<long, float> GetCubeRotations(long plotInfoId) {
+            return Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfoId).ToDictionary(cube => cube.Id, cube => cube.Rotation);
+        }
+
+        // Writes a cube's rotation to its row. False when the row is gone.
+        public bool SetCubeRotation(long cubeId, float rotation) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            UgcMapCube? model = Context.UgcMapCube.Find(cubeId);
+            if (model == null) {
+                return false;
+            }
+            model.Rotation = rotation;
+            return Context.TrySaveChanges();
+        }
+
         public PlotCube? GetCube(long cubeId) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 

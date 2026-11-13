@@ -59,11 +59,12 @@ public class HomeFieldManager : FieldManager {
     }
 
     // The cubes of this field are not the home's any more: the database has a cube row this field neither holds nor
-    // loaded or saved, or has lost one it holds. Something other than this field wrote the home's cubes since: a
-    // model house (InitNewHome) or an interior package applied elsewhere, or a save from another instance. A field's
-    // own place and remove write and delete their rows at once (HousingManager.CreateCube, DeleteCube), so its own
-    // edits leave it current. Entering such a field showed the old cubes, and the owner's leave saved them over the
-    // home's (SaveCubes deletes every row the list does not hold).
+    // loaded or saved, or has lost one it holds, or a held cube's row has another rotation. Something other than this
+    // field wrote the home's cubes since: a model house (InitNewHome) or an interior package applied elsewhere, or a
+    // save or a rotation from another instance. A field's own place, remove and rotation write their rows at once
+    // (HousingManager.CreateCube, DeleteCube, TryRotateCube), so its own edits leave it current. Entering such a
+    // field showed the old cubes, and the owner's leave saved them over the home's (SaveCubes deletes every row the
+    // list does not hold).
     public bool Outdated(GameStorage.Request db) {
         List<Plot> plots;
         lock (Plots) {
@@ -76,8 +77,14 @@ public class HomeFieldManager : FieldManager {
             // Under the plot's edit lock: a place or a remove writes its row and changes the cube list in it, so the
             // rows and the held cubes are read at one point (and the list is not changed while it is read).
             lock (plot.EditLock) {
-                HashSet<long> held = plot.Cubes.Values.Select(cube => cube.Id).Where(id => id < Constant.FurnishingBaseId).ToHashSet();
-                if (Outdated(savedCubes?.GetValueOrDefault(plot.Number) ?? [], held, db.GetCubeIds(plot.Id))) {
+                List<PlotCube> cubes = plot.Cubes.Values.Where(cube => cube.Id < Constant.FurnishingBaseId).ToList();
+                HashSet<long> held = cubes.Select(cube => cube.Id).ToHashSet();
+                Dictionary<long, float> rows = db.GetCubeRotations(plot.Id);
+                if (Outdated(savedCubes?.GetValueOrDefault(plot.Number) ?? [], held, rows.Keys.ToHashSet())) {
+                    return true;
+                }
+                // Another instance turned a cube: same rows, another rotation.
+                if (cubes.Any(cube => rows.TryGetValue(cube.Id, out float rotation) && Math.Abs(rotation - cube.Rotation) > 0.01f)) {
                     return true;
                 }
             }
