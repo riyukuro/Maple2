@@ -1,18 +1,25 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -396,6 +403,185 @@ public class HideAndSeekTests {
         Assert.Multiple(() => {
             Assert.That(sent, expected ? Is.EqualTo(new[] { removeSkillSet }) : Is.Empty);
             Assert.That(game.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+        });
+    }
+
+    // Rewards: a normal end pays the winners the winner reward and the others the loser's.
+    [Test]
+    public void Reward_NormalEnd_WinnerAndLoser() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        state.Hit(seeker, hiders[0], 5000, 108_000);
+        state.Hit(seeker, hiders[1], 5000, 109_000);
+        Assert.Multiple(() => {
+            Assert.That(state.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+            Assert.That(state.EndedByLeave, Is.False);
+            Assert.That(state.RewardOf(seeker), Is.EqualTo("Winner"));
+            Assert.That(state.RewardOf(hiders[0]), Is.EqualTo("Loser"));
+            Assert.That(state.RewardOf(12345), Is.Null);
+        });
+    }
+
+    // Two characters start a game (RequireUserCount 2) and one leaves: the one left wins, but fewer than the start
+    // minimum are still here, so no one is paid.
+    [Test]
+    public void Reward_TwoPlayersOneLeaves_NoReward() {
+        HideAndSeekState state = Game();
+        state.Split([1, 2], new Random(3));
+        state.Advance(60_000, 2);
+        state.Advance(70_000, 2);
+        state.Advance(75_000, 2);
+        state.Advance(77_000, 2);
+        long seeker = state.Teams.Single(entry => entry.Value == HideAndSeekState.SeekTeam).Key;
+        long hider = state.Teams.Single(entry => entry.Value == HideAndSeekState.HideTeam).Key;
+        Assert.That(state.Remove(seeker, 80_000), Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+        Assert.Multiple(() => {
+            Assert.That(state.Winner, Is.EqualTo(HideAndSeekState.HideTeam));
+            Assert.That(state.EndedByLeave, Is.True);
+            Assert.That(state.RewardOf(hider), Is.Null);
+        });
+    }
+
+    // A team emptied by leaving: the team left behind is enough for the start minimum but won only because the other
+    // side left, so it gets the loser's reward.
+    [Test]
+    public void Reward_OtherTeamLeft_LoserRewardOnly() {
+        HideAndSeekState state = Game();
+        state.Split([1, 2, 3, 4, 5, 6], new Random(3));
+        long[] seekers = state.Teams.Where(entry => entry.Value == HideAndSeekState.SeekTeam).Select(entry => entry.Key).ToArray();
+        long hider = state.Teams.First(entry => entry.Value == HideAndSeekState.HideTeam).Key;
+        state.Advance(60_000, 6);
+        state.Advance(70_000, 6);
+        state.Advance(75_000, 6);
+        state.Advance(77_000, 6);
+        Assert.That(seekers, Has.Length.EqualTo(2));
+        Assert.That(state.Remove(seekers[0], 80_000), Is.Null);
+        Assert.That(state.Remove(seekers[1], 80_000), Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+        Assert.Multiple(() => {
+            Assert.That(state.Winner, Is.EqualTo(HideAndSeekState.HideTeam));
+            Assert.That(state.EndedByLeave, Is.True);
+            Assert.That(state.RewardOf(hider), Is.EqualTo("Loser"));
+        });
+    }
+
+    // The last hider still hidden leaves while the seekers look: the seekers win by the leave, no winner reward.
+    [Test]
+    public void Reward_LastHiderLeavesWhileSeeking_NoWinnerReward() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        state.Hit(seeker, hiders[0], 5000, 108_000);
+        Assert.That(state.Remove(hiders[1], 109_000), Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+        Assert.Multiple(() => {
+            Assert.That(state.Winner, Is.EqualTo(HideAndSeekState.SeekTeam));
+            Assert.That(state.EndedByLeave, Is.True);
+            Assert.That(state.RewardOf(seeker), Is.EqualTo("Loser"));
+            Assert.That(state.RewardOf(hiders[0]), Is.EqualTo("Loser"));
+        });
+    }
+
+    // The client sends where a seek shot landed: farther than the seek attack's range (750) it is pulled back onto
+    // the line to the seeker.
+    [Test]
+    public void ClampLanding_ToTheAttackRange() {
+        var seeker = new Vector3(100, 0, 0);
+        Assert.Multiple(() => {
+            Assert.That(HideAndSeekField.ClampLanding(seeker, new Vector3(400, 0, 0), 750), Is.EqualTo(new Vector3(400, 0, 0)));
+            Assert.That(HideAndSeekField.ClampLanding(seeker, new Vector3(5100, 0, 0), 750), Is.EqualTo(new Vector3(850, 0, 0)));
+            Assert.That(HideAndSeekField.ClampLanding(seeker, new Vector3(5100, 0, 0), 0), Is.EqualTo(seeker));
+        });
+    }
+
+    private static SkillMetadataAttack SeekAttack(long damage, bool constDamage = true) {
+        return (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            CompulsionTypes = [],
+            Range = (SkillMetadataRange) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataRange)) with { Distance = 750 },
+            Damage = new SkillMetadataDamage(Count: 1, Rate: 0, HitSpeed: 0, HitDelay: 0, IsConstDamage: constDamage, Value: damage,
+                DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null),
+        };
+    }
+
+    private static SkillMetadata Skill(int id, SkillMetadataAttack attack) {
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
+            Motions = [new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>())],
+        };
+        return new SkillMetadata(id, 1, null, property, null!, level);
+    }
+
+    // HideAndSeekField.Hit in a field with a seeker and a hider: the seek skill's const 2500 takes the hider's object
+    // (5000, two hits) down and sends the hider its bar's hits left; the second hit catches it (mode 3, the result).
+    // Another skill of the seeker is the game's but does nothing; the hider's skills are not the game's.
+    [Test]
+    public void FieldHit_SeekSkillCatchesInTwoHits() {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var a = new TestGameSession();
+        a.SetServerTable(new HideAndSeekTable(new Dictionary<int, HideAndSeekTable.Field>()));
+        a.Start();
+        var b = new TestGameSession(a.Options);
+        b.SetServerTable(new HideAndSeekTable(new Dictionary<int, HideAndSeekTable.Field>()));
+        b.Start();
+        FieldManager field = a.Session.Field!;
+        typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", any)!.SetValue(b.Session.Player, 2);
+        field.Players[2] = b.Session.Player;
+        b.Session.Field = field;
+        a.Session.Ride = new Maple2.Server.Game.Manager.RideManager(a.Session);
+        b.Session.Ride = new Maple2.Server.Game.Manager.RideManager(b.Session);
+        FieldInfo userValues = typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!;
+        if (userValues.GetValue(field) == null) {
+            userValues.SetValue(field, new TriggerUserValues());
+        }
+        FieldInfo portals = typeof(FieldManager).GetField("fieldPortals", any)!;
+        if (portals.GetValue(field) == null) {
+            portals.SetValue(field, new System.Collections.Concurrent.ConcurrentDictionary<int, FieldPortal>());
+        }
+        // The seek skill in the field's skill store, as the ingest has it (level 1, const 2500, range 750).
+        SkillMetadataAttack attack = SeekAttack(2500);
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", any)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(HideAndSeekField.SeekSkillId, (short) 1), Skill(HideAndSeekField.SeekSkillId, attack)]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(field, skills);
+
+        field.StartHideAndSeek(1);
+        HideAndSeekField game = field.HideAndSeek!;
+        game.Constant("RequireUserCount", "2", "ALL");
+        for (int i = 0; i < 20 && game.Step != HideAndSeekStep.LookingForATeams; i++) {
+            game.Update(field.FieldTick);
+        }
+        Assert.That(game.Step, Is.EqualTo(HideAndSeekStep.LookingForATeams));
+        var state = (HideAndSeekState) typeof(HideAndSeekField).GetField("state", any)!.GetValue(game)!;
+        bool aSeeks = state.TeamOf(a.CharacterId) == HideAndSeekState.SeekTeam;
+        (FieldPlayer seeker, FieldPlayer hider, TestGameSession hiderTest) = aSeeks
+            ? (a.Session.Player, b.Session.Player, b)
+            : (b.Session.Player, a.Session.Player, a);
+        // No hideAndSeek.xml row in the test: the hider gets its object here.
+        state.Hide(hider.Value.Character.Id, 99920001, 0, 5000);
+        a.TakeSent();
+        b.TakeSent();
+
+        DamageRecord Record(int skillId) => new(Skill(skillId, attack), attack) { SkillId = skillId };
+
+        Assert.Multiple(() => {
+            Assert.That(game.Hit(hider, seeker, Record(HideAndSeekField.SeekSkillId), attack), Is.False);
+            Assert.That(game.Hit(seeker, hider, Record(HideAndSeekField.SeekSkillId + 1), attack), Is.True);
+            Assert.That(state.HiderOf(hider.Value.Character.Id)!.Health, Is.EqualTo(5000));
+        });
+
+        DamageRecord first = Record(HideAndSeekField.SeekSkillId);
+        Assert.That(game.Hit(seeker, hider, first, attack), Is.True);
+        byte[] life = HideAndSeekPacket.Life(hider.ObjectId, 1, 2).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(first.Targets.ContainsKey(hider.ObjectId), Is.True);
+            Assert.That(hiderTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.HideAndSeek && packet[2] == 4), Is.EqualTo(new[] { life }));
+            Assert.That(state.IsCaught(hider.Value.Character.Id), Is.False);
+        });
+
+        Assert.That(game.Hit(seeker, hider, Record(HideAndSeekField.SeekSkillId), attack), Is.True);
+        List<byte[]> sent = hiderTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.HideAndSeek).ToList();
+        Assert.Multiple(() => {
+            Assert.That(state.IsCaught(hider.Value.Character.Id), Is.True);
+            Assert.That(state.Kills(seeker.Value.Character.Id), Is.EqualTo(1));
+            Assert.That(sent.Any(packet => packet.SequenceEqual(HideAndSeekPacket.Life(hider.ObjectId, 0, 2).ToArray())), Is.True);
+            Assert.That(sent.Any(packet => packet.SequenceEqual(HideAndSeekPacket.End(hider.ObjectId).ToArray())), Is.True);
+            Assert.That(game.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+            Assert.That(state.RewardOf(seeker.Value.Character.Id), Is.EqualTo("Winner"));
         });
     }
 }

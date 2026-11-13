@@ -74,6 +74,8 @@ public sealed class HideAndSeekState {
     public long StepTick { get; private set; }
     // The team that won (TeamMatchResult on): the hiders when one is left at the end, else the seekers.
     public byte Winner { get; private set; }
+    // The game ended because a player left (a team emptied, or the last hider or the last seeker with lives went).
+    public bool EndedByLeave { get; private set; }
 
     public IReadOnlyDictionary<long, byte> Teams => teams;
 
@@ -233,6 +235,7 @@ public sealed class HideAndSeekState {
     // The split when the teams go to the game area: the players in a random order, the first SeekerCount seek.
     public void Split(IEnumerable<long> characterIds, Random random) {
         teams.Clear();
+        EndedByLeave = false;
         lives.Clear();
         kills.Clear();
         hiders.Clear();
@@ -249,6 +252,19 @@ public sealed class HideAndSeekState {
 
     public byte TeamOf(long characterId) => teams.GetValueOrDefault(characterId);
 
+    // Chosen here (no client code or data says): the reward a team player gets at the result, as its constants'
+    // prefix ("Winner" or "Loser"), or null for none. No one gets a reward unless the game's players still here are at
+    // least the start minimum (RequireUserCount), and a game that ended because a player left pays no winner reward:
+    // the team left behind gets the loser's. Otherwise two characters could start a game and farm the winner reward
+    // by one of them leaving.
+    public string? RewardOf(long characterId) {
+        byte team = TeamOf(characterId);
+        if (team == 0 || Short(teams.Count)) {
+            return null;
+        }
+        return team == Winner && !EndedByLeave ? "Winner" : "Loser";
+    }
+
     // A player left: a team left empty ends the game: in MoveGameArea short of players (the script's only way out
     // there), while hiding or seeking with the result. Returns the step it moved to, or null.
     public HideAndSeekStep? Remove(long characterId, long tick) {
@@ -258,6 +274,7 @@ public sealed class HideAndSeekState {
         hiders.Remove(characterId);
         lives.Remove(characterId);
         if (CheckOver(tick)) {
+            EndedByLeave = true;
             return Step;
         }
         bool empty = !teams.ContainsValue(HideTeam) || !teams.ContainsValue(SeekTeam);
@@ -270,6 +287,7 @@ public sealed class HideAndSeekState {
                 return Step;
             case HideAndSeekStep.BeInHidingTeams or HideAndSeekStep.LookingForATeams:
                 Enter(HideAndSeekStep.TeamMatchResult, tick);
+                EndedByLeave = true;
                 return Step;
             default:
                 return null;
@@ -290,7 +308,8 @@ public sealed class HideAndSeekField {
     // Chosen here: the result's round is 1, the game has one round. The client hands it to the dialog's setData only.
     public const int ResultRound = 1;
     // The seek team's skill set (SeekTeamSkillSetID 99930041) holds this one skill (table/skillset.xml), level 1: a
-    // const damage arrow (2500) whose landing splash (90001160) reaches 200 around it.
+    // const damage arrow (2500, one target, range 750) whose landing splash (90001160, a condition skill) reaches 200
+    // around it. The splash does no damage (value 0, not const), so a hider's object takes its hits from 90001159.
     public const int SeekSkillId = 90001159;
     public const float SeekSplashRadius = 200f;
     // Mode 2's bar types: 2 is the seekers' (client: the hud's slot mode). Chosen here: 1 for the hiders' object bar;
@@ -446,9 +465,11 @@ public sealed class HideAndSeekField {
 
     // A seek-skill shot landed (Skill CubeMagicPath at its position). Chosen here: it hit no hider when no hider's
     // object is within the landing splash's radius; the client sends no hit for the props it strikes, and the
-    // invincible message (MAIN__6) only says that attacking a non-hider object costs a life.
+    // invincible message (MAIN__6) only says that attacking a non-hider object costs a life. The position is the
+    // client's: it is pulled back to the seek attack's range (rangeProperty distance 750) around the seeker.
     public void Landed(FieldPlayer seeker, Vector3 position) {
         lock (mutex) {
+            position = ClampLanding(seeker.Position, position, SeekRange());
             bool near = field.Players.Values.Any(player => state.TeamOf(player.Value.Character.Id) == HideAndSeekState.HideTeam
                                                            && !state.IsCaught(player.Value.Character.Id)
                                                            && Vector3.Distance(player.Position, position) <= SeekSplashRadius);
@@ -522,14 +543,29 @@ public sealed class HideAndSeekField {
         return (int) Math.Min(int.MaxValue, perHit <= 0 ? health : (health + perHit - 1) / perHit);
     }
 
-    private long SeekDamage() {
-        if (!field.SkillMetadata.TryGet(SeekSkillId, 1, out SkillMetadata? skill)) {
-            return 0;
+    // A landing farther than range from the caster, moved onto the line to it at range. Range 0 or less: the caster's
+    // own position (no seek attack data).
+    public static Vector3 ClampLanding(Vector3 caster, Vector3 landing, float range) {
+        float distance = Vector3.Distance(caster, landing);
+        if (distance <= Math.Max(0f, range)) {
+            return landing;
         }
-        return skill.Data.Motions.SelectMany(motion => motion.Attacks)
-            .Where(attack => attack.Damage.IsConstDamage)
-            .Select(attack => attack.Damage.Value)
-            .FirstOrDefault();
+        return range <= 0 ? caster : caster + (landing - caster) * (range / distance);
+    }
+
+    private float SeekRange() {
+        return SeekAttack()?.Range.Distance ?? 0f;
+    }
+
+    private SkillMetadataAttack? SeekAttack() {
+        if (!field.SkillMetadata.TryGet(SeekSkillId, 1, out SkillMetadata? skill)) {
+            return null;
+        }
+        return skill.Data.Motions.SelectMany(motion => motion.Attacks).FirstOrDefault(attack => attack.Damage.IsConstDamage);
+    }
+
+    private long SeekDamage() {
+        return SeekAttack()?.Damage.Value ?? 0;
     }
 
     private IEnumerable<FieldPlayer> TeamPlayers(byte team) {
@@ -592,7 +628,8 @@ public sealed class HideAndSeekField {
                     (int itemId, int count) = Reward(player);
                     player.Session.Send(HideAndSeekPacket.Result(player.ObjectId, ResultRound, itemId, count));
                 }
-                logger.Information("Hide and Seek game on {MapId}: team {Winner} won", field.MapId, state.Winner);
+                logger.Information("Hide and Seek game on {MapId}: team {Winner} won{Left}", field.MapId, state.Winner,
+                    state.EndedByLeave ? " (a player left)" : "");
                 break;
         }
         field.UserValues.Set(triggerId, step.ToString(), 1);
@@ -601,7 +638,10 @@ public sealed class HideAndSeekField {
     // The team's reward (WinnerRewardItem* or LoserRewardItem* of the server's region): the item goes to the bag, or
     // the mail when the bag is full. The result dialog shows it only once it is given.
     private (int ItemId, int Count) Reward(FieldPlayer player) {
-        string prefix = state.TeamOf(player.Value.Character.Id) == state.Winner ? "Winner" : "Loser";
+        string? prefix = state.RewardOf(player.Value.Character.Id);
+        if (prefix == null) {
+            return (0, 0);
+        }
         int itemId = state.Int(prefix + "RewardItemID");
         int count = state.Int(prefix + "RewardItemCount");
         if (itemId == 0 || count <= 0) {
