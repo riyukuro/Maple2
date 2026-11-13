@@ -26,6 +26,27 @@ public static class PlayedClientQuests {
         return ids;
     }
 
+    // The start and complete npc of each quest of the table (<start npc>, <complete npc>; 0 when missing). The client
+    // marks an npc with a quest's "!" or "?" and offers the quest in its talk only at these npcs
+    // (CQuestManager::GetNpcQuestState, client/ms2/questmanager_2.cpp:1884, keyed by QuestData start and complete
+    // npc), so the server takes them from the played client's table and not from its own quest files.
+    public static Dictionary<int, (int Start, int Complete)> Npcs(XmlDocument questTable, Func<XmlElement, bool> available) {
+        var npcs = new Dictionary<int, (int Start, int Complete)>();
+        XmlNodeList? quests = questTable.SelectNodes("ms2/quest");
+        if (quests == null) {
+            return npcs;
+        }
+        foreach (XmlNode node in quests) {
+            if (node is XmlElement quest && int.TryParse(quest.GetAttribute("id"), out int id) && id != 0 && available(quest)) {
+                npcs[id] = (Npc(quest, "start"), Npc(quest, "complete"));
+            }
+        }
+        return npcs;
+    }
+
+    private static int Npc(XmlElement quest, string element) =>
+        quest.SelectSingleNode(element) is XmlElement node && int.TryParse(node.GetAttribute("npc"), out int npc) ? npc : 0;
+
     // Whether the server may start, list or send this quest: not when the played client lacks it
     // (QuestMetadataBasic.NotInPlayedClient). Without the mark every quest can be.
     public static bool Known(QuestMetadataBasic basic) => !basic.NotInPlayedClient;

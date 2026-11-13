@@ -39,6 +39,28 @@ public class PlayedClientQuestsTests {
         Assert.That(PlayedClientQuests.Ids(table, node => node.GetAttribute("feature") == ""), Is.EqualTo(new[] { 100 }));
     }
 
+    // The start and complete npcs of the enabled quests, 0 for a missing element or attribute (the played client moved
+    // the completion of 10003408 from 11004779 to 11000074, which the server's quest files still name).
+    [Test]
+    public void Npcs_AreTheStartAndCompleteNpcOfTheEnabledQuests() {
+        var table = new XmlDocument();
+        table.LoadXml("""
+            <ms2>
+              <quest id="10003408"><start npc="11004778" /><complete npc="11000074" /></quest>
+              <quest id="101" feature="Off"><start npc="1" /><complete npc="2" /></quest>
+              <quest id="102"><complete npc="5" /></quest>
+              <quest id="103"><start /></quest>
+            </ms2>
+            """);
+
+        var npcs = PlayedClientQuests.Npcs(table, Available);
+
+        Assert.That(npcs.Keys.OrderBy(id => id), Is.EqualTo(new[] { 102, 103, 10003408 }));
+        Assert.That(npcs[10003408], Is.EqualTo((11004778, 11000074)));
+        Assert.That(npcs[102], Is.EqualTo((0, 5)));
+        Assert.That(npcs[103], Is.EqualTo((0, 0)));
+    }
+
     private static QuestMetadataBasic Basic(bool notInPlayedClient) =>
         new(ChapterId: 0, Type: QuestType.EpicQuest, Account: 0, StandardLevel: 1, Forfeitable: true, EventTag: string.Empty,
             AutoStart: false, Disabled: false, UsePostbox: false, StartNpc: 0, CompleteNpc: 0, CompleteMaps: null, ProgressMaps: null,

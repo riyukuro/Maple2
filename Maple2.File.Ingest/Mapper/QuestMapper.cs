@@ -23,16 +23,22 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
     protected override IEnumerable<QuestMetadata> Map() {
         // The quests of the played client's quest table (PlayedClientQuests); null without a played client or when
         // its pack has no quest table, and then no quest is marked.
+        // playedNpcs: the start and complete npcs of that table, which the client's quest marks and talks follow.
         HashSet<int>? known = null;
+        Dictionary<int, (int Start, int Complete)>? playedNpcs = null;
         Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file =>
             string.Equals(file.Name, PlayedClientQuests.QuestTable, StringComparison.OrdinalIgnoreCase));
         if (playedReader != null && entry != null) {
-            known = PlayedClientQuests.Ids(playedReader.GetXmlDocument(entry), node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")));
+            System.Xml.XmlDocument questTable = playedReader.GetXmlDocument(entry);
+            Func<System.Xml.XmlElement, bool> available = node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature"));
+            known = PlayedClientQuests.Ids(questTable, available);
+            playedNpcs = PlayedClientQuests.Npcs(questTable, available);
             if (known.Count == 0) {
                 known = null;
+                playedNpcs = null;
             }
         }
-        int notInPlayed = 0, inPlayed = 0;
+        int notInPlayed = 0, inPlayed = 0, npcChanged = 0;
         foreach ((int id, string name, QuestData data) in parser.Parse()) {
             bool notInPlayedClient = known != null && !known.Contains(id);
             if (known != null) {
@@ -40,6 +46,13 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                 else inPlayed++;
             }
             Debug.Assert(Enum.IsDefined((QuestType) data.basic.questType), $"Invalid QuestType: {data.basic.questType}");
+            int startNpc = data.start?.npc ?? 0, completeNpc = data.complete?.npc ?? 0;
+            if (playedNpcs != null && playedNpcs.TryGetValue(id, out (int Start, int Complete) played) &&
+                (played.Start != startNpc || played.Complete != completeNpc)) {
+                startNpc = played.Start;
+                completeNpc = played.Complete;
+                npcChanged++;
+            }
             var unrequiredAchievement = (0, 0);
             if (data.require.unreqAchievement.Length == 2 &&
                 int.TryParse(data.require.unreqAchievement[0], out int achievementId) &&
@@ -59,8 +72,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     AutoStart: data.basic.autoStart,
                     Disabled: data.basic.locking,
                     UsePostbox: data.basic.usePostbox,
-                    StartNpc: data.start?.npc ?? 0,
-                    CompleteNpc: data.complete?.npc ?? 0,
+                    StartNpc: startNpc,
+                    CompleteNpc: completeNpc,
                     CompleteMaps: data.complete?.map,
                     ProgressMaps: data.progressMap.progressMap,
                     UseReEntryHiddenMap: data.basic.useReEntryHiddenMap,
@@ -145,7 +158,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
             );
         }
         if (known != null) {
-            Console.WriteLine($"quests: {notInPlayed} not in the played client's quest table (the server neither starts, offers nor sends them), {inPlayed} in it");
+            Console.WriteLine($"quests: {notInPlayed} not in the played client's quest table (the server neither starts, offers nor sends them), {inPlayed} in it, {npcChanged} with the start or complete npc of that table");
         }
     }
 
