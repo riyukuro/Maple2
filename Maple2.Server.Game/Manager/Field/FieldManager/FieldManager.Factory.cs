@@ -45,6 +45,8 @@ public partial class FieldManager {
         private readonly ConcurrentDictionary<(int MapId, long OwnerId), int> ownerRooms = []; // Value: RoomId
         private readonly ConcurrentDictionary<int, DungeonFieldManager> dungeons = []; // Key: RoomId
         private readonly ConcurrentDictionary<int, DungeonFieldManager> subDungeonFields = []; // Key: RoomId. This is for rooms created by the dungeon lobby.
+        // The timeEventData type 4 runs placed on the channel's maps (FieldManager.InteractEventRunsPlaced).
+        private readonly ConcurrentDictionary<(int MapId, int RowId), DateTime> interactEventRunsPlaced = [];
 
         public Factory(IComponentContext context) {
             this.context = context;
@@ -129,7 +131,9 @@ public partial class FieldManager {
                         return dungeonField;*/
             }
 
-            var field = new FieldManager(metadata, ugcMetadata, entities, NpcMetadata);
+            var field = new FieldManager(metadata, ugcMetadata, entities, NpcMetadata) {
+                InteractEventRunsPlaced = interactEventRunsPlaced,
+            };
             context.InjectProperties(field);
             field.Init();
 

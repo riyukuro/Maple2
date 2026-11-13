@@ -610,9 +610,18 @@ public partial class FieldManager {
             return;
         }
 
-        woodChestPoints = Entities.RegionSpawns.Keys.Where(id => MapChestRules.SpawnKind(id) == MapChestRules.Kind.Wood).ToList();
+        // The points a timeEventData type 4 row of the map holds are its own: no guessed chest goes there. A row that
+        // never runs (no prob, or past its endTime) leaves them to the map chests.
+        DateTime now = DateTime.Now;
+        HashSet<int> eventPoints = InteractEventStates()
+            .Where(state => state.Row.Probability > 0
+                            && (FieldInteractEventRules.CurrentRun(state.Row, now) != null || FieldInteractEventRules.NextRun(state.Row, now) != null))
+            .SelectMany(state => state.Points).ToHashSet();
+        woodChestPoints = Entities.RegionSpawns.Keys
+            .Where(id => MapChestRules.SpawnKind(id) == MapChestRules.Kind.Wood && !eventPoints.Contains(id)).ToList();
         if (GoldChestIds(AchievementMetadata).TryGetValue(MapId, out int[]? ids)) {
-            goldChestPoints = MapChestRules.GoldChests(Entities.RegionSpawns.Keys, ids);
+            goldChestPoints = MapChestRules.GoldChests(Entities.RegionSpawns.Keys, ids)
+                .Where(entry => !eventPoints.Contains(entry.Key)).ToDictionary(entry => entry.Key, entry => entry.Value);
         }
     }
 
@@ -621,7 +630,7 @@ public partial class FieldManager {
     private void UpdateChests(long tickCount) {
         // Only the map treasure chests: the objects of combine spawn groups and of AI nodes stay as they were.
         foreach (FieldInteract chest in fieldChests.Values) {
-            if (chest.Chest == MapChestRules.Kind.None) {
+            if (chest.Chest == MapChestRules.Kind.None && chest.TimeEventId == 0) {
                 continue;
             }
             chest.Update(tickCount);
@@ -639,7 +648,7 @@ public partial class FieldManager {
         nextMapChestTick = tickCount + (long) MapChestRules.Cycle.TotalMilliseconds;
 
         foreach (FieldInteract chest in fieldChests.Values) {
-            if (chest.Chest != MapChestRules.Kind.None && fieldChests.TryRemove(chest.EntityId, out _)) {
+            if (chest.Chest != MapChestRules.Kind.None && chest.TimeEventId == 0 && fieldChests.TryRemove(chest.EntityId, out _)) {
                 Broadcast(InteractObjectPacket.Remove(chest.EntityId));
             }
         }
@@ -655,10 +664,183 @@ public partial class FieldManager {
         woodChestPoints = [];
         goldChestPoints = new Dictionary<int, int>();
         foreach (FieldInteract chest in fieldChests.Values) {
-            if (chest.Chest != MapChestRules.Kind.None && fieldChests.TryRemove(chest.EntityId, out _)) {
+            if (chest.Chest != MapChestRules.Kind.None && chest.TimeEventId == 0 && fieldChests.TryRemove(chest.EntityId, out _)) {
                 Broadcast(InteractObjectPacket.Remove(chest.EntityId));
             }
         }
+    }
+
+    // The timeEventData type 4 rows of the map (FORK.md "Field interact events"): each puts its interact object on
+    // some of its points at every run start and takes them away at the end of lifeTime. The field reads them at its
+    // first update (the run alive then is placed for what is left of it) and they stop with the field.
+    private sealed class InteractEventState {
+        public required FieldInteractEventMetadata Row { get; init; }
+        public required List<int> Points { get; init; }
+        public DateTime? NextRun;
+        // The objects of the row's run on the field and when each leaves.
+        public readonly Dictionary<string, DateTime> Objects = new();
+    }
+
+    private List<InteractEventState>? interactEvents;
+    private List<string>? interactEventsGone;
+
+    // The run of each row last placed on the map (MapId, row id: the run's grid start), kept by the factory for the
+    // channel: a field disposed when empty and made again in the same run does not place that run a second time.
+    private ConcurrentDictionary<(int MapId, int RowId), DateTime>? interactEventRunsPlaced;
+    internal ConcurrentDictionary<(int MapId, int RowId), DateTime> InteractEventRunsPlaced {
+        get => interactEventRunsPlaced ??= new ConcurrentDictionary<(int MapId, int RowId), DateTime>();
+        set => interactEventRunsPlaced = value;
+    }
+
+    private List<InteractEventState> InteractEventStates() {
+        if (interactEvents != null) {
+            return interactEvents;
+        }
+        interactEvents = [];
+        // Only the map's one field of the channel: no dungeon, home, rank duel or arena field, and no instanced map but
+        // one of channelScale (one field a channel). Of the KR rows, solo map 02000179 holds 4 (its chests stay the
+        // guessed map chests) and channelScale map 63000002 holds 5.
+        if (this is DungeonFieldManager or HomeFieldManager || RankDuel != null || Arena != null
+            || (ServerTableMetadata.InstanceFieldTable.Entries.TryGetValue(MapId, out InstanceFieldMetadata? instance)
+                && instance.Type != InstanceType.channelScale)) {
+            return interactEvents;
+        }
+        IEnumerable<FieldInteractEventMetadata> rows = ServerTableMetadata.TimeEventTable.FieldInteractEvent?.Values ?? [];
+        HashSet<int> mapPoints = Entities.RegionSpawns.Keys.ToHashSet();
+        // A golden chest point holds a row only when the row's interact id is one of the map's golden chest trophy
+        // ids, so no trophy id leaves the map. In the KR data every one is (812 rows on golden chest points); on 4 maps
+        // the rows give the ids to the points in another order than the guess (MapChestRules.GoldChests).
+        int[] trophyIds = AchievementMetadata != null && GoldChestIds(AchievementMetadata).TryGetValue(MapId, out int[]? goldIds) ? goldIds : [];
+        foreach (FieldInteractEventMetadata row in rows.Where(row => row.MapIds.Contains(MapId)).OrderBy(row => row.Id)) {
+            if (!TableMetadata.InteractObjectTable.Entries.ContainsKey(row.InteractId)) {
+                continue;
+            }
+            List<int> points = FieldInteractEventRules.Points(row, Metadata.Spawns, mapPoints);
+            if (trophyIds.Length > 0 && !trophyIds.Contains(row.InteractId)) {
+                points.RemoveAll(id => MapChestRules.SpawnKind(id) == MapChestRules.Kind.Gold);
+            }
+            if (points.Count > 0) {
+                interactEvents.Add(new InteractEventState { Row = row, Points = points });
+            }
+        }
+        return interactEvents;
+    }
+
+    internal void UpdateInteractEvents(DateTime now) {
+        foreach (InteractEventState state in InteractEventStates()) {
+            if (state.Objects.Count > 0) {
+                List<string> gone = interactEventsGone ??= [];
+                gone.Clear();
+                foreach ((string entityId, DateTime leaves) in state.Objects) {
+                    if (now >= leaves || !fieldChests.ContainsKey(entityId)) {
+                        gone.Add(entityId);
+                    }
+                }
+                foreach (string entityId in gone) {
+                    DateTime leaves = state.Objects[entityId];
+                    state.Objects.Remove(entityId);
+                    if (now >= leaves && fieldChests.TryGetValue(entityId, out FieldInteract? interact) && interact.TimeEventId == state.Row.Id
+                        && fieldChests.TryRemove(entityId, out _)) {
+                        Broadcast(InteractObjectPacket.Remove(entityId));
+                    }
+                }
+            }
+
+            if (state.NextRun == null) {
+                // The first update: the run alive now, for what is left of its life (unless the map placed it
+                // already, in a field disposed since), then the grid.
+                if (FieldInteractEventRules.CurrentRun(state.Row, now) is { } current
+                    && !(InteractEventRunsPlaced.TryGetValue((MapId, state.Row.Id), out DateTime placed) && placed == current)) {
+                    RunInteractEvent(state, now, current, current + state.Row.LifeTime);
+                }
+                state.NextRun = NextInteractEventRun(state.Row, now) ?? DateTime.MaxValue;
+                continue;
+            }
+            if (now < state.NextRun) {
+                continue;
+            }
+            RunInteractEvent(state, now, now, now + state.Row.LifeTime);
+            state.NextRun = NextInteractEventRun(state.Row, now) ?? DateTime.MaxValue;
+        }
+    }
+
+    // The next run start, late by a random part of randomTime (as World reads randomTime for the world bosses).
+    private static DateTime? NextInteractEventRun(FieldInteractEventMetadata row, DateTime now) {
+        if (FieldInteractEventRules.NextRun(row, now) is not { } next) {
+            return null;
+        }
+        if (row.RandomTime > TimeSpan.Zero) {
+            next += TimeSpan.FromMilliseconds(Random.Shared.NextInt64((long) row.RandomTime.TotalMilliseconds));
+        }
+        return next;
+    }
+
+    // A run started at start (its eventDuration window is read at the start); its objects leave at leaves.
+    private void RunInteractEvent(InteractEventState state, DateTime now, DateTime start, DateTime leaves) {
+        // What the last run left goes first.
+        foreach (string entityId in state.Objects.Keys.ToList()) {
+            if (fieldChests.TryGetValue(entityId, out FieldInteract? interact) && interact.TimeEventId == state.Row.Id
+                && fieldChests.TryRemove(entityId, out _)) {
+                Broadcast(InteractObjectPacket.Remove(entityId));
+            }
+        }
+        state.Objects.Clear();
+        // The run counts as placed whether or not it puts anything (its prob roll is not made again).
+        InteractEventRunsPlaced[(MapId, state.Row.Id)] = FieldInteractEventRules.CurrentRun(state.Row, now) ?? start;
+        if (leaves <= now || !FieldInteractEventRules.InWindow(state.Row, start)
+            || !FieldInteractEventRules.Runs(state.Row.Probability, Random.Shared.Next(100))) {
+            return;
+        }
+
+        // Free points: no object on them, one point per entity name (two points in one name block are one place).
+        var free = new List<int>();
+        var names = new HashSet<string>();
+        foreach (int spawnId in state.Points) {
+            if (Entities.RegionSpawns.TryGetValue(spawnId, out Ms2RegionSpawn? spawn)) {
+                string name = MapChestRules.EntityName(spawn.Position.X, spawn.Position.Y, spawn.Position.Z);
+                if (!fieldChests.ContainsKey(name) && names.Add(name)) {
+                    free.Add(spawnId);
+                }
+            }
+        }
+        int count = FieldInteractEventRules.Count(state.Row, state.Points.Count);
+        foreach (int spawnId in FieldInteractEventRules.Pick(free, count, Random.Shared)) {
+            if (SpawnInteractEventObject(state.Row, spawnId) is { } entityId) {
+                state.Objects[entityId] = leaves;
+            }
+        }
+    }
+
+    private string? SpawnInteractEventObject(FieldInteractEventMetadata row, int spawnId) {
+        if (!Entities.RegionSpawns.TryGetValue(spawnId, out Ms2RegionSpawn? spawn) ||
+            !TableMetadata.InteractObjectTable.Entries.TryGetValue(row.InteractId, out InteractObjectMetadata? metadata)) {
+            return null;
+        }
+        MapChestRules.Kind kind = MapChestRules.SpawnKind(spawnId);
+        string name = MapChestRules.EntityName(spawn.Position.X, spawn.Position.Y, spawn.Position.Z);
+        if (fieldChests.ContainsKey(name)) {
+            return null;
+        }
+        var interactObject = new InteractMeshObject(name, new Ms2InteractMesh(row.InteractId, spawn.Position, spawn.Rotation)) {
+            Model = string.IsNullOrEmpty(row.Model) ? MapChestRules.Model : row.Model,
+            Asset = !string.IsNullOrEmpty(row.Asset) ? row.Asset : kind == MapChestRules.Kind.Gold ? MapChestRules.GoldAsset : MapChestRules.WoodAsset,
+            NormalState = string.IsNullOrEmpty(row.Normal) ? MapChestRules.NormalState : row.Normal,
+            Reactable = string.IsNullOrEmpty(row.Reactable) ? MapChestRules.ReactableState : row.Reactable,
+        };
+        var fieldInteract = new FieldInteract(this, NextLocalId(), interactObject.EntityId, metadata, interactObject) {
+            Transform = new Transform {
+                Position = spawn.Position,
+                RotationAnglesDegrees = spawn.Rotation,
+            },
+            SpawnId = spawn.Id,
+            // A chest point keeps the map chest's ways: opened once, then it hides; a gold one counts its first open.
+            Chest = kind,
+            TimeEventId = row.Id,
+            InitialState = InteractState.Reactable,
+        };
+        fieldChests[interactObject.EntityId] = fieldInteract;
+        Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
+        return interactObject.EntityId;
     }
 
     private void SpawnMapChest(int spawnId, int interactId, MapChestRules.Kind kind) {

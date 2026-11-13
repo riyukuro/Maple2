@@ -23,6 +23,8 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     public int SpawnId { get; init; }
     // A map treasure chest (MapChestRules): what it gives when opened.
     public MapChestRules.Kind Chest { get; init; }
+    // The timeEventData type 4 row that put the object on the field (0: none).
+    public int TimeEventId { get; init; }
     // A map treasure chest is added with the Add packet, which says reactable: it starts so, with no update sent.
     public InteractState InitialState { init => State = value; }
 
@@ -51,8 +53,9 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
 
         reactTick = Environment.TickCount64;
         reactLimit--;
-        // A map treasure chest is opened once: it hides after its hide time, as KMS2 sends it.
-        if (Chest != MapChestRules.Kind.None) {
+        // A map treasure chest is opened once: it hides after its hide time, as KMS2 sends it. A timeEventData type 4
+        // object is opened once in its run too (chosen here: no rule says when its resetTime would bring it back).
+        if (Chest != MapChestRules.Kind.None || TimeEventId != 0) {
             reactLimit = 0;
         }
         if (reactLimit > 0) {
