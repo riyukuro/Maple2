@@ -101,8 +101,7 @@ public class PlayerInfo : CharacterInfo, IPlayerInfo, IByteSerializable {
         }
         writer.WriteByte();
         writer.WriteClass<Mastery>(new Mastery());
-        writer.WriteUnicodeString(); // Login username
-        writer.WriteLong(); // Session Id; the KMS 2525 client reads one long here, not three
+        PlatformBlock.Write(writer);
         writer.WriteInt();
         writer.Write<MentorRole>(MentorRole);
         writer.WriteBool(false);

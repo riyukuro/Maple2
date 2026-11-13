@@ -71,8 +71,7 @@ public class PartyLayoutTests {
         for (int i = 0; i < 12; i++) {
             reader.ReadInt(); // m_140
         }
-        reader.ReadUnicodeString(); // KR platform proxy
-        reader.ReadLong();
+        UserProxyLayoutTests.ReadPlatform(reader, Target.LOCALE); // the region's platform proxy
         Assert.That(reader.ReadInt(), Is.EqualTo(0)); // set count
         reader.ReadByte(); // m_180
         reader.ReadBool(); // m_184
