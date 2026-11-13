@@ -873,16 +873,18 @@ public class HousingManager {
         } else if (session.Item.Furnishing.TryAddCube(cube.Id, result)) {
             storedUid = cube.Id;
         } else {
-            long itemUid = session.Item.Furnishing.AddCube(cube);
-            if (itemUid == 0) {
-                DeleteCube(result);
-                Refuse(UgcMapError.s_ugcmap_not_for_sale);
-                return false;
-            }
-
+            // A cube bought here goes to storage only once it is paid: a cube not for sale, or one the player cannot
+            // pay for, leaves no storage item. Room is asked first, so the paid cube is not refused by storage.
             if (shopEntry is null) {
                 DeleteCube(result);
                 Refuse(UgcMapError.s_err_cannot_buy_limited_item_more);
+                return false;
+            }
+
+            if (!session.Item.Furnishing.StorageTakes([new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url,
+                    itemMetadata.Housing?.MaidId > 0, 1, itemMetadata.Property.SlotMax, FurnishingManager.KeptExpiry(itemMetadata, cube.ExpiryTime))])) {
+                DeleteCube(result);
+                Refuse(UgcMapError.s_ugcmap_not_for_sale);
                 return false;
             }
 
@@ -891,6 +893,14 @@ public class HousingManager {
                 if (purchaseError != UgcMapError.s_ugcmap_ok) {
                     Refuse(purchaseError);
                 }
+                return false;
+            }
+
+            long itemUid = session.Item.Furnishing.AddCube(cube);
+            if (itemUid == 0) {
+                logger.Error("Paid cube {ItemId} could not be added to storage", cube.ItemId);
+                DeleteCube(result);
+                Refuse(UgcMapError.s_ugcmap_db);
                 return false;
             }
 

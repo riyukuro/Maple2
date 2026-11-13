@@ -214,4 +214,16 @@ public class PlacedCubeExpiryTests {
         using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetCube(placed!.Id)?.ExpiryTime, Is.EqualTo(Expiry));
     }
+
+    // A cube bought from the palette that the player cannot pay for leaves no storage item behind.
+    [Test]
+    public void BuyingWithoutTheMesos_LeavesNoStorageItem() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meso, 1000) });
+        Assert.That(session.Currency.Meso, Is.Zero);
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
+        Assert.That(session.Item.Furnishing.GetItem(CubeItem), Is.Null);
+        Assert.That(plot.Cubes, Is.Empty);
+    }
 }
