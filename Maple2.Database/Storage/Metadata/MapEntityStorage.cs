@@ -16,6 +16,20 @@ public class MapEntityStorage(MetadataContext context) : MetadataStorage<string,
         new Vector2(MAP_LIMIT, MAP_LIMIT)),
         -MAP_LIMIT, MAP_LIMIT * 2);
 
+    // Two item spawn points of one xblock can carry the same spawn id: 02000360_bf and 63000033_cs (the same
+    // entities) name one EventSpawnPointItem14 and the next EventSpawnPointItem15, both with id 14, so no point has
+    // id 15. A dictionary Add threw there and neither field could be made. Chosen here: the point whose entity name
+    // sorts first keeps the id (EventSpawnPointItem14, the one its name matches), whatever order the rows come back
+    // in; the other point is left out, as id 15 already is, and the trigger's create_item skips the ids it lacks.
+    public static void AddEventItemSpawn(Dictionary<int, EventSpawnPointItem> spawns, Dictionary<int, string> names,
+                                         string name, EventSpawnPointItem spawn) {
+        if (names.TryGetValue(spawn.SpawnPointId, out string? kept) && string.CompareOrdinal(kept, name) <= 0) {
+            return;
+        }
+        spawns[spawn.SpawnPointId] = spawn;
+        names[spawn.SpawnPointId] = name;
+    }
+
     public MapEntityMetadata? Get(string xblock) {
         if (Cache.TryGet(xblock, out MapEntityMetadata mapEntity)) {
             return mapEntity;
@@ -39,6 +53,7 @@ public class MapEntityStorage(MetadataContext context) : MetadataStorage<string,
             var cubeSkills = new List<Ms2CubeSkill>();
             var eventNpcSpawns = new Dictionary<int, EventSpawnPointNPC>();
             var eventItemSpawns = new Dictionary<int, EventSpawnPointItem>();
+            var eventItemNames = new Dictionary<int, string>();
             TaxiStation? taxi = null;
             Prism? bounding = null;
             var breakableActors = new Dictionary<Guid, BreakableActor>();
@@ -86,7 +101,7 @@ public class MapEntityStorage(MetadataContext context) : MetadataStorage<string,
                         }
                         break;
                     case EventSpawnPointItem eventItemSpawn:
-                        eventItemSpawns.Add(eventItemSpawn.SpawnPointId, eventItemSpawn);
+                        AddEventItemSpawn(eventItemSpawns, eventItemNames, entity.Name, eventItemSpawn);
                         break;
                     case TaxiStation taxiStation:
                         Debug.Assert(taxi == null, $"Multiple taxi stations found in xblock:{xblock}");
