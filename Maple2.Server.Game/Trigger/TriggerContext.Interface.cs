@@ -222,9 +222,11 @@ public partial class TriggerContext {
         Broadcast(TriggerPacket.UiShowSummary(entityId, textId, duration));
     }
 
+    // Client UIMassiveEvent mode 7: a final round shows the event window's final-round banner (onFinalRound), any
+    // other round its round banner (onRound); neither is shown when the third int is 0.
     public void ShowRoundUi(int round, int duration, bool isFinalRound) {
-        DebugLog("[ShowRoundUI] round:{Round}, duration:{Duration}", round, duration);
-        Broadcast(MassiveEventPacket.StartRound(round, duration));
+        DebugLog("[ShowRoundUI] round:{Round}, duration:{Duration}, isFinalRound:{IsFinalRound}", round, duration, isFinalRound);
+        Broadcast(MassiveEventPacket.StartRound(round, duration, isFinalRound));
     }
 
     public void SideNpcTalk(int npcId, string illust, int duration, string script, string voice) {

@@ -1045,3 +1045,19 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="is_dungeon_room" negate="1" />"""), Is.True);
     }
 }
+
+public class TriggerRoundUiTests : TriggerTestBase {
+    // show_round_ui: MassiveEvent mode 7 carries the round, the final-round flag and the duration, in that order
+    // (client UIMassiveEvent mode 7 reads int, bool, int).
+    [TestCase("0", false)]
+    [TestCase("1", true)]
+    public void ShowRoundUi_SendsTheFinalRoundFlag(string isFinal, bool expected) {
+        Start();
+
+        Action($"""<action name="show_round_ui" round="3" duration="5000" is_final_round="{isFinal}" />""");
+
+        ByteReader reader = Sent(SendOp.MassiveEvent).Single();
+        Assert.That((reader.ReadByte(), reader.ReadInt(), reader.ReadBool(), reader.ReadInt()), Is.EqualTo(((byte) 7, 3, expected, 5000)));
+        Assert.That(reader.Available, Is.Zero);
+    }
+}
