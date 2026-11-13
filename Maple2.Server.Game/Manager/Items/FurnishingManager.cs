@@ -215,6 +215,157 @@ public class FurnishingManager {
         }
     }
 
+    private static UgcMapPackageRules.Stack ToStack(Item item) =>
+        new(item.Id, item.Template?.Url, item.Metadata.Housing?.MaidId > 0, item.Amount, item.Metadata.Property.SlotMax);
+
+    // Where the cubes deleted from a plot (GameStorage.Request.SaveCubes) go back: into furnishing storage as
+    // AddStorage adds them one at a time (UgcMapPackageRules.Place), and the ones storage does not take by mail to
+    // characterId. Chosen here: the mailed cubes of the same item and design share an item up to its stack size
+    // (one mail each); a maid cube is mailed alone, with its maid. Nothing in storage changes here (ApplyReturn does,
+    // once the save went through). Null when an item cannot be made (no field).
+    public CubeReturn? PlanReturn(IReadOnlyList<PlotCube> cubes, long characterId) {
+        lock (session.Item) {
+            Item[] stored = storage.ToArray();
+            List<UgcMapPackageRules.Placement> places = UgcMapPackageRules.Place(stored.Select(ToStack), storage.OpenSlots,
+                cubes.Select(cube => new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url, cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax)));
+            var plan = new CubeReturn { AccountId = session.AccountId, CharacterId = characterId };
+            var joins = new Dictionary<int, (int Amount, long MaidCubeId)>();
+            var made = new Dictionary<int, CubeReturn.Add>();
+            var mailed = new Dictionary<(int ItemId, string? Design), CubeReturn.Add>();
+            for (int i = 0; i < cubes.Count; i++) {
+                PlotCube cube = cubes[i];
+                long maidCubeId = cube.Metadata.Housing?.MaidId > 0 ? cube.Id : 0;
+                UgcMapPackageRules.Placement place = places[i];
+                if (place.Kind == UgcMapPackageRules.PlaceKind.Join && place.Index < stored.Length) {
+                    (int amount, long maid) = joins.TryGetValue(place.Index, out (int, long) join) ? join : (stored[place.Index].Amount, 0);
+                    joins[place.Index] = (amount + 1, maidCubeId != 0 ? maidCubeId : maid);
+                    continue;
+                }
+                if (place.Kind == UgcMapPackageRules.PlaceKind.Join) {
+                    made[place.Index].Item.Amount++;
+                    continue;
+                }
+                if (place.Kind == UgcMapPackageRules.PlaceKind.Mail && maidCubeId == 0
+                    && mailed.TryGetValue((cube.ItemId, MaidRules.DesignKey(cube.Template?.Url)), out CubeReturn.Add? share)
+                    && share.Item.Amount < Math.Max(1, cube.Metadata.Property.SlotMax)) {
+                    share.Item.Amount++;
+                    continue;
+                }
+
+                Item? item = session.Field?.ItemDrop.CreateItem(cube.ItemId);
+                if (item == null) {
+                    logger.Error("Cannot make item {ItemId} to give back cube {CubeId}", cube.ItemId, cube.Id);
+                    return null;
+                }
+                item.Amount = 1;
+                if (cube.Template != null) {
+                    item.Template = cube.Template.Clone();
+                }
+                var add = new CubeReturn.Add(item, maidCubeId);
+                if (place.Kind == UgcMapPackageRules.PlaceKind.NewStack) {
+                    item.Group = ItemGroup.Furnishing;
+                    made[place.Index] = add;
+                    plan.NewStacks.Add(add);
+                    continue;
+                }
+                plan.Mailed.Add(add);
+                if (maidCubeId == 0) {
+                    mailed[(cube.ItemId, MaidRules.DesignKey(cube.Template?.Url))] = add;
+                }
+            }
+            foreach ((int index, (int amount, long maidCubeId)) in joins) {
+                plan.Joins.Add(new CubeReturn.Join(stored[index], amount, maidCubeId));
+            }
+            return plan;
+        }
+    }
+
+    // Puts what a save of plan wrote into storage and the client: the stacks' new amounts, the new storage items,
+    // the moved maids, and the deleted cubes leave the furnishing inventory.
+    public void ApplyReturn(CubeReturn plan, IEnumerable<long> deletedCubes) {
+        lock (session.Item) {
+            int count = storage.Count;
+            foreach (CubeReturn.Join join in plan.Joins) {
+                int previous = join.Stack.Amount;
+                join.Stack.Amount = join.Amount;
+                session.Send(previous == 0
+                    ? FurnishingStoragePacket.Add(join.Stack)
+                    : FurnishingStoragePacket.Update(join.Stack.Uid, join.Stack.Amount));
+            }
+            foreach (Item item in plan.Created) {
+                if (storage.Add(item).Count <= 0) {
+                    // Cannot happen: Place counted the open slots under this lock. The row is in storage at the next login.
+                    logger.Error("Returned furnishing {Uid} has no storage slot", item.Uid);
+                    continue;
+                }
+                session.Send(FurnishingStoragePacket.Add(item));
+            }
+            if (storage.Count != count) {
+                session.Send(FurnishingStoragePacket.Count(storage.Count));
+            }
+            foreach (long cubeId in deletedCubes) {
+                RemoveInventory(cubeId, out _);
+            }
+            foreach (Maid maid in plan.MovedMaids) {
+                session.Send(UserMaidPacket.Add(maid));
+                if (MaidRules.IsCrafting(maid)) {
+                    session.Send(MaidCraftItemPacket.Add(maid));
+                }
+            }
+            // A maid that left by mail: its cube is gone; the maid comes back when the mail is collected (TakeMailed).
+            foreach (CubeReturn.Add add in plan.Mailed.Where(add => add.MaidCubeId != 0)) {
+                session.Send(UserMaidPacket.Remove(add.MaidCubeId));
+                session.Send(MaidCraftItemPacket.Remove(add.MaidCubeId));
+            }
+        }
+    }
+
+    // Drops cubes from the furnishing inventory that have no row (placed in memory by a save that failed).
+    public void ForgetCubes(IEnumerable<long> cubeIds) {
+        lock (session.Item) {
+            foreach (long cubeId in cubeIds) {
+                RemoveInventory(cubeId, out _);
+            }
+        }
+    }
+
+    // A furnishing item collected from mail goes into storage, all of it or none: false when storage does not take
+    // every piece (the mail keeps it). A maid item takes the maid the mailed item holds (CubeReturn) along.
+    public bool TakeMailed(Item item) {
+        lock (session.Item) {
+            bool maidItem = item.Metadata.Housing?.MaidId > 0;
+            if (item.Amount <= 0 || !StorageTakes(Enumerable.Repeat(ToStack(item) with { Amount = 1 }, item.Amount))) {
+                return false;
+            }
+            int count = storage.Count;
+            long itemUid = 0;
+            int amount = item.Amount;
+            for (int i = 0; i < amount; i++) {
+                Item piece = item.Clone();
+                piece.Amount = 1;
+                itemUid = AddStorage(piece, item.Template);
+                if (itemUid == 0) {
+                    logger.Error("Furnishing {ItemId} from mail did not go into storage ({Added} of {Amount})", item.Id, i, amount);
+                    return false;
+                }
+            }
+            if (storage.Count != count) {
+                session.Send(FurnishingStoragePacket.Count(storage.Count));
+            }
+            if (maidItem && item.Uid != 0) {
+                using GameStorage.Request db = session.GameStorage.Context();
+                Maid? moved = db.MoveMaid(item.Uid, itemUid);
+                if (moved != null) {
+                    session.Send(UserMaidPacket.Add(moved));
+                    if (MaidRules.IsCrafting(moved)) {
+                        session.Send(MaidCraftItemPacket.Add(moved));
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
     // Returns the cube to storage: the uid of the storage item it went to, 0 when it was not in the inventory.
     public long RetrieveCube(long uid) {
         lock (session.Item) {

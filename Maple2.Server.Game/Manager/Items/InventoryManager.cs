@@ -206,9 +206,12 @@ public class InventoryManager {
                 return true;
             }
 
+            // Furnishing goes into furnishing storage, the whole amount or (storage full) nothing.
             if (add.Type.IsFurnishing) {
-                session.Item.Furnishing.AddStorage(add, add.Template);
-                session.Item.Inventory.Discard(add);
+                if (!session.Item.Furnishing.TakeMailed(add)) {
+                    return false;
+                }
+                session.Item.Inventory.Discard(add, commit);
                 return true;
             }
 

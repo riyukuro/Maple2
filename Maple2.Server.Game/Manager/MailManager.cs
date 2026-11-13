@@ -185,7 +185,14 @@ public sealed class MailManager {
         }
 
         // Nothing is given unless every item fits (existing stacks count) and can be added now.
-        if (mail.Items.Count > 0 && !session.Item.Inventory.CanAdd(mail.Items)) {
+        // Furnishing goes into furnishing storage (InventoryManager.Add), which must take all of it; it needs no bag slot.
+        List<Item> furnishing = mail.Items.Where(item => item.Type.IsFurnishing).ToList();
+        List<Item> bag = mail.Items.Where(item => !item.Type.IsFurnishing).ToList();
+        if (bag.Count > 0 && !session.Item.Inventory.CanAdd(bag)) {
+            return MailError.s_mail_error_receiveitem_to_inven;
+        }
+        if (furnishing.Count > 0 && !session.Item.Furnishing.StorageTakes(furnishing.SelectMany(item =>
+                Enumerable.Repeat(new UgcMapPackageRules.Stack(item.Id, item.Template?.Url, item.Metadata.Housing?.MaidId > 0, 1, item.Metadata.Property.SlotMax), Math.Max(1, item.Amount))))) {
             return MailError.s_mail_error_receiveitem_to_inven;
         }
 

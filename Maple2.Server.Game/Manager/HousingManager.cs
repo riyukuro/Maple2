@@ -474,8 +474,29 @@ public class HousingManager {
 
         db.SaveHome(Home);
         db.SavePlotInfo(Home.Indoor);
+        // The cubes already in the home (an unnamed home built through the plot's door) are deleted by the save and
+        // go back to furnishing storage in the same transaction, the ones storage does not take by mail
+        // (FurnishingManager.PlanReturn). The client's model house dialog does not say they are lost
+        // (UIUGCModelHouseDialog), and a home taken away returns its furnishings (system mail 50000001).
         var mailed = new List<(long CharacterId, long MailId)>();
-        db.SaveCubes(Home.Indoor, plotCubes, session.CharacterId, mailed);
+        lock (session.Item) {
+            CubeReturn? plan = null;
+            List<long> deleted = [];
+            ICollection<PlotCube>? saved = db.SaveCubes(Home.Indoor, plotCubes, session.CharacterId, mailed, cubes => {
+                deleted = cubes.Select(cube => cube.Id).ToList();
+                return plan = session.Item.Furnishing.PlanReturn(cubes, session.CharacterId);
+            });
+            if (saved == null) {
+                // Nothing was written: the cubes in the home stay there and storage is as it was. The model house's
+                // cubes, placed in memory only, leave the furnishing inventory.
+                logger.Error("Failed to save the model house cubes of home {PlotId}", Home.Indoor.Id);
+                session.Item.Furnishing.ForgetCubes(plotCubes.Select(cube => cube.Id));
+                return;
+            }
+            if (plan != null) {
+                session.Item.Furnishing.ApplyReturn(plan, deleted);
+            }
+        }
         FieldManager.NotifyMailed(session, mailed);
     }
 

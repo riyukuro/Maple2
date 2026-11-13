@@ -335,11 +335,19 @@ public partial class GameStorage {
         // character the item is bound to (if it still exists), else to characterId (the plot owner's character that
         // saves). mailed gets the (character, mail) of each mail, for the notice. Null when the save fails, also on a
         // database error such as a deadlock; nothing is written then.
+        // With returns, the deleted cubes are given back: returns gets them (as read in the transaction, so a cube
+        // another instance placed meanwhile is among them) and answers where they go (CubeReturn), which is written
+        // with the delete; a null answer writes nothing. A deleted cube whose item is unknown is not given back.
         public ICollection<PlotCube>? SaveCubes(PlotInfo plotInfo, IEnumerable<PlotCube> cubes, long characterId,
-                                                List<(long CharacterId, long MailId)>? mailed = null) {
+                                                List<(long CharacterId, long MailId)>? mailed = null,
+                                                Func<IReadOnlyList<PlotCube>, CubeReturn?>? returns = null) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
             var results = new List<UgcMapCube>();
             var mails = new List<(Model.Item Row, Model.Mail Mail)>();
+            CubeReturn? back = null;
+            var created = new List<Model.Item>();
+            var moved = new List<Maid>();
+            var returnMails = new List<Model.Mail>();
             try {
                 // Read committed: the doll rows are read after the cube deletes are written (the cube rows locked),
                 // and see the put-ons and swaps other channels committed up to then, not a snapshot taken earlier.
@@ -362,20 +370,113 @@ public partial class GameStorage {
                     }
                 }
                 var dropped = new List<long>();
+                var droppedRows = new List<UgcMapCube>();
                 // Listed first: MySQL has one open reader per connection, and Maid.Find below may query.
                 foreach (UgcMapCube cube in Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id).ToList()) {
                     if (!updated.Contains(cube.Id)) {
                         Context.UgcMapCube.Remove(cube);
                         dropped.Add(cube.Id);
-                        // A cube dropped here does not go back to storage, so its maid goes too.
-                        Model.Maid? maid = Context.Maid.Find(cube.Id);
-                        if (maid != null) {
-                            Context.Maid.Remove(maid);
+                        droppedRows.Add(cube);
+                    }
+                }
+                if (returns != null && droppedRows.Count > 0) {
+                    back = returns(droppedRows.Select(ToPlotCube).OfType<PlotCube>().ToList());
+                    if (back == null) {
+                        return null;
+                    }
+                }
+                var keptMaids = new HashSet<long>(back == null ? [] : back.Joins.Select(join => join.MaidCubeId)
+                    .Concat(back.NewStacks.Select(add => add.MaidCubeId))
+                    .Concat(back.Mailed.Select(add => add.MaidCubeId))
+                    .Where(id => id != 0));
+                foreach (long cubeId in dropped) {
+                    // A cube dropped here that does not go back to storage or by mail takes its maid with it.
+                    Model.Maid? maid = keptMaids.Contains(cubeId) ? null : Context.Maid.Find(cubeId);
+                    if (maid != null) {
+                        Context.Maid.Remove(maid);
+                    }
+                }
+                if (back != null) {
+                    foreach (CubeReturn.Join join in back.Joins) {
+                        Model.Item? row = Context.Item.Find(join.Stack.Uid);
+                        if (row == null || row.OwnerId != back.AccountId || row.Group != ItemGroup.Furnishing) {
+                            Logger.LogError("Furnishing stack {Uid} of account {AccountId} is gone", join.Stack.Uid, back.AccountId);
+                            return null;
                         }
+                        row.Amount = join.Amount;
+                    }
+                    foreach (CubeReturn.Add add in back.NewStacks) {
+                        Model.Item model = add.Item;
+                        model.Id = 0;
+                        model.OwnerId = back.AccountId;
+                        model.Group = ItemGroup.Furnishing;
+                        Context.Item.Add(model);
+                        created.Add(model);
+                    }
+                    foreach (CubeReturn.Add _ in back.Mailed) {
+                        Model.Mail mail = DollItemMail(back.CharacterId);
+                        Context.Mail.Add(mail);
+                        returnMails.Add(mail);
                     }
                 }
                 if (!Context.TrySaveChanges()) {
                     return null;
+                }
+                if (back != null && (back.Mailed.Count > 0 || keptMaids.Count > 0)) {
+                    var mailedRows = new List<Model.Item>();
+                    for (int i = 0; i < back.Mailed.Count; i++) {
+                        Model.Item model = back.Mailed[i].Item;
+                        model.Id = 0;
+                        model.OwnerId = returnMails[i].Id;
+                        model.Group = ItemGroup.Default;
+                        model.Slot = -1;
+                        Context.Item.Add(model);
+                        mailedRows.Add(model);
+                    }
+                    // The mailed rows first, for their ids.
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
+                    var maidMoves = new List<(long CubeId, long ToUid, bool Stored)>();
+                    maidMoves.AddRange(back.Joins.Where(join => join.MaidCubeId != 0).Select(join => (join.MaidCubeId, join.Stack.Uid, true)));
+                    maidMoves.AddRange(back.NewStacks.Select((add, i) => (add.MaidCubeId, created[i].Id, true)).Where(move => move.MaidCubeId != 0));
+                    maidMoves.AddRange(back.Mailed.Select((add, i) => (add.MaidCubeId, mailedRows[i].Id, false)).Where(move => move.MaidCubeId != 0));
+                    // Cube ids and item ids are counted apart, so an item may take the id of a moved cube: every
+                    // moved maid leaves its cube first, then each target must be free.
+                    var moving = new List<(Model.Maid Model, long ToUid, bool Stored)>();
+                    foreach ((long cubeId, long toUid, bool stored) in maidMoves) {
+                        Model.Maid? model = Context.Maid.Find(cubeId);
+                        if (model == null) {
+                            continue; // a maid item placed without a maid row
+                        }
+                        moving.Add((model, toUid, stored));
+                    }
+                    var freed = new HashSet<long>(moving.Select(move => move.Model.Id));
+                    foreach ((Model.Maid model, long toUid, bool _) in moving) {
+                        if (!freed.Contains(toUid) && Context.Maid.Find(toUid) != null) {
+                            Logger.LogError("Item {Uid} already has a maid", toUid);
+                            return null;
+                        }
+                    }
+                    var rows = new List<(Model.Maid Row, bool Stored)>();
+                    foreach ((Model.Maid model, long toUid, bool stored) in moving) {
+                        Model.Maid row = (Maid) model!;
+                        row.Id = toUid;
+                        Context.Maid.Remove(model);
+                        rows.Add((row, stored));
+                    }
+                    if (rows.Count > 0 && !Context.TrySaveChanges()) {
+                        return null; // the removes first: a new row may take a removed row's key
+                    }
+                    foreach ((Model.Maid row, bool stored) in rows) {
+                        Context.Maid.Add(row);
+                        if (stored) {
+                            moved.Add(row!);
+                        }
+                    }
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
                 }
 
                 List<Model.Item> dollRows = dropped.Count == 0 ? [] : Context.Item.AsNoTracking()
@@ -411,6 +512,11 @@ public partial class GameStorage {
                 return null;
             }
             mailed?.AddRange(mails.Select(entry => (entry.Mail.ReceiverId, entry.Mail.Id)));
+            if (back != null) {
+                back.Created.AddRange(created.Select(ToItem).OfType<Maple2.Model.Game.Item>());
+                back.MovedMaids.AddRange(moved);
+                mailed?.AddRange(returnMails.Select(mail => (mail.ReceiverId, mail.Id)));
+            }
 
             PlotCube[] plotCubes = results
                 .Select(ToPlotCube)

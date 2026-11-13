@@ -45,24 +45,42 @@ public static class UgcMapPackageRules {
     // Whether the furnishing storage takes every incoming cube, one at a time, as FurnishingManager.AddStorage adds
     // them: onto the first stack of the same item and design (MaidRules.CanJoin; a maid item only onto an empty stack), which must
     // have room; with no such stack into a new slot. Each incoming cube counts as staying in storage.
-    public static bool StorageTakes(IEnumerable<Stack> stored, int openSlots, IEnumerable<Stack> incoming) {
+    public static bool StorageTakes(IEnumerable<Stack> stored, int openSlots, IEnumerable<Stack> incoming) =>
+        Place(stored, openSlots, incoming).All(place => place.Kind != PlaceKind.Mail);
+
+    // Where an incoming cube goes: onto a stack (Join), into a new slot (NewStack), or nowhere (Mail: the first
+    // stack it would join is full, or no slot is open).
+    public enum PlaceKind : byte { Join, NewStack, Mail }
+
+    // Index is the stack's place in the stored stacks followed by the new ones in the order they were made; -1 for
+    // Mail.
+    public readonly record struct Placement(PlaceKind Kind, int Index);
+
+    // The place of each incoming cube, one at a time, as FurnishingManager.AddStorage adds them (see StorageTakes). A
+    // cube that does not fit is left out and the next one is placed as if it had not come.
+    public static List<Placement> Place(IEnumerable<Stack> stored, int openSlots, IEnumerable<Stack> incoming) {
         List<Stack> stacks = stored.ToList();
+        var places = new List<Placement>();
         foreach (Stack add in incoming) {
             int index = stacks.FindIndex(stack => stack.ItemId == add.ItemId && MaidRules.DesignKey(stack.Url) == MaidRules.DesignKey(add.Url) && (!add.Maid || stack.Amount == 0));
             if (index < 0) {
                 if (openSlots <= 0) {
-                    return false;
+                    places.Add(new Placement(PlaceKind.Mail, -1));
+                    continue;
                 }
                 openSlots--;
                 stacks.Add(add with { Amount = 1 });
+                places.Add(new Placement(PlaceKind.NewStack, stacks.Count - 1));
                 continue;
             }
             Stack join = stacks[index];
             if (join.Amount + 1 > join.SlotMax) {
-                return false;
+                places.Add(new Placement(PlaceKind.Mail, -1));
+                continue;
             }
             stacks[index] = join with { Amount = join.Amount + 1 };
+            places.Add(new Placement(PlaceKind.Join, index));
         }
-        return true;
+        return places;
     }
 }
