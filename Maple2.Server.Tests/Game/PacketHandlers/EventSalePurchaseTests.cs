@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Microsoft.EntityFrameworkCore;
@@ -248,6 +252,28 @@ public class EventSalePurchaseTests {
         Assert.That(session.Currency.Meret, Is.EqualTo(meretAfter));
         Assert.That(session.Currency.GameMeret, Is.EqualTo(redAfter));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+    }
+
+    // A fee the wallet does not cover gets the client's lack text (ShowLackCurrencyMessage, uicommon.cpp:1083-1105):
+    // the red merets only (cost 10, the client's 9) its red notice, the plain and red-else-plain ones the meret ask.
+    [TestCase(ShopCurrencyType.GameMeret, true)]
+    [TestCase(ShopCurrencyType.EventMeret, false)]
+    [TestCase(ShopCurrencyType.Meret, false)]
+    public void SkinChange_MeretFeeShort_SendsTheClientsLackText(ShopCurrencyType currency, bool redText) {
+        GameSession session = StartInShop(currency);
+        session.Currency.Meret = 900;
+        session.Currency.GameMeret = 900;
+        test.TakeSent();
+
+        ChangeSkin(session);
+
+        List<byte[]> sent = test.TakeSent();
+        byte[] redNotice = NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat_red).ToArray();
+        byte[] ask = BeautyPacket.Error(BeautyError.s_err_lack_merat_ask).ToArray();
+        Assert.That(sent.Any(packet => packet.SequenceEqual(redNotice)), Is.EqualTo(redText));
+        Assert.That(sent.Any(packet => packet.SequenceEqual(ask)), Is.EqualTo(!redText));
+        Assert.That(session.Currency.Meret, Is.EqualTo(900));
+        Assert.That(session.Currency.GameMeret, Is.EqualTo(900));
     }
     #endregion
 

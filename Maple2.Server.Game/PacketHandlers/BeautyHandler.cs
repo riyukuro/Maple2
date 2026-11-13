@@ -548,10 +548,26 @@ public class BeautyHandler : FieldPacketHandler {
             _ => ToCurrencyType(cost.CurrencyType) is var type && type != CurrencyType.None ? session.Currency[type] : -1,
         };
         if (!BeautyRules.Affords(owned, cost.Price)) {
-            session.Send(BeautyPacket.Error(wallet != null ? BeautyError.s_err_lack_merat_ask : BeautyError.lack_currency));
+            SendLack(session, wallet);
             return false;
         }
         return true;
+    }
+
+    // The client's lack text for the fee (ShowLackCurrencyMessage, uicommon.cpp:1083-1105): currencies 3 and 10 ask
+    // to buy merets, 9 (the red merets only) is a notice of its own; Beauty has no error code for it.
+    private static void SendLack(GameSession session, MeretCost.Wallet? wallet) {
+        switch (wallet) {
+            case null:
+                session.Send(BeautyPacket.Error(BeautyError.lack_currency));
+                break;
+            case MeretCost.Wallet.Red:
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat_red));
+                break;
+            default:
+                session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
+                break;
+        }
     }
 
     private static bool Pay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
@@ -612,7 +628,7 @@ public class BeautyHandler : FieldPacketHandler {
             case ShopCurrencyType.EventMeret:
             case ShopCurrencyType.GameMeret:
                 if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.CurrencyType)!.Value, cost.Price, out _)) {
-                    session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
+                    SendLack(session, MeretCost.OfShop(cost.CurrencyType));
                     return false;
                 }
                 break;
