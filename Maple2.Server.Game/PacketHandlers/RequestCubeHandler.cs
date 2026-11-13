@@ -396,7 +396,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        if (!owner.Housing.TryPlaceCube(cubeItem, plot, metadata, position, rotation, out PlotCube? placedCube, isReplace: true, helper: owner == session ? null : session)) {
+        if (!owner.Housing.TryPlaceCube(cubeItem, plot, metadata, position, rotation, out PlotCube? placedCube, isReplace: true, helper: owner == session ? null : session, byPlayer: true)) {
             return;
         }
 

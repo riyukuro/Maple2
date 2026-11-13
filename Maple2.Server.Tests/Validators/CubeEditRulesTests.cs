@@ -21,6 +21,15 @@ public class CubeEditRulesTests {
         Assert.That(CubeEditRules.Taken(isReplace, existing, item), Is.EqualTo(expected));
     }
 
+    // A template cube (one with a ucc mesh) needs a look with an id; a cube without a mesh needs none.
+    [TestCase("ugc_mesh", null, UgcMapError.s_err_ugcmap_cant_build_empty_ugc)]
+    [TestCase("ugc_mesh", 0L, UgcMapError.s_err_ugcmap_cant_build_empty_ugc)]
+    [TestCase("ugc_mesh", 7L, UgcMapError.s_ugcmap_ok)]
+    [TestCase("", null, UgcMapError.s_ugcmap_ok)]
+    public void EmptyTemplate(string mesh, long? templateId, UgcMapError expected) {
+        Assert.That(CubeEditRules.EmptyTemplate(mesh, templateId), Is.EqualTo(expected));
+    }
+
     // Group limits: a house (type 6, subtype 4), a trigger tool and an installed npc each count against their own
     // limit; one more is allowed only while the limit is above 0 and above the count. Ids are made up.
     private static ItemMetadata House => TestGameSession.Metadata(50100001, type: 6) with {

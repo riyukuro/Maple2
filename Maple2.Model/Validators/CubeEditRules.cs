@@ -45,5 +45,11 @@ public static class CubeEditRules {
         return UgcMapError.s_ugcmap_ok;
     }
 
+    // A template cube (an item with a ucc mesh, CItemData::HasCubeTextureMesh) placed without a template look, or with
+    // a look of id 0 (CubeItemInfo::FUN_1408b3860), is refused with s_err_ugcmap_cant_build_empty_ugc (98)
+    // (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:964-972).
+    public static UgcMapError EmptyTemplate(string mesh, long? templateId) =>
+        !string.IsNullOrEmpty(mesh) && templateId is null or 0 ? UgcMapError.s_err_ugcmap_cant_build_empty_ugc : UgcMapError.s_ugcmap_ok;
+
     private static bool IsHouse(ItemMetadata item, FunctionCubeMetadata? _) => item.Property.Type == 6 && item.Property.SubType == 4;
 }

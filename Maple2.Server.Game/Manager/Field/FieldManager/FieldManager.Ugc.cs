@@ -225,7 +225,7 @@ public partial class FieldManager {
                     return;
                 }
 
-                if (!owner.Housing.TryPlaceCube(cubeItem, plot, itemMetadata, position, rotation, out PlotCube? plotCube, helper: owner == session ? null : session)) {
+                if (!owner.Housing.TryPlaceCube(cubeItem, plot, itemMetadata, position, rotation, out PlotCube? plotCube, helper: owner == session ? null : session, byPlayer: true)) {
                     return;
                 }
 

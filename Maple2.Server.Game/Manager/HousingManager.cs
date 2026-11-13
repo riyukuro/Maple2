@@ -725,9 +725,9 @@ public class HousingManager {
     }
 
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
-                             [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null) {
+                             [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null, bool byPlayer = false) {
         lock (plot.EditLock) {
-            return PlaceCube(cube, plot, itemMetadata, position, rotation, out result, isReplace, helper);
+            return PlaceCube(cube, plot, itemMetadata, position, rotation, out result, isReplace, helper, byPlayer);
         }
     }
 
@@ -748,13 +748,21 @@ public class HousingManager {
     }
 
     private bool PlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
-                           [NotNullWhen(true)] out PlotCube? result, bool isReplace, GameSession? helper) {
+                           [NotNullWhen(true)] out PlotCube? result, bool isReplace, GameSession? helper, bool byPlayer = false) {
         result = null;
         // A build helper edits through the owner's manager; what the edit refuses goes to the helper.
         GameSession notify = helper ?? session;
         if (session.Field is null || itemMetadata.Install is null) return false;
         CubePacket.Edit edit = isReplace ? CubePacket.Edit.Replace : CubePacket.Edit.Place;
         void Refuse(UgcMapError error) => notify.Send(CubePacket.EditError(edit, error, notify.Player.ObjectId));
+
+        // The client checks this when a player confirms a placement (cubecraft_2.cpp:964); package installs and
+        // layouts place their cubes without a look.
+        UgcMapError emptyTemplate = byPlayer ? CubeEditRules.EmptyTemplate(itemMetadata.Mesh, cube.Template?.Id) : UgcMapError.s_ugcmap_ok;
+        if (emptyTemplate != UgcMapError.s_ugcmap_ok) {
+            Refuse(emptyTemplate);
+            return false;
+        }
 
         tableMetadata.FurnishingShopTable.Entries.TryGetValue(cube.ItemId, out FurnishingShopTable.Entry? shopEntry);
         shopEntry = SalePrice(shopEntry, itemMetadata);
