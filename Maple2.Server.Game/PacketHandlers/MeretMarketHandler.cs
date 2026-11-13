@@ -995,9 +995,14 @@ public class MeretMarketHandler : FieldPacketHandler {
                (item.Metadata.SaleEndTime == 0 || item.Metadata.SaleEndTime >= now);
     }
 
-    // Client UIMeratMarketDialog::SendRandomSaleRequest (111, uimeratmarketdialog.cpp:2813) and the
-    // bill payment (112, uimeratmarketcommon.cpp:560): buy a type 6 random-sale product.
-    // The fork has no random-sale state, so nothing is bought.
+    // The random-sale notices. UIMeratMarketDialog::SendRandomSaleRequest (uimeratmarketdialog.cpp:2801) runs on
+    // every bill open (OnClickBuy, :3844) and sends one of 111 (a type 6 product), 115 (types 7 and 8) or 118 (any
+    // other product); the bill payment sends 112 (type 6) or 116 (types 7 and 8, uimeratmarketcommon.cpp:560/583)
+    // before the purchase itself (30). The client reads no reply to any of them, and no KR shop row is of type 6, 7
+    // or 8 (shop_merat and shop_merat_custom carry no type and the server writes none), so each is only logged.
+
+    // 111 at the bill open and 112 at its payment, for a type 6 product: the product, the pick's fields as the
+    // client holds them and the sale price.
     private void HandleRandomSaleBuy(GameSession session, IByteReader packet, Command command) {
         int productId = packet.ReadInt();
         byte arg1 = packet.ReadByte();
@@ -1005,29 +1010,32 @@ public class MeretMarketHandler : FieldPacketHandler {
         int remainCount = packet.ReadInt();
         long remainSeconds = packet.ReadLong();
         long salePrice = packet.ReadLong();
-        Logger.Debug("MeretMarket {Command} product {ProductId} not implemented", command, productId);
+        Logger.Debug("MeretMarket {Command}: random-sale notice for product {ProductId}, no reply", command, productId);
     }
 
-    // Client uimeratmarketdialog.cpp:3890: create a random sale for a type 7 or 8 product.
+    // 114 (uimeratmarketdialog.cpp:3890): a type 7 or 8 product's bill opened with no live pick asks for one. The
+    // answer would be 0x72 (OnRandomCouponPick, meratmarketman.cpp:2581: id, sale id, rate, count, day); with no
+    // such product there is no pick to give, so nothing is sent.
     private void HandleRandomSaleCreate(GameSession session, IByteReader packet) {
         int productId = packet.ReadInt();
         byte type = packet.ReadByte();
-        Logger.Debug("MeretMarket random sale create {ProductId} type {Type} not implemented", productId, type);
+        Logger.Debug("MeretMarket random-sale pick for product {ProductId} type {Type}: no random-sale product, no reply", productId, type);
     }
 
-    // Client uimeratmarketdialog.cpp:2825/2834 (115) and uimeratmarketcommon.cpp:583 (116):
-    // type 7 or 8 random-sale products, with the notice string id the client shows.
+    // 115 at the bill open (uimeratmarketdialog.cpp:2825/2834) and 116 at its payment (uimeratmarketcommon.cpp:583),
+    // for a type 7 or 8 product: the product, the pick's rate and the notice string the client shows with it.
     private void HandleRandomSaleNotice(GameSession session, IByteReader packet, Command command) {
         int productId = packet.ReadInt();
-        int arg = packet.ReadInt();
+        int rate = packet.ReadInt();
         int notice = packet.ReadInt();
-        Logger.Debug("MeretMarket {Command} product {ProductId} not implemented", command, productId);
+        Logger.Debug("MeretMarket {Command}: random-sale notice for product {ProductId}, no reply", command, productId);
     }
 
-    // Client uimeratmarketdialog.cpp:2843: any other random-sale product type.
+    // 118 (uimeratmarketdialog.cpp:2843): the bill of any other product opened, so this comes with every ordinary
+    // premium purchase: the product and an int the client keeps with it.
     private void HandleRandomSaleRequestOther(GameSession session, IByteReader packet) {
         int productId = packet.ReadInt();
         int arg = packet.ReadInt();
-        Logger.Debug("MeretMarket random sale request {ProductId} not implemented", productId);
+        Logger.Debug("MeretMarket bill opened for product {ProductId}, no reply", productId);
     }
 }
