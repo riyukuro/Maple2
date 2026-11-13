@@ -73,4 +73,14 @@ public class MiniGameClearRulesTests {
         Assert.That(bytes.Length, Is.EqualTo(11));
         Assert.That(PlayerHostPacket.MiniGameRewardNotice(5, 10).ToArray()[2], Is.EqualTo(4));
     }
+
+    // A user-opened game's exp, the losers' bonus included, is userMiniGame; every other game's is miniGame.
+    [Test]
+    public void ExpTypeOf_UserOpenGames() {
+        Assert.That(MiniGameClearRules.ExpTypeOf("UserMassive_Escape"), Is.EqualTo(ExpType.userMiniGame));
+        Assert.That(MiniGameClearRules.ExpTypeOf("UserMassive_Crazyrunner"), Is.EqualTo(ExpType.userMiniGame));
+        Assert.That(MiniGameClearRules.ExpTypeOf("UserMassive_Springbeach"), Is.EqualTo(ExpType.userMiniGame));
+        Assert.That(MiniGameClearRules.ExpTypeOf("trapmaster"), Is.EqualTo(ExpType.miniGame));
+        Assert.That(MiniGameClearRules.ExpTypeOf(""), Is.EqualTo(ExpType.miniGame));
+    }
 }

@@ -1,3 +1,5 @@
+using Maple2.Model.Enum;
+
 namespace Maple2.Model.Validators;
 
 // useropen_minigame_clear: the row reads "complete any mini-game and claim your reward" (70200061) and lists the
@@ -12,6 +14,10 @@ public static class MiniGameClearRules {
     // The games of those three fields (gameName of their StartMiniGame and EndMiniGameRound actions).
     public static bool IsUserOpenGame(string gameName) =>
         gameName is "UserMassive_Crazyrunner" or "UserMassive_Springbeach" or "UserMassive_Escape";
+
+    // The exp type of a round's exp: userMiniGame for those games, miniGame for the rest. The losers' bonus
+    // (is_gain_loser_bonus, 81000001 and 81000003) is exp of the same game, so it takes the same type as the winners'.
+    public static ExpType ExpTypeOf(string gameName) => IsUserOpenGame(gameName) ? ExpType.userMiniGame : ExpType.miniGame;
 
     // The extra reward (reward content 1008) is paid at most userMassiveExtraRewardMax times a day; the triggers'
     // own comment says "5 extra bonuses a day" and the constant is 5.

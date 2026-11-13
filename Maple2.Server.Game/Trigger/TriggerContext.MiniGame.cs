@@ -54,7 +54,7 @@ public partial class TriggerContext {
     }
 
     public void EndMiniGameRound(int winnerBoxId, float expRate, float meso, bool isOnlyWinner, bool isGainLoserBonus, string gameName) {
-        ExpType expType = MiniGameClearRules.IsUserOpenGame(gameName) ? ExpType.userMiniGame : ExpType.miniGame;
+        ExpType expType = MiniGameClearRules.ExpTypeOf(gameName);
         IEnumerable<FieldPlayer> players = PlayersInBox(winnerBoxId);
         foreach (FieldPlayer player in players) {
             MiniGameUserRecord? record = player.Session.MiniGameRecord;
@@ -79,7 +79,7 @@ public partial class TriggerContext {
         foreach (FieldPlayer player in losingPlayers) {
             if (player.Session.MiniGameRecord != null) {
                 if (isGainLoserBonus) {
-                    long totalExp = player.Session.Exp.AddExp(ExpType.miniGame, expRate);
+                    long totalExp = player.Session.Exp.AddExp(expType, expRate);
                     player.Session.MiniGameRecord.Rewards[DungeonRewardType.Exp] += (int) totalExp;
                 }
                 if (player.Session.MiniGameRecord.ShowResult) {
