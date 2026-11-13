@@ -16,6 +16,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Model.Widget;
@@ -1241,8 +1242,11 @@ public class TriggerItemTests : TriggerTestBase {
     private const int QuestBoxId = 310000175;
     private const int QuestItem = 30000023;
     private const int QuestId = 60100070;
+    // One group of drop count 1 that mixes the quest-only row with a plain one, each of weight 50.
+    private const int MixedBoxId = 900003;
 
-    // A field whose map has item spawn point 9001 (box BoxId, 30 s), 9002 (no box, no lifetime) and 9004 (QuestBoxId).
+    // A field whose map has item spawn point 9001 (box BoxId, 30 s), 9002 (no box, no lifetime), 9004 (QuestBoxId) and
+    // 9005 (MixedBoxId).
     [SetUp]
     public void SetUpItems() {
         test = new TestGameSession();
@@ -1255,6 +1259,12 @@ public class TriggerItemTests : TriggerTestBase {
                     new([QuestItem, 0], false, 0, 0, 0, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], true),
                 ]),
             },
+            [MixedBoxId] = new Dictionary<int, IndividualDropItemTable.Entry> {
+                [1] = new(1, 0, always, 0, false, false, [
+                    new([QuestItem, 0], false, 0, 0, 50, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], true),
+                    new([Coin, 0], false, 0, 0, 50, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false),
+                ]),
+            },
         }));
         test.Start();
         SetTriggers();
@@ -1262,6 +1272,7 @@ public class TriggerItemTests : TriggerTestBase {
             [9001] = new(9001, new Vector3(100, 200, 300), Vector3.Zero, 30, BoxId, 0, 0, true),
             [9002] = new(9002, new Vector3(-100, 0, 0), Vector3.Zero, 0, 0, 0, 0, true),
             [9004] = new(9004, new Vector3(6800, -1125, 4950), Vector3.Zero, 0, QuestBoxId, 0, 0, true),
+            [9005] = new(9005, Vector3.Zero, Vector3.Zero, 0, MixedBoxId, 0, 0, true),
         });
         context = NewContext();
         test.TakeSent();
@@ -1297,8 +1308,8 @@ public class TriggerItemTests : TriggerTestBase {
     }
 
     // 60100070's one condition: hold 1 of 30000023 (item_exist, no map).
-    private Quest StartQuest() {
-        return test.StartQuest(TestGameSession.QuestData(QuestId) with {
+    private Quest StartQuest(TestGameSession? session = null) {
+        return (session ?? test).StartQuest(TestGameSession.QuestData(QuestId) with {
             Conditions = [new ConditionMetadata(ConditionType.item_exist, 1, new ConditionMetadata.Parameters(Integers: [QuestItem]), null)],
         });
     }
@@ -1341,6 +1352,70 @@ public class TriggerItemTests : TriggerTestBase {
         StartQuest();
         Action("""<action name="spawn_item_range" range_ids="9004" random_pick_count="1" />""");
         Assert.That(Drops().Select(drop => (drop.ItemId, drop.Receiver)), Is.EqualTo(new[] { (QuestItem, test.Session.CharacterId) }));
+    }
+
+    // A second player in the same field.
+    private TestGameSession SecondPlayer() {
+        var other = new TestGameSession(test.Options);
+        other.Start();
+        typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(other.Session.Player, 2);
+        Field.Players[2] = other.Session.Player;
+        other.Session.Field = Field;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(other.Session.Player, Field);
+        return other;
+    }
+
+    // A group mixing quest-only and plain rows rolls its drop count once over all of them, as the client's box roll
+    // does (ItemDropTable::DropIndividualGroup calls PickDropCount once per group): a count of 1 gives one row, the
+    // plain one for anyone or the quest one for the player who needs it, never both.
+    [Test]
+    public void MixedGroup_OneDropCountForBothKinds() {
+        StartQuest();
+        TestGameSession other = SecondPlayer();
+        var seen = new HashSet<int>();
+        for (int i = 0; i < 200; i++) {
+            ItemDropManager.SpawnBoxDrops box = Field.ItemDrop.GetSpawnBoxItems(MixedBoxId, [test.Session, other.Session]);
+            Assert.That(box.Shared.Count + box.Owned.Count, Is.EqualTo(1));
+            Assert.That(box.Owned.Select(drop => (drop.Session, drop.Item.Id)), Is.SubsetOf(new[] { (test.Session, QuestItem) }));
+            seen.UnionWith(box.Shared.Concat(box.Owned.Select(drop => drop.Item)).Select(item => item.Id));
+        }
+        Assert.That(seen, Is.EquivalentTo(new[] { QuestItem, Coin }));
+    }
+
+    // Two players, one with the quest: each create_item drops one item, the coin for anyone or the quest item for that
+    // player only, and the quest item once while it lies on the field.
+    [Test]
+    public void CreateItem_MixedGroupWithTwoPlayers() {
+        StartQuest();
+        TestGameSession other = SecondPlayer();
+        var drops = new List<(int ItemId, long Receiver)>();
+        for (int i = 0; i < 100; i++) {
+            Action("""<action name="create_item" spawn_ids="9005" />""");
+            List<(int ItemId, long Receiver)> run = Drops().Select(drop => (drop.ItemId, drop.Receiver)).ToList();
+            Assert.That(run, Has.Count.LessThanOrEqualTo(1));
+            drops.AddRange(run);
+        }
+        Assert.That(drops.Where(drop => drop.ItemId == QuestItem), Is.EqualTo(new[] { (QuestItem, test.Session.CharacterId) }));
+        Assert.That(drops.Where(drop => drop.ItemId == Coin).Select(drop => drop.Receiver).Distinct(), Is.EqualTo(new[] { 0L }));
+        Assert.That(drops.Select(drop => drop.Receiver), Has.None.EqualTo(other.Session.CharacterId));
+    }
+
+    // With both players on the quest, a pick of the quest row gives each of them their own copy.
+    [Test]
+    public void CreateItem_MixedGroupQuestRowForEachPlayerWhoNeedsIt() {
+        StartQuest();
+        TestGameSession other = SecondPlayer();
+        StartQuest(other);
+        for (int i = 0; i < 100; i++) {
+            Action("""<action name="create_item" spawn_ids="9005" />""");
+            List<(int ItemId, long Receiver)> run = Drops().Select(drop => (drop.ItemId, drop.Receiver)).ToList();
+            if (run.Any(drop => drop.ItemId == QuestItem)) {
+                Assert.That(run, Is.EquivalentTo(new[] { (QuestItem, test.Session.CharacterId), (QuestItem, other.Session.CharacterId) }));
+                return;
+            }
+            Assert.That(run, Is.EqualTo(new[] { (Coin, 0L) }));
+        }
+        Assert.Fail("the quest row was never picked");
     }
 }
 

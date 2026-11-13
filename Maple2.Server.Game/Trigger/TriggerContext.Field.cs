@@ -3,8 +3,10 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
 
@@ -452,9 +454,8 @@ public partial class TriggerContext {
                 continue;
             }
 
-            if (spawn.IndividualDropBoxId > 0) {
-                items = items.Concat(Field.ItemDrop.GetIndividualDropItems(spawn.IndividualDropBoxId)).ToList();
-            }
+            ItemDropManager.SpawnBoxDrops box = SpawnBox(spawn);
+            items = items.Concat(box.Shared).ToList();
 
             if (spawn.GlobalDropBoxId > 0) {
                 items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel)).ToList();
@@ -464,29 +465,35 @@ public partial class TriggerContext {
                 Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: 0, fixedPosition: true,
                     dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
             }
-            DropQuestItems(spawn);
+            DropQuestItems(spawn, box);
         }
     }
 
-    // A spawn point box's quest-only rows (52000066's spawn 300: 30000023 for quest 60100070) drop for each player
-    // whose started quest still needs the item, as that player's item. A player whose copy still lies on the field gets
-    // no other one when the trigger runs again. Chosen here: one owned drop per player, as a shared one could go to a
-    // player without the quest.
-    private void DropQuestItems(EventSpawnPointItem spawn) {
+    // A spawn point's individual drop box, rolled once per group with the field's players
+    // (ItemDropManager.GetSpawnBoxItems).
+    private ItemDropManager.SpawnBoxDrops SpawnBox(EventSpawnPointItem spawn) {
         if (spawn.IndividualDropBoxId <= 0) {
-            return;
+            return new ItemDropManager.SpawnBoxDrops([], []);
         }
+        return Field.ItemDrop.GetSpawnBoxItems(spawn.IndividualDropBoxId, Field.Players.Values.Select(player => player.Session).ToList());
+    }
 
-        foreach (FieldPlayer player in Field.Players.Values) {
-            foreach (Item item in Field.ItemDrop.GetIndividualQuestDropItems(player.Session, spawn.IndividualDropBoxId)) {
-                long characterId = player.Value.Character.Id;
-                if (Field.HasItemFor(characterId, item.Id)) {
-                    continue;
-                }
-                Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: characterId, fixedPosition: true,
-                    dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
+    // A spawn point box's picked quest-only rows (52000066's spawn 300: 30000023 for quest 60100070) drop for each
+    // player whose started quest still needs the item, as that player's item. A player whose copy still lies on the
+    // field gets no other one when the trigger runs again. Chosen here: one owned drop per player, as a shared one could
+    // go to a player without the quest. Returns the number dropped.
+    private int DropQuestItems(EventSpawnPointItem spawn, ItemDropManager.SpawnBoxDrops box) {
+        int dropped = 0;
+        foreach ((GameSession session, Item item) in box.Owned) {
+            long characterId = session.Player.Value.Character.Id;
+            if (Field.HasItemFor(characterId, item.Id)) {
+                continue;
             }
+            Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: characterId, fixedPosition: true,
+                dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
+            dropped++;
         }
+        return dropped;
     }
 
     public void SpawnItemRange(int[] rangeIds, int randomPickCount) {
@@ -501,10 +508,8 @@ public partial class TriggerContext {
                 continue;
             }
 
-            ICollection<Item> items = new List<Item>();
-            if (spawn.IndividualDropBoxId > 0) {
-                items = items.Concat(Field.ItemDrop.GetIndividualDropItems(spawn.IndividualDropBoxId)).ToList();
-            }
+            ItemDropManager.SpawnBoxDrops box = SpawnBox(spawn);
+            ICollection<Item> items = box.Shared.ToList();
 
             if (spawn.GlobalDropBoxId > 0) {
                 items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel)).ToList();
@@ -516,7 +521,11 @@ public partial class TriggerContext {
                 sent++;
                 firstPosition ??= spawn.Position;
             }
-            DropQuestItems(spawn);
+            int owned = DropQuestItems(spawn, box);
+            sent += owned;
+            if (owned > 0) {
+                firstPosition ??= spawn.Position;
+            }
         }
 
         // Logged in every build (not only TRIGGER_DEBUG), so a Release run shows what the drops were.

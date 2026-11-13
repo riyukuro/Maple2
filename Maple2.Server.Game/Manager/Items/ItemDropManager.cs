@@ -183,23 +183,45 @@ public class ItemDropManager {
             .SelectMany(itemEntry => CreateIndividualDropBoxItems(itemEntry)).ToList();
     }
 
-    // The quest-only rows (constraintsQuest) of a box a trigger spawns, rolled for one player: each group rolled over
-    // the quest-only rows the player's started quest still needs on this map (QuestManager.NeedsItem), so a player who
-    // holds the item or finished the quest gets none. The no-player roll above leaves these rows out.
-    public ICollection<Item> GetIndividualQuestDropItems(GameSession session, int individualDropBoxId) {
+    // A box a trigger spawns, rolled with the players on the field: each group's drop count is rolled once, over one
+    // picker of its rows (the client's box roll, ItemDropTable::DropIndividualGroup, commonfiles/itemdroptable.cpp:1604,
+    // calls PickDropCount once per group, quest-only rows and the others alike). A picked row without a quest is a
+    // shared drop; a picked quest-only row (constraintsQuest) drops, as their own item, for each player whose started
+    // quest still needs it on this map (QuestManager.NeedsItem), so a player who holds the item or finished the quest
+    // gets none. Chosen here: a quest-only row is in the picker when a player on the field needs it.
+    public SpawnBoxDrops GetSpawnBoxItems(int individualDropBoxId, IReadOnlyCollection<GameSession> players) {
+        var drops = new SpawnBoxDrops([], []);
         if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
-            return new List<Item>();
+            return drops;
         }
 
-        return entryDict.Values.SelectMany(group => PickGroupEntries(group, group.Items,
-                itemEntry => itemEntry.QuestConstraint && IsEntryAvailable(session, itemEntry), _ => false, itemEntry => itemEntry.Weight))
-            .SelectMany(itemEntry => CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character)).ToList();
+        IEnumerable<IndividualDropItemTable.Item> picked = PickBoxEntries(entryDict.Values, field.Metadata.Id,
+            itemEntry => players.Any(session => IsEntryAvailable(session, itemEntry)));
+        foreach (IndividualDropItemTable.Item itemEntry in picked) {
+            if (!itemEntry.QuestConstraint) {
+                drops.Shared.AddRange(CreateIndividualDropBoxItems(itemEntry));
+                continue;
+            }
+            foreach (GameSession session in players.Where(session => IsEntryAvailable(session, itemEntry))) {
+                drops.Owned.AddRange(CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character).Select(item => (session, item)));
+            }
+        }
+        return drops;
     }
 
+    public record SpawnBoxDrops(List<Item> Shared, List<(GameSession Session, Item Item)> Owned);
+
     internal static IEnumerable<IndividualDropItemTable.Item> PickBoxEntriesWithoutPlayer(IEnumerable<IndividualDropItemTable.Entry> groups, int mapId) {
+        return PickBoxEntries(groups, mapId, _ => false);
+    }
+
+    // Each group rolled once by the entries' own weights; an entry for another map is skipped, a quest-only entry
+    // unless questNeeded says a player needs it.
+    internal static IEnumerable<IndividualDropItemTable.Item> PickBoxEntries(IEnumerable<IndividualDropItemTable.Entry> groups, int mapId,
+            Func<IndividualDropItemTable.Item, bool> questNeeded, Random? random = null) {
         return groups.SelectMany(group => PickGroupEntries(group, group.Items,
-            itemEntry => !itemEntry.QuestConstraint && (itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(mapId)),
-            _ => false, itemEntry => itemEntry.Weight));
+            itemEntry => (itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(mapId)) && (!itemEntry.QuestConstraint || questNeeded(itemEntry)),
+            _ => false, itemEntry => itemEntry.Weight, random));
     }
 
     private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry) {
