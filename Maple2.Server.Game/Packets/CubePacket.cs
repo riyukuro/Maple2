@@ -246,7 +246,7 @@ public static class CubePacket {
         pWriter.WriteInt(); // Unknown
         pWriter.WriteBool(isBound);
         if (isBound) {
-            pWriter.WriteString();
+            pWriter.WriteUnicodeString(); // notice text: the client reads a unicode string (scenestategame.cpp:10006)
             pWriter.WriteByte();
         }
 
