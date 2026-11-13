@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Text.Json.Serialization;
+using Maple2.Model.Enum;
 
 namespace Maple2.Model.Metadata;
 
@@ -108,8 +109,9 @@ public record QuestMetadataRequire(
     // require subJob: the player's job (Job, 101 a first-awakened knight) must be listed (questdata.cpp:476).
     int[]? SubJob = null,
     // require guildLevel: -1 (no attribute) checks nothing, 0 refuses a player in a guild, a level refuses one without
-    // a guild or in a lower-level guild (questdata.cpp:553).
-    int GuildLevel = -1,
+    // a guild or in a lower-level guild (questdata.cpp:553). Always written: the stored json leaves out a 0, which read
+    // back as -1 would drop the not-in-a-guild require.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int GuildLevel = -1,
     // require mentor and mentee: the player's mentoring role must be mentor (5) or mentee (2) (questdata.cpp:605).
     bool Mentor = false,
     bool Mentee = false,

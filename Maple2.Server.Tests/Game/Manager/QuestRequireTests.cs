@@ -125,6 +125,19 @@ public class QuestRequireTests {
         Assert.That(QuestRules.MeetsGuildLevel(required, inGuild, level), Is.EqualTo(meets));
     }
 
+    // The quest table's json (the db's options, which leave out default values) keeps a guildLevel of 0: read back
+    // as the -1 default it would check nothing (quest 90000720).
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(3)]
+    public void GuildLevel_KeptInTheStoredJson(int guildLevel) {
+        var options = (System.Text.Json.JsonSerializerOptions) typeof(Maple2.Database.Extensions.PropertyBuilderExtensions)
+            .GetField("Options", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        string json = System.Text.Json.JsonSerializer.Serialize(Require() with { GuildLevel = guildLevel }, options);
+
+        Assert.That(System.Text.Json.JsonSerializer.Deserialize<QuestMetadataRequire>(json, options)!.GuildLevel, Is.EqualTo(guildLevel));
+    }
+
     // require mentor and mentee (questdata.cpp:605; KR 70600056, 70600057): no player has a mentoring role here.
     [Test]
     public void CanStart_MentorAndMentee() {
