@@ -18,6 +18,22 @@ public static class CubeEditRules {
         return existingItemId == itemId ? UgcMapError.s_ugcmap_cant_replace_same_cube : UgcMapError.s_ugcmap_ok;
     }
 
+    // A cube the builder may not place yet: s_ugcmap_cube_lock (88), which the client shows before it sends the place
+    // (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:954; MyPC::FUN_1415302e0, mypc.cpp:4446). The client locks a
+    // cube whose trophy grade (housing trophyID, trophyLevel) is not cleared: its own in its home or on a plot, the home
+    // owner's (ResponseCube 0x37) for a build helper. A cube of a meret price (price table money type 3) is never
+    // locked. The interior level checks behind feature HousingLevelhurdle (0xdb) are left out: feature.xml gives it
+    // level 100 for KR and NA, above the Live level, so the client never runs them. cleared is the trophy owner's.
+    public static UgcMapError CubeLock(ItemMetadataHousing? housing, FurnishingCurrencyType? currency, Func<int, int, bool> cleared) {
+        if (housing == null || currency == FurnishingCurrencyType.Meret) {
+            return UgcMapError.s_ugcmap_ok;
+        }
+        if (housing.TrophyId > 0 && !cleared(housing.TrophyId, housing.TrophyLevel)) {
+            return UgcMapError.s_ugcmap_cube_lock;
+        }
+        return UgcMapError.s_ugcmap_ok;
+    }
+
     // The plot group's count limits on a place (client CubeMapInformationService FUN_1410d27c0,
     // cubemapinformationservice_3.cpp:4603). The client counts a group's cubes of each kind and allows one more only
     // while the limit is above 0 and above the count:

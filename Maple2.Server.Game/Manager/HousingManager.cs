@@ -756,15 +756,23 @@ public class HousingManager {
         CubePacket.Edit edit = isReplace ? CubePacket.Edit.Replace : CubePacket.Edit.Place;
         void Refuse(UgcMapError error) => notify.Send(CubePacket.EditError(edit, error, notify.Player.ObjectId));
 
-        // The client checks this when a player confirms a placement (cubecraft_2.cpp:964); package installs and
-        // layouts place their cubes without a look.
+        // The client checks these when a player confirms a placement (cubecraft_2.cpp:954-968); package installs and
+        // layouts place their cubes without them. The trophies are this manager's session's: the builder's own, or for
+        // a helper the home owner's.
+        tableMetadata.FurnishingShopTable.Entries.TryGetValue(cube.ItemId, out FurnishingShopTable.Entry? shopEntry);
+        UgcMapError cubeLock = byPlayer
+            ? CubeEditRules.CubeLock(itemMetadata.Housing, shopEntry?.FurnishingTokenType, (id, grade) => session.Achievement.HasAchievement(id, grade))
+            : UgcMapError.s_ugcmap_ok;
+        if (cubeLock != UgcMapError.s_ugcmap_ok) {
+            Refuse(cubeLock);
+            return false;
+        }
         UgcMapError emptyTemplate = byPlayer ? CubeEditRules.EmptyTemplate(itemMetadata.Mesh, cube.Template?.Id) : UgcMapError.s_ugcmap_ok;
         if (emptyTemplate != UgcMapError.s_ugcmap_ok) {
             Refuse(emptyTemplate);
             return false;
         }
 
-        tableMetadata.FurnishingShopTable.Entries.TryGetValue(cube.ItemId, out FurnishingShopTable.Entry? shopEntry);
         shopEntry = SalePrice(shopEntry, itemMetadata);
 
         switch (plot.PlotMode) {

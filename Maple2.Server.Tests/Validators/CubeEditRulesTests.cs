@@ -30,6 +30,30 @@ public class CubeEditRulesTests {
         Assert.That(CubeEditRules.EmptyTemplate(mesh, templateId), Is.EqualTo(expected));
     }
 
+    // The cube lock (mypc.cpp:4446): a cube that names a trophy is locked until that grade is cleared; a meret cube
+    // (money type 3) and a cube without housing data never are.
+    [TestCase(23100098, false, FurnishingCurrencyType.Meso, UgcMapError.s_ugcmap_cube_lock)]
+    [TestCase(23100098, true, FurnishingCurrencyType.Meso, UgcMapError.s_ugcmap_ok)]
+    [TestCase(23100098, false, FurnishingCurrencyType.Meret, UgcMapError.s_ugcmap_ok)]
+    [TestCase(23100098, false, null, UgcMapError.s_ugcmap_cube_lock)]
+    [TestCase(0, false, FurnishingCurrencyType.Meso, UgcMapError.s_ugcmap_ok)]
+    public void CubeLock(int trophy, bool cleared, FurnishingCurrencyType? currency, UgcMapError expected) {
+        var housing = new ItemMetadataHousing(trophy, 2, 0, HousingCategory.None, false);
+        (int, int)? asked = null;
+        Assert.That(CubeEditRules.CubeLock(housing, currency, (id, grade) => {
+            asked = (id, grade);
+            return cleared;
+        }), Is.EqualTo(expected));
+        if (trophy > 0 && currency != FurnishingCurrencyType.Meret) {
+            Assert.That(asked, Is.EqualTo((trophy, 2)));
+        }
+    }
+
+    [Test]
+    public void CubeLock_NoHousingData_IsOpen() {
+        Assert.That(CubeEditRules.CubeLock(null, FurnishingCurrencyType.Meso, (_, _) => false), Is.EqualTo(UgcMapError.s_ugcmap_ok));
+    }
+
     // Group limits: a house (type 6, subtype 4), a trigger tool and an installed npc each count against their own
     // limit; one more is allowed only while the limit is above 0 and above the count. Ids are made up.
     private static ItemMetadata House => TestGameSession.Metadata(50100001, type: 6) with {

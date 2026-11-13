@@ -18,7 +18,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // a place with nothing held, or of another item than the one held, is refused with 0x0A s_ugcmap_null_cube_item_info
 // and places and takes nothing. The item ids are made up.
 public class PlaceHeldCubeTests {
-    private const int Cube = 50200911, OtherCube = 50200912, House = 50200913, TemplateCube = 50200914;
+    private const int Cube = 50200911, OtherCube = 50200912, House = 50200913, TemplateCube = 50200914, TrophyCube = 50200915;
+    private const int Trophy = 23100098; // made up
     private TestGameSession test = null!;
 
     private static ItemMetadata Furnishing(int id) => TestGameSession.Metadata(id) with {
@@ -35,11 +36,14 @@ public class PlaceHeldCubeTests {
             [OtherCube] = new(OtherCube, true, FurnishingCurrencyType.Meso, 1000),
             [House] = new(House, true, FurnishingCurrencyType.Meso, 1000),
             [TemplateCube] = new(TemplateCube, true, FurnishingCurrencyType.Meso, 1000),
+            [TrophyCube] = new(TrophyCube, true, FurnishingCurrencyType.Meso, 1000),
         }));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
         ItemMetadata house = Furnishing(House);
         test.Register(Furnishing(Cube), Furnishing(OtherCube), house with { Property = house.Property with { Type = 6, SubType = 4 } },
-            Furnishing(TemplateCube) with { Mesh = "ugc_mesh" });
+            Furnishing(TemplateCube) with { Mesh = "ugc_mesh" },
+            Furnishing(TrophyCube) with { Housing = new ItemMetadataHousing(Trophy, 1, 0, HousingCategory.None, false) });
+        test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.home_goto, [1, 2]));
         GameSession session = test.Start();
         session.Housing.InitNewHome("home", null);
         Plot plot = test.EnterHome();
@@ -113,6 +117,35 @@ public class PlaceHeldCubeTests {
             Assert.That(plot.Cubes, Is.Empty);
             Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         });
+    }
+
+    // A cube that needs a trophy grade the builder has not cleared is locked (cubecraft_2.cpp:954, mypc.cpp:4446):
+    // 0x0A s_ugcmap_cube_lock (88), nothing paid. Once the grade is cleared it is placed.
+    [Test]
+    public void ATrophyCube_IsLockedUntilTheGradeIsCleared() {
+        (GameSession session, Plot plot) = StartInHome();
+        Place(session, TrophyCube, TrophyCube);
+        byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_cube_lock, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+
+        session.ConditionUpdate(ConditionType.home_goto);
+        Assert.That(session.Achievement.HasAchievement(Trophy, 1), Is.True);
+        Place(session, TrophyCube, TrophyCube);
+        Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+        Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+    }
+
+    // A layout or package apply places a locked cube too, as the client checks the lock only on a player's place.
+    [Test]
+    public void ATrophyCubeFromALayout_IsNotLocked() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.ItemMetadata.TryGet(TrophyCube, out ItemMetadata? metadata);
+        Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Default }, plot, metadata!, new Vector3B(-1, -1, 1), 0, out _), Is.True);
+        Assert.That(plot.Cubes, Has.Count.EqualTo(1));
     }
 
     // A layout or package apply (not a player's place) keeps no group limit, as the client checks none: a house is
