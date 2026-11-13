@@ -882,8 +882,10 @@ public sealed partial class GameSession : Core.Network.Session {
         if (exploreExp != null) {
             Exp.AddExp(exploreExp.Value);
         }
-        // A stamp quest whose completion failed before (QuestManager.CompleteStampQuests) is tried again.
+        // A stamp quest or a field mission whose completion failed before (QuestManager.CompleteStampQuests,
+        // CompleteFieldMissions) is tried again.
         Quest.CompleteStampQuests();
+        Quest.CompleteFieldMissions();
         if (firstVisit) {
             ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
             ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
@@ -1724,6 +1726,16 @@ public sealed partial class GameSession : Core.Network.Session {
     // being stored refuses the purchase at once (false, as a failed save: the caller gives back what it took), so the
     // field thread does not wait for it; the player can buy again a few seconds later.
     public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave) => PurchaseSave(alsoSave) == SaveResult.Stored;
+
+    // TrySavePurchase that also says whether a reset being stored refused it (the caller may try again later).
+    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave, out bool resetRunning) {
+        SaveResult result = PurchaseSave(alsoSave);
+        resetRunning = result == SaveResult.ResetRunning;
+        return result == SaveResult.Stored;
+    }
+
+    // The session still plays on the field (a try again queued on the field's queue runs only then).
+    public bool PlaysOn(FieldManager field) => TimedSaveDue(field);
 
     private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave) {
         try {

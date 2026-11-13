@@ -11,6 +11,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -104,6 +105,50 @@ public sealed class QuestManager {
                 Complete(quest);
             }
         }
+    }
+
+    // A field mission is completed on the update that fills its last counter, as a stamp quest is; no later update
+    // comes. A completion that failed (a full inventory, a reset being stored) is tried again on each field entry.
+    public void CompleteFieldMissions() {
+        foreach (Quest quest in accountValues.Values.Concat(characterValues.Values).ToList()) {
+            if (quest.State == QuestState.Started && quest.Metadata.Basic.Type == QuestType.FieldMission && CanComplete(quest)) {
+                CompleteAutomatic(quest);
+            }
+        }
+    }
+
+    // The completion of an update that filled the last counter (a field mission, a stamp quest). One a reset being
+    // stored refused (Complete rolled it back, its save not waiting on the field thread) comes back 2 s later on the
+    // field's queue, as often as needed while the session plays on that field, as SavePurchase does; one try again
+    // per quest is queued. A session that left the field tries it again at its next field entry. The quest is
+    // completed only when its row is stored, so a try again of a quest completed since does nothing. The try again
+    // takes only the quest the session still holds: the reset that refused it may drop it (a daily mission of a stamp
+    // card), and a dropped one is not completed (no reward, no row written back); one started again since is
+    // another quest. It used to be refused for good: the full counters took no later update.
+    private static readonly TimeSpan CompleteRetryDelay = TimeSpan.FromSeconds(2);
+    private HashSet<int>? completeRetries;
+    private bool completeResetRefused;
+
+    private void CompleteAutomatic(Quest quest) {
+        if (Complete(quest) || !completeResetRefused) {
+            return;
+        }
+        if (session.Field is { } field && (completeRetries ??= []).Add(quest.Id)) {
+            field.Scheduler.Schedule(() => CompleteRetry(field, quest), CompleteRetryDelay);
+        }
+    }
+
+    private void CompleteRetry(FieldManager field, Quest quest) {
+        completeRetries?.Remove(quest.Id);
+        if (session.PlaysOn(field) && Holds(quest) && quest.State == QuestState.Started && CanComplete(quest)) {
+            CompleteAutomatic(quest);
+        }
+    }
+
+    // The session holds this quest object (not dropped, not started again since).
+    private bool Holds(Quest quest) {
+        IDictionary<int, Quest> values = quest.Metadata.Basic.Account > 0 ? accountValues : characterValues;
+        return values.TryGetValue(quest.Id, out Quest? held) && ReferenceEquals(held, quest);
     }
 
     private void Initialize(GameStorage.Request db) {
@@ -349,7 +394,7 @@ public sealed class QuestManager {
                 }
 
                 if ((quest.Metadata.Basic.Type == QuestType.FieldMission || StampQuests().Contains(quest.Id)) && CanComplete(quest)) {
-                    Complete(quest);
+                    CompleteAutomatic(quest);
                 }
             }
         }
@@ -667,6 +712,7 @@ public sealed class QuestManager {
     /// Gives the player the rewards for completing the quest.
     /// </summary>
     public bool Complete(Quest quest, bool bypassConditions = false) {
+        completeResetRefused = false;
         // A quest the played client lacks is not completed (no reward, no packet), also not with bypassConditions.
         if (quest.State == QuestState.Completed || !PlayedClientQuests.Known(quest.Metadata.Basic)) {
             return false;
@@ -734,7 +780,7 @@ public sealed class QuestManager {
         // MailItem), so a completion left to the next session save paid the rewards again after a crash or a failed
         // save (the stored quest was still open). Not stored: nothing is paid and the quest stays open.
         long ownerId = quest.Metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
-        if (!session.TrySavePurchase(db => db.SaveQuests(ownerId, [quest]))) {
+        if (!session.TrySavePurchase(db => db.SaveQuests(ownerId, [quest]), out completeResetRefused)) {
             (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount) =
                 (endTime, lastStartTime, lastEndTime, state, completionCount);
             return false;
@@ -1307,7 +1353,7 @@ public sealed class QuestManager {
             }
             session.Send(QuestPacket.Update(quest));
             if ((quest.Metadata.Basic.Type == QuestType.FieldMission || StampQuests().Contains(quest.Id)) && CanComplete(quest)) {
-                Complete(quest);
+                CompleteAutomatic(quest);
             }
         }
     }
