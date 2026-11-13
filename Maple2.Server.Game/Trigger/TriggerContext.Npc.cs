@@ -179,6 +179,8 @@ public partial class TriggerContext {
             return;
         }
 
+        // Type 2 names an npc id: the client shows that npc's name and loads the illustration <ILLUST_PATH><name>.dds
+        // (UICutSceneCinematic FUN_141908750, FUN_140cc2c70), and quest/illust holds one named by npc id for many npcs.
         Broadcast(CinematicPacket.Talk(spawnId, spawnId.ToString(), script, delay * 1000, align));
     }
 

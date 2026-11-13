@@ -9,6 +9,8 @@ public partial class TriggerContext {
     public void AddCinematicTalk(int npcId, string illustId, string msg, int duration, Align align, int delayTick) {
         DebugLog("[AddCinematicTalk] npcId:{NpcId}, illustId:{IllustrationId}, msg:{Message}, duration:{Duration}, align:{Align}, delayTick:{Delay}",
             npcId, illustId, msg, duration, align, delayTick);
+        // The client's talk reader has no delay (UICutSceneCinematic FUN_141909880): talks queue and play one after
+        // another, so delayTick (3 KR uses) is not sent.
         Broadcast(CinematicPacket.Talk(npcId, illustId, msg, duration, align));
     }
 
