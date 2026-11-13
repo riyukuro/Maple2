@@ -53,10 +53,7 @@ public partial class TriggerContext {
     }
 
     public void EndMiniGameRound(int winnerBoxId, float expRate, float meso, bool isOnlyWinner, bool isGainLoserBonus, string gameName) {
-        ExpType expType = gameName switch {
-            "UserMassive_Crazyrunner" or "UserMassive_Springbeach" or "UserMassive_Escape" => ExpType.userMiniGame,
-            _ => ExpType.miniGame,
-        };
+        ExpType expType = MiniGameClearRules.IsUserOpenGame(gameName) ? ExpType.userMiniGame : ExpType.miniGame;
         IEnumerable<FieldPlayer> players = PlayersInBox(winnerBoxId);
         foreach (FieldPlayer player in players) {
             MiniGameUserRecord? record = player.Session.MiniGameRecord;
@@ -118,15 +115,54 @@ public partial class TriggerContext {
         }
         IEnumerable<FieldPlayer> players = PlayersInBox(winnerBoxId);
         foreach (FieldPlayer player in players) {
-            if (player.Session.MiniGameRecord == null) {
+            // Only a player who was in the box at the game's start has a record, and leaving the field drops it, so
+            // a player who comes back in is not paid; the record's flag pays a game once if the action runs again.
+            MiniGameUserRecord? record = player.Session.MiniGameRecord;
+            if (record == null || record.RewardGiven) {
                 continue;
             }
-            RewardRecord rewardRecord = player.Session.GetRewardContent(rewardId);
-            player.Session.MiniGameRecord.Add(rewardRecord);
-            if (MiniGameClearRules.CountsAsUserOpenClear(contentType)) {
-                player.Session.ConditionUpdate(ConditionType.useropen_minigame_clear, codeLong: Field.MapId);
+            record.RewardGiven = true;
+
+            if (!MiniGameClearRules.CountsAsUserOpenClear(contentType)) {
+                record.Add(player.Session.GetRewardContent(rewardId));
+                continue;
             }
+            player.Session.ConditionUpdate(ConditionType.useropen_minigame_clear, codeLong: Field.MapId);
+            GiveExtraReward(player.Session, record, rewardId);
         }
+    }
+
+    // The user-opened games' extra reward, userMassiveExtraRewardMax times a day; past that the clear pays nothing
+    // more. The count is stored before the reward is given, so a failure cannot pay twice.
+    private static void GiveExtraReward(GameSession session, MiniGameUserRecord record, int rewardId) {
+        Character character = session.Player.Value.Character;
+        int maxPerDay = session.ServerTableMetadata.ConstantsTable.userMassiveExtraRewardMax;
+        int paidToday = PetFusionRules.DailyCount(character.MassiveExtraRewardCount, character.MassiveExtraRewardTime,
+            PetFusionRules.LastResetTime());
+        if (!MiniGameClearRules.CanPayExtraReward(paidToday, maxPerDay)) {
+            return;
+        }
+
+        character.MassiveExtraRewardCount = paidToday + 1;
+        character.MassiveExtraRewardTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        record.Add(session.GetRewardContent(rewardId));
+        (int a, int b) = MiniGameClearRules.NoticeArgs(paidToday + 1, maxPerDay);
+        session.Send(PlayerHostPacket.MiniGameRewardReceive(a, b));
+    }
+
+    // Chosen here: the start notice goes to each player of a user-opened game when it starts, while the day still has
+    // extra rewards left (the client shows it on mode 4 alone; no capture says when KMS2 sent it).
+    private static void NoticeExtraReward(GameSession session) {
+        Character character = session.Player.Value.Character;
+        int maxPerDay = session.ServerTableMetadata.ConstantsTable.userMassiveExtraRewardMax;
+        int paidToday = PetFusionRules.DailyCount(character.MassiveExtraRewardCount, character.MassiveExtraRewardTime,
+            PetFusionRules.LastResetTime());
+        if (!MiniGameClearRules.CanPayExtraReward(paidToday, maxPerDay)) {
+            return;
+        }
+
+        (int a, int b) = MiniGameClearRules.NoticeArgs(paidToday, maxPerDay);
+        session.Send(PlayerHostPacket.MiniGameRewardNotice(a, b));
     }
 
     public void SetMiniGameAreaForHack(int boxId) { }
@@ -140,6 +176,9 @@ public partial class TriggerContext {
                 ShowResult = isShowResultUi,
                 MinRound = 1,
             };
+            if (MiniGameClearRules.IsUserOpenGame(type)) {
+                NoticeExtraReward(player.Session);
+            }
         }
     }
 

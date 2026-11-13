@@ -68,6 +68,26 @@ public static class PlayerHostPacket {
         return pWriter;
     }
 
+    // Modes 4 and 5, read at scenestategame.cpp:5135-5154: two uints, the notice's daily count and that count plus
+    // the rewards left (MiniGameClearRules.NoticeArgs). Mode 4 says the clear pays an extra reward, mode 5 that it did.
+    public static ByteWriter MiniGameRewardNotice(int maxPerDay, int maxPlusLeft) {
+        var pWriter = Packet.Of(SendOp.PlayerHost);
+        pWriter.WriteByte((byte) Command.MiniGameRewardNotice);
+        pWriter.WriteInt(maxPerDay);
+        pWriter.WriteInt(maxPlusLeft);
+
+        return pWriter;
+    }
+
+    public static ByteWriter MiniGameRewardReceive(int maxPerDay, int maxPlusLeft) {
+        var pWriter = Packet.Of(SendOp.PlayerHost);
+        pWriter.WriteByte((byte) Command.MiniGameRewardReceive);
+        pWriter.WriteInt(maxPerDay);
+        pWriter.WriteInt(maxPlusLeft);
+
+        return pWriter;
+    }
+
     // Read by the billboard dialog: a banner for success, account limit, field limit or failure.
     public static ByteWriter BillboardInstallResult(BillboardInstallResult result) {
         var pWriter = Packet.Of(SendOp.PlayerHost);

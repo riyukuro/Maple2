@@ -11,6 +11,8 @@ public class MiniGameUserRecord : IUserContentRecord {
     public required int MinRound { get; init; }
     public required int TotalRounds { get; init; }
     public required bool ShowResult { get; init; }
+    // The game's MiniGameGiveReward has run for this player: one reward and one clear per game.
+    public bool RewardGiven { get; set; }
 
     public MiniGameUserRecord(long characterId) {
         CharacterId = characterId;

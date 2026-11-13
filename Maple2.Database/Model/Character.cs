@@ -64,6 +64,8 @@ internal class Character {
                 AbilityReset = other.AbilityResetTime,
                 PetFusionCount = other.PetFusionCount,
                 PetFusionTime = other.PetFusionTime,
+                MassiveExtraRewardCount = other.MassiveExtraRewardCount,
+                MassiveExtraRewardTime = other.MassiveExtraRewardTime,
             },
             Currency = new CharacterCurrency(),
             Mastery = new Mastery() {
@@ -116,6 +118,8 @@ internal class Character {
             AbilityResetTime = other.Cooldown.AbilityReset,
             PetFusionCount = other.Cooldown.PetFusionCount,
             PetFusionTime = other.Cooldown.PetFusionTime,
+            MassiveExtraRewardCount = other.Cooldown.MassiveExtraRewardCount,
+            MassiveExtraRewardTime = other.Cooldown.MassiveExtraRewardTime,
             DeleteTime = other.DeleteTime.ToEpochSeconds(),
             Channel = other.Channel,
             ReturnChannel = other.ReturnChannel,
@@ -176,6 +180,8 @@ internal class Cooldown {
     public long AbilityReset { get; set; }
     public int PetFusionCount { get; set; }
     public long PetFusionTime { get; set; }
+    public int MassiveExtraRewardCount { get; set; }
+    public long MassiveExtraRewardTime { get; set; }
 }
 
 internal class CharacterCurrency {

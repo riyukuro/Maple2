@@ -1061,6 +1061,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Player.Value.Character.PetFusionCount = 0;
         Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();
         Send(PetPacket.FusionCount(0));
+        // Mini-Game M extra rewards
+        Player.Value.Character.MassiveExtraRewardCount = 0;
+        Player.Value.Character.MassiveExtraRewardTime = DateTime.Now.ToEpochSeconds();
     }
 
     public void WeeklyReset() {

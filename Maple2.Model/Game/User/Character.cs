@@ -49,6 +49,11 @@ public class Character {
     public int PetFusionCount;
     public long PetFusionTime;
 
+    // The Mini-Game M extra reward (constant userMassiveExtraRewardMax a day): the rewards taken today and when the
+    // count was last stored (seconds, 0 = never).
+    public int MassiveExtraRewardCount;
+    public long MassiveExtraRewardTime;
+
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;
     public string Picture = string.Empty;
