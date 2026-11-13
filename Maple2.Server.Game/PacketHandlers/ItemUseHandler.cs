@@ -129,6 +129,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.CreateReactor:
                 HandleCreateReactor(session, item);
                 break;
+            case ItemFunction.FestivalEvent:
+                HandleFestivalEvent(session, item);
+                break;
             case ItemFunction.HongBao:
                 HandleHongBao(session, item);
                 break;
@@ -788,6 +791,41 @@ public class ItemUseHandler : FieldPacketHandler {
         // chosen here: the placer plays it once the reactor stands.
         session.Send(ReactorPacket.StartReact(metadata.Id));
     }
+
+    // A festival item (FestivalEvent, unit_140d1ae30 FUN_140d1f030): the client sends the plain use only in a field
+    // its fieldID lists (0: any), while the game event its gameEvent names runs, and, when its itemUseType is not 0,
+    // while a festival of that use type runs. The use opens its dropItem, an individual drop box; the reward is
+    // the server's, chosen here: the box's items, the item taken once.
+    private static void HandleFestivalEvent(GameSession session, Item item) {
+        if (session.Field == null) {
+            return;
+        }
+        Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
+        if (!parameters.TryGetValue("dropItem", out string? dropItem) || !int.TryParse(dropItem, out int boxId) ||
+            !session.ServerTableMetadata.IndividualDropItemTable.Entries.ContainsKey(boxId)) {
+            return;
+        }
+        int[] fieldIds = parameters.GetValueOrDefault("fieldID", "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(id => int.TryParse(id, out int fieldId) ? fieldId : -1).ToArray();
+        int useType = int.TryParse(parameters.GetValueOrDefault("itemUseType"), out int type) ? type : 0;
+        bool eventRunning = Enum.TryParse(parameters.GetValueOrDefault("gameEvent"), out GameEventType eventType) && session.FindEvent(eventType).Count > 0;
+        int[] festivalTypes = session.FindEvent(GameEventType.Festival)
+            .Select(gameEvent => gameEvent.Metadata.Data).OfType<Festival>().Select(festival => festival.UseType).ToArray();
+        if (!FestivalUsable(fieldIds, session.Field.MapId, eventRunning, useType, festivalTypes)) {
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            return;
+        }
+        foreach (Item reward in session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)) {
+            if (!session.Item.Inventory.Add(reward, true)) {
+                session.Item.MailItem(reward);
+            }
+        }
+    }
+
+    internal static bool FestivalUsable(int[] fieldIds, int mapId, bool eventRunning, int useType, int[] festivalTypes) =>
+        fieldIds.Any(id => id == 0 || id == mapId) && eventRunning && (useType == 0 ? festivalTypes.Length > 0 : festivalTypes.Contains(useType));
 
     private static void HandleHongBao(GameSession session, Item item) {
         Dictionary<string, string> xmlParameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
