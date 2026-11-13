@@ -183,6 +183,11 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.OpenBank:
                 HandleOpenBank(session);
                 break;
+            case ItemFunction.OpenInstrument:
+                // The client plays the instrument itself: its OpenInstrument use (0x140d23c50) enters the play
+                // state, which opens the play dialog, and only then sends this use, with no reply read. The
+                // server takes the instrument from PlayInstrument (InstrumentHandler), which checks the item.
+                break;
             case ItemFunction.CallBlackMarket:
                 HandleCallBlackMarket(session);
                 break;
