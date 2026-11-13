@@ -43,11 +43,20 @@ public class FittingDollTransformTests {
         };
     }
 
-    // A male equipment doll placed in the session's home holding |onDoll|, the character wearing |worn| (gear).
-    private void Start(ItemMetadata[] onDoll, ItemMetadata[] worn) {
+    // An item that takes several slots (an overall, a two-handed weapon); a skin is an outfit item.
+    private static ItemMetadata Multi(int id, EquipSlot[] slots, bool skin = false) {
+        ItemMetadata metadata = Gear(id, slots[0]);
+        return metadata with { SlotNames = slots, Property = metadata.Property with { IsSkin = skin } };
+    }
+
+    private static ItemMetadata Skin(int id, EquipSlot slot) => Multi(id, [slot], skin: true);
+
+    // A male doll placed in the session's home holding |onDoll|, each in its first slot or the one |dollSlots|
+    // gives, the character wearing |worn|: an equipment doll (dollType 0) with gear, an outfit doll with outfit.
+    private void Start(ItemMetadata[] onDoll, ItemMetadata[] worn, int dollType = 0, Dictionary<int, EquipSlot>? dollSlots = null) {
         test = new TestGameSession();
         foreach (ItemMetadata metadata in worn) {
-            test.Store(metadata, group: ItemGroup.Gear, slot: metadata.SlotNames[0]);
+            test.Store(metadata, group: dollType != 0 ? ItemGroup.Outfit : ItemGroup.Gear, slot: metadata.SlotNames[0]);
         }
         test.Start();
         plot = test.EnterHome();
@@ -58,15 +67,16 @@ public class FittingDollTransformTests {
         using (GameStorage.Request db = test.Storage.Context()) {
             cube = db.CreateCube(plot, new PlotCube(dollMetadata) { Position = new Vector3B(1, 2, 3), Type = PlotCube.CubeType.Construction })!;
         }
-        doll = new FieldFittingDoll(9000, cube, plot, new FunctionCubeMetadata.FittingDollData(Gender.Male, 0));
+        doll = new FieldFittingDoll(9000, cube, plot, new FunctionCubeMetadata.FittingDollData(Gender.Male, dollType));
         foreach (ItemMetadata metadata in onDoll) {
             test.Register(metadata);
+            EquipSlot slot = dollSlots?.GetValueOrDefault(metadata.Id, metadata.SlotNames[0]) ?? metadata.SlotNames[0];
             using GameStorage.Request db = test.Storage.Context();
             Item item = db.CreateItem(cube.Id, new Item(metadata) {
                 Group = ItemGroup.FittingDoll,
-                Slot = (short) metadata.SlotNames[0],
+                Slot = (short) slot,
             })!;
-            doll.Items[metadata.SlotNames[0]] = item;
+            doll.Items[slot] = item;
         }
         // The test field is made without its constructor, so the doll table is set here.
         FieldInfo field = typeof(FieldManager).GetField("fittingDolls", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -104,6 +114,7 @@ public class FittingDollTransformTests {
     }
 
     private int Worn(EquipSlot slot) => session.Item.Equips.Gear.TryGetValue(slot, out Item? item) ? item.Id : 0;
+    private int WornOutfit(EquipSlot slot) => session.Item.Equips.Outfit.TryGetValue(slot, out Item? item) ? item.Id : 0;
     private int OnDoll(EquipSlot slot) => doll.Items.TryGetValue(slot, out Item? item) ? item.Id : 0;
 
     [Test]
@@ -135,6 +146,44 @@ public class FittingDollTransformTests {
             Assert.That(Worn(EquipSlot.PA), Is.EqualTo(WornPants));
             Assert.That(OnDoll(EquipSlot.CL), Is.EqualTo(WornTop));
             Assert.That(OnDoll(EquipSlot.PA), Is.EqualTo(DollPants));
+        });
+    }
+
+    // An outfit doll shows an overall put on in its pants slot. The character wears it keyed by its first slot, as
+    // an equip does, so a top equipped later takes it off; the top and pants worn go onto the doll.
+    [Test]
+    public void OverallFromTheDollIsWornInItsFirstSlot() {
+        Start([Multi(DollTop, [EquipSlot.CL, EquipSlot.PA], skin: true)], [Skin(WornTop, EquipSlot.CL), Skin(WornPants, EquipSlot.PA)],
+            dollType: 1, dollSlots: new() { [DollTop] = EquipSlot.PA });
+        List<byte[]> sent = Transform();
+
+        Assert.That(sent.Select(Convert.ToHexString).Last(), Is.EqualTo(Answer(doll.Uid, 0x17)));
+        Dictionary<int, (long Owner, ItemGroup Group, short Slot)> rows = Rows();
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Equips.Outfit.Keys, Is.EquivalentTo(new[] { EquipSlot.CL }));
+            Assert.That(WornOutfit(EquipSlot.CL), Is.EqualTo(DollTop));
+            Assert.That(rows[DollTop], Is.EqualTo((test.CharacterId, ItemGroup.Outfit, (short) EquipSlot.CL)));
+            Assert.That(OnDoll(EquipSlot.CL), Is.EqualTo(WornTop));
+            Assert.That(OnDoll(EquipSlot.PA), Is.EqualTo(WornPants));
+            Assert.That(rows[WornPants], Is.EqualTo((doll.Uid, ItemGroup.FittingDoll, (short) EquipSlot.PA)));
+        });
+    }
+
+    // A two-handed weapon put on in the doll's left hand is worn in the right hand, its first slot; the two
+    // one-handed weapons worn go onto the doll's hands.
+    [Test]
+    public void TwoHanderFromTheDollIsWornInItsFirstSlot() {
+        Start([Multi(DollTop, [EquipSlot.RH, EquipSlot.LH])], [Gear(WornTop, EquipSlot.RH), Gear(WornPants, EquipSlot.LH)],
+            dollSlots: new() { [DollTop] = EquipSlot.LH });
+        List<byte[]> sent = Transform();
+
+        Assert.That(sent.Select(Convert.ToHexString).Last(), Is.EqualTo(Answer(doll.Uid, 0x17)));
+        Dictionary<int, (long Owner, ItemGroup Group, short Slot)> rows = Rows();
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Equips.Gear.Keys, Is.EquivalentTo(new[] { EquipSlot.RH }));
+            Assert.That(rows[DollTop], Is.EqualTo((test.CharacterId, ItemGroup.Gear, (short) EquipSlot.RH)));
+            Assert.That(OnDoll(EquipSlot.RH), Is.EqualTo(WornTop));
+            Assert.That(OnDoll(EquipSlot.LH), Is.EqualTo(WornPants));
         });
     }
 

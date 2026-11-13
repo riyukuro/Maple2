@@ -190,7 +190,8 @@ public class FittingDollHandler : FieldPacketHandler {
                 }
 
                 // Changed only here, so a failed save can put each item back as it was.
-                var before = toCharacter.Concat(toDoll).Select(item => (item, item.Group, item.Transfer?.Clone())).ToList();
+                var before = toCharacter.Concat(toDoll).Select(item => (item, item.Group, item.Slot, item.Transfer?.Clone())).ToList();
+                var dollSlots = toCharacter.ToDictionary(item => item.Uid, item => (EquipSlot) item.Slot);
                 var bound = new List<Item>();
                 Character character = session.Player.Value.Character;
                 foreach (Item item in toCharacter) {
@@ -199,6 +200,7 @@ public class FittingDollHandler : FieldPacketHandler {
                         bound.Add(item);
                     }
                     item.Group = outfit ? ItemGroup.Outfit : ItemGroup.Gear;
+                    item.Slot = (short) FittingDollRules.WornSlot((EquipSlot) item.Slot, item.Metadata.SlotNames);
                 }
                 foreach (Item item in toDoll) {
                     item.Group = ItemGroup.FittingDoll;
@@ -209,8 +211,9 @@ public class FittingDollHandler : FieldPacketHandler {
                     moved = db.SwapFittingDoll(doll.Uid, doll.Plot.Id, session.CharacterId, toDoll, toCharacter);
                 }
                 if (moved != ItemMove.Moved) {
-                    foreach ((Item item, ItemGroup group, ItemTransfer? transfer) in before) {
+                    foreach ((Item item, ItemGroup group, short slot, ItemTransfer? transfer) in before) {
                         item.Group = group;
+                        item.Slot = slot;
                         item.Transfer = transfer;
                     }
                     if (moved == ItemMove.TargetGone) {
@@ -228,8 +231,8 @@ public class FittingDollHandler : FieldPacketHandler {
                     session.Buffs.RemoveItemBuffs(item);
                 }
                 foreach (Item item in toCharacter) {
-                    doll.Items.Remove((EquipSlot) item.Slot);
-                    session.Field?.Broadcast(FittingDollPacket.PutOff(doll, (EquipSlot) item.Slot));
+                    doll.Items.Remove(dollSlots[item.Uid]);
+                    session.Field?.Broadcast(FittingDollPacket.PutOff(doll, dollSlots[item.Uid]));
                 }
                 foreach (Item item in toCharacter) {
                     equips[(EquipSlot) item.Slot] = item;

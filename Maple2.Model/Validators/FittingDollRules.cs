@@ -121,6 +121,12 @@ public static class FittingDollRules {
         return itemSlots.Contains(slot);
     }
 
+    // The slot an item from the doll is worn in: a doll takes an overall or a two-handed weapon in any of its slots
+    // (SlotFits), but the character's equips key it by its first slot, the only one EquipManager.Equip accepts and
+    // the one a later equip tests for overlap; a one-handed weapon keeps its hand.
+    public static EquipSlot WornSlot(EquipSlot slot, IReadOnlyList<EquipSlot> itemSlots) =>
+        itemSlots.Count == 0 || itemSlots.Contains(EquipSlot.OH) ? slot : itemSlots[0];
+
     // The slots an item takes on the doll: all of its slots for a two-handed weapon or an overall, else the one it is in.
     public static IEnumerable<EquipSlot> Occupies(EquipSlot slot, IReadOnlyCollection<EquipSlot> itemSlots) =>
         itemSlots.Count > 1 && !itemSlots.Contains(EquipSlot.OH) ? itemSlots.Append(slot).Distinct() : [slot];
