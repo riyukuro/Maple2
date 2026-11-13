@@ -62,6 +62,21 @@ public class HeartbeatSessionTests {
         Assert.That(Closing(), Is.False);
     }
 
+    // The tick sync answer (server int back, client elapsed time) is read whole and answered with nothing.
+    [Test]
+    public void TheTickSyncAnswerIsReadAndDropped() {
+        var packet = TestGameSession.Packet(writer => {
+            writer.WriteInt(Environment.TickCount);
+            writer.WriteInt(12345);
+        });
+
+        new ResponseClientTickSyncHandler().Handle(session, packet);
+
+        Assert.That(packet.Available, Is.Zero);
+        Assert.That(test.TakeSentOps(), Is.Empty);
+        Assert.That(Closing(), Is.False);
+    }
+
     [Test]
     public void AClientThatStillSendsIsAskedAgain() {
         session.MarkReceived(Environment.TickCount64 - HeartbeatRules.SilenceLimitMs + 5000);
