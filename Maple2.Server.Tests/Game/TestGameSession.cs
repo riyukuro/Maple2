@@ -815,6 +815,14 @@ public sealed class TestGameSession {
             return new MentoringResponse();
         }
 
+        // The marriage requests sent to the world (for a partner on another channel or offline).
+        public readonly List<MarriageRequest> MarriageRequests = [];
+
+        public override MarriageResponse Marriage(MarriageRequest request, CallOptions options) {
+            MarriageRequests.Add(request);
+            return new MarriageResponse();
+        }
+
         // What PlayerInfo.SendUpdate sent to the world.
         public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
 

@@ -243,12 +243,7 @@ public class WeddingHandler : FieldPacketHandler {
     private static void CancelNoRefundReply(GameSession session, IByteReader packet) {
         var response = packet.Read<WeddingError>();
 
-        if (response == WeddingError.decline_reservation_cancel) {
-            session.Send(WeddingPacket.DeclineCancelReservation());
-            return;
-        }
-
-        WeddingError error = session.Marriage.CancelNoRefund();
+        WeddingError error = session.Marriage.CancelNoRefund(response);
         if (error != WeddingError.none) {
             session.Send(WeddingPacket.Error(error));
         }

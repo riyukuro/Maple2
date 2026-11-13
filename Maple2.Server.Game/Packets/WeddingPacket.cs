@@ -20,10 +20,8 @@ public static class WeddingPacket {
         ConfirmReservation = 15,
         RequestCancelReservation = 16,
         DeclinedCancelReservation = 17,
-        DeclineCancelReservation = 18,
         AcceptCancelReservation = 19,
         ChangeReservationRequest = 20,
-        DeclineReservationChange = 21,
         AcceptReservationChange = 22,
         InvitationClear = 23,
         Ticket = 24,
@@ -142,13 +140,6 @@ public static class WeddingPacket {
         return pWriter;
     }
 
-    public static ByteWriter DeclineCancelReservation() {
-        var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.DeclineCancelReservation);
-
-        return pWriter;
-    }
-
     public static ByteWriter DeclinedCancelReservation(WeddingError reply) {
         var pWriter = Packet.Of(SendOp.Wedding);
         pWriter.Write<Command>(Command.DeclinedCancelReservation);
@@ -157,10 +148,10 @@ public static class WeddingPacket {
         return pWriter;
     }
 
-    public static ByteWriter AcceptCancelReservation(WeddingError reply) {
+    // Client: WeddingManager::OnReservationCancel (0x13) reads nothing: it drops the ticket and shows the notice.
+    public static ByteWriter AcceptCancelReservation() {
         var pWriter = Packet.Of(SendOp.Wedding);
         pWriter.Write<Command>(Command.AcceptCancelReservation);
-        pWriter.Write<WeddingError>(reply);
 
         return pWriter;
     }
@@ -170,13 +161,6 @@ public static class WeddingPacket {
         pWriter.Write<Command>(Command.ChangeReservationRequest);
         pWriter.WriteClass<WeddingHall>(hall);
         pWriter.WriteLong(differenceCost);
-
-        return pWriter;
-    }
-
-    public static ByteWriter DeclineReservationChange() {
-        var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.DeclineReservationChange);
 
         return pWriter;
     }
