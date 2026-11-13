@@ -178,9 +178,11 @@ public class PvpHandler : FieldPacketHandler {
     // Moves the character into the match field the World named; a failed move sends `failed` (the client's way back to
     // state 0).
     internal static void MoveToMatch(GameSession session, PvpResponse response, Maple2.PacketLib.Tools.ByteWriter failed) {
-        // Back to this spot after the match (GameSession.ReturnField), when this is the return field.
+        // Back to this spot after the match (GameSession.ReturnField), when this is the return field. The field's own
+        // map: an instanced field (a dungeon hall, a channelScale map) leaves Character.MapId at the open field it was
+        // entered from, so a join from a hall kept the hall's spot as the town's return position.
         Maple2.Model.Game.Character character = session.Player.Value.Character;
-        if (character.MapId == character.ReturnMaps.Peek()) {
+        if (Maple2.Model.Game.Dungeon.DungeonHallRules.KeepsReturnPosition(session.Field?.MapId ?? 0, character.ReturnMaps.Peek())) {
             character.ReturnPosition = session.Player.Position;
         }
 

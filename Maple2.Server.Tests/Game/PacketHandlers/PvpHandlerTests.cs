@@ -139,6 +139,35 @@ public class PvpHandlerTests {
         Assert.That(move.CharacterId, Is.EqualTo(test.CharacterId));
     }
 
+    // The join keeps the player's spot as the return position only on the return map itself (the start field is the
+    // character's map and return map, 2000023).
+    [Test]
+    public void RankDuelJoin_OnTheReturnMap_KeepsTheSpot() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        session.Player.Position = new System.Numerics.Vector3(100, 200, 300);
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
+        Send(test, session, "10");
+        Assert.That(session.Player.Value.Character.ReturnPosition, Is.EqualTo(new System.Numerics.Vector3(100, 200, 300)));
+    }
+
+    // From a dungeon hall (an instanced field: the character's map stays the town it was entered from) the hall's spot
+    // is not the town's return position.
+    [Test]
+    public void RankDuelJoin_FromAnInstancedHall_KeepsTheReturnPosition() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        var before = new System.Numerics.Vector3(1, 2, 3);
+        session.Player.Value.Character.ReturnPosition = before;
+        test.EnterMap(TestGameSession.Map(63000047));
+        Assert.That(session.Player.Value.Character.MapId, Is.EqualTo(session.Player.Value.Character.ReturnMaps.Peek()));
+        session.Player.Position = new System.Numerics.Vector3(100, 200, 300);
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
+        Send(test, session, "10");
+        Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+        Assert.That(session.Player.Value.Character.ReturnPosition, Is.EqualTo(before));
+    }
+
     // Arena register (9 with the arena): queued with its playerCount, then Pvp 12 with the World's waits (arenaType,
     // milliseconds) for every arena of the table, 0 for an empty queue. An arena that is not in the table gets Pvp 10, the client's state 0.
     [Test]
