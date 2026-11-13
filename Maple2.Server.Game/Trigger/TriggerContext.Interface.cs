@@ -189,9 +189,32 @@ public partial class TriggerContext {
         Broadcast(MassiveEventPacket.Countdown(text, stage, count, soundType));
     }
 
+    // "notice" is the massive event typed message (MassiveEvent op 2) of subtype 6: the client resolves the text as a
+    // server string, turns "\\n" into a line break and shows it as a notice (UIMassiveEvent::ShowMessage). It goes to
+    // the players of the user tag when one is named, and of the box (or outside it) when one is named.
     public void ShowEventResult(string type, string text, int duration, int userTagId, int boxId, bool isOutSide) {
-        ErrorLog("[ShowEventResult] type:{Type}, text:{Text}, duration:{Duration}, userTagId:{TagId}, boxId:{BoxId}, isOutSide:{IsOutside}",
+        DebugLog("[ShowEventResult] type:{Type}, text:{Text}, duration:{Duration}, userTagId:{TagId}, boxId:{BoxId}, isOutSide:{IsOutside}",
             type, text, duration, userTagId, boxId, isOutSide);
+        if (type != "notice") {
+            return;
+        }
+
+        TriggerBox? box = null;
+        if (boxId > 0 && !Objects.Boxes.TryGetValue(boxId, out box)) {
+            return;
+        }
+
+        ByteWriter packet = MassiveEventPacket.Banner(BannerType.Text, text, duration);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            if (ShowsEventResult(player.TagId, box?.Contains(player.Position), userTagId, isOutSide)) {
+                player.Session.Send(packet);
+            }
+        }
+    }
+
+    // inBox is null when the action names no box.
+    internal static bool ShowsEventResult(int playerTagId, bool? inBox, int userTagId, bool isOutSide) {
+        return (userTagId <= 0 || playerTagId == userTagId) && (inBox == null || inBox.Value != isOutSide);
     }
 
     public void ShowGuideSummary(int entityId, int textId, int duration) {
