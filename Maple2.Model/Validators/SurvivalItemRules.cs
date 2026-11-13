@@ -35,7 +35,8 @@ public static class SurvivalItemRules {
     // Why the match-only items are deleted on entering a field with this survival element, or null to keep them.
     // A field without one is outside the match. A survival map with plusInven_Zero=1, read as "the match starts with
     // an empty survival inventory", drops what was left from an earlier match, but not on the re-entry of a
-    // participant whose game there still runs (a reconnect or channel change back into the match). Chosen here.
+    // participant into the same field instance while its game there still runs. Leaving already made it fall, so it
+    // comes back as a watcher; a channel change lands in another instance and clears. Chosen here.
     public static string? ClearReason(MapMetadataSurvival? survival, bool inRunningGame = false) {
         if (survival == null) {
             return LeftMatch;

@@ -94,11 +94,14 @@ public sealed class SurvivalGameField {
     }
 
     public void Death(FieldPlayer victim) {
+        bool drop;
         lock (mutex) {
             bool running = !state.Ended;
-            if (Fall(victim.Value.Character.Id) && running) {
-                DeathDrop(victim);
-            }
+            drop = Fall(victim.Value.Character.Id) && running;
+        }
+        // Outside the mutex: the drop saves each item to the db. Fall is true once per participant, so it runs once.
+        if (drop) {
+            DeathDrop(victim);
         }
         RunAfter();
     }
