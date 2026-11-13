@@ -191,6 +191,13 @@ public class TradeManager : IDisposable {
                     Refused(caller, offered, "locked");
                     return;
                 }
+                // Nor the pet that is out: its PetManager keeps the pet bag (rows owned by the pet's uid) and saves it
+                // when the pet is put away, so the receiver who summons it loads the same rows while the giver's are
+                // written again. The client offers it (TryAddToTrade has no pet test); storage and dismantle refuse it.
+                if (offered.Uid == (caller.Pet?.Pet.Uid ?? 0)) {
+                    Refused(caller, offered, "the summoned pet");
+                    return;
+                }
                 if (SurvivalItemRules.IsMatchOnly(offered.Metadata)) { Refused(caller, offered, "survival match item"); return; }
                 if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
                     Refused(caller, offered, $"transfer {offered.Transfer.Flag}, {offered.Transfer.RemainTrades} trades left, bound {offered.Transfer.Binding != null}");

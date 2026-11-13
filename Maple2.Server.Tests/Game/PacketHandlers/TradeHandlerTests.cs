@@ -28,11 +28,11 @@ public class TradeHandlerTests {
     [SetUp]
     public void StartTrade() => StartTrade(TestGameSession.Metadata(20000001, type: 2));
 
-    private void StartTrade(ItemMetadata metadata, bool takerBagFull = false) {
+    private void StartTrade(ItemMetadata metadata, bool takerBagFull = false, int amount = 3) {
         giverTest = new TestGameSession();
         // One database, as on a server: the item rows the trade moves are in it.
         takerTest = new TestGameSession(giverTest.Options);
-        item = giverTest.Store(metadata, amount: 3);
+        item = giverTest.Store(metadata, amount: amount);
         takerTest.Register(metadata);
         if (takerBagFull) {
             // One slot in the taker's Misc tab, taken by another item.
@@ -445,6 +445,40 @@ public class TradeHandlerTests {
 
         Assert.That(giver.Item.Inventory.Get(item.Uid), Is.Null);
         Assert.That(takerTest.TakeSent(), Is.Not.Empty);
+    }
+
+    // The pet that is out stays with its owner: its manager keeps the pet bag (rows owned by the pet's uid) and
+    // writes it when the pet is put away, so after a trade both players held its items. Put away, it goes.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AddItem_TheSummonedPetStays(bool summoned) {
+        const int petId = 60000001;
+        ItemMetadata petData = TestGameSession.Metadata(petId, type: 11, slotMax: 1);
+        StartTrade(petData with { Property = petData.Property with { PetId = petId } }, amount: 1);
+        Item pet = giver.Item.Inventory.Get(item.Uid)!;
+        if (summoned) {
+            // The trade reads the summoned item only; the field pet itself needs the npc and the navigation data a
+            // test session has none of.
+            const BindingFlags any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            var fieldPet = (Maple2.Server.Game.Model.FieldPet) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Maple2.Server.Game.Model.FieldPet));
+            typeof(Maple2.Server.Game.Model.FieldPet).GetField(nameof(Maple2.Server.Game.Model.FieldPet.Pet), any)!.SetValue(fieldPet, pet);
+            var manager = (PetManager) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PetManager));
+            typeof(PetManager).GetField("session", any)!.SetValue(manager, giver);
+            typeof(PetManager).GetField("pet", any)!.SetValue(manager, fieldPet);
+            giver.Pet = manager;
+        }
+
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(1);
+            writer.WriteInt(0);
+        });
+        giver.Pet = null;
+
+        Assert.Multiple(() => {
+            Assert.That(giver.Item.Inventory.Get(item.Uid) != null, Is.EqualTo(summoned));
+            Assert.That(takerTest.TakeSent(), summoned ? Is.Empty : Is.Not.Empty);
+        });
     }
 
     // KMS2 order: a player who has locked is unlocked (mode 12) before the other player's change is shown.
