@@ -65,7 +65,13 @@ public record QuestMetadataRequire(
     (int, int) UnrequiredAchievement, // (AchievementId, Grade) Player CANNOT have this achievement to start the quest.
     int GearScore,
     // require groupID: a weekly alliance quest with a group is not one of the week's picked missions (CQuestManager::vfunc_1).
-    int GroupId = 0);
+    int GroupId = 0,
+    // require alliance and fameGrade: the alliance's fame grade must reach it; masteryType and masteryGrade: the
+    // mastery's grade must reach it (CQuestManagerCommon::CanAcceptQuest, questdata.cpp:576). 0 checks nothing.
+    AllianceType FameAlliance = AllianceType.AnyFaction,
+    int FameGrade = 0,
+    MasteryType MasteryType = MasteryType.Unknown,
+    int MasteryGrade = 0);
 
 public record QuestMetadataReward(
     int Meso,

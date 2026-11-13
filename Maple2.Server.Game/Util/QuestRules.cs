@@ -5,6 +5,18 @@ using Maple2.Model.Metadata;
 namespace Maple2.Server.Game.Util;
 
 public static class QuestRules {
+    // The fame and mastery grades a quest needs (CQuestManagerCommon::CanAcceptQuest, questdata.cpp:576): with an
+    // alliance and a fame grade, the alliance's grade (vfunc_o10_13: GetGradeByPoint of GetFamePoints) must reach
+    // it; with a mastery type and grade, the mastery's grade (vfunc_o10_14: CMasteryTable::Grade of GetMastery) must
+    // reach it. Either half with a 0 checks nothing. The KritiasExped alliance missions are spread over fame grades
+    // 1 to 5, so a mission above the player's grade is one the client will not accept.
+    public static bool MeetsGrades(QuestMetadataRequire require, Func<AllianceType, int> fameGrade, Func<MasteryType, int> masteryGrade) {
+        if (require.FameAlliance != AllianceType.AnyFaction && require.FameGrade != 0 && fameGrade(require.FameAlliance) < require.FameGrade) {
+            return false;
+        }
+        return require.MasteryType == MasteryType.Unknown || require.MasteryGrade == 0 || masteryGrade(require.MasteryType) >= require.MasteryGrade;
+    }
+
     // A completed quest that may be started again, the client's own rule (CQuestManagerCommon::vfunc_o10_21,
     // commonfiles/questdata.cpp:376): repeat 0 never; 2 (daily) not on the calendar day the quest was last
     // started; 3 (weekly) not before the start of the reset weekday after the last start (NextWeekdayStart,

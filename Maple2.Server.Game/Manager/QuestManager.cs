@@ -388,6 +388,13 @@ public sealed class QuestManager {
             return false;
         }
 
+        IDictionary<AllianceType, int> famePoints = session.Player.Value.Unlock.FamePoints;
+        if (!QuestRules.MeetsGrades(require,
+                alliance => FameLogRules.Grade(session.TableMetadata.FameTable, alliance, famePoints.GetValueOrDefault(alliance)),
+                type => session.Mastery.GetLevel(type))) {
+            return false;
+        }
+
         if (require.Achievement > 0 && !session.Achievement.TryGetAchievement(require.Achievement, out _)) {
             return false;
         }

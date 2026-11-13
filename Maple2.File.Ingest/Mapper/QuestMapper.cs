@@ -81,7 +81,11 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     Achievement: data.require.achievement,
                     UnrequiredAchievement: unrequiredAchievement,
                     GearScore: data.require.gearScore,
-                    GroupId: data.require.groupID
+                    GroupId: data.require.groupID,
+                    FameAlliance: TableMapper.ParseAlliance(data.require.alliance ?? string.Empty),
+                    FameGrade: data.require.fameGrade,
+                    MasteryType: (Maple2.Model.Enum.MasteryType) (int) data.require.masteryType,
+                    MasteryGrade: data.require.masteryGrade
                 ),
                 AcceptReward: Convert(data.acceptReward),
                 CompleteReward: Convert(data.completeReward),
