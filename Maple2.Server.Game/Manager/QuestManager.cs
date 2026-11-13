@@ -68,7 +68,7 @@ public sealed class QuestManager {
         foreach (Quest quest in HeldCandidates(AnyHeld)) {
             CountHeld(quest, AnyHeld);
         }
-        session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress));
+        session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress, MissionAttackCount()));
 
         // A stored quest the played client lacks stays stored but is not sent: the client would read the list wrong
         // from it on (PlayedClientQuests).
@@ -497,6 +497,54 @@ public sealed class QuestManager {
         FameTable fame = session.TableMetadata.FameTable;
         int questId = fame.SeasonRequireQuests == null ? session.ServerTableMetadata.ConstantsTable.FameContentsRequireQuestID : fame.SeasonRequireQuest(1);
         return HasState(questId, QuestState.Completed) && session.Field?.MapId != mapId;
+    }
+
+    // CQuestManager::FUN_1416d0800 (questmanager_2.cpp:1706): the alliance of the first quest in progress among the
+    // field quests of the field (QuestDataTable::FUN_14074d360, by the quest's first progress map); 0 when none.
+    // Chosen here: the server takes the held quests in id order.
+    public AllianceType FieldQuestAlliance(int mapId) {
+        foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).OrderBy(quest => quest.Id)) {
+            QuestMetadataBasic basic = quest.Metadata.Basic;
+            if (quest.State != QuestState.Started || basic.Type != QuestType.FieldQuest || basic.ProgressMaps is not { Length: > 0 } maps || maps[0] != mapId) {
+                continue;
+            }
+            return basic.Alliance;
+        }
+        return AllianceType.AnyFaction;
+    }
+
+    // The sky fortress mission attacks made today (Quest 0x0F): 0 once a daily reset has passed since the count was
+    // stored.
+    public int MissionAttackCount() {
+        Character character = session.Player.Value.Character;
+        return PetFusionRules.DailyCount(character.MissionAttackCount, character.MissionAttackTime, PetFusionRules.LastResetTime());
+    }
+
+    // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766) checks, in its order: the move to the field is allowed
+    // (CanEnterSkyFortress), a field quest of the field with an alliance is in progress, and fewer than
+    // FameContentsMissionAttackCount attacks were made today.
+    public bool CanMissionAttack(int mapId) {
+        return CanEnterSkyFortress(mapId)
+            && FieldQuestAlliance(mapId) != AllianceType.AnyFaction
+            && MissionAttackCount() < session.ServerTableMetadata.ConstantsTable.FameContentsMissionAttackCount;
+    }
+
+    // One more attack today, after the move is prepared, and the trophy condition mission_attack_system: the trophy
+    // 22500041's description (achievedescription.xml manualDesc) counts the uses of the sky fortress sortie system.
+    public void CountMissionAttack() {
+        Character character = session.Player.Value.Character;
+        character.MissionAttackCount = MissionAttackCount() + 1;
+        character.MissionAttackTime = DateTime.Now.ToEpochSeconds();
+        session.ConditionUpdate(ConditionType.mission_attack_system);
+    }
+
+    // The daily reset of the attacks: 0x10B clears the client's count (ResetRefreshCount, questmanager_2.cpp:766).
+    // Chosen here: 0x10B is sent at the daily reset; the client also opens its daily mission window on it.
+    public void ResetMissionAttacks() {
+        Character character = session.Player.Value.Character;
+        character.MissionAttackCount = 0;
+        character.MissionAttackTime = DateTime.Now.ToEpochSeconds();
+        session.Send(QuestPacket.DailyReset());
     }
 
     // The quests of a group the client accepts now (QuestGroupPick): the pick over the group's quests in id order,

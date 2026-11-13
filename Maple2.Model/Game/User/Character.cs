@@ -54,6 +54,11 @@ public class Character {
     public int MassiveExtraRewardCount;
     public long MassiveExtraRewardTime;
 
+    // The sky fortress mission attacks (Quest 0x0F, constant FameContentsMissionAttackCount a day): the attacks made
+    // today and when the count was last stored (seconds, 0 = never). The client keeps it as m_refreshCount.
+    public int MissionAttackCount;
+    public long MissionAttackTime;
+
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;
     public string Picture = string.Empty;

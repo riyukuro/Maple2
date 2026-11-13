@@ -266,6 +266,10 @@ public enum SendOp : ushort {
     PetSkinBadge = 0x0108,
     DungeonHelp = 0x0109,
     Mentor = 0x010A,
+    // No body; the client's day change: CQuestManager::ResetRefreshCount (questmanager_2.cpp:766) clears the sky
+    // fortress mission attacks, the game menu updates its quest menu, the mentoring window updates and the daily
+    // mission window opens (UIDailyMissionDialog::FUN_140bfff90, uidailymissiondialog.cpp:298).
+    DailyReset = 0x010B,
     SkillBookTree = 0x010C,
     BuddyEmote = 0x010D,
     BuddyBadge = 0x010E,

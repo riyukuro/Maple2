@@ -138,13 +138,19 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadExploration(int starAmount) {
+    // The client's mode 0x15 (CQuestManager::OnQuest, questmanager_2.cpp:948) reads the stars, then the sky fortress
+    // mission attacks made today (m_refreshCount).
+    public static ByteWriter LoadExploration(int starAmount, int missionAttackCount = 0) {
         var pWriter = Packet.Of(SendOp.Quest);
         pWriter.Write<Command>(Command.ExplorationProgress);
         pWriter.WriteInt(starAmount);
-        pWriter.WriteInt();
+        pWriter.WriteInt(missionAttackCount);
 
         return pWriter;
+    }
+
+    public static ByteWriter DailyReset() {
+        return Packet.Of(SendOp.DailyReset);
     }
 
     public static ByteWriter LoadQuestStates(ICollection<Quest> quests) {

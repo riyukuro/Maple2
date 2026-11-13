@@ -1,9 +1,16 @@
+using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Xml;
 using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
+using Maple2.Database.Extensions;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -13,11 +20,15 @@ public class SkyFortressTests {
     private const int RequireQuest = 90000013;
     private const int Target = 2000422;
 
+    private const int AttackQuest = 90000501;
+    private const int AttackLimit = 3;
+
     private TestGameSession test = null!;
 
     private void Login(FameTable fame, int mapId = 2000001) {
         test = new TestGameSession();
         test.SetTable(fame);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { FameContentsMissionAttackCount = AttackLimit });
         test.Start();
         test.EnterMap(TestGameSession.Map(mapId));
         test.TakeSent();
@@ -95,6 +106,171 @@ public class SkyFortressTests {
             Assert.That(table.SeasonRequireQuest(1), Is.EqualTo(91000013));
             Assert.That(table.SeasonRequireQuest(2), Is.Zero);
             Assert.That(table.SeasonRequireQuest(3), Is.EqualTo(91001011));
+        });
+    }
+
+    // A field quest of the target field (its first progress map) with an alliance, in this state.
+    private void HoldFieldQuest(QuestState state, AllianceType alliance = AllianceType.DarkWind, int questId = AttackQuest, int mapId = Target) {
+        QuestMetadata data = TestGameSession.QuestData(questId, QuestType.FieldQuest);
+        data = data with { Basic = data.Basic with { ProgressMaps = [mapId], Alliance = alliance } };
+        test.StartQuest(data).State = state;
+    }
+
+    private void Attack(int mapId = Target) {
+        new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+            .Handle(test.Session, TestGameSession.Packet(writer => {
+                writer.WriteByte(15);
+                writer.WriteInt(mapId);
+            }));
+    }
+
+    private void AttacksToday(int count) {
+        test.Session.Player.Value.Character.MissionAttackCount = count;
+        test.Session.Player.Value.Character.MissionAttackTime = DateTime.Now.ToEpochSeconds();
+    }
+
+    private void ReadyToAttack() {
+        Login(Seasons(RequireQuest));
+        Hold(RequireQuest, QuestState.Completed);
+        HoldFieldQuest(QuestState.Started);
+    }
+
+    [Test]
+    public void MissionAttack_Allowed() {
+        ReadyToAttack();
+        Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.True);
+    }
+
+    // FUN_1416d0800: the alliance of the field's field quest in progress; none, another field's, an ended one or one
+    // without an alliance gives 0.
+    [Test]
+    public void MissionAttack_NeedsAllianceFieldQuest() {
+        Login(Seasons(RequireQuest));
+        Hold(RequireQuest, QuestState.Completed);
+        Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.False);
+        HoldFieldQuest(QuestState.Completed, questId: AttackQuest);
+        HoldFieldQuest(QuestState.Started, AllianceType.AnyFaction, AttackQuest + 1);
+        HoldFieldQuest(QuestState.Started, questId: AttackQuest + 2, mapId: Target + 1);
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.FieldQuestAlliance(Target), Is.EqualTo(AllianceType.AnyFaction));
+            Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.False);
+            Assert.That(test.Session.Quest.FieldQuestAlliance(Target + 1), Is.EqualTo(AllianceType.DarkWind));
+        });
+    }
+
+    // The first quest in progress decides, even when a later one has an alliance.
+    [Test]
+    public void MissionAttack_FirstQuestDecides() {
+        Login(Seasons(RequireQuest));
+        HoldFieldQuest(QuestState.Started, AllianceType.AnyFaction, AttackQuest);
+        HoldFieldQuest(QuestState.Started, AllianceType.DarkWind, AttackQuest + 1);
+        Assert.That(test.Session.Quest.FieldQuestAlliance(Target), Is.EqualTo(AllianceType.AnyFaction));
+    }
+
+    [Test]
+    public void MissionAttack_NeedsSkyFortressMove() {
+        Login(Seasons(RequireQuest));
+        HoldFieldQuest(QuestState.Started);
+        Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.False);
+    }
+
+    // FameContentsMissionAttackCount a day; a count from before the last reset is 0.
+    [Test]
+    public void MissionAttack_DailyLimit() {
+        ReadyToAttack();
+        AttacksToday(AttackLimit - 1);
+        Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.True);
+        AttacksToday(AttackLimit);
+        Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.False);
+        test.Session.Player.Value.Character.MissionAttackTime = PetFusionRules.LastResetTime() - 1;
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.Zero);
+            Assert.That(test.Session.Quest.CanMissionAttack(Target), Is.True);
+        });
+    }
+
+    [Test]
+    public void MissionAttack_CountAddsOne() {
+        ReadyToAttack();
+        test.AddAchievement(TestGameSession.Trophy(22500041, ConditionType.mission_attack_system, [50]));
+        AttacksToday(1);
+        test.Session.Quest.CountMissionAttack();
+        Assert.That(test.Session.Quest.MissionAttackCount(), Is.EqualTo(2));
+        test.Session.Player.Value.Character.MissionAttackTime = PetFusionRules.LastResetTime() - 1;
+        test.Session.Quest.CountMissionAttack();
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Player.Value.Character.MissionAttackCount, Is.EqualTo(1));
+            Assert.That(test.TrophyCounter(22500041), Is.EqualTo(2));
+        });
+    }
+
+    // A refused attack: no answer, nothing counted.
+    [Test]
+    public void MissionAttack_RefusedNoAnswer() {
+        ReadyToAttack();
+        test.AddAchievement(TestGameSession.Trophy(22500041, ConditionType.mission_attack_system, [50]));
+        AttacksToday(AttackLimit);
+        test.TakeSent();
+        Attack();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(test.Session.Player.Value.Character.MissionAttackCount, Is.EqualTo(AttackLimit));
+            Assert.That(test.TrophyCounter(22500041), Is.Null);
+        });
+    }
+
+    // A move that cannot be prepared (a field the played client lacks): the move error, nothing counted.
+    [Test]
+    public void MissionAttack_FailedMoveNotCounted() {
+        ReadyToAttack();
+        MapMetadata map = TestGameSession.Map(Target, notInPlayedClient: true);
+        test.AddMap(map with { Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)) });
+        test.AddAchievement(TestGameSession.Trophy(22500041, ConditionType.mission_attack_system, [50]));
+        test.TakeSent();
+        Attack();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.RequestFieldEnter }));
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.Zero);
+            Assert.That(test.TrophyCounter(22500041), Is.Null);
+        });
+    }
+
+    // Mode 0x15: the stars, then today's attacks.
+    [Test]
+    public void LoadExploration_SendsAttackCount() {
+        var writer = QuestPacket.LoadExploration(7, 2);
+        byte[] packet = writer.Buffer.AsSpan(0, writer.Length).ToArray();
+        Assert.That(packet, Is.EqualTo(new byte[] { 0x52, 0x00, 0x15, 7, 0, 0, 0, 2, 0, 0, 0 }));
+    }
+
+    [Test]
+    public void DailyReset_ClearsAttackCount() {
+        ReadyToAttack();
+        AttacksToday(AttackLimit);
+        test.TakeSent();
+        test.Session.Quest.ResetMissionAttacks();
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.Zero);
+            Assert.That(test.TakeSent(), Is.EqualTo(new[] { new byte[] { 0x0B, 0x01 } }));
+        });
+    }
+
+    // The move to the sky fortress (Quest 0x0E) raises skyfortress_system only when it is prepared: a refused or failed
+    // move raises nothing.
+    [Test]
+    public void SkyFortressMove_FailedMoveNoTrophy() {
+        Login(Seasons(RequireQuest));
+        test.AddAchievement(TestGameSession.Trophy(22500040, ConditionType.skyfortress_system, [100]));
+        var handler = new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata };
+        handler.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(14)));
+        Assert.That(test.TakeSent(), Is.Empty);
+        Hold(RequireQuest, QuestState.Completed);
+        MapMetadata map = TestGameSession.Map(Target, notInPlayedClient: true);
+        test.AddMap(map with { Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)) });
+        handler.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(14)));
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.RequestFieldEnter }));
+            Assert.That(test.TrophyCounter(22500040), Is.Null);
         });
     }
 }

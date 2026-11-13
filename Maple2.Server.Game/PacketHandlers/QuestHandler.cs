@@ -163,10 +163,7 @@ public class QuestHandler : FieldPacketHandler {
                 Logger.Debug("Quest {Command} from {CharacterId}", command, session.CharacterId);
                 break;
             case Command.SkyFortressMission:
-                // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world
-                // map's mission attack box. Not handled: the client sends it only while a quest of that
-                // field with an alliance is in progress, and what the attack does on the server is not known.
-                Logger.Debug("Quest {Command} from {CharacterId}: field {FieldId}", command, session.CharacterId, packet.ReadInt());
+                HandleSkyFortressMission(session, packet);
                 break;
             case Command.FindUser:
                 HandleFindUser(session, packet);
@@ -494,15 +491,39 @@ public class QuestHandler : FieldPacketHandler {
         session.Quest.CompleteFieldMission(mission);
     }
 
+    // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world map's mission attack
+    // box; the client counts the attack (m_refreshCount) as it sends. The server checks the same and moves the player
+    // to the field.
+    // Chosen here: the player arrives at the field's default spawn (the packet names no portal); a refused attack gets
+    // no answer and is not counted; the attack is counted only once the move is prepared, and a failed move is not.
+    private void HandleSkyFortressMission(GameSession session, IByteReader packet) {
+        int mapId = packet.ReadInt();
+        if (!session.Quest.CanMissionAttack(mapId)) {
+            Logger.Information("Refused the mission attack on field {FieldId} from {CharacterId}", mapId, session.CharacterId);
+            return;
+        }
+
+        if (!session.PrepareField(mapId)) {
+            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            return;
+        }
+        session.Quest.CountMissionAttack();
+        session.Send(FieldEnterPacket.Request(session.Player));
+    }
+
     private void HandleSkyFortressTeleport(GameSession session) {
         // SendQuestMode14 (questmanager_2.cpp:1748): CanEnterSkyFortress of the fortress field.
         if (!session.Quest.CanEnterSkyFortress(Constants.FameContentsSkyFortressGotoMapID)) {
             return;
         }
 
-        session.Send(session.PrepareField(Constants.FameContentsSkyFortressGotoMapID,
-            Constants.FameContentsSkyFortressGotoPortalID)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        if (!session.PrepareField(Constants.FameContentsSkyFortressGotoMapID, Constants.FameContentsSkyFortressGotoPortalID)) {
+            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            return;
+        }
+        // The trophy condition skyfortress_system: the trophy 22500040's description (achievedescription.xml
+        // manualDesc) counts the rides on the warship, this move.
+        session.ConditionUpdate(ConditionType.skyfortress_system);
+        session.Send(FieldEnterPacket.Request(session.Player));
     }
 }
