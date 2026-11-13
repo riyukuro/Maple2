@@ -77,15 +77,24 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
         long accountId = packet.ReadLong();
         string passcode = packet.ReadUnicodeString();
 
+        switch (HomeVisitRules.Check(session.Player.IsDead, session.Field?.Metadata.Property.HomeReturnable == true,
+                    session.Field is HomeFieldManager,
+                    session.Field is HomeFieldManager { OwnerId: var ownerId } && ownerId == accountId)) {
+            case HomeVisitRules.Refusal.Dead:
+                session.Send(EnterUgcMapPacket.Dead());
+                return;
+            case HomeVisitRules.Refusal.DisabledMap:
+                session.Send(EnterUgcMapPacket.DisabledMap());
+                return;
+            case HomeVisitRules.Refusal.MyHome:
+                session.Send(EnterUgcMapPacket.MyHome());
+                return;
+        }
+
         using GameStorage.Request db = session.GameStorage.Context();
         Home? home = db.GetHome(accountId);
         if (home is not { IsHomeSetup: true }) {
             session.Send(EnterUgcMapPacket.CannotVisitThatCharacterHome());
-            return;
-        }
-
-        if (session.Field is HomeFieldManager homeFieldManager && homeFieldManager.OwnerId == accountId) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_home_returnable_forbidden_to_sameplace));
             return;
         }
 

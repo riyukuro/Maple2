@@ -31,6 +31,10 @@ public static class HomeEntry {
             case HomeOpenRules.Enter.WrongPassword:
                 session.Send(EnterUgcMapPacket.WrongPassword(home.AccountId));
                 return false;
+            case HomeOpenRules.Enter.Private:
+                // s_home_visit_failed_private (EnterUgcMap 11); it was the homeless line (6).
+                session.Send(EnterUgcMapPacket.Private());
+                return false;
             default:
                 session.Send(EnterUgcMapPacket.CannotVisitThatCharacterHome());
                 return false;
