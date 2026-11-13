@@ -582,7 +582,7 @@ public class InventoryManager {
             // Build this index so we don't need to find materials twice.
             Dictionary<ItemTag, IList<Item>> ingredientsByTag = ingredients.ToDictionary(
                 entry => entry.Tag,
-                entry => Filter(item => item.Metadata.Property.Tag == entry.Tag && !item.IsExpired())
+                entry => Filter(item => item.Metadata.Property.Tag == entry.Tag && item.IsSpendable())
             );
 
             // Validate
@@ -627,16 +627,16 @@ public class InventoryManager {
             // Check for components
             Dictionary<int, IList<Item>> materialsById = components.ToDictionary(
                 ingredient => ingredient.ItemId,
-                ingredient => Filter(item => !item.IsExpired() && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == ingredient.Rarity))
+                ingredient => Filter(item => item.IsSpendable() && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == ingredient.Rarity))
             );
             var materialsByTag = new Dictionary<ItemTag, IList<Item>>();
             foreach (ItemComponent ingredient in components) {
                 if (materialsByTag.TryGetValue(ingredient.Tag, out IList<Item>? value)) {
-                    foreach (Item item in session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity)) {
+                    foreach (Item item in session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable())) {
                         value.Add(item);
                     }
                 } else {
-                    materialsByTag.Add(ingredient.Tag, session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).ToList());
+                    materialsByTag.Add(ingredient.Tag, session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable()).ToList());
                 }
             }
 

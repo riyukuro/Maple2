@@ -665,7 +665,7 @@ public class ItemSocketHandler : FieldPacketHandler {
                     continue;
                 }
                 int remaining = cost.Amount;
-                foreach (Item item in session.Item.Inventory.Filter(item => !item.IsExpired() && cost.Matches(item))) {
+                foreach (Item item in session.Item.Inventory.Filter(item => item.IsSpendable() && cost.Matches(item))) {
                     int free = item.Amount - used.GetValueOrDefault(item.Uid) - (excluded != null && item.Uid == excluded.Uid ? 1 : 0);
                     int take = Math.Min(free, remaining);
                     if (take <= 0) {

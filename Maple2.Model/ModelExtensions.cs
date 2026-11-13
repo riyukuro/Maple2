@@ -99,6 +99,10 @@ public static class ModelExtensions {
     public static bool IsStamina(this Item item) => item.Id is 90000010;
     public static bool IsEmote(this Item item) => item.Metadata.Property.Type == 2 && item.Metadata.Property.SubType == 14;
     public static bool IsExpired(this Item item) => item.ExpiryTime > 0 && DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= item.ExpiryTime;
+    // Locked, or still unlocking until UnlockTime (CItem::FUN_140528e20).
+    public static bool IsLockedOrUnlocking(this Item item) => item.IsLocked || item.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    // An item a price or recipe may take: not expired, not locked or unlocking.
+    public static bool IsSpendable(this Item item) => !item.IsExpired() && !item.IsLockedOrUnlocking();
 
     public static ActorState State(this ActorSubState subState) {
         return subState switch {

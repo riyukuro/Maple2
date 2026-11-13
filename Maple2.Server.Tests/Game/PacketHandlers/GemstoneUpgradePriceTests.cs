@@ -154,6 +154,22 @@ public class GemstoneUpgradePriceTests {
         });
     }
 
+    // A locked or unlocking copy of the gem is not a price: the upgrade is refused and the copies stay.
+    [TestCase(true, 0L)]
+    [TestCase(false, 4102444800L)]
+    public void LockedCopies_AreNotTaken(bool locked, long unlockTime) {
+        GameSession session = Start([new GemstoneUpgradeTable.Ingredient(ItemTag.None, 3, 40200001)], bagGems: 3);
+        bagGem.IsLocked = locked;
+        bagGem.UnlockTime = unlockTime;
+
+        UpgradeSocketed(session);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200001));
+            Assert.That(Amount(session, bagGem, InventoryType.Gemstone), Is.EqualTo(3));
+        });
+    }
+
     // ReduceGemstoneUpgradeFee 100 (10%): 10 dust become 9.
     [Test]
     public void FeeAttribute_LowersTheCounts() {

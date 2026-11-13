@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -76,7 +77,8 @@ public class ItemExchangeScroll : FieldPacketHandler {
             }
 
             // The scrolls of all exchanges, taken once over the stacks.
-            List<Item> scrolls = session.Item.Inventory.Find(scrollMetadata.RecipeScroll.ItemId, scrollMetadata.RecipeScroll.Rarity).ToList();
+            List<Item> scrolls = session.Item.Inventory.Find(scrollMetadata.RecipeScroll.ItemId, scrollMetadata.RecipeScroll.Rarity)
+                .Where(scroll => !scroll.IsLockedOrUnlocking()).ToList();
             int[]? take = ItemExchangeScrollRules.TakeFromStacks(scrolls.Select(scroll => scroll.Amount).ToList(), (long) scrollMetadata.RecipeScroll.Amount * quantity);
             long rewardAmount = (long) scrollMetadata.RewardItem.Amount * quantity;
             if (take == null || rewardAmount is <= 0 or > int.MaxValue) {
