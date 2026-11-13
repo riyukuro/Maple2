@@ -577,6 +577,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Quest.LoadAllianceMissions();
         // The adventurer protection state, once the quests are known (Chosen here: no KMS2 order is known for it).
         AdventureProtect.Load();
+        // The term tags (KMS2 sends them a few packets after the adventurer protection state).
+        LoadTermTags();
         // An announced shutdown, so the client's countdown notices reach those who enter after it (Chosen here).
         if (ShutdownRules.SendAtEntry(Target.LOCALE, server.ShutdownTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             Send(ShutdownNoticePacket.Time(server.ShutdownTime));
@@ -864,6 +866,18 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // The notice banner of the GM notice config, at a field entry, once per session, NoticeRules.BannerDelay later
     // (the client opens the notice dialog a few ticks after the entry).
+    public TermTagState TermTags => server.TermTags;
+
+    // The channel's finished and running terms (TermTagManagerCli load): the client registers the running ones.
+    public void LoadTermTags() {
+        (List<TermTagTable.Entry> finished, List<TermTagTable.Entry> running) =
+            server.TermTags.Split(ServerTableMetadata.TermTagTable, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Send(TermTagPacket.Load(finished, running));
+    }
+
+    // A packet to every player of this channel.
+    public void BroadcastChannel(ByteWriter packet) => server.Broadcast(packet);
+
     public void SendNoticeBanner() {
         if (NoticeRules.BannerAtEntry(server.NoticeBanner, noticeBannerSent)) {
             noticeBannerSent = true;

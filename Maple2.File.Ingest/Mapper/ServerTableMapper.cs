@@ -182,6 +182,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.HIDE_AND_SEEK,
             Table = ParseHideAndSeek(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.TERM_TAG,
+            Table = ParseTermTag(),
+        };
 
     }
 
@@ -2950,6 +2954,49 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
         return new ArcadeRewardTable(games.ToDictionary(game => game.Key,
             game => (IReadOnlyDictionary<int, ArcadeRewardTable.Entry>) game.Value.Rounds));
+    }
+
+    private TermTagTable ParseTermTag() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/TermTag.xml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null) {
+            return new TermTagTable(new Dictionary<int, TermTagTable.Entry>());
+        }
+        TermTagTable table = MapTermTag(xmlReader.GetXmlDocument(entry), ClientListedRows.Available);
+        Console.WriteLine($"TermTag: {table.Entries.Count} terms");
+        return table;
+    }
+
+    // KST: the KMS2 term load (0x137) sends startDate "2022-03-17-08-00" as 1647471600, 08:00 at UTC+9.
+    private static readonly TimeSpan TermTagOffset = TimeSpan.FromHours(9);
+
+    // <term id name [feature] [locale] [tagComment]><v startDate endDate/></term>, dates "yyyy-MM-dd-HH-mm[-ss]".
+    // Rows the filter drops, rows without a period and rows whose dates do not read are left out.
+    public static TermTagTable MapTermTag(XmlDocument document, Func<XmlElement, bool> available) {
+        var entries = new Dictionary<int, TermTagTable.Entry>();
+        foreach (XmlElement row in document.SelectNodes("ms2/term")!.OfType<XmlElement>()) {
+            if (!available(row) || !int.TryParse(row.GetAttribute("id"), out int id)) continue;
+            if (row.SelectSingleNode("v") is not XmlElement period) continue;
+            long? start = TermTagTime(period.GetAttribute("startDate"));
+            long? end = TermTagTime(period.GetAttribute("endDate"));
+            if (start == null || end == null) continue;
+            entries[id] = new TermTagTable.Entry(id, row.GetAttribute("name"), start.Value, end.Value);
+        }
+        return new TermTagTable(entries);
+    }
+
+    private static long? TermTagTime(string value) {
+        string[] parts = value.Split('-');
+        if (parts.Length is not (5 or 6)) return null;
+        var fields = new int[6];
+        for (int i = 0; i < parts.Length; i++) {
+            if (!int.TryParse(parts[i], out fields[i])) return null;
+        }
+        try {
+            return new DateTimeOffset(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], TermTagOffset).ToUnixTimeSeconds();
+        } catch (ArgumentOutOfRangeException) {
+            return null;
+        }
     }
 
     private HideAndSeekTable ParseHideAndSeek() {

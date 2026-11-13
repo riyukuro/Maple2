@@ -302,6 +302,7 @@ public enum SendOp : ushort {
     MessengerBrowserStamp = 0x012C,
     LimitBreak = 0x012E,
     AdventureProtect = 0x0131, // byte state, 7: cleared (CSceneStateGame::FUN_14173f7c0)
+    TermTag = 0x0137, // TermTagManagerCli::OnPacket: 0 load, 1 start, 2 end
     HomeBlock = 0x0138,
     SkillRechargeUses = 0x0139,
 

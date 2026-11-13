@@ -42,6 +42,9 @@ public class GameServer : Server<GameSession> {
     public long ShutdownTime { get; set; }
     // The notice banner of the GM notice config (NoticeRules), sent at each session's first field entry while on.
     public bool NoticeBanner { get; set; }
+    // The term tags a GM started or ended on this channel (made on first use: a test's server is uninitialized).
+    private TermTagState? termTags;
+    public TermTagState TermTags => LazyInitializer.EnsureInitialized(ref termTags);
 
     public GameServer(FieldManager.Factory fieldFactory, PacketRouter<GameSession> router, IComponentContext context, GameStorage gameStorage, ItemMetadataStorage itemMetadataStorage, ServerTableMetadataStorage serverTableMetadataStorage, IGraphicsContext debugGraphicsContext, int port, int channel)
             : base((ushort) port, router, context, serverTableMetadataStorage) {
