@@ -111,10 +111,14 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 session.Send(ItemInventoryPacket.UpdateItem(item));
             }
 
-            session.ChangeAttributesItem = changeItem;
-            session.Send(ChangeAttributesScrollPacket.PreviewItem(session.ChangeAttributesItem));
+            Hold(session, changeItem);
+            session.Send(ChangeAttributesScrollPacket.PreviewItem(changeItem));
         }
     }
+
+    // The scroll dialog's result to keep, held apart from the item dialog's (GameSession.ChangeAttributesItem): each
+    // dialog keeps or resumes only its own result.
+    internal static void Hold(GameSession session, Item changeItem) => session.ChangeAttributesScrollItem = changeItem;
 
     // Takes the scroll, then the lock item, or neither. |session.Item| is locked by the caller.
     // Every refusal of a change is logged: the scroll dialog shows no text for most of its errors and goes back to its
@@ -171,7 +175,8 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
 
     private static void HandleSelect(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
-        if (session.ChangeAttributesItem == null || session.ChangeAttributesItem.Uid != itemUid) {
+        Item? pending = session.ChangeAttributesScrollItem;
+        if (pending == null || pending.Uid != itemUid) {
             session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_apply_before_option));
             return;
         }
@@ -183,15 +188,15 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 return;
             }
 
-            if (item.Stats == null || session.ChangeAttributesItem.Stats == null) {
+            if (item.Stats == null || pending.Stats == null) {
                 session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_apply_before_option));
                 return;
             }
 
-            if (Keep(session, item, session.ChangeAttributesItem.Stats)) {
+            if (Keep(session, item, pending.Stats)) {
                 session.Stats.Refresh();
             }
-            session.ChangeAttributesItem = null;
+            session.ChangeAttributesScrollItem = null;
             session.Send(ChangeAttributesScrollPacket.SelectItem(item));
         }
     }

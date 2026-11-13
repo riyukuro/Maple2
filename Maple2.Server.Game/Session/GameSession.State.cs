@@ -28,7 +28,10 @@ public partial class GameSession {
     public Item? StagedScoreItem = null;
     public bool EnsembleReady = false;
 
+    // The result to keep of the item dialog (ChangeAttributes) and of the remake scroll dialog (ChangeAttributesScroll):
+    // each dialog keeps or resumes only its own.
     public Item? ChangeAttributesItem = null;
+    public Item? ChangeAttributesScrollItem = null;
 
     public TradeManager? Trade;
     public StorageManager? Storage;
