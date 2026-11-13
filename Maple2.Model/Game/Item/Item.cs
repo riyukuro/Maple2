@@ -214,6 +214,10 @@ public class Item : IByteSerializable, IByteDeserializable {
         writer.WriteClass<ItemEnchant>(Enchant ?? ItemEnchant.Default);
         writer.WriteClass<ItemLimitBreak>(LimitBreak ?? ItemLimitBreak.Default);
 
+        // The client reads these blocks with independent ifs (ugc, gem, custom music, pet; CItem::ReadFromStream,
+        // commonfiles/item.cpp:2671-2698). At most one applies to any item in the KR and NA data: ugc meshes are on
+        // types 1, 6 and 9 only (type 22 has none), badges are type 7, pets 11 and custom scores 12, so the else-if
+        // chain writes the same bytes.
         if (Template != null && Blueprint != null) {
             writer.WriteClass<UgcItemLook>(Template);
             writer.WriteClass<ItemBlueprint>(Blueprint);
