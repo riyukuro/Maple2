@@ -240,7 +240,18 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             item.Stats[ItemStats.Type.Random] = session.ChangeAttributesItem.Stats[ItemStats.Type.Random];
             session.ChangeAttributesItem = null;
             session.Send(ChangeAttributesPacket.SelectItem(item));
+            if (CountsInStats(session, itemUid)) {
+                session.Stats.Refresh();
+            }
         }
+    }
+
+    // The client puts the chosen options on the worn copy and recounts the equipment's stats (UIItemRemakeOptionDialog
+    // FUN_1412a1650, unit_14129cfa0_itemremakeoptiondialog.cpp:877-894: SetItem, then FUN_1411e7660). A summoned pet's
+    // options count in the owner's totals too (StatsManager.AddPet). Before, the totals kept the old options until the
+    // next rebuild.
+    internal static bool CountsInStats(GameSession session, long itemUid) {
+        return session.Item.Equips.Gear.Values.Any(gear => gear.Uid == itemUid) || session.Pet?.Pet.Uid == itemUid;
     }
 
     // RemakeOptionDebug::vfunc_1 (itemremakescrolldata.cpp:453+, 0x1406175b0): the RemakeOption of mode 0 (i64 uid,
