@@ -67,6 +67,11 @@ public sealed class SurvivalManager {
         }
     }
 
+    // The medal held of that type and id, if any.
+    public Medal? Find(MedalType type, int id) {
+        return inventory.TryGetValue(type, out Dictionary<int, Medal>? medals) && medals.TryGetValue(id, out Medal? medal) ? medal : null;
+    }
+
     public void AddMedal(Item item) {
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
         if (!parameters.TryGetValue("id", out string? idStr) || !int.TryParse(idStr, out int id)) {
@@ -86,18 +91,26 @@ public sealed class SurvivalManager {
             _ => throw new InvalidOperationException($"Invalid medal type: {typeStr}"),
         };
 
-        long expiryTime = DateTime.MaxValue.ToEpochSeconds() - 1;
+        long never = DateTime.MaxValue.ToEpochSeconds() - 1;
+        long now = (long) (DateTime.Now.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
+        long expiryTime = never;
+        bool byDuration = false;
         // Get expiration
         if (parameters.TryGetValue("durationSec", out string? durationStr) && int.TryParse(durationStr, out int durationSec)) {
-            expiryTime = (long) (DateTime.Now.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds + durationSec;
+            byDuration = true;
+            expiryTime = now + durationSec;
         } else if (parameters.TryGetValue("endDate", out string? endDateStr) && DateTime.TryParseExact(endDateStr, "yyyy-MM-dd-HH-mm-ss", null, System.Globalization.DateTimeStyles.None, out DateTime endDate)) {
             //2018-10-02-00-00-00
             expiryTime = endDate.ToEpochSeconds();
         }
 
-        // Check if medal already exists
+        // Check if medal already exists: a duration adds its time to what is left of it (from now once it has
+        // expired), an end date or a lasting medal keeps the later end. Before, the new end itself (seconds since
+        // 1970) was added, so a renewed medal never expired.
         if (inventory[type].TryGetValue(id, out Medal? existing)) {
-            existing.ExpiryTime = Math.Min(existing.ExpiryTime + expiryTime, DateTime.MaxValue.ToEpochSeconds() - 1);
+            existing.ExpiryTime = expiryTime == never ? never
+                : byDuration ? Math.Min(Math.Max(existing.ExpiryTime, now) + (expiryTime - now), never)
+                : Math.Max(existing.ExpiryTime, expiryTime);
             session.Send(SurvivalPacket.LoadMedals(inventory, equip));
             return;
         }
