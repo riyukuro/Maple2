@@ -58,6 +58,7 @@ public class RequestTransactionTests {
         using var context = new Ms2Context(plain);
         context.Mail.Where(mail => mail.ReceiverId == account || mail.ReceiverId == character).ExecuteDelete();
         context.Item.Where(item => itemUids.Contains(item.Id)).ExecuteDelete();
+        context.BlackMarketListing.Where(listing => listing.CharacterId == character).ExecuteDelete();
     }
 
     private long[] Mails(long receiverId) {
@@ -182,6 +183,53 @@ public class RequestTransactionTests {
             Assert.That(Mails(account), Is.EqualTo(new[] { sent!.Id }));
             Assert.That(ItemOwner(first.Uid), Is.EqualTo(character));
             Assert.That(ItemOwner(second.Uid), Is.EqualTo(sent!.Id));
+        });
+    }
+
+    private long[] Listings() {
+        using var check = new Ms2Context(plain);
+        return check.BlackMarketListing.Where(listing => listing.CharacterId == character).Select(listing => listing.Id).ToArray();
+    }
+
+    private BlackMarketListing? List(Item item) {
+        using GameStorage.Request db = storage.Context();
+        return db.CreateBlackMarketingListing(new BlackMarketListing(item) {
+            AccountId = account, CharacterId = character, Deposit = 100, Price = 1000, Quantity = 1,
+            ExpiryTime = DateTimeOffset.UtcNow.AddDays(2).ToUnixTimeSeconds(),
+        });
+    }
+
+    // A listing is its row and its item moved to it, written together.
+    [Test]
+    public void ListingStoresTheRowAndMovesTheItem() {
+        Item item = CreateItem();
+
+        BlackMarketListing? listing = List(item);
+
+        Assert.That(listing, Is.Not.Null);
+        Assert.Multiple(() => {
+            Assert.That(Listings(), Is.EqualTo(new[] { listing!.Id }));
+            Assert.That(ItemOwner(item.Uid), Is.EqualTo(listing!.Id));
+        });
+    }
+
+    // The item's move fails: no listing row is left (the seller gets the item and the deposit back by mail, and a
+    // row left behind was loaded by World and could be bought, moving the refunded item to the buyer).
+    [Test]
+    public void ListingWhoseItemSaveFailsLeavesNoRow() {
+        Item item = CreateItem();
+        hook.Before = command => {
+            if (command.CommandText.Contains("UPDATE `item`")) {
+                throw new InvalidOperationException("update refused");
+            }
+        };
+
+        Assert.That(List(item), Is.Null);
+        hook.Before = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Listings(), Is.Empty);
+            Assert.That(ItemOwner(item.Uid), Is.EqualTo(character));
         });
     }
 

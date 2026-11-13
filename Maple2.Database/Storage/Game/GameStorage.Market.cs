@@ -317,20 +317,24 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // The listing row and the item's move to it are one transaction: when either fails the caller mails the item
+        // and the deposit back, and a listing row left behind would load at World start and could still be bought.
         public BlackMarketListing? CreateBlackMarketingListing(BlackMarketListing listing) {
             Model.BlackMarketListing model = listing;
             model.Id = 0;
+            BeginTransaction();
             Context.BlackMarketListing.Add(model);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 
             BlackMarketListing? created = ToBlackMarketingListing(model);
-            if (created == null) {
+            if (created == null || !SaveItems(created.Id, created.Item)) {
+                Rollback();
                 return null;
             }
-            SaveItems(created.Id, created.Item);
-            return Context.TrySaveChanges() ? created : null;
+            return Commit() ? created : null;
         }
 
         public IEnumerable<BlackMarketListing> GetBlackMarketListings(long characterId) {
