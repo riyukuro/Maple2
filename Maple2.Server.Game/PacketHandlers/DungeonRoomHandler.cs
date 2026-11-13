@@ -75,8 +75,7 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
             case Command.ReverseRaidLobby:
             case Command.ColosseumLobby:
             case Command.LapentaLobby:
-                // Not handled: the lobby button of the dungeon search window, one sub-type per dungeon group; no body.
-                Logger.Debug("RoomDungeon {Command} from {CharacterId}", command, session.CharacterId);
+                HandleHallLobby(session, (byte) command);
                 break;
             case Command.ResetUnitedReward:
                 HandleResetUnitedReward(session);
@@ -134,6 +133,24 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     // has a price, so no count is reset: the answer is the client's text for the reset being switched off (0x21).
     private static void HandleResetUnitedReward(GameSession session) {
         session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset));
+    }
+
+    // The hall buttons of the dungeon search window (DungeonHallRules): the player moves to the group's hall field
+    // (a channelScale instance field), or gets the client's refusal. A mode whose hall the server has no map for is
+    // dropped with a log line; the client shows those buttons only when the hall's feature is on.
+    private void HandleHallLobby(GameSession session, byte mode) {
+        int hallFieldId = DungeonHallRules.HallFieldId(mode, session.ServerTableMetadata.ConstantsTable);
+        if (hallFieldId == 0 || !session.MapMetadata.TryGet(hallFieldId, out _)) {
+            Logger.Debug("RoomDungeon {Mode} from {CharacterId}: no hall field {FieldId}", mode, session.CharacterId, hallFieldId);
+            return;
+        }
+        int dungeonId = session.Field?.DungeonId ?? session.Player.Value.Character.DungeonId;
+        DungeonRoomError? error = DungeonHallRules.Error(mode, hallFieldId, session.Field?.MapId ?? 0, dungeonId);
+        if (error != null) {
+            session.Send(DungeonRoomPacket.Error(error.Value));
+            return;
+        }
+        session.Migrate(hallFieldId);
     }
 
     private void HandleReset(GameSession session) {
