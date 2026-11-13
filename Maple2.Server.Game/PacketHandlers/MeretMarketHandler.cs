@@ -36,7 +36,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         RemoveListing = 14,
         UnlistItem = 15,
         RelistItem = 18,
-        UgcSaleDetails = 19,
+        FreeRelist = 19,
         CollectProfit = 20,
         LoadDesigners = 22,
         AddDesigner = 23,
@@ -126,8 +126,8 @@ public class MeretMarketHandler : FieldPacketHandler {
             case Command.BlueprintSearch:
                 HandleBlueprintSearch(session, packet);
                 return;
-            case Command.UgcSaleDetails:
-                HandleUgcSaleDetails(session, packet);
+            case Command.FreeRelist:
+                HandleFreeRelist(session, packet);
                 return;
             case Command.LoadPremiumById:
                 HandleLoadPremiumById(session, packet);
@@ -291,19 +291,20 @@ public class MeretMarketHandler : FieldPacketHandler {
             return;
         }
 
-        (long Price, long PromotionEndTime, long ListingEndTime, UgcMarketListingStatus Status, string Description, string[] Tags) before =
-            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags);
+        (long Price, long PromotionEndTime, long ListingEndTime, UgcMarketListingStatus Status, byte RelistKind, string Description, string[] Tags) before =
+            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.Description, item.Tags);
         item.Price = price;
         item.PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0;
         item.ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds();
         item.Status = UgcMarketListingStatus.Active;
+        item.RelistKind = 0;
         item.Description = description;
         item.Tags = tags;
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (!db.SaveUgcMarketItem(item)) {
             // Not stored: the listing stays as it was and the fee goes back.
-            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags) = before;
+            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.Description, item.Tags) = before;
             session.Currency.ChangeMeret(listingFee);
             Refuse(MeretMarketError.Common);
             return;
@@ -925,10 +926,16 @@ public class MeretMarketHandler : FieldPacketHandler {
     }
     #endregion
 
-    // Client CMeratMarketMan::SendMeretMarketMode19 (meratmarketman.cpp:520): the sale details of a UGC product.
-    private void HandleUgcSaleDetails(GameSession session, IByteReader packet) {
-        long ugcUid = packet.ReadLong();
-        Logger.Debug("MeretMarket UGC sale details {UgcUid} not implemented", ugcUid);
+    // Client CMeratMarketMan::SendMeretMarketMode19 (meratmarketman.cpp:513): the free first relist of an expired
+    // listing, sent by OnAskRemoveSale (uimeratmarketdialog.cpp:4724) once the seller accepts box 0xa37,
+    // s_meratmarket_free_resale_confirm. The remove button offers it only for an expired listing of kind 3
+    // (OnClickRemoveSale, :4490); any other expired listing opens the paid resale form (18).
+    private void HandleFreeRelist(GameSession session, IByteReader packet) {
+        long ugcMarketItemId = packet.ReadLong();
+        int? error = session.UgcMarket.FreeRelist(ugcMarketItemId, Constants.UGCShopSaleDay);
+        if (error != null) {
+            session.Send(MeretMarketPacket.Error((byte) Command.FreeRelist, error.Value, ugcId: ugcMarketItemId));
+        }
     }
 
     // Client CMeratMarketMan::SendMeretMarketMode32/33 (meratmarketman.cpp:661/675): products by id, at most 20,

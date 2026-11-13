@@ -16,6 +16,7 @@ public static class MeretMarketPacket {
         RemoveListing = 14,
         UnlistItem = 15,
         RelistItem = 18,
+        FreeRelist = 19,
         CollectProfit = 20,
         UpdateExpiration = 21,
         LoadDesigners = 22,
@@ -139,6 +140,17 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
+    // Client reader: CMeratMarketMan::FUN_140d5d3e0 (0x13, meratmarketman.cpp:2320), the answer to the free relist
+    // (MeretMarket 19): the same product as RelistItem's 0x12, whose sale part replaces the client's copy.
+    public static ByteWriter FreeRelist(UgcMarketItem item) {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.Write<Command>(Command.FreeRelist);
+        pWriter.WriteBool(true); // Is Market Item
+        pWriter.WriteClass<UgcMarketItem>(item);
+
+        return pWriter;
+    }
+
     // Client reader: meratmarketman.cpp:2334. The sale leaves the client's list on any answer;
     // with result 1018 the amount is added to the collected total the client shows at the end,
     // and the client then asks for its next settled sale.
@@ -176,7 +188,7 @@ public static class MeretMarketPacket {
         pWriter.WriteLong(item.Id);
         pWriter.WriteLong(item.Id);
         pWriter.Write<UgcMarketListingStatus>(item.Status);
-        pWriter.WriteByte();
+        pWriter.WriteByte(item.RelistKind);
         pWriter.WriteLong(item.ListingEndTime);
 
         return pWriter;

@@ -40,6 +40,7 @@ public sealed class UgcMarketManager {
     public void Load() {
         using (GameStorage.Request db = session.GameStorage.Context()) {
             LoadSalesCounts(db);
+            ExpireEnded(db);
         }
         session.Send(MeretMarketPacket.LoadPersonalListings(items.Values, SalesTotal(items.Values)));
     }
@@ -52,6 +53,16 @@ public sealed class UgcMarketManager {
             total += listing.Price * listing.SalesCount;
         }
         return total;
+    }
+
+    // The client takes a listing as expired only by its state (OnClickRemoveSale tests state 3), so a listing whose
+    // time ran out is stored expired before the list goes out, with its kind: the free relist while it is unused.
+    private void ExpireEnded(GameStorage.Request db) {
+        long now = DateTime.Now.ToEpochSeconds();
+        List<UgcMarketItem> ended = items.Values.Where(listing => listing.ExpireIfEnded(now)).ToList();
+        if (ended.Count > 0 && !db.SaveUgcMarketItems(ended)) {
+            logger.Error("Unable to store {Count} expired UGC market listings of account {AccountId}.", ended.Count, session.AccountId);
+        }
     }
 
     // The sales counts as stored: a buyer's sale changes the stored listing, not this session's copy.
@@ -144,6 +155,7 @@ public sealed class UgcMarketManager {
         item.ListingEndTime = 0;
         item.PromotionEndTime = 0;
         item.Status = UgcMarketListingStatus.Expired;
+        item.RelistKind = UgcMarketItem.StoppedKind; // a stopped sale is relisted for the fee (myshop_ask_stopsale)
 
         using GameStorage.Request db = session.GameStorage.Context();
         if (!db.SaveUgcMarketItem(item)) {
@@ -151,6 +163,42 @@ public sealed class UgcMarketManager {
         }
 
         session.Send(MeretMarketPacket.UpdateExpiration(item));
+    }
+
+    // MeretMarket 19, the free first relist (OnAskRemoveSale after box s_meratmarket_free_resale_confirm): an
+    // expired listing of kind FreeRelistKind goes on sale again for saleDays days with no fee. The stored row changes
+    // first, in one conditional write (FreeRelistUgcMarketItem); this copy and the answer follow only when it changed,
+    // so a repeated request finds the relist spent and is refused. No merets move. Returns the refusal's error code,
+    // or null when the listing is on sale again.
+    public int? FreeRelist(long id, int saleDays) {
+        if (!items.TryGetValue(id, out UgcMarketItem? item)) {
+            return MeretMarketError.NotSale;
+        }
+        long now = DateTime.Now.ToEpochSeconds();
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (item.ExpireIfEnded(now) && !db.SaveUgcMarketItem(item)) {
+            return MeretMarketError.Common;
+        }
+        if (item.Status == UgcMarketListingStatus.Active) {
+            return MeretMarketError.AlreadySale;
+        }
+        if (item.Status != UgcMarketListingStatus.Expired || item.RelistKind != UgcMarketItem.FreeRelistKind || item.FreeRelistUsed) {
+            return MeretMarketError.Common;
+        }
+
+        long end = DateTime.Now.AddDays(saleDays).ToEpochSeconds();
+        if (!db.FreeRelistUgcMarketItem(id, session.AccountId, end)) {
+            return MeretMarketError.Common;
+        }
+        item.Status = UgcMarketListingStatus.Active;
+        item.ListingEndTime = end;
+        item.PromotionEndTime = 0;
+        item.RelistKind = 0;
+        item.FreeRelistUsed = true;
+
+        session.Send(MeretMarketPacket.FreeRelist(item));
+        session.Send(MeretMarketPacket.UpdateExpiration(item));
+        return null;
     }
 
     public void AddDesigner(long characterId) {

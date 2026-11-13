@@ -25,6 +25,8 @@ internal class UgcMarketItem {
     public required UgcItemLook Look { get; set; }
     public required ItemBlueprint Blueprint { get; set; }
     public DateTime CreationTime { get; set; }
+    public byte RelistKind { get; set; }
+    public bool FreeRelistUsed { get; set; }
 
 
     [return: NotNullIfNotNull(nameof(other))]
@@ -46,6 +48,8 @@ internal class UgcMarketItem {
             Look = other.Look,
             Blueprint = other.Blueprint,
             CreationTime = other.CreationTime.FromEpochSeconds(),
+            RelistKind = other.RelistKind,
+            FreeRelistUsed = other.FreeRelistUsed,
         };
     }
 
@@ -66,6 +70,8 @@ internal class UgcMarketItem {
             Tags = Tags,
             Look = Look,
             Blueprint = Blueprint,
+            RelistKind = RelistKind,
+            FreeRelistUsed = FreeRelistUsed,
         };
 
         return entry;

@@ -2124,6 +2124,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<bool>("FreeRelistUsed")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<int>("ItemId")
                         .HasColumnType("int");
 
@@ -2139,6 +2142,9 @@ namespace Maple2.Server.World.Migrations
 
                     b.Property<DateTime>("PromotionEndTime")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<byte>("RelistKind")
+                        .HasColumnType("tinyint unsigned");
 
                     b.Property<int>("SalesCount")
                         .HasColumnType("int");

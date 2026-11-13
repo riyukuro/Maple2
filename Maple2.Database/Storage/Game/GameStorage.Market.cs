@@ -148,12 +148,14 @@ public partial class GameStorage {
         }
 
         // A listing is saved from the seller's copy, which is as old as the seller's login. The sales count belongs
-        // to the buyers (AddUgcMarketSale), so a save leaves the stored count as it is.
+        // to the buyers (AddUgcMarketSale), so a save leaves the stored count as it is; the free relist is only
+        // written by FreeRelistUgcMarketItem, so an older copy never gives it back.
         public bool SaveUgcMarketItems(ICollection<UgcMarketItem> items) {
             foreach (UgcMarketItem item in items) {
                 Model.UgcMarketItem model = item;
                 Context.UgcMarketItem.Update(model);
                 Context.Entry(model).Property(listing => listing.SalesCount).IsModified = false;
+                Context.Entry(model).Property(listing => listing.FreeRelistUsed).IsModified = false;
             }
 
             return Context.TrySaveChanges();
@@ -163,7 +165,46 @@ public partial class GameStorage {
             Model.UgcMarketItem model = item;
             Context.UgcMarketItem.Update(model);
             Context.Entry(model).Property(listing => listing.SalesCount).IsModified = false;
+            Context.Entry(model).Property(listing => listing.FreeRelistUsed).IsModified = false;
             return Context.TrySaveChanges();
+        }
+
+        // The free first relist (MeretMarket 19): the account's listing goes on sale again until listingEnd and its
+        // free relist is spent, in one conditional write. Only a stored listing that expired by time with the free
+        // relist unused changes, so a second request, or one from an older copy, changes nothing and gets false.
+        public bool FreeRelistUgcMarketItem(long id, long accountId, long listingEnd) {
+            DateTime end = listingEnd.FromEpochSeconds();
+            DateTime noPromotion = 0L.FromEpochSeconds(); // as a stopped listing stores it
+            try {
+                if (Context.Database.IsRelational()) {
+                    return Context.UgcMarketItem
+                        .Where(listing => listing.Id == id && listing.AccountId == accountId
+                            && listing.Status == UgcMarketListingStatus.Expired
+                            && listing.RelistKind == UgcMarketItem.FreeRelistKind && !listing.FreeRelistUsed)
+                        .ExecuteUpdate(update => update
+                            .SetProperty(listing => listing.Status, UgcMarketListingStatus.Active)
+                            .SetProperty(listing => listing.ListingEndTime, end)
+                            .SetProperty(listing => listing.PromotionEndTime, noPromotion)
+                            .SetProperty(listing => listing.RelistKind, (byte) 0)
+                            .SetProperty(listing => listing.FreeRelistUsed, true)) == 1;
+                }
+
+                Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+                Model.UgcMarketItem? model = Context.UgcMarketItem.Find(id);
+                if (model == null || model.AccountId != accountId || model.Status != UgcMarketListingStatus.Expired
+                    || model.RelistKind != UgcMarketItem.FreeRelistKind || model.FreeRelistUsed) {
+                    return false;
+                }
+                model.Status = UgcMarketListingStatus.Active;
+                model.ListingEndTime = end;
+                model.PromotionEndTime = noPromotion;
+                model.RelistKind = 0;
+                model.FreeRelistUsed = true;
+                return Context.TrySaveChanges();
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed the free relist of UGC market item {Id}", id);
+                return false;
+            }
         }
 
         // One sale of the listing: one more on the stored count and the seller's sale entry, written together, so
