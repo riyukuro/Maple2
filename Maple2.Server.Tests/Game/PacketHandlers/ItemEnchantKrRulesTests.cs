@@ -136,4 +136,25 @@ public class ItemEnchantKrRulesTests {
         Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
         Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx - cost.GetValueOrDefault(ItemTag.Onix)));
     }
+
+    // With no field the refund items cannot be made: the try goes on, but the Peachy exp stays on the item
+    // instead of being cleared with nothing given back.
+    [Test]
+    public void Ophelia_KeepsPeachyExpWhenTheRefundCannotBeMade() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 6, enchantExp: 7500));
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Dictionary<ItemTag, int> cost = Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(session.Item.Inventory.Get(gear.Uid)!)
+            .ToDictionary(c => c.Tag, c => c.Amount);
+        test.TakeSent();
+        session.Field = null;
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+
+        Item item = session.Item.Inventory.Get(gear.Uid)!;
+        Assert.Multiple(() => {
+            Assert.That(item.Enchant!.EnchantExp, Is.EqualTo(7500));
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.Onix)));
+            Assert.That(Held(session, ItemTag.CrystalPiece), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.CrystalPiece)));
+        });
+    }
 }

@@ -361,11 +361,13 @@ public class ItemEnchantManager {
                 // The client asks first (s_itemenchant_exp_payback): an Ophelia try clears the Peachy exp,
                 // which the client also drops on a grade change (CItemEnchantInfo::IncreaseLevel), and gives
                 // back a tenth of the materials spent on it. The result packet carries the item with no exp.
+                // The exp stays when the refund could not be made, so nothing is lost.
                 if (upgradeItem.Enchant.EnchantExp > 0) {
                     int exp = upgradeItem.Enchant.EnchantExp;
-                    upgradeItem.Enchant.EnchantExp = 0;
-                    if (!force) {
-                        PayBackExp(enchants, exp);
+                    if (force || PayBackExp(enchants, exp)) {
+                        upgradeItem.Enchant.EnchantExp = 0;
+                    } else {
+                        logger.Warning("Enchant exp refund not made, exp kept: item {Uid}, exp {Exp}", upgradeItem.Uid, exp);
                     }
                 }
 
@@ -434,7 +436,9 @@ public class ItemEnchantManager {
         [ItemTag.CrystalPiece] = 40100001,
     };
 
-    private void PayBackExp(int enchants, int exp) {
+    // Makes every refund stack first and gives them only when all were made; false (nothing given) otherwise.
+    private bool PayBackExp(int enchants, int exp) {
+        var refund = new List<Item>();
         foreach (IngredientInfo ingredient in PeachyCost[enchants]) {
             int amount = ItemEnchantRules.ExpPayback(exp, GainExp[enchants], ingredient.Amount);
             if (amount <= 0 || !TagItemIds.TryGetValue(ingredient.Tag, out int id) ||
@@ -444,13 +448,17 @@ public class ItemEnchantManager {
             foreach (int stack in DismantleRules.Stacks(amount, metadata.Property.SlotMax)) {
                 Item? item = session.Field?.ItemDrop.CreateItem(id, amount: stack);
                 if (item == null) {
-                    break;
+                    return false;
                 }
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
-                }
+                refund.Add(item);
             }
         }
+        foreach (Item item in refund) {
+            if (!session.Item.Inventory.Add(item, true)) {
+                session.Item.MailItem(item);
+            }
+        }
+        return true;
     }
 
     // session.Item must be locked before calling.
