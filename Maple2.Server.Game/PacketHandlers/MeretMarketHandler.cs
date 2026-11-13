@@ -412,8 +412,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         // TODO: Find meret market error packets
-        if ((entry.Metadata.SaleStartTime != 0 && entry.Metadata.SaleStartTime > DateTime.Now.ToEpochSeconds()) ||
-            (entry.Metadata.SaleEndTime != 0 && entry.Metadata.SaleEndTime < DateTime.Now.ToEpochSeconds())) {
+        if (!OnSale(entry)) {
             return null;
         }
 
@@ -890,8 +889,11 @@ public class MeretMarketHandler : FieldPacketHandler {
         Logger.Debug("MeretMarket UGC sale details {UgcUid} not implemented", ugcUid);
     }
 
-    // Client CMeratMarketMan::SendMeretMarketMode32/33 (meratmarketman.cpp:665/679): products by id,
-    // at most 20. The reply layout for these modes is not modelled yet.
+    // Client CMeratMarketMan::SendMeretMarketMode32/33 (meratmarketman.cpp:661/675): products by id, at most 20,
+    // sent when a chat item link carries several market serials (UIMeratMarketDialog::OnSearchItemLink,
+    // uimeratmarketdialog.cpp:3723). The client reads the answers 0x20 and 0x21 as a search page
+    // (meratmarketman.cpp:2735, 2742). Only what the market pages would offer is listed: a premium item inside its
+    // sale window and an active listing whose time has not run out; any other id is left out.
     private const int MaxProductsById = 20;
 
     private void HandleLoadPremiumById(GameSession session, IByteReader packet) {
@@ -899,11 +901,14 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (count < 0 || count > MaxProductsById) {
             return;
         }
-        var ids = new int[count];
+        var items = new List<MarketItem>();
         for (int i = 0; i < count; i++) {
-            ids[i] = packet.ReadInt();
+            PremiumMarketItem? item = session.GetPremiumMarketItem(packet.ReadInt());
+            if (item != null && OnSale(item)) {
+                items.Add(item);
+            }
         }
-        Logger.Debug("MeretMarket premium products by id ({Count}) not implemented", count);
+        session.Send(MeretMarketPacket.PremiumById(items));
     }
 
     private void HandleLoadUgcById(GameSession session, IByteReader packet) {
@@ -915,7 +920,25 @@ public class MeretMarketHandler : FieldPacketHandler {
         for (int i = 0; i < count; i++) {
             ids[i] = packet.ReadLong();
         }
-        Logger.Debug("MeretMarket UGC products by id ({Count}) not implemented", count);
+
+        long now = DateTime.Now.ToEpochSeconds();
+        var items = new List<MarketItem>();
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            foreach (long id in ids) {
+                UgcMarketItem? item = db.GetUgcMarketItem(id);
+                if (item is { Status: UgcMarketListingStatus.Active } && item.ListingEndTime > now) {
+                    items.Add(item);
+                }
+            }
+        }
+        session.Send(MeretMarketPacket.UgcById(items));
+    }
+
+    // The premium sale window; 0 leaves that end open.
+    private static bool OnSale(PremiumMarketItem item) {
+        long now = DateTime.Now.ToEpochSeconds();
+        return (item.Metadata.SaleStartTime == 0 || item.Metadata.SaleStartTime <= now) &&
+               (item.Metadata.SaleEndTime == 0 || item.Metadata.SaleEndTime >= now);
     }
 
     // Client UIMeratMarketDialog::SendRandomSaleRequest (111, uimeratmarketdialog.cpp:2813) and the

@@ -26,6 +26,8 @@ public static class MeretMarketPacket {
         LoadBlueprints = 28,
         Purchase = 30,
         FailPurchase = 31,
+        PremiumById = 32,
+        UgcById = 33,
         FeaturedPremium = 101,
         FeaturedUgc = 102,
         AdProducts = 103,
@@ -221,6 +223,26 @@ public static class MeretMarketPacket {
         pWriter.WriteInt(startPage);
         foreach (MarketItem entry in marketItems) {
             pWriter.WriteBool(true);
+            pWriter.WriteMarketItem(entry);
+        }
+
+        return pWriter;
+    }
+
+    // Client readers: meratmarketman.cpp:2735 (0x20, premium) and 2742 (0x21, UGC), both OnSearchResultPage, so the
+    // body is the one of LoadItems: count, total, page, then per product a byte (0 skips it) and the product.
+    public static ByteWriter PremiumById(ICollection<MarketItem> marketItems) => ById(Command.PremiumById, marketItems);
+
+    public static ByteWriter UgcById(ICollection<MarketItem> marketItems) => ById(Command.UgcById, marketItems);
+
+    private static ByteWriter ById(Command command, ICollection<MarketItem> marketItems) {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.WriteByte((byte) command);
+        pWriter.WriteInt(marketItems.Count);
+        pWriter.WriteInt(marketItems.Count);
+        pWriter.WriteInt(1);
+        foreach (MarketItem entry in marketItems) {
+            pWriter.WriteByte(1);
             pWriter.WriteMarketItem(entry);
         }
 
