@@ -73,6 +73,8 @@ public class CurrencyManager {
 
             Currency.Meso = Math.Min(value, Constant.MaxMeso);
             session.Send(CurrencyPacket.UpdateMeso(Currency));
+            // meso_donation quests count the meso held (QuestManager.UpdateMeso).
+            session.Quest?.UpdateMeso();
         }
     }
 
@@ -83,6 +85,7 @@ public class CurrencyManager {
         }
         Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
         session.Send(CurrencyPacket.UpdateMeso(Currency, (int) code));
+        session.Quest?.UpdateMeso();
     }
 
     public long CanAddMeso(long amount) {

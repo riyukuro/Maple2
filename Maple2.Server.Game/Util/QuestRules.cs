@@ -156,6 +156,29 @@ public static class QuestRules {
     public static int HeldItem(ConditionMetadata metadata) =>
         metadata is { Type: ConditionType.item_exist or ConditionType.item_inven, Codes.Integers: [var item, ..] } ? item : 0;
 
+    // meso_donation (the funding quests 93000073, 93000139-93000142): the client's progress is the meso the player
+    // has (CQuestManager::UpdateQuestProgress case 0x49 reads the character's meso), up or down.
+    public static bool HeldMeso(ConditionMetadata metadata) => metadata.Type == ConditionType.meso_donation;
+
+    // equip_exist (the event quests 95000000-95000008): the client's progress is the count of distinct listed item
+    // ids among the worn items (CQuestManager::FUN_1416d3af0 over CEquipment::CollectShownItems, which takes each
+    // worn item once, from the first slot it fills).
+    public static bool HeldEquip(ConditionMetadata metadata) =>
+        metadata is { Type: ConditionType.equip_exist, Codes.Integers.Length: > 0 };
+
+    // The conditions whose progress the client counts itself from what the player has, not from events.
+    public static bool IsHeldCount(ConditionMetadata metadata) => HeldItem(metadata) != 0 || HeldMeso(metadata) || HeldEquip(metadata);
+
+    // The distinct listed item ids among the worn item ids (0 for a condition without codes). The client also skips
+    // a worn item whose item-stream flag after the glamour forge count is set (CItem::FUN_140529620, meaning not
+    // known); the server always writes it false, so every worn listed item counts.
+    public static int EquippedCount(ConditionMetadata metadata, IEnumerable<int> wornItemIds) {
+        if (metadata.Codes?.Integers is not { Length: > 0 } listed) {
+            return 0;
+        }
+        return wornItemIds.Where(listed.Contains).Distinct().Count();
+    }
+
     // The counter for a held count: the count up to the condition's value.
     public static int HeldCounter(ConditionMetadata metadata, long held) => (int) Math.Clamp(held, 0, metadata.Value);
 

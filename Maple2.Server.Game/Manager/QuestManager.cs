@@ -57,8 +57,8 @@ public sealed class QuestManager {
     public void Load() {
         DropEndedMissions(DateTime.Now);
         // The held items are counted again on login (a counter stored before held counts, or items moved since).
-        foreach (Quest quest in HeldCandidates(0)) {
-            CountHeld(quest, 0);
+        foreach (Quest quest in HeldCandidates(AnyHeld)) {
+            CountHeld(quest, AnyHeld);
         }
         session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress));
 
@@ -254,8 +254,8 @@ public sealed class QuestManager {
         }
 
         session.ConditionUpdate(ConditionType.quest_accept, codeLong: quest.Id);
-        // Items held before the quest count from its start, as the client shows them.
-        CountHeld(quest, 0);
+        // Items, meso and worn items held before the quest count from its start, as the client shows them.
+        CountHeld(quest, AnyHeld);
         session.Send(QuestPacket.Start(quest));
         if (quest.Metadata.SummonPortal != null) {
             SummonPortal(quest);
@@ -859,8 +859,24 @@ public sealed class QuestManager {
     // item_exist condition for the item takes the count the player holds now, up or down (QuestRules.HeldItem), and
     // gets an update when it moved. A drop or sale below the count takes a met condition back, as the client does.
     public void UpdateHeld(int itemId) {
-        foreach (Quest quest in HeldCandidates(itemId)) {
-            if (!CountHeld(quest, itemId)) {
+        UpdateHeld(metadata => QuestRules.HeldItem(metadata) is var item && item != 0 && (itemId == 0 || item == itemId));
+    }
+
+    // The player's meso changed (CurrencyManager): meso_donation conditions take the meso the player has now, up or
+    // down (QuestRules.HeldMeso).
+    public void UpdateMeso() {
+        UpdateHeld(QuestRules.HeldMeso);
+    }
+
+    // The worn items changed (EquipManager: equip or unequip): equip_exist conditions take the count of their items
+    // worn now, up or down (QuestRules.EquippedCount).
+    public void UpdateEquipped() {
+        UpdateHeld(QuestRules.HeldEquip);
+    }
+
+    private void UpdateHeld(Func<ConditionMetadata, bool> match) {
+        foreach (Quest quest in HeldCandidates(match)) {
+            if (!CountHeld(quest, match)) {
                 continue;
             }
             session.Send(QuestPacket.Update(quest));
@@ -870,30 +886,46 @@ public sealed class QuestManager {
         }
     }
 
-    // The started quests with a held-count condition for the item (0: for any item).
-    private List<Quest> HeldCandidates(int itemId) {
+    // Any held-count condition (QuestRules.IsHeldCount): the item, meso and worn-item counts the client keeps itself.
+    private static bool AnyHeld(ConditionMetadata metadata) => QuestRules.IsHeldCount(metadata);
+
+    // The started quests with a held-count condition the match takes.
+    private List<Quest> HeldCandidates(Func<ConditionMetadata, bool> match) {
         return characterValues.Values.Concat(accountValues.Values)
             .Where(quest => quest.State == QuestState.Started && PlayedClientQuests.Known(quest.Metadata.Basic)
-                            && quest.Conditions.Values.Any(condition => QuestRules.HeldItem(condition.Metadata) is var item
-                                                                        && item != 0 && (itemId == 0 || item == itemId)))
+                            && quest.Conditions.Values.Any(condition => match(condition.Metadata)))
             .ToList();
     }
 
-    // Sets the quest's held-count conditions for the item (0: for any item) to the held count. True when one moved.
-    private bool CountHeld(Quest quest, int itemId) {
+    // Sets the quest's held-count conditions the match takes to the count held now. True when one moved.
+    private bool CountHeld(Quest quest, Func<ConditionMetadata, bool> match) {
         bool changed = false;
         foreach (Quest.Condition condition in quest.Conditions.Values) {
-            int item = QuestRules.HeldItem(condition.Metadata);
-            if (item == 0 || (itemId != 0 && item != itemId)) {
+            if (!QuestRules.IsHeldCount(condition.Metadata) || !match(condition.Metadata)) {
                 continue;
             }
-            int counter = QuestRules.HeldCounter(condition.Metadata, session.Item.Inventory.Find(item).Sum(held => (long) held.Amount));
+            int counter = QuestRules.HeldCounter(condition.Metadata, HeldCount(condition.Metadata));
             if (counter != condition.Counter) {
                 condition.Counter = counter;
                 changed = true;
             }
         }
         return changed;
+    }
+
+    // What the client counts for a held-count condition (CQuestManager::UpdateQuestProgress): the held amount of the
+    // item, the meso, or the worn listed items.
+    private long HeldCount(ConditionMetadata metadata) {
+        if (QuestRules.HeldMeso(metadata)) {
+            return session.Currency.Meso;
+        }
+        if (QuestRules.HeldEquip(metadata)) {
+            var equips = session.Item.Equips;
+            return QuestRules.EquippedCount(metadata, equips.Gear.Values.Concat(equips.Outfit.Values).Concat(equips.Outfit2.Values)
+                .Select(item => item.Id));
+        }
+        int item = QuestRules.HeldItem(metadata);
+        return session.Item.Inventory.Find(item).Sum(held => (long) held.Amount);
     }
 
     public bool TryGetQuest(int questId, [NotNullWhen(true)] out Quest? quest) {

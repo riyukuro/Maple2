@@ -189,6 +189,8 @@ public class EquipManager {
                 session.ConditionUpdate(ConditionType.change_ugc_equip);
             }
             session.Stats.Refresh();
+            // equip_exist quests count the worn items (QuestManager.UpdateEquipped).
+            session.Quest?.UpdateEquipped();
             return true;
         }
     }
@@ -205,6 +207,7 @@ public class EquipManager {
                 if (itemUid == item.Uid) {
                     if (UnequipInternal(slot, EquipKind.Gear, takenOff: true)) {
                         session.Stats.Refresh();
+                        session.Quest?.UpdateEquipped();
                         return true;
                     }
                 }
@@ -215,6 +218,7 @@ public class EquipManager {
                 if (itemUid == item.Uid) {
                     if (UnequipInternal(slot, EquipKind.Outfit, takenOff: true)) {
                         session.Stats.Refresh();
+                        session.Quest?.UpdateEquipped();
                         return true;
                     }
                 }
@@ -225,6 +229,7 @@ public class EquipManager {
                 if (itemUid == item.Uid) {
                     if (UnequipInternal(slot, EquipKind.Outfit2, takenOff: true)) {
                         session.Stats.Refresh();
+                        session.Quest?.UpdateEquipped();
                         return true;
                     }
                 }
@@ -306,6 +311,7 @@ public class EquipManager {
             cosmetic.Slot = (short) equipSlot;
             Outfit[equipSlot] = cosmetic;
             session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, cosmetic, 0));
+            session.Quest?.UpdateEquipped();
             return true;
         }
     }
