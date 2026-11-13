@@ -29,6 +29,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // The played client's splashActiveSkillID lists (PlayedClientSkills.ReadSplashActive); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (int[] Ids, string Point)> clientSplashActive = [];
     private int splashActivePointMismatches;
+    // The played client's level cooldowns in milliseconds (PlayedClientSkills.ReadLevelCooldowns); empty without a
+    // played client.
+    private readonly Dictionary<(int Skill, short Level), int> clientCooldowns = [];
+    private int clientCooldownsTaken;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -62,6 +66,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientSplashActive = PlayedClientSkills.ReadSplashActive(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)));
             Console.WriteLine($"Skill attacks with splash skills to fire in the played client's skill data: {clientSplashActive.Count}");
+            clientCooldowns = PlayedClientSkills.ReadLevelCooldowns(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)));
+            Console.WriteLine($"Skill levels with a cooldown in the played client's skill data: {clientCooldowns.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -83,10 +90,12 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Dictionary<short, SkillMetadataLevel> levels = data.level.ToDictionary(
                 level => level.value,
                 level => new SkillMetadataLevel(
-                    // The played client's hand weapons stand in for the data pack's (PlayedClientSkills).
-                    Condition: client is { } played ? level.beginCondition.Convert() with { Weapon = played.Weapons.Select(weapon =>
-                        new BeginConditionWeapon(new ItemType(1, (byte) weapon.LeftHand), new ItemType(1, (byte) weapon.RightHand))).ToArray() }
-                        : level.beginCondition.Convert(),
+                    // The played client's hand weapons and level cooldown stand in for the data pack's (PlayedClientSkills).
+                    Condition: WithClientCooldown(id, level.value, client is { } played ? level.beginCondition.Convert() with {
+                        Weapon = played.Weapons.Select(weapon =>
+                        new BeginConditionWeapon(new ItemType(1, (byte) weapon.LeftHand), new ItemType(1, (byte) weapon.RightHand))).ToArray()
+                    }
+                        : level.beginCondition.Convert()),
                     Change: level.changeSkill?.Convert(),
                     AutoTargeting: level.autoTargeting?.Convert(),
                     Consume: new SkillMetadataConsume(
@@ -246,6 +255,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientAttackMethods.Count > 0) {
             Console.WriteLine($"Skill attacks whose played attack method has another point: {attackMethodPointMismatches} (the data pack's kept)");
         }
+        if (clientCooldowns.Count > 0) {
+            Console.WriteLine($"Skill levels given the played client's cooldown over the data pack's: {clientCooldownsTaken}");
+        }
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.
@@ -270,6 +282,20 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             return null;
         }
         return played.Ids;
+    }
+
+    // The level's cooldown in seconds as the played client counts it (its level cooldown in milliseconds), where its
+    // level gives one; else the data pack's beginCondition cooldownTime.
+    private Maple2.Model.Metadata.BeginCondition WithClientCooldown(int skillId, short level, Maple2.Model.Metadata.BeginCondition condition) {
+        if (!clientCooldowns.TryGetValue((skillId, level), out int cooldownMs)) {
+            return condition;
+        }
+        float seconds = cooldownMs / 1000f;
+        if (seconds == condition.CooldownTime) {
+            return condition;
+        }
+        clientCooldownsTaken++;
+        return condition with { CooldownTime = seconds };
     }
 
     private static SkillMetadataRange Convert(RegionSkill region) {

@@ -136,6 +136,35 @@ public static class PlayedClientSkills {
         return result;
     }
 
+    // The cooldown of each of the client's levels that gives one, in milliseconds, by skill id and level
+    // (SkillLevelData::Load reads the level's cooldown attribute; SkillLevelData::GetCooldown is the length the
+    // client's skill slot counts down and its tooltip shows). The data pack's beginCondition cooldownTime differs
+    // for 95 KR skills. A level without the attribute is left out (the client counts 0 there). The first <skill> of
+    // an id and the first <level> of a value are read, as in ReadSplashActive.
+    public static Dictionary<(int Skill, short Level), int> ReadLevelCooldowns(IEnumerable<XmlDocument> skillFiles) {
+        var result = new Dictionary<(int, short), int>();
+        var skillIds = new HashSet<int>();
+        foreach (XmlDocument file in skillFiles) {
+            XmlNodeList? skills = file.SelectNodes("ms2/skill");
+            if (skills == null) {
+                continue;
+            }
+            foreach (XmlElement skill in skills.OfType<XmlElement>()) {
+                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || !skillIds.Add(id)) {
+                    continue;
+                }
+                var levelValues = new HashSet<short>();
+                foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
+                    if (!short.TryParse(level.GetAttribute("value"), out short value) || !levelValues.Add(value) || !level.HasAttribute("cooldown")) {
+                        continue;
+                    }
+                    result[(id, value)] = Number(level, "cooldown");
+                }
+            }
+        }
+        return result;
+    }
+
     // The main types whose skills take the caster off the ride at the cast.
     public static bool UnrideMainType(int mainType) => mainType is 1 or 4 or 7 or (>= 11 and <= 15) or (>= 17 and <= 19);
 

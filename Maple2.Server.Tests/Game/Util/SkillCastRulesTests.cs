@@ -681,6 +681,35 @@ public class SkillCastRulesTests {
         });
     }
 
+    [Test]
+    public void LevelCooldownIsTheClientsMilliseconds() {
+        // Sticky Monster 10600281 and Holy Symbol 10400051 as the played client gives them (SkillLevelData::Load reads
+        // the level's cooldown in milliseconds): 40 s and 120 s, where the data pack's beginCondition says 60 s and 180 s.
+        // A level without the attribute is left to the data pack; a later <level> or <skill> of a value read is not read.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10600281">
+                <level value="1" cooldown="40000" stringParam="92,283,712" />
+                <level value="2" sp="10" />
+                <level value="1" cooldown="1000" />
+                <level value="2" cooldown="2000" />
+              </skill>
+              <skill id="10400051"><level value="1" cooldown="120000" /></skill>
+              <skill id="10400051"><level value="2" cooldown="3000" /></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level), int> read = PlayedClientSkills.ReadLevelCooldowns([document]);
+        Assert.Multiple(() => {
+            Assert.That(read.Keys, Is.EquivalentTo(new[] { (10600281, (short) 1), (10400051, (short) 1) }));
+            Assert.That(read[(10600281, 1)], Is.EqualTo(40000));
+            Assert.That(read[(10400051, 1)], Is.EqualTo(120000));
+            // The length the server counts from them with no rate held.
+            Assert.That(SkillCastRules.CooldownMs(read[(10600281, 1)] / 1000f, false, 0f, 0), Is.EqualTo(40000));
+            Assert.That(SkillCastRules.CooldownMs(read[(10400051, 1)] / 1000f, false, 0f, 0), Is.EqualTo(120000));
+        });
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]
