@@ -143,18 +143,24 @@ public class ConfigManager {
         };
 
         statAttributes = new StatAttributes(statLimits);
-        if (load.StatPoints != null) {
-            foreach ((AttributePointSource source, int amount) in load.StatPoints) {
+        LoadStoredStatPoints(load.StatPoints, load.Allocation);
+    }
+
+    // The stored stat point sources and allocation of a login. The prestige source is always counted again, so an
+    // alt below AdventureLevelStartLevel has none; an allocation above the new total is reset.
+    internal void LoadStoredStatPoints(IDictionary<AttributePointSource, int>? stored, IDictionary<BasicAttribute, int>? allocation) {
+        if (stored != null) {
+            foreach ((AttributePointSource source, int amount) in stored) {
                 statAttributes.Sources[source] = amount;
             }
         }
         statAttributes.Sources[AttributePointSource.Prestige] = RefreshPrestigeAttributePoints();
-        if (load.Allocation != null) {
+        if (allocation != null) {
             // Reset points if total points exceed the limit.
-            if (load.Allocation.Values.Sum() > statAttributes.TotalPoints) {
-                load.Allocation.Clear();
+            if (allocation.Values.Sum() > statAttributes.TotalPoints) {
+                allocation.Clear();
             } else {
-                foreach ((BasicAttribute attribute, int amount) in load.Allocation) {
+                foreach ((BasicAttribute attribute, int amount) in allocation) {
                     statAttributes.Allocation[attribute] = amount;
                 }
             }

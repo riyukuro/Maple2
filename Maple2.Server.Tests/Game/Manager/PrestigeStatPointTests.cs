@@ -2,9 +2,12 @@
 using System.CommandLine;
 using System.CommandLine.IO;
 using System.Linq;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Commands;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -71,5 +74,24 @@ public class PrestigeStatPointTests {
 
         Assert.That(new PlayerCommand(session, null!).Invoke(["level", "60"], new TestConsole()), Is.EqualTo(0));
         Assert.That(Points, Is.EqualTo(3), "set to the level or above: counted");
+    }
+
+    // At login the prestige source is counted again even when it was never stored: below the level it is 0, and a
+    // stored allocation above the new total is reset; at the level the same allocation is kept.
+    [TestCase((short) 49, true, 0, 0)]
+    [TestCase((short) 50, true, 3, 3)]
+    [TestCase((short) 50, false, 3, 3)]
+    public void Login_CountsAgain_ResetsAnAllocationAboveTheTotal(short level, bool stored, int points, int used) {
+        GameSession session = Start(level);
+        session.Player.Value.Account.PrestigeLevel = 4;
+        var allocation = new Dictionary<BasicAttribute, int> { [BasicAttribute.Strength] = 3 };
+
+        session.Config.LoadStoredStatPoints(stored
+            ? new Dictionary<AttributePointSource, int> { [AttributePointSource.Prestige] = 3 }
+            : new Dictionary<AttributePointSource, int>(), allocation);
+
+        Assert.That(Points, Is.EqualTo(points));
+        var stats = (StatAttributes) typeof(ConfigManager).GetField("statAttributes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Config)!;
+        Assert.That(stats.UsedPoints, Is.EqualTo(used));
     }
 }
