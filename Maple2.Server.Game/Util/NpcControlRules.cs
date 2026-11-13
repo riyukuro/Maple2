@@ -30,6 +30,11 @@ public static class NpcControlRules {
     // nothing shows it for the other values (2, 4..8, 99), so they are left out.
     public static bool Stuns(int stun) => stun is 1 or 3;
 
+    // A held stun buff takes a monster only when its abnormalImmuneBreak is above the npc's abnormalImmune; an equal
+    // value does not break it. The buff stays held either way. The client loads both values and reads neither, so the
+    // gate is the server's. Chosen here like the hit state's hitImmuneBreak > hitImmune; players are not gated.
+    public static bool StunTakes(int abnormalImmuneBreak, int abnormalImmune) => abnormalImmuneBreak > abnormalImmune;
+
     // The fields of a state 13 (hit) entry. Client: the reader fills StateHitData and StateHitNPC uses them: Delay is
     // the stay after the sequence, PushTime the time the push (and the lift arc) takes, Lift the arc's height, Down
     // plays the get-up sequence at the end. KMS2 sends the attack's hitPauseTime, pushduration and pushDown there;

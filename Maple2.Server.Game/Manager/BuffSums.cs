@@ -16,6 +16,8 @@ public sealed class BuffSums {
     public bool InvincibleReflect { get; }
     // One of them has a stun value that stuns a monster (NpcControlRules.Stuns).
     public bool Stun { get; }
+    // The highest abnormalImmuneBreak among those stun buffs; -1 when none is held (NpcControlRules.StunTakes).
+    public int StunBreak { get; } = -1;
     // One of them has deathResistanceHP (the Berserker's Raging Soul, 10200221): damage leaves its holder at 1 health.
     public bool DeathResistance { get; }
     // The damage taken rates of the buffs held (DefensiveProperty papDamageR, mapDamageR), each times its stack count.
@@ -33,7 +35,10 @@ public sealed class BuffSums {
                 resistances[attribute] = resistances.GetValueOrDefault(attribute) + Model.Buff.ByStacks(value, stacks);
             }
             Invincible |= metadata.Status.Invincible;
-            Stun |= metadata.Property is { } property && Util.NpcControlRules.Stuns(property.Stun);
+            if (metadata.Property is { } property && Util.NpcControlRules.Stuns(property.Stun)) {
+                Stun = true;
+                StunBreak = Math.Max(StunBreak, property.ImmuneBreak);
+            }
             DeathResistance |= metadata.Status.DeathResistanceHp;
             InvincibleReflect |= metadata.Status.Invincible && metadata.Status.InvincibleReflect;
             PhysicalDamageTaken += Model.Buff.ByStacks(metadata.Status.PhysicalDamageTakenRate, stacks);

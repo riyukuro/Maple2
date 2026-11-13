@@ -270,6 +270,28 @@ public class FieldNpc : Actor<Npc> {
     protected virtual void Remove(TimeSpan delay) => Field.RemoveNpc(ObjectId, delay);
 
     private List<string> debugMessages = [];
+    // A held stun buff did not break the npc's abnormalImmune: logged once until that changes.
+    private bool stunRefused;
+
+    // A stun buff is held and its abnormalImmuneBreak is above the npc's abnormalImmune (NpcControlRules.StunTakes).
+    internal bool TakesStun() {
+        if (!Buffs.Stunned) {
+            stunRefused = false;
+            return false;
+        }
+        int immune = Value.Metadata.Basic.AbnormalImmune;
+        int stunBreak = Buffs.StunBreak;
+        if (NpcControlRules.StunTakes(stunBreak, immune)) {
+            stunRefused = false;
+            return true;
+        }
+        if (!stunRefused) {
+            stunRefused = true;
+            Logger.Debug("Npc {NpcId} refuses the stun: abnormalImmune {Immune}, abnormalImmuneBreak {Break}", Value.Metadata.Id, immune, stunBreak);
+        }
+        return false;
+    }
+
     private bool playersListeningToDebug = false; // controls whether messages should log
     private long nextDebugPacket = 0;
 
@@ -327,7 +349,7 @@ public class FieldNpc : Actor<Npc> {
                 AiState = new AiState(this, aiFile);
             }
             BattleState.Update(tickCount);
-            MovementState.SetStunned(Buffs.Stunned);
+            MovementState.SetStunned(TakesStun());
             isStunned = MovementState.State is ActorState.Stun or ActorState.Hit; // held: no AI, no tasks
             if (!AiOff && !isStunned) {
                 AiState.Update(tickCount);
