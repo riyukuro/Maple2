@@ -96,7 +96,10 @@ public partial class MovementState {
             return;
         }
 
-        if (!actor.Animation.TryPlaySequence(cast.Motion.MotionProperty.SequenceName, cast.Motion.MotionProperty.SequenceSpeed, AnimationType.Skill, out AnimationSequenceMetadata? sequence, skill: cast.Metadata)) {
+        AnimationSequenceMetadata? sequence = null;
+        SkillCastRules.CastStart start = SkillCastRules.StartOf(cast.Metadata.Data.Motions,
+            () => actor.Animation.TryPlaySequence(cast.Motion.MotionProperty.SequenceName, cast.Motion.MotionProperty.SequenceSpeed, AnimationType.Skill, out sequence, skill: cast.Metadata));
+        if (start == SkillCastRules.CastStart.Cancel) {
             task.Cancel();
 
             return;
@@ -105,6 +108,14 @@ public partial class MovementState {
         CastTask = task;
         castSkill = cast;
         task.Cast = cast;
+
+        if (start == SkillCastRules.CastStart.FireNow) {
+            // No animation and no state: the first attack goes out with the cast.
+            actor.SkillState.SkillCastAttack(cast, 0, CastTargets());
+            task.Completed();
+
+            return;
+        }
 
         //if (faceTarget && actor.BattleState.Target is not null) {
         //    actor.Transform.LookTo(Vector3.Normalize(actor.BattleState.Target.Position - actor.Position));

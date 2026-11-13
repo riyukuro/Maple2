@@ -229,6 +229,19 @@ public static class SkillCastRules {
     // takes the cast's facing from its z (CSceneStateGame::OnSkillUse).
     public static Vector3 CastRotation(in Vector3 given, in Vector3 caster) => given == default ? caster : given;
 
+    // How an npc's cast of a motion starts. A level whose motions name no sequence (SkillLevelData::HasSequenceName,
+    // false for a level with no motion too) is cast without the skill state: the client sends the use and fires the
+    // first attack in the same call (MyPC::vfunc_102 -> StateSkill::FireFirstAttack), with no animation and no key to
+    // wait for. Such a cast fires its attack 0 at once and ends. A level with a sequence plays the motion's and fires
+    // at its keys; a motion whose sequence the model lacks (or names none in a level that has one) cannot play.
+    public enum CastStart { Play, FireNow, Cancel }
+
+    public static bool CastsWithoutSequence(IEnumerable<SkillMetadataMotion> motions) =>
+        motions.All(motion => string.IsNullOrEmpty(motion.MotionProperty.SequenceName));
+
+    public static CastStart StartOf(IEnumerable<SkillMetadataMotion> motions, Func<bool> playSequence) =>
+        CastsWithoutSequence(motions) ? CastStart.FireNow : playSequence() ? CastStart.Play : CastStart.Cancel;
+
     // The last accepted cast that plays a motion: the times of its keys, its speed and when it came.
     public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick, int MoveType = 0);
 

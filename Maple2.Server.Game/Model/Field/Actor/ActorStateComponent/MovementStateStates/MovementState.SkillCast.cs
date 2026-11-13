@@ -28,12 +28,7 @@ public partial class MovementState {
         }
 
         if (castSkill.Motion.AttackPoints.TryGetValue(keyName, out byte point)) {
-            var targets = new List<IActor>();
-
-            // TODO: change BattleState to track a list of targets for multi projectile skills & use that instead
-            if (actor.BattleState.Target is not null) {
-                targets.Add(actor.BattleState.Target);
-            }
+            List<IActor> targets = CastTargets();
 
             if (point != 0xFF) {
                 actor.SkillState.SkillCastAttack(castSkill, point, targets);
@@ -85,6 +80,16 @@ public partial class MovementState {
             default:
                 break;
         }
+    }
+
+    private List<IActor> CastTargets() {
+        var targets = new List<IActor>();
+
+        // TODO: change BattleState to track a list of targets for multi projectile skills & use that instead
+        if (actor.BattleState.Target is not null) {
+            targets.Add(actor.BattleState.Target);
+        }
+        return targets;
     }
 
     private void StateSkillCastMoveUpdate(long tickCount, long tickDelta, float delta) {

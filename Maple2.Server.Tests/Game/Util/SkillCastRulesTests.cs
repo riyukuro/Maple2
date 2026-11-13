@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Xml;
 using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
@@ -935,5 +936,41 @@ public class SkillCastRulesTests {
         Maple2.PacketLib.Tools.ByteWriter writer = Maple2.Server.Game.Packets.SkillPacket.Cancel(0x0102030405060708, 0x00112233);
         byte[] expected = [0x3F, 0x00, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x33, 0x22, 0x11, 0x00];
         Assert.That(writer.Buffer.Take(writer.Length).ToArray(), Is.EqualTo(expected));
+    }
+
+    private static SkillMetadataMotion Motion(string sequence) {
+        var property = (SkillMetadataMotionProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataMotionProperty)) with {
+            SequenceName = sequence,
+            SequenceSpeed = 1,
+        };
+        return new SkillMetadataMotion(property, [], new Dictionary<string, byte>());
+    }
+
+    // A level with no sequence (Stinky Rafflesia's 60077122 names none) fires at once: the cast was cancelled before, so the npc
+    // never attacked with it. The model's sequences are not asked.
+    [Test]
+    public void LevelWithoutSequenceFiresAtOnce() {
+        int asked = 0;
+        bool Play() {
+            asked++;
+            return false;
+        }
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.StartOf([Motion("")], Play), Is.EqualTo(SkillCastRules.CastStart.FireNow));
+            Assert.That(SkillCastRules.StartOf([Motion(""), Motion("")], Play), Is.EqualTo(SkillCastRules.CastStart.FireNow));
+            Assert.That(SkillCastRules.StartOf([], Play), Is.EqualTo(SkillCastRules.CastStart.FireNow));
+            Assert.That(asked, Is.EqualTo(0));
+        });
+    }
+
+    // A level with a sequence plays it, and a motion that cannot play its own (the model lacks it, or it names none
+    // beside one that does) is cancelled as before.
+    [Test]
+    public void LevelWithSequencePlaysOrCancels() {
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.StartOf([Motion("Attack_01_A")], () => true), Is.EqualTo(SkillCastRules.CastStart.Play));
+            Assert.That(SkillCastRules.StartOf([Motion("Attack_01_A")], () => false), Is.EqualTo(SkillCastRules.CastStart.Cancel));
+            Assert.That(SkillCastRules.StartOf([Motion(""), Motion("Attack_01_A")], () => false), Is.EqualTo(SkillCastRules.CastStart.Cancel));
+        });
     }
 }
