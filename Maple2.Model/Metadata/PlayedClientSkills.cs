@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Xml;
 using Maple2.Model.Enum;
 
@@ -166,6 +167,73 @@ public static class PlayedClientSkills {
         return result;
     }
 
+    // The hit shape (rangeType, distance, height, width, endWidth, rangeAdd, rangeOffset, rangeZRotateDegree) and the
+    // target count of every attack of the client's levels, by skill id, level, the motion's place in the level and the
+    // attack's place in the motion, with the attack's point. Unk_RangeShape::Load reads the shape from the attack's
+    // <range> (unit_1408001f0, :67-84; an empty type and 0 when not given, a vector only as three comma-separated
+    // values) and SkillAttackData::Load reads targetCount (skillattackdata.cpp:577, 0 when not given). The skills and
+    // levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), AttackRange> ReadAttackRanges(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var result = new Dictionary<(int, short, int, int), AttackRange>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        XmlElement? range = attack.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "range");
+                        result[(id, value, motionIndex, attackIndex++)] = new AttackRange(range?.GetAttribute("rangeType") ?? "",
+                            Real(range, "distance"), Real(range, "height"), Real(range, "width"), Real(range, "endWidth"),
+                            Point(range, "rangeAdd"), Point(range, "rangeOffset"), Real(range, "rangeZRotateDegree"),
+                            Number(attack, "targetCount"), attack.GetAttribute("point"));
+                    }
+                    motionIndex++;
+                }
+            }
+        }
+        return result;
+    }
+
+    public record AttackRange(string Type, float Distance, float Height, float Width, float EndWidth, Vector3 RangeAdd,
+        Vector3 RangeOffset, float RotateZDegree, int TargetCount, string Point);
+
+    // The data pack's range with the client's whole hit shape. CSkillCollisionManager builds the shape from the type,
+    // distance, height, width and end width (skillcollisionmanager.cpp:147-208) and StateSkill::FUN_1417e95a0 places it
+    // by the range offset (stateskill.cpp:1167), so no part of the shape is kept from the data pack. The target
+    // properties (includeCaster, applyTarget, castTarget, the target select and filters) stay the data pack's.
+    public static SkillMetadataRange WithShape(SkillMetadataRange pack, AttackRange played) {
+        return pack with {
+            Type = ShapeType(played.Type),
+            Distance = played.Distance,
+            Height = played.Height,
+            Width = played.Width,
+            EndWidth = played.EndWidth,
+            RotateZDegree = played.RotateZDegree,
+            RangeAdd = played.RangeAdd,
+            RangeOffset = played.RangeOffset,
+        };
+    }
+
+    // The client's shape types (Unk_RangeShape::Load): any other rangeType, as "circle" or none, gives no shape
+    // (CSkillCollisionManager makes none for it), so it hits nothing.
+    public static SkillRegion ShapeType(string rangeType) {
+        return rangeType switch {
+            "box" => SkillRegion.Box,
+            "cylinder" => SkillRegion.Cylinder,
+            "frustum" => SkillRegion.Frustum,
+            "hole_cylinder" => SkillRegion.HoleCylinder,
+            _ => SkillRegion.None,
+        };
+    }
+
+    // The attack's target count: the client's where it gives one, else the data pack's. The client cuts an attack's
+    // targets to its targetCount (StateSkill::PickAttackTargets, stateskill.cpp:2585-2586, through
+    // CSkillSystem::FUN_141769410, skillslot.cpp:2877), so 0 picks none; the KR client gives 0 only in 10800202 (Dark
+    // Swamp's pulses, which hit nothing there while 10800204, a skill the data pack does not have, deals the damage),
+    // and taking it alone would leave the server's swamp without its effect.
+    public static int WithTargetCount(int pack, int played) => played != 0 ? played : pack;
+
     // The cooldown of each of the client's levels that gives one, in milliseconds, by skill id and level
     // (SkillLevelData::Load reads the level's cooldown attribute; SkillLevelData::GetCooldown is the length the
     // client's skill slot counts down and its tooltip shows). The data pack's beginCondition cooldownTime differs
@@ -222,6 +290,20 @@ public static class PlayedClientSkills {
 
     private static float Real(XmlElement? element, string attribute) {
         return element != null && float.TryParse(element.GetAttribute(attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ? value : 0f;
+    }
+
+    private static Vector3 Point(XmlElement? element, string attribute) {
+        string[] values = element?.GetAttribute(attribute).Split(',') ?? [];
+        if (values.Length != 3) {
+            return Vector3.Zero;
+        }
+        var result = new float[3];
+        for (int i = 0; i < 3; i++) {
+            if (!float.TryParse(values[i], NumberStyles.Float, CultureInfo.InvariantCulture, out result[i])) {
+                return Vector3.Zero;
+            }
+        }
+        return new Vector3(result[0], result[1], result[2]);
     }
 
     private static int Number(XmlElement? element, string attribute) {

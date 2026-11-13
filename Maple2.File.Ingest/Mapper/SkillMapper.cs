@@ -44,6 +44,13 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (float Rate, string Point)> clientDamageRates = [];
     private int clientDamageRatesTaken;
     private int damageRatePointMismatches;
+    // The played client's attack range shapes and target counts (PlayedClientSkills.ReadAttackRanges); empty without
+    // a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), PlayedClientSkills.AttackRange> clientRanges = [];
+    private int clientRangesTaken;
+    private int clientTargetCountsTaken;
+    private int clientTargetCountsZero;
+    private int rangePointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -86,6 +93,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientDamageRates = PlayedClientSkills.ReadAttackDamageRates(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill attacks in the played client's skill data (damage rate): {clientDamageRates.Count}");
+            clientRanges = PlayedClientSkills.ReadAttackRanges(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill attacks in the played client's skill data (range and target count): {clientRanges.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -144,7 +154,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         Attacks: motion.attack.Select((attack, attackIndex) => new SkillMetadataAttack(
                             Point: attack.point,
                             PointGroup: attack.pointGroupID,
-                            TargetCount: attack.targetCount,
+                            TargetCount: TargetCount(id, level.value, motionIndex, attackIndex, attack.point, attack.targetCount),
                             MagicPathId: attack.magicPathID,
                             CubeMagicPathId: attack.cubeMagicPathID == int.MaxValue ? 9000073111 : attack.cubeMagicPathID,
                             HitImmuneBreak: attack.hitImmuneBreak,
@@ -156,7 +166,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 TamingPoint: attack.petTamingProperty.tamingPoint,
                                 ForcedTaming: attack.petTamingProperty.forcedTaming
                             ) : null,
-                            Range: Convert(attack.rangeProperty),
+                            Range: WithClientRange(id, level.value, motionIndex, attackIndex, attack.point, Convert(attack.rangeProperty)),
                             Arrow: new SkillMetadataArrow(
                                 Overlap: attack.arrowProperty.overlap,
                                 Explosion: attack.arrowProperty.explosion,
@@ -286,6 +296,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientDamageRates.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's damage rate over the data pack's: {clientDamageRatesTaken} ({damageRatePointMismatches} with another point at that place, the data pack's kept)");
         }
+        if (clientRanges.Count > 0) {
+            Console.WriteLine($"Skill attacks given the played client's range shape over the data pack's: {clientRangesTaken}, target count: {clientTargetCountsTaken} ({rangePointMismatches} with another point at that place, the data pack's kept; {clientTargetCountsZero} with no client target count, the data pack's kept)");
+        }
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.
@@ -313,6 +326,39 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientDamageRatesTaken++;
         }
         return played.Rate;
+    }
+
+    // The played client's whole hit shape where it has the attack at that place with the same point, else the data
+    // pack's (PlayedClientSkills.WithShape).
+    private SkillMetadataRange WithClientRange(int id, short level, int motion, int attack, string point, SkillMetadataRange pack) {
+        if (!clientRanges.TryGetValue((id, level, motion, attack), out PlayedClientSkills.AttackRange? played)) {
+            return pack;
+        }
+        if (played.Point != point) {
+            rangePointMismatches++;
+            return pack;
+        }
+        SkillMetadataRange taken = PlayedClientSkills.WithShape(pack, played);
+        if (taken != pack) {
+            clientRangesTaken++;
+        }
+        return taken;
+    }
+
+    // The played client's target count where it has the attack at that place with the same point and gives one, else
+    // the data pack's (PlayedClientSkills.WithTargetCount).
+    private int TargetCount(int id, short level, int motion, int attack, string point, int pack) {
+        if (!clientRanges.TryGetValue((id, level, motion, attack), out PlayedClientSkills.AttackRange? played) || played.Point != point) {
+            return pack;
+        }
+        int taken = PlayedClientSkills.WithTargetCount(pack, played.TargetCount);
+        if (played.TargetCount == 0 && pack != 0) {
+            clientTargetCountsZero++;
+        }
+        if (taken != pack) {
+            clientTargetCountsTaken++;
+        }
+        return taken;
     }
 
     // The played client's splashActiveSkillID where it has the attack at that place with the same point, else none.
@@ -352,17 +398,21 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         return taken;
     }
 
+    private static SkillRegion RegionType(string rangeType) {
+        return rangeType switch {
+            "box" => SkillRegion.Box,
+            "cylinder" => SkillRegion.Cylinder,
+            "circle" => SkillRegion.Cylinder,
+            "frustum" => SkillRegion.Frustum,
+            "hole_cylinder" => SkillRegion.HoleCylinder,
+            "1200" => SkillRegion.None, // skill/60/60012051.xml
+            _ => SkillRegion.None,
+        };
+    }
+
     private static SkillMetadataRange Convert(RegionSkill region) {
         return new SkillMetadataRange(
-            Type: region.rangeType switch {
-                "box" => SkillRegion.Box,
-                "cylinder" => SkillRegion.Cylinder,
-                "circle" => SkillRegion.Cylinder,
-                "frustum" => SkillRegion.Frustum,
-                "hole_cylinder" => SkillRegion.HoleCylinder,
-                "1200" => SkillRegion.None, // skill/60/60012051.xml
-                _ => SkillRegion.None,
-            },
+            Type: RegionType(region.rangeType),
             Distance: region.distance,
             Height: region.height,
             Width: region.width,
