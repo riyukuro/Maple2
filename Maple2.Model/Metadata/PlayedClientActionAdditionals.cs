@@ -125,6 +125,54 @@ public static class PlayedClientActionAdditionals {
         return count == 0 ? level : level with { Skills = [.. level.Skills, .. own.Select(ToEffect)], Motions = motions };
     }
 
+    // The level with hasNotBuffOwner taken over onto the data pack's own rows, which do not give it (the parser's
+    // condition has no such field): a row whose <target> or <caster> tests a hasNotBuffID that a use of the same effect
+    // id and level anywhere in the level tests with hasNotBuffOwner gets HasNotBuffOwned on that test. Marked counts
+    // the tests changed. KR: the actionAdditional rows of 10300222..10300226 (hasNotBuffID 10300227).
+    public static SkillMetadataLevel MarkNotBuffOwned(SkillMetadataLevel level, LevelUses uses, out int marked) {
+        Use[] all = [.. uses.Level, .. uses.Attacks.Values.SelectMany(attack => attack.Uses)];
+        HashSet<(int, short, int)> targetOwned = all.Where(use => use.TargetTest is { HasNotBuffOwner: true, HasNotBuffId: not 0 })
+            .Select(use => (use.EffectId, use.Level, use.TargetTest!.Value.HasNotBuffId)).ToHashSet();
+        HashSet<(int, short, int)> casterOwned = all.Where(use => use.CasterTest is { HasNotBuffOwner: true, HasNotBuffId: not 0 })
+            .Select(use => (use.EffectId, use.Level, use.CasterTest!.Value.HasNotBuffId)).ToHashSet();
+        int count = 0;
+        if (targetOwned.Count == 0 && casterOwned.Count == 0) {
+            marked = 0;
+            return level;
+        }
+
+        BeginConditionTarget? Mark(BeginConditionTarget? test, SkillEffectMetadata effect, HashSet<(int, short, int)> owned) {
+            if (test == null || test.HasNotBuffOwned || !effect.Skills.Any(skill => test.HasNotBuffIds.Any(id => owned.Contains((skill.Id, skill.Level, id))))) {
+                return test;
+            }
+            count++;
+            return test with { HasNotBuffOwned = true };
+        }
+        SkillEffectMetadata MarkEffect(SkillEffectMetadata effect) {
+            if (effect.Condition is not { } condition) {
+                return effect;
+            }
+            BeginConditionTarget? target = Mark(condition.Condition.Target, effect, targetOwned);
+            BeginConditionTarget? caster = Mark(condition.Condition.Caster, effect, casterOwned);
+            if (ReferenceEquals(target, condition.Condition.Target) && ReferenceEquals(caster, condition.Condition.Caster)) {
+                return effect;
+            }
+            return effect with { Condition = condition with { Condition = condition.Condition with { Target = target, Caster = caster } } };
+        }
+
+        SkillMetadataLevel result = level with {
+            Skills = level.Skills.Select(MarkEffect).ToArray(),
+            Motions = level.Motions.Select(motion => motion with {
+                Attacks = motion.Attacks.Select(attack => attack with {
+                    Skills = attack.Skills.Select(MarkEffect).ToArray(),
+                    SkillsOnDamage = attack.SkillsOnDamage.Select(MarkEffect).ToArray(),
+                }).ToArray(),
+            }).ToArray(),
+        };
+        marked = count;
+        return count == 0 ? level : result;
+    }
+
     // The effect row the server applies for a use, as the ingest makes one of a conditionSkill (TriggerSkill.Convert).
     public static SkillEffectMetadata ToEffect(Use use) {
         var owner = System.Enum.IsDefined((SkillTargetType) use.Owner) && use.Owner > 0 ? (SkillTargetType) use.Owner : SkillTargetType.Owner;
@@ -142,8 +190,7 @@ public static class PlayedClientActionAdditionals {
 
     // The test as the data pack's rows give it (MapperExtensions' SubConditionTarget convert): the buff at any level,
     // its stacks equal to the count when one is given, and the buff the actor must not have; none when the test is
-    // empty (the client's HasContent: neither buff given). hasNotBuffOwner has no field on the server's condition (the
-    // data pack's rows do not give it), so the buff it names is tested whoever cast it.
+    // empty (the client's HasContent: neither buff given), with hasNotBuffOwner as HasNotBuffOwned.
     private static BeginConditionTarget? Convert(BuffTest? test) {
         if (test is not { } value || (value.HasBuffId == 0 && value.HasNotBuffId == 0)) {
             return null;
@@ -152,7 +199,8 @@ public static class PlayedClientActionAdditionals {
             Buff: value.HasBuffId != 0 ? [new BeginConditionTarget.HasBuff(value.HasBuffId, 0, value.HasBuffOwner, value.HasBuffCount, CompareType.Equals)] : [],
             Event: new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], []),
             Stat: [], States: [], SubStates: [], Masteries: new Dictionary<MasteryType, int>(), NpcIds: [],
-            HasNotBuffIds: value.HasNotBuffId != 0 ? [value.HasNotBuffId] : []);
+            HasNotBuffIds: value.HasNotBuffId != 0 ? [value.HasNotBuffId] : [],
+            HasNotBuffOwned: value.HasNotBuffId != 0 && value.HasNotBuffOwner);
     }
 
     // The condition's fields are all ones read here, and its children only a <caster> and a <target> with only their

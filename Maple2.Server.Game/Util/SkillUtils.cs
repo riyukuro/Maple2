@@ -283,7 +283,10 @@ public static class SkillUtils {
             }
         }
 
-        if (condition.HasNotBuffIds.Length > 0 && condition.HasNotBuffIds.Any(id => target.Buffs.HasBuff(id))) {
+        // hasNotBuffOwner (HasNotBuffOwned): only a buff ownedBy cast fails the test, as hasBuffOwner counts only one.
+        if (condition.HasNotBuffIds.Length > 0 && condition.HasNotBuffIds.Any(id => condition.HasNotBuffOwned
+                ? target.Buffs.EnumerateBuffs(id).Any(buff => buff.Caster.ObjectId == ownedBy.ObjectId)
+                : target.Buffs.HasBuff(id))) {
             return false;
         }
 

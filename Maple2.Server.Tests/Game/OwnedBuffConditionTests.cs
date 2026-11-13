@@ -73,6 +73,29 @@ public class OwnedBuffConditionTests {
         Assert.That(owned.Check(b, b, target), Is.True, "B's own copy beside A's");
     }
 
+    // hasNotBuffOwner (HasNotBuffOwned): only the caster's own copy of the hasNotBuffID buff fails the test, so another
+    // caster's 10300227 on the target does not stop this caster's 10300222; without the flag any copy does.
+    [Test]
+    public void NotBuffTest_OnlyTheCastersOwnCopyFails() {
+        var ta = new TestGameSession();
+        ta.Start();
+        var tb = new TestGameSession(ta.Options);
+        tb.Start();
+        var tt = new TestGameSession(ta.Options);
+        tt.Start();
+        FieldPlayer a = Player(ta, 1), b = Player(tb, 2), target = Player(tt, 3);
+        BeginConditionTarget empty = Test(owned: false) with { Buff = [] };
+        BeginCondition owned = Condition(null, empty with { HasNotBuffIds = [BuffId], HasNotBuffOwned = true });
+        BeginCondition any = Condition(null, empty with { HasNotBuffIds = [BuffId] });
+        Assert.That(owned.Check(a, a, target) && any.Check(a, a, target), Is.True, "no copy on the target");
+        Give(target, a);
+        Assert.Multiple(() => {
+            Assert.That(owned.Check(a, a, target), Is.False, "A's own copy");
+            Assert.That(owned.Check(b, b, target), Is.True, "A's copy does not stop B");
+            Assert.That(any.Check(b, b, target), Is.False, "without hasNotBuffOwner any copy does");
+        });
+    }
+
     // The stack count is compared on the caster's own copy: another caster's copy with the count does not pass.
     [Test]
     public void TargetTest_CountsTheOwnCopysStacks() {

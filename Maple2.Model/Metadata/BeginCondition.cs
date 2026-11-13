@@ -49,7 +49,9 @@ public record BeginConditionTarget(
     int[] HasNotBuffIds,
     // The count of actors around the checked one (targetCheckRange, targetInRangeCount, targetFriendly,
     // targetCountSign); null when the condition has no range or no sign, as the client sets it.
-    BeginConditionTarget.TargetCheck? InRange = null
+    BeginConditionTarget.TargetCheck? InRange = null,
+    // hasNotBuffOwner: only a HasNotBuffIds buff the condition's owner cast fails the test (SkillUtils).
+    bool HasNotBuffOwned = false
 ) {
     public record HasBuff(int Id, short Level, bool Owned, int Count, CompareType Compare);
 

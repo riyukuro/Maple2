@@ -1024,10 +1024,14 @@ public partial class FieldManager {
     // The range's pool in its prisms; with a target choice (Select) or a search frame (sort) the whole pool is
     // filtered and put in order before the target count is taken, as the client's search does.
     private IEnumerable<IActor> SelectTargets(IActor caster, Prism[] prisms, SkillMetadataRange range, int limit, ICollection<IActor>? ignore, TargetSort? sort) {
-        if (!range.Select.Active() && sort == null) {
+        if (!range.Select.Active() && sort == null && !range.Filters()) {
             return GetTargetPool(caster, prisms, range.ApplyTarget, limit, ignore);
         }
-        IEnumerable<IActor> pool = GetTargetPool(caster, prisms, range.ApplyTarget, int.MaxValue, ignore);
+        IEnumerable<IActor> pool = GetTargetPool(caster, prisms, range.ApplyTarget, int.MaxValue, ignore)
+            .Where(target => !RangeTargetSelect.Excludes(range, target));
+        if (!range.Select.Active() && sort == null) {
+            return pool.Take(limit);
+        }
         return RangeTargetSelect.Apply(range.Select, caster, pool, range.Type, sort).Take(limit);
     }
 
@@ -1042,7 +1046,7 @@ public partial class FieldManager {
     // target choice, once, and the step's order, as the client's search applies its exclusion before both.
     public List<IActor> GetStepTargets(IActor caster, Prism query, SkillMetadataRange range, Func<IActor, bool> hits, TargetSort sort) {
         IEnumerable<IActor> pool = GetTargetPool(caster, [query], range.ApplyTarget, int.MaxValue, [caster])
-            .Where(target => target.ObjectId != caster.ObjectId && hits(target));
+            .Where(target => target.ObjectId != caster.ObjectId && hits(target) && !RangeTargetSelect.Excludes(range, target));
         return RangeTargetSelect.Apply(range.Select, caster, pool, SkillRegion.Box, sort).ToList();
     }
 
@@ -1053,6 +1057,7 @@ public partial class FieldManager {
         Vector3 origin = from.Position;
         var prism = new Prism(new Circle(new Vector2(origin.X, origin.Y), record.Attack.Arrow.BounceRadius), origin.Z, BounceSearchHeight);
         return GetTargetPool(record.Caster, [prism], record.Attack.Range.ApplyTarget, int.MaxValue, [record.Caster])
+            .Where(target => !RangeTargetSelect.Excludes(record.Attack.Range, target))
             .OrderBy(target => Vector3.DistanceSquared(target.Position, origin))
             .ToList();
     }

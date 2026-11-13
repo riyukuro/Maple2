@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -135,6 +136,53 @@ public class RangeTargetSelectTests {
 
         Mark(scene.C, scene.A, enabled: false);
         Assert.That(Targets(scene, Range(Select(2, 10600151, fromCaster: true)), 5), Is.Empty);
+    }
+
+    // targetHasNotBuffID (HasNotBuffId): a target with an enabled copy of the buff, whoever cast it, is no target, taken
+    // out before the target count (so a count of 1 takes the next one), with or without a target choice.
+    [Test]
+    public void HasNotBuff_IsNoTarget() {
+        Scene scene = Start();
+        SkillMetadataRange plain = Range(null) with { HasNotBuffId = 10600151 };
+        Mark(scene.B, scene.C);
+        Assert.Multiple(() => {
+            Assert.That(Targets(scene, plain, 5), Is.EqualTo(new[] { scene.C.ObjectId }));
+            Assert.That(Targets(scene, plain, 1), Is.EqualTo(new[] { scene.C.ObjectId }));
+            Assert.That(Targets(scene, Range(Select(0, statSort: 3)) with { HasNotBuffId = 10600151 }, 5), Is.EqualTo(new[] { scene.C.ObjectId }));
+            Assert.That(Targets(scene, Range(null), 5), Is.EquivalentTo(new[] { scene.B.ObjectId, scene.C.ObjectId }), "no filter");
+        });
+        Mark(scene.B, scene.C, enabled: false);
+        Assert.That(Targets(scene, plain, 5), Is.EquivalentTo(new[] { scene.B.ObjectId, scene.C.ObjectId }), "a disabled copy");
+    }
+
+    // applyTargetIgnoreNpcRanks (IgnoreNpcClasses): an npc whose class is listed is no target; other classes and players
+    // are (60170002 lists 3, 4, 6 and 7).
+    [Test]
+    public void IgnoreNpcClasses_ExcludesTheListedClasses() {
+        SkillMetadataRange range = Range(null) with { IgnoreNpcClasses = [3, 4, 6, 7] };
+        Scene scene = Start();
+        Assert.Multiple(() => {
+            foreach (int npcClass in new[] { 3, 4, 6, 7 }) {
+                Assert.That(RangeTargetSelect.Excludes(range, ClassNpc(npcClass)), Is.True, $"class {npcClass}");
+            }
+            foreach (int npcClass in new[] { 0, 1, 2, 5 }) {
+                Assert.That(RangeTargetSelect.Excludes(range, ClassNpc(npcClass)), Is.False, $"class {npcClass}");
+            }
+            Assert.That(RangeTargetSelect.Excludes(Range(null), ClassNpc(3)), Is.False, "no list");
+            Assert.That(RangeTargetSelect.Excludes(range, scene.B), Is.False, "a player");
+            Assert.That(range.Filters() && !Range(null).Filters(), Is.True);
+        });
+    }
+
+    // An npc with only its metadata's class.
+    private static FieldNpc ClassNpc(int npcClass) {
+        var basic = (NpcMetadataBasic) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataBasic));
+        typeof(NpcMetadataBasic).GetField("<Class>k__BackingField", Any)!.SetValue(basic, npcClass);
+        var metadata = (NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata));
+        typeof(NpcMetadata).GetField("<Basic>k__BackingField", Any)!.SetValue(metadata, basic);
+        var fieldNpc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(fieldNpc, new Npc(metadata, null));
+        return fieldNpc;
     }
 
     // The stat sort: 3 picks the lowest HP rate first, 1 the lowest current HP, 2 and 4 the highest; with a count of 1

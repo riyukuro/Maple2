@@ -72,7 +72,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     protected override IEnumerable<StoredSkillMetadata> Map() {
         List<long> magicPaths = [];
         List<long> cubeMagicPaths = [];
-        int clientAdded = 0, clientUnmatched = 0, clientSkills = 0;
+        int clientAdded = 0, clientUnmatched = 0, clientSkills = 0, clientNotBuffOwned = 0;
         foreach ((int id, string name, SkillData data) in parser.Parse()) {
             if (data.basic == null) continue; // Old_JobChange_01
             PlayedClientSkills.Entry? client = played.TryGetValue(id, out PlayedClientSkills.Entry entry) ? entry : null;
@@ -184,6 +184,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 if (!clientEffects.TryGetValue((id, value), out PlayedClientActionAdditionals.LevelUses? uses)) {
                     continue;
                 }
+                levels[value] = PlayedClientActionAdditionals.MarkNotBuffOwned(levels[value], uses, out int marked);
+                clientNotBuffOwned += marked;
                 levels[value] = PlayedClientActionAdditionals.Merge(levels[value], uses, (effectId, level) => packEffects.Contains((effectId, level)),
                     out int added, out int unmatched);
                 clientAdded += added;
@@ -234,6 +236,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         if (clientEffects.Count > 0) {
             Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");
+            Console.WriteLine($"Effect buff tests given hasNotBuffOwner from the played client's skill data: {clientNotBuffOwned}");
         }
         if (clientSplashActive.Count > 0) {
             Console.WriteLine($"Skill attacks whose played splash skills to fire have another point: {splashActivePointMismatches} (left out)");
@@ -288,7 +291,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             IncludeCaster: (IncludeCasterType) region.includeCaster,
             ApplyTarget: (ApplyTargetType) region.applyTarget,
             CastTarget: (SkillTargetType) region.castTarget,
-            Select: ConvertSelect(region)
+            Select: ConvertSelect(region),
+            IgnoreNpcClasses: region.applyTargetIgnoreNpcRanks.Length > 0 ? region.applyTargetIgnoreNpcRanks : null,
+            HasNotBuffId: region.targetHasNotBuffID
         );
     }
 

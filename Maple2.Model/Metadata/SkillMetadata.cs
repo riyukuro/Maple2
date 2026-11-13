@@ -174,7 +174,12 @@ public record SkillMetadataRange(
     IncludeCasterType IncludeCaster,
     ApplyTargetType ApplyTarget, // 0,1,2,3,5,6,7,8
     SkillTargetType CastTarget, // 0,1,2,3,4,5,7
-    SkillMetadataRangeSelect? Select = null);
+    SkillMetadataRangeSelect? Select = null,
+    // applyTargetIgnoreNpcRanks and targetHasNotBuffID: npcs of these classes and actors holding this buff are no
+    // targets of the range (RangeTargetSelect.Excludes). The client's range loader reads neither (only its sensor
+    // reads a targetHasNotBuffID), so only the server's searches use them.
+    int[]? IgnoreNpcClasses = null,
+    int HasNotBuffId = 0);
 
 // The range's target choice (rangeProperty targetSelectType ... targetStatCompareFunction). Mode 2 keeps only the
 // targets that pass (none if none pass), mode 3 keeps them if any pass, other modes keep all with the passing ones

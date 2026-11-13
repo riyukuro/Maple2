@@ -133,6 +133,18 @@ public static class RangeTargetSelect {
         });
     }
 
+    // The range's own exclusions (applyTargetIgnoreNpcRanks, targetHasNotBuffID), which the client's range loader does
+    // not read. Chosen here: an npc of a listed class (npcdata class) and an actor holding an enabled buff of that id
+    // are no targets of the range, taken out before the target choice and the target count.
+    public static bool Filters(this SkillMetadataRange range) => range.IgnoreNpcClasses is { Length: > 0 } || range.HasNotBuffId != 0;
+
+    public static bool Excludes(SkillMetadataRange range, IActor target) {
+        if (range.IgnoreNpcClasses is { Length: > 0 } classes && target is FieldNpc npc && classes.Contains(npc.Value.Metadata.Basic.Class)) {
+            return true;
+        }
+        return range.HasNotBuffId != 0 && target.Buffs.EnumerateBuffs(range.HasNotBuffId).Any(buff => buff.Enabled);
+    }
+
     public static bool Passes(SkillMetadataRangeSelect select, IActor caster, IActor target) {
         if (select.BuffId != 0 && !target.Buffs.EnumerateBuffs(select.BuffId)
                 .Any(buff => buff.Enabled && (!select.BuffFromCaster || buff.Caster.ObjectId == caster.ObjectId))) {

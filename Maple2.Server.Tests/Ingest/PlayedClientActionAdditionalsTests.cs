@@ -151,8 +151,56 @@ public class PlayedClientActionAdditionalsTests {
         BeginCondition second = PlayedClientActionAdditionals.ToEffect(uses[1]).Condition!.Condition;
         Assert.That(second.Caster!.Buff.Select(buff => (buff.Id, buff.Count, buff.Owned)), Is.EqualTo(new[] { (701, 0, false) }));
         Assert.That((second.Target!.Buff, second.Target.HasNotBuffIds), Is.EqualTo((new BeginConditionTarget.HasBuff[0], new[] { 702 })));
+        Assert.That((first.Target.HasNotBuffOwned, second.Target.HasNotBuffOwned), Is.EqualTo((false, true)), "hasNotBuffOwner is taken over");
         Assert.That(PlayedClientActionAdditionals.ToEffect(uses[2]).Condition!.Condition.Caster, Is.Null,
             "a test with no buff to have or not to have is none (the client's HasContent)");
+    }
+
+    // A data pack row with a hasNotBuffID: the played client's row of the same effect and level with hasNotBuffOwner on
+    // the same buff marks it, on the level or an attack's on-damage rows (10300222 with 10300227); a row whose buff or
+    // effect level differs, or whose played row has no owner flag, is left as it is.
+    private static SkillEffectMetadata NotBuffRow(int id, int notBuffId, short level = 1, bool owner = false, bool caster = false) {
+        var test = new PlayedClientActionAdditionals.BuffTest(0, 0, false, notBuffId, owner);
+        return PlayedClientActionAdditionals.ToEffect(new PlayedClientActionAdditionals.Use(
+            EffectId: id, Level: level, Target: 2, Owner: 1, OnDamage: true, OverlapCount: 1, LinkSkillId: 0, AllowOnBattleMount: false,
+            Probability: 1, CasterTest: caster ? test : null, TargetTest: caster ? null : test));
+    }
+
+    private static PlayedClientActionAdditionals.Use NotBuffUse(int id, int notBuffId, bool owner, short level = 1, bool caster = false) {
+        var test = new PlayedClientActionAdditionals.BuffTest(0, 0, false, notBuffId, owner);
+        return new PlayedClientActionAdditionals.Use(EffectId: id, Level: level, Target: 2, Owner: 1, OnDamage: true, OverlapCount: 1,
+            LinkSkillId: 0, AllowOnBattleMount: false, Probability: 1, CasterTest: caster ? test : null, TargetTest: caster ? null : test);
+    }
+
+    [Test]
+    public void MarksThePacksHasNotBuffOwner() {
+        SkillMetadataAttack attack = Attack("p0") with {
+            SkillsOnDamage = [NotBuffRow(940, 950), NotBuffRow(941, 951), NotBuffRow(942, 952), NotBuffRow(943, 953, level: 2), NotBuffRow(944, 954, caster: true)],
+        };
+        var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
+            Skills = [NotBuffRow(945, 955)],
+            Motions = [new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>())],
+        };
+        var uses = new PlayedClientActionAdditionals.LevelUses(
+            [NotBuffUse(945, 955, owner: true)],
+            new Dictionary<(int, int), PlayedClientActionAdditionals.AttackUses> {
+                [(0, 0)] = new("p0", [
+                    NotBuffUse(940, 950, owner: true), NotBuffUse(941, 959, owner: true), NotBuffUse(942, 952, owner: false),
+                    NotBuffUse(943, 953, owner: true), NotBuffUse(944, 954, owner: true, caster: true),
+                ]),
+            });
+        SkillMetadataLevel marked = PlayedClientActionAdditionals.MarkNotBuffOwned(level, uses, out int count);
+        SkillEffectMetadata[] rows = marked.Motions[0].Attacks[0].SkillsOnDamage;
+        Assert.Multiple(() => {
+            Assert.That(count, Is.EqualTo(3));
+            Assert.That(rows.Select(row => row.Condition!.Condition.Target?.HasNotBuffOwned), Is.EqualTo(new bool?[] { true, false, false, false, null }));
+            Assert.That(rows[4].Condition!.Condition.Caster!.HasNotBuffOwned, Is.True, "a caster test the same way");
+            Assert.That(marked.Skills[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.True, "the level's own rows");
+            Assert.That(level.Motions[0].Attacks[0].SkillsOnDamage[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.False, "the input is not changed");
+        });
+        Assert.That(PlayedClientActionAdditionals.MarkNotBuffOwned(level, new PlayedClientActionAdditionals.LevelUses([], new Dictionary<(int, int), PlayedClientActionAdditionals.AttackUses>()), out int none),
+            Is.SameAs(level));
+        Assert.That(none, Is.Zero);
     }
 
     // TiXmlElement::QueryBoolAttribute: a prefix of "true", "yes" or "1" in any case is set; "false", "no", "0" and
