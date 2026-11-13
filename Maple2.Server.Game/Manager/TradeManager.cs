@@ -253,7 +253,11 @@ public class TradeManager : IDisposable {
                 OnTradeModified();
                 self.Session.Send(TradePacket.RemoveItem(true, tradeSlot, itemUid));
                 other.Session.Send(TradePacket.RemoveItem(false, tradeSlot, itemUid));
-                caller.Item.Inventory.Add(item);
+                // The room was checked under the same lock, so the add takes it; should it not, the item's row (the
+                // caller's own) goes to the mail and is not dropped.
+                if (!caller.Item.AddOrMail(item)) {
+                    logger.Error("Trade item {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", item.Uid, item.Id, item.Amount, caller.CharacterId);
+                }
             }
     }
 
@@ -406,7 +410,13 @@ public class TradeManager : IDisposable {
                     trader.Session.Send(TradePacket.AddItem(true, item));
                 }
                 trader.Session.Send(TradePacket.RemoveItem(true, slot, item.Uid));
-                trader.Session.Item.AddOrMail(item);
+                // The row moves to the receiver at once (commit). Before, it stayed the giver's until the receiver's
+                // next save, so the giver loaded the item again on a relog in between. A failed bag write mails the
+                // row; when that fails too the row stays with its old owner and the item is logged here.
+                if (!trader.Session.Item.AddOrMail(item, commit: true)) {
+                    logger.Error("Trade item {Uid} ({ItemId} x{Amount}) not handed to {CharacterId}", item.Uid, item.Id, item.Amount,
+                        trader.Session.CharacterId);
+                }
             }
 
             long fee = success ? (long) (Constants.TradeFeePercent / 100f * trader.Mesos) : 0;

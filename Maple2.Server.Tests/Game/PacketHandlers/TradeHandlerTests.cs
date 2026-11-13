@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -27,7 +28,8 @@ public class TradeHandlerTests {
 
     private void StartTrade(ItemMetadata metadata, bool takerBagFull = false) {
         giverTest = new TestGameSession();
-        takerTest = new TestGameSession();
+        // One database, as on a server: the item rows the trade moves are in it.
+        takerTest = new TestGameSession(giverTest.Options);
         item = giverTest.Store(metadata, amount: 3);
         takerTest.Register(metadata);
         if (takerBagFull) {
@@ -148,6 +150,26 @@ public class TradeHandlerTests {
         Assert.That(taker.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
         Assert.That(giver.Trade, Is.Null);
         Assert.That(taker.Trade, Is.Null);
+    }
+
+    // The handed item's row is the taker's once the trade ends. Before, it stayed the giver's until the taker's next
+    // save, so the giver loaded the item again on a relog in between.
+    [Test]
+    public void Complete_MovesTheRowToTheTaker() {
+        Offer();
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+
+        using GameStorage.Request db = giverTest.Storage.Context();
+        int Rows(long characterId) => db.GetItemGroups(characterId, ItemGroup.Default).TryGetValue(ItemGroup.Default, out List<Item>? rows)
+            ? rows.Where(row => row.Id == 20000001).Sum(row => row.Amount) : 0;
+        Assert.Multiple(() => {
+            Assert.That(Rows(taker.CharacterId), Is.EqualTo(3));
+            Assert.That(Rows(giver.CharacterId), Is.Zero);
+            Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty);
+        });
     }
 
     // A cancel: each own item leaves the window and enters the bag, the mesos come back, then EndTrade (failed).
