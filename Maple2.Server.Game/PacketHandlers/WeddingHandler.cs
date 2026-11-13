@@ -220,8 +220,14 @@ public class WeddingHandler : FieldPacketHandler {
     private static void HandleReserveHallReply(GameSession session, IByteReader packet) {
         var response = packet.Read<WeddingError>();
 
-        if (response != WeddingError.confirm_reservation) {
+        // The partner's box answers 7 (yes) or 8 (no) only (WeddingManager::OnReservationAnswer); result 8 shows
+        // nothing. Any other answer used to be sent back as a result of its own.
+        if (response == WeddingError.decline_reservation) {
+            session.Marriage.DeclineReservation();
             session.Send(WeddingPacket.Error(response));
+            return;
+        }
+        if (response != WeddingError.confirm_reservation) {
             return;
         }
 

@@ -29,6 +29,8 @@ public sealed class MarriageManager {
     // (0x10, answered with 0x12): only that ask is answered.
     private long changeAskedBy;
     private long cancelAskedBy;
+    // The partner who sent this player a new hall reservation (Wedding 0x0D, answered with 0x0E).
+    private long reservationAskedBy;
     // The no-refund cancel box (0x11) is open on this player's client.
     private bool noRefundOffered;
     private long couponItemUid;
@@ -850,6 +852,12 @@ public sealed class MarriageManager {
 
     public WeddingError ReserveHall(WeddingHall hall, bool useCoupon = false) {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
+        WeddingError rule = WeddingReservationRules.CheckReserve(Marriage.Status, Marriage.CreationTime, hall.CeremonyTime,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingPromiseLimitDay,
+            session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
+        if (rule != WeddingError.none) {
+            return rule;
+        }
         if (!ValidHallTime(hall.CeremonyTime, out WeddingError error)) {
             return error;
         }
@@ -879,21 +887,38 @@ public sealed class MarriageManager {
             }
         }
 
-        if (!session.Field.TryGetPlayer(session.Marriage.Marriage.Partner1.Name, out FieldPlayer? partner)) {
+        if (!session.Field.TryGetPlayerById(Partner.CharacterId, out FieldPlayer? partner)) {
             return WeddingError.s_wedding_result_err_same_field;
         }
 
-        session.Marriage.UnconfirmedReservation = hall;
+        // Only the partner is asked, and only that partner confirms (it used to be set on both, so the one who
+        // reserved could confirm their own reservation and take the partner's merets). The partner is found by id,
+        // not by a name that can change.
         partner.Session.Marriage.UnconfirmedReservation = hall;
+        partner.Session.Marriage.reservationAskedBy = session.CharacterId;
 
         partner.Session.Send(WeddingPacket.Reserve(hall));
         return WeddingError.s_wedding_result_send_wedding_hall_reservation;
     }
 
+    // The asked partner said no: the ask is gone.
+    public void DeclineReservation() {
+        if (reservationAskedBy == 0) {
+            return;
+        }
+        reservationAskedBy = 0;
+        UnconfirmedReservation = null;
+    }
+
     public WeddingError ConfirmReservation() {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
-        if (UnconfirmedReservation == null) {
+        if (UnconfirmedReservation == null || reservationAskedBy == 0 || reservationAskedBy != Partner.CharacterId) {
             return WeddingError.s_wedding_result_err_invalid_wedding_hall;
+        }
+        if (WeddingHall is { Id: not 0 }) {
+            reservationAskedBy = 0;
+            UnconfirmedReservation = null;
+            return WeddingError.s_wedding_result_already_reservation;
         }
 
         if (!session.TableMetadata.WeddingTable.Packages.TryGetValue(UnconfirmedReservation.PackageId, out WeddingPackage? package) ||
@@ -901,7 +926,7 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_invalid_wedding_hall;
         }
 
-        if (!session.Field.TryGetPlayerById(session.Marriage.Marriage.Partner1.CharacterId, out FieldPlayer? partner)) {
+        if (!session.Field.TryGetPlayerById(Partner.CharacterId, out FieldPlayer? partner)) {
             return WeddingError.s_wedding_result_err_same_field;
         }
 
@@ -911,6 +936,10 @@ public sealed class MarriageManager {
             return payError;
         }
 
+        // The ask is answered once the hall is stored (a second yes paid and stored the hall again); a hall that
+        // was not stored can be confirmed again.
+        reservationAskedBy = 0;
+        UnconfirmedReservation = null;
         WeddingHall = weddingHall;
         partner.Session.Marriage.WeddingHall = weddingHall;
 

@@ -28,6 +28,24 @@ public static class WeddingReservationRules {
         return WeddingError.none;
     }
 
+    // A new reservation (Wedding 0x0D), as the client tests it before it opens the bill (WeddingManager::CanVisit,
+    // weddingmanager.cpp:1061, WeddingProxy::CheckBase and CheckVisit, weddingproxy.cpp:531 and :545): only the
+    // engaged couple (0x23), not from promiseLimitDays (WeddingPromiseLimitDay) after the engagement on (0x29), and
+    // a ceremony at least modifyLimitHours (WeddingHallModifyLimitHour) away (0x36). A time of 0 is left to the
+    // hall time check.
+    public static WeddingError CheckReserve(MaritalStatus status, long engagedTime, long ceremonyTime, long now, int promiseLimitDays, int modifyLimitHours) {
+        if (status != MaritalStatus.Engaged) {
+            return WeddingError.s_wedding_result_err_only_promise_user;
+        }
+        if (now >= engagedTime + promiseLimitDays * 86400L) {
+            return WeddingError.s_wedding_result_late_promise_time;
+        }
+        if (ceremonyTime > 0 && ceremonyTime < now + modifyLimitHours * 3600L) {
+            return WeddingError.s_wedding_result_early_wedding_reserve;
+        }
+        return WeddingError.none;
+    }
+
     // A change to the hall, time and public flag already reserved: the client's 0x2c.
     public static bool SameReservation(WeddingHall current, WeddingHall wanted) {
         return current.PackageId == wanted.PackageId && current.PackageHallId == wanted.PackageHallId &&
