@@ -48,60 +48,48 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
 
         List<ItemRemakeRules.Lock>? locks = ItemRemakeRules.ReadLocks(packet);
         if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count, ItemRemakeRules.MaxLocks)) {
-            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
+            Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid);
             return;
         }
 
         lock (session.Item) {
             Item? scroll = session.Item.Inventory.Get(scrollUid, InventoryType.Misc);
             if (scroll == null || scroll.Metadata.Function?.Type != ItemFunction.ItemRemakeScroll) {
-                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll));
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll, itemUid);
                 return;
             }
 
             Item? item = session.Item.Inventory.Get(itemUid, InventoryType.Gear) ?? session.Item.Inventory.Get(itemUid, InventoryType.Pets);
             if (item == null) {
-                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_data));
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_data, itemUid);
                 return;
             }
             if (item.Stats == null) {
-                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat));
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat, itemUid);
                 return;
             }
 
             ChangeAttributesScrollError error = IsCompatibleScroll(item, scroll, out ItemRemakeScrollMetadata? itemRemakeScrollMetadata);
             if (error is not ChangeAttributesScrollError.none || itemRemakeScrollMetadata is null) {
-                session.Send(ChangeAttributesScrollPacket.Error(error));
+                Refuse(session, error, itemUid);
                 return;
             }
 
-            Item? lockItem = null;
-            if (locks.Count > 0) {
-                if (!ChangeAttributesHandler.HasLockedOptions(item, locks)) {
-                    session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property));
-                    return;
-                }
-
-                lockItem = ChangeAttributesHandler.GetLockConsumeItem(session, item, ingredientUid);
-                if (lockItem == null) {
-                    session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_error_server_fail_lack_lock_consume_item));
-                    return;
-                }
-                if (!ItemRemakeRules.LocksAllowed(locks.Count, ChangeAttributesHandler.LockLimit(item, lockItem))) {
-                    session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                    return;
-                }
+            ChangeAttributesScrollError lockError = CheckLocks(session, item, ingredientUid, locks, out Item? lockItem);
+            if (lockError != ChangeAttributesScrollError.none) {
+                Refuse(session, lockError, itemUid, $"{locks.Count} lock(s), ingredient {ingredientUid}");
+                return;
             }
 
             // Clone the item so we can preview changes without modifying existing item.
             Item changeItem = item.Clone();
             if (changeItem.Stats == null) { // This should be impossible, but check again to make linter happy.
-                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat));
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat, itemUid);
                 return;
             }
 
             if (changeItem.Metadata.Option == null) { // This should be impossible, but check again to make linter happy.
-                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item));
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item, itemUid);
                 return;
             }
 
@@ -112,13 +100,13 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 ? ItemStatsCalc.UpdateRandomOption(ref changeItem, presets)
                 : ItemStatsCalc.UpdateFixedOption(ref changeItem, presets);
             if (!rolled) {
-                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid);
                 return;
             }
 
             ChangeAttributesScrollError consumed = TakeCosts(session, scroll, lockItem);
             if (consumed != ChangeAttributesScrollError.none) {
-                session.Send(ChangeAttributesScrollPacket.Error(consumed));
+                Refuse(session, consumed, itemUid);
                 return;
             }
 
@@ -133,6 +121,36 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
     }
 
     // Takes the scroll, then the lock item, or neither. |session.Item| is locked by the caller.
+    // Every refusal of a change is logged: the scroll dialog shows no text for most of its errors and goes back to its
+    // first page.
+    private void Refuse(GameSession session, ChangeAttributesScrollError error, long itemUid, string? detail = null) {
+        Logger.Warning("ChangeAttributesScroll of item {ItemUid} by {CharacterId} refused: {Error} {Detail}",
+            itemUid, session.CharacterId, error, detail ?? string.Empty);
+        session.Send(ChangeAttributesScrollPacket.Error(error));
+    }
+
+    // The checks of the options the player keeps (UIItemRemakeScrollDialog, uiitemremakescrolldialog.cpp:470-520,
+    // sends each as its kind and id): every kept option is one the item has, the lock item is held (for a pet the
+    // candy in the ingredient slot), and it keeps that many.
+    internal static ChangeAttributesScrollError CheckLocks(GameSession session, Item item, long ingredientUid,
+                                                           List<ItemRemakeRules.Lock> locks, out Item? lockItem) {
+        lockItem = null;
+        if (locks.Count == 0) {
+            return ChangeAttributesScrollError.none;
+        }
+        if (!ChangeAttributesHandler.HasLockedOptions(item, locks)) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property;
+        }
+        lockItem = ChangeAttributesHandler.GetLockConsumeItem(session, item, ingredientUid);
+        if (lockItem == null) {
+            return ChangeAttributesScrollError.s_itemremake_error_server_fail_lack_lock_consume_item;
+        }
+        if (!ItemRemakeRules.LocksAllowed(locks.Count, ChangeAttributesHandler.LockLimit(item, lockItem))) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake;
+        }
+        return ChangeAttributesScrollError.none;
+    }
+
     internal static ChangeAttributesScrollError TakeCosts(GameSession session, Item scroll, Item? lockItem) {
         // The scroll's take fails for an expired scroll (it is not checked before), and then the lock item is not
         // taken. Before, the lock item was taken anyway and given back as a copy with its uid: with a stack of one its

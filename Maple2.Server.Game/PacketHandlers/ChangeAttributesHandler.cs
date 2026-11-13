@@ -277,7 +277,8 @@ public class ChangeAttributesHandler : FieldPacketHandler {
 
     // The lock item the client asks for (ItemRemakeRules.LockTag): an inventory item with the lock tag of the
     // item's kind and, for an equip, the equip's rarity, that the character can use (ItemRemakeRules.LockItemUsable).
-    // For gear the first one found is taken. For a pet it is the talent lock candy the player chose
+    // Every tab is searched: a gear lock item (type 4) is in Misc, a pet candy (type 15) in Catalyst (TabOfType,
+    // the client's FUN_14053e530). For gear the first one found is taken. For a pet it is the talent lock candy the player chose
     // (ingredientUid), which sets how many talents stay (LockLimit).
     public static Item? GetLockConsumeItem(GameSession session, Item changeItem, long ingredientUid) {
         if (!IsValidItem(changeItem)) {
@@ -295,7 +296,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         return session.Item.Inventory.Filter(item => ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity)
             && ItemRemakeRules.LockItemUsable(item.IsExpired(), item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId)
             && (!pet || (item.Uid == ingredientUid && ItemRemakeRules.CandyLocks(item.Metadata.Function?.Type, item.Metadata.Function?.Parameters) > 0)),
-            InventoryType.Misc).FirstOrDefault();
+            null).FirstOrDefault();
     }
 
     // How many options the lock item keeps: one for gear, the candy's count for a pet (ItemRemakeRules.LocksAllowed).
