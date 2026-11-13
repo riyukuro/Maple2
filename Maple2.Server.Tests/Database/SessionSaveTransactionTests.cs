@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -544,6 +545,40 @@ public class SessionSaveTransactionTests {
         Assert.That((StoredLapenshards()[LapenshardSlot.Red1], StoredItems(LapenshardId)), Is.EqualTo((LapenshardId, 0)));
         Assert.That(session.Config.UnequipLapenshard(LapenshardSlot.Red1), Is.True);
         Assert.That((StoredLapenshards().ContainsKey(LapenshardSlot.Red1), StoredItems(LapenshardId)), Is.EqualTo((false, 1)));
+    }
+
+    // A session save of another thread (the field's timed save) that runs as soon as the equip gives the account lock
+    // back finds the bag as the stored rows leave it: the shard is out of the bag. Before, the bag let the shard go
+    // only after the release, so that save wrote the shard's row back to the character while the config wore it (two
+    // shards after the next login).
+    [Test]
+    public void EquipLapenshard_SaveAtTheRelease_ShardNotStoredInTheBag() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        Item shard = test.Store(TestGameSession.Metadata(LapenshardId), 1);
+        Assert.That(session.Item.Inventory.Add(shard), Is.True);
+        Assume.That(session.SessionSave(), Is.True);
+
+        int saves = 0;
+        bool saved = false;
+        test.World.OnRelease = () => {
+            if (Interlocked.Increment(ref saves) != 1) {
+                return;
+            }
+            var timed = new Thread(() => saved = session.SessionSave());
+            timed.Start();
+            Assert.That(timed.Join(TimeSpan.FromSeconds(30)), Is.True);
+        };
+        try {
+            Assert.That(session.Config.EquipLapenshard(shard.Uid, LapenshardSlot.Red1), Is.True);
+        } finally {
+            test.World.OnRelease = null;
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(saved, Is.True);
+            Assert.That(session.Item.Inventory.Find(LapenshardId).Count(), Is.EqualTo(0));
+            Assert.That((StoredLapenshards()[LapenshardSlot.Red1], StoredItems(LapenshardId)), Is.EqualTo((LapenshardId, 0)));
+        });
     }
 
     private int DeleteEntries(long uid) =>

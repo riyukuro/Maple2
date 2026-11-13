@@ -647,8 +647,12 @@ public sealed class TestGameSession {
             return new LockResponse();
         }
 
+        // Called at each account lock given back (on the giving thread, before the release returns).
+        public Action? OnRelease;
+
         public override LockResponse ReleaseLock(LockRequest request, CallOptions options) {
             Released++;
+            OnRelease?.Invoke();
             return new LockResponse();
         }
 

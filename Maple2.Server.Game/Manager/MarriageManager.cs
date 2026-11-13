@@ -943,9 +943,21 @@ public sealed class MarriageManager {
         }
         WeddingHall? hall = null;
         // The coupon's bag row is stored with the hall (it was used up in memory only, so a crash before the next
-        // save gave it back while the hall stayed reserved).
-        bool saved = partner.Session.TrySavePurchase(db =>
-            (couponUid == 0 || partner.Session.Item.Inventory.SaveConsumed(db, couponUid, 1)) && (hall = storeHall(db)) != null);
+        // save gave it back while the hall stayed reserved). The bag lets it go at the commit, still under the payer's
+        // account lock, so no save of the payer comes between the stored row and the bag.
+        bool couponTaken = false;
+        bool saved = partner.Session.TrySavePurchase(db => {
+            if (couponUid != 0 && !partner.Session.Item.Inventory.SaveConsumed(db, couponUid, 1)) {
+                return false;
+            }
+            if ((hall = storeHall(db)) == null) {
+                return false;
+            }
+            if (couponUid != 0) {
+                db.AfterCommit(() => couponTaken = partner.Session.Item.Inventory.ConsumeStored(couponUid, 1));
+            }
+            return true;
+        });
         if (!saved || hall == null) {
             partner.Session.Currency.ReturnMeret(cost);
             logger.Error("Wedding hall not stored, nothing paid: payer {CharacterId}, cost {Cost}", partner.Value.Character.Id, cost);
@@ -956,7 +968,7 @@ public sealed class MarriageManager {
             partner.Session.Currency.NotifyMeretTaken(cost);
         }
         if (couponUid != 0) {
-            if (!partner.Session.Item.Inventory.ConsumeStored(couponUid, 1)) {
+            if (!couponTaken) {
                 logger.Error("Wedding hall {HallId} stored, but its coupon {Uid} was not used up", hall.Id, couponUid);
             }
             payer.couponItemUid = 0;

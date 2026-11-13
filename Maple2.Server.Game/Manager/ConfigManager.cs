@@ -955,14 +955,21 @@ public class ConfigManager {
         // unequip: the bag's change was left to the next session save, so an equip and an unequip, then a crash or a
         // failed save, left the old bag row beside the unequip's new one (two shards after the next login).
         lapenshards[slot] = lapenshard.Id;
+        // The bag lets the shard go at the commit, still under the account lock, so no session save comes between
+        // the stored rows and the bag (one there wrote the shard's row back to the character while it was worn).
+        bool taken = false;
         if (!session.TrySavePurchase(db => {
                 Save(db);
-                return session.Item.Inventory.SaveConsumed(db, itemUid, 1);
+                if (!session.Item.Inventory.SaveConsumed(db, itemUid, 1)) {
+                    return false;
+                }
+                db.AfterCommit(() => taken = session.Item.Inventory.ConsumeStored(itemUid, 1));
+                return true;
             })) {
             lapenshards.Remove(slot);
             return false;
         }
-        if (!session.Item.Inventory.ConsumeStored(itemUid, 1)) {
+        if (!taken) {
             // Checked above on the same thread; the stored rows hold the equip, as the next login reads it.
             Serilog.Log.Logger.ForContext<ConfigManager>().Error("Lapenshard {ItemUid} stored as worn but not taken from the bag of {CharacterId}", itemUid, session.CharacterId);
         }

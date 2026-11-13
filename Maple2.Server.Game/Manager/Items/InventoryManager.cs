@@ -980,12 +980,16 @@ public class InventoryManager {
             return;
         }
 
-        if (commit) {
-            DeleteNow(item);
-        } else {
-            delete.Add(item);
+        // Under the bag lock: the field thread's adds (a currency or medal item) and the save use the list too, and an
+        // entry added at the same time as one of theirs could be lost (its row then stayed the character's).
+        lock (session.Item) {
+            if (commit) {
+                DeleteNow(item);
+            } else {
+                delete.Add(item);
+            }
+            CountDestroyed(item);
         }
-        CountDestroyed(item);
     }
 
     // Writes item's row to owner 0 at once. A write that fails puts it on the delete list, so the next bag save
