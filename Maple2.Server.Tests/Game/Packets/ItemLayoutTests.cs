@@ -359,7 +359,8 @@ public class ItemLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(40000002));
         Assert.That(reader.ReadBool(), Is.False);
         Assert.That(reader.ReadBool(), Is.True);
-        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        // State 1: locked (TSocketGemStoneInfo::SetLockFromItem, itemsocket.cpp:184-205).
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
         Assert.That(reader.ReadLong(), Is.EqualTo(1700000002));
         End(reader);
     }
