@@ -492,6 +492,16 @@ public class TriggerFieldStateTests : TriggerTestBase {
         typeof(FieldManager).GetField("triggerBreakable", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldBreakable>());
     }
 
+    // check_same_user_tag (128): the box holds a player and all of them carry one user tag; an empty box is false.
+    [Test]
+    public void CheckSameUserTag_PlayersInTheBox() {
+        StartWithBoxes();
+
+        Assert.That(Condition("""<condition name="check_same_user_tag" box_id="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_same_user_tag" box_id="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_same_user_tag" box_id="2" negate="1" />"""), Is.True);
+    }
+
     // play_system_sound_in_box (4808): the players in the boxes hear it, and with no box everyone does.
     [Test]
     public void PlaySystemSoundInBox_PlayersInTheBoxes() {
@@ -794,6 +804,47 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="monster_in_combat" spawn_ids="6" />"""), Is.False);
         Assert.That(Condition("""<condition name="monster_in_combat" spawn_ids="6" negate="1" />"""), Is.True);
     }
+
+    // remove_balloon_talk (134): Cinematic RemoveBalloonTalk (9) for the spawn point's npcs; spawn 0 also clears
+    // the players' own balloons.
+    [Test]
+    public void RemoveBalloonTalk_BySpawnPoint() {
+        Mob(9001, 5);
+        Mob(9002, 6);
+
+        Action("""<action name="remove_balloon_talk" spawn_id="5" />""");
+        ByteReader removed = Sent(SendOp.Cinematic).Single();
+        Assert.That((removed.ReadByte(), removed.ReadInt()), Is.EqualTo(((byte) 9, 9001)));
+
+        Action("""<action name="remove_balloon_talk" spawn_id="0" />""");
+        List<int> ids = Sent(SendOp.Cinematic).Select(reader => {
+            reader.ReadByte();
+            return reader.ReadInt();
+        }).ToList();
+        Assert.That(ids, Is.EquivalentTo(new[] { 9001, 9002, test.Session.Player.ObjectId }));
+    }
+
+    // set_npc_duel_hp_bar (123): Trigger DuelHpBar (21) opens on the spawn point's npc with the time and hp step;
+    // the close is the flag alone (CTriggerService::OnNpcDuelHpBar), sent when the npc is already gone.
+    [Test]
+    public void SetNpcDuelHpBar_OpenThenCloseWithoutTheNpc() {
+        // The npc lookup also reads the field's pets, whose table the skipped ctor did not make.
+        typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());
+        Mob(9001, 5);
+
+        Action("""<action name="set_npc_duel_hp_bar" is_open="1" spawn_id="5" duration_tick="300000" npc_hp_step="100" />""");
+        ByteReader opened = Sent(SendOp.Trigger).Single();
+        Assert.That((opened.ReadByte(), opened.ReadBool(), opened.ReadInt(), opened.ReadInt(), opened.ReadInt()),
+            Is.EqualTo(((byte) 21, true, 9001, 300000, 100)));
+
+        Action("""<action name="set_npc_duel_hp_bar" is_open="1" spawn_id="6" duration_tick="300000" npc_hp_step="100" />""");
+        Assert.That(Sent(SendOp.Trigger), Is.Empty);
+
+        mobs.Clear();
+        Action("""<action name="set_npc_duel_hp_bar" is_open="0" spawn_id="5" />""");
+        ByteReader closed = Sent(SendOp.Trigger).Single();
+        Assert.That((closed.ReadByte(), closed.ReadBool(), closed.Available), Is.EqualTo(((byte) 21, false, 0)));
+    }
 }
 
 public class TriggerInterfaceTests : TriggerTestBase {
@@ -905,5 +956,92 @@ public class TriggerInterfaceTests : TriggerTestBase {
 
         Assert.That(Condition("""<condition name="check_dungeon_lobby_user_count" />"""), Is.False);
         Assert.That(Condition("""<condition name="check_dungeon_lobby_user_count" negate="1" />"""), Is.True);
+    }
+
+    // The test field skips the FieldManager ctor: its field property table is made here.
+    private void StartWithProperties() {
+        Start();
+        typeof(FieldManager).GetField("fieldProperties", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Field,
+            new ConcurrentDictionary<FieldProperty, IFieldProperty>());
+    }
+
+    // FieldProperty Add (1) or Remove (2) of the type.
+    private (byte Command, byte Type) PropertySent() {
+        ByteReader reader = Sent(SendOp.FieldProperty).Single();
+        return (reader.ReadByte(), reader.ReadByte());
+    }
+
+    // visible_my_pc (139), lock_my_pc (136): hiding adds the HidePlayer (3) property and showing removes it; locking
+    // adds LockPlayer (4) and unlocking removes it.
+    [Test]
+    public void VisibleAndLockMyPc_FieldProperties() {
+        StartWithProperties();
+
+        Action("""<action name="visible_my_pc" is_visible="0" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 1, (byte) 3)));
+        Action("""<action name="visible_my_pc" is_visible="1" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 2, (byte) 3)));
+
+        Action("""<action name="lock_my_pc" is_lock="1" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 1, (byte) 4)));
+        Action("""<action name="lock_my_pc" is_lock="0" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 2, (byte) 4)));
+    }
+
+    // set_ambient_light (82): the AmbientLight (8) property is added.
+    [Test]
+    public void SetAmbientLight_AddsTheProperty() {
+        StartWithProperties();
+
+        Action("""<action name="set_ambient_light" primary="128,64,32" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 1, (byte) 8)));
+    }
+
+    // show_count_ui (129): MassiveEvent Countdown (1) as UIMassiveEvent reads it: text, stage, count, sound type.
+    [Test]
+    public void ShowCountUi_Packet() {
+        Start();
+
+        Action("""<action name="show_count_ui" text="$abc$" stage="2" count="5" sound_type="1" />""");
+        ByteReader sent = Sent(SendOp.MassiveEvent).Single();
+        Assert.That((sent.ReadByte(), sent.ReadUnicodeString(), sent.ReadInt(), sent.ReadInt(), sent.ReadInt()),
+            Is.EqualTo(((byte) 1, "$abc$", 2, 5, 1)));
+    }
+
+    // face_emotion (122): Trigger Ui (9) FaceEmotion (9) with the actor and the emotion; spawn 0 is the player.
+    // A spawn point with no npc sends nothing.
+    [Test]
+    public void FaceEmotion_PlayerOrNpc() {
+        Start();
+
+        Action("""<action name="face_emotion" spawn_id="0" emotion_name="Trigger_Panic" />""");
+        ByteReader sent = Sent(SendOp.Trigger).Single();
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadInt(), sent.ReadString()),
+            Is.EqualTo(((byte) 9, (byte) 9, test.Session.Player.ObjectId, "Trigger_Panic")));
+
+        Action("""<action name="face_emotion" spawn_id="5" emotion_name="Trigger_Panic" />""");
+        Assert.That(Sent(SendOp.Trigger), Is.Empty);
+    }
+
+    // show_caption (113): Cinematic Caption (10) as UICutSceneCinematic::OnPacketSetCaption reads it: type, title,
+    // text, align name, duration, offset x and y, scale.
+    [Test]
+    public void ShowCaption_Packet() {
+        Start();
+
+        Action("""<action name="show_caption" type="NameCaption" title="$t$" desc="$d$" align="centerLeft" offset_rate_x="0.05" offset_rate_y="0.15" duration="3000" scale="2" />""");
+        ByteReader sent = Sent(SendOp.Cinematic).Single();
+        Assert.That((sent.ReadByte(), sent.ReadUnicodeString(), sent.ReadUnicodeString(), sent.ReadUnicodeString(), sent.ReadUnicodeString()),
+            Is.EqualTo(((byte) 10, "NameCaption", "$t$", "$d$", "centerLeft")));
+        Assert.That((sent.ReadInt(), sent.ReadFloat(), sent.ReadFloat(), sent.ReadFloat()), Is.EqualTo((3000, 0.05f, 0.15f, 2f)));
+    }
+
+    // is_dungeon_room (95): the field is a dungeon room; the test field is not.
+    [Test]
+    public void IsDungeonRoom_NotADungeon() {
+        Start();
+
+        Assert.That(Condition("""<condition name="is_dungeon_room" />"""), Is.False);
+        Assert.That(Condition("""<condition name="is_dungeon_room" negate="1" />"""), Is.True);
     }
 }
