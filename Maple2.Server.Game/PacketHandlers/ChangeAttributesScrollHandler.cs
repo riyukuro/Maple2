@@ -242,7 +242,12 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         if (!TableMetadata.ItemRemakeScrollTable.Entries.TryGetValue(remakeId, out metadata)) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;
         }
+        return ScrollFits(item, metadata);
+    }
 
+    // The checks of the scroll's row (the client's FUN_140616170, itemremakescrolldata.cpp:283): after the item
+    // types, rarities and levels, a row without an option value (addOpValue 0) is invalid scroll data (error 11).
+    internal static ChangeAttributesScrollError ScrollFits(Item item, ItemRemakeScrollMetadata metadata) {
         if (item.Metadata.Limit.Level < metadata.MinLevel || item.Metadata.Limit.Level > metadata.MaxLevel) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item;
         }
@@ -252,6 +257,9 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
 
         if (metadata.OnlyPet && !item.Type.IsPet) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item;
+        }
+        if (metadata.RollValueType == RollValueType.None) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;
         }
 
         return ChangeAttributesScrollError.none;
