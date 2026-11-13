@@ -80,6 +80,8 @@ public class TriggerHallGameTests : TriggerTestBase {
         typeof(Navigation).GetField("<Crowd>k__BackingField", Any)!.SetValue(navigation, new DtCrowd(new DtCrowdConfig(maxAgentRadius: 0.3f), navMesh,
             _ => new DtQueryDefaultFilter(SampleAreaModifications.SAMPLE_POLYFLAGS_ALL, SampleAreaModifications.SAMPLE_POLYFLAGS_DISABLED,
                 [1f, 10f, 1f, 1f, 2f, 1.5f])));
+        // An npc spawned on it takes its agent settings from here (AddAgent).
+        typeof(Navigation).GetField("crowdAgentConfig", Any)!.SetValue(navigation, new DtCrowdAgentConfig());
         return navigation;
     }
 
