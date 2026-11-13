@@ -100,8 +100,26 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
         return hadTrade;
     }
 
+    // The client's checks in its order (FUN_140627450, itemsocketsystemutil.cpp:294): usePart 8, slot 5, rank 6,
+    // level 7, no socket 3, nothing locked 4. The usePart test (FUN_140627930) passes when the scroll's part mask has
+    // the item's kind, 2 for an item with a skinType and 1 for the rest. CItemSocketScrollData's ctor sets the mask
+    // to 1 and its Read never stores the usePart it parses (exe 0x140624810 keeps the OR in a stack local), so the
+    // client refuses every item with a skinType whatever the row says. The scroll can open no more than it has
+    // (11) is the server's own check after the client's.
     private static ItemSocketScrollError IsCompatibleScroll(Item item, ItemSocketScrollMetadata metadata) {
-        if (item.Socket == null) {
+        if (item.Metadata.Property.SkinType != 0) {
+            return s_itemsocket_scroll_error_impossible_usepart;
+        }
+        if (!metadata.ItemTypes.Contains(item.Type.Type)) {
+            return s_itemsocket_scroll_error_impossible_slot;
+        }
+        if (!metadata.Rarities.Contains(item.Rarity)) {
+            return s_itemsocket_scroll_error_impossible_rank;
+        }
+        if (!ScrollRules.SocketLevelAllowed(item.Metadata.Limit.Level, metadata.MinLevel, metadata.MaxLevel)) {
+            return s_itemsocket_scroll_error_impossible_level;
+        }
+        if (item.Socket == null || item.Socket.MaxSlots == 0) {
             return s_itemsocket_scroll_error_invalid_disable;
         }
         if (item.Socket.UnlockSlots >= item.Socket.MaxSlots) {
@@ -109,15 +127,6 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
         }
         if (item.Socket.UnlockSlots >= metadata.SocketCount) {
             return s_itemsocket_scroll_error_already_socket_unlock;
-        }
-        if (!ScrollRules.SocketLevelAllowed(item.Metadata.Limit.Level, metadata.MinLevel, metadata.MaxLevel)) {
-            return s_itemsocket_scroll_error_impossible_level;
-        }
-        if (!metadata.ItemTypes.Contains(item.Type.Type)) {
-            return s_itemsocket_scroll_error_impossible_slot;
-        }
-        if (!metadata.Rarities.Contains(item.Rarity)) {
-            return s_itemsocket_scroll_error_impossible_rank;
         }
 
         return none;
