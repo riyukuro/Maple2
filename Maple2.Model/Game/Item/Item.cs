@@ -212,6 +212,12 @@ public class Item : IByteSerializable, IByteDeserializable {
     // card game's coins, 30000536). Chosen here: a date already past when the item is made gives no expiry.
     public static long FixedExpiry(long timestamp, long now) => timestamp > now ? timestamp : 0;
 
+    // The expiry a stored item is loaded with. A row made before FixedExpiry holds its item's past fixed end date and
+    // was expired from the start: it loads with no expiry, which its next save stores (the loaded values differ, so
+    // the row is not seeded as saved).
+    public static long LoadedExpiry(long stored, long timestamp, long now) =>
+        stored > 0 && stored == timestamp && FixedExpiry(timestamp, now) == 0 ? 0 : stored;
+
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(Amount);
         writer.WriteInt(-1);
