@@ -831,6 +831,20 @@ public sealed class TestGameSession {
             PlayerUpdates.Add(request);
             return new PlayerUpdateResponse();
         }
+
+        // The restriction pushes (restrict) and the disconnects (ban) asked for.
+        public readonly List<AdminRequest> AdminRequests = [];
+        public readonly List<DisconnectRequest> Disconnects = [];
+
+        public override AdminResponse Admin(AdminRequest request, CallOptions options) {
+            AdminRequests.Add(request);
+            return new AdminResponse();
+        }
+
+        public override DisconnectResponse Disconnect(DisconnectRequest request, CallOptions options) {
+            Disconnects.Add(request);
+            return new DisconnectResponse { Success = true };
+        }
     }
 
     private sealed class ErrorSink(List<string> errors) : Serilog.Core.ILogEventSink {
