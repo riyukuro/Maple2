@@ -111,6 +111,50 @@ public class PlayedClientActionAdditionalsTests {
 
     private static int Id(SkillEffectMetadata effect) => effect.Skills[0].Id;
 
+    // The caster's and target's buff tests (SkillHasBuffCondition): one buff to have, with its count and owner flag, and
+    // one not to have. Rows shaped like the played 10000020 and 10500061 ones; a field or child the client does not
+    // read, or a second <target>, still leaves the row out.
+    private const string Conditions = """
+        <ms2>
+          <skill id="600">
+            <level value="1">
+              <actionAdditional additionalID="930" level="1" skillTarget="1"><beginCondition><target hasBuffID="700" hasBuffCount="3" hasBuffOwner="1" /></beginCondition></actionAdditional>
+              <actionAdditional additionalID="931" level="1" skillTarget="1"><beginCondition probability="0.5"><caster hasBuffID="701" /><target hasNotBuffID="702" hasNotBuffOwner="1" /></beginCondition></actionAdditional>
+              <actionAdditional additionalID="932" level="1" skillTarget="1"><beginCondition><caster hasBuffID="0" hasBuffOwner="1" /></beginCondition></actionAdditional>
+              <actionAdditional additionalID="933" level="1" skillTarget="1"><beginCondition><target hasBuffID="700" hasBuffLevel="2" /></beginCondition></actionAdditional>
+              <actionAdditional additionalID="934" level="1" skillTarget="1"><beginCondition><owner hasBuffID="700" /></beginCondition></actionAdditional>
+              <actionAdditional additionalID="935" level="1" skillTarget="1"><beginCondition><target hasBuffID="700" /><target hasBuffID="701" /></beginCondition></actionAdditional>
+              <actionAdditional additionalID="936" level="1" skillTarget="1"><beginCondition><target hasBuffID="700"><stat /></target></beginCondition></actionAdditional>
+            </level>
+          </skill>
+        </ms2>
+        """;
+
+    [Test]
+    public void ReadsTheCasterAndTargetBuffTests() {
+        var document = new XmlDocument();
+        document.LoadXml(Conditions);
+        PlayedClientActionAdditionals.Use[] uses = PlayedClientActionAdditionals.Read([document], out int unsupported)[(600, 1)].Level;
+        Assert.That(unsupported, Is.EqualTo(4), "hasBuffLevel, <owner>, a second <target> and a child of <target> are not read");
+        Assert.That(uses.Select(use => use.EffectId), Is.EqualTo(new[] { 930, 931, 932 }));
+        Assert.That(uses[0].TargetTest, Is.EqualTo(new PlayedClientActionAdditionals.BuffTest(700, 3, true, 0, false)));
+        Assert.That(uses[0].CasterTest, Is.Null);
+        Assert.That((uses[1].CasterTest, uses[1].TargetTest, uses[1].Probability), Is.EqualTo((
+            new PlayedClientActionAdditionals.BuffTest(701, 0, false, 0, false), new PlayedClientActionAdditionals.BuffTest(0, 0, false, 702, true), 0.5f)));
+
+        BeginCondition first = PlayedClientActionAdditionals.ToEffect(uses[0]).Condition!.Condition;
+        Assert.That(first.Caster, Is.Null);
+        Assert.That(first.Target!.Buff, Is.EqualTo(new[] { new BeginConditionTarget.HasBuff(700, 0, true, 3, CompareType.Equals) }),
+            "the data pack's rows give the same test: any level, the stacks equal to the count");
+        Assert.That((first.Target.HasNotBuffIds, first.Target.Event.Type, first.Target.Stat), Is.EqualTo((new int[0], EventConditionType.Activate, new BeginConditionTarget.BeginConditionStat[0])));
+
+        BeginCondition second = PlayedClientActionAdditionals.ToEffect(uses[1]).Condition!.Condition;
+        Assert.That(second.Caster!.Buff.Select(buff => (buff.Id, buff.Count, buff.Owned)), Is.EqualTo(new[] { (701, 0, false) }));
+        Assert.That((second.Target!.Buff, second.Target.HasNotBuffIds), Is.EqualTo((new BeginConditionTarget.HasBuff[0], new[] { 702 })));
+        Assert.That(PlayedClientActionAdditionals.ToEffect(uses[2]).Condition!.Condition.Caster, Is.Null,
+            "a test with no buff to have or not to have is none (the client's HasContent)");
+    }
+
     // TiXmlElement::QueryBoolAttribute: a prefix of "true", "yes" or "1" in any case is set; "false", "no", "0" and
     // anything else (a 2, an empty value) is not.
     [Test]

@@ -8,13 +8,20 @@ namespace Maple2.Model.Metadata;
 // <actionAdditional> rows of a <level> and of each <motion>'s <attack>, which the client loads into the skill's
 // SkillActionAdditional list (m_vAdditional). The data pack's skill/ data gives most of them as conditionSkill rows
 // with the same effect id and level; the ingest adds the ones it does not (SkillMapper).
-// Only the beginCondition fields seen with these rows are read (allowBattleRidingState, onlyBattleRidingState,
-// probability); a row whose
-// condition has any other field is counted as unsupported and left out. useTargetCountFactor (probability scaled by
-// the targets hit) has no reader in the client source, so it is not taken over: the plain probability is kept.
+// The beginCondition is read as the client reads it (SkillBeginCondition::Load): probability, allowBattleRidingState,
+// onlyBattleRidingState and useTargetCountFactor, and the first <caster> and <target> with their buff test
+// (SkillHasBuffCondition::Load: one hasBuffID, hasBuffCount, hasBuffOwner, hasNotBuffID and hasNotBuffOwner). A row
+// whose condition has any other field or child is counted as unsupported and left out. useTargetCountFactor
+// (probability scaled by the targets hit) has no reader in the client source, so it is not taken over: the plain
+// probability is kept.
 public static class PlayedClientActionAdditionals {
     public readonly record struct Use(int EffectId, short Level, int Target, int Owner, bool OnDamage, int OverlapCount, int LinkSkillId,
-                                      bool AllowOnBattleMount, float Probability, bool OnlyOnBattleMount = false);
+                                      bool AllowOnBattleMount, float Probability, bool OnlyOnBattleMount = false,
+                                      BuffTest? CasterTest = null, BuffTest? TargetTest = null);
+
+    // A <caster> or <target> buff test: the buff the actor must have, its stack count (0 for any) and hasBuffOwner,
+    // and the buff it must not have with hasNotBuffOwner. An id of 0 is no buff.
+    public readonly record struct BuffTest(int HasBuffId, int HasBuffCount, bool HasBuffOwner, int HasNotBuffId, bool HasNotBuffOwner);
 
     // An attack's uses, with the attack's point.
     public record AttackUses(string Point, Use[] Uses);
@@ -24,6 +31,8 @@ public static class PlayedClientActionAdditionals {
     public record LevelUses(Use[] Level, IReadOnlyDictionary<(int Motion, int Attack), AttackUses> Attacks);
 
     private static readonly HashSet<string> ConditionFields = ["allowBattleRidingState", "onlyBattleRidingState", "probability", "useTargetCountFactor"];
+    private static readonly HashSet<string> ActorConditions = ["caster", "target"];
+    private static readonly HashSet<string> BuffTestFields = ["hasBuffCount", "hasBuffID", "hasBuffOwner", "hasNotBuffID", "hasNotBuffOwner"];
 
     public static Dictionary<(int SkillId, short Level), LevelUses> Read(IEnumerable<XmlDocument> skillFiles, out int unsupported) {
         unsupported = 0;
@@ -123,12 +132,49 @@ public static class PlayedClientActionAdditionals {
             DurationWithoutDamage: 0, DurationWithoutMoving: 0, OnlyShadowWorld: false, OnlyFlyableMap: false, AllowDead: false,
             AllowOnBattleMount: use.AllowOnBattleMount, OnlyOnBattleMount: use.OnlyOnBattleMount, AllowOnSurvival: false, DungeonGroupType: [],
             Stat: new Dictionary<BasicAttribute, long>(), Maps: [], MapTypes: [], Continents: [], ActiveSkill: [], Weapon: [],
-            Target: null, Owner: null, Caster: null);
+            Target: Convert(use.TargetTest), Owner: null, Caster: Convert(use.CasterTest));
         return new SkillEffectMetadata(
             FireCount: 1,
             Skills: [new SkillEffectMetadata.Skill(use.EffectId, use.Level, use.LinkSkillId)],
             Condition: new SkillEffectMetadataCondition(condition, owner, (SkillTargetType) use.Target, use.OverlapCount, RandomCast: false),
             Splash: null);
+    }
+
+    // The test as the data pack's rows give it (MapperExtensions' SubConditionTarget convert): the buff at any level,
+    // its stacks equal to the count when one is given, and the buff the actor must not have; none when the test is
+    // empty (the client's HasContent: neither buff given). hasNotBuffOwner has no field on the server's condition (the
+    // data pack's rows do not give it), so the buff it names is tested whoever cast it.
+    private static BeginConditionTarget? Convert(BuffTest? test) {
+        if (test is not { } value || (value.HasBuffId == 0 && value.HasNotBuffId == 0)) {
+            return null;
+        }
+        return new BeginConditionTarget(
+            Buff: value.HasBuffId != 0 ? [new BeginConditionTarget.HasBuff(value.HasBuffId, 0, value.HasBuffOwner, value.HasBuffCount, CompareType.Equals)] : [],
+            Event: new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], []),
+            Stat: [], States: [], SubStates: [], Masteries: new Dictionary<MasteryType, int>(), NpcIds: [],
+            HasNotBuffIds: value.HasNotBuffId != 0 ? [value.HasNotBuffId] : []);
+    }
+
+    // The condition's fields are all ones read here, and its children only a <caster> and a <target> with only their
+    // buff test's fields (a second <caster> or <target>, which the client does not read, is left out too).
+    private static bool Supported(XmlElement condition) {
+        if (condition.Attributes.OfType<XmlAttribute>().Any(attribute => !ConditionFields.Contains(attribute.Name))) {
+            return false;
+        }
+        List<XmlElement> children = condition.ChildNodes.OfType<XmlElement>().ToList();
+        return children.All(child => ActorConditions.Contains(child.Name)
+                                     && !child.ChildNodes.OfType<XmlElement>().Any()
+                                     && child.Attributes.OfType<XmlAttribute>().All(attribute => BuffTestFields.Contains(attribute.Name)))
+               && children.GroupBy(child => child.Name).All(group => group.Count() == 1);
+    }
+
+    private static BuffTest? Test(XmlElement? condition, string name) {
+        XmlElement? element = condition == null ? null : Children(condition, name).FirstOrDefault();
+        if (element == null) {
+            return null;
+        }
+        return new BuffTest(Number(element, "hasBuffID"), Number(element, "hasBuffCount"), Flag(element, "hasBuffOwner"),
+            Number(element, "hasNotBuffID"), Flag(element, "hasNotBuffOwner"));
     }
 
     private static Use[] Uses(XmlElement parent, ref int unsupported) {
@@ -139,7 +185,7 @@ public static class PlayedClientActionAdditionals {
                 continue;
             }
             XmlElement? condition = Children(row, "beginCondition").FirstOrDefault();
-            if (condition != null && (condition.ChildNodes.OfType<XmlElement>().Any() || condition.Attributes.OfType<XmlAttribute>().Any(attribute => !ConditionFields.Contains(attribute.Name)))) {
+            if (condition != null && !Supported(condition)) {
                 unsupported++;
                 continue;
             }
@@ -154,7 +200,9 @@ public static class PlayedClientActionAdditionals {
                 LinkSkillId: int.TryParse(link.Split(',')[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int linkId) ? linkId : 0,
                 AllowOnBattleMount: condition != null && Flag(condition, "allowBattleRidingState"),
                 Probability: condition != null && float.TryParse(condition.GetAttribute("probability"), NumberStyles.Float, CultureInfo.InvariantCulture, out float rate) ? rate : 1f,
-                OnlyOnBattleMount: condition != null && Flag(condition, "onlyBattleRidingState")));
+                OnlyOnBattleMount: condition != null && Flag(condition, "onlyBattleRidingState"),
+                CasterTest: Test(condition, "caster"),
+                TargetTest: Test(condition, "target")));
         }
         return uses.ToArray();
     }
