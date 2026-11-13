@@ -658,6 +658,29 @@ public class SkillCastRulesTests {
         Assert.That(duplicateLevels, Is.EqualTo(1), "the second level 1");
     }
 
+    [Test]
+    public void SplashActiveIsReadPerAttack() {
+        // The heal 10400071's attack names 10400292 (skillattackdata.cpp:597, a comma list); other attacks name none.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10400071">
+                <level value="1"><motion><attack point="p0" splashActiveSkillID="10400292" /><attack point="p1" /></motion></level>
+                <level value="2"><motion><attack point="p0" splashActiveSkillID="10400292, 10400293" /></motion></level>
+                <level value="1"><motion><attack point="p0" splashActiveSkillID="1" /></motion></level>
+              </skill>
+              <skill id="10400071"><level value="3"><motion><attack splashActiveSkillID="2" /></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int, short, int, int), (int[] Ids, string Point)> read = PlayedClientSkills.ReadSplashActive([document]);
+        Assert.Multiple(() => {
+            Assert.That(read.Keys, Is.EquivalentTo(new[] { (10400071, (short) 1, 0, 0), (10400071, (short) 2, 0, 0) }));
+            Assert.That(read[(10400071, 1, 0, 0)].Ids, Is.EqualTo(new[] { 10400292 }));
+            Assert.That(read[(10400071, 1, 0, 0)].Point, Is.EqualTo("p0"));
+            Assert.That(read[(10400071, 2, 0, 0)].Ids, Is.EqualTo(new[] { 10400292, 10400293 }));
+        });
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]

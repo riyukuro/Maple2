@@ -11,9 +11,9 @@ namespace Maple2.Model.Metadata;
 // The beginCondition is read as the client reads it (SkillBeginCondition::Load): probability, allowBattleRidingState,
 // onlyBattleRidingState and useTargetCountFactor, and the first <caster> and <target> with their buff test
 // (SkillHasBuffCondition::Load: one hasBuffID, hasBuffCount, hasBuffOwner, hasNotBuffID and hasNotBuffOwner). A row
-// whose condition has any other field or child is counted as unsupported and left out. useTargetCountFactor
-// (probability scaled by the targets hit) has no reader in the client source, so it is not taken over: the plain
-// probability is kept.
+// whose condition has any other field or child is counted as unsupported and left out. useTargetCountFactor is read
+// by the client (SkillBeginCondition::Load, skilloverlapcompare.cpp:392) but nothing in the client source uses the
+// value, so it is not taken over: the plain probability is kept.
 public static class PlayedClientActionAdditionals {
     public readonly record struct Use(int EffectId, short Level, int Target, int Owner, bool OnDamage, int OverlapCount, int LinkSkillId,
                                       bool AllowOnBattleMount, float Probability, bool OnlyOnBattleMount = false,

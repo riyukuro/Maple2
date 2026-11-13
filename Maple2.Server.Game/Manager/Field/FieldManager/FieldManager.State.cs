@@ -863,6 +863,19 @@ public partial class FieldManager {
         }
     }
 
+    // The caster's attack that names skills in splashActiveSkillID hit (Actor.TargetAttack): every region of those
+    // skills the caster placed that fires only when made to fires once (FieldSkill.Invoke). Returns how many fired.
+    public int InvokeSplashes(IActor caster, IReadOnlyCollection<int> skillIds) {
+        int fired = 0;
+        foreach (FieldSkill fieldSkill in fieldSkills.Values) {
+            if (fieldSkill.ManualOnly && fieldSkill.Caster.ObjectId == caster.ObjectId && skillIds.Contains(fieldSkill.Value.Id)
+                && fieldSkill.Invoke()) {
+                fired++;
+            }
+        }
+        return fired;
+    }
+
     public void AddSkill(SkillRecord record) {
         SkillMetadataAttack attack = record.Attack;
         if (!TableMetadata.MagicPathTable.Entries.TryGetValue(attack.CubeMagicPathId, out IReadOnlyList<MagicPath>? cubeMagicPaths)) {

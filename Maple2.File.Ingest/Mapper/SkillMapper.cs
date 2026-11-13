@@ -26,6 +26,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (int Method, string Point)> clientAttackMethods = [];
     private int attackMethodPointMismatches;
+    // The played client's splashActiveSkillID lists (PlayedClientSkills.ReadSplashActive); empty without a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (int[] Ids, string Point)> clientSplashActive = [];
+    private int splashActivePointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -56,6 +59,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientAttackMethods = PlayedClientSkills.ReadAttackMethods(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), out int duplicateLevels);
             Console.WriteLine($"Skill attacks in the played client's skill data: {clientAttackMethods.Count} ({clientAttackMethods.Values.Count(entry => entry.Method == 1)} of attack method type 1, {duplicateLevels} duplicate levels left out)");
+            clientSplashActive = PlayedClientSkills.ReadSplashActive(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)));
+            Console.WriteLine($"Skill attacks with splash skills to fire in the played client's skill data: {clientSplashActive.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -101,7 +107,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             SequenceSpeed: motion.motionProperty.sequenceSpeed,
                             MoveDistance: motion.motionProperty.movedistance,
                             FaceTarget: motion.motionProperty.faceTarget,
-                            MoveType: moveTypes.Get(id, level.value, motionIndex)),
+                            MoveType: moveTypes.Get(id, level.value, motionIndex),
+                            SplashLifeTick: motion.motionProperty.splashLifeTick,
+                            SplashInvokeCoolTick: motion.motionProperty.splashInvokeCoolTick),
                         Attacks: motion.attack.Select((attack, attackIndex) => new SkillMetadataAttack(
                             Point: attack.point,
                             PointGroup: attack.pointGroupID,
@@ -157,7 +165,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
                             GrabTargetType: attack.grabTargetType,
                             Direction: directions.Get(id, level.value, motionIndex, attackIndex),
-                            AttackMethodType: AttackMethod(id, level.value, motionIndex, attackIndex, attack.point, (int) attack.attackMethodType)
+                            AttackMethodType: AttackMethod(id, level.value, motionIndex, attackIndex, attack.point, (int) attack.attackMethodType),
+                            SplashActiveSkillIds: SplashActive(id, level.value, motionIndex, attackIndex, attack.point)
                         )).ToArray(),
                         AttackPoints: motion.CollectAttackPoints()
                     )).ToArray(),
@@ -165,7 +174,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         Level: level.upgrade.level,
                         SkillIds: level.upgrade.skillIDs,
                         SkillLevels: level.upgrade.skillLevels,
-                        QuestIds: level.upgrade.questIDs)
+                        QuestIds: level.upgrade.questIDs),
+                    OnlyManualActiveSplash: level.splashManualActiveProperty?.onlyManualActiveSplash == true
                 ));
 
             // The played client's effects of a level or attack that the data pack's rows lack (PlayedClientActionAdditionals).
@@ -225,6 +235,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientEffects.Count > 0) {
             Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");
         }
+        if (clientSplashActive.Count > 0) {
+            Console.WriteLine($"Skill attacks whose played splash skills to fire have another point: {splashActivePointMismatches} (left out)");
+        }
         if (clientAttackMethods.Count > 0) {
             Console.WriteLine($"Skill attacks whose played attack method has another point: {attackMethodPointMismatches} (the data pack's kept)");
         }
@@ -240,6 +253,18 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             return pack;
         }
         return played.Method;
+    }
+
+    // The played client's splashActiveSkillID where it has the attack at that place with the same point, else none.
+    private int[]? SplashActive(int id, short level, int motion, int attack, string point) {
+        if (!clientSplashActive.TryGetValue((id, level, motion, attack), out (int[] Ids, string Point) played)) {
+            return null;
+        }
+        if (played.Point != point) {
+            splashActivePointMismatches++;
+            return null;
+        }
+        return played.Ids;
     }
 
     private static SkillMetadataRange Convert(RegionSkill region) {

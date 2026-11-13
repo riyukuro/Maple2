@@ -92,6 +92,50 @@ public static class PlayedClientSkills {
         return methods;
     }
 
+    // The splashActiveSkillID list of every attack of the client's levels that has one (SkillAttackData::Load,
+    // skillattackdata.cpp:597, a comma list), by skill id, level, the motion's place in the level and the attack's
+    // place in the motion, with the attack's point. The data pack's skill data has no such attribute. The first
+    // <skill> of an id and the first <level> of a value are read, as in ReadAttackMethods.
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (int[] Ids, string Point)> ReadSplashActive(
+            IEnumerable<XmlDocument> skillFiles) {
+        var result = new Dictionary<(int, short, int, int), (int[], string)>();
+        var skillIds = new HashSet<int>();
+        foreach (XmlDocument file in skillFiles) {
+            XmlNodeList? skills = file.SelectNodes("ms2/skill");
+            if (skills == null) {
+                continue;
+            }
+            foreach (XmlElement skill in skills.OfType<XmlElement>()) {
+                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || !skillIds.Add(id)) {
+                    continue;
+                }
+                var levelValues = new HashSet<short>();
+                foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
+                    if (!short.TryParse(level.GetAttribute("value"), out short value) || !levelValues.Add(value)) {
+                        continue;
+                    }
+                    int motionIndex = 0;
+                    foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                        int attackIndex = 0;
+                        foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                            int[] ids = attack.GetAttribute("splashActiveSkillID")
+                                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                .Select(text => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId) ? skillId : 0)
+                                .Where(skillId => skillId > 0)
+                                .ToArray();
+                            if (ids.Length > 0) {
+                                result[(id, value, motionIndex, attackIndex)] = (ids, attack.GetAttribute("point"));
+                            }
+                            attackIndex++;
+                        }
+                        motionIndex++;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
     // The main types whose skills take the caster off the ride at the cast.
     public static bool UnrideMainType(int mainType) => mainType is 1 or 4 or 7 or (>= 11 and <= 15) or (>= 17 and <= 19);
 

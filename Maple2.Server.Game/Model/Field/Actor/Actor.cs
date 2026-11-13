@@ -253,6 +253,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         ApplyEffects(record.Attack.Skills, record.Caster, this, skillId: record.SkillId, targets: record.Targets.Values.ToArray());
         ApplyEffects(record.Attack.SkillsOnDamage, record.Caster, damage, record.Targets.Values.ToArray());
 
+        // The hit fires the caster's regions of the skills the attack names that fire only when made to
+        // (splashActiveSkillID: the priest heal 10400071 fires the regions of 10400292 its caster placed).
+        if (record.Attack.SplashActiveSkillIds is { Length: > 0 } splashActive) {
+            Field.InvokeSplashes(record.Caster, splashActive);
+        }
+
         // Create splash skills at target positions.
         // Always skip the caster: when IncludeCaster is set, the attack also has a CubeMagicPathId
         // which handles splash placement independently — this loop must not create a duplicate.

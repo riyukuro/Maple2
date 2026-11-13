@@ -28,6 +28,11 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     public readonly bool UseDirection;
     private readonly long endTick;
     public long NextTick { get; private set; }
+    // A region of a skill that fires only when made to (OnlyManualActiveSplash): it never fires on its own, and the
+    // caster's attacks that name it (SplashActiveSkillIds) fire it through Invoke.
+    public bool ManualOnly { get; }
+    private readonly int invokeCoolTick;
+    private long nextInvokeTick;
     private readonly ILogger logger = Log.ForContext<FieldSkill>();
 
     // The point a cube skill's tile packets give: one block below the cube (SplashTiming.TilePoint).
@@ -85,6 +90,26 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
             endTick = baseTick + splash.Delay + splash.RemoveDelay;
             Active = false;
         }
+        if (value.Data.OnlyManualActiveSplash) {
+            SkillMetadataMotionProperty? motion = value.Data.Motions.FirstOrDefault()?.MotionProperty;
+            ManualOnly = true;
+            Active = true;
+            NextTick = long.MaxValue;
+            endTick = baseTick + (motion?.SplashLifeTick ?? 0);
+            invokeCoolTick = motion?.SplashInvokeCoolTick ?? 0;
+            nextInvokeTick = baseTick;
+        }
+    }
+
+    // Fires a region that fires only when made to, once, unless it is gone or its invoke cool time has not passed.
+    public bool Invoke() {
+        long now = Field.FieldTick;
+        if (!ManualOnly || !SplashTiming.CanInvoke(now, endTick, nextInvokeTick)) {
+            return false;
+        }
+        nextInvokeTick = now + invokeCoolTick;
+        Fire();
+        return true;
     }
 
     public override void Update(long tickCount) {
@@ -117,6 +142,25 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
         }
 
     activated:
+        Fire();
+    end:
+        if (Interval == 0) {
+            FireCount = 0;
+            NextTick = long.MaxValue;
+        } else {
+            if (FireCount != int.MaxValue) {
+                FireCount--;
+            }
+
+            if (FireCount <= 0) {
+                NextTick = long.MaxValue;
+            } else {
+                NextTick += Interval;
+            }
+        }
+    }
+
+    private void Fire() {
         // TODO: These are buffs? seems irrelevant to FieldSkill?
         // foreach (SkillEffectMetadata skill in Value.Data.Skills) {
         //     if (skill.Condition != null) {
@@ -241,21 +285,6 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 if (attack.Skills.Any(effect => effect.Splash != null)) {
                     Field.AddSkill(record);
                 }
-            }
-        }
-    end:
-        if (Interval == 0) {
-            FireCount = 0;
-            NextTick = long.MaxValue;
-        } else {
-            if (FireCount != int.MaxValue) {
-                FireCount--;
-            }
-
-            if (FireCount <= 0) {
-                NextTick = long.MaxValue;
-            } else {
-                NextTick += Interval;
             }
         }
     }

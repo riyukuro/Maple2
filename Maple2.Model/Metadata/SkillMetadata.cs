@@ -65,7 +65,10 @@ public record SkillMetadataLevel(
     SkillMetadataRecovery Recovery,
     SkillEffectMetadata[] Skills,
     SkillMetadataMotion[] Motions,
-    SkillMetadataUpgrade? Upgrade = null);
+    SkillMetadataUpgrade? Upgrade = null,
+    // splashManualActiveProperty onlyManualActiveSplash: a region this level places never fires on its own; the
+    // caster's attacks that name the skill in splashActiveSkillID make it fire (SkillMetadataAttack.SplashActiveSkillIds).
+    bool OnlyManualActiveSplash = false);
 
 // What a skill needs to be at this level in the skill tree (the level's upgrade element): the character
 // level, other skills of the tree at a level, and quests. Null in metadata ingested before it was added.
@@ -115,7 +118,12 @@ public record SkillMetadataMotionProperty(
     float SequenceSpeed,
     float MoveDistance,
     bool FaceTarget,
-    int MoveType = 0);
+    int MoveType = 0,
+    // splashLifeTick: how long, in ms, a region of the skill that fires only when made to (OnlyManualActiveSplash)
+    // stays in the field.
+    int SplashLifeTick = 0,
+    // splashInvokeCoolTick: the least time, in ms, between two fires of such a region.
+    int SplashInvokeCoolTick = 0);
 
 public record SkillMetadataAttack(
     string Point,
@@ -143,7 +151,10 @@ public record SkillMetadataAttack(
     // attackMethodType: 1 for an attack whose hit comes from its arrow (magic path); its range search then stands on
     // the cast position with the plain facing, without the range's offset and z rotation (StateSkill FUN_1417e95a0
     // through SkillLevelData::FUN_1408043f0).
-    int AttackMethodType = 0);
+    int AttackMethodType = 0,
+    // splashActiveSkillID: the skills whose regions, placed by the same caster and firing only when made to
+    // (OnlyManualActiveSplash), fire when this attack hits (PlayedClientSkills.ReadSplashActive); null when none.
+    int[]? SplashActiveSkillIds = null);
 
 public record SkillMetadataPet(
     int TamingGroup,

@@ -18,6 +18,11 @@ public static class SplashTiming {
         return delay + interval;
     }
 
+    // Whether a region that fires only when made to (onlyManualActiveSplash) fires now: within its splashLifeTick and
+    // splashInvokeCoolTick after its last fire. Chosen here: an invoke at the very tick the cool time or the life
+    // ends still fires.
+    public static bool CanInvoke(long now, long endTick, long nextInvokeTick) => now <= endTick && now >= nextInvokeTick;
+
     // What a fire of a region sends. The client plays the region's hit effect for every region damage packet,
     // before it reads the targets (CSceneStateGame::OnRegionSkillDamage), and KMS2 sends one for each fire: four
     // in five name no target, and no target packet goes before them. A cube skill's fire (the tile packet,
