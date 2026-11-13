@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Storage;
@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -34,22 +35,32 @@ public class QuestDailyResetTests {
 
     private static long Epoch(DateTime local) => new DateTimeOffset(local).ToUnixTimeSeconds();
 
-    // A held quest with its stored row, started at start (local), in state.
-    private Quest Hold(int id, QuestType type, DateTime start, int guide = 0, int repeat = 0, QuestState state = QuestState.Started) {
+    // A held quest with its stored row, started at start (local), in state; an account quest (account > 0) is held
+    // and stored under the account.
+    private Quest Hold(int id, QuestType type, DateTime start, int guide = 0, int repeat = 0, QuestState state = QuestState.Started,
+                       int account = 0) {
         QuestMetadata data = TestGameSession.QuestData(id, type);
-        data = data with { Basic = data.Basic with { GuideType = guide, Repeat = repeat } };
+        data = data with { Basic = data.Basic with { GuideType = guide, Repeat = repeat, Account = account } };
         test.Register(data);
         Quest quest = test.StartQuest(data);
         quest.State = state;
         quest.StartTime = Epoch(start);
         using GameStorage.Request db = test.Storage.Context();
-        Assume.That(db.CreateQuest(test.Session.CharacterId, quest), Is.Not.Null);
+        Assume.That(db.CreateQuest(account > 0 ? test.Session.AccountId : test.Session.CharacterId, quest), Is.Not.Null);
         return quest;
+    }
+
+    // The session's own queue (the test session has none); the delayed reset is queued on it.
+    private Maple2.Tools.Scheduler.EventQueue Scheduler() {
+        var scheduler = new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger);
+        scheduler.Start();
+        typeof(GameSession).GetField(nameof(GameSession.Scheduler))!.SetValue(test.Session, scheduler);
+        return scheduler;
     }
 
     private int[] Held() {
         using GameStorage.Request db = test.Storage.Context();
-        int[] stored = db.GetQuests(test.Session.CharacterId).Keys.Order().ToArray();
+        int[] stored = db.GetQuests(test.Session.CharacterId).Keys.Concat(db.GetQuests(test.Session.AccountId).Keys).Distinct().Order().ToArray();
         int[] held = new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 }.Where(id => test.Session.Quest.TryGetQuest(id, out _)).ToArray();
         Assert.That(held, Is.EqualTo(stored));
         return held;
@@ -128,12 +139,113 @@ public class QuestDailyResetTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    // A timer that fires just before midnight resets the coming day: the packet carries its midnight.
+    // A timer that fires before midnight waits for it: the daily completed earlier that day is kept (dropped at
+    // once, it could be taken and rewarded again the same day), nothing is sent, and the reset runs at midnight with
+    // its midnight in the packet.
     [Test]
-    public void Reset_EarlyFireCountsTheNewDay() {
+    public void Reset_EarlyFireWaitsForMidnight() {
+        Maple2.Tools.Scheduler.EventQueue scheduler = Scheduler();
         DateTime today = DateTime.Today;
-        test.Session.Quest.ResetDailyQuests(today.AddSeconds(-1));
+        Hold(1, QuestType.DailyMission, today.AddHours(-3), PickOnce, state: QuestState.Completed);
+        Hold(2, QuestType.DailyMission, today.AddHours(-3), LevelGuide);
+
+        test.Session.Quest.ResetDailyQuests(today.AddHours(-1));
+
+        Assert.That(Held(), Is.EqualTo(new[] { 1, 2 }));
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Quest), Is.Empty);
+        // One timed event (an hour away), none to run now.
+        Assert.That(scheduler.Count, Is.EqualTo(1));
+        Assert.That(scheduler.Queued, Is.Zero);
+    }
+
+    // The queued reset runs with its midnight: the reset itself, nothing queued again.
+    [Test]
+    public void Reset_QueuedRunsAtMidnight() {
+        Maple2.Tools.Scheduler.EventQueue scheduler = Scheduler();
+        DateTime today = DateTime.Today;
+        Hold(1, QuestType.DailyMission, today.AddHours(-3), PickOnce, state: QuestState.Completed);
+        Hold(2, QuestType.DailyMission, today.AddHours(-3), LevelGuide);
+
+        test.Session.Quest.ResetDailyQuests(today);
+
+        Assert.That(scheduler.Count, Is.Zero);
+        Assert.That(Held(), Is.EqualTo(new[] { 2 }));
         AssertResetPackets(today);
+    }
+
+    // Account quests (held and stored under the account) go at the reset like the character's.
+    [Test]
+    public void Reset_AccountRows() {
+        DateTime today = DateTime.Today;
+        DateTime started = today.AddHours(-2);
+        Hold(1, QuestType.DailyMission, started, PickOnce, state: QuestState.Completed, account: 1);
+        Hold(2, QuestType.WeddingMission, started, repeat: 1, account: 2);
+        Hold(3, QuestType.FieldQuest, started, repeat: 2, account: 1);
+        Hold(4, QuestType.DailyMission, started, LevelGuide, account: 1);
+        Hold(5, QuestType.DailyMission, started, PickRepeat, 1);
+
+        test.Session.Quest.ResetDailyQuests(today);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 4 }));
+        AssertResetPackets(today);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // At login the account's daily rows started before today go, the ones started today stay.
+    [Test]
+    public void Login_AccountRows() {
+        DateTime today = DateTime.Today;
+        Hold(1, QuestType.DailyMission, today.AddHours(-1), PickOnce, state: QuestState.Completed, account: 1);
+        Hold(2, QuestType.WeddingMission, today.AddHours(-1), repeat: 1, account: 1);
+        Hold(3, QuestType.DailyMission, DateTime.Now, PickRepeat, 1, account: 1);
+        Hold(4, QuestType.DailyMission, today.AddHours(-1), LevelGuide, account: 1);
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(), Is.EqualTo(new[] { 3, 4 }));
+    }
+
+    // Mission point missions through the reset: at the Friday reset the ones started before that Friday go, the one
+    // started on it stays (2026-11-13 is a Friday).
+    [Test]
+    public void MissionPoint_Reset() {
+        DateTime friday = new(2026, 11, 13);
+        Hold(1, QuestType.DailyMission, friday.AddHours(-14), MissionPoint, state: QuestState.Completed);
+        Hold(2, QuestType.DailyMission, friday.AddDays(-4), MissionPoint);
+        Hold(3, QuestType.DailyMission, friday, MissionPoint);
+        Hold(4, QuestType.DailyMission, friday.AddHours(-1), PickOnce);
+
+        test.Session.Quest.ResetDailyQuests(friday);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 3 }));
+        AssertResetPackets(friday);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // Through the reset on a Thursday the mission point missions of that week stay.
+    [Test]
+    public void MissionPoint_ResetBeforeFriday() {
+        DateTime thursday = new(2026, 11, 12);
+        Hold(1, QuestType.DailyMission, thursday.AddDays(-3), MissionPoint, state: QuestState.Completed);
+        Hold(2, QuestType.DailyMission, thursday.AddHours(-1), PickOnce);
+
+        test.Session.Quest.ResetDailyQuests(thursday);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 1 }));
+        AssertResetPackets(thursday);
+    }
+
+    // At login a mission point mission goes once a Friday has come since its start (8 days ago, always), and stays
+    // when started now.
+    [Test]
+    public void MissionPoint_Login() {
+        Hold(1, QuestType.DailyMission, DateTime.Now.AddDays(-8), MissionPoint, state: QuestState.Completed);
+        Hold(2, QuestType.DailyMission, DateTime.Now, MissionPoint);
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(), Is.EqualTo(new[] { 2 }));
+        Assert.That(test.Errors, Is.Empty);
     }
 
     // Logged out across the reset: the login drops the rows started on an earlier day, keeps the ones started today

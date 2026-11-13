@@ -894,11 +894,16 @@ public sealed class QuestManager {
     /// <summary>
     /// The daily quest resets (QuestDailyReset): the held daily missions, daily field quests and wedding missions are
     /// dropped as the client drops them on Quest 0x19, 0x1E and 0x26, then those are sent. now is the start of the day
-    /// the reset begins (AllianceMissions.ResetPeriodStart), so a reset a moment before midnight counts the new day
-    /// for the mission point missions too.
+    /// the reset begins (AllianceMissions.ResetPeriodStart). A reset that fires before that midnight (timer drift, a
+    /// clock change) waits for it on the session's queue: dropped at once, a daily completed earlier that day could be
+    /// taken and rewarded again before midnight. A player who logs out before then gets the login check instead.
     /// </summary>
     public void ResetDailyQuests(DateTime now) {
         DateTime day = AllianceMissions.ResetPeriodStart(2, 0, now);
+        if (now < day) {
+            session.Scheduler.Schedule(() => ResetDailyQuests(day), day - now);
+            return;
+        }
         DropDailyQuests(day, true);
         session.Send(QuestPacket.DailyMissionReset(new DateTimeOffset(day).ToUnixTimeSeconds()));
         session.Send(QuestPacket.FieldQuestReset());
