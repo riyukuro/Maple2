@@ -332,6 +332,24 @@ message MarriageResponse {
   int32 error = 1;
 }
 
+// A mentoring change for a player on another game server.
+message MentoringRequest {
+  // A mentor's request to the receiver (a mentee), the stored request's id.
+  message Requested {
+    int64 request_id = 1;
+  }
+  // The receiver's stored pairs changed: it reads them again.
+  message Reload {}
+
+  int64 receiver_id = 1;
+  oneof mentoring {
+    Requested requested = 2;
+    Reload reload = 3;
+  }
+}
+
+message MentoringResponse {}
+
 message PlayerWarpRequest {
   message GoToPlayer {
     int64 character_id = 1;

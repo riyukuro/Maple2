@@ -734,6 +734,17 @@ public sealed class TestGameSession {
             return BuddyWorld?.Invoke(request) ?? new BuddyResponse();
         }
 
+        // The mentoring changes handed to the world; MentoringWorld delivers them as the world would (the receiver's
+        // game server), none when it is not set.
+        public readonly List<MentoringRequest> MentoringRequests = [];
+        public Action<MentoringRequest>? MentoringWorld;
+
+        public override MentoringResponse Mentoring(MentoringRequest request, CallOptions options) {
+            MentoringRequests.Add(request);
+            MentoringWorld?.Invoke(request);
+            return new MentoringResponse();
+        }
+
         // What PlayerInfo.SendUpdate sent to the world.
         public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
 

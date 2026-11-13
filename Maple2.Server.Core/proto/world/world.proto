@@ -51,6 +51,8 @@ service World {
   rpc AddChannel(AddChannelRequest) returns (AddChannelResponse);
   // Marriage
   rpc Marriage(maple2.MarriageRequest) returns (maple2.MarriageResponse);
+  // Mentoring
+  rpc Mentoring(maple2.MentoringRequest) returns (maple2.MentoringResponse);
   // PlayerWarp
   rpc PlayerWarp(maple2.PlayerWarpRequest) returns (maple2.PlayerWarpResponse);
   // CharacterInfo: the profile of a player on another channel

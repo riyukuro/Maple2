@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -22,92 +23,105 @@ public static class MentorPacket {
         DailyPoints = 11,
         Unknown12 = 12,
         ReceiveMenteeInvite = 14,
-        Unknown15 = 15,
+        PairMode = 15,
         Unknown16 = 16,
     }
 
     public static ByteWriter UpdateRole(MentorRole role, int objectId) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.UpdateRole);
-        pWriter.Write<MentorRole>(role);
+        pWriter.WriteByte((byte) Command.UpdateRole);
+        pWriter.WriteByte((byte) role);
         pWriter.WriteInt(objectId);
 
         return pWriter;
     }
 
-    // Client: CMentoringManager::OnMentorList (mentoringmanager.cpp:320) and OnMenteeList (:333) read an int count and
-    // per entry CMentor::Read (commonfiles/mentor.cpp:230): long, long, long, text name, short level, text, int,
-    // bool online, int. The server keeps no mentoring pairs yet, so both lists are sent empty.
-    public static ByteWriter MenteeInvitations() {
-        var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.MenteeInvitations);
+    // A mentoring row as CMentor::Read (commonfiles/mentor.cpp:230) reads it: the row's id (the client matches the
+    // accept and decline answers on it), a long it does not read, the other character's id (the online flags of
+    // Mentor 15 match on it), name, level, profile picture, an int it does not read, online and the job.
+    public record Entry(long Id, PlayerInfo Partner);
+
+    private static void WriteEntry(ByteWriter pWriter, Entry entry) {
+        pWriter.WriteLong(entry.Id);
+        pWriter.WriteLong(0);
+        pWriter.WriteLong(entry.Partner.CharacterId);
+        pWriter.WriteUnicodeString(entry.Partner.Name);
+        pWriter.WriteShort(entry.Partner.Level);
+        pWriter.WriteUnicodeString(entry.Partner.Picture);
         pWriter.WriteInt(0);
+        pWriter.WriteBool(entry.Partner.Online);
+        pWriter.WriteInt((int) entry.Partner.Job);
+    }
+
+    private static ByteWriter Entries(Command command, IReadOnlyCollection<Entry> entries) {
+        var pWriter = Packet.Of(SendOp.Mentor);
+        pWriter.WriteByte((byte) command);
+        pWriter.WriteInt(entries.Count);
+        foreach (Entry entry in entries) {
+            WriteEntry(pWriter, entry);
+        }
 
         return pWriter;
     }
 
-    /// <summary>
-    /// If player is a mentee, the list is of mentors. If player is a mentor, the list is of mentees.
-    /// </summary>
-    public static ByteWriter MyList() {
-        var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.MyList);
-        pWriter.WriteInt(0);
+    // CMentoringManager::OnMentorList (mentoringmanager.cpp:320): the mentors' requests waiting for the mentee's answer.
+    public static ByteWriter MenteeInvitations(params Entry[] requests) => Entries(Command.MenteeInvitations, requests);
 
-        return pWriter;
-    }
+    // CMentoringManager::OnMenteeList (mentoringmanager.cpp:333): the pairs, the mentor of a mentee or the mentees of a
+    // mentor.
+    public static ByteWriter MyList(params Entry[] pairs) => Entries(Command.MyList, pairs);
 
     public static ByteWriter AssignReturningUser() {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.AssignReturningUser);
+        pWriter.WriteByte((byte) Command.AssignReturningUser);
 
         return pWriter;
     }
 
     public static ByteWriter MenteeInvite(long characterId, string name) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.SendMenteeInvite);
+        pWriter.WriteByte((byte) Command.SendMenteeInvite);
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(name);
 
         return pWriter;
     }
 
-    // s_mentoring_invite_approve_mentor
-    public static ByteWriter AcceptMentorInvite() {
+    // CMentoringManager::OnMentorApproved: the accepted request's id (s_mentoring_invite_approve_mentor).
+    public static ByteWriter AcceptMentorInvite(long id) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.AcceptMentorInvite);
-        pWriter.WriteLong();
+        pWriter.WriteByte((byte) Command.AcceptMentorInvite);
+        pWriter.WriteLong(id);
 
         return pWriter;
     }
 
-    // s_mentoring_invite_decline_mentor
-    public static ByteWriter DeclineMentorInvite() {
+    // CMentoringManager::OnMentorDeclined: the declined request's id (s_mentoring_invite_decline_mentor).
+    public static ByteWriter DeclineMentorInvite(long id) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.DeclineMentorInvite);
-        pWriter.WriteLong();
+        pWriter.WriteByte((byte) Command.DeclineMentorInvite);
+        pWriter.WriteLong(id);
 
         return pWriter;
     }
 
     public static ByteWriter AssignMentor() {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.AssignMentor);
+        pWriter.WriteByte((byte) Command.AssignMentor);
 
         return pWriter;
     }
 
     public static ByteWriter Load() {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
 
         return pWriter;
     }
 
     public static ByteWriter LoginPoints() {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.LoginPoints);
+        pWriter.WriteByte((byte) Command.LoginPoints);
         pWriter.WriteInt(100); // points received
         pWriter.WriteLong(DateTime.Now.AddDays(-0).ToEpochSeconds());
 
@@ -116,7 +130,7 @@ public static class MentorPacket {
 
     public static ByteWriter DailyPoints() {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.DailyPoints);
+        pWriter.WriteByte((byte) Command.DailyPoints);
         pWriter.WriteInt(1000);
         pWriter.WriteInt(0); // mentee points received today
         pWriter.WriteLong(DateTime.Now.AddDays(+2).ToEpochSeconds()); // reset timestamp
@@ -126,39 +140,31 @@ public static class MentorPacket {
 
     public static ByteWriter Unknown12() {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.Unknown12);
+        pWriter.WriteByte((byte) Command.Unknown12);
         pWriter.WriteLong();
         pWriter.WriteLong();
 
         return pWriter;
     }
 
-    public static ByteWriter ReceiveMenteeInvite() {
+    // CMentoringManager::OnMentorRequest: the mentor's name (s_mentoring_notify_mentor_request) and the request.
+    public static ByteWriter ReceiveMenteeInvite(Entry request) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.ReceiveMenteeInvite);
-        pWriter.WriteUnicodeString(); // Inviter name
-        pWriter.WriteLong();
-        pWriter.WriteLong();
-        pWriter.WriteLong();
-        pWriter.WriteUnicodeString();
-        pWriter.WriteShort();
-        pWriter.WriteUnicodeString();
-        pWriter.WriteInt();
-        pWriter.WriteByte();
-        pWriter.WriteInt();
-
+        pWriter.WriteByte((byte) Command.ReceiveMenteeInvite);
+        pWriter.WriteUnicodeString(request.Partner.Name);
+        WriteEntry(pWriter, request);
 
         return pWriter;
     }
 
-    public static ByteWriter Unknown15(int count) {
+    // CMentoringManager::OnPairMode: per pair the other character's id and whether it is online.
+    public static ByteWriter PairOnline(IReadOnlyCollection<Entry> pairs) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.Unknown15);
-
-        pWriter.WriteInt(count);
-        for (int i = 0; i < count; i++) {
-            pWriter.WriteLong(50000);
-            pWriter.WriteByte(1);
+        pWriter.WriteByte((byte) Command.PairMode);
+        pWriter.WriteInt(pairs.Count);
+        foreach (Entry pair in pairs) {
+            pWriter.WriteLong(pair.Partner.CharacterId);
+            pWriter.WriteBool(pair.Partner.Online);
         }
 
         return pWriter;
@@ -167,7 +173,7 @@ public static class MentorPacket {
     // CMentoringManager::OnError (mentoringmanager.cpp:500): a byte result, which picks the notice, and an int.
     public static ByteWriter Error(MentorError error) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.Write<Command>(Command.Unknown16);
+        pWriter.WriteByte((byte) Command.Unknown16);
         pWriter.WriteByte((byte) error);
         pWriter.WriteInt(0);
 

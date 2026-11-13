@@ -1440,6 +1440,34 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("medal", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.Mentoring", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Accepted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("MenteeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("MentorId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MenteeId");
+
+                    b.HasIndex("MentorId", "MenteeId")
+                        .IsUnique();
+
+                    b.ToTable("mentoring", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.MesoListing", b =>
                 {
                     b.Property<long>("Id")
@@ -2397,6 +2425,21 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Character", null)
                         .WithMany()
                         .HasForeignKey("Partner2Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.Mentoring", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("MenteeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("MentorId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -539,8 +539,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Party = new PartyManager(World, this);
         Send(HomeCommandPacket.LoadHome(AccountId, db.GetLastHomeCommend(AccountId)));
         // ResponseCube
-        // Mentor
-        Send(MentorPacket.MyList());
+        // Mentor: the stored requests and pairs while a ReturnUser season runs.
+        Mentoring.Load();
         Send(MentorPacket.Unknown12());
         Config.LoadChatStickers();
         // Mail (the ReturnUser mails were stored by LoadPlayer)

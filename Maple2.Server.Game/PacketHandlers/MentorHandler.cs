@@ -1,6 +1,4 @@
-﻿using Maple2.Database.Storage;
-using Maple2.Model.Enum;
-using Maple2.Model.Game;
+﻿using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -45,8 +43,10 @@ public class MentorHandler : FieldPacketHandler {
                 HandleInvite(session, packet);
                 break;
             case Command.AcceptMentor:
+                HandleAccept(session, packet);
+                break;
             case Command.DeclineMentor:
-                HandleAnswer(session, packet);
+                HandleDecline(session, packet);
                 break;
         }
     }
@@ -61,7 +61,7 @@ public class MentorHandler : FieldPacketHandler {
 
     private void HandleMentorList(GameSession session, IByteReader packet) {
         int unknown = packet.ReadInt(); // 0
-        session.Send(MentorPacket.MenteeInvitations());
+        session.Mentoring.SendRequests();
     }
 
     // UIInviteMentoringDialog::InviteMentor (uiinvitementoringdialog.cpp:408): a mentor invites a mentee, picked from
@@ -69,38 +69,20 @@ public class MentorHandler : FieldPacketHandler {
     private void HandleInvite(GameSession session, IByteReader packet) {
         packet.ReadLong();
         string name = packet.ReadUnicodeString();
-        if (session.Mentoring.Role != MentorRole.Mentor) {
-            return;
-        }
-
-        long targetId;
-        using (GameStorage.Request db = session.GameStorage.Context()) {
-            targetId = db.GetCharacterId(name);
-        }
-        if (targetId == 0 || !session.PlayerInfo.GetOrFetch(targetId, out PlayerInfo? target)) {
-            session.Send(MentorPacket.Error(MentorError.TargetNotExists));
-            return;
-        }
-        if (targetId == session.CharacterId || target.AccountId == session.AccountId) {
-            session.Send(MentorPacket.Error(MentorError.InvalidTarget));
-            return;
-        }
-        if (target.MentorRole != MentorRole.Mentee) {
-            session.Send(MentorPacket.Error(MentorError.TargetIsNotMentee));
-            return;
-        }
-        // The server keeps no mentoring requests or pairs: an invite that passes is not delivered.
+        session.Mentoring.Invite(name);
     }
 
-    // The mentee's answer to a mentor's request, the request's id (uiinvitementoringdialog.cpp:266 and :453). The
-    // server keeps no requests, so the id names none.
-    private void HandleAnswer(GameSession session, IByteReader packet) {
-        packet.ReadLong();
-        session.Send(MentorPacket.Error(MentorError.TargetNotExists));
+    // The mentee's answer to a mentor's request, the request's id (uiinvitementoringdialog.cpp:266 and :453).
+    private void HandleAccept(GameSession session, IByteReader packet) {
+        session.Mentoring.Accept(packet.ReadLong());
+    }
+
+    private void HandleDecline(GameSession session, IByteReader packet) {
+        session.Mentoring.Decline(packet.ReadLong());
     }
 
     private void HandleLoad(GameSession session) {
-        session.Send(MentorPacket.MenteeInvitations());
+        session.Mentoring.SendRequests();
         session.Send(MentorPacket.Load());
         //session.Send(MentorPacket.MyList());
         //  session.Send(MentorPacket.LoginPoints());
