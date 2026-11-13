@@ -34,6 +34,8 @@ public class PlotExpiryTests(bool mysql) {
     private const int MapId = 99000102;
     private const int Number = 7;
     private const int CubeItemId = 50000103;
+    private const int MaidItemId = 50000104;
+    private const int OtherNumber = 8;
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic;
 
     private TestGameSession test = null!;
@@ -43,6 +45,7 @@ public class PlotExpiryTests(bool mysql) {
     private readonly CommandHook hook = new();
     private long owner;
     private long plotId;
+    private readonly List<long> plots = [];
     private long[] cubeIds = [];
     private DateTimeOffset expiry;
 
@@ -52,8 +55,9 @@ public class PlotExpiryTests(bool mysql) {
             Assert.Ignore("the MySQL fixture needs a real database: set MS2_TEST_GAME_DB");
         }
         hook.Before = null;
+        plots.Clear();
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(CubeItemId));
+        test.Register(TestGameSession.Metadata(CubeItemId), MaidMetadata());
         DbContextOptions options;
         if (mysql) {
             ServerVersion version = ServerVersion.AutoDetect(Connection);
@@ -67,6 +71,7 @@ public class PlotExpiryTests(bool mysql) {
         var ugcMaps = (LRUCache<int, UgcMapMetadata>) typeof(MapMetadataStorage).GetField("UgcCache", Any)!.GetValue(test.MapMetadata)!;
         ugcMaps.AddReplace(MapId, new UgcMapMetadata(MapId, new Dictionary<int, UgcMapGroup> {
             [Number] = new(Number, 0, 0, cost, cost, new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)),
+            [OtherNumber] = new(OtherNumber, 0, 0, cost, cost, new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)),
         }));
         items = (ItemMetadataStorage) typeof(GameStorage).GetField("itemMetadata", Any)!.GetValue(test.Storage)!;
         storage = new GameStorage(options, items, test.MapMetadata, null!, null!, test.TableMetadata, test.ServerTableMetadata,
@@ -76,13 +81,7 @@ public class PlotExpiryTests(bool mysql) {
         // an hour ago with two cubes on it, and the owner has a stack of the same furnishing in storage.
         owner = 7_300_000_000_000 + Random.Shared.NextInt64(1_000_000_000) * 10;
         expiry = DateTimeOffset.UtcNow.AddHours(-1);
-        using var context = new Ms2Context(plain);
-        var map = new Maple2.Database.Model.UgcMap {
-            OwnerId = owner, Name = "home", MapId = MapId, Indoor = false, Number = Number, ExpiryTime = expiry,
-        };
-        context.UgcMap.Add(map);
-        context.SaveChanges();
-        plotId = map.Id;
+        plotId = AddPlot(owner, Number);
 
         Item stack;
         using (GameStorage.Request create = storage.Context()) {
@@ -101,6 +100,24 @@ public class PlotExpiryTests(bool mysql) {
         cubeIds = [first.Id, second.Id];
     }
 
+    private long AddPlot(long plotOwner, int number) {
+        using var context = new Ms2Context(plain);
+        var map = new Maple2.Database.Model.UgcMap {
+            OwnerId = plotOwner, Name = "home", MapId = MapId, Indoor = false, Number = number, ExpiryTime = expiry,
+        };
+        context.UgcMap.Add(map);
+        context.SaveChanges();
+        plots.Add(map.Id);
+        return map.Id;
+    }
+
+    private static ItemMetadata MaidMetadata() {
+        var property = new ItemMetadataProperty(false, 0, 100, 0, 0, string.Empty, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [], [], 0, 0);
+        var limit = new ItemMetadataLimit(Gender.All, 0, 0, 4, true, true, true, true, true, false, false, 0, [], []);
+        return new ItemMetadata(MaidItemId, $"{MaidItemId}", [], "", [], new ItemMetadataLife(0, 0), property, new ItemMetadataCustomize(0, 0), limit, null, null, [],
+            null, null, new ItemMetadataHousing(0, 0, 0, default, true, 3), null);
+    }
+
     [TearDown]
     public void TearDown() {
         if (!mysql || Connection == null) {
@@ -108,18 +125,22 @@ public class PlotExpiryTests(bool mysql) {
         }
         hook.Before = null;
         using var context = new Ms2Context(plain);
-        context.UgcMapCube.Where(cube => cube.UgcMapId == plotId).ExecuteDelete();
-        context.UgcMap.Where(map => map.Id == plotId).ExecuteDelete();
-        context.Item.Where(item => item.OwnerId == owner).ExecuteDelete();
+        List<long> ids = context.Item.Where(item => item.OwnerId == owner || item.OwnerId == owner + 1).Select(item => item.Id).ToList();
+        context.Maid.Where(maid => ids.Contains(maid.Id) || maid.OwnerId == owner).ExecuteDelete();
+        context.UgcMapCube.Where(cube => plots.Contains(cube.UgcMapId)).ExecuteDelete();
+        context.UgcMap.Where(map => plots.Contains(map.Id)).ExecuteDelete();
+        context.Item.Where(item => item.OwnerId == owner || item.OwnerId == owner + 1).ExecuteDelete();
     }
 
     private static PlotCube Cube(int x) =>
         new(TestGameSession.Metadata(CubeItemId)) { Position = new Vector3B(x, 2, 3), Type = PlotCube.CubeType.Construction };
 
-    private PlotInfo Info() {
-        return new PlotInfo(new UgcMapGroup(Number, 0, 0, new UgcMapGroup.Cost(0, 0, 0), new UgcMapGroup.Cost(0, 0, 0),
+    private PlotInfo Info() => Info(plotId, Number);
+
+    private static PlotInfo Info(long id, int number) {
+        return new PlotInfo(new UgcMapGroup(number, 0, 0, new UgcMapGroup.Cost(0, 0, 0), new UgcMapGroup.Cost(0, 0, 0),
             new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0))) {
-            Id = plotId, MapId = MapId, Number = Number,
+            Id = id, MapId = MapId, Number = number,
         };
     }
 
@@ -136,15 +157,19 @@ public class PlotExpiryTests(bool mysql) {
         world.FieldPlotExpiryCheck();
     }
 
-    private (long Owner, int Cubes) Plot() {
+    private (long Owner, int Cubes) Plot() => Plot(plotId);
+
+    private (long Owner, int Cubes) Plot(long id) {
         using var check = new Ms2Context(plain);
-        return (check.UgcMap.AsNoTracking().Single(map => map.Id == plotId).OwnerId, check.UgcMapCube.Count(cube => cube.UgcMapId == plotId));
+        return (check.UgcMap.AsNoTracking().Single(map => map.Id == id).OwnerId, check.UgcMapCube.Count(cube => cube.UgcMapId == id));
     }
 
     // The owner's furnishing rows, by amount.
-    private int[] Stored() {
+    private int[] Stored() => Stored(owner);
+
+    private int[] Stored(long of) {
         using var check = new Ms2Context(plain);
-        return check.Item.AsNoTracking().Where(item => item.OwnerId == owner && item.Group == ItemGroup.Furnishing && item.ItemId == CubeItemId)
+        return check.Item.AsNoTracking().Where(item => item.OwnerId == of && item.Group == ItemGroup.Furnishing && item.ItemId == CubeItemId)
             .Select(item => item.Amount).AsEnumerable().Order().ToArray();
     }
 
@@ -238,6 +263,68 @@ public class PlotExpiryTests(bool mysql) {
         Assert.Multiple(() => {
             Assert.That(Plot(), Is.EqualTo((owner, 2)));
             Assert.That(Stored(), Is.EqualTo(new[] { 4 }));
+        });
+    }
+
+    // Two plots in one check, the first failing (a cube picked up meanwhile): the second is still taken back, and
+    // none of the first's changes are written with it (they stayed pending on the check's request and were written,
+    // or failed, with the next plot's save).
+    [Test]
+    public void FirstPlotFails_SecondIsTakenAlone() {
+        RequireMySql();
+        long otherOwner = owner + 1;
+        long other = AddPlot(otherOwner, OtherNumber);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.CreateCube(Info(other, OtherNumber), Cube(5)), Is.Not.Null);
+        }
+        bool picked = false;
+        hook.Before = command => {
+            if (picked || !command.CommandText.Contains("DELETE FROM `ugcmap-cube`")) {
+                return;
+            }
+            picked = true;
+            using var meanwhile = new Ms2Context(plain);
+            meanwhile.UgcMapCube.Where(cube => cube.Id == cubeIds[1]).ExecuteDelete();
+        };
+
+        Check();
+        hook.Before = null;
+
+        Assert.Multiple(() => {
+            Assert.That(picked, Is.True);
+            Assert.That(Plot(), Is.EqualTo((owner, 1)));
+            Assert.That(Stored(), Is.EqualTo(new[] { 4 }));
+            Assert.That(Plot(other), Is.EqualTo((0L, 0)));
+            Assert.That(Stored(otherOwner), Is.EqualTo(new[] { 1 }));
+        });
+    }
+
+    // A maid cube's maid moves to the maid item's new row, keeping its state, as on a pickup (it used to be deleted).
+    [Test]
+    public void MaidCube_MaidMovesToItsItem() {
+        long cubeId;
+        using (GameStorage.Request db = storage.Context()) {
+            var maidCube = new PlotCube(MaidMetadata()) { Position = new Vector3B(4, 2, 3), Type = PlotCube.CubeType.Construction };
+            cubeId = (db.CreateCube(Info(), maidCube) ?? throw new InvalidOperationException("cube row not created")).Id;
+            Assert.That(db.CreateMaid(new Maid {
+                Uid = cubeId, OwnerId = owner, ItemId = MaidItemId, MaidId = 3, Mood = 77, CreationTime = 1700000000, ExpiryTime = 1702592000,
+            }), Is.Not.Null);
+            // Item rows of another account, so that the maid item's new uid is not the cube's (the in-memory store
+            // numbers each table from 1).
+            for (int i = 0; i < 4; i++) {
+                Assert.That(db.CreateItem(owner + 1, new Item(TestGameSession.Metadata(CubeItemId))), Is.Not.Null);
+            }
+        }
+
+        Check();
+
+        using var check = new Ms2Context(plain);
+        long itemUid = check.Item.AsNoTracking().Single(item => item.OwnerId == owner && item.ItemId == MaidItemId).Id;
+        Assert.Multiple(() => {
+            Assert.That(Plot(), Is.EqualTo((0L, 0)));
+            Assert.That(itemUid, Is.Not.EqualTo(cubeId));
+            Assert.That(check.Maid.AsNoTracking().Any(maid => maid.Id == cubeId), Is.False);
+            Assert.That(check.Maid.AsNoTracking().SingleOrDefault(maid => maid.Id == itemUid)?.Mood, Is.EqualTo(77));
         });
     }
 

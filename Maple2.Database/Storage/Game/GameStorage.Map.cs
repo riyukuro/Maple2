@@ -224,12 +224,22 @@ public partial class GameStorage {
         }
 
         // Takes back an expired outdoor plot of plot.OwnerId: the row is left without an owner (pending sale), its cubes
-        // and their maids are deleted, and the cubes go to the owner's furnishing storage as new rows (a stored stack is
-        // not raised: a game server that holds the storage writes its own amounts back). createItem makes the item of a
-        // cube's item id (null skips the cube). One transaction on a relational DB, on the owner and expiry re-read: a
-        // plot extended or given up since it was listed, or a cube removed meanwhile, writes nothing, and a later check
-        // takes the plot. False then and on any failure; nothing is written then.
+        // are deleted and go to the owner's furnishing storage as new rows (a stored stack is not raised: a game server
+        // that holds the storage writes its own amounts back), and a maid cube's maid moves to its item's row, as on a
+        // pickup. createItem makes the item of a cube's item id (null skips the cube). One transaction on a relational
+        // DB, on the owner and expiry re-read: a plot extended or given up since it was listed, or a cube removed
+        // meanwhile, writes nothing, and a later check takes the plot. False then and on any failure; nothing is
+        // written then. The request tracks none of the plot's rows after it, so a later save on it (the next plot of
+        // the same check) does not write a failed plot's changes.
         public bool ExpirePlot(PlotInfo plot, Func<int, Maple2.Model.Game.Item?> createItem) {
+            try {
+                return ExpirePlotRows(plot, createItem);
+            } finally {
+                Context.ChangeTracker.Clear();
+            }
+        }
+
+        private bool ExpirePlotRows(PlotInfo plot, Func<int, Maple2.Model.Game.Item?> createItem) {
             try {
                 using IDbContextTransaction? transaction = Context.Database.IsRelational()
                     ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
@@ -266,13 +276,17 @@ public partial class GameStorage {
                 // credited twice.
                 List<UgcMapCube> cubes = Context.UgcMapCube.Where(cube => cube.UgcMapId == id).ToList();
                 List<long> cubeIds = cubes.Select(cube => cube.Id).ToList();
-                Context.Maid.RemoveRange(Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).ToList());
+                Dictionary<long, Model.Maid> maids = Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).ToDictionary(maid => maid.Id);
                 Context.UgcMapCube.RemoveRange(cubes);
                 var returned = new List<Maple2.Model.Game.Item>();
+                var maidItems = new List<(Model.Maid Maid, Maple2.Model.Game.Item Item)>();
                 foreach (UgcMapCube cube in cubes) {
                     Maple2.Model.Game.Item? item = createItem(cube.ItemId);
                     if (item == null) {
                         Logger.LogWarning("Expired plot {PlotId}: cube {CubeId} item {ItemId} not returned (no item)", id, cube.Id, cube.ItemId);
+                        if (maids.Remove(cube.Id, out Model.Maid? lost)) {
+                            Context.Maid.Remove(lost);
+                        }
                         continue;
                     }
                     // As FurnishingManager.AddStorage stacks them: by item and design, up to the slot size; a maid
@@ -290,16 +304,37 @@ public partial class GameStorage {
                         item.Template = cube.Template;
                     }
                     returned.Add(item);
+                    if (maids.Remove(cube.Id, out Model.Maid? maid)) {
+                        if (maidItem) {
+                            maidItems.Add((maid, item));
+                        } else {
+                            Context.Maid.Remove(maid);
+                        }
+                    }
                 }
+                var rows = new Dictionary<Maple2.Model.Game.Item, Model.Item>(ReferenceEqualityComparer.Instance);
                 foreach (Maple2.Model.Game.Item item in returned) {
                     Model.Item row = item;
                     row.Id = 0;
                     row.OwnerId = ownerId;
                     Context.Item.Add(row);
+                    rows[item] = row;
                 }
 
                 if (!Context.TrySaveChanges()) {
                     return false;
+                }
+                // Each maid is re-keyed to its item's new row (as MoveMaid does on a pickup), in the same transaction.
+                if (maidItems.Count > 0) {
+                    foreach ((Model.Maid maid, Maple2.Model.Game.Item item) in maidItems) {
+                        Model.Maid moved = (Maple2.Model.Game.Maid) maid!;
+                        moved.Id = rows[item].Id;
+                        Context.Maid.Remove(maid);
+                        Context.Maid.Add(moved);
+                    }
+                    if (!Context.TrySaveChanges()) {
+                        return false;
+                    }
                 }
                 return transaction == null || CommitPlotWrite(transaction, "expiry", id, ownerId, expiry);
             } catch (Exception ex) {
