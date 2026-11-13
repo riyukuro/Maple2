@@ -647,6 +647,9 @@ public class DungeonManager {
         // The order KMS2 sends a clear in: the room records, the reward notice, the result, and only then what the
         // result names (meso, exp with its prestige exp, items, a helper's items, then the weekly reward's meso, exp
         // and items). The client's reader (OnRewardPacket) only stores the result, so either order works; this one is KMS2's.
+        // One result's rewards: a room whose script ends it more than once (the Colosseum's loop) starts each
+        // result anew, so a later end with no count left shows no earlier lines and fires no reward condition.
+        UserRecord.ClearResult();
         List<Action> grants = [];
         CalculateRewards(clearTimestamp, withRookie, grants);
         if (UserRecord.IsDungeonSuccess) {
@@ -735,6 +738,7 @@ public class DungeonManager {
         // Tested on the record the player entered with, before this clear counts.
         bool helper = withRookie && DungeonRoomRules.CanClaimHelperReward(record, Metadata.HelperRequireClearCount);
         List<int> rewardIds = [];
+        List<int> roundRewardIds = [];
 
         if (Metadata.Reward.UnionRewardId > 0) {
             if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(Metadata.Reward.UnionRewardId, out DungeonRoomMetadata? unionMetadata)) {
@@ -760,10 +764,20 @@ public class DungeonManager {
             UpdateDungeonRecord(record, Metadata, clearTimeStamp);
 
         } else {
+            // The rounds the period counted before this clear (the Colosseum keeps its rounds as the reward count).
+            int roundsBefore = RewardCount(record, clearTimeStamp);
             if (DungeonRoomRules.HasCountLeft(record, Metadata.Reward.Count, Metadata.Reward.SubRewardCount, clearTimeStamp, ExtraRewardCount(Metadata.Id))) {
                 UpdateUnionRecord(record, Metadata, clearTimeStamp);
                 UpdateDungeonRecord(record, Metadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
+                // A room with rounds (dungeonrounddata.xml; in KR only the Colosseum 24096001) gives the reward row of
+                // every round the clear added to the period's count, at the room's level, as the room window
+                // previews them (uidungeonroomdialog.cpp:1015). The room has no exp, meso or box of its own, so
+                // these were its only rewards and none was given.
+                if (Metadata.GroupType == DungeonGroupType.colosseum
+                    && session.TableMetadata.DungeonRoundDataTable.Entries.TryGetValue(Metadata.RoundId, out DungeonRoundMetadata[]? rounds)) {
+                    roundRewardIds = DungeonRoomRules.RoundRewardIds(rounds, roundsBefore, UserRecord.Round);
+                }
             }
         }
 
@@ -840,6 +854,18 @@ public class DungeonManager {
             foreach (Item item in items) {
                 UserRecord.RewardItems.Add(item);
                 grants.Add(() => GiveItem(item));
+            }
+
+            // The round rewards go into the clear's own reward lines, after the room's (chosen here: KMS2 has no
+            // Colosseum clear on record).
+            foreach (int roundRewardId in roundRewardIds) {
+                (RewardRecord round, Action give) = session.PrepareRewardContent(roundRewardId, ExpMessageCode.dungeonRelative, Metadata.Level);
+                UserRecord.Rewards[DungeonRewardType.Exp] = (int) Math.Min(UserRecord.Rewards[DungeonRewardType.Exp] + round.Exp, int.MaxValue);
+                UserRecord.Rewards[DungeonRewardType.Meso] = (int) Math.Min(UserRecord.Rewards[DungeonRewardType.Meso] + round.Meso, int.MaxValue);
+                foreach (RewardItem item in round.Items) {
+                    UserRecord.RewardItems.Add(item);
+                }
+                grants.Add(give);
             }
         }
     }
@@ -1014,7 +1040,9 @@ public class DungeonManager {
         }
 
         if (metadata.GroupType == DungeonGroupType.colosseum) {
-            record.UnionClears = (byte) UserRecord.Round;
+            // The period's highest round: a shorter new game in the period does not lower it, or a later run would
+            // be paid the rounds between again.
+            record.UnionClears = (byte) Math.Max(record.UnionClears, UserRecord.Round);
         } else if (record.UnionClears >= metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, clearTimeStamp)
                    && ExtraReward(record.DungeonId) is { } extra
                    && DungeonRoomRules.UseExtraCount(record, extra.Entry, clearTime, extra.End)) {

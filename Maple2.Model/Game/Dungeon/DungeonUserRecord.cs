@@ -40,6 +40,19 @@ public class DungeonUserRecord : IUserContentRecord {
         }
     }
 
+    // A new result's flags and reward lines: each reward type at 0, no items.
+    public void ClearResult() {
+        Flag = DungeonBonusFlag.None;
+        foreach (DungeonRewardType type in Rewards.Keys.ToList()) {
+            Rewards[type] = 0;
+        }
+        foreach (DungeonRewardType type in BonusRewards.Keys.ToList()) {
+            BonusRewards[type] = 0;
+        }
+        RewardItems.Clear();
+        BonusRewardItems.Clear();
+    }
+
     public void Add(RewardRecord record) {
         BonusRewards[DungeonRewardType.Exp] += (int) record.Exp;
         BonusRewards[DungeonRewardType.Meso] += (int) record.Meso;

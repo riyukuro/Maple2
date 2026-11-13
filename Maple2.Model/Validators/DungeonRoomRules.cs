@@ -258,6 +258,20 @@ public static class DungeonRoomRules {
     // run has already cleared there is kept.
     public static int ContinuedRound(int round, int cleared) => Math.Max(round, cleared);
 
+    // The Colosseum's round rewards: the reward ids of round entries from to to - 1, as DungeonRoom::GetRoundRewardIds
+    // (commonfiles/dungeonroom.cpp:711) gives them through DungeonRoundGroup::GetRewardIds (:1013); round N is entry
+    // N-1. A clear gives the rounds it adds to the period's count (from the rounds counted before it to the run's
+    // round), so each round's reward is given once a period, as the room's reward count (one per round) allows.
+    public static List<int> RoundRewardIds(IReadOnlyList<DungeonRoundMetadata> rounds, int from, int to) {
+        List<int> ids = [];
+        for (int i = Math.Max(from, 0); i < to && i < rounds.Count; i++) {
+            if (rounds[i].RewardId > 0) {
+                ids.Add(rounds[i].RewardId);
+            }
+        }
+        return ids;
+    }
+
     public static DungeonCooldownType CooldownType(int cooldownValue) =>
         cooldownValue == 0 ? DungeonCooldownType.nextDay : DungeonCooldownType.dayOfWeeks;
 

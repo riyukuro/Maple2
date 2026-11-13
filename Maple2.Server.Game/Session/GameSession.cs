@@ -1074,17 +1074,20 @@ public sealed partial class GameSession : Core.Network.Session {
     /// KMS2 sends a dungeon's weekly reward in), for a caller that reports the reward before it is given.
     /// </summary>
     /// <param name="message">The message code of the exp and the meso.</param>
-    public (RewardRecord Record, Action Give) PrepareRewardContent(int id, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) {
+    /// <param name="level">The level the row's tables are read at (RewardContentsTable::GetReward takes it,
+    /// rewardcontentstable.cpp:213); 0 for the character's level.</param>
+    public (RewardRecord Record, Action Give) PrepareRewardContent(int id, ExpMessageCode message = ExpMessageCode.s_msg_take_exp, int level = 0) {
         if (!TableMetadata.RewardContentTable.BaseEntries.TryGetValue(id, out RewardContentTable.Base? baseMetadata)) {
             return (new RewardRecord(), () => { });
         }
+        int tableLevel = level > 0 ? level : Player.Value.Character.Level;
 
         long exp = 0;
         if (baseMetadata.ExpTableId > 0) {
             if (baseMetadata.ExpTableId > 100000 && TableMetadata.RewardContentTable.ExpStaticEntries.TryGetValue(baseMetadata.ExpTableId, out exp)) {
                 // Static exp entry found
             } else if (TableMetadata.ExpTable.ExpBase.TryGetValue(baseMetadata.ExpTableId, out IReadOnlyDictionary<int, long>? expTable)) {
-                exp = expTable[Player.Value.Character.Level];
+                exp = expTable[tableLevel];
             }
             if (baseMetadata.ExpFactor > 0f) {
                 exp = (long) (exp * baseMetadata.ExpFactor);
@@ -1096,8 +1099,8 @@ public sealed partial class GameSession : Core.Network.Session {
             if (baseMetadata.MesoTableId > 100000 && TableMetadata.RewardContentTable.MesoStaticEntries.TryGetValue(baseMetadata.MesoTableId, out meso)) {
                 // Static meso entry found
             } else if (TableMetadata.RewardContentTable.MesoEntries.TryGetValue(baseMetadata.MesoTableId, out Dictionary<int, long>? mesoTable)) {
-                if (!mesoTable.TryGetValue(Player.Value.Character.Level, out meso)) {
-                    Logger.Error("Failed to find meso for level {Level} in table {TableId}", Player.Value.Character.Level, baseMetadata.MesoTableId);
+                if (!mesoTable.TryGetValue(tableLevel, out meso)) {
+                    Logger.Error("Failed to find meso for level {Level} in table {TableId}", tableLevel, baseMetadata.MesoTableId);
                 }
             }
             if (baseMetadata.MesoFactor > 0f) {
@@ -1113,8 +1116,8 @@ public sealed partial class GameSession : Core.Network.Session {
         List<Item> items = [];
         if (baseMetadata.ItemTableId > 0 && TableMetadata.RewardContentTable.ItemEntries.TryGetValue(baseMetadata.ItemTableId, out RewardContentTable.Item? itemMetadata)) {
             foreach (RewardContentTable.Item.Data data in itemMetadata.ItemData) {
-                if ((data.MinLevel > 0 && Player.Value.Character.Level < data.MinLevel) ||
-                    (data.MaxLevel > 0 && Player.Value.Character.Level > data.MaxLevel)) {
+                if ((data.MinLevel > 0 && tableLevel < data.MinLevel) ||
+                    (data.MaxLevel > 0 && tableLevel > data.MaxLevel)) {
                     continue;
                 }
                 foreach (RewardItem rewardItem in data.RewardItems) {
