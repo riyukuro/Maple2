@@ -104,4 +104,16 @@ public class DismantleRulesTests {
         Assert.That(DismantleRules.Roll(0, 0, random), Is.EqualTo(0));
         Assert.That(DismantleRules.Roll(5, 5, random), Is.EqualTo(5));
     }
+
+    // The donation box (CItemBreakManager::TryAddItem, dialog type 2): breakable, and of type 1 or with a skin type.
+    [TestCase(true, 1, 0, true)]
+    [TestCase(true, 1, 3, true)]
+    [TestCase(true, 2, 1, true)] // a skin type passes another type
+    [TestCase(true, 2, 0, false)]
+    [TestCase(true, 4, 0, false)]
+    [TestCase(false, 1, 0, false)] // CanBreakItem first
+    [TestCase(false, 1, 3, false)]
+    public void CanDonate(bool breakable, int itemType, int skinType, bool expected) {
+        Assert.That(DismantleRules.CanDonate(breakable, itemType, skinType), Is.EqualTo(expected));
+    }
 }

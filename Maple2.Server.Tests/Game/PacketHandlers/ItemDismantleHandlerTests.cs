@@ -21,20 +21,21 @@ public class ItemDismantleHandlerTests {
     private ItemDismantleHandler handler = null!;
     private Item gear = null!;
 
-    private GameSession Login(int rarity, EquipSlot slot = EquipSlot.CL) {
+    private GameSession Login(int rarity, EquipSlot slot = EquipSlot.CL, byte dialog = 1, int itemType = 1, params AchievementMetadata[] trophies) {
         test = new TestGameSession();
-        ItemMetadata metadata = TestGameSession.Metadata(11400001, slot, type: 1);
+        ItemMetadata metadata = TestGameSession.Metadata(11400001, slot, type: itemType);
         metadata = metadata with { Property = metadata.Property with { SellPrices = [100, 200, 7139, 9000, 0, 0] } };
         gear = test.Store(metadata);
         test.Register(TestGameSession.Metadata(Onyx, type: 4, slotMax: 9999), TestGameSession.Metadata(ChaosOnyx, type: 4, slotMax: 9999));
         test.SetTable(new ItemBreakTable(new Dictionary<int, IReadOnlyList<ItemBreakTable.Ingredient>>()));
         test.SetTable(new GachaInfoTable(new Dictionary<int, GachaInfoTable.Entry>()));
+        test.AddAchievement(trophies);
         GameSession session = test.Start();
         handler = new ItemDismantleHandler { ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata };
         session.Item.Inventory.Get(gear.Uid)!.Rarity = rarity;
         handler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(0);
-            writer.WriteByte(1);
+            writer.WriteByte(dialog);
         }));
         test.TakeSent();
         return session;
@@ -137,5 +138,98 @@ public class ItemDismantleHandlerTests {
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
         Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
         Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+    }
+
+    // The Green Hoods donation box (dialog type 2, map 02000422 interact 10001313).
+    private const int Philanthropist = 22500042; // donation_item
+    private const int ArmingTheTroops = 93000071; // donation_type, code "1,0,0"
+    private const int Dismantler = 74000011; // item_break
+
+    private GameSession Donation(int itemType = 1) {
+        return Login(rarity: 4, dialog: 2, itemType: itemType, trophies: [
+            TestGameSession.Trophy(Philanthropist, ConditionType.donation_item, [100]),
+            TestGameSession.Trophy(ArmingTheTroops, ConditionType.donation_type, [100], codes: [1, 0, 0]),
+            TestGameSession.Trophy(Dismantler, ConditionType.item_break, [100]),
+        ]);
+    }
+
+    // Staged in the donation box: the stage answer only, no reward preview (mode 5 goes to the break dialog only).
+    [Test]
+    public void Donation_StageSendsNoPreview() {
+        GameSession session = Donation();
+
+        Stage(session);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Stage(gear.Uid, 0, 1)) }));
+    }
+
+    // The confirm takes the item and gives nothing: no onyx, an empty type-2 result, the donation conditions
+    // counted and item_break not.
+    [Test]
+    public void Donation_ConfirmGivesNoRewardsAndCountsNoItemBreak() {
+        GameSession session = Donation();
+        Stage(session);
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(Convert.ToHexString(sent[0]), Is.EqualTo(Hex(ItemInventoryPacket.Remove(gear.Uid))));
+        Assert.That(sent.Select(Convert.ToHexString), Does.Contain(Hex(ItemDismantlePacket.Result(2, new Dictionary<int, int>()))));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Null);
+        Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+        Assert.That(session.Item.Inventory.Find(ChaosOnyx), Is.Empty);
+        Assert.That(test.TrophyCounter(Philanthropist), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(ArmingTheTroops), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(Dismantler), Is.Null);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // An item of another type without a skin type (TryAddItem's 0x8f7, s_itembreak_invalid_donation_item):
+    // not staged, and the confirm finds nothing, so nothing is taken or counted.
+    [Test]
+    public void Donation_RefusesANonDonationItem() {
+        GameSession session = Donation(itemType: 2);
+
+        Stage(session);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.DismantleStaging, Is.All.EqualTo(default((long, int))));
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(test.TrophyCounter(Philanthropist), Is.Null);
+        Assert.That(test.TrophyCounter(ArmingTheTroops), Is.Null);
+        Assert.That(test.TrophyCounter(Dismantler), Is.Null);
+    }
+
+    // A staged slot the client never sent (or one staged before the dialog type changed) is checked again at
+    // the confirm: a non-donation item is dropped there and kept.
+    [Test]
+    public void Donation_ConfirmDropsANonDonationSlot() {
+        GameSession session = Donation(itemType: 2);
+        session.DismantleStaging[0] = (gear.Uid, 1);
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(test.TrophyCounter(Philanthropist), Is.Null);
+    }
+
+    // Auto-add in the donation box skips the non-donation item.
+    [Test]
+    public void Donation_AutoAddSkipsANonDonationItem() {
+        GameSession session = Donation(itemType: 2);
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(6);
+            writer.WriteByte(InventoryType.Gear.ToClient());
+            writer.WriteByte(6);
+        }));
+
+        Assert.That(session.DismantleStaging, Is.All.EqualTo(default((long, int))));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.StageList([])) }));
     }
 }

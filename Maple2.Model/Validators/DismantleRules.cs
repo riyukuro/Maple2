@@ -21,6 +21,14 @@ public static class DismantleRules {
         return gachaDismantleId != 0 || enableBreak && !disableBreak;
     }
 
+    // The donation box (dialog type 2, UIItemBreakDonationDialog): CItemBreakManager::TryAddItem refuses with
+    // s_itembreak_invalid_donation_item (0x8f7) an item CanBreakItem refuses, and one whose data is not of type 1
+    // (CItemData::FUN_14053cbc0, property type == 1) unless it has a skin type (CItem::HasSkin ->
+    // CItemData::HasSkinType, skinType != 0).
+    public static bool CanDonate(bool breakable, int itemType, int skinType) {
+        return breakable && (itemType == 1 || skinType != 0);
+    }
+
     // The socket part of an outfit's dismantle reward (ItemBreakCommon 0x140530c90): each opened socket returns
     // percent of the unlock ingredient's count, at least 1, and nothing at 0 percent.
     public static int SkinSocketRefund(int unlockCount, int percent, int openSockets) {

@@ -24,6 +24,10 @@ public class ItemDismantleHandler : FieldPacketHandler {
         AutoAdd = 6,
     }
 
+    // The dialog type the client's UIItemBreakDonationDialog opens with (its ctor sets m_1c0 = 2): the Green Hoods
+    // donation box (interact 10001313).
+    private const byte DONATION_TYPE = 2;
+
     private const int ONYX_ID = 40100023;
     private const int CHAOS_ONYX_ID = 40100024;
 
@@ -82,6 +86,9 @@ public class ItemDismantleHandler : FieldPacketHandler {
         if (!DismantleRules.CanStage(amount, item.Amount, item.IsLocked, itemUid, session.Pet?.Pet.Uid ?? 0)) {
             return;
         }
+        if (session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
+            return;
+        }
 
         for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
             if (session.DismantleStaging[slot] != default) {
@@ -96,7 +103,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
             break;
         }
 
-        session.Send(ItemDismantlePacket.Preview(GetRewards(session)));
+        SendPreview(session);
     }
 
     private void HandleRemove(GameSession session, IByteReader packet) {
@@ -115,7 +122,22 @@ public class ItemDismantleHandler : FieldPacketHandler {
             break;
         }
 
+        SendPreview(session);
+    }
+
+    // The preview (client mode 5) goes only to UIItemBreakDialog (CItemBreakManager::OnItemDismantlePacket), and
+    // a donation gives nothing back, so the donation box gets none.
+    private void SendPreview(GameSession session) {
+        if (session.DismantleType == DONATION_TYPE) {
+            return;
+        }
         session.Send(ItemDismantlePacket.Preview(GetRewards(session)));
+    }
+
+    private static bool CanDonate(Item item) {
+        return DismantleRules.CanDonate(
+            DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId),
+            item.Metadata.Property.Type, item.Metadata.Property.SkinType);
     }
 
     private void HandleConfirm(GameSession session) {
@@ -131,7 +153,8 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     continue;
                 }
                 Item? item = session.Item.Inventory.Get(uid);
-                if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLocked, uid, session.Pet?.Pet.Uid ?? 0)) {
+                if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLocked, uid, session.Pet?.Pet.Uid ?? 0)
+                        || session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
                     session.DismantleStaging[slot] = default;
                 }
             }
@@ -140,6 +163,11 @@ public class ItemDismantleHandler : FieldPacketHandler {
             // pending break.
             if (Array.TrueForAll(session.DismantleStaging, staged => staged == default)) {
                 session.Send(ItemDismantlePacket.Error(5));
+                return;
+            }
+
+            if (session.DismantleType == DONATION_TYPE) {
+                Donate(session);
                 return;
             }
 
@@ -237,6 +265,9 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 if (item.IsLocked || !DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId)) {
                     continue;
                 }
+                if (session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
+                    continue;
+                }
 
                 switch (type) {
                     case InventoryType.Gear or InventoryType.Gemstone:
@@ -259,7 +290,34 @@ public class ItemDismantleHandler : FieldPacketHandler {
 
         // One list packet (client mode 6) for the whole auto-add, as the client's reader for this request expects.
         session.Send(ItemDismantlePacket.StageList(added));
-        session.Send(ItemDismantlePacket.Preview(GetRewards(session)));
+        SendPreview(session);
+    }
+
+    // The donation box's confirm: the staged items are taken and nothing is given. UIItemBreakDonationDialog's
+    // result handler (vfunc_84) reads no reward list, it only releases its bindings and ends the break, so the
+    // result carries none. The donation counts for donation_item (trophy 22500042) and donation_type with the
+    // item's type as code (the Green Hoods missions 93000071, 93000072 and 93000149, code "1,0,0"), not for
+    // item_break. Called under the item lock with every staged slot checked.
+    private static void Donate(GameSession session) {
+        var donated = new List<(int Type, int Amount)>();
+        for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
+            (long uid, int amount) = session.DismantleStaging[slot];
+            Item? item = session.Item.Inventory.Get(uid);
+            if (item == null) {
+                continue;
+            }
+            int type = item.Metadata.Property.Type;
+            if (session.Item.Inventory.Consume(uid, amount)) {
+                donated.Add((type, amount));
+            }
+        }
+
+        Array.Clear(session.DismantleStaging);
+        session.Send(ItemDismantlePacket.Result(DONATION_TYPE, new Dictionary<int, int>()));
+        foreach ((int type, int amount) in donated) {
+            session.ConditionUpdate(ConditionType.donation_item, counter: amount);
+            session.ConditionUpdate(ConditionType.donation_type, counter: amount, codeLong: type);
+        }
     }
 
     private bool CanHoldRewards(GameSession session, IDictionary<int, (int Min, int Max)> rewards) {

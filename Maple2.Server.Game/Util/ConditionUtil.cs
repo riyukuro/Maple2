@@ -40,6 +40,7 @@ public static class ConditionUtil {
                 break;
             case ConditionType.interact_object:
             case ConditionType.interact_object_rep:
+            case ConditionType.donation_type: // code: the donated item's property type
                 if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
                     return true;
