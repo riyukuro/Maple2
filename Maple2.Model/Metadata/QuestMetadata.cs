@@ -111,7 +111,10 @@ public record QuestMetadataReward(
     int UseMainFamePoint = 0,
     // relativeMeso: the reward contents row (rewardcontent.xml rewardID) whose meso the reward gives instead of the
     // fixed money; 0 for none. The guild quests' GuildQuest (1003) and GuildWeeklyQuest (1004).
-    int RelativeMeso = 0) {
+    int RelativeMeso = 0,
+    // weddingExp: the intimacy the wedding missions add to the player's marriage (questdata.cpp:1422; the mission
+    // page shows it, uiweddingpage.cpp:414); 0 for none.
+    long WeddingExp = 0) {
 
     public record Item(int Id, int Rarity, int Amount);
 }

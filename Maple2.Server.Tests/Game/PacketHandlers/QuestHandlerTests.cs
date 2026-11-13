@@ -332,6 +332,27 @@ public class QuestHandlerTests {
         });
     }
 
+    // completeReward menteeCoin pays the mentee token, capped by its max; weddingExp gives a single player nothing
+    // and no error.
+    [TestCase(0L, 100L)]
+    [TestCase(34950L, 35000L)]
+    public void Complete_PaysTheMenteeCoin(long held, long expected) {
+        GameSession session = Login();
+        session.Currency[CurrencyType.MenteeToken] = held;
+        QuestMetadata data = Data();
+        Quest quest = test.StartQuest(data with { CompleteReward = data.CompleteReward with { MenteeCoin = 100, WeddingExp = 5 } });
+        quest.Conditions[0].Counter = 1;
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(expected));
+            Assert.That(session.Marriage.Marriage.ExpHistory, Is.Empty);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // The quest that ends a job change row (the awakening): the job, the skill tree to the field (Job 2) after the
     // quest's packet, the job trophies' count and the flag that updates the other players' copy.
     [Test]
@@ -569,7 +590,8 @@ public class QuestHandlerTests {
     public void Talk_CountsTheTalkBeforeThePick() {
         GameSession session = Login();
         test.Register(new ScriptMetadata(QuestId, ScriptType.Quest, new Dictionary<int, ScriptState> {
-            [200] = State(200), [300] = State(300),
+            [200] = State(200),
+            [300] = State(300),
         }));
         QuestMetadata data = Data() with {
             Conditions = [new ConditionMetadata(ConditionType.talk_in, 1, new ConditionMetadata.Parameters(Integers: [Npc]), null)],
@@ -602,7 +624,10 @@ public class QuestHandlerTests {
     public void Talk_OpensWithTheStateOfTheQuest() {
         GameSession session = Login();
         var script = new ScriptMetadata(QuestId, ScriptType.Quest, new Dictionary<int, ScriptState> {
-            [100] = State(100), [200] = State(200), [201] = State(201), [300] = State(300),
+            [100] = State(100),
+            [200] = State(200),
+            [201] = State(201),
+            [300] = State(300),
         });
 
         Assert.That(NpcTalkUtil.GetQuestScriptState(session, script, Npc)?.Id, Is.EqualTo(100));

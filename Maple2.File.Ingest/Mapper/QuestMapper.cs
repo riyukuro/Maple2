@@ -169,7 +169,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
             EssentialJobItem: essentialJobItem.Select(item =>
                 new QuestMetadataReward.Item(item.code, item.rank, item.count)).ToList(),
             UseMainFamePoint: reward.useMainFamePoint,
-            RelativeMeso: (int) reward.relativeMeso
+            RelativeMeso: (int) reward.relativeMeso,
+            WeddingExp: reward.weddingExp
         );
     }
 

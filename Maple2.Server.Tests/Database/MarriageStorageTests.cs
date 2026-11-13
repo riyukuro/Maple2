@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -106,5 +107,52 @@ public class MarriageStorageTests {
         using GameStorage.Request db = storage.Context();
         Assert.That(db.SaveCoupleMessage(marriageId, second + 100, "x"), Is.False);
         Assert.That(db.SaveCoupleMessage(marriageId + 1, first, "x"), Is.False);
+    }
+
+    private void Marry() {
+        using GameStorage.Request db = storage.Context();
+        Assert.That(db.SetMarried(marriageId, DateTime.Now), Is.True);
+    }
+
+    private bool AddMission(long characterId, long amount = 5) {
+        using GameStorage.Request db = storage.Context();
+        return db.AddWeddingMissionExp(marriageId, characterId, amount, DateTime.Now);
+    }
+
+    // Both partners complete the same mission: two entries, one per partner. The second stored partner is sent the
+    // first one first, so it sees the first's entry as the groom's (11) and its own as the bride's (12); the first
+    // stored partner sees the two the other way round.
+    [Test]
+    public void WeddingMission_BothPartnersAddAnEntryEach() {
+        Marry();
+        Assert.That(AddMission(first), Is.True);
+        Assert.That(AddMission(second), Is.True);
+
+        Marriage ofSecond = Load(second);
+        Marriage ofFirst = Load(first);
+        Assert.Multiple(() => {
+            Assert.That(ofSecond.ExpHistory.Select(exp => (exp.Type, exp.Amount)), Is.EqualTo(new[] {
+                (MarriageExpType.WeddingMissionGroom, 5L), (MarriageExpType.WeddingMissionBride, 5L),
+            }));
+            Assert.That(ofFirst.ExpHistory.Select(exp => (exp.Type, exp.Amount)), Is.EqualTo(new[] {
+                (MarriageExpType.WeddingMissionBride, 5L), (MarriageExpType.WeddingMissionGroom, 5L),
+            }));
+            Assert.That(ofFirst.ExpHistory.All(exp => exp.Time > 0), Is.True);
+        });
+    }
+
+    // An engagement, a stranger, a missing row or no amount add nothing (the filed states: MarriageExpRulesTests).
+    [Test]
+    public void WeddingMission_OnlyAMarriageCountsIt() {
+        Assert.That(AddMission(first), Is.False); // engaged
+        Marry();
+        Assert.Multiple(() => {
+            Assert.That(AddMission(second + 100), Is.False);
+            Assert.That(AddMission(first, 0), Is.False);
+            using (GameStorage.Request db = storage.Context()) {
+                Assert.That(db.AddWeddingMissionExp(marriageId + 1, first, 5, DateTime.Now), Is.False);
+            }
+            Assert.That(Load(first).ExpHistory, Is.Empty);
+        });
     }
 }

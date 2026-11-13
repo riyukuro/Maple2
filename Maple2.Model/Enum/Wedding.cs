@@ -22,6 +22,12 @@ public enum MarriageExpType : short {
     // TODO: figure out the values for these
     marriedLife,
     weddingExpItem,
+
+    // The types of the marriage's exp log the client reads (WeddingProxy::Read, weddingproxy.cpp:227) and shows as
+    // s_wedding_dialog_exp_<type> (UIWeddingAffinityDialog::OnLoadComplete, uiweddingaffinitydialog.cpp:87): 11 the
+    // groom's, 12 the bride's wedding mission completed.
+    WeddingMissionGroom = 11,
+    WeddingMissionBride = 12,
 }
 
 public enum MarriageExpLimit {

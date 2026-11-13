@@ -52,6 +52,26 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // A wedding mission's intimacy (quest weddingExp) added to the marriage's exp log by one partner, under the
+        // type of that partner by the stored order. Refused unless the marriage counts it and the character is in it.
+        public bool AddWeddingMissionExp(long marriageId, long characterId, long amount, DateTime time) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || amount <= 0 || !MarriageExpRules.CountsWeddingExp(model.Status)
+                || (model.Partner1Id != characterId && model.Partner2Id != characterId)) {
+                return false;
+            }
+
+            model.ExpHistory = new List<Model.MarriageExp>(model.ExpHistory) {
+                new() {
+                    Type = MarriageExpRules.WeddingMission(characterId, model.Partner1Id),
+                    Amount = amount,
+                    Time = time,
+                },
+            };
+            Context.Marriage.Update(model);
+            return Context.TrySaveChanges();
+        }
+
         // The vow was completed: an engaged couple becomes married at the given time. Refused for any other
         // state, so a ceremony cannot marry a couple twice or bring back a marriage that is being ended.
         public bool SetMarried(long marriageId, DateTime time) {
@@ -179,7 +199,14 @@ public partial class GameStorage {
                 CreationTime = marriage.CreationTime.ToEpochSeconds(),
                 MarriageTime = marriage.MarriageTime?.ToEpochSeconds() ?? 0,
                 DivorceTime = marriage.DivorceTime?.ToEpochSeconds() ?? 0,
-                ExpHistory = marriage.ExpHistory.Select<Model.MarriageExp, MarriageExp>(exp => exp).ToList(),
+                // The log's groom and bride lines follow the order the partners are sent in, as the filed states do.
+                ExpHistory = marriage.ExpHistory.Select<Model.MarriageExp, MarriageExp>(exp => exp)
+                    .Select(exp => {
+                        if (partner1.CharacterId == characterId) {
+                            exp.Type = MarriageExpRules.Swapped(exp.Type);
+                        }
+                        return exp;
+                    }).ToList(),
                 Partner1 = new MarriagePartner {
                     Info = partner1.CharacterId == characterId ? partner2 : partner1,
                     Message = partner1.CharacterId == characterId ? marriage.Partner2Message : marriage.Partner1Message,

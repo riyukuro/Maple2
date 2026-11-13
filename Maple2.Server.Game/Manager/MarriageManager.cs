@@ -111,6 +111,22 @@ public sealed class MarriageManager {
         }
     }
 
+    // A completed wedding mission (quest weddingExp): this player's entry in the marriage's exp log, shown to both
+    // partners. Nothing for a player whose marriage does not count it (MarriageExpRules.CountsWeddingExp).
+    public void AddWeddingMissionExp(long amount) {
+        if (amount <= 0 || Marriage.Id == 0 || !MarriageExpRules.CountsWeddingExp(Marriage.Status)) {
+            return;
+        }
+
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            if (!db.AddWeddingMissionExp(Marriage.Id, session.CharacterId, amount, DateTime.Now)) {
+                return;
+            }
+        }
+        Reload();
+        ReloadPartner(Partner.CharacterId);
+    }
+
     public void ClearProposal() {
         lock (ProposalLock) {
             long partnerId = proposalTo != 0 ? proposalTo : proposalFrom;
