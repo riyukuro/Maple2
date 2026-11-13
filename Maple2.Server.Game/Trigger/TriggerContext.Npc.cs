@@ -21,7 +21,7 @@ public partial class TriggerContext {
     }
 
     public void SpawnMonster(int[] spawnIds, bool autoTarget, int delay) {
-        WarnLog("[CreateMonster] spawnIds:{SpawnIds}, autoTarget:{AutoTarget}, delay:{Delay}", string.Join(", ", spawnIds), autoTarget, delay);
+        DebugLog("[CreateMonster] spawnIds:{SpawnIds}, autoTarget:{AutoTarget}, delay:{Delay}", string.Join(", ", spawnIds), autoTarget, delay);
         foreach (int spawnId in spawnIds) {
             if (delay > 0) {
                 Events.Schedule(() => SpawnNpc(spawnId, autoTarget), TimeSpan.FromMilliseconds(delay));
@@ -32,7 +32,7 @@ public partial class TriggerContext {
     }
 
     public void DestroyMonster(int[] spawnIds, bool arg2) {
-        WarnLog("[DestroyMonster] spawnIds:{SpawnIds}, Arg2:{Arg2}", string.Join(", ", spawnIds), arg2);
+        DebugLog("[DestroyMonster] spawnIds:{SpawnIds}, Arg2:{Arg2}", string.Join(", ", spawnIds), arg2);
         if (spawnIds.Contains(-1)) {
             foreach (FieldNpc fieldNpc in Field.EnumerateNpcs()) {
                 Field.RemoveNpc(fieldNpc.ObjectId);
@@ -103,7 +103,7 @@ public partial class TriggerContext {
     }
 
     public void MoveNpcToPos(int spawnId, Vector3 position, Vector3 rotation) {
-        WarnLog("[MoveNpcToPos] spawnId:{SpawnId}", spawnId);
+        DebugLog("[MoveNpcToPos] spawnId:{SpawnId}", spawnId);
         foreach (FieldNpc npc in Field.EnumerateNpcs()) {
             if (npc.SpawnPointId == spawnId) {
                 npc.Position = position;
@@ -113,7 +113,7 @@ public partial class TriggerContext {
     }
 
     public void NpcRemoveAdditionalEffect(int spawnId, int additionalEffectId) {
-        WarnLog("[NpcRemoveAdditionalEffect] spawnId:{SpawnId}", spawnId);
+        DebugLog("[NpcRemoveAdditionalEffect] spawnId:{SpawnId}", spawnId);
         foreach (FieldNpc npc in Field.EnumerateNpcs()) {
             if (npc.SpawnPointId == spawnId) {
                 npc.Buffs.Remove(additionalEffectId, npc.ObjectId);
@@ -146,7 +146,7 @@ public partial class TriggerContext {
     }
 
     public void SetAiExtraData(string key, int value, bool isModify, int boxId) {
-        WarnLog("[SetAiExtraData] key:{Key}, value:{Value}, isModify:{IsModify}, boxId:{BoxId}", key, value, isModify, boxId);
+        DebugLog("[SetAiExtraData] key:{Key}, value:{Value}, isModify:{IsModify}, boxId:{BoxId}", key, value, isModify, boxId);
         var npcs = boxId != 0 ? NpcsInBox(boxId) : Field.EnumerateNpcs();
         foreach (FieldNpc npc in npcs) {
             // Assumed that we increment the current by the value if isModify is true
@@ -201,21 +201,21 @@ public partial class TriggerContext {
     }
 
     public void SetNpcEmotionLoop(int spawnId, string sequenceName, float duration) {
-        WarnLog("[SetNpcEmotionLoop] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, duration);
+        DebugLog("[SetNpcEmotionLoop] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, duration);
 
         FieldNpc? fieldNpc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         fieldNpc?.Animate(sequenceName, duration);
     }
 
     public void SetNpcEmotionSequence(int spawnId, string sequenceName, int durationTick) {
-        WarnLog("[SetNpcEmotionSequence] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, durationTick);
+        DebugLog("[SetNpcEmotionSequence] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, durationTick);
 
         FieldNpc? fieldNpc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         fieldNpc?.AnimateSequence(sequenceName);
     }
 
     public void SetNpcRotation(int spawnId, float rotation) {
-        WarnLog("[SetNpcRotation] spawnId:{SpawnId}, rotation:{Rotation}", spawnId, rotation);
+        DebugLog("[SetNpcRotation] spawnId:{SpawnId}, rotation:{Rotation}", spawnId, rotation);
         foreach (FieldNpc npc in Field.EnumerateNpcs()) {
             if (npc.SpawnPointId == spawnId) {
                 npc.Rotation = npc.Rotation with {

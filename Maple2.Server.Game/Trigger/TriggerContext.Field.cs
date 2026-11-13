@@ -153,7 +153,7 @@ public partial class TriggerContext {
     }
 
     public void SetAgent(int[] triggerIds, bool visible) {
-        WarnLog("[SetAgent] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
+        DebugLog("[SetAgent] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
         foreach (int triggerId in triggerIds) {
             if (!Objects.Agents.TryGetValue(triggerId, out TriggerObjectAgent? agent)) {
                 continue;

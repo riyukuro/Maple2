@@ -219,14 +219,14 @@ public partial class TriggerContext {
     }
 
     public void AddUserValue(string key, int value) {
-        WarnLog("[AddUserValue] key:{Key}, value:{Value}", key, value);
+        DebugLog("[AddUserValue] key:{Key}, value:{Value}", key, value);
         if (Field.UserValues.Contains(TriggerId, key)) {
             Field.UserValues.Add(TriggerId, key, value);
         }
     }
 
     public void SetUserValue(int triggerId, string key, int value) {
-        WarnLog("[SetUserValue] key:{Key}, value:{Value}, triggerId:{TriggerId}", key, value, triggerId);
+        DebugLog("[SetUserValue] key:{Key}, value:{Value}, triggerId:{TriggerId}", key, value, triggerId);
         Field.UserValues.Set(TriggerUserValues.Target(TriggerId, triggerId), key, value);
     }
 

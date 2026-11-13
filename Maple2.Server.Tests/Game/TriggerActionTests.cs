@@ -736,6 +736,20 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
     }
 
+    // remove_buff names the field as caster, which matters only for a casterIndividualEffect buff; none of the 44
+    // buffs KR removes sets it (deathflower 62100021-62100023 come from an npc's random_additional_effect, mount
+    // 73000004 from the player's own interact), so a buff another actor cast comes off too.
+    [Test]
+    public void RemoveBuff_CastByAnotherActor() {
+        StartWithBoxes();
+        WithEffect(62100021);
+        test.Session.Player.Buffs.AddBuff(test.Session.Player, test.Session.Player, 62100021, 1, Field.FieldTick);
+        Assert.That(test.Session.Player.Buffs.HasBuff(62100021), Is.True);
+
+        Action("""<action name="remove_buff" box_id="1" skill_id="62100021" is_player="1" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(62100021), Is.False);
+    }
+
     // add_buff: ignore_player gives the effect to the monsters in the boxes, not the players; the skill-set flag
     // gives nothing.
     [Test]
