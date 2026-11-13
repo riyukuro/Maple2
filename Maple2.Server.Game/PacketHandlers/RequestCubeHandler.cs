@@ -840,15 +840,23 @@ public class RequestCubeHandler : FieldPacketHandler {
         }
     }
 
+    // Every refusal is answered with 0x3f result 0 as well (CreateBlueprintFailed): the client closes its upload dialog
+    // and shows its own notice only on that answer (ugcmanager_4.cpp:3934-3964); before, a refusal left it open.
     private void HandleCreateBlueprint(GameSession session) {
+        if (!CreateBlueprint(session)) {
+            session.Send(CubePacket.CreateBlueprintFailed());
+        }
+    }
+
+    private bool CreateBlueprint(GameSession session) {
         Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot is null) {
-            return;
+            return false;
         }
 
         if (!TableMetadata.UgcDesignTable.Entries.TryGetValue(Constant.BlueprintId, out UgcDesignTable.Entry? design)) {
             Logger.Error("Failed to find design {BlueprintId}", Constant.BlueprintId);
-            return;
+            return false;
         }
 
         long blueprintCost = design.CreatePrice;
@@ -858,18 +866,18 @@ public class RequestCubeHandler : FieldPacketHandler {
         lock (session.Item) {
             Item? item = session.Field?.ItemDrop.CreateItem(Constant.BlueprintId);
             if (item is null) {
-                return;
+                return false;
             }
             if (!session.Item.Inventory.CanAdd(item)) {
                 session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
-                return;
+                return false;
             }
 
             // Taken here without a packet (another thread can take merets too: a wedding hall paid by the partner),
             // given back when a row cannot be made, and shown where the take was before.
             if (!session.Currency.TryTakeMeret(blueprintCost, notify: false)) {
                 session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
-                return;
+                return false;
             }
 
             Home home = session.Player.Value.Home;
@@ -887,7 +895,7 @@ public class RequestCubeHandler : FieldPacketHandler {
                 session.Currency.ReturnMeret(blueprintCost);
                 Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
                 session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
-                return;
+                return false;
             }
 
             item.Blueprint = new ItemBlueprint {
@@ -910,7 +918,7 @@ public class RequestCubeHandler : FieldPacketHandler {
                 session.Currency.ReturnMeret(blueprintCost);
                 Logger.Error("Failed to create blueprint item for {CharacterId}", session.CharacterId);
                 session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
-                return;
+                return false;
             }
 
             session.Currency.NotifyMeretTaken(blueprintCost);
@@ -921,14 +929,14 @@ public class RequestCubeHandler : FieldPacketHandler {
                 if (!session.Item.MailHeldItem(created)) {
                     Logger.Error("Blueprint {Uid} of {CharacterId} was neither added nor mailed", created.Uid, session.CharacterId);
                 }
-                session.Send(CubePacket.CreateBlueprintFailed());
-                return;
+                return false;
             }
             // create_blueprint (23500025 "Create a blueprint once").
             session.ConditionUpdate(ConditionType.create_blueprint);
 
             session.StagedUgcItem = created;
             session.Send(CubePacket.CreateBlueprint(created.Uid, created.Blueprint!));
+            return true;
         }
     }
 

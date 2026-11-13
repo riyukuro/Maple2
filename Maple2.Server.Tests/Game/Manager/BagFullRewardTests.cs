@@ -205,8 +205,9 @@ public class BagFullRewardTests {
         return context.HomeLayout.Count();
     }
 
-    // A blueprint with a full bag: refused with the bag's notice before anything is paid or written. Before, the
-    // merets were taken first and the blueprint and its layout row were lost.
+    // A blueprint with a full bag: refused with the bag's notice before anything is paid or written, and answered with
+    // 0x3f 0, which closes the upload dialog (ugcmanager_4.cpp:3934-3964). Before, the merets were taken first and the
+    // blueprint and its layout row were lost.
     [Test]
     public void CreateBlueprint_FullBag_TakesNothing() {
         GameSession session = StartBlueprint();
@@ -219,7 +220,39 @@ public class BagFullRewardTests {
             Assert.That(session.Currency.Meret, Is.EqualTo(1000));
             Assert.That(LayoutRows(), Is.Zero);
             Assert.That(session.Item.Inventory.Find(Constant.BlueprintId).Count(item => !item.IsLocked), Is.Zero);
-            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ItemInventory }));
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ItemInventory, SendOp.ResponseCube }));
+        });
+    }
+
+    private byte[] LastCubeAnswer() => test.TakeSent().Last(packet => TestGameSession.Op(packet) == SendOp.ResponseCube);
+
+    // Too few merets: the meret notice, then 0x3f 0. Before, only the notice went and the upload dialog stayed open.
+    [Test]
+    public void CreateBlueprint_TooFewMerets_ClosesTheDialog() {
+        GameSession session = StartBlueprint();
+        session.Currency.Meret = 299;
+
+        CreateBlueprint(session);
+
+        Assert.Multiple(() => {
+            Assert.That(LastCubeAnswer(), Is.EqualTo(CubePacket.CreateBlueprintFailed().ToArray()));
+            Assert.That(session.Currency.Meret, Is.EqualTo(299));
+            Assert.That(LayoutRows(), Is.Zero);
+        });
+    }
+
+    // Not on an own plot (here: no home field at all): answered with 0x3f 0 alone. Before, nothing answered it.
+    [Test]
+    public void CreateBlueprint_NoOwnPlot_ClosesTheDialog() {
+        GameSession session = Start(TestGameSession.Metadata(Constant.BlueprintId, type: 22, slotMax: 1));
+        session.Currency.Meret = 1000;
+        test.TakeSent();
+
+        CreateBlueprint(session);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(CubePacket.CreateBlueprintFailed().ToArray()) }));
+            Assert.That(session.Currency.Meret, Is.EqualTo(1000));
         });
     }
 
