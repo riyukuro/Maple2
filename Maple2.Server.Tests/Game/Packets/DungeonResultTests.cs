@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
+using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
@@ -183,5 +186,31 @@ public class DungeonResultTests {
         Assert.That(Convert.ToHexString(after[2], 2, 12), Is.EqualTo(Long(mesoBefore + 1200) + "7A040000"));
         Assert.That(Convert.ToHexString(after[3], 3, 10), Is.EqualTo("8403000000000000" + "7A04"));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The party bool after the room id: the window shows its leave-party button only when it is set
+    // (uidungeonrewarddialog.cpp:562, :637). Set on a clear and on a fail of a player in a party.
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(false, false)]
+    public void Result_NamesTheParty(bool clear, bool inParty) {
+        var test = new TestGameSession();
+        GameSession session = StartInRoom(test, 10);
+        if (inParty) {
+            session.Party = new PartyManager(test.World, session);
+            typeof(PartyManager).GetField("<Party>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(session.Party, new Party(1, test.AccountId, test.CharacterId, "leader"));
+        }
+
+        if (clear) {
+            session.Dungeon.CompleteDungeon(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        } else {
+            session.Dungeon.FailDungeon();
+        }
+
+        byte[] result = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.DungeonReward);
+        Assert.That(result[8], Is.EqualTo(inParty ? 1 : 0));
+        Assert.That(session.Dungeon.UserRecord!.WithParty, Is.EqualTo(inParty));
     }
 }

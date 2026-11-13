@@ -688,6 +688,7 @@ public class DungeonManager {
             }
         }
 
+        UserRecord.WithParty = InParty();
         session.Send(DungeonRewardPacket.Dungeon(UserRecord));
         foreach (Action grant in grants) {
             grant();
@@ -706,8 +707,15 @@ public class DungeonManager {
         }
         UserRecord.IsDungeonSuccess = false;
         UserRecord.TotalSeconds = (int) (Lobby.DungeonRoomRecord.EndTick - Lobby.DungeonRoomRecord.StartTick) / 1000;
+        UserRecord.WithParty = InParty();
         session.Send(DungeonRewardPacket.Dungeon(UserRecord));
     }
+
+    // The result's party flag: the reward window shows its leave-party button only when it is set
+    // (UIDungeonRewardDialog::OnRewardPacket reads it after the room, uidungeonrewarddialog.cpp:562, shown at :637);
+    // the button sends Party 3 and DungeonReward 6 (OnPartyLeaveButton, :416). Set for a player in a party when the
+    // result is sent.
+    private bool InParty() => session.Party?.Party != null;
 
     // The rank score of a clear (DungeonScoreRules), on every clear of a room with a rank table, whether or not
     // the clear still had a reward count left: LifetimeRecord keeps the best score, and in a season rank room
