@@ -91,7 +91,8 @@ public partial class FieldManager {
         // the rows the plot has at that point; the copy is written outside it. Rows written after the copy (a place
         // meanwhile) are kept, a cube removed meanwhile is not written again, and a cube turned meanwhile has its
         // rotation written again, so the rows stay what the plot holds. A remove between the save's read of the rows
-        // and its write fails the write (its update finds no row); the save then takes a new copy, at most 3 times.
+        // and its write leaves that cube out of the write (SaveCubes); a write that fails otherwise takes a new
+        // copy, at most 3 times.
         void SavePlot(Plot plot, HomeFieldManager? homeField) {
             const int attempts = 3;
             for (int attempt = 1; ; attempt++) {

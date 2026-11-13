@@ -8,6 +8,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Z.EntityFramework.Plus;
@@ -439,7 +440,7 @@ public partial class GameStorage {
         // with the delete; a null answer writes nothing. A deleted cube whose item is unknown is not given back.
         // With deletable, only the rows in it are deleted: a row written after the caller took its copy of the cubes
         // (a place made meanwhile) is kept. A given cube whose row is gone (removed meanwhile) is not written again
-        // and is not among the results.
+        // and is not among the results, also when the row goes between this read and the write (see SaveUpdates).
         public ICollection<PlotCube>? SaveCubes(PlotInfo plotInfo, IEnumerable<PlotCube> cubes, long characterId,
                                                 List<(long CharacterId, long MailId)>? mailed = null,
                                                 Func<IReadOnlyList<PlotCube>, CubeReturn?>? returns = null,
@@ -454,6 +455,7 @@ public partial class GameStorage {
             // The existing item rows written here (stack joins, doll rows mailed): what item objects keep for them is
             // forgotten once the transaction has ended (GameStorage.ForgetRows), so their next save writes them.
             var written = new List<long>();
+            var updated = new HashSet<long>();
             try {
                 // Read committed: the doll rows are read after the cube deletes are written (the cube rows locked),
                 // and see the put-ons and swaps other channels committed up to then, not a snapshot taken earlier.
@@ -461,7 +463,7 @@ public partial class GameStorage {
                 using IDbContextTransaction? transaction = Context.Database.IsRelational()
                     ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
                     : null;
-                var updated = new HashSet<long>();
+                var added = new List<UgcMapCube>();
                 HashSet<long> rowIds = Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id).Select(cube => cube.Id).ToHashSet();
                 foreach (PlotCube cube in cubes) {
                     UgcMapCube model = cube;
@@ -472,12 +474,18 @@ public partial class GameStorage {
                     if (model.Id >= Constant.FurnishingBaseId) {
                         model.Id = 0; // This needs to be auto-generated.
                         results.Add(model);
-                        Context.UgcMapCube.Add(model);
+                        added.Add(model);
                     } else {
                         updated.Add(model.Id);
                         results.Add(model);
                         Context.UgcMapCube.Update(model);
                     }
+                }
+                if (updated.Count > 0 && !SaveUpdates()) {
+                    return null;
+                }
+                foreach (UgcMapCube model in added) {
+                    Context.UgcMapCube.Add(model);
                 }
                 var dropped = new List<long>();
                 var droppedRows = new List<UgcMapCube>();
@@ -648,6 +656,34 @@ public partial class GameStorage {
             }
 
             return plotCubes;
+
+            // The updates are written first, on their own. A row removed after rowIds was read (a build helper's
+            // remove on another thread, which writes its delete at once) makes its update find no row: that cube was
+            // removed, so it leaves the save and the results, and the other updates are written again. Writing an
+            // update again is harmless: MySQL rolls the failed write back to its save point, and the in-memory store
+            // (the tests), which writes up to the failing row, gets the same values twice.
+            bool SaveUpdates() {
+                while (true) {
+                    try {
+                        Context.SaveChanges();
+                        return true;
+                    } catch (DbUpdateConcurrencyException ex) {
+                        List<EntityEntry> gone = ex.Entries
+                            .Where(entry => entry.Entity is UgcMapCube && entry.State == EntityState.Modified)
+                            .ToList();
+                        if (gone.Count == 0) {
+                            Logger.LogError(ex, "Failed to save the cubes of plot {PlotId}", plotInfo.Id);
+                            return false;
+                        }
+                        foreach (EntityEntry entry in gone) {
+                            var model = (UgcMapCube) entry.Entity;
+                            entry.State = EntityState.Detached;
+                            updated.Remove(model.Id);
+                            results.Remove(model);
+                        }
+                    }
+                }
+            }
         }
 
         // The system mail that gives back a mannequin's item (the same text as a take-off into a full bag).

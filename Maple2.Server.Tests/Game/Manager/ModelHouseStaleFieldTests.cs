@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Maple2.Database.Context;
+using UgcMapCube = Maple2.Database.Model.UgcMapCube;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
@@ -16,6 +17,7 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -431,6 +433,37 @@ public class ModelHouseStaleFieldTests {
             Assert.That(CubeRows(session), Does.Not.Contain(cube.Id));
             Assert.That(plot.StrayRows, Is.Empty);
             Assert.That(Outdated(home), Is.False);
+        });
+    }
+
+    // A remove landing in every try's write, between its read of the rows and the write (the helper's delete is
+    // written at once): the save leaves that cube out and writes the rest in the same try. Before, the update of the
+    // missing row failed the whole write, and a remove in each of the 3 tries made the leave throw.
+    [Test]
+    public void RemoveDuringTheWrite_LeavesThatCubeOut() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        session.ItemMetadata.TryGet(OldCube, out ItemMetadata? metadata);
+        Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!, session.Item.Furnishing.AddCube(OldCube)) { Type = PlotCube.CubeType.Default },
+            plot, metadata!, new Vector3B(-3, -1, 0), 0, out _), Is.True);
+        Commit(home, session);
+        var contexts = new HashSet<Guid>();
+        test.FailSave = context => {
+            if (context.ChangeTracker.Entries<UgcMapCube>().Any(entry => entry.State == EntityState.Modified)
+                && contexts.Add(context.ContextId.InstanceId)) {
+                // Each try's first write: a remove of one of the cubes it is about to update.
+                Assert.That(session.Housing.TryRemoveCube(plot, plot.Cubes.Keys.OrderBy(position => position.X).First(), out _), Is.True);
+            }
+            return false;
+        };
+        Assert.That(() => Commit(home, session), Throws.Nothing);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(contexts, Has.Count.EqualTo(1));
+            Assert.That(CubeRows(session), Is.EquivalentTo(plot.Cubes.Values.Select(cube => cube.Id)));
+            Assert.That(plot.Cubes, Has.Count.EqualTo(2));
+            Assert.That(Outdated(home), Is.False);
+            Assert.That(Count(session, OldCube), Is.EqualTo((1, 2)));
         });
     }
 
