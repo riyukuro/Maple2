@@ -996,11 +996,12 @@ public class FieldPlayer : Actor<Player> {
         if (consumesItem) {
             // The uid may name an item in the summoned pet's bag: the client looks there first.
             if (Session.Pet != null && Session.Pet.Contains(record.ItemUid)) {
-                if (!Session.Pet.Consume(record.ItemUid, 1)) {
+                if (!Session.Pet.Consume(record.ItemUid, 1, out Item? taken)) {
                     Logger.Error("Failed to consume pet bag item {ItemUid} for skill: {SkillId},{Level}", record.ItemUid, metadata.Id, metadata.Level);
                     return false;
                 }
                 record.ItemConsumed = true;
+                NotifyPetTrapUsed(taken);
                 return true;
             }
 
@@ -1015,9 +1016,19 @@ public class FieldPlayer : Actor<Player> {
                 return false;
             }
             record.ItemConsumed = true;
+            NotifyPetTrapUsed(item);
         }
 
         return true;
+    }
+
+    // ResponsePet 0x14 (CPetManager::OnPetTrapSkillConsumed) shows s_skill_consume_by_pet_trap with the item name
+    // as message type 0x14. Chosen here: no client caller proves when the server sends it, so it goes to the caster
+    // once a cast has taken a pet trap item (group 6, type 31), from the inventory or the pet's bag.
+    private void NotifyPetTrapUsed(Item item) {
+        if (item.Type.IsPetTrap) {
+            Session.Send(PetPacket.MasterSnare(item.Id));
+        }
     }
 
     // The spirit and stamina a held skill pays again at a tick sync of its cast (SkillCastRules.SyncPays).

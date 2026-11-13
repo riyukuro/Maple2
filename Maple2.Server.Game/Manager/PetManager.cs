@@ -199,18 +199,22 @@ public sealed class PetManager : IDisposable {
     /// <summary>
     /// Uses up pieces of an item in the pet's bag. The client casts an item's skill with the uid of the item it
     /// found, and it looks in the summoned pet's bag before the owner's (CPetManager::UseItemById).
+    /// The item the pieces were taken from is given back in taken.
     /// </summary>
-    public bool Consume(long uid, int amount) {
+    public bool Consume(long uid, int amount, [NotNullWhen(true)] out Item? taken) {
         lock (session.Item) {
             switch (TakePieces(items, uid, amount, out Item? item)) {
                 case PieceResult.Reduced:
                     session.Send(PetInventoryPacket.Update(uid, item!.Amount));
+                    taken = item;
                     return true;
                 case PieceResult.Removed:
                     session.Item.Inventory.Discard(item!);
                     session.Send(PetInventoryPacket.Remove(uid));
+                    taken = item;
                     return true;
                 default:
+                    taken = null;
                     return false;
             }
         }
