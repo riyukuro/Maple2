@@ -327,7 +327,7 @@ public class MaidStorageTests {
         var plot = (PlotInfo) RuntimeHelpers.GetUninitializedObject(typeof(PlotInfo));
         plot.Id = PlotId;
         using (GameStorage.Request db = storage.Context()) {
-            Assert.That(db.SaveCubes(plot, [kept]), Is.Not.Null);
+            Assert.That(db.SaveCubes(plot, [kept], 1001), Is.Not.Null);
         }
         using GameStorage.Request check = storage.Context();
         Assert.Multiple(() => {

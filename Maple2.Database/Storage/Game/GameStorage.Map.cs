@@ -2,9 +2,11 @@
 using Maple2.Database.Extensions;
 using Maple2.Database.Model;
 using Maple2.Model.Common;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Z.EntityFramework.Plus;
 using Home = Maple2.Model.Game.Home;
@@ -207,8 +209,51 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        public ICollection<PlotCube>? SaveCubes(PlotInfo plotInfo, IEnumerable<PlotCube> cubes) {
+        // Saves the plot's cubes: those given are added or updated, every other cube on the plot is deleted. A
+        // mannequin among the deleted ones (an older instance of the home that does not hold a cube placed elsewhere)
+        // gives its items back in the same transaction: each row goes into a system mail of its own, to the character
+        // the item is bound to (if it still exists), else to characterId (the plot owner's character that saves).
+        // mailed gets the (character, mail) of each mail, for the notice. Null when the save fails; nothing is written
+        // then.
+        public ICollection<PlotCube>? SaveCubes(PlotInfo plotInfo, IEnumerable<PlotCube> cubes, long characterId,
+                                                List<(long CharacterId, long MailId)>? mailed = null) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            PlotCube[] given = cubes.ToArray();
+            cubes = given;
+
+            HashSet<long> kept = given.Where(cube => cube.Id < Constant.FurnishingBaseId).Select(cube => cube.Id).ToHashSet();
+            long[] dropped = Context.UgcMapCube.AsNoTracking()
+                .Where(cube => cube.UgcMapId == plotInfo.Id)
+                .Select(cube => cube.Id)
+                .AsEnumerable()
+                .Where(id => !kept.Contains(id))
+                .ToArray();
+            List<Model.Item> dollRows = dropped.Length == 0 ? [] : Context.Item.AsNoTracking()
+                .Where(row => dropped.Contains(row.OwnerId) && row.Group == ItemGroup.FittingDoll)
+                .ToList();
+            using IDbContextTransaction? transaction = dollRows.Count > 0 ? Context.Database.BeginTransaction() : null;
+            var mails = new List<(Model.Item Row, Model.Mail Mail)>();
+            if (dollRows.Count > 0) {
+                foreach (Model.Item row in dollRows) {
+                    long bound = row.Transfer?.Binding?.CharacterId ?? 0;
+                    if (bound != 0 && !Context.Character.Any(character => character.Id == bound)) {
+                        bound = 0; // the bound character was deleted
+                    }
+                    Model.Mail mail = DollItemMail(bound != 0 ? bound : characterId);
+                    Context.Mail.Add(mail);
+                    mails.Add((row, mail));
+                }
+                // The mails first, for their ids; the transaction is rolled back when it is disposed uncommitted.
+                if (!Context.TrySaveChanges()) {
+                    return null;
+                }
+                foreach ((Model.Item row, Model.Mail mail) in mails) {
+                    if (!MoveDollRow(row, mail.Id)) {
+                        Context.Mail.Remove(mail); // the row left the cube meanwhile: no empty mail
+                    }
+                }
+                mails.RemoveAll(entry => Context.Entry(entry.Mail).State == EntityState.Deleted);
+            }
 
             var results = new List<UgcMapCube>();
             var updated = new HashSet<long>();
@@ -239,6 +284,8 @@ public partial class GameStorage {
             if (!Context.TrySaveChanges()) {
                 return null;
             }
+            transaction?.Commit();
+            mailed?.AddRange(mails.Select(entry => (entry.Mail.ReceiverId, entry.Mail.Id)));
 
             PlotCube[] plotCubes = results
                 .Select(ToPlotCube)
@@ -251,6 +298,40 @@ public partial class GameStorage {
             }
 
             return plotCubes;
+        }
+
+        // The system mail that gives back a mannequin's item (the same text as a take-off into a full bag).
+        private Model.Mail DollItemMail(long characterId) {
+            var mail = new Maple2.Model.Game.Mail {
+                Type = MailType.System,
+                ReceiverId = characterId,
+                Content = "50000000", // id from string/en/systemmailcontentna.xml
+            };
+            mail.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            Model.Mail model = mail;
+            model.Id = 0;
+            return model;
+        }
+
+        // Moves a mannequin's item row (read untracked) into mail mailId, only while it is still on its cube in the
+        // doll group: another instance of the home may have taken it off first. On a relational DB it is one
+        // conditional update in the caller's transaction; otherwise the row is changed with the caller's next save.
+        private bool MoveDollRow(Model.Item row, long mailId) {
+            long uid = row.Id;
+            long cubeUid = row.OwnerId;
+            if (Context.Database.IsRelational()) {
+                return Context.Item
+                    .Where(item => item.Id == uid && item.OwnerId == cubeUid && item.Group == ItemGroup.FittingDoll)
+                    .ExecuteUpdate(update => update
+                        .SetProperty(item => item.OwnerId, mailId)
+                        .SetProperty(item => item.Group, ItemGroup.Default)
+                        .SetProperty(item => item.Slot, (short) -1)) == 1;
+            }
+            row.OwnerId = mailId;
+            row.Group = ItemGroup.Default;
+            row.Slot = -1;
+            Context.Item.Update(row);
+            return true;
         }
 
         public PlotCube? CreateCube(PlotInfo plotInfo, PlotCube cube) {

@@ -66,6 +66,8 @@ public class WorldServer {
         using GameStorage.Request db = gameStorage.Context();
         db.SetAllCharacterToOffline();
         db.DeleteUnownedItems();
+        // Mannequin items on cubes that no longer exist are logged; mailing the bound ones back is opt-in.
+        db.ReturnOrphanedDollItems(mail: Environment.GetEnvironmentVariable("MAIL_ORPHANED_DOLL_ITEMS") == "1");
 
         StartDailyReset();
         StartWeeklyReset();

@@ -63,6 +63,18 @@ public partial class FieldManager {
         return true;
     }
 
+    // Tells the receivers of the mails a plot save sent (a mannequin's items given back) that they have mail.
+    public static void NotifyMailed(GameSession session, IEnumerable<(long CharacterId, long MailId)> mailed) {
+        foreach ((long characterId, long mailId) in mailed) {
+            try {
+                session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = characterId,
+                    MailId = mailId,
+                });
+            } catch { /* ignored */ }
+        }
+    }
+
     private void CommitPlot(GameSession session) {
         Home home = session.Player.Value.Home;
         using GameStorage.Request db = GameStorage.Context();
@@ -78,11 +90,13 @@ public partial class FieldManager {
 
         void SavePlot(Plot plot) {
             lock (Plots) {
-                ICollection<PlotCube>? results = db.SaveCubes(plot, plot.Cubes.Values);
+                var mailed = new List<(long CharacterId, long MailId)>();
+                ICollection<PlotCube>? results = db.SaveCubes(plot, plot.Cubes.Values, session.CharacterId, mailed);
                 if (results == null) {
                     logger.Fatal("Failed to save plot cubes: {PlotId}", plot.Id);
                     throw new InvalidOperationException($"Failed to save plot cubes: {plot.Id}");
                 }
+                NotifyMailed(session, mailed);
 
                 List<PlotCube> portalCubes = plot.Cubes.Values.Where(c => c.Interact?.PortalSettings is not null).ToList();
 

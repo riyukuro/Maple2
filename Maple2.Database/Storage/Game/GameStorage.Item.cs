@@ -277,6 +277,71 @@ public partial class GameStorage {
             Logger.LogInformation("Deleted {Count} unowned items.", deletedCount);
         }
 
+        // World start: mannequin item rows left on a cube that no longer exists (an older instance of the home deleted
+        // the cube before plot saves gave such items back, or a cube removed on another channel during a put on).
+        // A row counts only while its owner uid is nothing else: no cube on any plot or in a saved layout, no item
+        // (a cube in storage), no mail, no character, no account. Each one is logged. Only with mail set, a row bound
+        // to a character goes to that character in a system mail of its own, moved only while it is still on its old
+        // owner uid. An unbound row is never mailed: the deleted cube row was its only link to a plot, so to an owner;
+        // it stays, logged, for an admin. A mailed row leaves the doll group, so a second run finds it no more.
+        public (int Orphaned, int Mailed) ReturnOrphanedDollItems(bool mail) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            List<Model.Item> rows = Context.Item.AsNoTracking()
+                .Where(row => row.Group == ItemGroup.FittingDoll && row.OwnerId != 0)
+                .Where(row => !Context.UgcMapCube.Any(cube => cube.Id == row.OwnerId)
+                              && !Context.UgcCubeLayout.Any(cube => cube.Id == row.OwnerId)
+                              && !Context.Item.Any(item => item.Id == row.OwnerId)
+                              && !Context.Mail.Any(other => other.Id == row.OwnerId)
+                              && !Context.Character.Any(character => character.Id == row.OwnerId)
+                              && !Context.Account.Any(account => account.Id == row.OwnerId))
+                .OrderBy(row => row.Id)
+                .ToList();
+            if (rows.Count == 0) {
+                return (0, 0);
+            }
+
+            foreach (Model.Item row in rows) {
+                long bound = row.Transfer?.Binding?.CharacterId ?? 0;
+                Logger.LogWarning("Fitting doll item {ItemUid} ({ItemId}) is on cube {CubeUid}, which no longer exists; bound to {CharacterId}",
+                    row.Id, row.ItemId, row.OwnerId, bound);
+            }
+            int mailed = 0;
+            if (mail) {
+                foreach (Model.Item row in rows) {
+                    long bound = row.Transfer?.Binding?.CharacterId ?? 0;
+                    if (bound == 0 || !Context.Character.Any(character => character.Id == bound)) {
+                        continue;
+                    }
+                    if (MailOrphanedDollRow(row, bound)) {
+                        mailed++;
+                        Logger.LogInformation("Mailed fitting doll item {ItemUid} to {CharacterId}", row.Id, bound);
+                    }
+                }
+            }
+            Logger.LogWarning("{Count} fitting doll items are on cubes that no longer exist; {Mailed} mailed (mailing is {Mode})",
+                rows.Count, mailed, mail ? "on" : "off");
+            return (rows.Count, mailed);
+        }
+
+        // One orphaned row into a mail to characterId: the mail and the row commit together or not at all.
+        private bool MailOrphanedDollRow(Model.Item row, long characterId) {
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                Model.Mail mail = DollItemMail(characterId);
+                Context.Mail.Add(mail);
+                if (!Context.TrySaveChanges() || !MoveDollRow(row, mail.Id) || !Context.TrySaveChanges()) {
+                    return false; // the transaction is rolled back when it is disposed
+                }
+                transaction.Commit();
+                return true;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to mail fitting doll item {ItemUid}", row.Id);
+                return false;
+            } finally {
+                Context.ChangeTracker.Clear();
+            }
+        }
+
         public bool SaveStorageInfo(long accountId, long mesos, short expand) {
             ItemStorage? info = Context.ItemStorage.Find(accountId);
             if (info == null) {

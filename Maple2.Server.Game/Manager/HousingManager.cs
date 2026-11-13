@@ -421,7 +421,9 @@ public class HousingManager {
 
         db.SaveHome(Home);
         db.SavePlotInfo(Home.Indoor);
-        db.SaveCubes(Home.Indoor, plotCubes);
+        var mailed = new List<(long CharacterId, long MailId)>();
+        db.SaveCubes(Home.Indoor, plotCubes, session.CharacterId, mailed);
+        FieldManager.NotifyMailed(session, mailed);
     }
 
     // An interior package (item function UGCMapPackage, UIInteriorBuildDialog::OnUseItem) builds its exported map in
