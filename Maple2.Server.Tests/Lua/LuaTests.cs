@@ -497,4 +497,24 @@ public class LuaTests {
     public void TestCalcQuestRewardFamePoint(int rank, int use, int alliance, int expected) {
         Assert.That(Server.Game.LuaFunctions.Lua.CalcQuestRewardFamePoint(rank, 0, use, alliance), Is.EqualTo(expected));
     }
+
+    // The client's calcGatheringObjectgSuccessProp at KR recipe limits: 30000001 (high 8, normal 10, max count 13) and
+    // 30000003 (14, 17, max 22). The upstream server script uses 0.3 where the client uses 0.35, truncates the 0.2 home
+    // scaling and has no max-count case; the expected values are the client's.
+    [TestCase(7, 8, 10, 1, 100f)]
+    [TestCase(10, 8, 10, 1, 84.508f)]
+    [TestCase(12, 8, 10, 1, 38.032f)]
+    [TestCase(13, 8, 10, 1, 0f)]
+    [TestCase(20, 14, 17, 1, 57.123f)]
+    [TestCase(22, 14, 17, 1, 0f)]
+    [TestCase(3, 14, 17, 0, 97.368f)] // another player's home: limits 2.8 and 3.4
+    public void TestCalcGatheringObjectSuccessRate_ClientScript(int count, int high, int normal, int home, float expected) {
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcGatheringObjectSuccessRate(count, high, normal, home), Is.EqualTo(expected).Within(0.005f));
+    }
+
+    [TestCase(8, 10, 13)]
+    [TestCase(14, 17, 22)]
+    public void TestCalcGatheringObjectMaxCount_ClientScript(int high, int normal, int expected) {
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcGatheringObjectMaxCount(high, normal), Is.EqualTo(expected));
+    }
 }

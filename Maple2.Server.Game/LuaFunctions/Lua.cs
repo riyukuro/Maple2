@@ -733,79 +733,40 @@ public static class Lua {
     #endregion
 
     #region Gathering
+    // The client's calcGatheringObjectgSuccessProp (CMasteryTable::LimitState, masterytable.cpp:620), in doubles as the
+    // script runs. At another player's home (someoneElsesHome 0) both limits are scaled by 0.2 without rounding. Below the
+    // high-rate count the rate is 100; at the recipe's max count it is 0; between, it falls on a parabola whose width
+    // comes from the normal-rate limit with the script's 0.35 factor.
     public static float CalcGatheringObjectSuccessRate(int currentCount, int highPropLimitCount, int normalPropLimit, int someoneElsesHome = 1) {
+        double high = highPropLimitCount;
+        double normal = normalPropLimit;
         if (someoneElsesHome == 0) {
-            normalPropLimit = (int) (normalPropLimit * 0.2f);
-            highPropLimitCount = (int) (highPropLimitCount * 0.2f);
+            normal *= 0.2;
+            high *= 0.2;
         }
 
-        float result;
-
-        if (currentCount < highPropLimitCount) {
+        double result;
+        if (currentCount < high) {
             result = 100;
-        } else {
-            float local1 = normalPropLimit / 0.9f;
-            local1 *= 0.3f;
-            local1 -= 0.5f;
-            local1 /= 1.406f;
-            local1 = 3 * local1;
-            local1 *= 2;
-
-            float local2 = normalPropLimit / 0.9f;
-            local2 *= 0.3f;
-            local2 -= 0.5f;
-            local2 /= 1.406f;
-
-            local1 -= local2;
-            local1 /= 2;
-
-            local2 = normalPropLimit / 0.9f;
-            local2 *= 0.3f;
-            local2 -= 0.5f;
-            local2 /= 1.406f;
-            local2 = 3 * local2;
-            local2 *= 2;
-
-            float local3 = normalPropLimit / 0.9f;
-            local3 *= 0.3f;
-            local3 -= 0.5f;
-            local3 /= 1.406f;
-
-            local2 -= local3;
-            local2 /= 2;
-
-            local1 *= local2;
-            local1 = 1 / local1;
-            local1 /= 0.7111f;
-
-            float local4 = currentCount - highPropLimitCount;
-            local1 *= local4;
-            local1 *= local4;
-            local1 = 1 - local1;
-            result = local1 * 100;
-        }
-
-        // Ensure success rate is not negative
-        if (result < 0) {
+        } else if (currentCount == GatheringObjectMaxCount(high, normal)) {
             result = 0;
+        } else {
+            double width = (normal / 0.9 * 0.35 - 0.5) / 1.406;
+            double half = (3 * width * 2 - width) / 2;
+            double over = currentCount - high;
+            result = (1 - 1 / (half * half) / 0.7111 * over * over) * 100;
         }
 
-        return result;
+        return result < 0 ? 0 : (float) result;
     }
 
+    // The client's calcGatheringObjectgMaxCount.
     public static int CalcGatheringObjectMaxCount(int highPropLimitCount, int normalPropLimitCount) {
-        float count = normalPropLimitCount * 10;
-        count /= 3;
-        count -= 5;
-        count = 1.778093883357f * count;
-        count /= 10;
+        return (int) GatheringObjectMaxCount(highPropLimitCount, normalPropLimitCount);
+    }
 
-        float sqrt = (float) Math.Sqrt(1 / 0.7111f);
-
-        count /= sqrt;
-        count += highPropLimitCount;
-
-        return (int) Math.Floor(count) + 1;
+    private static double GatheringObjectMaxCount(double high, double normal) {
+        return Math.Floor((normal * 10 / 3 - 5) * 1.7780938833570414 / 10 / Math.Sqrt(1 / 0.7111) + high) + 1;
     }
     #endregion
 
