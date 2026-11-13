@@ -12,6 +12,7 @@ public static class ItemExtractionPacket {
         Extract = 0,
         FullInventory = 1,
         InsufficientAnvils = 2,
+        Refused = 3,
     }
 
     // Client: UIItemExtractionScrollDialog::vfunc_79 (uiitemextractionscrolldialog.cpp:244): long source uid,
@@ -34,6 +35,15 @@ public static class ItemExtractionPacket {
     public static ByteWriter FullInventory() {
         var pWriter = Packet.Of(SendOp.GlamourAnvil);
         pWriter.Write<Command>(Command.FullInventory);
+        return pWriter;
+    }
+
+    // Any result past 2 shows no notice; the dialog only leaves its waiting state (vfunc_79,
+    // uiitemextractionscrolldialog.cpp:263-273). Chosen here for a request the client would not send (its source
+    // cannot be extracted, s_itemextraction_cannot, FUN_140e4a920) and a result item the server cannot make.
+    public static ByteWriter Refused() {
+        var pWriter = Packet.Of(SendOp.GlamourAnvil);
+        pWriter.Write<Command>(Command.Refused);
         return pWriter;
     }
 

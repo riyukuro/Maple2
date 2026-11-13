@@ -27,19 +27,25 @@ public class ItemExtractionHandler : FieldPacketHandler {
             Item? anvil = session.Item.Inventory.Get(anvilItemUid);
             Item? sourceItem = session.Item.Inventory.Get(sourceItemUid);
 
-            if (anvil?.Metadata.Property.Tag != ItemTag.ItemExtraction || sourceItem is not { GlamorForges: > 0 }) {
+            // Every refusal is answered: the dialog leaves its waiting state on any reply (vfunc_79 calls vfunc_67
+            // after the result, uiitemextractionscrolldialog.cpp:273). A missing anvil gets the lack-of-anvils notice.
+            if (anvil?.Metadata.Property.Tag != ItemTag.ItemExtraction) {
+                session.Send(ItemExtractionPacket.InsufficientAnvils());
                 return;
             }
-
-            if (!TableMetadata.ItemExtractionTable.Entries.TryGetValue(sourceItem.Id, out ItemExtractionTable.Entry? entry)) {
+            if (sourceItem is not { GlamorForges: > 0 }
+                || !TableMetadata.ItemExtractionTable.Entries.TryGetValue(sourceItem.Id, out ItemExtractionTable.Entry? entry)) {
+                session.Send(ItemExtractionPacket.Refused());
                 return;
             }
 
             Item? resultItem = session.Field?.ItemDrop.CreateItem(entry.ResultItemId);
             if (resultItem == null) {
+                session.Send(ItemExtractionPacket.Refused());
                 return;
             }
             MarkExtracted(resultItem);
+            CopyAppearance(sourceItem, resultItem);
 
             // The result goes to its own tab (an outfit for a skin), not always to gear.
             if (!session.Item.Inventory.CanAdd(resultItem, resultItem.Amount)) {
@@ -64,6 +70,22 @@ public class ItemExtractionHandler : FieldPacketHandler {
 
             session.Send(ItemExtractionPacket.Extract(sourceItem.Uid, sourceItem.GlamorForges, resultItem));
         }
+    }
+
+    // The result takes the source's appearance, its dye with it: the preview copies the source's extra data into the
+    // result (spScroll->GetProxy()->vfunc_3(spItem->GetProxy()), uiitemextractionscrolldialog.cpp:353; the proxy is
+    // the CItemExtraData of CItemData::CreateExtraData, itemdata.cpp:1430, the server's ItemAppearance). An
+    // appearance of another kind gets the colour only (chosen here; every
+    // extraction row pairs items of one item type).
+    internal static void CopyAppearance(Item source, Item result) {
+        if (source.Appearance == null) {
+            return;
+        }
+        if (result.Appearance == null || result.Appearance.GetType() == source.Appearance.GetType()) {
+            result.Appearance = source.Appearance.Clone();
+            return;
+        }
+        result.Appearance.Color = source.Appearance.Color;
     }
 
     // The client shows the result as it will be (UIItemExtractionScrollDialog, the preview of the selected item): its
