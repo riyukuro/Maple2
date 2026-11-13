@@ -74,8 +74,10 @@ public static class SurvivalRules {
     // - setGameRecord(r4, r5, time of r14, r15): the ranking text "r5 / r4" (rank / participants), the kill text r15;
     // - setResult(r2, r3, delta, r11, r0): the rating r3 with the delta from r2; r0 0 shows "not season rating"
     //   instead (r0: the game counted for a season); r11 is not read by the movie, sent as 0;
-    // - setSurvivalLevelResult(r6..r10, ...): chosen order level before, exp before, exp gained, exp after, level after
-    //   (r10 is compared with the last level; the next level's exp comes from the client's own table);
+    // - setSurvivalLevelResult(a1..a5 = r6..r10, a6, ...): the restored window passes r6..r10 in order and a6 = the
+    //   reqExp of level r10 from its own table; the movie draws the bar "a3 / a6", shows level a5 and the level-up
+    //   when a4 < a5 (a1, a2 unread). So r8 = the exp inside level r10 after the game, r9 = the level before, r10 = the
+    //   level after; r6 / r7 (unread) keep the level and exp before;
     // - setCharLevelResult(r12), setHeroLevelResult(r13): the character's level and its hero (prestige) level.
     public static int[] ResultValues(int rank, int participants, int kills, bool inSeason, int ratingBefore, int ratingAfter, int levelBefore,
                                      long expBefore, long gained, int levelAfter, long expAfter, int seconds, int charLevel, int heroLevel) {
@@ -87,8 +89,8 @@ public static class SurvivalRules {
         values[5] = rank;
         values[6] = levelBefore;
         values[7] = (int) Math.Min(expBefore, int.MaxValue);
-        values[8] = (int) Math.Min(gained, int.MaxValue);
-        values[9] = (int) Math.Min(expAfter, int.MaxValue);
+        values[8] = (int) Math.Min(expAfter, int.MaxValue);
+        values[9] = levelBefore;
         values[10] = levelAfter;
         values[12] = charLevel;
         values[13] = heroLevel;

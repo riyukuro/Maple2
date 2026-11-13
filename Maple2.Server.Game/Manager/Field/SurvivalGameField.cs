@@ -183,6 +183,7 @@ public sealed class SurvivalGameField {
         var finished = state.Fallen.Where(id => !winners.Contains(id)).Concat(winners).ToList();
         SendResults(state.Entries.Where(entry => entry.Rank != 0));
         field.Broadcast(MapleSurvivalPacket.GameFinish(true, finished));
+        (field.Widgets.GetValueOrDefault("SurvivalContents") as SurvivalContentsWidget)?.Stop();
         logger.Information("Maple Survival game on {MapId} ended, winner {Winner} ({Count} in the squad)", field.MapId, state.Winner, winners.Count);
         var ranking = new List<long>(winners);
         ranking.AddRange(state.Fallen.Reverse().Where(id => !winners.Contains(id)));

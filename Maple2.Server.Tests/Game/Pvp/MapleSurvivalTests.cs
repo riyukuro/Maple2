@@ -173,6 +173,32 @@ public class MapleSurvivalTests {
         Assert.That(sent[^1], Is.EqualTo("1601" + "01" + "0100" + Float(2325f) + zero));
     }
 
+    // The game's end stops the storm: the zones are cleared (SurvivalEvent 3) and no later step sends anything (the
+    // client prints the lines of 4, 5 and 6 whatever the game's state) or ends (TimeOver).
+    [Test]
+    public void Storm_StopsAtGameEnd() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        // The test field has no constructor run: its widget table is set here.
+        typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField(nameof(Maple2.Server.Game.Manager.Field.FieldManager.Widgets))!
+            .SetValue(session.Field, new Dictionary<string, Maple2.Server.Game.Model.Widget.Widget>());
+        var widget = new Maple2.Server.Game.Model.Widget.SurvivalContentsWidget(session.Field!);
+        session.Field!.Widgets["SurvivalContents"] = widget;
+        widget.Action("EnterStep", 0, "1");
+        test.TakeSent();
+        // One participant: the game ends at once.
+        session.Field.StartSurvival();
+        Assert.That(session.Field.Survival!.Ended, Is.True);
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        Assert.That(sent.Count(packet => packet == "1601" + "03"), Is.EqualTo(1));
+        Assert.That(widget.Stopped, Is.True);
+        widget.Action("EnterStep", 0, "2");
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(widget.Check("TimeOver", string.Empty), Is.False);
+        widget.Stop();
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
     // The windows' packets (layouts.md 2): the lobby value, the season, the skin equipped, the pass progress, the
     // spectate answer (SpectateMushtopia 0x11A mode 1), the record (0x17) and the skin slots in slot order.
     [Test]
@@ -229,9 +255,13 @@ public class MapleSurvivalTests {
         Assert.That(SurvivalRules.GameExp(2, 20, 3), Is.EqualTo(1000 + 900 + 3600));
         Assert.That(SurvivalRules.CurrentPeriod(table, new DateTime(2026, 11, 12))?.Id, Is.EqualTo(1));
         Assert.That(SurvivalRules.CurrentPeriod(table, new DateTime(2017, 1, 1)), Is.Null);
-        // rank 2 of 20, 3 kills, in season: r0 1, r4 participants, r5 rank, r12 / r13 the levels, r15 the kills.
+        // rank 2 of 20, 3 kills, in season: r0 1, r4 participants, r5 rank, r12 / r13 the levels, r15 the kills;
+        // the window's a1..a5 = r6..r10: r8 the exp inside the new level (the bar), r9 the level before, r10 after.
         int[] values = SurvivalRules.ResultValues(2, 20, 3, true, 1000, 1010, 1, 0, 5500, 2, 3100, 125, 61, 7);
-        Assert.That(values, Is.EqualTo(new[] { 1, 0, 1000, 1010, 20, 2, 1, 0, 5500, 3100, 2, 0, 61, 7, 125, 3 }));
+        Assert.That(values, Is.EqualTo(new[] { 1, 0, 1000, 1010, 20, 2, 1, 0, 3100, 1, 2, 0, 61, 7, 125, 3 }));
+        // No level-up: r9 == r10, the bar the exp after.
+        values = SurvivalRules.ResultValues(1, 2, 1, false, 1000, 1030, 2, 100, 1500, 2, 1600, 60, 61, 0);
+        Assert.That(values[6..11], Is.EqualTo(new[] { 2, 100, 1600, 2, 2 }));
     }
 
     // 0xC2 0x22 buys the paid pass at the season's price in merets (any other price or a second buy changes nothing);

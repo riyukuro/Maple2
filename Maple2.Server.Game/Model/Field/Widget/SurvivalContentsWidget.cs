@@ -19,6 +19,8 @@ public class SurvivalContentsWidget : Widget, IByteSerializable {
 
     public SurvivalStorm? Storm { get; private set; }
     private bool zoneSent;
+    // The game ended (Stop): no step runs or goes out until the next StormData.
+    public bool Stopped { get; private set; }
     public Vector3 Center { get; private set; }
 
     public SurvivalContentsWidget(FieldManager field) : base(field) {
@@ -42,7 +44,17 @@ public class SurvivalContentsWidget : Widget, IByteSerializable {
     }
 
     public override bool Check(string name, string arg) {
-        return name == "TimeOver" && Storm != null && Storm.TimeOver(Field.FieldTick);
+        return name == "TimeOver" && !Stopped && Storm != null && Storm.TimeOver(Field.FieldTick);
+    }
+
+    // The game's end: the steps stop (the client prints the storm lines 4, 5 and 6 whatever the game's state) and the
+    // client's zones are cleared (SurvivalEvent 3).
+    public void Stop() {
+        if (Stopped) {
+            return;
+        }
+        Stopped = true;
+        Field.Broadcast(MapleSurvivalPacket.ClearZones());
     }
 
     // The storm over the field's bounds: centered, the start radius half its larger side.
@@ -54,6 +66,7 @@ public class SurvivalContentsWidget : Widget, IByteSerializable {
         float radius = Math.Max(max.X - min.X, max.Y - min.Y) / 2;
         Storm = new SurvivalStorm(Math.Max(radius, MinRadius), MinRadius);
         zoneSent = false;
+        Stopped = false;
         Field.Broadcast(MapleSurvivalPacket.ClearZones());
     }
 
@@ -62,6 +75,9 @@ public class SurvivalContentsWidget : Widget, IByteSerializable {
     // first step (after the game start, whose 0x13 clears the client's zones): the circle before the step and the
     // step's safe circle as its preview (the minimap's next zone).
     private void EnterStep(int step) {
+        if (Stopped) {
+            return;
+        }
         Storm ??= new SurvivalStorm(MinRadius * 10, MinRadius);
         float before = Storm.SafeRadius;
         Storm.Enter(step, Field.FieldTick);
