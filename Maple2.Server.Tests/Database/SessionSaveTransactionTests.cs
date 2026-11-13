@@ -8,6 +8,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game;
 using Microsoft.EntityFrameworkCore;
@@ -64,6 +65,7 @@ public class SessionSaveTransactionTests {
         using var context = new Ms2Context(plain);
         context.Mail.Where(mail => mail.ReceiverId == test.CharacterId).ExecuteDelete();
         context.Item.Where(item => item.OwnerId == test.CharacterId).ExecuteDelete();
+        context.ItemStorage.Where(info => info.AccountId == test.AccountId).ExecuteDelete();
     }
 
     private long StoredMeso() {
@@ -174,6 +176,24 @@ public class SessionSaveTransactionTests {
         Assert.Multiple(() => {
             Assert.That(Mails(), Has.Length.EqualTo(1));
             Assert.That(StoredMeso(), Is.EqualTo(4321));
+        });
+    }
+
+    // A storage meso move whose storage row is refused stores no currency either (the bag's mesos used to be stored
+    // by the next save while the storage kept its old amount).
+    [Test]
+    public void StorageDeposit_StorageNotSaved_StoresNoCurrency() {
+        session.Currency.Meso = 5000;
+        session.SessionSave();
+        using var storage = new StorageManager(session);
+        RefuseOnce("INSERT INTO `item-storage`");
+
+        storage.DepositMesos(1200);
+        hook.Before = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(StoredMeso(), Is.EqualTo(5000));
         });
     }
 

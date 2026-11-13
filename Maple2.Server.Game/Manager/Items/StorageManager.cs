@@ -222,6 +222,7 @@ public sealed class StorageManager : IDisposable {
             mesos += amount;
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
         }
+        StoreMesoMove(amount);
     }
 
     private bool CanWithdrawMeso(long amount) => 0 <= amount && amount <= mesos;
@@ -240,6 +241,25 @@ public sealed class StorageManager : IDisposable {
             mesos -= amount;
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
             session.Currency.Meso += amount;
+        }
+        StoreMesoMove(-amount);
+    }
+
+    // The storage's mesos are stored with the character's at each move, in one transaction (the storage used to be
+    // stored only when it closed, so a crash after an autosave kept a withdrawal in both places or lost a deposit).
+    // A move that is not stored is given back, so the session again holds what the database holds.
+    private void StoreMesoMove(long deposited) {
+        if (session.TrySavePurchase(db => db.SaveStorageInfo(session.AccountId, mesos, expand))) {
+            return;
+        }
+
+        lock (session.Item) {
+            // A withdrawal is taken back from the bag only as far as the bag still holds it.
+            long back = deposited < 0 ? -Math.Min(-deposited, session.Currency.Meso) : deposited;
+            mesos -= back;
+            session.Currency.Meso += back;
+            session.Send(StorageInventoryPacket.UpdateMesos(mesos));
+            session.Send(StorageInventoryPacket.Error(s_store_err_code));
         }
     }
 

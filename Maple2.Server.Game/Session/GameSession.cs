@@ -1435,8 +1435,17 @@ public sealed partial class GameSession : Core.Network.Session {
     /// <summary>
     /// Stores the currency right after a purchase, together with any rows of the same purchase,
     /// under the account lock. Only the currency and the given rows are written, not the whole session.
+    /// Answers true when the currency and the purchase's rows were stored.
     /// </summary>
-    public void SavePurchase(Action<GameStorage.Request>? alsoSave = null) {
+    public bool SavePurchase(Action<GameStorage.Request>? alsoSave = null) {
+        return TrySavePurchase(db => {
+            alsoSave?.Invoke(db);
+            return true;
+        });
+    }
+
+    // SavePurchase for rows whose save reports its result: nothing is stored when alsoSave answers false.
+    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave) {
         try {
             AcquireLock(AccountId);
             using GameStorage.Request db = GameStorage.Context();
@@ -1445,17 +1454,17 @@ public sealed partial class GameSession : Core.Network.Session {
             // did not commit); the session keeps both, and its next save stores them.
             if (!db.SaveCurrency(Player)) {
                 Logger.Error("SavePurchase: currency not saved AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-                return;
+                return false;
             }
             int failed = db.FailedSaves;
-            alsoSave?.Invoke(db);
-            if (db.FailedSaves != failed) {
+            if (!alsoSave(db) || db.FailedSaves != failed) {
                 Logger.Error("SavePurchase: purchase rows not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-                return;
+                return false;
             }
-            db.Commit();
+            return db.Commit();
         } catch (Exception ex) {
             Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return false;
         } finally {
             ReleaseLock(AccountId);
         }
