@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Database.Extensions;
+using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -83,10 +84,11 @@ public class MentorHandler : FieldPacketHandler {
 
     private void HandleLoad(GameSession session) {
         session.Mentoring.SendRequests();
+        // The mentor page's coins today (Mentor 11). How a mentor earns coins is not known, so it is 0 until midnight.
+        session.Send(MentorPacket.DailyPoints(0, DateTime.Now.Date.AddDays(1).ToEpochSeconds()));
         session.Send(MentorPacket.Load());
         session.Mentoring.SendAttend();
         //session.Send(MentorPacket.MyList());
-        //  session.Send(MentorPacket.DailyPoints());
         //  session.Send(MentorPacket.Unknown12());
         //   session.Send(MentorPacket.Unknown15(10));
         //   session.Send(MentorPacket.MenteeInvitations());

@@ -473,6 +473,23 @@ public class MentorHandlerTests {
     }
 
     private const byte Reward = 0;
+    private const byte OpenDialog = 9;
+
+    // The dialog's open (Mentor 9) gives the mentor page its coins today: 0 until the next midnight (Mentor 11: an
+    // unread int, the coins, the time they hold until), before the dialog itself (Mentor 9).
+    [Test]
+    public void OpenDialog_SendsTodaysCoinsUntilMidnight() {
+        Login(season: true);
+        Send(session, RegisterMentor);
+        Mentor(test);
+
+        Send(session, OpenDialog);
+
+        string[] sent = Mentor(test);
+        string coins = "0B" + "00000000" + "00000000" + Convert.ToHexString(BitConverter.GetBytes(NextMidnight()));
+        Assert.That(sent, Has.Member(coins));
+        Assert.That(Array.IndexOf(sent, coins), Is.LessThan(Array.IndexOf(sent, "09")));
+    }
 
     private static string AttendDate(int level, long next) => Hex(MentorPacket.AttendDate(level, next));
 

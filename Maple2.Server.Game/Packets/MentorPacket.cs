@@ -130,12 +130,15 @@ public static class MentorPacket {
         return pWriter;
     }
 
-    public static ByteWriter DailyPoints() {
+    // CMentoringManager::OnSetCounts (mentoringmanager.cpp:466): two ints and a time. The mentor page shows the second
+    // as the coins earned today against the table's daily cap until the server time passes the time
+    // (uimentoringmentorpage.cpp:141, mentoringmanager.cpp:189); the first is kept but not read.
+    public static ByteWriter DailyPoints(int earned, long until) {
         var pWriter = Packet.Of(SendOp.Mentor);
         pWriter.WriteByte((byte) Command.DailyPoints);
-        pWriter.WriteInt(1000);
-        pWriter.WriteInt(0); // mentee points received today
-        pWriter.WriteLong(DateTime.Now.AddDays(+2).ToEpochSeconds()); // reset timestamp
+        pWriter.WriteInt(0);
+        pWriter.WriteInt(earned);
+        pWriter.WriteLong(until);
 
         return pWriter;
     }
