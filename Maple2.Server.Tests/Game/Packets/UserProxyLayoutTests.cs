@@ -1,9 +1,11 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
+using System.Reflection;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -13,7 +15,7 @@ namespace Maple2.Server.Tests.Game.Packets;
 // CN :476, NA :629), so the fields after it shift unless the server writes that region's layout.
 public class UserProxyLayoutTests {
     // The client reader's field sequence; returns the level, the guild id and the last long.
-    private static (short Level, long GuildId, long Last) ReadUser(ByteReader reader, string locale) {
+    internal static (short Level, long GuildId, long Last) ReadUser(ByteReader reader, string locale) {
         reader.ReadLong();
         reader.ReadLong();
         reader.ReadUnicodeString();
@@ -141,6 +143,32 @@ public class UserProxyLayoutTests {
         reader.ReadByte();
         reader.ReadBool();
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    // The same reader takes the user block of FieldAddUser (CSceneStateGame::OnAddUser scenestategame.cpp:11097, after
+    // the object id) and of a character list entry (UICharacterListDialog::CCharacterInfo::Read
+    // uicharacterlistdialog.cpp:343); both writers end where the reader does.
+    [Test]
+    public void FieldAddUser_UserBlock() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        var writer = new ByteWriter();
+        typeof(FieldPacket).GetMethod("WriteCharacter", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, [writer, session]);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(ReadUser(reader, Target.LOCALE).Level, Is.EqualTo(session.Player.Value.Character.Level));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void CharacterList_UserBlock() {
+        var character = new Character { Name = "n", Level = 33, GuildId = 4321, Mastery = new Mastery() };
+        character.ReturnMaps.Push(2000062);
+        var writer = new ByteWriter();
+        typeof(Maple2.Server.Core.Packets.CharacterListPacket).GetMethod("WriteCharacter", BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, [writer, new Account { Username = "u" }, character]);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(ReadUser(reader, Target.LOCALE), Is.EqualTo(((short) 33, 4321L, 0L)));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 }

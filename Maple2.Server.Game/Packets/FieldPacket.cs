@@ -354,10 +354,7 @@ public static class FieldPacket {
         }
         writer.WriteByte(); // charObj+0xff8, set by SetPcBang (0xB5)
         writer.WriteClass<Mastery>(character.Mastery);
-        #region Unknown
-        writer.WriteUnicodeString(); // Login username
-        writer.WriteLong();
-        #endregion
+        PlatformBlock.Write(writer); // the region's platform part (PlatformBlock)
         writer.WriteInt(); // count for long list
         writer.Write<MentorRole>(character.MentorRole); // charObj+0x11cc
         writer.WriteBool(false); // read and discarded by client
