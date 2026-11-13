@@ -5,10 +5,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Maple2.Database.Storage;
 
-public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger) : IDisposable
+public abstract class DatabaseRequest<TContext> : IDisposable
     where TContext : DbContext {
-    protected readonly TContext Context = context;
-    protected readonly ILogger Logger = logger;
+    protected readonly TContext Context;
+    protected readonly ILogger Logger;
 
     private IDbContextTransaction? transaction;
     public bool IsTransaction => transaction != null;
@@ -23,6 +23,16 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
             return;
         }
         afterCommit.Add(action);
+    }
+
+    // The saves on this request that failed, whether or not the storage method that made them reports it: a caller
+    // that writes several things in one transaction compares it before and after, and does not commit a part.
+    public int FailedSaves { get; private set; }
+
+    protected DatabaseRequest(TContext context, ILogger logger) {
+        Context = context;
+        Logger = logger;
+        Context.SaveChangesFailed += (_, _) => FailedSaves++;
     }
 
     public void BeginTransaction() {

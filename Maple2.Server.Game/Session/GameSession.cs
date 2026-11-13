@@ -1413,8 +1413,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
         try {
             AcquireLock(AccountId, 5);
-            Save();
-            preMigrationSaved = true;
+            preMigrationSaved = Save();
         } catch (Exception ex) {
             Logger.Error(ex, "MigrationSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         } finally {
@@ -1442,10 +1441,18 @@ public sealed partial class GameSession : Core.Network.Session {
             AcquireLock(AccountId);
             using GameStorage.Request db = GameStorage.Context();
             db.BeginTransaction();
+            // The currency and the purchase's rows are stored together or not at all (the request rolls back what it
+            // did not commit); the session keeps both, and its next save stores them.
             if (!db.SaveCurrency(Player)) {
                 Logger.Error("SavePurchase: currency not saved AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                return;
             }
+            int failed = db.FailedSaves;
             alsoSave?.Invoke(db);
+            if (db.FailedSaves != failed) {
+                Logger.Error("SavePurchase: purchase rows not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                return;
+            }
             db.Commit();
         } catch (Exception ex) {
             Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
@@ -1455,10 +1462,19 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     // Don't call this directly, since it does not acquire the account lock.
-    private void Save() {
+    // The player row (currency) and every component are stored together or not at all: a save that failed in one of
+    // them (an exception, or a write the database refused) is rolled back whole, so the stored mesos and items stay
+    // in step, and the next save tries again from the session's state.
+    private bool Save() {
         using GameStorage.Request db = GameStorage.Context();
         db.BeginTransaction();
-        db.SavePlayer(Player);
+        if (!db.SavePlayer(Player)) {
+            Logger.Error("Save: player not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return false;
+        }
+        // SavePlayer may fail a save on a concurrency conflict it then retries; count from after it.
+        int failedSaves = db.FailedSaves;
+        bool threw = false;
         TrySaveComponent(UgcMarket.Save);
         TrySaveComponent(Config.Save);
         TrySaveComponent(Shop.Save);
@@ -1469,12 +1485,19 @@ public sealed partial class GameSession : Core.Network.Session {
         TrySaveComponent(Achievement.Save);
         TrySaveComponent(Quest.Save);
         TrySaveComponent(Dungeon.Save);
-        db.Commit();
-        db.SaveChanges();
-        return;
+        if (threw || !db.SaveChanges() || db.FailedSaves != failedSaves) {
+            Logger.Error("Save: a component was not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return false;
+        }
+        return db.Commit();
 
         void TrySaveComponent(Action<GameStorage.Request> action) {
-            try { action(db); } catch (Exception ex) { Logger.Error(ex, "Error saving component for {Player}", PlayerName); }
+            try {
+                action(db);
+            } catch (Exception ex) {
+                threw = true;
+                Logger.Error(ex, "Error saving component for {Player}", PlayerName);
+            }
         }
     }
 }
