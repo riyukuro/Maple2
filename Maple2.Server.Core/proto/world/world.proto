@@ -335,6 +335,8 @@ message GuildRequest {
     int32 rarity = 3;
     int32 amount = 4;
     string receiver_name = 5;
+    // The item's rolls as the channel made them (ItemRolls), put on the mailed item; empty: a bare item.
+    bytes rolls = 6;
   }
   // Guild 101: the master raises the guild house by one level, with the theme chosen for it.
   message UpgradeHouse {

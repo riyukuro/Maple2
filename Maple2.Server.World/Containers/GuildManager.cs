@@ -160,7 +160,15 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Expel and Leave hold the guild lock, as a storage gift does from its receiver check to its mail: a member
+    // removed meanwhile can not receive the gift.
     public GuildError Expel(long requestorId, long characterId) {
+        lock (guildLock) {
+            return ExpelLocked(requestorId, characterId);
+        }
+    }
+
+    private GuildError ExpelLocked(long requestorId, long characterId) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;
         }
@@ -202,6 +210,12 @@ public class GuildManager : IDisposable {
     }
 
     public GuildError Leave(long characterId) {
+        lock (guildLock) {
+            return LeaveLocked(characterId);
+        }
+    }
+
+    private GuildError LeaveLocked(long characterId) {
         if (characterId == Guild.LeaderCharacterId) {
             return GuildError.s_guild_err_cannot_leave_master;
         }
@@ -367,13 +381,7 @@ public class GuildManager : IDisposable {
             Guild.Buffs[index] = upgraded;
 
             // Saved before the answer, as the donation and the NPC upgrade; a failed save undoes both values.
-            bool saved;
-            try {
-                using GameStorage.Request db = GameStorage.Context();
-                saved = db.SaveGuild(Guild);
-            } catch (Exception) {
-                saved = false;
-            }
+            bool saved = TrySave(row => row.Funds == Guild.Funds && row.Buffs.Contains(upgraded));
             if (!saved) {
                 Guild.Funds = oldFunds;
                 Guild.Buffs[index] = buff;
@@ -439,7 +447,7 @@ public class GuildManager : IDisposable {
             Guild.Funds -= row!.Cost;
             used = buff with { ExpiryTime = now };
             Guild.Buffs[index] = used;
-            if (!TrySave()) {
+            if (!TrySave(stored => stored.Funds == Guild.Funds && stored.Buffs.Contains(used))) {
                 Guild.Funds = oldFunds;
                 Guild.Buffs[index] = buff;
                 return GuildError.s_guild_err_unknown;
@@ -536,7 +544,8 @@ public class GuildManager : IDisposable {
             if (product.Amount > 0) {
                 Guild.SetStored(product.ItemId, product.Rarity, oldStored + product.Amount);
             }
-            if (!TrySave()) {
+            if (!TrySave(row => row.Funds == Guild.Funds && (product.Amount <= 0
+                    || row.StoredAmount(product.ItemId, product.Rarity) == oldStored + product.Amount))) {
                 Guild.Funds = oldFunds;
                 if (product.Amount > 0) {
                     Guild.SetStored(product.ItemId, product.Rarity, oldStored);
@@ -565,7 +574,8 @@ public class GuildManager : IDisposable {
     // The storage taken, the log row and the mail with its item are stored in one transaction before the answer; a
     // failed store gives nothing and puts the storage and the log back. The members get the amount left (110), the
     // receiver the mail notice.
-    public GuildError StorageGift(long requestorId, int itemId, short rarity, int amount, string receiverName, out GuildMember? receiver) {
+    public GuildError StorageGift(long requestorId, int itemId, short rarity, int amount, string receiverName, byte[] rolls,
+        out GuildMember? receiver) {
         receiver = null;
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;
@@ -588,21 +598,32 @@ public class GuildManager : IDisposable {
                 return GuildError.s_guild_err_unknown;
             }
 
+            // The channel's rolls (ItemRolls); without them (or unreadable) the item is mailed bare.
+            var gifted = new Item(metadata, rarity, amount);
+            ItemRolls.Apply(gifted, rolls);
+
             GuildStorageLog[] oldLog = Guild.StorageLogSnapshot();
             Guild.SetStored(itemId, rarity, stored - amount);
-            Guild.AddStorageLog(new GuildStorageLog(requestor.AccountId, requestor.CharacterId, requestor.Name,
-                receiver.AccountId, receiver.CharacterId, receiver.Name, itemId, rarity, amount, now));
+            var logged = new GuildStorageLog(requestor.AccountId, requestor.CharacterId, requestor.Name,
+                receiver.AccountId, receiver.CharacterId, receiver.Name, itemId, rarity, amount, now);
+            Guild.AddStorageLog(logged);
+            bool sent;
             try {
                 using GameStorage.Request db = GameStorage.Context();
                 mail = db.GiftGuildStorageItem(Guild, new Mail {
                     ReceiverId = receiver.CharacterId,
                     Type = MailType.System,
                     Content = constants.guildStorageItemMail.ToString(),
-                }, new Item(metadata, rarity, amount));
+                }, gifted);
+                sent = mail != null;
             } catch (Exception) {
+                // The commit may have gone through with its answer lost: the stored row tells. Putting the item
+                // back while the mail was stored would give it twice (at the next save of the row).
                 mail = null;
+                sent = StoredRowHolds(row => row.StoredAmount(itemId, rarity) == stored - amount
+                    && row.StorageLog.Contains(logged));
             }
-            if (mail == null) {
+            if (!sent) {
                 Guild.SetStored(itemId, rarity, stored);
                 lock (Guild.StorageLog) {
                     Guild.StorageLog.Clear();
@@ -615,7 +636,8 @@ public class GuildManager : IDisposable {
             BroadcastStorage(itemId, rarity, stored - amount);
         }
 
-        if (MailNotifyRules.Notify(receiver.Info) && ChannelClients.TryGetClient(receiver.Info.Channel, out ChannelClient? client)) {
+        // Without the mail (a lost commit answer), the receiver finds it at the next look.
+        if (mail != null && MailNotifyRules.Notify(receiver.Info) && ChannelClients.TryGetClient(receiver.Info.Channel, out ChannelClient? client)) {
             try {
                 client.MailNotification(new MailNotificationRequest {
                     CharacterId = receiver.CharacterId,
@@ -747,7 +769,8 @@ public class GuildManager : IDisposable {
             Guild.Funds -= next!.UpgradeCost;
             Guild.HouseRank = oldRank + 1;
             Guild.HouseTheme = theme;
-            if (!TrySave()) {
+            if (!TrySave(row => row.Funds == Guild.Funds && row.HouseRank == Guild.HouseRank
+                    && row.HouseTheme == theme)) {
                 Guild.Funds = oldFunds;
                 Guild.HouseRank = oldRank;
                 Guild.HouseTheme = oldTheme;
@@ -786,7 +809,7 @@ public class GuildManager : IDisposable {
             int oldTheme = Guild.HouseTheme;
             Guild.Funds -= house!.ReThemeCost;
             Guild.HouseTheme = theme;
-            if (!TrySave()) {
+            if (!TrySave(row => row.Funds == Guild.Funds && row.HouseTheme == theme)) {
                 Guild.Funds = oldFunds;
                 Guild.HouseTheme = oldTheme;
                 return GuildError.s_guild_err_unknown;
@@ -800,10 +823,24 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
-    private bool TrySave() {
+    // Saves the guild row; for a save whose failure the caller undoes, landed tells whether a stored row holds the
+    // change. A false answer of the store wrote nothing. A thrown one can come after the commit went through (its
+    // answer lost): then the row is read back, and the change counts as saved when the stored row holds it, so the
+    // caller does not undo what the database keeps. Without landed, or when the row cannot be read, false.
+    private bool TrySave(Func<Guild, bool>? landed = null) {
         try {
             using GameStorage.Request db = GameStorage.Context();
             return db.SaveGuild(Guild);
+        } catch (Exception) {
+            return landed != null && StoredRowHolds(landed);
+        }
+    }
+
+    private bool StoredRowHolds(Func<Guild, bool> landed) {
+        try {
+            using GameStorage.Request db = GameStorage.Context();
+            Guild? row = db.GetGuild(Guild.Id);
+            return row != null && landed(row);
         } catch (Exception) {
             return false;
         }
@@ -875,13 +912,7 @@ public class GuildManager : IDisposable {
                 Guild.Npcs[index] = upgraded;
             }
 
-            bool saved;
-            try {
-                using GameStorage.Request db = GameStorage.Context();
-                saved = db.SaveGuild(Guild);
-            } catch (Exception) {
-                saved = false;
-            }
+            bool saved = TrySave(row => row.Funds == Guild.Funds && row.Npcs.Contains(upgraded));
             if (!saved) {
                 Guild.Funds = oldFunds;
                 if (index < 0) {
@@ -944,13 +975,7 @@ public class GuildManager : IDisposable {
                 member.DailyDonationCount = today + count;
                 member.DonationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-                bool saved;
-                try {
-                    using GameStorage.Request db = GameStorage.Context();
-                    saved = db.SaveGuild(Guild);
-                } catch (Exception) {
-                    saved = false;
-                }
+                bool saved = TrySave(row => row.Funds == Guild.Funds);
                 if (!saved) {
                     Guild.Funds = oldFunds;
                     member.DailyDonationCount = oldCount;

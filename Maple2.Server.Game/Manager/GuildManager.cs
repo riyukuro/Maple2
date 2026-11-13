@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using Google.Protobuf;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -595,6 +596,9 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_guild;
         }
 
+        // Rolled here as a bag item is (stats, sockets, color); the World creates the mailed item with these rolls.
+        Item? rolled = session.Field?.ItemDrop.CreateItem(item.ItemId, item.Rarity, item.Amount);
+        byte[] rolls = rolled != null ? ItemRolls.Write(rolled) : [];
         try {
             GuildResponse response = session.World.Guild(new GuildRequest {
                 RequestorId = session.CharacterId,
@@ -604,6 +608,7 @@ public class GuildManager : IDisposable {
                     Rarity = item.Rarity,
                     Amount = item.Amount,
                     ReceiverName = receiverName,
+                    Rolls = ByteString.CopyFrom(rolls),
                 },
             });
             receiver = response.ReceiverName;

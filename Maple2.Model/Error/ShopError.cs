@@ -14,6 +14,8 @@ public enum ShopError {
     s_err_cannot_sell_item = 5,
     [Description("Item not found.")]
     s_err_invalid_item = 7,
+    // Codes 8 and 9 unlock the dialog with no notice; the name is chosen here. The server sends its own notice with it.
+    s_err_no_notice = 8,
     [Description("Cannot be sold.")]
     s_msg_cant_sell = 10,
     [Description("Not enough mesos.")]

@@ -709,8 +709,12 @@ public sealed class ShopManager {
             case ShopCurrencyType.GuildFund:
                 GuildError fundError = session.Guild.SpendFund(price, guildProduct);
                 if (fundError != GuildError.none) {
-                    session.Send(ShopPacket.Error(fundError == GuildError.s_guild_err_not_enough_guild_fund
-                        ? ShopError.s_guild_err_not_enough_guild_fund : ShopError.s_guild_err_buy_no_master));
+                    session.Send(ShopPacket.Error(FundBuyError(fundError)));
+                    if (FundBuyError(fundError) == ShopError.s_err_no_notice) {
+                        // The World's own failure, or its answer lost (the buy may be stored: the storage list then
+                        // shows it), not a refusal: the guild's unknown error, not the "master only" notice.
+                        session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+                    }
                     return false;
                 }
                 break;
@@ -824,4 +828,14 @@ public sealed class ShopManager {
             .ToList());
     }
 
+    // The shop error (Shop 15) of a refused guild-fund buy: the fund notice, the "master only" notice for a refusal of
+    // the buyer, or, for the World's own failure or its lost answer, none (the guild's unknown error is sent with it).
+    public static ShopError FundBuyError(GuildError error) {
+        return error switch {
+            GuildError.s_guild_err_not_enough_guild_fund => ShopError.s_guild_err_not_enough_guild_fund,
+            GuildError.s_guild_err_no_master or GuildError.s_guild_err_no_authority or GuildError.s_guild_err_null_member
+                or GuildError.s_guild_err_null_guild => ShopError.s_guild_err_buy_no_master,
+            _ => ShopError.s_err_no_notice,
+        };
+    }
 }

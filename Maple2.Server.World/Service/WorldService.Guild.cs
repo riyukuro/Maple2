@@ -680,7 +680,7 @@ public partial class WorldService {
         }
 
         GuildError error = manager.StorageGift(requestorId, gift.ItemId, (short) gift.Rarity, gift.Amount, gift.ReceiverName,
-            out GuildMember? receiver);
+            gift.Rolls.ToByteArray(), out GuildMember? receiver);
         if (error != GuildError.none) {
             return new GuildResponse { Error = (int) error };
         }

@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using System.Threading;
 using Maple2.Database.Storage;
+using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -79,7 +82,7 @@ public class GuildStorageTests {
     }
 
     private GuildError Gift(long giver, int amount, string receiver = "Member", int itemId = ItemId) {
-        return manager.StorageGift(giver, itemId, 1, amount, receiver, out _);
+        return manager.StorageGift(giver, itemId, 1, amount, receiver, [], out _);
     }
 
     private Guild StoredGuild() {
@@ -130,7 +133,7 @@ public class GuildStorageTests {
     public void Gift_MailsTheItemAndLogsIt() {
         Store(ItemId, 5);
 
-        Assert.That(manager.StorageGift(master.CharacterId, ItemId, 1, 2, "Member", out GuildMember? receiver), Is.EqualTo(GuildError.none));
+        Assert.That(manager.StorageGift(master.CharacterId, ItemId, 1, 2, "Member", [], out GuildMember? receiver), Is.EqualTo(GuildError.none));
 
         Assert.That(receiver, Is.SameAs(member));
         Assert.That(guild.StoredAmount(ItemId, 1), Is.EqualTo(3));
@@ -143,6 +146,64 @@ public class GuildStorageTests {
         Assert.That((entry.GiverCharacterId, entry.GiverName, entry.ReceiverAccountId, entry.ReceiverCharacterId, entry.ReceiverName),
             Is.EqualTo((master.CharacterId, "Master", member.AccountId, member.CharacterId, "Member")));
         Assert.That((entry.ItemId, entry.Rarity, entry.Amount), Is.EqualTo((ItemId, (short) 1, 2)));
+    }
+
+    // The channel's rolls (ItemRolls) come with the gift: the mailed item has the stats, sockets and color the
+    // channel rolled, as a bag item of the product would. The World used to mail a bare item.
+    [Test]
+    public void Gift_MailsTheChannelsRolls() {
+        Store(ItemId, 5);
+        Item rolled = new Item(TestGameSession.Metadata(ItemId, slotMax: 10), 1, 2);
+        rolled.Stats = new ItemStats();
+        rolled.Stats[ItemStats.Type.Constant].Basic[BasicAttribute.Strength] = new BasicOption(12);
+        rolled.Stats[ItemStats.Type.Random].Special[SpecialAttribute.TotalDamage] = new SpecialOption(0.05f);
+        rolled.Socket = new ItemSocket(3, 1);
+        var color = new EquipColor(new Color(1, 2, 3, 255), new Color(4, 5, 6, 255), new Color(7, 8, 9, 255), 11, 2);
+        rolled.Appearance!.Color = color;
+        rolled.Transfer!.SocketTransfer = false;
+
+        Assert.That(manager.StorageGift(master.CharacterId, ItemId, 1, 2, "Member", ItemRolls.Write(rolled), out _),
+            Is.EqualTo(GuildError.none));
+
+        Item mailed = Mails(member.CharacterId).Single().Items.Single();
+        Assert.That(mailed.Stats, Is.Not.Null);
+        Assert.That(mailed.Stats![ItemStats.Type.Constant].Basic[BasicAttribute.Strength], Is.EqualTo(new BasicOption(12)));
+        Assert.That(mailed.Stats[ItemStats.Type.Random].Special[SpecialAttribute.TotalDamage], Is.EqualTo(new SpecialOption(0.05f)));
+        Assert.That((mailed.Socket?.MaxSlots, mailed.Socket?.UnlockSlots), Is.EqualTo(((byte?) 3, (byte?) 1)));
+        Assert.That((mailed.Appearance?.Color.PaletteId, mailed.Appearance?.Color.Index, mailed.Appearance?.Color.Tertiary),
+            Is.EqualTo(((int?) 11, (int?) 2, (Color?) new Color(7, 8, 9, 255))));
+        Assert.That(mailed.Transfer?.SocketTransfer, Is.False);
+    }
+
+    // Rolls that do not read (cut short) leave the item bare; the gift still goes.
+    [Test]
+    public void Gift_UnreadableRollsMailTheItemBare() {
+        Store(ItemId, 5);
+        Item rolled = new Item(TestGameSession.Metadata(ItemId, slotMax: 10), 1, 2) { Stats = new ItemStats() };
+        byte[] rolls = ItemRolls.Write(rolled);
+
+        Assert.That(manager.StorageGift(master.CharacterId, ItemId, 1, 2, "Member", rolls[..^1], out _), Is.EqualTo(GuildError.none));
+        Assert.That(Mails(member.CharacterId).Single().Items.Single().Stats, Is.Null);
+    }
+
+    // Expel and Leave take the guild lock, so a member cannot leave (or be expelled) between a gift's receiver check
+    // and its mail. They used to run without it.
+    [TestCase("expel")]
+    [TestCase("leave")]
+    public void ExpelAndLeave_WaitForTheGuildLock(string which) {
+        object guildLock = typeof(GuildManager).GetField("guildLock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(manager)!;
+        Task<GuildError> task;
+        Monitor.Enter(guildLock);
+        try {
+            task = Task.Run(() => which == "expel" ? manager.Expel(master.CharacterId, member.CharacterId) : manager.Leave(member.CharacterId));
+            Thread.Sleep(300);
+            Assert.That(task.IsCompleted, Is.False, "ran while the guild lock was held");
+        } finally {
+            Monitor.Exit(guildLock);
+        }
+        // The in-memory store cannot run the member row delete, so the call may end in an exception; only that it ran
+        // after the lock was let go is checked here.
+        Assert.That(((IAsyncResult) task).AsyncWaitHandle.WaitOne(5000), Is.True, "ran once the lock was free");
     }
 
     // The whole stored count leaves the storage row.

@@ -703,4 +703,25 @@ public class ShopHandlerTests {
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(shopError)) }));
         Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
     }
+
+    // The World failed (its save) or its answer was lost (the buy may be stored; the members' storage list shows it):
+    // the shop unlocks with no notice of its own and the guild's unknown error is shown. It used to show the "master
+    // only" notice to the master.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Buy_OfAGuildFundProduct_WorldFailedOrAnswerLost_ShowsTheUnknownError(bool lost) {
+        GameSession session = Login();
+        JoinAsMaster(session);
+        test.World.GuildWorld = _ => lost
+            ? throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "lost"))
+            : new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+
+        Buy(session, GuildFundProductId, 1);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(ShopPacket.Error(ShopError.s_err_no_notice)), Hex(GuildPacket.Error(GuildError.s_guild_err_unknown)),
+        }));
+        Assert.That(Convert.ToHexString(ShopPacket.Error(ShopError.s_err_no_notice).ToArray()), Does.Contain("08000000"));
+        Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+    }
 }
