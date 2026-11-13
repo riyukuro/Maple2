@@ -76,16 +76,24 @@ public class FieldSpawnGroup : FieldEntity<SpawnGroupMetadata> {
     }
 
     private void SpawnNpcs() {
-        int totalCount = SpawnGroupRules.TotalCount(Value.TotalCount, npcs.Select(entry => entry.Item1.SpawnId));
-        SpawnGroupRules.Refill(spawnIds, spawnId => Field.GetActorsBySpawnId(spawnId).Any(), totalCount,
-            () => npcs.Get().SpawnId, Field.ToggleNpcSpawnPoint);
+        SpawnGroupRules.Fill fill = SpawnGroupRules.Refill(spawnIds, spawnId => Field.GetActorsBySpawnId(spawnId).Any(), Value.TotalCount,
+            npcs.Select(entry => entry.Item1.SpawnId), () => npcs.Get().SpawnId, Field.ToggleNpcSpawnPoint);
+        WarnIfGaveUp(fill);
     }
 
     private void SpawnInteractObjects() {
-        int totalCount = SpawnGroupRules.TotalCount(Value.TotalCount, interactObjects.Select(entry => entry.Item1.RegionSpawnId));
         SpawnInteractObjectMetadata? picked = null;
-        SpawnGroupRules.Refill(spawnIds, spawnId => Field.GetInteractObjectsBySpawnId(spawnId).Any(), totalCount,
-            () => (picked = interactObjects.Get()).RegionSpawnId, _ => Field.SpawnInteractObject(picked!));
+        SpawnGroupRules.Fill fill = SpawnGroupRules.Refill(spawnIds, spawnId => Field.GetInteractObjectsBySpawnId(spawnId).Any(), Value.TotalCount,
+            interactObjects.Select(entry => entry.Item1.RegionSpawnId), () => (picked = interactObjects.Get()).RegionSpawnId,
+            _ => Field.SpawnInteractObject(picked!));
+        WarnIfGaveUp(fill);
+    }
+
+    private void WarnIfGaveUp(SpawnGroupRules.Fill fill) {
+        if (fill.GaveUp) {
+            Log.Logger.Warning("Spawn group {GroupId} on map {MapId}: {Up} of {TotalCount} up after its draws ran out",
+                Value.GroupId, Field.MapId, spawnIds.Count, Value.TotalCount);
+        }
     }
 
     public override void Update(long tickCount) {

@@ -104,10 +104,10 @@ public class CombineSpawnTests {
         var up = new List<int>();
         var draws = new Queue<int>([501, 502]);
         var spawned = new List<int>();
-        Assert.That(SpawnGroupRules.Refill(up, _ => true, 2, draws.Dequeue, spawned.Add), Is.EqualTo(new[] { 501, 502 }));
+        Assert.That(SpawnGroupRules.Refill(up, _ => true, 2, Points, draws.Dequeue, spawned.Add).Added, Is.EqualTo(new[] { 501, 502 }));
 
         draws = new Queue<int>([502, 503]);
-        List<int> added = SpawnGroupRules.Refill(up, spawnId => spawnId != 501, 2, draws.Dequeue, spawned.Add);
+        List<int> added = SpawnGroupRules.Refill(up, spawnId => spawnId != 501, 2, Points, draws.Dequeue, spawned.Add).Added;
         Assert.Multiple(() => {
             Assert.That(added, Is.EqualTo(new[] { 503 }));
             Assert.That(up, Is.EquivalentTo(new[] { 502, 503 }));
@@ -115,7 +115,35 @@ public class CombineSpawnTests {
         });
 
         // Nothing killed: a reset puts nothing up.
-        Assert.That(SpawnGroupRules.Refill(up, _ => true, 2, () => throw new AssertionException("no draw"), spawned.Add), Is.Empty);
+        Assert.That(SpawnGroupRules.Refill(up, _ => true, 2, Points, () => throw new AssertionException("no draw"), spawned.Add).Added, Is.Empty);
+    }
+
+    private static readonly int[] Points = [501, 502, 503];
+
+    [Test]
+    public void AFillStopsAtItsPointsAndItsDraws() {
+        // totalCount above the group's points (as 02020051's group 1003: 38 for 37 points): every point goes up and
+        // the fill stops there instead of drawing for ever.
+        var up = new List<int>();
+        int next = 0;
+        SpawnGroupRules.Fill fill = SpawnGroupRules.Refill(up, _ => true, 5, Points, () => Points[next++ % Points.Length], _ => { });
+        Assert.Multiple(() => {
+            Assert.That(fill.Added, Is.EqualTo(Points));
+            Assert.That(fill.GaveUp, Is.False);
+        });
+
+        // A pick that never draws the last point (a weight of 0): the fill gives up after its draws, with what it has.
+        up.Clear();
+        int drawn = 0;
+        fill = SpawnGroupRules.Refill(up, _ => true, 3, Points, () => Points[drawn++ % 2], _ => { });
+        Assert.Multiple(() => {
+            Assert.That(fill.Added, Is.EqualTo(new[] { 501, 502 }));
+            Assert.That(fill.GaveUp, Is.True);
+            Assert.That(drawn, Is.EqualTo(3 * SpawnGroupRules.DrawsPerSpawn));
+        });
+
+        // An empty group draws nothing.
+        Assert.That(SpawnGroupRules.Refill([], _ => true, 2, [], () => throw new AssertionException("no draw"), _ => { }).Added, Is.Empty);
     }
 
     [Test]

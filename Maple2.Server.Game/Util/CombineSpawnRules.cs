@@ -73,13 +73,27 @@ public static class SpawnGroupRules {
         return Math.Clamp(totalCount, 0, spawnIds.Distinct().Count());
     }
 
+    // Draws a fill may make per spawn it still has to put up before it gives up. Chosen here: a pick that is already
+    // up is drawn again, and a point whose weight is 0 is never drawn, so the loop needs a bound; 100 draws per spawn
+    // fill a group of evenly weighted points (37 points take about 160 draws in all) and stop a group that cannot fill.
+    public const int DrawsPerSpawn = 100;
+
+    public readonly record struct Fill(List<int> Added, bool GaveUp);
+
     // A group's fill (start_combine_spawn, then each reset): the picks no longer up (killed, or a box opened) are
     // dropped, then new picks (pick, drawn by weight; one already up is drawn again) are put up (spawn) until
-    // totalCount are up. Returns the spawn ids put up.
-    public static List<int> Refill(List<int> upSpawnIds, Func<int, bool> isUp, int totalCount, Func<int> pick, Action<int> spawn) {
+    // totalCount are up, capped at the group's distinct spawn ids (TotalCount). A fill that runs out of draws
+    // (DrawsPerSpawn) stops with what it has put up (GaveUp) and the next reset draws again.
+    public static Fill Refill(List<int> upSpawnIds, Func<int, bool> isUp, int totalCount, IEnumerable<int> spawnIds,
+                              Func<int> pick, Action<int> spawn) {
         upSpawnIds.RemoveAll(spawnId => !isUp(spawnId));
+        int target = TotalCount(totalCount, spawnIds);
+        int draws = Math.Max(0, target - upSpawnIds.Count) * DrawsPerSpawn;
         var added = new List<int>();
-        while (upSpawnIds.Count < totalCount) {
+        while (upSpawnIds.Count < target) {
+            if (draws-- <= 0) {
+                return new Fill(added, true);
+            }
             int spawnId = pick();
             if (upSpawnIds.Contains(spawnId)) {
                 continue;
@@ -88,7 +102,7 @@ public static class SpawnGroupRules {
             upSpawnIds.Add(spawnId);
             added.Add(spawnId);
         }
-        return added;
+        return new Fill(added, false);
     }
 
     // A spawn point fills itself (on its regen check) and at field creation only when no group of the field names it.
