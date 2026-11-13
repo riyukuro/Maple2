@@ -619,9 +619,10 @@ public partial class WorldService {
 
     // The match field ended the match. With a winner, both guilds' records move (the winner by guildPVPWinPoint,
     // the loser by guildPVPLosePoint) and each keeps the match in its history from its own side; a draw changes
-    // nothing. A match without a fought round (every round a walkover, or a guild that never came) is a no-fight
-    // match: it counts as a win and a loss with no round results (the loser's row f20 1), and moves no score and
-    // pays no reward. The answer has both guilds' new scores and whether each guild's fighters get the reward, the
+    // nothing. A match without a fought round won (every round a walkover or a draw, a guild that never came, or a
+    // forfeit before any fought win) is a no-fight match: it counts as a win and a loss with no round results (the
+    // loser's row f20 1), and moves no score and pays no reward. A fought match moves a guild's score only when it
+    // pays (inside the guild's daily cap). The answer has both guilds' new scores and whether each guild's fighters get the reward, the
     // winner first (Pvp 'u').
     private GuildResponse GuildPvpEnd(GuildRequest.Types.PvpEnd end) {
         GuildPvpLookup.Match? match = guildPvpLookup.End(end.MatchId);
@@ -641,23 +642,11 @@ public partial class WorldService {
         managerB.RollPvp(now);
         var constants = managerA.ServerTableMetadata.ConstantsTable;
         long[] fighters = end.Fighters.ToArray();
-        bool fought = end.Rounds.Any(round => round.Fought);
+        bool fought = FoughtMatch(end.Rounds);
 
         (int Score, int Delta, bool Reward) Apply(GuildManager self, GuildManager other, bool selfIsA) {
             bool won = end.WinnerGuildId == self.Guild.Id;
-            var rounds = fought ? end.Rounds.Take(5).ToList() : [];
-            var history = new GuildPvpMatch {
-                GuildA = self.Guild.Id,
-                GuildB = other.Guild.Id,
-                NameA = self.Guild.Name,
-                NameB = other.Guild.Name,
-                NoFight = !fought && !won,
-                PlayersA = rounds.Select(round => selfIsA ? round.PlayersA : round.PlayersB).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
-                PlayersB = rounds.Select(round => selfIsA ? round.PlayersB : round.PlayersA).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
-                Results = rounds.Select(round => round.Winner == 0 ? (byte) 0 : (round.Winner == 1) == selfIsA ? (byte) 'W' : (byte) 'L')
-                    .Concat(Enumerable.Repeat((byte) 0, 5)).Take(5).ToArray(),
-                Time = time,
-            };
+            GuildPvpMatch history = PvpHistory(end.Rounds, self.Guild.Id, self.Guild.Name, other.Guild.Id, other.Guild.Name, selfIsA, won, fought, time);
             return self.EndPvp(history, won, fought, won ? constants.guildPVPWinPoint : constants.guildPVPLosePoint, fighters, now);
         }
 
@@ -688,6 +677,30 @@ public partial class WorldService {
             response.PvpScores.Add(scoreRowA);
         }
         return response;
+    }
+
+    // The match in a guild's history from its own side (Guild A = self): the rounds (up to 5) of a fought match;
+    // a no-fight match has none, and the loser's row is marked no-fight (f20).
+    internal static GuildPvpMatch PvpHistory(IEnumerable<GuildRequest.Types.PvpEnd.Types.Round> end, long selfId, string selfName, long otherId,
+                                             string otherName, bool selfIsA, bool won, bool fought, long time) {
+        var rounds = fought ? end.Take(5).ToList() : [];
+        return new GuildPvpMatch {
+            GuildA = selfId,
+            GuildB = otherId,
+            NameA = selfName,
+            NameB = otherName,
+            NoFight = !fought && !won,
+            PlayersA = rounds.Select(round => selfIsA ? round.PlayersA : round.PlayersB).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
+            PlayersB = rounds.Select(round => selfIsA ? round.PlayersB : round.PlayersA).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
+            Results = rounds.Select(round => round.Winner == 0 ? (byte) 0 : (round.Winner == 1) == selfIsA ? (byte) 'W' : (byte) 'L')
+                .Concat(Enumerable.Repeat((byte) 0, 5)).Take(5).ToArray(),
+            Time = time,
+        };
+    }
+
+    // A match with at least one fought round won (not a walkover, a forfeit's cut round or a draw).
+    internal static bool FoughtMatch(IEnumerable<GuildRequest.Types.PvpEnd.Types.Round> rounds) {
+        return rounds.Any(round => round.Fought && round.Winner != 0);
     }
 
     private GuildResponse UpgradeGuildBuff(long requestorId, GuildRequest.Types.UpgradeBuff upgrade) {

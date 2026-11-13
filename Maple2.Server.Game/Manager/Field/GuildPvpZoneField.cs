@@ -183,8 +183,20 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
         }
     }
 
+    // A fighter leaving is out; the last player of a team seen in the field forfeits the match (once it started).
     public void Leave(FieldPlayer player) {
-        lock (mutex) Apply(state.Out(player.Value.Character.Id, field.FieldTick));
+        lock (mutex) {
+            long characterId = player.Value.Character.Id;
+            int team = TeamOf(player);
+            if (team != GuildPvpZoneState.NoTeam && !playersInBox(0).Any(other => other.Value.Character.Id != characterId && TeamOf(other) == team)) {
+                List<GuildPvpZoneEvent> events = state.Forfeit(team, field.FieldTick);
+                if (events.Count > 0) {
+                    Apply(events);
+                    return;
+                }
+            }
+            Apply(state.Out(characterId, field.FieldTick));
+        }
     }
 
     private ByteWriter Round(int endTick) {
@@ -256,7 +268,8 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
                 continue;
             }
             player.Session.Send(PvpPacket.WinLose(team == winner));
-            if (team == winner) {
+            // The win's trophies only for a fought round won (not walkovers or a forfeit alone).
+            if (team == winner && state.WonFoughtRound(winner)) {
                 PvpConditions.GuildWin(player, field.MapId);
             }
         }
@@ -300,8 +313,9 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
 
     // The World counted the match (a winner): each player of the two guilds here gets the result window. The reward
     // (PvpGuildRewardItem, mailed when the bag is full) and guild_championship of the season go only to the match's
-    // fighters, once each, and only for a guild the World pays (Reward: a fought match under its daily cap); the
-    // others' window shows no reward.
+    // fighters, once each, only for a guild the World pays (Reward: a fought match under its daily cap) and while
+    // the character has one of the day's GuildPvp.DailyRewardCap left (whatever its guild); the others' window
+    // shows no reward.
     private void Result(GuildResponse response, int winsA, int winsB, IReadOnlySet<long> fighters) {
         GuildResponse.Types.PvpScore winnerRow = response.PvpScores[0];
         GuildResponse.Types.PvpScore loserRow = response.PvpScores[1];
@@ -311,6 +325,7 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
         ConstantsTable constants = field.ServerTableMetadata.ConstantsTable;
         int seasonId = Maple2.Model.Game.GuildPvp.CurrentSeason(field.TableMetadata.SeasonDataTable.GuildPvp, DateTime.Now)?.Id ?? 0;
         var paid = new HashSet<long>();
+        DateTime now = DateTime.Now;
         foreach (FieldPlayer player in playersInBox(0).ToList()) {
             long guildId = player.Session.Guild.Id;
             if (guildId == 0 || (guildId != winnerRow.GuildId && guildId != loserRow.GuildId)) {
@@ -319,10 +334,10 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
             long characterId = player.Value.Character.Id;
             GuildResponse.Types.PvpScore row = guildId == winnerRow.GuildId ? winnerRow : loserRow;
             bool fighter = fighters.Contains(characterId) && paid.Add(characterId);
-            int count = !fighter || !row.Reward ? 0
-                : guildId == winnerRow.GuildId ? constants.PvpGuildRewardWinnerCount : constants.PvpGuildRewardLoserCount;
+            bool rewarded = Maple2.Model.Game.GuildPvp.TakeFighterReward(player.Value.Character, fighter, row.Reward, now);
+            int count = !rewarded ? 0 : guildId == winnerRow.GuildId ? constants.PvpGuildRewardWinnerCount : constants.PvpGuildRewardLoserCount;
             player.Session.Send(PvpPacket.GuildResult(winnerSide, loserSide, count));
-            if (seasonId > 0 && fighter) {
+            if (seasonId > 0 && rewarded) {
                 PvpConditions.GuildChampionship(player, seasonId);
             }
             try {

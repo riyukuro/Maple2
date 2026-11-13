@@ -22,6 +22,7 @@ using Serilog;
 using ChannelGuildRequest = Maple2.Server.Channel.Service.GuildRequest;
 using GuildManager = Maple2.Server.Game.Manager.GuildManager;
 using InGameRankPacket = Maple2.Server.Web.Packet.InGameRankPacket;
+using PvpRound = Maple2.Server.World.Service.GuildRequest.Types.PvpEnd.Types.Round;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -359,7 +360,7 @@ public class GuildChampionshipTests {
         Assert.That(zone.RoundFighters, Is.EquivalentTo(new long[] { 11, 12, 13, 21, 22 }));
     }
 
-    // A guild with no player left in the field after the start forfeits: the guild that stayed wins the match.
+    // A guild seen in the field with no player left in it after the start forfeits: the guild that stayed wins.
     [Test]
     public void Zone_GuildGoneForfeits() {
         GuildPvpZoneState zone = Zone();
@@ -372,9 +373,122 @@ public class GuildChampionshipTests {
         Assert.That(events.Single(), Is.EqualTo(new GuildPvpZoneEvent(GuildPvpZoneEventType.End, GuildPvpZoneState.TeamA)));
         Assert.That((zone.Ended, zone.MatchWinner, zone.Winner), Is.EqualTo((true, GuildPvpZoneState.TeamA, GuildPvpZoneState.TeamB)));
 
+        // Before, a field nobody had entered yet ended at the start as a draw; nobody seen forfeits nothing.
         GuildPvpZoneState empty = Zone();
         Assert.That(empty.Update(0, _ => [], _ => [], _ => true, _ => false).Single(),
-            Is.EqualTo(new GuildPvpZoneEvent(GuildPvpZoneEventType.End, GuildPvpZoneState.NoTeam)));
+            Is.EqualTo(new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundEnd, GuildPvpZoneState.NoTeam)));
+        Assert.That(empty.Ended, Is.False);
+    }
+
+    // Before, a guild not in the field at the start forfeited at once: the first guild in won the match. Now a guild
+    // never seen only loses its rounds by walkover, and once it arrives the rounds are fought.
+    [Test]
+    public void Zone_LateArrivalDoesNotForfeit() {
+        GuildPvpZoneState zone = Zone();
+        bool arrived = false;
+        Func<int, IReadOnlyList<long>> stands = team => team == GuildPvpZoneState.TeamA || arrived ? Stands[team] : [];
+        Func<int, bool> present = team => team == GuildPvpZoneState.TeamA || arrived;
+        List<GuildPvpZoneEvent> events = zone.Update(0, stands, _ => [], _ => true, present);
+        Assert.That(events.Single(), Is.EqualTo(new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundEnd, GuildPvpZoneState.TeamA)));
+        Assert.That(zone.Ended, Is.False);
+        Assert.That(zone.Forfeit(GuildPvpZoneState.TeamB, 1), Is.Empty, "a guild never seen does not forfeit");
+
+        arrived = true;
+        events = zone.Update(GuildPvpZoneState.BreakMs, stands, _ => [], _ => true, present);
+        Assert.That(events.Single().Type, Is.EqualTo(GuildPvpZoneEventType.RoundStart));
+        Assert.That(zone.Rounds.Single().Fought, Is.False);
+        Assert.That(zone.WonFoughtRound(GuildPvpZoneState.TeamA), Is.False, "a walkover is no fought win");
+    }
+
+    // The first guild alone in its match field: walkovers only, no fought round won, so no points, reward or trophy.
+    [Test]
+    public void Zone_FirstGuildAloneWinsNoFoughtRound() {
+        GuildPvpZoneState zone = Zone();
+        for (int i = 0; i < 3; i++) {
+            zone.Update(i * GuildPvpZoneState.BreakMs, team => team == GuildPvpZoneState.TeamA ? Stands[team] : [], _ => [], _ => true,
+                team => team == GuildPvpZoneState.TeamA);
+        }
+        Assert.That((zone.Ended, zone.MatchWinner), Is.EqualTo((true, GuildPvpZoneState.TeamA)));
+        Assert.That(zone.WonFoughtRound(GuildPvpZoneState.TeamA), Is.False);
+        Assert.That(WorldService.FoughtMatch(Rounds(zone)), Is.False);
+    }
+
+    // A forfeit during a round: the cut round goes to the team that stayed for the result only (not fought, no
+    // fighters), the fought rounds before it stay as they were.
+    [Test]
+    public void Zone_ForfeitCutsTheRoundForTheResultOnly() {
+        GuildPvpZoneState zone = Zone();
+        zone.Update(0, team => Stands[team], _ => [], _ => true, _ => true);
+        zone.Out(21, 1);
+        zone.Out(22, 2);
+        zone.Update(2 + GuildPvpZoneState.BreakMs, team => Stands[team], _ => [], _ => true, _ => true);
+        Assert.That(zone.Fighting, Is.True);
+        List<GuildPvpZoneEvent> events = zone.Forfeit(GuildPvpZoneState.TeamA, 3 + GuildPvpZoneState.BreakMs);
+        Assert.That(events, Is.EqualTo(new[] {
+            new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundEnd, GuildPvpZoneState.TeamB),
+            new GuildPvpZoneEvent(GuildPvpZoneEventType.End, GuildPvpZoneState.TeamB),
+        }));
+        Assert.That(zone.Rounds.Select(round => (round.Fought, round.Winner)), Is.EqualTo(new[] {
+            (true, GuildPvpZoneState.TeamA), (false, GuildPvpZoneState.TeamB),
+        }));
+        Assert.That(zone.Rounds[1].FightersA.Concat(zone.Rounds[1].FightersB), Is.Empty);
+        Assert.That(zone.RoundFighters, Is.EquivalentTo(new long[] { 11, 12, 13, 21, 22 }));
+        Assert.That((zone.MatchWinner, zone.WonFoughtRound(GuildPvpZoneState.TeamB), zone.WonFoughtRound(GuildPvpZoneState.TeamA)),
+            Is.EqualTo((GuildPvpZoneState.TeamB, false, true)));
+    }
+
+    private static List<PvpRound> Rounds(GuildPvpZoneState zone) {
+        return zone.Rounds.Select(round => new PvpRound { Winner = round.Winner, Fought = round.Fought }).ToList();
+    }
+
+    // Before, a fought draw (or a forfeit's cut round) made a fought match. A match without a fought round won keeps
+    // no round results, marks the loser no-fight and moves no score and pays nothing.
+    [Test]
+    public void PvpEnd_NoFoughtRoundWon_MovesNothing() {
+        Assert.That(WorldService.FoughtMatch([new PvpRound { Fought = true, Winner = 0 }, new PvpRound { Fought = false, Winner = 1 }]), Is.False);
+        Assert.That(WorldService.FoughtMatch([new PvpRound { Fought = true, Winner = 2 }]), Is.True);
+
+        PvpRound[] rounds = [new PvpRound { Fought = false, Winner = 1, PlayersA = "", PlayersB = "" }];
+        GuildPvpMatch winner = WorldService.PvpHistory(rounds, 1, "a", 2, "b", true, true, false, 100);
+        GuildPvpMatch loser = WorldService.PvpHistory(rounds, 2, "b", 1, "a", false, false, false, 100);
+        Assert.That((winner.NoFight, loser.NoFight), Is.EqualTo((false, true)));
+        Assert.That(winner.Results.Concat(loser.Results), Is.All.EqualTo((byte) 0));
+
+        var pvp = new GuildPvp();
+        var now = new DateTime(2026, 11, 13, 12, 0, 0);
+        Assert.That(pvp.Settle(false, true, 30, now), Is.EqualTo((0, false)));
+        Assert.That((pvp.Score, pvp.RewardCount), Is.EqualTo((GuildPvp.DefaultScore, 0)));
+        Assert.That(pvp.Settle(true, false, 30, now), Is.EqualTo((0, false)), "no fighter of the guild: no cap slot used");
+        Assert.That(pvp.RewardCount, Is.Zero);
+    }
+
+    // Before, the score moved on every fought match past the daily cap. It moves only on a match that pays.
+    [Test]
+    public void PvpEnd_ScoreOnlyInsideTheCap() {
+        var pvp = new GuildPvp();
+        var now = new DateTime(2026, 11, 13, 12, 0, 0);
+        for (int i = 0; i < GuildPvp.DailyRewardCap; i++) {
+            Assert.That(pvp.Settle(true, true, 30, now), Is.EqualTo((30, true)));
+        }
+        Assert.That(pvp.Settle(true, true, 30, now), Is.EqualTo((0, false)));
+        Assert.That(pvp.Score, Is.EqualTo(GuildPvp.DefaultScore + 30 * GuildPvp.DailyRewardCap));
+    }
+
+    // Before, every fighter of a paid guild got the reward, a new guild's matches paying again. The reward goes to
+    // fighters of a paid guild only, at most DailyRewardCap a day per character whatever the guild.
+    [Test]
+    public void Result_PaysFightersOnlyUnderTheCharacterCap() {
+        var character = new Character { Name = "Fighter", Mastery = new Mastery() };
+        var now = new DateTime(2026, 11, 13, 12, 0, 0);
+        Assert.That(GuildPvp.TakeFighterReward(character, false, true, now), Is.False, "not a fighter");
+        Assert.That(GuildPvp.TakeFighterReward(character, true, false, now), Is.False, "guild not paid");
+        Assert.That(character.GuildPvpRewardCount, Is.Zero);
+        for (int i = 0; i < GuildPvp.DailyRewardCap; i++) {
+            Assert.That(GuildPvp.TakeFighterReward(character, true, true, now), Is.True);
+        }
+        // Another guild's paid match the same day (a hop or a new guild): nothing more.
+        Assert.That(GuildPvp.TakeFighterReward(character, true, true, now.AddHours(1)), Is.False);
+        Assert.That(GuildPvp.TakeFighterReward(character, true, true, now.AddDays(1)), Is.True);
     }
 
     // A guild's matches pay the reward at most DailyRewardCap times a day; the next day starts again.

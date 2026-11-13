@@ -1386,24 +1386,19 @@ public class GuildManager : IDisposable {
     public int OnlineCount() => Guild.Members.Values.Count(member => member.Info.Online);
 
     // A played championship match (one of the two guilds' view, Guild A = this guild): the win or loss counts, the
-    // match goes into the history and the members who fought get a match more. Only a fought match (a round that
-    // was not a walkover) moves the score by the points and pays the reward, the reward at most
-    // GuildPvp.DailyRewardCap times a day. Saved; the members get the new record and the result (Guild 0x29, 0x2a).
+    // match goes into the history and the members who fought get a match more. Only a fought match (a fought round
+    // won) with one of this guild's members among the fighters pays the reward, at most GuildPvp.DailyRewardCap times
+    // a day, and only a match that pays moves the score by the points (GuildPvp.Settle). Saved; the members get the new record and the result (Guild 0x29, 0x2a).
     // Returns the new score, the change and whether the fighters get the reward.
     public (int Score, int Delta, bool Reward) EndPvp(GuildPvpMatch match, bool won, bool fought, int point, IReadOnlyCollection<long> fighters,
                                                       DateTime now) {
         var counts = new List<GuildRequest.Types.PvpRating.Types.Count>();
         string pvp;
         int score;
-        bool reward = false;
-        if (!fought) {
-            point = 0;
-        }
+        int delta;
+        bool reward;
         lock (guildLock) {
-            Guild.Pvp.Score += point;
-            if (fought) {
-                reward = Guild.Pvp.TakeReward(now);
-            }
+            (delta, reward) = Guild.Pvp.Settle(fought, fighters.Any(Guild.Members.ContainsKey), point, now);
             if (won) {
                 Guild.Pvp.Wins++;
             } else {
@@ -1430,7 +1425,7 @@ public class GuildManager : IDisposable {
         var rating = new GuildRequest.Types.PvpRating { Pvp = pvp, Won = won, Opponent = match.NameB };
         rating.Counts.AddRange(counts);
         Broadcast(new GuildRequest { PvpRating = rating }, member => member.Info.Online);
-        return (score, point, reward);
+        return (score, delta, reward);
     }
 
     private GuildTable.Property GuildProperty() {

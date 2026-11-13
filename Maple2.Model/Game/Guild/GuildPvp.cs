@@ -23,7 +23,9 @@ public class GuildPvp {
     public int RewardDay { get; set; }
     public int RewardCount { get; set; }
 
-    // Chosen here (the client has no limit): a guild's matches pay the reward at most this many times a day.
+    // Chosen here (the client has no limit): a guild's matches pay the reward at most this many times a day, and a
+    // character gets it at most this many times a day too (whatever its guild, so a guild hop or a new guild gives
+    // no more).
     public const int DailyRewardCap = 10;
 
     // The grade of a score: the first index whose threshold is above it, else the count (CGuildInfo::GetGrade).
@@ -76,15 +78,52 @@ public class GuildPvp {
 
     // Takes one of the day's rewards; false when the cap is reached.
     public bool TakeReward(DateTime now) {
-        int day = now.Year * 10000 + now.Month * 100 + now.Day;
-        if (RewardDay != day) {
-            RewardDay = day;
-            RewardCount = 0;
+        int day = RewardDay;
+        int count = RewardCount;
+        bool taken = TakeDaily(ref day, ref count, now);
+        RewardDay = day;
+        RewardCount = count;
+        return taken;
+    }
+
+    // A day's count (day yyyymmdd, local): a new day starts at 0; false at DailyRewardCap, else one more.
+    public static bool TakeDaily(ref int day, ref int count, DateTime now) {
+        int today = now.Year * 10000 + now.Month * 100 + now.Day;
+        if (day != today) {
+            day = today;
+            count = 0;
         }
-        if (RewardCount >= DailyRewardCap) {
+        if (count >= DailyRewardCap) {
             return false;
         }
-        RewardCount++;
+        count++;
+        return true;
+    }
+
+    // The record's side of a played match: only a fought match (a fought round won) of a guild with a fighter in it
+    // that is under the guild's daily cap pays; only such a match moves the score, by point. Returns the change and
+    // whether the guild's fighters get the reward.
+    public (int Delta, bool Reward) Settle(bool fought, bool hasFighter, int point, DateTime now) {
+        if (!fought || !hasFighter || !TakeReward(now)) {
+            return (0, false);
+        }
+        Score += point;
+        return (point, true);
+    }
+
+    // A character's reward of a match: a fighter of a guild the World paid gets it while the character has one of
+    // the day's DailyRewardCap left (taken here). False: no reward and no championship count.
+    public static bool TakeFighterReward(Character character, bool fighter, bool guildPaid, DateTime now) {
+        if (!fighter || !guildPaid) {
+            return false;
+        }
+        int day = character.GuildPvpRewardDay;
+        int count = character.GuildPvpRewardCount;
+        if (!TakeDaily(ref day, ref count, now)) {
+            return false;
+        }
+        character.GuildPvpRewardDay = day;
+        character.GuildPvpRewardCount = count;
         return true;
     }
 

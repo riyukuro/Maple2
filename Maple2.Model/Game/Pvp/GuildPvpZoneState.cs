@@ -27,8 +27,10 @@ public sealed record GuildPvpRound(IReadOnlyList<long> FightersA, IReadOnlyList<
 // in the field; a fighter is out when it dies, leaves the field or leaves the fight box (the ring-out under the
 // arena); a team with no fighter left loses the round, and at the round's time (the script's match_time) the team
 // with more fighters left wins it, equal counts are a draw round; a team with nobody to send loses the round without
-// a fight (a walkover: no fighters, not a fought round); a team with no player left in the field after the start
-// forfeits the match (both gone: a draw); the match ends when a team has the wins it needs or after MaxRounds
+// a fight (a walkover: no fighters, not a fought round); a team that was seen in the field and then has no player
+// left in it after the start forfeits the match (both gone: a draw), the round it cut short going to the other team
+// for the result only (not fought); a team never seen forfeits nothing, it loses its rounds by walkover (so the
+// first guild in an empty field wins no fought round); the match ends when a team has the wins it needs or after MaxRounds
 // rounds, the team with more round wins winning, equal wins a draw; BreakMs passes between rounds.
 public sealed class GuildPvpZoneState {
     public const int NoTeam = 0;
@@ -66,6 +68,7 @@ public sealed class GuildPvpZoneState {
     private readonly int[] wins = new int[3];
     private readonly List<long>[] fighters = [[], [], []];
     private readonly HashSet<long>[] left = [[], [], []];
+    private readonly bool[] seen = new bool[3];
     private long nextRoundTick;
     private bool roundFought;
 
@@ -114,14 +117,34 @@ public sealed class GuildPvpZoneState {
     // The match's winner once it ended (a forfeit's is the team that stayed).
     public int MatchWinner { get; private set; }
 
+    // Whether the team won a round that was fought (a walkover or a forfeit's cut round is not one): only such a
+    // win counts for the win's trophies and achievements.
+    public bool WonFoughtRound(int team) => IsTeam(team) && rounds.Any(round => round.Fought && round.Winner == team);
+
+    // Whether the team had a player in the field at some point (a team never seen cannot forfeit).
+    public bool Seen(int team) => IsTeam(team) && seen[team];
+
     // The zone's clock. stand(team): the team's living players in its stand box, others(team): its other living
     // players in the field, both in the caller's order; inFight(id): whether a fighter is still in the fight box;
-    // present(team): whether the team has a player in the field at all (none: it forfeits once the match started).
+    // present(team): whether the team has a player in the field at all (a team seen before and gone now forfeits
+    // once the match started).
     public List<GuildPvpZoneEvent> Update(long tick, Func<int, IReadOnlyList<long>> stand, Func<int, IReadOnlyList<long>> others,
                                           Func<long, bool> inFight, Func<int, bool>? present = null) {
         var events = new List<GuildPvpZoneEvent>();
         if (Ended) {
             return events;
+        }
+        if (present != null) {
+            bool presentA = present(TeamA);
+            bool presentB = present(TeamB);
+            seen[TeamA] |= presentA;
+            seen[TeamB] |= presentB;
+            bool goneA = seen[TeamA] && !presentA;
+            bool goneB = seen[TeamB] && !presentB;
+            if (tick >= StartTick && (goneA || goneB)) {
+                Forfeit(goneA && goneB ? NoTeam : goneA ? TeamB : TeamA, tick, events);
+                return events;
+            }
         }
         if (Fighting) {
             foreach (long characterId in FightersLeft.Where(id => !inFight(id)).ToList()) {
@@ -133,14 +156,6 @@ public sealed class GuildPvpZoneState {
                 EndRound(tick, a > b ? TeamA : b > a ? TeamB : NoTeam, events);
             }
             return events;
-        }
-        if (present != null && tick >= StartTick) {
-            bool presentA = present(TeamA);
-            bool presentB = present(TeamB);
-            if (!presentA || !presentB) {
-                End(tick, presentA ? TeamA : presentB ? TeamB : NoTeam, events);
-                return events;
-            }
         }
         if (tick < nextRoundTick) {
             return events;
@@ -172,6 +187,33 @@ public sealed class GuildPvpZoneState {
         RoundEndTick = tick + RoundMs;
         events.Add(new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundStart));
         return events;
+    }
+
+    // The team's last player left the field: once the match started, a team that was seen forfeits (the other
+    // team wins). Nothing for a team never seen or before the start.
+    public List<GuildPvpZoneEvent> Forfeit(int team, long tick) {
+        var events = new List<GuildPvpZoneEvent>();
+        if (!Ended && IsTeam(team) && seen[team] && tick >= StartTick) {
+            Forfeit(team == TeamA ? TeamB : TeamA, tick, events);
+        }
+        return events;
+    }
+
+    // The match ends with the winner (NoTeam: both gone, a draw). A running round is cut short: it goes to the
+    // winner for the result only (no fighters, not fought); the fought rounds before it stay as they were.
+    private void Forfeit(int winner, long tick, List<GuildPvpZoneEvent> events) {
+        if (Fighting) {
+            // The round's fighters stay listed (the field sends those still in the arena back), the round has none.
+            Fighting = false;
+            left[TeamA] = [];
+            left[TeamB] = [];
+            rounds.Add(new GuildPvpRound([], [], winner, false));
+            if (IsTeam(winner)) {
+                wins[winner]++;
+            }
+            events.Add(new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundEnd, winner));
+        }
+        End(tick, winner, events);
     }
 
     // A fighter died or left the field.

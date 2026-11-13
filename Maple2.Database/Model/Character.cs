@@ -69,6 +69,8 @@ internal class Character {
                 PetFusionTime = other.PetFusionTime,
                 MassiveExtraRewardCount = other.MassiveExtraRewardCount,
                 MassiveExtraRewardTime = other.MassiveExtraRewardTime,
+                GuildPvpRewardDay = other.GuildPvpRewardDay,
+                GuildPvpRewardCount = other.GuildPvpRewardCount,
                 MissionAttackCount = other.MissionAttackCount,
                 MissionAttackTime = other.MissionAttackTime,
                 FieldQuestGrant = other.FieldQuestGrantTime,
@@ -132,6 +134,8 @@ internal class Character {
             PetFusionTime = other.Cooldown.PetFusionTime,
             MassiveExtraRewardCount = other.Cooldown.MassiveExtraRewardCount,
             MassiveExtraRewardTime = other.Cooldown.MassiveExtraRewardTime,
+            GuildPvpRewardDay = other.Cooldown.GuildPvpRewardDay,
+            GuildPvpRewardCount = other.Cooldown.GuildPvpRewardCount,
             MissionAttackCount = other.Cooldown.MissionAttackCount,
             MissionAttackTime = other.Cooldown.MissionAttackTime,
             FieldQuestGrantTime = other.Cooldown.FieldQuestGrant,
@@ -204,6 +208,8 @@ internal class Cooldown {
     public long PetFusionTime { get; set; }
     public int MassiveExtraRewardCount { get; set; }
     public long MassiveExtraRewardTime { get; set; }
+    public int GuildPvpRewardDay { get; set; }
+    public int GuildPvpRewardCount { get; set; }
     public int MissionAttackCount { get; set; }
     public long MissionAttackTime { get; set; }
     public long FieldQuestGrant { get; set; }
