@@ -358,6 +358,17 @@ public class ItemEnchantManager {
 
         switch (Type) {
             case EnchantType.Ophelia:
+                // The client asks first (s_itemenchant_exp_payback): an Ophelia try clears the Peachy exp,
+                // which the client also drops on a grade change (CItemEnchantInfo::IncreaseLevel), and gives
+                // back a tenth of the materials spent on it. The result packet carries the item with no exp.
+                if (upgradeItem.Enchant.EnchantExp > 0) {
+                    int exp = upgradeItem.Enchant.EnchantExp;
+                    upgradeItem.Enchant.EnchantExp = 0;
+                    if (!force) {
+                        PayBackExp(enchants, exp);
+                    }
+                }
+
                 float roll = Random.Shared.NextSingle() * MaxRate;
                 int totalRate = rates.Total;
                 enchantResult = force || roll < totalRate ? EnchantResult.Success : EnchantResult.Fail;
@@ -412,6 +423,33 @@ public class ItemEnchantManager {
                 return true;
             default:
                 return false;
+        }
+    }
+
+    // The item a material tag pays out as, from the tag rows of the client's table/itemdata.xml
+    // (CItemDataTable::LoadTagItemIds), as the dismantle refund.
+    private static readonly Dictionary<ItemTag, int> TagItemIds = new() {
+        [ItemTag.Onix] = 40100023,
+        [ItemTag.ChaosOnix] = 40100024,
+        [ItemTag.CrystalPiece] = 40100001,
+    };
+
+    private void PayBackExp(int enchants, int exp) {
+        foreach (IngredientInfo ingredient in PeachyCost[enchants]) {
+            int amount = ItemEnchantRules.ExpPayback(exp, GainExp[enchants], ingredient.Amount);
+            if (amount <= 0 || !TagItemIds.TryGetValue(ingredient.Tag, out int id) ||
+                !session.ItemMetadata.TryGet(id, out ItemMetadata? metadata)) {
+                continue;
+            }
+            foreach (int stack in DismantleRules.Stacks(amount, metadata.Property.SlotMax)) {
+                Item? item = session.Field?.ItemDrop.CreateItem(id, amount: stack);
+                if (item == null) {
+                    break;
+                }
+                if (!session.Item.Inventory.Add(item, true)) {
+                    session.Item.MailItem(item);
+                }
+            }
         }
     }
 

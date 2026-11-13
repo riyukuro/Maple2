@@ -36,4 +36,17 @@ public static class ItemEnchantRules {
     public static bool FodderOpen(int targetLevel, int rarity, int openLevel, int openRank) {
         return targetLevel >= openLevel && rarity >= openRank;
     }
+
+    // The Peachy experience an Ophelia try clears gives back 10% of the materials spent on it
+    // (s_itemenchant_exp_payback): the tries it took at the grade's exp per try, times each material, a tenth
+    // of that, rounded down.
+    public const int ExpPaybackPercent = 10;
+
+    public static int ExpPayback(int exp, int expPerTry, int amountPerTry) {
+        if (exp <= 0 || expPerTry <= 0 || amountPerTry <= 0) {
+            return 0;
+        }
+        long tries = exp / expPerTry;
+        return (int) Math.Min(int.MaxValue, tries * amountPerTry * ExpPaybackPercent / 100);
+    }
 }

@@ -108,4 +108,32 @@ public class ItemEnchantKrRulesTests {
         Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
         Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(30000));
     }
+
+    // Peachy exp of 7500 at grade 6 (2500 a try) is three tries of 604 onyx, 2 chaos onyx and 15 fragments: an
+    // Ophelia try clears it and gives back a tenth, rounded down (181, 0, 4), on top of its own cost.
+    [Test]
+    public void Ophelia_ClearsPeachyExpAndGivesBackATenth() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 6, enchantExp: 7500));
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Dictionary<ItemTag, int> cost = Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(session.Item.Inventory.Get(gear.Uid)!)
+            .ToDictionary(c => c.Tag, c => c.Amount);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+
+        Item item = session.Item.Inventory.Get(gear.Uid)!;
+        Assert.Multiple(() => {
+            Assert.That(item.Enchant!.EnchantExp, Is.EqualTo(0));
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.Onix) + 181));
+            Assert.That(Held(session, ItemTag.ChaosOnix), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.ChaosOnix)));
+            Assert.That(Held(session, ItemTag.CrystalPiece), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.CrystalPiece) + 4));
+            Assert.That(test.Errors, Is.Empty);
+        });
+
+        // Given back once: the next try has no exp left to pay back.
+        int onyx = Held(session, ItemTag.Onix);
+        cost = Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(item).ToDictionary(c => c.Tag, c => c.Amount);
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx - cost.GetValueOrDefault(ItemTag.Onix)));
+    }
 }
