@@ -432,6 +432,21 @@ public class ConfigManager {
         session.Send(SkillPacket.RechargeUses(skillId, 0, count));
     }
 
+    // Ends every skill cooldown and recharge record at once (the GM command resetcooldown) and tells the client with
+    // SkillResetCooldown 0x43, which has no body: CSceneStateGame::OnSkillResetCooldown (@0x14172f1c0) ends every
+    // cooldown of the skill system and drops its recharge uses (CSkillSystem::FUN_141765de0). The last casts go too,
+    // so the next cast of any skill is not checked against them. The town cooldowns a PvP zone holds stay held.
+    public int ResetSkillCooldowns() {
+        int count;
+        lock (skillCooldowns) {
+            count = skillCooldowns.Count;
+            skillCooldowns.Clear();
+            lastCasts.Clear();
+        }
+        session.Send(SkillPacket.ResetCooldown());
+        return count;
+    }
+
     public void SetSkillCooldown(int skillId, short level = 1, int endTick = 0) {
         lock (skillCooldowns) {
             var cooldown = new SkillCooldown(skillId, level) {

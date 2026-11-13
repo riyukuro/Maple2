@@ -97,6 +97,7 @@ public static class SkillPacket {
         return pWriter;
     }
 
+    // SkillResetCooldown 0x43: no body; the client ends all its skill cooldowns (ConfigManager.ResetSkillCooldowns).
     public static ByteWriter ResetCooldown() {
         var pWriter = Packet.Of(SendOp.SkillResetCooldown);
 
