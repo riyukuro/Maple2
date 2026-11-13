@@ -177,7 +177,7 @@ public class LapenshardHandler : FieldPacketHandler {
             .Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount))
             .ToArray();
         foreach (IngredientInfo ingredient in ingredients) {
-            long owned = session.Item.Inventory.Find(ingredient.Tag).Sum(item => (long) item.Amount);
+            long owned = session.Item.Inventory.SpendableCount(ingredient.Tag);
             if (owned < ingredient.Amount) {
                 return false;
             }

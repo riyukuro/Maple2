@@ -426,7 +426,7 @@ public class ItemEnchantManager {
             foreach (IngredientInfo catalyst in catalysts) {
                 int amount = catalyst.Amount;
                 if (catalyst.Tag == ItemTag.CrystalPiece) {
-                    int held = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(item => item.Amount);
+                    int held = (int) Math.Min(session.Item.Inventory.SpendableCount(ItemTag.CrystalPiece), int.MaxValue);
                     fee = ItemEnchantRules.CrystalFragmentShortfallFee(amount, held);
                     if (fee > 0) {
                         amount = held;
@@ -685,14 +685,14 @@ public class ItemEnchantManager {
         lock (session.Item) {
             // The fee is paid in the crystal fragments the player owns, and in meso for the rest (the client's
             // fee text). Nothing is taken unless everything can be; KMS2 takes the meso before the materials.
-            long owned = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(item => (long) item.Amount);
+            long owned = session.Item.Inventory.SpendableCount(ItemTag.CrystalPiece);
             (int fragments, long meso) = LimitBreakRules.Fee(mesoCost, owned);
             if (!LimitBreakRules.CanPay(session.Currency.Meso, meso) || session.Currency.CanAddMeso(-meso) != -meso) {
                 session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
                 return false;
             }
             foreach (IngredientInfo catalyst in catalysts) {
-                if (session.Item.Inventory.Find(catalyst.Tag).Sum(item => (long) item.Amount) < catalyst.Amount) {
+                if (session.Item.Inventory.SpendableCount(catalyst.Tag) < catalyst.Amount) {
                     session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
                     return false;
                 }

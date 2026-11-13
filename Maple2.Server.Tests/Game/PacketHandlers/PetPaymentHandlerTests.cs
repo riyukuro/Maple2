@@ -211,6 +211,26 @@ public class PetPaymentHandlerTests {
         Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(999));
     }
 
+    // A locked stack is not counted: the price check refuses before the meso is taken. Before, the check counted it,
+    // the meso for the lacking fragments went, and Consume (which takes no locked item) then refused.
+    [Test]
+    public void GearChange_LockedMaterialsAreNotCounted_TheMesoStays() {
+        GameSession session = Login(meso: 10_000_000, fragments: 0, stones: 999, cells: 999);
+        Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
+        List<IngredientInfo> price = ChangeAttributesHandler.GetIngredients(gear);
+        ItemTag[] others = price.Select(info => info.Tag).Where(tag => tag != ItemTag.CrystalPiece).ToArray();
+        Assert.That(others, Is.Not.Empty);
+        foreach (ItemTag tag in others) {
+            foreach (Item material in session.Item.Inventory.Find(tag)) {
+                material.IsLocked = true;
+            }
+        }
+
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, price, null), Is.False);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+    }
+
     // Evolve points: 2 fodders of rarity 1 cost 20,000 each.
     [Test]
     public void EvolvePoints_TakesTheMesoThenTheFodders() {

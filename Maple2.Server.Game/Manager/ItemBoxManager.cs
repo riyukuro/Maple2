@@ -149,8 +149,8 @@ public class ItemBoxManager {
         ItemBoxError error = ItemBoxError.ok;
         for (int startCount = 0; startCount < count; startCount++) {
             // Nothing is taken unless the key and the box (or its price) are all there and the roll gave items.
-            int keys = session.Item.Inventory.Find(keyIngredient.Tag).Sum(held => held.Amount);
-            int boxes = session.Item.Inventory.Find(boxIngredient.Tag).Sum(held => held.Amount);
+            int keys = (int) Math.Min(session.Item.Inventory.SpendableCount(keyIngredient.Tag), int.MaxValue);
+            int boxes = (int) Math.Min(session.Item.Inventory.SpendableCount(boxIngredient.Tag), int.MaxValue);
             ItemBoxRules.LuluPay pay = ItemBoxRules.LuluPayment(keys, boxes, autoPay, session.Currency.Meso, mesoCost);
             if (pay == ItemBoxRules.LuluPay.None) {
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
@@ -223,7 +223,7 @@ public class ItemBoxManager {
         var totalItems = new List<Item>();
         ItemBoxError error = ItemBoxError.ok;
         for (int startCount = 0; startCount < count; startCount++) {
-            if (session.Item.Inventory.Find(keyItemTag.Tag).Sum(held => held.Amount) < 1) {
+            if (session.Item.Inventory.SpendableCount(keyItemTag.Tag) < 1) {
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 break;
             }

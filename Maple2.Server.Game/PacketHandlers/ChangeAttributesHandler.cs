@@ -150,7 +150,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             // Pets and gear alike: fragments lacking are paid in meso (ItemRemakeRules.FragmentFee).
             int index = ingredients.FindIndex(info => info.Tag == ItemTag.CrystalPiece);
             if (index >= 0) {
-                long owned = session.Item.Inventory.Find(ItemTag.CrystalPiece).Sum(fragment => (long) fragment.Amount);
+                long owned = session.Item.Inventory.SpendableCount(ItemTag.CrystalPiece);
                 (int fragments, meso) = ItemRemakeRules.FragmentFee(ingredients[index].Amount, owned);
                 if (fragments > 0) {
                     ingredients[index] = new IngredientInfo(ItemTag.CrystalPiece, fragments);
@@ -158,7 +158,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                     ingredients.RemoveAt(index);
                 }
             }
-            bool owns = ingredients.All(info => session.Item.Inventory.Find(info.Tag).Sum(material => (long) material.Amount) >= info.Amount);
+            bool owns = ingredients.All(info => session.Item.Inventory.SpendableCount(info.Tag) >= info.Amount);
             if (!owns || session.Currency.Meso < meso) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
                 return false;

@@ -880,6 +880,14 @@ public class InventoryManager {
         }
     }
 
+    // The amount of a tag Consume(IngredientInfo) can take: no locked or unlocking item. A price check must count this,
+    // or the meso is taken before Consume refuses.
+    public long SpendableCount(ItemTag itemTag) {
+        lock (session.Item) {
+            return Find(itemTag).Where(item => item.IsSpendable()).Sum(item => (long) item.Amount);
+        }
+    }
+
     public IEnumerable<Item> Find(ItemTag itemTag) {
         lock (session.Item) {
             foreach ((InventoryType type, ItemCollection items) in tabs) {
