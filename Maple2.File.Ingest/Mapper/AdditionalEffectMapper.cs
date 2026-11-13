@@ -149,7 +149,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone,
                 SuperArmor: data.MotionProperty.superArmor,
                 SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType,
-                ForceApplyTarget: data.BasicProperty.forceApplyTarget),
+                ForceApplyTarget: data.BasicProperty.forceApplyTarget,
+                AttackPossible: AttackPossible(data.BasicProperty)),
             Consume: new AdditionalEffectMetadataConsume(
                 HpRate: data.ConsumeProperty.hpRate,
                 SpRate: data.ConsumeProperty.spRate),
@@ -173,6 +174,16 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 .ToArray(),
             Skills: data.conditionSkill.Concat(data.splashSkill).Where(skill => !skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray(),
             TickSkills: data.conditionSkill.Concat(data.splashSkill).Where(skill => skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray());
+    }
+
+    // null for an effect that names none of them: the holder takes every hit.
+    private static AttackPossibleMetadata? AttackPossible(BasicProperty basic) {
+        int[] skills = basic.attackPossibleSkillIDs ?? [];
+        int[] dots = basic.attackPossibleDotEffectIDs ?? [];
+        if (skills.Length == 0 && dots.Length == 0 && basic.attackPossibleEffectID == 0) {
+            return null;
+        }
+        return new AttackPossibleMetadata(skills, dots, basic.attackPossibleEffectID);
     }
 
     private static AdditionalEffectMetadataUpdate Convert(AdditionalEffectData data) {

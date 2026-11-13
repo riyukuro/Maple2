@@ -125,6 +125,8 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         }
 
         long damageAmount = 0;
+        // An attackPossible limit of a buff held refuses the hit: sent as an invincible hit (AttackPossibleRules).
+        bool refused = Buffs.AttackRefused(caster, damage.SkillId);
         for (int i = 0; i < attack.Damage.Count; i++) {
             Reflect(caster);
             if (caster is FieldPlayer { DeathPower: true } && this is FieldNpc { Value.Metadata.Basic.Friendly: 0 } and not FieldPet) {
@@ -133,9 +135,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
                 targetRecord.AddDamage(DamageType.Normal, health);
                 damageAmount -= health;
-            } else if (Buffs.Invincible) {
+            } else if (Buffs.Invincible || refused) {
                 // KMS2 sends each hit on a holder of an invincible buff as type 4 or 8 (by the buff) with amount 0.
-                targetRecord.AddDamage(Buffs.InvincibleHitType, 0);
+                targetRecord.AddDamage(Buffs.Invincible ? Buffs.InvincibleHitType : DamageType.Invincible, 0);
             } else if (attack.Damage.DamageByTargetMaxHp > 0) {
                 long share = DamageCalculator.TargetMaxHpDamage(caster, this, attack.Damage.DamageByTargetMaxHp);
                 targetRecord.AddDamage(DamageType.Normal, share);

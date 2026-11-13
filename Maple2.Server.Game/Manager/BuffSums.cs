@@ -9,6 +9,8 @@ namespace Maple2.Server.Game.Manager;
 public sealed class BuffSums {
     private readonly Dictionary<BasicAttribute, float> resistances = [];
     private readonly (AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)[] invokes;
+    // The attackPossible limits of the buffs held (AttackPossibleRules); empty for most actors, so a hit checks nothing.
+    private readonly AttackPossibleMetadata[] attackLimits;
 
     // One of the buffs held has the invincible flag.
     public bool Invincible { get; }
@@ -30,6 +32,7 @@ public sealed class BuffSums {
 
     public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held) {
         List<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> withInvoke = [];
+        List<AttackPossibleMetadata> limits = [];
         foreach ((AdditionalEffectMetadata metadata, int stacks) in held) {
             foreach ((BasicAttribute attribute, float value) in metadata.Status.Resistances) {
                 resistances[attribute] = resistances.GetValueOrDefault(attribute) + Model.Buff.ByStacks(value, stacks);
@@ -48,8 +51,17 @@ public sealed class BuffSums {
             if (metadata.InvokeEffect != null) {
                 withInvoke.Add((metadata.InvokeEffect, stacks));
             }
+            if (metadata.Property?.AttackPossible is { } limit) {
+                limits.Add(limit);
+            }
         }
         invokes = withInvoke.ToArray();
+        attackLimits = limits.ToArray();
+    }
+
+    // A hit (skillId) or a damage over time tick (dotEffectId) of the caster is refused by an attackPossible limit held.
+    public bool AttackRefused(int skillId, int dotEffectId, Func<int, bool> casterHolds) {
+        return attackLimits.Length != 0 && !Util.AttackPossibleRules.Allows(attackLimits, skillId, dotEffectId, casterHolds);
     }
 
     public float Resistance(BasicAttribute attribute) => resistances.GetValueOrDefault(attribute);

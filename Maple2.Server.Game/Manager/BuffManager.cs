@@ -354,6 +354,10 @@ public class BuffManager : IUpdatable {
     public int StunBreak => Sums().StunBreak;
     // An enabled buff held has deathResistanceHP: hits and dot ticks take the holder no lower than 1 health.
     public bool DeathResistance => Sums().DeathResistance;
+    // An enabled buff held has attackPossible limits that refuse the caster's skill hit or dot tick (AttackPossibleRules).
+    public bool AttackRefused(IActor caster, int skillId, int dotEffectId = 0) {
+        return Sums().AttackRefused(skillId, dotEffectId, effectId => caster.Buffs.HasBuff(effectId));
+    }
     // The type of that hit: InvincibleReflection when the buff's invincible value is 2.
     public DamageType InvincibleHitType => Sums().InvincibleReflect ? DamageType.InvincibleReflection : DamageType.Invincible;
 

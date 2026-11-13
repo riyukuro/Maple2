@@ -54,7 +54,13 @@ public record AdditionalEffectMetadataProperty(
     bool ClearCooldownOnPvpZone = false, // BasicProperty clearCooldownFromPVPZone: entering a PvP zone ends the effect's cooldown
     int SuperArmor = 0, // MotionProperty superArmor: the holder's super armor level (see SuperArmorRules)
     int SuperArmorApplyField = 0, // MotionProperty superArmorApplyFieldType: where it counts (0 anywhere, 1 off PvP maps, 2 on them)
-    int ForceApplyTarget = 0); // BasicProperty forceApplyTarget: target bits the holder's skills also take (1 hostile, 2 friendly)
+    int ForceApplyTarget = 0, // BasicProperty forceApplyTarget: target bits the holder's skills also take (1 hostile, 2 friendly)
+    AttackPossibleMetadata? AttackPossible = null); // BasicProperty attackPossible*: the only hits the holder takes
+
+// BasicProperty attackPossibleSkillIDs, attackPossibleDotEffectIDs and attackPossibleEffectID (additionalactionadditional.cpp:1080):
+// the skills and the damage over time effects that still hit the holder, and an effect whose holders hit it with anything.
+// The client loads and compares them only; the server applies them (AttackPossibleRules).
+public record AttackPossibleMetadata(int[] SkillIds, int[] DotEffectIds, int EffectId);
 
 public record CooldownGroupRate(int GroupId, float Rate);
 

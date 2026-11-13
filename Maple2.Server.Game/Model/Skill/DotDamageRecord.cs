@@ -21,7 +21,8 @@ public class DotDamageRecord {
     public readonly bool Invincible;
 
     /// <param name="invokeRate">The caster's dot damage invokes (type 5) on the effect: they raise its rate (DotRate).</param>
-    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1, float invokeRate = 0f) {
+    /// <param name="effectId">The dot's effect: an attackPossible limit of the target lets only the dots it names hit.</param>
+    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1, float invokeRate = 0f, int effectId = 0) {
         Caster = caster;
         Target = target;
         Properties = new DamagePropertyRecord {
@@ -31,12 +32,14 @@ public class DotDamageRecord {
             Rate = DotRate(dotDamage.Rate, invokeRate),
         };
         Type = DamageType.Normal;
+        // A target that takes no damage: an invincible buff, or an attackPossible limit that refuses this dot.
+        bool shielded = target.Buffs.Invincible || target.Buffs.AttackRefused(caster, 0, effectId);
 
         // The whole amount is times the buff's stack count (Buff.AmountFactor), before the not-kill cap.
         long hpAmount = dotDamage.HpValue;
         if (!dotDamage.IsConstDamage) {
             // An invincible target's tick is not rolled, so its shields stay.
-            if (dotDamage.Type != AttackType.None && !target.Buffs.Invincible) {
+            if (dotDamage.Type != AttackType.None && !shielded) {
                 try {
                     (DamageType type, long amount) = DamageCalculator.CalculateDamage(caster, target, Properties);
                     Type = type;
@@ -49,8 +52,8 @@ public class DotDamageRecord {
             hpAmount += DamageCalculator.TargetMaxHpDamage(caster, target, dotDamage.DamageByTargetMaxHp);
         }
         hpAmount = Buff.AmountByStacks(hpAmount, stacks);
-        if (hpAmount > 0 && target.Buffs.Invincible) {
-            // A tick on a holder of an invincible buff is sent as Normal with amount 0.
+        if (hpAmount > 0 && shielded) {
+            // A tick on a holder of an invincible buff (or a refused one) is sent as Normal with amount 0.
             hpAmount = 0;
             Invincible = true;
         }
