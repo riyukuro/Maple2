@@ -5,6 +5,7 @@ using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -91,6 +92,7 @@ public sealed class PvpZoneField : IPvpZoneField {
             if (additionalEffectId > 0) {
                 player.Buffs.AddBuff(field.FieldActor, player, additionalEffectId, 1, tick);
             }
+            PvpConditions.Participation(player, field.MapId);
         }
         logger.Information("PvP zone {BoxId} on {MapId} started with {Count} players", state.BoxId, field.MapId, entries.Count);
     }
@@ -111,7 +113,11 @@ public sealed class PvpZoneField : IPvpZoneField {
             foreach (PvpZoneEntry entry in changed) {
                 field.Broadcast(PvpPacket.RankRow(entry.CharacterId, entry.Score, entry.Kill, entry.Death));
             }
+            if (changed.Count > 0) {
+                PvpConditions.Death(victim, field.MapId);
+            }
             if (killer != 0 && field.TryGetPlayerById(killer, out FieldPlayer? killerPlayer)) {
+                PvpConditions.Kill(killerPlayer, field.MapId);
                 field.Broadcast(PlayerKillNoticePacket.Kill(killerPlayer.Value.Character.Name, victim.Value.Character.Name));
                 if (notice != 0) {
                     field.Broadcast(PvpPacket.KillNotice(notice, killerPlayer.Value.Character.Name));
@@ -162,6 +168,9 @@ public sealed class PvpZoneField : IPvpZoneField {
             }
             player.Session.Send(PvpPacket.LastRank(rank));
             player.Session.Send(PvpPacket.WinLose(rank == 1));
+            if (rank == 1) {
+                PvpConditions.Win(player, field.MapId);
+            }
             try {
                 // Rewards only in an arena match's field.
                 if (field.Arena != null) {

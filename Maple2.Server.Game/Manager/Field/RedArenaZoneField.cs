@@ -4,6 +4,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -76,6 +77,9 @@ public sealed class RedArenaZoneField : IPvpZoneField {
         lock (mutex) {
             if (state.DueToActivate(tick)) {
                 Apply(state.Activate(playersInBox().Select(player => player.Value.Character.Id).ToList(), tick));
+                foreach (FieldPlayer player in field.Players.Values.Where(player => state.IsParticipant(player.Value.Character.Id))) {
+                    PvpConditions.Participation(player, field.MapId);
+                }
                 return;
             }
             Apply(state.Update(tick));
@@ -84,8 +88,21 @@ public sealed class RedArenaZoneField : IPvpZoneField {
 
     public void Damage(FieldPlayer attacker, FieldPlayer victim, long amount) { }
 
+    // A fighter that falls in a face-off loses it: pvp_die for it and pvp_kill for the other fighter, who wins the
+    // face-off by that death (a fighter that leaves gives no kill).
     public void Death(FieldPlayer victim) {
-        lock (mutex) Apply(state.Out(victim.Value.Character.Id, field.FieldTick));
+        lock (mutex) {
+            long victimId = victim.Value.Character.Id;
+            bool fighting = state.Fighting;
+            List<RedArenaEvent> events = state.Out(victimId, field.FieldTick);
+            if (fighting && events.FirstOrDefault(@event => @event.Type == RedArenaEventType.Result) is { Winner: not 0 } result) {
+                PvpConditions.Death(victim, field.MapId);
+                if (field.TryGetPlayerById(result.Winner, out FieldPlayer? killer)) {
+                    PvpConditions.Kill(killer, field.MapId);
+                }
+            }
+            Apply(events);
+        }
     }
 
     public void Enter(FieldPlayer player) { }
@@ -198,6 +215,9 @@ public sealed class RedArenaZoneField : IPvpZoneField {
             }
             bool won = characterId == champion;
             player.Session.Send(PvpPacket.WinLose(won));
+            if (won) {
+                PvpConditions.Win(player, field.MapId);
+            }
             if (field.Arena != null) {
                 ExpType expType = won ? ExpType.redDuelWin : ExpType.redDuelLose;
                 long exp = player.Session.Exp.AddExp(expType);

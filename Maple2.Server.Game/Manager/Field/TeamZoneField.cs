@@ -4,6 +4,7 @@ using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -73,6 +74,7 @@ public sealed class TeamZoneField : IPvpZoneField {
                 if (additionalEffectId > 0) {
                     player.Buffs.AddBuff(field.FieldActor, player, additionalEffectId, 1, tick);
                 }
+                PvpConditions.Participation(player, field.MapId);
             }
         }
         foreach (TeamZoneEntry entry in entries) {
@@ -101,9 +103,18 @@ public sealed class TeamZoneField : IPvpZoneField {
             if (lastHitBy.Remove(victim.Value.Character.Id, out (long Attacker, long Tick) hit) && field.FieldTick - hit.Tick <= PvpZoneState.KillCreditMs) {
                 killer = hit.Attacker;
             }
-            Apply(state.Death(victim.Value.Character.Id, killer));
+            List<TeamZoneEvent> events = state.Death(victim.Value.Character.Id, killer);
+            Apply(events);
+            if (events.Count > 0) {
+                PvpConditions.Death(victim, field.MapId);
+            }
+            // The kill counted only when the state gave the other team its points.
+            bool credited = events.Any(@event => @event.Type == TeamZoneEventType.Score);
             if (killer != 0 && field.TryGetPlayerById(killer, out FieldPlayer? killerPlayer)) {
                 field.Broadcast(PlayerKillNoticePacket.Kill(killerPlayer.Value.Character.Name, victim.Value.Character.Name));
+                if (credited) {
+                    PvpConditions.Kill(killerPlayer, field.MapId);
+                }
             }
         }
     }
@@ -163,6 +174,8 @@ public sealed class TeamZoneField : IPvpZoneField {
 
     private void End() {
         int winner = state.End();
+        int lead = Math.Abs(state.RedScore - state.BlueScore);
+        long fightMs = field.FieldTick - state.ActiveTick;
         ConstantsTable constants = field.ServerTableMetadata.ConstantsTable;
         var ranking = new List<long>();
         int winners = 0;
@@ -179,6 +192,9 @@ public sealed class TeamZoneField : IPvpZoneField {
             int count = field.Arena == null ? 0 : won ? constants.pvpBtiRewardWinnerCount : constants.pvpBtiRewardLoserCount;
             player.Session.Send(PvpPacket.TeamResult(winner, count));
             player.Session.Send(PvpPacket.WinLose(won));
+            if (won) {
+                PvpConditions.TeamWin(player, field.MapId, lead, fightMs);
+            }
             try {
                 if (count > 0 && constants.pvpBtiRewardItem > 0) {
                     Item? item = field.ItemDrop.CreateItem(constants.pvpBtiRewardItem, amount: count);

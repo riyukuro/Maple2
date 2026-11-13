@@ -172,6 +172,26 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            // The PvP conditions: the code is the map of the fight (65000001 Red Arena, 65000002 Crimson Tear Mine,
+            // 65000003 Treasure Island, 65010001-65010010 the rank duel maps; the trophies 21300003-21300041 name them
+            // so). A row without a code (21300014, any arena) counts on every map.
+            case ConditionType.pvp_win:
+            case ConditionType.pvp_kill:
+            case ConditionType.pvp_die:
+            case ConditionType.pvp_participation:
+            case ConditionType.pvp_win_score:
+            case ConditionType.pvp_win_time:
+            case ConditionType.pvp_win_with_buff:
+            case ConditionType.pvp_win_with_grade:
+            case ConditionType.pvp_win_perfect:
+                if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
+                    return true;
+                }
+
+                if (code.Integers != null && code.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
             case ConditionType.fish_collect:
             case ConditionType.fish_goldmedal:
                 if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
@@ -295,6 +315,30 @@ public static class ConditionUtil {
             case ConditionType.install_billboard:
             case ConditionType.dungeon_rank:
                 if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
+                    return true;
+                }
+                break;
+            // pvp_win_score: the winning team's lead in points, at most the target (21300018: a win on Treasure Island by a lead
+            // of 50 points at most, target 50). pvp_win_time: the fight's seconds, at most the target (21300019:
+            // a win there inside 5 minutes, target 300).
+            case ConditionType.pvp_win_score:
+            case ConditionType.pvp_win_time:
+                if (target.Integers != null && target.Integers.Any(value => longValue <= value)) {
+                    return true;
+                }
+                break;
+            // pvp_win_with_grade: the rank duel grade after the win, the target or higher (21300037-21300041 ask for
+            // the grades 3 to 7, gold to grand champion, the grade ids of
+            // the grade name strings and of the pvprankingduelmode table). Chosen here: a higher grade holds it too.
+            case ConditionType.pvp_win_with_grade:
+                if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
+                    return true;
+                }
+                break;
+            // pvp_win_with_buff: an effect the winner holds (21300035: a win in rage mode, target 90001010, the PvP
+            // rage effect); the caller raises the win once per effect held.
+            case ConditionType.pvp_win_with_buff:
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
                     return true;
                 }
                 break;

@@ -170,7 +170,16 @@ public sealed class RankDuelField {
 
     public void Death(FieldPlayer player) {
         lock (mutex) {
-            Apply(state.Death(player.Value.Character.Id, field.FieldTick));
+            long characterId = player.Value.Character.Id;
+            List<RankDuelEvent> events = state.Death(characterId, field.FieldTick);
+            // A duelist that falls in the fight: pvp_die for it, pvp_kill for its opponent.
+            if (events.Count > 0) {
+                PvpConditions.Death(player, field.MapId);
+                if (field.TryGetPlayerById(state.Opponent(characterId), out FieldPlayer? killer)) {
+                    PvpConditions.Kill(killer, field.MapId);
+                }
+            }
+            Apply(events);
         }
     }
 
@@ -192,6 +201,11 @@ public sealed class RankDuelField {
                     Send(state.Second, PvpPacket.RankDuelFight());
                     StartFight();
                     ReadRatings();
+                    foreach (long characterId in new[] { state.First, state.Second }) {
+                        if (field.TryGetPlayerById(characterId, out FieldPlayer? duelist)) {
+                            PvpConditions.Participation(duelist, field.MapId);
+                        }
+                    }
                     if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
                         SendObservers(dialog);
                     }
@@ -223,6 +237,12 @@ public sealed class RankDuelField {
                 Send(state.First, PvpPacket.RankDuelResult(@event.Winner, left, right));
                 Send(state.Second, PvpPacket.RankDuelResult(@event.Winner, left, right));
                 SendStanding();
+                // A win by the time or a walkover counts too (chosen here). The grade only when the record was saved.
+                if (field.TryGetPlayerById(@event.Winner, out FieldPlayer? winner)) {
+                    int? grade = changes.TryGetValue(@event.Winner, out RankDuelChange won)
+                        ? RankDuelRules.GradeOf(field.TableMetadata.RankDuelGradeTable, won.Rating)?.Id : null;
+                    PvpConditions.DuelWin(winner, field.MapId, grade);
+                }
                 break;
             case RankDuelEnd.Draw:
                 // The result dialog fills nothing without a winner: a draw has its intro only.
