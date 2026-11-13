@@ -212,4 +212,37 @@ public class ResetSaveTests {
         Assert.That(session.SessionSave(), Is.True);
         Assert.That(Stored(), Is.EqualTo((0, 0)));
     }
+
+    // A daily and a monthly reset taken together while one step of the daily reset throws (here the shop's, its
+    // manager taken away; live, a send or the season mail's World call): the daily reset's other steps and the monthly
+    // reset still run, and the next save stores them. The throw used to skip the rest, which counted as taken, so the
+    // save wrote the month's meso market purchases back over the stored reset.
+    [Test]
+    public void TakeResets_StepFails_OthersStillTaken() {
+        Played();
+        session.Player.Value.Account.MesoMarketPurchased = 5;
+        Assume.That(session.SessionSave(), Is.True);
+        Assume.That((Stored(), StoredMesoPurchased()), Is.EqualTo(((3, 2), 5)));
+
+        GameStorage.ResetStamps stamps;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.DailyReset();
+            db.MonthlyReset();
+            stamps = db.GetResetStamps();
+        }
+        test.Errors.Clear();
+        ShopManager shop = session.Shop;
+        session.Shop = null!;
+        Assert.DoesNotThrow(() => session.TakeResets(stamps));
+        session.Shop = shop;
+        Assert.That(test.Errors, Is.Not.Empty, "the failed step is logged");
+
+        test.Errors.Clear();
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
+            Assert.That(StoredMesoPurchased(), Is.EqualTo(0));
+            Assert.That(Stored(), Is.EqualTo((0, 0)));
+        });
+    }
 }

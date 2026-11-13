@@ -1185,34 +1185,59 @@ public sealed partial class GameSession : Core.Network.Session {
         TakeResets(stamps);
     }
 
+    // A reset's steps each run on their own: one that throws (a send, a World call, a manager not set yet) is
+    // logged and the others still run. TakeResets counts a reset as taken before it runs, so a step skipped after a
+    // throw (the rest of the daily reset, a monthly reset due with it) was never taken, and the next save wrote its
+    // old values back over the stored reset (the month's meso market purchases, kept until the next month).
+    private void ResetStep(string reset, string step, Action action) {
+        try {
+            action();
+        } catch (Exception ex) {
+            Logger.Error(ex, "{Reset}: step {Step} failed CharacterId={CharacterId}", reset, step, CharacterId);
+        }
+    }
+
     public void DailyReset() {
+        const string reset = nameof(DailyReset);
         // The new day's play time starts now, as KMS2 sends it at the reset; the client counts no play seconds
         // from a start on an earlier day.
-        DateTime playStart = DateTime.Now;
-        GameEvent.ResetPlayTime(playStart);
-        Send(TimeSyncPacket.Set(playStart));
+        ResetStep(reset, "play time", () => {
+            DateTime playStart = DateTime.Now;
+            GameEvent.ResetPlayTime(playStart);
+            Send(TimeSyncPacket.Set(playStart));
+        });
         // Gathering counts reset
-        Config.GatheringCounts.Clear();
-        Send(UserEnvPacket.GatheringCounts(Config.GatheringCounts));
+        ResetStep(reset, "gathering", () => {
+            Config.GatheringCounts.Clear();
+            Send(UserEnvPacket.GatheringCounts(Config.GatheringCounts));
+        });
         // Death Counter
-        Config.AddInstantReviveCount(-1);
+        ResetStep(reset, "revival", () => Config.AddInstantReviveCount(-1));
         // Premium Rewards Claimed
-        Player.Value.Account.PremiumRewardsClaimed.Clear();
-        Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));
+        ResetStep(reset, "premium", () => {
+            Player.Value.Account.PremiumRewardsClaimed.Clear();
+            Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));
+        });
         // Prestige
-        Player.Value.Account.PrestigeExp = Player.Value.Account.PrestigeCurrentExp;
-        Player.Value.Account.PrestigeLevelsGained = 0;
-        Send(PrestigePacket.Load(Player.Value.Account));
+        ResetStep(reset, "prestige", () => {
+            Player.Value.Account.PrestigeExp = Player.Value.Account.PrestigeCurrentExp;
+            Player.Value.Account.PrestigeLevelsGained = 0;
+            Send(PrestigePacket.Load(Player.Value.Account));
+        });
         // Home
-        Player.Value.Home.DecorationRewardTimestamp = 0;
-        Send(CubePacket.DesignRankReward(Player.Value.Home));
+        ResetStep(reset, "home", () => {
+            Player.Value.Home.DecorationRewardTimestamp = 0;
+            Send(CubePacket.DesignRankReward(Player.Value.Home));
+        });
         // Meso Market
-        Player.Value.Account.MesoMarketListed = 0;
-        Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
+        ResetStep(reset, "meso market", () => {
+            Player.Value.Account.MesoMarketListed = 0;
+            Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
+        });
         // Shop restock
-        Shop.DailyReset();
+        ResetStep(reset, "shop", () => Shop.DailyReset());
         // Dungeon daily clears
-        Dungeon.ResetDailyClears();
+        ResetStep(reset, "dungeon", () => Dungeon.ResetDailyClears());
         // Alliance missions: the reset drops held quests, so it runs on the session's own queue, where the packets
         // that read the quests are handled, with the time of the reset.
         DateTime resetTime = DateTime.Now;
@@ -1222,9 +1247,11 @@ public sealed partial class GameSession : Core.Network.Session {
         // Long-term attendance: the day's attend point, on the session's own queue like the handler's grant.
         Scheduler.Schedule(() => GameEvent.GrantLongTermAttendPoints());
         // Pet fusion count
-        Player.Value.Character.PetFusionCount = 0;
-        Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();
-        Send(PetPacket.FusionCount(0));
+        ResetStep(reset, "pet fusion", () => {
+            Player.Value.Character.PetFusionCount = 0;
+            Player.Value.Character.PetFusionTime = DateTime.Now.ToEpochSeconds();
+            Send(PetPacket.FusionCount(0));
+        });
         // Mini-Game M extra rewards
         Player.Value.Character.MassiveExtraRewardCount = 0;
         Player.Value.Character.MassiveExtraRewardTime = DateTime.Now.ToEpochSeconds();
@@ -1233,25 +1260,30 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     public void WeeklyReset() {
+        const string reset = nameof(WeeklyReset);
         // Prestige Rewards
-        Player.Value.Account.PrestigeRewardsClaimed.Clear();
-        Send(PrestigePacket.Load(Player.Value.Account));
+        ResetStep(reset, "prestige", () => {
+            Player.Value.Account.PrestigeRewardsClaimed.Clear();
+            Send(PrestigePacket.Load(Player.Value.Account));
+        });
         // Dungeon enter limits
-        Dungeon.UpdateDungeonEnterLimit();
+        ResetStep(reset, "dungeon limits", () => Dungeon.UpdateDungeonEnterLimit());
         // Dungeon weekly clears
-        Dungeon.ResetWeeklyClears();
+        ResetStep(reset, "dungeon", () => Dungeon.ResetWeeklyClears());
         // Shop restock
-        Shop.WeeklyReset();
+        ResetStep(reset, "shop", () => Shop.WeeklyReset());
         // The rank duel window's weekly token gauge: the database row is reset already.
-        RankDuelStanding.Send(this);
+        ResetStep(reset, "rank duel", () => RankDuelStanding.Send(this));
         // Guild weekly contribution: the World's guild and the database row are reset already.
-        Guild.WeeklyReset();
+        ResetStep(reset, "guild", () => Guild.WeeklyReset());
     }
 
     public void MonthlyReset() {
         // Meso Market
-        Player.Value.Account.MesoMarketPurchased = 0;
-        Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
+        ResetStep(nameof(MonthlyReset), "meso market", () => {
+            Player.Value.Account.MesoMarketPurchased = 0;
+            Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
+        });
     }
 
     public void MigrateToPlanner(PlotMode plotMode) {
