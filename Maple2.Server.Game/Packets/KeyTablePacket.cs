@@ -6,16 +6,19 @@ using Maple2.Server.Game.Manager.Config;
 
 namespace Maple2.Server.Game.Packets;
 
+// Client: CKeyTable::OnKeyTable (keytable.cpp:285) reads byte mode; 0: bool default, and when not default int count x
+// (int key, int type, long code, int slot, byte priority) (:313-318), then the hot bars; 7: the hot bars alone
+// (:340). Hot bars: short active page, short page count, page count x (int count, count x (int slot, int skill,
+// int item, long item uid)) (:326-336). No other mode is read.
 public static class KeyTablePacket {
     private enum Command : byte {
         Load = 0,
         LoadHotBar = 7,
-        Prompt = 9,
     }
 
     public static ByteWriter LoadDefault() {
         var pWriter = Packet.Of(SendOp.KeyTable);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
         pWriter.WriteBool(true);
 
         return pWriter;
@@ -23,47 +26,43 @@ public static class KeyTablePacket {
 
     public static ByteWriter Load(ICollection<KeyBind> keyBinds, short activeHotBar, IReadOnlyList<HotBar> hotBars) {
         var pWriter = Packet.Of(SendOp.KeyTable);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
         pWriter.WriteBool(false);
         // KeyBind
         pWriter.WriteInt(keyBinds.Count);
         foreach (KeyBind keyBind in keyBinds) {
-            pWriter.Write<KeyBind>(keyBind);
+            pWriter.WriteInt(keyBind.KeyCode);
+            pWriter.WriteInt(keyBind.OptionType);
+            pWriter.WriteLong(keyBind.OptionGuid);
+            pWriter.WriteInt(keyBind.Unknown1);
+            pWriter.WriteByte(keyBind.Priority);
         }
         // HotBar
-        pWriter.WriteShort(activeHotBar);
-        pWriter.WriteShort((short) hotBars.Count);
-        foreach (HotBar hotBar in hotBars) {
-            pWriter.WriteInt(hotBar.Slots.Length);
-            for (int i = 0; i < hotBar.Slots.Length; i++) {
-                pWriter.WriteInt(i);
-                pWriter.Write<QuickSlot>(hotBar.Slots[i]);
-            }
-        }
+        pWriter.WriteHotBars(activeHotBar, hotBars);
 
         return pWriter;
     }
 
     public static ByteWriter LoadHotBar(short activeHotBar, IReadOnlyList<HotBar> hotBars) {
         var pWriter = Packet.Of(SendOp.KeyTable);
-        pWriter.Write<Command>(Command.LoadHotBar);
+        pWriter.WriteByte((byte) Command.LoadHotBar);
+        pWriter.WriteHotBars(activeHotBar, hotBars);
+
+        return pWriter;
+    }
+
+    private static void WriteHotBars(this IByteWriter pWriter, short activeHotBar, IReadOnlyList<HotBar> hotBars) {
         pWriter.WriteShort(activeHotBar);
         pWriter.WriteShort((short) hotBars.Count);
         foreach (HotBar hotBar in hotBars) {
             pWriter.WriteInt(hotBar.Slots.Length);
             for (int i = 0; i < hotBar.Slots.Length; i++) {
+                QuickSlot slot = hotBar.Slots[i];
                 pWriter.WriteInt(i);
-                pWriter.Write<QuickSlot>(hotBar.Slots[i]);
+                pWriter.WriteInt(slot.SkillId);
+                pWriter.WriteInt(slot.ItemId);
+                pWriter.WriteLong(slot.ItemUid);
             }
         }
-
-        return pWriter;
-    }
-
-    public static ByteWriter Prompt() {
-        var pWriter = Packet.Of(SendOp.KeyTable);
-        pWriter.Write<Command>(Command.Prompt);
-
-        return pWriter;
     }
 }

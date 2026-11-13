@@ -1,6 +1,9 @@
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -65,6 +68,35 @@ public class KeyTableRequestTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(4));
         Assert.That(KeyTableHandler.ReadQuickSlotMove(reader),
             Is.EqualTo(((short) 2, new QuickSlot(0, 20000001, 99), -1)));
+        Assert.That(reader.Available, Is.EqualTo(0));
+    }
+
+    // The server's KeyTable 0, read as CKeyTable::OnKeyTable (keytable.cpp:285) does: byte mode, bool default, int
+    // count x (int key, int type, long code, int slot, byte priority) (:313-318), short page, short pages, per page
+    // int count x (int slot, int skill, int item, long uid) (:326-336).
+    [Test]
+    public void LoadReadsAsTheClient() {
+        var bar = new HotBar([new QuickSlot(10200001, 20000001, 0x0102030405060708)]);
+        ByteReader reader = Reader(KeyTablePacket.Load([new KeyBind(0x41, 2, 77, 3, 1)], 1, [bar]));
+        Assert.That(reader.ReadShort(), Is.EqualTo((short) SendOp.KeyTable));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0x41));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That(reader.ReadLong(), Is.EqualTo(77));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadShort(), Is.EqualTo((short) 1));
+        Assert.That(reader.ReadShort(), Is.EqualTo((short) 1));
+        int slots = reader.ReadInt();
+        Assert.That(slots, Is.EqualTo(bar.Slots.Length));
+        for (int i = 0; i < slots; i++) {
+            Assert.That(reader.ReadInt(), Is.EqualTo(i));
+            Assert.That(reader.ReadInt(), Is.EqualTo(bar.Slots[i].SkillId));
+            Assert.That(reader.ReadInt(), Is.EqualTo(bar.Slots[i].ItemId));
+            Assert.That(reader.ReadLong(), Is.EqualTo(bar.Slots[i].ItemUid));
+        }
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 }
