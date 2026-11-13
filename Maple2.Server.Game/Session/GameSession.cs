@@ -671,6 +671,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
         Pet?.Dispose(fieldChange: true);
         Instrument = null;
+        Fishing?.LeaveField();
         GuideObject = null;
         HeldCube = null;
         HeldLiftup = null;

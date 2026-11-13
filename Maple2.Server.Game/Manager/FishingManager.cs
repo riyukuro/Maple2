@@ -59,12 +59,35 @@ public class FishingManager {
         // The player's own client leaves the state by itself; the others are told.
         session.Field?.Broadcast(StateFishingPacket.State(session.Player.ObjectId, StateFishingPacket.STATE_IDLE), session);
         GuideObject = null;
+        LeaveField();
+    }
+
+    // A field change ends the fishing (GameSession.LeaveField): the client leaves its fishing state on the move and
+    // drops the guide with the player, so the rod, the tiles and a cast in progress must not carry into the next
+    // field, where a catch without a new start would land the old cast's fish.
+    public void LeaveField() {
         rod = null;
-        fishFightGame = false;
+        tiles.Clear();
+        EndCast();
+    }
+
+    // Whether a cast is open: started (mode 9) and not yet ended by a catch, a lost reel game or a leave.
+    internal bool Casting => selectedTile != null || selectedFish != null;
+
+    internal void Cast(FishingTile tile, FishTable.Fish fish, bool fishBites, long fishBiteTick, bool fightGame) {
+        selectedTile = tile;
+        selectedFish = fish;
+        bite = fishBites;
+        biteTick = fishBiteTick;
+        fishFightGame = fightGame;
+    }
+
+    private void EndCast() {
         selectedTile = null;
         selectedFish = null;
-        tiles.Clear();
-        // Remove guide object?
+        bite = false;
+        biteTick = 0;
+        fishFightGame = false;
     }
 
     public FishingError Prepare(long fishingRodUid) {
@@ -254,30 +277,30 @@ public class FishingManager {
             return FishingError.s_fishing_error_notexist_fish;
         }
 
-        selectedTile = block;
-        WeightedSet<FishTable.Fish> fishes = GetFishes(spotMetadata, selectedTile.LiquidType);
+        WeightedSet<FishTable.Fish> fishes = GetFishes(spotMetadata, block.LiquidType);
         if (fishes.Count == 0) {
             return FishingError.s_fishing_error_notexist_fish;
         }
 
-        selectedFish = fishes.Get();
+        FishTable.Fish fish = fishes.Get();
 
         int fishingTick = Constants.fisherBoreDuration;
         bool hasAutoFish = session.Player.Buffs.HasBuff(BuffEventType.AutoFish);
 
         // Fishing Success
-        bite = Random.Shared.Next(0, 10000) < selectedFish.BaitProbability;
+        bool fishBites = Random.Shared.Next(0, 10000) < fish.BaitProbability;
         // The reel game belongs to this cast alone: a game won on an earlier cast must not carry over.
-        fishFightGame = FishingRules.IsFightGame(bite, hasAutoFish, Random.Shared.Next(0, 10000), Constants.fishFightingProp);
-        if (bite) {
+        bool fightGame = FishingRules.IsFightGame(fishBites, hasAutoFish, Random.Shared.Next(0, 10000), Constants.fishFightingProp);
+        if (fishBites) {
             fishingTick -= rodMetadata.ReduceTime;
             fishingTick = Random.Shared.Next(fishingTick - fishingTick / 3, fishingTick); // Chance for early catch
         } else {
             fishingTick = Random.Shared.Next(fishingTick + 1, fishingTick * 2); // If tick is over bore duration, it will fail
         }
 
-        biteTick = session.Field.FieldTick + fishingTick;
-        session.Send(FishingPacket.Start(biteTick.Truncate32(), fishFightGame));
+        long fishBiteTick = session.Field.FieldTick + fishingTick;
+        Cast(block, fish, fishBites, fishBiteTick, fightGame);
+        session.Send(FishingPacket.Start(fishBiteTick.Truncate32(), fightGame));
 
         return FishingError.none;
     }
@@ -322,9 +345,7 @@ public class FishingManager {
             session.ConditionUpdate(ConditionType.fish_fail, codeLong: selectedFish.Id, targetLong: session.Field.MapId);
         }
         // One catch per cast: the next one needs a new start.
-        selectedFish = null;
-        bite = false;
-        fishFightGame = false;
+        EndCast();
 
         return FishingError.none;
     }
@@ -439,9 +460,7 @@ public class FishingManager {
         if (fishFightGame && selectedTile != null) {
             session.Send(FishingPacket.LoadTiles([selectedTile], append: true));
         }
-        fishFightGame = false;
-        selectedFish = null;
-        bite = false;
+        EndCast();
     }
 
 }
