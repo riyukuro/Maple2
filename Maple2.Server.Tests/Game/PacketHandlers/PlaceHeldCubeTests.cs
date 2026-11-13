@@ -115,6 +115,16 @@ public class PlaceHeldCubeTests {
         });
     }
 
+    // A layout or package apply (not a player's place) keeps no group limit, as the client checks none: a house is
+    // placed at home past its building limit of 0.
+    [Test]
+    public void AHouseFromALayout_KeepsNoBuildingLimit() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.ItemMetadata.TryGet(House, out ItemMetadata? metadata);
+        Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Default }, plot, metadata!, new Vector3B(-1, -1, 1), 0, out _), Is.True);
+        Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+    }
+
     [Test]
     public void TheHeldItem_IsPlaced() {
         (GameSession session, Plot plot) = StartInHome();

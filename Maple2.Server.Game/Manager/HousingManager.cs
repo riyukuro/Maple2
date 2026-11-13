@@ -833,9 +833,12 @@ public class HousingManager {
             return false;
         }
 
+        // The group's count limits hold for a player's place only: the client counts them for its display alone
+        // (CubeMapInformationService FUN_1410d27c0) and a layout or package apply checks none, so such an apply places
+        // its cubes past them as the layout or package has them.
         Vector3B cell = position;
         session.FunctionCubeMetadata.TryGet(itemMetadata.Install.ObjectCubeId, out FunctionCubeMetadata? placedFunction);
-        UgcMapError groupLimit = CubeEditRules.GroupLimit(plot.Metadata.Limit, itemMetadata, placedFunction,
+        UgcMapError groupLimit = !byPlayer ? UgcMapError.s_ugcmap_ok : CubeEditRules.GroupLimit(plot.Metadata.Limit, itemMetadata, placedFunction,
             plot.Cubes.Values
                 .Where(other => !(isReplace && other.Position == cell))
                 .Select(other => (other.Metadata,
