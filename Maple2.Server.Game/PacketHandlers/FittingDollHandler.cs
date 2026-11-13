@@ -25,7 +25,7 @@ public class FittingDollHandler : FieldPacketHandler {
         PutOn = 2, // InvenSlot::FUN_141405a60 (invenslot.cpp:675): i64 doll uid, i64 item uid, u8 slot
         Transform = 3, // UIFittingDollDialog (uifittingdolldialog.cpp:180): i64 doll uid
         PutOff = 7, // fittingdollslot_2.cpp:369: i64 doll uid, u8 slot
-        UnbindItem = 9, // networkservice.cpp:520: i64 doll uid, i64 item uid
+        Destroy = 9, // networkservice.cpp:520, uimessagebox.cpp:1433 and mypc.cpp:4095: i64 doll uid, i64 item uid
         ReturnAll = 10, // mypc.cpp:4118, before the doll is recalled: i64 doll uid
     }
 
@@ -43,6 +43,9 @@ public class FittingDollHandler : FieldPacketHandler {
                 return;
             case Command.PutOff:
                 Send(session, PutOff(session, dollUid, (EquipSlot) packet.ReadByte()));
+                return;
+            case Command.Destroy:
+                Send(session, Destroy(session, dollUid, packet.ReadLong()));
                 return;
             case Command.ReturnAll:
                 FieldFittingDoll? doll = session.Field?.GetFittingDoll(dollUid);
@@ -301,6 +304,56 @@ public class FittingDollHandler : FieldPacketHandler {
                 doll.Items.Remove(slot);
                 session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
                 return ToInventoryOrMail(session, doll.Uid, item) ? FittingDollRules.Error.None : FittingDollRules.Error.InvalidItem;
+            }
+        }
+    }
+
+    // Destroys a doll item bound to a character outside the plot owner's account, which no recall can give back to
+    // anyone the owner plays. The client asks only for such an item (Unk_Inventory::FUN_140a66200, inventory.cpp:1661,
+    // reasons 4 and 5: the binding's character is not in the account's character list): after the owner confirms
+    // s_strDestroyDollItem on a take-off (uimessagebox.cpp:1433), and for each such item before a recall (mypc.cpp:4095,
+    // then mode 10). It needs feature FittingDollEquipAll (0xd4), on in KR. The row is deleted only while it is still
+    // on the cube; the field then gets the take-off (0x7B mode 7), as the client has no other answer for it.
+    private FittingDollRules.Error Destroy(GameSession session, long dollUid, long itemUid) {
+        FieldFittingDoll? doll = session.Field?.GetFittingDoll(dollUid);
+        if (doll == null) {
+            return FittingDollRules.Error.InvalidDoll;
+        }
+        if (doll.Plot.OwnerId != session.AccountId) {
+            return FittingDollRules.Error.InvalidOwner;
+        }
+
+        lock (session.Item) {
+            lock (doll.Lock) {
+                if (doll.Removed) {
+                    return FittingDollRules.Error.InvalidDoll;
+                }
+                Reload(session, doll);
+                (EquipSlot slot, Item? item) = doll.Items.FirstOrDefault(entry => entry.Value.Uid == itemUid);
+                if (item == null) {
+                    return FittingDollRules.Error.InvalidItem;
+                }
+                long bound = item.Transfer?.Binding?.CharacterId ?? 0;
+                if (bound == 0) {
+                    return FittingDollRules.Error.InvalidItem; // unbound: taken off as any item
+                }
+                using (GameStorage.Request db = session.GameStorage.Context()) {
+                    // A character of the account gets the item back with a take-off or a recall. A character that
+                    // no longer exists is outside the account.
+                    if (db.GetCharacterAccounts([bound]).TryGetValue(bound, out long accountId) && accountId == session.AccountId) {
+                        return FittingDollRules.Error.InvalidBinding;
+                    }
+                    if (!db.DeleteFittingDollItem(item.Uid, doll.Uid)) {
+                        Reload(session, doll); // taken off by the same home on another channel
+                        return FittingDollRules.Error.InvalidItem;
+                    }
+                }
+
+                Logger.Information("Account {AccountId} destroyed fitting doll {DollUid} item {ItemId} uid {ItemUid} bound to character {CharacterId}",
+                    session.AccountId, doll.Uid, item.Id, item.Uid, bound);
+                doll.Items.Remove(slot);
+                session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
+                return FittingDollRules.Error.None;
             }
         }
     }

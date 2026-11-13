@@ -200,6 +200,33 @@ public class FittingDollMySqlTests {
         });
     }
 
+    // FittingDoll 9 deletes a doll row by one conditional delete: a row on the cube goes, a row another channel took
+    // off first deletes 0 rows and stays.
+    [Test]
+    public void DeleteFittingDollItem_DeletesOnlyARowStillOnTheCube() {
+        PlotCube doll = PlaceCube(2);
+        long onDoll = OnDoll(doll.Id, EquipSlot.CL);
+        long takenOff = OnDoll(doll.Id, EquipSlot.PA);
+        using (var other = new Ms2Context(plain)) {
+            other.Item.Where(item => item.Id == takenOff)
+                .ExecuteUpdate(update => update.SetProperty(item => item.OwnerId, saver).SetProperty(item => item.Group, ItemGroup.Default));
+        }
+
+        bool deleted, notOnCube;
+        using (GameStorage.Request db = storage.Context()) {
+            deleted = db.DeleteFittingDollItem(onDoll, doll.Id);
+            notOnCube = db.DeleteFittingDollItem(takenOff, doll.Id);
+        }
+
+        using var check = new Ms2Context(plain);
+        Assert.Multiple(() => {
+            Assert.That(deleted, Is.True);
+            Assert.That(notOnCube, Is.False);
+            Assert.That(check.Item.Any(row => row.Id == onDoll), Is.False);
+            Assert.That((Row(takenOff).OwnerId, Row(takenOff).Group), Is.EqualTo((saver, ItemGroup.Default)));
+        });
+    }
+
     // The storage's logged errors, with their exception.
     private sealed class ErrorLog : ILogger<GameStorage> {
         public readonly List<string> Lines = [];

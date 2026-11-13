@@ -260,6 +260,27 @@ public partial class GameStorage {
             }
         }
 
+        // Deletes item uid from the fitting doll of cube cubeUid, only while its row is still on that cube (the same
+        // home open on another channel may have taken it off): one conditional delete. False when the row has left the
+        // cube or the delete failed (nothing is deleted then).
+        public bool DeleteFittingDollItem(long uid, long cubeUid) {
+            try {
+                IQueryable<Model.Item> held = Context.Item.Where(row => row.Id == uid && row.OwnerId == cubeUid && row.Group == ItemGroup.FittingDoll);
+                if (Context.Database.IsRelational()) {
+                    return held.ExecuteDelete() == 1;
+                }
+                Model.Item? row = held.FirstOrDefault();
+                if (row == null) {
+                    return false;
+                }
+                Context.Item.Remove(row);
+                return Context.TrySaveChanges();
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to delete item {ItemUid} from fitting doll {CubeUid}", uid, cubeUid);
+                return false;
+            }
+        }
+
         public bool UpdateItem(Item item) {
             Model.Item model = item;
             Context.Item.Update(model);
