@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -141,8 +142,8 @@ public class CardReverseGameTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    private static GameSession StartAtObject(TestGameSession test, int[]? cards = null) {
-        test.Store(TestGameSession.Metadata(CoinId), 2);
+    private static GameSession StartAtObject(TestGameSession test, int[]? cards = null, ItemMetadata? coin = null) {
+        test.Store(coin ?? TestGameSession.Metadata(CoinId), 2);
         foreach (int id in CardIds) {
             test.Register(TestGameSession.Metadata(id));
         }
@@ -216,6 +217,20 @@ public class CardReverseGameTests {
     }
 
     // A card whose item cannot be made keeps the pick: the paid shuffle still opens three cards.
+    // The KR coin's item data ends on 2016-05-26 (life expirationTimestamp 1464264000): coins made now have no expiry,
+    // so the shuffle takes one. Made with that date, every coin was expired and the shuffle got result 0.
+    [Test]
+    public void Shuffle_TakesCoinsOfAPastFixedEndDate() {
+        var test = new TestGameSession();
+        ItemMetadata coin = TestGameSession.Metadata(CoinId) with { Life = new ItemMetadataLife(0, 1464264000) };
+        GameSession session = StartAtObject(test, coin: coin);
+        Assert.That(session.Item.Inventory.Find(CoinId).Any(item => item.IsExpired()), Is.False);
+
+        Send(session, 1);
+        Assert.That(Sent(test).Select(Convert.ToHexString), Is.EqualTo(new[] { "DA0001" }));
+        Assert.That(Coins(session), Is.EqualTo(1));
+    }
+
     [Test]
     public void Pick_UnknownItem_KeepsThePick() {
         var test = new TestGameSession();

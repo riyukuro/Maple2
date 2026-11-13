@@ -196,7 +196,7 @@ public class Item : IByteSerializable, IByteDeserializable {
 #if DEBUG
             return (long) (DateTime.Now.AddYears(1).ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
 #else
-            return Metadata.Life.ExpirationTimestamp;
+            return FixedExpiry(Metadata.Life.ExpirationTimestamp, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 #endif
         }
 
@@ -205,6 +205,12 @@ public class Item : IByteSerializable, IByteDeserializable {
         }
         return 0;
     }
+
+    // The expiry an item of a fixed end date (life expirationTimestamp) is made with. Every such date in the item data
+    // is past (the latest is 2020-03-01), and the client takes the expiry the server sends (CItem::IsExpired,
+    // commonfiles/item.cpp:1303): an item made with one was expired from the start, so no price or deck took it (a
+    // card game's coins, 30000536). Chosen here: a date already past when the item is made gives no expiry.
+    public static long FixedExpiry(long timestamp, long now) => timestamp > now ? timestamp : 0;
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(Amount);
