@@ -27,7 +27,7 @@ public static class SurvivalPacket {
 
     public static ByteWriter UpdateStats(Account account, long expGained = 0) {
         var pWriter = Packet.Of(SendOp.Survival);
-        pWriter.Write<Command>(Command.UpdateStats);
+        pWriter.WriteByte((byte) Command.UpdateStats);
         pWriter.WriteLong(account.Id);
         pWriter.WriteInt();
         pWriter.WriteBool(account.ActiveGoldPass);
@@ -42,7 +42,7 @@ public static class SurvivalPacket {
 
     public static ByteWriter LoadMedals(IDictionary<MedalType, Dictionary<int, Medal>> inventory, IDictionary<MedalType, Medal> equips) {
         var pWriter = Packet.Of(SendOp.Survival);
-        pWriter.Write<Command>(Command.LoadMedals);
+        pWriter.WriteByte((byte) Command.LoadMedals);
         // The slots in the client's order (0 tail, 1 riding, 2 gliding: the restored client keeps the first three).
         pWriter.WriteByte((byte) inventory.Keys.Count);
         foreach ((MedalType type, Dictionary<int, Medal> medals) in inventory.OrderBy(entry => entry.Key)) {

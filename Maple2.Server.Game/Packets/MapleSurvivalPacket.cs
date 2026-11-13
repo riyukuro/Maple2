@@ -100,7 +100,7 @@ public static class MapleSurvivalPacket {
     }
 
     // 0x21: the "skin learned" system line (the reader, maplesurvival.cpp:636: the slot, an int, then
-    // s_maple_survival_learn_skin; GMS formats the item name into it).
+    // s_maple_survival_learn_skin; GMS formats the item name into it). The int is not read; chosen here: the skin.
     public static ByteWriter SkinLearned(byte slot, int skinId) {
         ByteWriter pWriter = Survival(0x21);
         pWriter.WriteByte(slot);
@@ -216,6 +216,8 @@ public static class MapleSurvivalPacket {
         return pWriter;
     }
 
+    // SurvivalEvent 2: one zone's node and both storm markers go (StormFx_OnRemove, survivalstormfx.cpp). Not sent: the
+    // game has one zone, and its end clears everything with 3.
     public static ByteWriter RemoveZone(short id) {
         ByteWriter pWriter = StormEvent(2);
         pWriter.WriteShort(id);
