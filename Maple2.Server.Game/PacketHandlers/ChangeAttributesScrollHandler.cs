@@ -159,27 +159,9 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
 
             }
 
-            // Try to consume both items.
-            bool consumedScroll = session.Item.Inventory.Consume(scroll.Uid, 1);
-            bool consumedLock = lockItem == null || session.Item.Inventory.Consume(lockItem.Uid, 1);
-
-            if (!consumedScroll || !consumedLock) {
-                // Rollback if either consumption failed.
-                if (consumedScroll) {
-                    Item newScroll = scroll.Clone();
-                    newScroll.Amount = 1;
-                    session.Item.Inventory.Add(newScroll); // Re-add scroll if only lock failed
-                }
-                if (lockItem != null && consumedLock) {
-                    Item newLockItem = lockItem.Clone();
-                    newLockItem.Amount = 1;
-                    session.Item.Inventory.Add(newLockItem); // Re-add lock item if only scroll failed
-                }
-                session.Send(ChangeAttributesScrollPacket.Error(
-                    consumedScroll
-                        ? ChangeAttributesScrollError.s_itemremake_error_server_fail_lack_lock_consume_item
-                        : ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_consume_scroll
-                ));
+            ChangeAttributesScrollError consumed = TakeCosts(session, scroll, lockItem);
+            if (consumed != ChangeAttributesScrollError.none) {
+                session.Send(ChangeAttributesScrollPacket.Error(consumed));
                 return;
             }
 
@@ -191,6 +173,29 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
             session.ChangeAttributesItem = changeItem;
             session.Send(ChangeAttributesScrollPacket.PreviewItem(session.ChangeAttributesItem));
         }
+    }
+
+    // Takes the scroll, then the lock item, or neither. |session.Item| is locked by the caller.
+    internal static ChangeAttributesScrollError TakeCosts(GameSession session, Item scroll, Item? lockItem) {
+        // The scroll's take fails for an expired scroll (it is not checked before), and then the lock item is not
+        // taken. Before, the lock item was taken anyway and given back as a copy with its uid: with a stack of one its
+        // row stayed on the bag's delete list, so once the item left the bag (stored, traded, mailed) the next save of
+        // the bag deleted its row.
+        if (!session.Item.Inventory.Consume(scroll.Uid, 1)) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_consume_scroll;
+        }
+        if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
+            // Not reached today: the lock item was found under the same lock, and its take refuses only an expired
+            // item, which GetLockConsumeItem skips. The scroll comes back as a new item of its id and rarity (chosen
+            // here: its copy would carry the uid of a row that may be marked to be deleted), by mail when the bag
+            // refuses it.
+            Item? back = session.Field?.ItemDrop.CreateItem(scroll.Id, scroll.Rarity, 1);
+            if (back == null || !session.Item.AddOrMail(back, commit: true)) {
+                Serilog.Log.Logger.Error("Remake scroll {ItemId} of {CharacterId} not given back", scroll.Id, session.CharacterId);
+            }
+            return ChangeAttributesScrollError.s_itemremake_error_server_fail_lack_lock_consume_item;
+        }
+        return ChangeAttributesScrollError.none;
     }
 
     private static void HandleSelect(GameSession session, IByteReader packet) {
