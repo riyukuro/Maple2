@@ -327,12 +327,16 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         }
     }
 
+    // The restore of a character whose delete is pending. It only ends the wait: the blocks of a delete (a guild,
+    // unread mail, listings, a marriage) are for the delete itself. Every answer is CharacterList 6, whose error the
+    // client shows with its delete texts, leaving the character's timer as it was (UICharacterListDialog mode 6).
     private void HandleCancelDelete(LoginSession session, IByteReader packet) {
         long characterId = packet.ReadLong();
 
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
-        if (character == null || !ValidateDeleteRequest(session, characterId, db, character)) {
+        if (character == null) {
+            session.Send(CharacterListPacket.CancelDelete(characterId, s_char_err_already_destroy));
             return;
         }
 
@@ -341,11 +345,11 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             return;
         }
 
-        // Remove DeleteTime
-        character.DeleteTime = 0;
-        if (db.UpdateDelete(session.AccountId, characterId, 0)) {
-            session.Send(CharacterListPacket.CancelDelete(characterId));
+        if (!db.UpdateDelete(session.AccountId, characterId, 0)) {
+            session.Send(CharacterListPacket.CancelDelete(characterId, s_char_err_destroy));
+            return;
         }
+        session.Send(CharacterListPacket.CancelDelete(characterId));
     }
 
     private bool ValidateDefaultItems(JobCode jobCode, int id, EquipSlot slot) {
