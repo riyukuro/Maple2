@@ -61,6 +61,7 @@ public static class Constant {
     public const int ChangeAttributesMinLevel = 50;
     public const int ChangeAttributesMinRarity = 4;
     public const int ChangeAttributesMaxRarity = 6;
+    public const int ChangeAttributesPetMinRarity = 3;
     public const double FishingMasteryAdditionalExpChance = 0.05;
     public const int FishingMasteryIncreaseFactor = 2;
     public const int FishingRewardsMaxCount = 1;

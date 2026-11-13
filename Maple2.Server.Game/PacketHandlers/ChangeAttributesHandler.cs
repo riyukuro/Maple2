@@ -280,20 +280,29 @@ public class ChangeAttributesHandler : FieldPacketHandler {
 
     // It needs to be epic or better armor and accessories at level 50 and above.
     internal static bool IsValidItem(Item item) {
+        // The pet page (CItem::FUN_140526670, item.cpp:1887-1905) takes any pet (CItemData::IsPetItem, item type 11:
+        // the combat and the storage pets) from rarity 3, with no level limit; then remakeDisable, and a pet with no
+        // random option is refused (GetGroupOptionCount == 0, result 6, :1905). A pet without stats is left to the
+        // caller's null-status answer.
+        if (item.Type.IsPet) {
+            return item.Rarity is >= Constant.ChangeAttributesPetMinRarity and <= Constant.ChangeAttributesMaxRarity
+                && !item.Metadata.Property.RemakeDisable
+                && (item.Stats == null || item.Stats[ItemStats.Type.Random].Count > 0);
+        }
         if (item.Rarity is < Constant.ChangeAttributesMinRarity or > Constant.ChangeAttributesMaxRarity) {
             return false;
         }
         // The item page takes armor and accessories only, no weapon (CItem::FUN_1405264c0, item.cpp:1850-1854:
         // equip subtypes 13-17 and 22, CItemData::FUN_14053d600 itemdata.cpp:958, or 12 and 18-21, FUN_14053d5c0
         // itemdata.cpp:943; result 8).
-        if (!item.Type.IsArmor && !item.Type.IsAccessory && !item.Type.IsCombatPet) {
+        if (!item.Type.IsArmor && !item.Type.IsAccessory) {
             return false;
         }
         if (item.Metadata.Limit.Level < Constant.ChangeAttributesMinLevel) {
             return false;
         }
         // The client refuses an item with remakeDisable on both pages (CItem::FUN_1405264c0, item.cpp:1862, and
-        // FUN_140526670, :1903; result 2).
+        // FUN_140526670 above, :1903; result 2).
         if (item.Metadata.Property.RemakeDisable) {
             return false;
         }
@@ -312,11 +321,11 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         }
 
         ItemTag? lockTag = ItemRemakeRules.LockTag(changeItem.Type.IsArmor, changeItem.Type.IsWeapon,
-            changeItem.Type.IsAccessory, changeItem.Type.IsCombatPet);
+            changeItem.Type.IsAccessory, changeItem.Type.IsPet);
         if (lockTag == null) {
             return null;
         }
-        int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsCombatPet, changeItem.Rarity);
+        int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsPet, changeItem.Rarity);
         bool vip = session.Config.IsPremiumClubActive();
         bool pet = lockTag == ItemTag.LockItemOptionPet;
         return session.Item.Inventory.Filter(item => ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity)
@@ -327,7 +336,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
 
     // How many options the lock item keeps: one for gear, the candy's count for a pet (ItemRemakeRules.LocksAllowed).
     internal static int LockLimit(Item changeItem, Item lockItem) {
-        if (!changeItem.Type.IsCombatPet) {
+        if (!changeItem.Type.IsPet) {
             return 1;
         }
         int options = changeItem.Stats?[ItemStats.Type.Random].Count ?? 0;

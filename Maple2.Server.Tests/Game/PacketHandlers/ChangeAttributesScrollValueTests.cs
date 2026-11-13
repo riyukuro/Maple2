@@ -156,6 +156,35 @@ public class ChangeAttributesScrollValueTests {
         Assert.That(ChangeAttributesHandler.IsValidItem(new Item(data, rarity: 4)), Is.EqualTo(valid));
     }
 
+    // The pet page takes any pet, combat or storage, from rarity 3 and at any level limit (item.cpp:1887-1905).
+    // Before, the server took combat pets only, from rarity 4 and level 50.
+    [TestCase(61000001, 3, 0, true)] // combat pet, rarity 3, no level limit
+    [TestCase(61000001, 4, 50, true)]
+    [TestCase(61000001, 2, 50, false)] // under rarity 3 (result 7)
+    [TestCase(60000001, 3, 0, true)] // storage pet
+    [TestCase(60000001, 2, 0, false)]
+    public void PetPage_TakesAnyPetFromRarityThree(int id, int rarity, int level, bool valid) {
+        ItemMetadata data = TestGameSession.Metadata(id);
+        data = data with { Limit = data.Limit with { Level = level } };
+        var pet = new Item(data, rarity: rarity, initialize: false);
+        Assert.That(pet.Type.IsPet, Is.True);
+        Assert.That(ChangeAttributesHandler.IsValidItem(pet), Is.EqualTo(valid));
+    }
+
+    [Test]
+    public void PetPage_RefusesRemakeDisable() {
+        ItemMetadata data = TestGameSession.Metadata(61000001);
+        data = data with { Property = data.Property with { RemakeDisable = true } };
+        Assert.That(ChangeAttributesHandler.IsValidItem(new Item(data, rarity: 4, initialize: false)), Is.False);
+    }
+
+    // A pet with no random option is refused (GetGroupOptionCount == 0, item.cpp:1905, result 6).
+    [Test]
+    public void PetPage_RefusesAPetWithNoOption() {
+        Assert.That(ChangeAttributesHandler.IsValidItem(Rolled(61000001)), Is.False);
+        Assert.That(ChangeAttributesHandler.IsValidItem(Rolled(61000001, BasicAttribute.Strength)), Is.True);
+    }
+
     private static Item Rolled(int id, params BasicAttribute[] basics) {
         var random = new Dictionary<BasicAttribute, BasicOption>();
         foreach (BasicAttribute basic in basics) {
