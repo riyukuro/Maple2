@@ -27,6 +27,9 @@ public class QuestDailyResetTests {
         // What a quest load reads: no alliance missions.
         test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
         test.Start();
+        // These tests are of the drop: every grant period counts as granted (DailyQuestGrantTests).
+        Character character = test.Session.Player.Value.Character;
+        character.FieldQuestGrantTime = character.MissionPointGrantTime = character.DailyMissionGrantTime = long.MaxValue;
         test.TakeSent();
     }
 

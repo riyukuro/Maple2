@@ -63,6 +63,7 @@ public class Character {
     // 0 = never).
     public long FieldQuestGrantTime;
     public long MissionPointGrantTime;
+    public long DailyMissionGrantTime;
 
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;

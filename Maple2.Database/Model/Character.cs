@@ -70,6 +70,7 @@ internal class Character {
                 MissionAttackTime = other.MissionAttackTime,
                 FieldQuestGrant = other.FieldQuestGrantTime,
                 MissionPointGrant = other.MissionPointGrantTime,
+                DailyMissionGrant = other.DailyMissionGrantTime,
             },
             Currency = new CharacterCurrency(),
             Mastery = new Mastery() {
@@ -128,6 +129,7 @@ internal class Character {
             MissionAttackTime = other.Cooldown.MissionAttackTime,
             FieldQuestGrantTime = other.Cooldown.FieldQuestGrant,
             MissionPointGrantTime = other.Cooldown.MissionPointGrant,
+            DailyMissionGrantTime = other.Cooldown.DailyMissionGrant,
             DeleteTime = other.DeleteTime.ToEpochSeconds(),
             Channel = other.Channel,
             ReturnChannel = other.ReturnChannel,
@@ -194,6 +196,7 @@ internal class Cooldown {
     public long MissionAttackTime { get; set; }
     public long FieldQuestGrant { get; set; }
     public long MissionPointGrant { get; set; }
+    public long DailyMissionGrant { get; set; }
 }
 
 internal class CharacterCurrency {

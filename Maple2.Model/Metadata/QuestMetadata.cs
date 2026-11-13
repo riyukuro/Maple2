@@ -60,6 +60,7 @@ public record QuestMetadataBasic(
     int GuideType = 0,
     // guide guideMinLevel and guideMaxLevel (CQuestData m_levelRange, questdata.cpp:1452): the levels whose guide
     // lists the quest, both ends included; 0 for none. The server grants the guide's quests by it (DailyQuestGrant).
+    int GuideGroup = 0,
     int GuideMinLevel = 0,
     int GuideMaxLevel = 0);
 

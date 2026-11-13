@@ -10,7 +10,7 @@ using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
-// The quests the server grants (DailyQuestGrant): the day's field quest and the week's mission point ladder, at login and at the daily reset, once a
+// The quests the server grants (DailyQuestGrant): the day's field quest, the week's mission point ladder and the day's daily missions, at login and at the daily reset, once a
 // period, only what the player can start.
 public class DailyQuestGrantTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -266,11 +266,12 @@ public class DailyQuestGrantTests {
     }
 
     // The week starts on Friday: on a Friday it is that day, on a Thursday the Friday before.
-    [TestCase(2026, 11, 13, 13)]
-    [TestCase(2026, 11, 19, 13)]
-    [TestCase(2026, 11, 20, 20)]
-    public void MissionPointWeekStart(int year, int month, int day, int startDay) {
-        Assert.That(DailyQuestGrant.MissionPointWeekStart(new DateTime(year, month, day, 12, 0, 0)),
+    [TestCase(2026, 11, 13, 12, 13)]
+    [TestCase(2026, 11, 13, 0, 13)]
+    [TestCase(2026, 11, 19, 23, 13)]
+    [TestCase(2026, 11, 20, 0, 20)]
+    public void MissionPointWeekStart(int year, int month, int day, int hour, int startDay) {
+        Assert.That(DailyQuestGrant.MissionPointWeekStart(new DateTime(year, month, day, hour, 0, 0)),
             Is.EqualTo(new DateTime(year, month, startDay)));
     }
 
@@ -283,6 +284,154 @@ public class DailyQuestGrantTests {
     public void InBand(int level, int min, int max, bool inBand) {
         QuestMetadataBasic basic = TestGameSession.QuestData(1, QuestType.DailyMission).Basic with { GuideMinLevel = min, GuideMaxLevel = max };
         Assert.That(DailyQuestGrant.InBand(basic, level), Is.EqualTo(inBand));
+    }
+
+    // Four daily missions in each of the six groups: 1-99 in groups 0 to 2, 50-99 in groups 3 to 5 (as in KR, where
+    // specup, farmmeso and farmingredient start at 50).
+    private static int[] DailyGroup(int group) => Enumerable.Range(0, 4).Select(i => 70100000 + group * 100 + i).ToArray();
+    private static readonly int[] DailyMissions = Enumerable.Range(0, 6).SelectMany(DailyGroup).ToArray();
+
+    private static QuestMetadata DailyMission(int id, int group, int minLevel, int maxLevel, int guideType = QuestDailyReset.GuideDailyPickRepeat,
+                                              bool notInPlayedClient = false) {
+        QuestMetadata quest = TestGameSession.QuestData(id, QuestType.DailyMission);
+        return quest with {
+            Basic = quest.Basic with {
+                Repeat = guideType == QuestDailyReset.GuideDailyPickOnce ? 0 : 1, GuideType = guideType, GuideGroup = group,
+                GuideMinLevel = minLevel, GuideMaxLevel = maxLevel, NotInPlayedClient = notInPlayedClient,
+            },
+        };
+    }
+
+    private void RegisterDailyMissions(Func<int, bool>? notInPlayedClient = null) {
+        for (int group = 0; group < 6; group++) {
+            foreach (int id in DailyGroup(group)) {
+                test.Register(DailyMission(id, group, group < 3 ? 1 : 50, 99,
+                    id % 2 == 0 ? QuestDailyReset.GuideDailyPickOnce : QuestDailyReset.GuideDailyPickRepeat, notInPlayedClient?.Invoke(id) ?? false));
+            }
+        }
+    }
+
+    // The group's first quest in the character's order of the day, among those not left out.
+    private int DailyPick(int group, Func<int, bool>? leftOut = null) {
+        IEnumerable<QuestMetadata> candidates = DailyGroup(group).Where(id => leftOut?.Invoke(id) != true)
+            .Select(id => test.Session.QuestMetadata.TryGet(id, out QuestMetadata? metadata) ? metadata! : throw new InvalidOperationException());
+        return DailyQuestGrant.DailyMissionOrder(candidates, test.Session.CharacterId, DateTime.Today, group).First().Id;
+    }
+
+    [Test]
+    public void DailyMission_LoginGrantsOnePerGroup() {
+        RegisterDailyMissions();
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(DailyMissions), Is.EqualTo(Enumerable.Range(0, 6).Select(group => DailyPick(group)).Order().ToArray()));
+        Assert.That(Character.DailyMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // Below 50 only the groups with a band that holds the level get one: three a day.
+    [Test]
+    public void DailyMission_BelowFiftyThreeGroups() {
+        RegisterDailyMissions();
+        Character.Level = 49;
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(DailyMissions), Is.EqualTo(Enumerable.Range(0, 3).Select(group => DailyPick(group)).Order().ToArray()));
+    }
+
+    // A pick the played client lacks is skipped: the group's next quest in the day's order is granted instead.
+    [Test]
+    public void DailyMission_NotInPlayedClientNextInOrder() {
+        RegisterDailyMissions();
+        int skipped = DailyPick(1);
+        test = RegisterAgain(id => id == skipped);
+
+        test.Session.Quest.Load();
+
+        int[] held = Held(DailyGroup(1));
+        Assert.That(held, Is.EqualTo(new[] { DailyPick(1, id => id == skipped) }));
+    }
+
+    private TestGameSession RegisterAgain(Func<int, bool> notInPlayedClient) {
+        SetUp();
+        RegisterDailyMissions(notInPlayedClient);
+        return test;
+    }
+
+    // A relog, or a relog after the day's missions were dropped (abandoned), grants nothing again that day; a level
+    // up the same day adds no group.
+    [Test]
+    public void DailyMission_OncePerDay() {
+        RegisterDailyMissions();
+        Character.Level = 49;
+        test.Session.Quest.Load();
+        int[] first = Held(DailyMissions);
+        Assert.That(first, Has.Length.EqualTo(3));
+
+        Character.Level = 50;
+        test.Session.Quest.Load();
+        Assert.That(Held(DailyMissions), Is.EqualTo(first));
+
+        foreach (int id in first) {
+            Assert.That(test.Session.Quest.TryGetQuest(id, out Quest? quest) && test.Session.Quest.Remove(quest));
+        }
+        test.Session.Quest.Load();
+        Assert.That(Held(DailyMissions), Is.Empty);
+    }
+
+    // A group that already holds a daily mission (from before the grant was kept) is left as it is.
+    [Test]
+    public void DailyMission_HeldGroupLeftAsIs() {
+        RegisterDailyMissions();
+        int other = DailyGroup(2).First(id => id != DailyPick(2));
+        test.Session.QuestMetadata.TryGet(other, out QuestMetadata? metadata);
+        Quest quest = test.StartQuest(metadata!);
+        quest.StartTime = Epoch(DateTime.Now);
+
+        test.Session.Quest.Load();
+
+        Assert.That(DailyGroup(2).Where(id => test.Session.Quest.TryGetQuest(id, out _)), Is.EqualTo(new[] { other }));
+        Assert.That(Held(DailyGroup(0)), Is.EqualTo(new[] { DailyPick(0) }));
+    }
+
+    // The reset of a new day grants the day's set after its drop; a second reset the same day drops it (as the client
+    // does on 0x19) and grants no second set.
+    [Test]
+    public void DailyMission_ResetGrantsOnce() {
+        RegisterDailyMissions();
+        Character.DailyMissionGrantTime = Epoch(DateTime.Today.AddDays(-1));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(DailyMissions), Has.Length.EqualTo(6));
+        Assert.That(Character.DailyMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(DailyMissions), Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    [Test]
+    public void DailyMission_GrantIsStored() {
+        RegisterDailyMissions();
+        test.Session.Quest.Load();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveCharacter(Character), Is.True);
+        }
+        Assert.That(test.StoredCharacter().DailyMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+    }
+
+    // The order is the same for the same character, day and group, and another for another character or day.
+    [Test]
+    public void DailyMissionOrder_PerCharacterPerDay() {
+        QuestMetadata[] quests = Enumerable.Range(0, 40).Select(i => DailyMission(70100000 + i, 1, 1, 99)).ToArray();
+        int[] Order(long characterId, DateTime day) => DailyQuestGrant.DailyMissionOrder(quests.Reverse(), characterId, day, 1).Select(q => q.Id).ToArray();
+        DateTime today = new(2026, 11, 13);
+
+        Assert.That(Order(1, today), Is.EqualTo(Order(1, today)));
+        Assert.That(Order(1, today), Is.EquivalentTo(quests.Select(q => q.Id)));
+        Assert.That(Order(2, today), Is.Not.EqualTo(Order(1, today)));
+        Assert.That(Order(1, today.AddDays(1)), Is.Not.EqualTo(Order(1, today)));
     }
 
     [TestCase(0L, true)]

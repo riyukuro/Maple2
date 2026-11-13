@@ -72,6 +72,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     Rank: (int) data.basic.rank,
                     CompletionTicket: data.basic.property != null && data.basic.property.Contains(QuestPropertyType.availablecompletionticket),
                     GuideType: (int) (data.guide?.guideType ?? 0),
+                    GuideGroup: (int) (data.guide?.guideGroup ?? 0),
                     GuideMinLevel: data.guide?.guideMinLevel ?? 0,
                     GuideMaxLevel: data.guide?.guideMaxLevel ?? 0
                 ),

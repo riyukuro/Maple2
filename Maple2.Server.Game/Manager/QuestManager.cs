@@ -990,6 +990,42 @@ public sealed class QuestManager {
     private void GrantDailyQuests(DateTime now) {
         GrantFieldQuest(now);
         GrantMissionPoints(now);
+        GrantDailyMissions(now);
+    }
+
+    // The day's daily missions: in each guideGroup, DailyMissionsPerGroup of the group's daily missions whose guide
+    // band holds the level and the player can start, in the character's order of the day (DailyQuestGrant). Once a
+    // day; a group that holds a daily mission (from before the grant was kept) is left as it is.
+    private void GrantDailyMissions(DateTime now) {
+        Character character = session.Player.Value.Character;
+        DateTime day = now.Date;
+        if (!DailyQuestGrant.Due(character.DailyMissionGrantTime, day)) {
+            return;
+        }
+        List<int> granted = [];
+        for (int group = 0; group < DailyQuestGrant.DailyMissionGroups; group++) {
+            int g = group;
+            if (HoldsAny(metadata => DailyQuestGrant.IsDailyMission(metadata) && metadata.Basic.GuideGroup == g)) {
+                continue;
+            }
+            IEnumerable<QuestMetadata> candidates = GrantPool().Where(metadata => DailyQuestGrant.IsDailyMission(metadata)
+                && metadata.Basic.GuideGroup == g && DailyQuestGrant.InBand(metadata.Basic, character.Level));
+            int count = 0;
+            foreach (QuestMetadata metadata in DailyQuestGrant.DailyMissionOrder(candidates, session.CharacterId, day, g)) {
+                if (count >= DailyQuestGrant.DailyMissionsPerGroup) {
+                    break;
+                }
+                if (!TryGetQuest(metadata.Id, out _) && Start(metadata.Id) == QuestError.none) {
+                    granted.Add(metadata.Id);
+                    count++;
+                }
+            }
+        }
+        if (granted.Count == 0) {
+            return;
+        }
+        character.DailyMissionGrantTime = day.ToEpochSeconds();
+        logger.Information("Daily missions of {CharacterId}: granted {QuestIds}", session.CharacterId, granted);
     }
 
     // The week's mission point ladder: every mission point mission whose guide band holds the level (KR: 70900001-003
@@ -1018,7 +1054,7 @@ public sealed class QuestManager {
     // The quests a grant may start (DailyQuestGrant), in id order, read once.
     private List<QuestMetadata> GrantPool() {
         return grantPool ??= session.QuestMetadata.GetQuests()
-            .Where(metadata => DailyQuestGrant.IsMissionPoint(metadata) && PlayedClientQuests.Known(metadata.Basic))
+            .Where(metadata => (DailyQuestGrant.IsMissionPoint(metadata) || DailyQuestGrant.IsDailyMission(metadata)) && PlayedClientQuests.Known(metadata.Basic))
             .OrderBy(metadata => metadata.Id)
             .ToList();
     }
