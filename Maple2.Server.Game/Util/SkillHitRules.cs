@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Tools.Collision;
 
 namespace Maple2.Server.Game.Util;
 
@@ -116,6 +117,105 @@ public static class SkillHitRules {
         return (int) Math.Min(MaxTargetRounds, ways + MathF.Ceiling(ways * flightMs / interval));
     }
 
+    // How far outside the client's own shape a target packet's object may stand and its points may lie (chosen here):
+    // the server's player position is the client's detect point within 2 in KMS2 (the client syncs before it sends),
+    // so most of it is the objects' movement between the client's frame and the server's.
+    public const float TargetMargin = 150f;
+    // A region's packet carries the owner's facing when it hit. In KMS2 it lies within 79 degrees of the player's
+    // last synced facing (9947 packets), and a cast that turns (10200232, 10400041) strays up to 179 from the
+    // cast's rotation. Chosen here: within this of either.
+    public const float FacingMargin = 90f;
+    // An arrow's packet carries the step it hit on: its last and its current point. KMS2 steps are at most 139 long
+    // and 0.1 s of the path's velocity. Chosen here: a step of at most this long at the fastest of the paths.
+    public const float StepSeconds = 0.25f;
+    // Two packets of one arrow: its current point moves at most the velocity for the time between them and this
+    // long more, for packets that arrive bunched after a late one (chosen here).
+    public const long StepArrivalAllowanceMs = 500;
+
+    // Whether a region packet's facing is near the cast's rotation or the player's synced facing (degrees).
+    public static bool FacingNear(float facing, float castFacing, float syncedFacing) {
+        return AngleBetween(facing, castFacing) <= FacingMargin || AngleBetween(facing, syncedFacing) <= FacingMargin;
+    }
+
+    private static float AngleBetween(float a, float b) {
+        float d = (a - b) % 360;
+        if (d < 0) {
+            d += 360;
+        }
+        return d > 180 ? 360 - d : d;
+    }
+
+    // A region's area as the client searches it (FUN_141464d00): the attack's range at the owner's position, turned
+    // to its facing, grown by TargetMargin on every side.
+    public static Prism RegionArea(SkillMetadataAttack attack, Vector3 position, float facing) {
+        SkillMetadataRange range = attack.Range;
+        SkillMetadataRange grown = range.Type == SkillRegion.HoleCylinder
+            ? range with {
+                Width = MathF.Max(0, range.Width - TargetMargin),
+                EndWidth = range.EndWidth + TargetMargin,
+                Height = range.Height + TargetMargin,
+                RangeAdd = range.RangeAdd + new Vector3(0, 0, TargetMargin),
+            }
+            : range with {
+                Distance = range.Distance + TargetMargin,
+                Width = range.Width + 2 * TargetMargin,
+                EndWidth = range.EndWidth + 2 * TargetMargin,
+                Height = range.Height + TargetMargin,
+                RangeAdd = range.RangeAdd + new Vector3(0, TargetMargin, TargetMargin),
+            };
+        return grown.GetPrism(position, facing, range.ApplyTarget, attack.AttackMethodType != 1);
+    }
+
+    // An arrow's step as the client sweeps it (FUN_141465b30): the collision box from the last point to the current
+    // one along the arrow's axis, grown by TargetMargin on every side.
+    // A step without a horizontal move and without a horizontal axis stands along y (chosen here).
+    public static Prism ArrowArea(SkillMetadataArrow arrow, Vector3 last, Vector3 current, Vector3 axis) {
+        if (axis.X * axis.X + axis.Y * axis.Y < 1e-6f) {
+            axis = Vector3.UnitY;
+        }
+        SkillMetadataArrow grown = arrow with {
+            Collision = arrow.Collision + new Vector3(2 * TargetMargin, TargetMargin, TargetMargin),
+            CollisionAdd = arrow.CollisionAdd + new Vector3(0, TargetMargin, TargetMargin),
+        };
+        return NpcProjectileRules.SweepBox(last, current, axis, grown);
+    }
+
+    // The fastest of the attack's paths; 0 when none moves.
+    public static float Velocity(IReadOnlyList<MagicPath>? paths) {
+        float velocity = 0;
+        if (paths != null) {
+            foreach (MagicPath path in paths) {
+                velocity = MathF.Max(velocity, path.Velocity);
+            }
+        }
+        return velocity;
+    }
+
+    // Whether an arrow's step is longer than one step of its fastest path (not checked when no path moves).
+    public static bool StepTooLong(Vector3 last, Vector3 current, float velocity) {
+        return velocity > 0 && Vector3.Distance(last, current) > velocity * StepSeconds + TargetMargin;
+    }
+
+    // Whether an arrow's point lies further from the cast than its paths fly: the longest path's distance (or
+    // nonTargetMoveDistance) from its fire offset, and for a chain or range bounce each link's bounce radius (a link
+    // starts where the one before it hit, BounceChain.PicksAround). Not checked when no path has a distance.
+    public static bool ReachTooFar(Vector3 point, Vector3 cast, SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths) {
+        if (paths is not { Count: > 0 }) {
+            return false;
+        }
+        float reach = 0;
+        foreach (MagicPath path in paths) {
+            reach = MathF.Max(reach, MathF.Max(path.Distance, path.NonTargetMoveDistance) + path.FireOffset.Length() + path.ControlEndOffsetValue.Length());
+        }
+        if (reach <= 0) {
+            return false;
+        }
+        if (arrow.BounceType is BounceType.Chain or BounceType.Range) {
+            reach += Math.Max(0, arrow.BounceCount) * Math.Max(0, arrow.BounceRadius);
+        }
+        return Vector3.Distance(point, cast) > reach + TargetMargin;
+    }
+
     // The most attacks an attack point packet declares for an attack.
     public static int MaxAttacks(int targetCount, bool nonTarget) {
         return Math.Min(MaxPointAttacks, Math.Max(targetCount, nonTarget ? 1 : 0));
@@ -152,6 +252,11 @@ public enum HitRefusal {
     Full, // the attack hit its most objects
     PointGroup, // the point group hit the object this cast
     NoActor, // no actor the range takes (FieldManager.FindTargets)
+    Facing, // a region packet's facing far from the cast's and the player's
+    Step, // an arrow packet's step longer than its path moves in one
+    Reach, // an arrow packet's point further from the cast than its paths fly
+    Speed, // an arrow's point moved faster than its path between two packets
+    Outside, // the object stands outside the attack's area (SkillHitRules.RegionArea, ArrowArea)
 }
 
 // What one cast may still hit. An attack point packet declares attacks by uid; a target packet pays damage for one
@@ -173,6 +278,9 @@ public sealed class SkillHitBudget {
         public int Uses;
         public HashSet<int>? Hit;
         public bool Returned;
+        public bool Stepped;
+        public Vector3 Point;
+        public long PointTick;
     }
 
     // The cast: the time window starts here.
@@ -252,6 +360,22 @@ public sealed class SkillHitBudget {
 
         attack.Uses++;
         return true;
+    }
+
+    // An arrow packet's current point for the attack's uid: false when it moved further from the one before than the
+    // velocity covers in the time between them (SkillHitRules.StepArrivalAllowanceMs more). The point is kept either
+    // way.
+    public bool TakeStep(long attackUid, Vector3 point, long tick, float velocity) {
+        if (!attacks.TryGetValue(attackUid, out Attack? attack)) {
+            return false;
+        }
+        bool ok = !attack.Stepped || velocity <= 0
+            || Vector3.Distance(attack.Point, point)
+            <= velocity * (Math.Max(0, tick - attack.PointTick) + SkillHitRules.StepArrivalAllowanceMs) / 1000f + SkillHitRules.TargetMargin;
+        attack.Stepped = true;
+        attack.Point = point;
+        attack.PointTick = tick;
+        return ok;
     }
 
     // One hit of a target packet the attack's uid took (TakeTarget): objectId with the number the client sent with

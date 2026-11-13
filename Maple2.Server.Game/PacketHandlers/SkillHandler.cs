@@ -391,7 +391,7 @@ public class SkillHandler : FieldPacketHandler {
 
         long targetUid = packet.ReadLong();
         var impactPosition = packet.Read<Vector3>();
-        packet.Read<Vector3>(); // ImpactPosition2
+        var impactPosition2 = packet.Read<Vector3>();
         var direction = packet.Read<Vector3>();
         byte attackPoint = packet.ReadByte();
         if (!record.TrySetAttackPoint(attackPoint)) {
@@ -434,12 +434,47 @@ public class SkillHandler : FieldPacketHandler {
         IActor?[] found = new IActor?[count];
         session.Field.FindTargets(record, ids, found);
         SkillHitShape shape = SkillHitRules.Shape(record.Attack, paths);
+
+        // Where the client's writer searched: a region (FUN_141464d00) at the owner's position turned to its facing,
+        // which the server checks against its own player position and the cast's or synced facing; an arrow
+        // (FUN_141465b30) on its step from the last point to the current one, which must be a step its paths can
+        // make, from a point they reach, at their speed since the packet before. An object off the area, or any
+        // object of a packet whose area is off, is skipped (SkillHitRules.TargetMargin and the others).
+        HitRefusal packetRefusal = HitRefusal.None;
+        Prism area;
+        if (shape.Arrow) {
+            float velocity = SkillHitRules.Velocity(paths);
+            if (SkillHitRules.StepTooLong(impactPosition, impactPosition2, velocity)) {
+                packetRefusal = HitRefusal.Step;
+            } else if (SkillHitRules.ReachTooFar(impactPosition2, record.CastPosition, record.Attack.Arrow, paths)) {
+                packetRefusal = HitRefusal.Reach;
+            }
+            if (!record.Hits.TakeStep(targetUid, impactPosition2, session.Field.FieldTick, velocity) && packetRefusal == HitRefusal.None) {
+                packetRefusal = HitRefusal.Speed;
+            }
+            area = SkillHitRules.ArrowArea(record.Attack.Arrow, impactPosition, impactPosition2, direction);
+        } else {
+            if (!SkillHitRules.FacingNear(direction.Z, record.Rotation.Z, session.Player.Rotation.Z)) {
+                packetRefusal = HitRefusal.Facing;
+            }
+            area = SkillHitRules.RegionArea(record.Attack, session.Player.Position, direction.Z);
+        }
+
         int refused = 0;
         HitRefusal reason = HitRefusal.None;
         for (int i = 0; i < count; i++) {
+            // TakeHit first, so the attack counts each hit as the client did.
             HitRefusal refusal = record.Hits.TakeHit(targetUid, ids[i], ordinals[i], shape);
-            if (refusal == HitRefusal.None && found[i] == null) {
-                refusal = HitRefusal.NoActor;
+            if (refusal == HitRefusal.None) {
+                if (found[i] is not { } actor) {
+                    refusal = HitRefusal.NoActor;
+                } else if (actor == record.Caster) {
+                    // The caster the range includes is hit wherever the packet says it searched.
+                } else if (packetRefusal != HitRefusal.None) {
+                    refusal = packetRefusal;
+                } else if (!area.Intersects(actor.Shape)) {
+                    refusal = HitRefusal.Outside;
+                }
             }
             if (refusal != HitRefusal.None) {
                 refused++;
