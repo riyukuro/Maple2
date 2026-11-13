@@ -30,13 +30,13 @@ public static class PartyPacket {
         Tombstone = 18,
         UpdateStats = 19,
         DungeonNotice = 20,
-        Unknown2 = 21,
+        NoticeWithSound = 21, // OnPartyNoticeWithSound (partymanager.cpp:1281)
         DungeonReset = 25,
         PartySearchListing = 26,
         PartySearch = 30,
         PartySearchDungeon = 31,
         DungeonRecord = 35,
-        Unknown3 = 37,
+        MemberNotice = 37, // FUN_14162ee70 (partymanager.cpp:1357)
         DungeonHelperCooldown = 40,
         JoinRequest = 44,
         StartVote = 47,
@@ -214,12 +214,13 @@ public static class PartyPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown2(string message, bool htmlEncoded = false) {
-        var text = new InterfaceText(message, htmlEncoded);
+    // CPartyManager::OnPartyNoticeWithSound (partymanager.cpp:1281): an interface text, shown in chat type 2, then
+    // the key of the system sound it plays.
+    public static ByteWriter NoticeWithSound(InterfaceText text, string soundKey = "") {
         var pWriter = Packet.Of(SendOp.Party);
-        pWriter.Write<Command>(Command.Unknown2);
+        pWriter.Write<Command>(Command.NoticeWithSound);
         pWriter.WriteClass<InterfaceText>(text);
-        pWriter.WriteUnicodeString(); // effect?
+        pWriter.WriteUnicodeString(soundKey);
 
         return pWriter;
     }
@@ -296,11 +297,15 @@ public static class PartyPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown3() {
+    // CPartyManager::FUN_14162ee70 (partymanager.cpp:1357): a notice from a member, the character id, the name and an
+    // interface text, shown in chat type 2. The client drops it when the name is blocked, or the name or the id is on
+    // its buddy block list.
+    public static ByteWriter MemberNotice(long characterId, string name, InterfaceText text) {
         var pWriter = Packet.Of(SendOp.Party);
-        pWriter.Write<Command>(Command.Unknown3);
-        pWriter.WriteLong();
-        pWriter.WriteUnicodeString();
+        pWriter.Write<Command>(Command.MemberNotice);
+        pWriter.WriteLong(characterId);
+        pWriter.WriteUnicodeString(name);
+        pWriter.WriteClass<InterfaceText>(text);
 
         return pWriter;
     }
