@@ -77,8 +77,9 @@ public partial class GameStorage {
                 ugcMap.OwnerId = ownerId;
                 ugcMap.ExpiryTime = expiry;
                 ugcMap.Name = characterName;
-                // Made before anything is written: a plot without metadata is refused with nothing changed.
-                PlotInfo? result = ToPlotInfo(ugcMap);
+                // Made before anything is written, with no fixup save: a plot without metadata is refused with nothing
+                // changed.
+                PlotInfo? result = ToPlotInfo(ugcMap, fix: false);
                 if (result == null) {
                     return null;
                 }
@@ -93,7 +94,9 @@ public partial class GameStorage {
                         return null; // bought (or changed) meanwhile
                     }
                     DeletePlotCubes(id);
-                    transaction.Commit();
+                    if (!CommitPlotWrite(transaction, "buy", id, ownerId, expiry)) {
+                        return null;
+                    }
                 } else {
                     Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
                     UgcMap model = Context.UgcMap.Single(map => map.Id == id);
@@ -133,7 +136,7 @@ public partial class GameStorage {
                 DateTimeOffset expiry = model.ExpiryTime;
                 DateTimeOffset extended = expiry + days;
                 model.ExpiryTime = extended;
-                PlotInfo? result = ToPlotInfo(model);
+                PlotInfo? result = ToPlotInfo(model, fix: false);
                 if (result == null) {
                     return null;
                 }
@@ -182,7 +185,7 @@ public partial class GameStorage {
                 model.OwnerId = 0;
                 model.Name = string.Empty;
                 model.ExpiryTime = now;
-                PlotInfo? result = ToPlotInfo(model);
+                PlotInfo? result = ToPlotInfo(model, fix: false);
                 if (result == null) {
                     return null;
                 }
@@ -197,7 +200,9 @@ public partial class GameStorage {
                         return null;
                     }
                     DeletePlotCubes(id);
-                    transaction.Commit();
+                    if (!CommitPlotWrite(transaction, "forfeit", id, ownerId, expiry)) {
+                        return null;
+                    }
                 } else {
                     Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
                     UgcMap tracked = Context.UgcMap.Single(map => map.Id == id);
@@ -214,6 +219,20 @@ public partial class GameStorage {
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to forfeit plot {PlotId}", plot.Id);
                 return null;
+            }
+        }
+
+        // Commits a plot buy or forfeit. A commit that throws may still have been applied on the server (a lost
+        // connection after the COMMIT was sent): the caller then treats it as failed (a buy refunds its cost), so the
+        // ids are logged to trace a refund for a plot that was in fact written.
+        private bool CommitPlotWrite(IDbContextTransaction transaction, string action, long plotId, long ownerId, DateTimeOffset expiry) {
+            try {
+                transaction.Commit();
+                return true;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Plot {Action} commit outcome unknown: plot {PlotId}, owner {OwnerId}, expiry {Expiry}",
+                    action, plotId, ownerId, expiry.ToUnixTimeSeconds());
+                return false;
             }
         }
 
@@ -520,10 +539,8 @@ public partial class GameStorage {
         // go at once, in the caller's transaction; otherwise they are removed with the caller's next save.
         private void DeletePlotCubes(long ugcMapId) {
             if (Context.Database.IsRelational()) {
-                List<long> cubeIds = Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).Select(cube => cube.Id).ToList();
-                if (cubeIds.Count > 0) {
-                    Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).ExecuteDelete();
-                }
+                // One statement each, maids first (a maid row has the id of its cube).
+                Context.Maid.Where(maid => Context.UgcMapCube.Any(cube => cube.Id == maid.Id && cube.UgcMapId == ugcMapId)).ExecuteDelete();
                 Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).ExecuteDelete();
                 return;
             }
@@ -702,7 +719,11 @@ public partial class GameStorage {
             return plot;
         }
 
-        private PlotInfo? ToPlotInfo(UgcMap? ugcMap) {
+        private PlotInfo? ToPlotInfo(UgcMap? ugcMap) => ToPlotInfo(ugcMap, fix: true);
+
+        // fix: false for a row that is not saved as read (a plot buy, extend or forfeit builds the result before its
+        // conditional update), so the home expiry fixup does not save anything first.
+        private PlotInfo? ToPlotInfo(UgcMap? ugcMap, bool fix) {
             if (ugcMap == null || !game.mapMetadata.TryGetUgc(ugcMap.MapId, out UgcMapMetadata? metadata)) {
                 return null;
             }
@@ -711,7 +732,7 @@ public partial class GameStorage {
                 return null;
             }
 
-            if (!ValidateAndFixHomeExpiryTime(ugcMap)) {
+            if (fix && !ValidateAndFixHomeExpiryTime(ugcMap)) {
                 return null;
             }
 

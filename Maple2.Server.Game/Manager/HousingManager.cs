@@ -253,14 +253,16 @@ public class HousingManager {
             return null;
         }
 
-        if (!session.FindField(plotInfo.MapId, out FieldManager? fieldManager)) {
-            // Should we instantiate a field manager instead of giving an error?
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_system_error));
+        // An expired plot is not forfeited: World takes it back as soon as it expires (FieldPlotExpiryCheck), and the
+        // storage refuses it too. The client has no rule of its own; this error is the server's.
+        if (plotInfo.ExpiryTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_extension_date));
             return null;
         }
 
-        if (DateTime.UtcNow - plotInfo.ExpiryTime.FromEpochSeconds() > TimeSpan.FromDays(3)) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_extension_date));
+        if (!session.FindField(plotInfo.MapId, out FieldManager? fieldManager)) {
+            // Should we instantiate a field manager instead of giving an error?
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_system_error));
             return null;
         }
 

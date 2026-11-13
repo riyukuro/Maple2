@@ -202,7 +202,9 @@ public class PlotPurchaseStorageTests(bool mysql) {
     public void FailedBuyChangesNothing() {
         RequireMySql();
         hook.Before = command => {
-            if (command.CommandText.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase) && command.CommandText.Contains("ugcmap-cube")) {
+            // The cube delete (the maid delete before it names the cube table only in its subquery).
+            if (command.CommandText.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase) && command.CommandText.Contains("FROM `ugcmap-cube`")
+                && !command.CommandText.Contains("EXISTS")) {
                 throw new InvalidOperationException("delete refused");
             }
         };
@@ -274,11 +276,101 @@ public class PlotPurchaseStorageTests(bool mysql) {
     }
 
     [Test]
+    public void ForfeitOfAnExpiredPlotGetsNull() {
+        using (var context = new Ms2Context(plain)) {
+            context.UgcMap.Single(map => map.Id == plotId).OwnerId = owner;
+            context.SaveChanges();
+        }
+        Assert.That(Forfeit(owner), Is.Null);
+        Assert.That(Row().Owner, Is.EqualTo(owner));
+    }
+
+    // An extend saved between the forfeit's read and its update: the forfeit updates no row and deletes nothing, so the
+    // extension just paid for is kept with the plot and its cubes.
+    [Test]
+    public void ForfeitThatRacedAnExtendGetsNull() {
+        RequireMySql();
+        Bought();
+        DateTimeOffset expiry = Row().Expiry;
+        hook.Before = command => {
+            if (command.CommandText.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase)) {
+                hook.Before = null;
+                Assert.That(Extend(owner), Is.Not.Null);
+            }
+        };
+        PlotInfo? info = Forfeit(owner);
+
+        Assert.Multiple(() => {
+            Assert.That(info, Is.Null);
+            Assert.That(Row().Owner, Is.EqualTo(owner));
+            Assert.That(Row().Expiry, Is.EqualTo(expiry + Days).Within(TimeSpan.FromSeconds(1)));
+            Assert.That(Rows(), Is.EqualTo((1, 0)));
+        });
+    }
+
+    // Two forfeits that read the same row (two sessions of the owner): one frees the plot, the other gets null.
+    [Test]
+    public void ForfeitThatRacedAnotherForfeitGetsNull() {
+        RequireMySql();
+        Bought();
+        hook.Before = command => {
+            if (command.CommandText.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase)) {
+                hook.Before = null;
+                Assert.That(Forfeit(owner), Is.Not.Null);
+            }
+        };
+        PlotInfo? info = Forfeit(owner);
+
+        Assert.Multiple(() => {
+            Assert.That(info, Is.Null);
+            Assert.That(Row().Owner, Is.EqualTo(0));
+            Assert.That(Rows(), Is.EqualTo((0, 0)));
+        });
+    }
+
+    // The maids go by a subquery on the plot's cubes, so a maid of another plot's cube stays.
+    [Test]
+    public void BuyKeepsTheMaidsOfOtherPlots() {
+        RequireMySql();
+        long other;
+        using (var context = new Ms2Context(plain)) {
+            var map = new Maple2.Database.Model.UgcMap {
+                OwnerId = owner + 2, MapId = MapId, Indoor = false, Number = Number + 1, ExpiryTime = DateTimeOffset.UtcNow.AddDays(9),
+            };
+            context.UgcMap.Add(map);
+            context.SaveChanges();
+            other = map.Id;
+        }
+        try {
+            using (GameStorage.Request db = storage.Context()) {
+                PlotInfo otherInfo = Info(owner + 2);
+                otherInfo.Id = other;
+                PlotCube cube = db.CreateCube(otherInfo, Cube(4)) ?? throw new InvalidOperationException("cube row not created");
+                cubeIds = [.. cubeIds, cube.Id];
+                Assert.That(db.CreateMaid(new Maid {
+                    Uid = cube.Id, OwnerId = owner + 2, ItemId = CubeItemId, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000,
+                    Profile = new MaidProfile { Name = "n" },
+                }), Is.Not.Null);
+            }
+            Assert.That(Buy(owner), Is.Not.Null);
+            using var check = new Ms2Context(plain);
+            Assert.That(check.Maid.Count(maid => cubeIds.Contains(maid.Id)), Is.EqualTo(1));
+        } finally {
+            using var context = new Ms2Context(plain);
+            context.Maid.Where(maid => cubeIds.Contains(maid.Id)).ExecuteDelete();
+            context.UgcMapCube.Where(cube => cube.UgcMapId == other).ExecuteDelete();
+            context.UgcMap.Where(map => map.Id == other).ExecuteDelete();
+        }
+    }
+
+    [Test]
     public void FailedForfeitChangesNothing() {
         RequireMySql();
         Bought();
         hook.Before = command => {
-            if (command.CommandText.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase) && command.CommandText.Contains("ugcmap-cube")) {
+            // The cube delete (the maid delete before it names the cube table only in its subquery).
+            if (command.CommandText.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase) && command.CommandText.Contains("FROM `ugcmap-cube`")
+                && !command.CommandText.Contains("EXISTS")) {
                 throw new InvalidOperationException("delete refused");
             }
         };

@@ -5,8 +5,10 @@ using System.Reflection;
 using Maple2.Database.Storage;
 using Caching;
 using Maple2.Database.Context;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -123,5 +125,27 @@ public class PlotChargeTests {
         Assert.That(Money(session, currency), Is.EqualTo(4600));
         Assert.That(Money(session, currency == Mesos ? Merets : Mesos), Is.EqualTo(5000));
         Assert.That(session.Player.Value.Home.Outdoor!.ExpiryTime, Is.GreaterThan(expiry.AddDays(29).ToUnixTimeSeconds()));
+    }
+
+    // A plot a day past its expiry is not forfeited (World takes an expired plot back, and the storage refuses it):
+    // the player gets the expiry error, not a database error, and the row stays.
+    [Test]
+    public void ForfeitPlot_Expired_IsRefused() {
+        DateTimeOffset expiry = DateTimeOffset.UtcNow.AddDays(-1);
+        (GameSession session, Plot plot) = Start(Mesos, rowOwner: 0, expiry: expiry);
+        using (var context = new Ms2Context(test.Options)) {
+            context.UgcMap.Single(row => row.Id == plot.Id).OwnerId = session.AccountId;
+            context.SaveChanges();
+        }
+        plot.OwnerId = session.AccountId;
+        plot.ExpiryTime = expiry.ToUnixTimeSeconds();
+        session.Housing.SetPlot(plot);
+        test.TakeSent();
+
+        Assert.That(session.Housing.ForfeitPlot(), Is.Null);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(CubePacket.Error(UgcMapError.s_ugcmap_not_extension_date).ToArray()) }));
+        using var check = new Ms2Context(test.Options);
+        Assert.That(check.UgcMap.Single(row => row.Id == plot.Id).OwnerId, Is.EqualTo(session.AccountId));
     }
 }
