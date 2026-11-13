@@ -46,7 +46,7 @@ public static class PlayerWarpUtil {
     /// Moves the player to where the target player stands: same room, another room on this channel, or another channel.
     /// Returns false when the target's position could not be found or the field could not be prepared.
     /// intoHome: the target's home field is entered when the target is in one, whatever its entry rules. Only
-    /// the recall invite of a GM sets it.
+    /// the recall invite of a GM and the GM goto command set it.
     /// </summary>
     public static bool GoToPlayer(GameSession session, PlayerInfo playerInfo, bool intoHome = false) {
         if (session.Field is null) return false;

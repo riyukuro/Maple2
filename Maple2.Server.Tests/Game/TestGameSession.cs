@@ -641,6 +641,13 @@ public sealed class TestGameSession {
             return MigrateInAnswer ?? throw new RpcException(new Status(StatusCode.NotFound, "no MigrateInAnswer set"));
         }
 
+        // The answer to a PlayerWarp (where a player stands); none set is a refusal.
+        public PlayerWarpResponse? PlayerWarpAnswer;
+
+        public override PlayerWarpResponse PlayerWarp(PlayerWarpRequest request, CallOptions options) {
+            return PlayerWarpAnswer ?? new PlayerWarpResponse { Error = -1 };
+        }
+
         public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
             Moves.Add(request);
             return new MigrateOutResponse { IpAddress = MoveAddress, Port = MovePort, Token = 1 };

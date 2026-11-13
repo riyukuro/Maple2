@@ -123,6 +123,13 @@ public class GotoCommand : GameCommand {
         }
     }
 
+    // A GM goes to where the player stands, into the player's home when the player is in one (the home field with
+    // the player's owner id, the instance the player is in). Without it the home map is prepared with no owner,
+    // which is the GM's own home.
+    internal static bool GoToPlayer(GameSession session, PlayerInfo playerInfo) {
+        return PlayerWarpUtil.GoToPlayer(session, playerInfo, intoHome: true);
+    }
+
     private class PlayerCommand : Command {
         private readonly GameSession session;
         public PlayerCommand(GameSession session) : base("player", "Go to player.") {
@@ -147,7 +154,7 @@ public class GotoCommand : GameCommand {
                 return;
             }
 
-            if (!PlayerWarpUtil.GoToPlayer(session, playerInfo)) {
+            if (!GoToPlayer(session, playerInfo)) {
                 ctx.Console.Out.WriteLine($"Failed to warp to '{playerName}'.");
                 return;
             }
