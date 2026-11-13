@@ -196,19 +196,21 @@ public class WorldServer {
     // later until it is stored; it does not stop the schedule (each run is guarded here, so the next day's, week's or
     // month's run comes as planned). A try again is dropped once a later run of the same reset has begun. The
     // channels are told only once the reset is stored, and a channel that cannot be told does not stop the others
-    // (its sessions take the reset at their next save).
+    // (its sessions take the reset at their next save). A try again after a try whose commit was stored but whose
+    // answer was lost does not run the reset again: the reset's time stored before the first try goes with it, and
+    // the reset ends at once if the stored time has moved past it (GameStorage RunReset).
     private static readonly TimeSpan ResetRetryDelay = TimeSpan.FromMinutes(5);
     private readonly Dictionary<string, int> resetRuns = new();
 
-    private void GuardedReset(string name, Action<GameStorage.Request> reset, Action? stored) {
+    private void GuardedReset(string name, Action<GameStorage.Request, DateTime> reset, Action? stored) {
         int run;
         lock (resetRuns) {
             run = resetRuns[name] = resetRuns.GetValueOrDefault(name) + 1;
         }
-        TryReset(name, run, reset, stored);
+        TryReset(name, run, null, reset, stored);
     }
 
-    private void TryReset(string name, int run, Action<GameStorage.Request> reset, Action? stored) {
+    private void TryReset(string name, int run, DateTime? before, Action<GameStorage.Request, DateTime> reset, Action? stored) {
         lock (resetRuns) {
             if (resetRuns[name] != run) {
                 return;
@@ -216,10 +218,12 @@ public class WorldServer {
         }
         try {
             using GameStorage.Request db = gameStorage.Context();
-            reset(db);
+            before ??= db.GetResetStamp(name);
+            reset(db, before.Value);
         } catch (Exception ex) {
             logger.Fatal(ex, "{Reset} not stored, tried again in {Delay}", name, ResetRetryDelay);
-            scheduler.Schedule(() => TryReset(name, run, reset, stored), ResetRetryDelay);
+            DateTime? storedBefore = before;
+            scheduler.Schedule(() => TryReset(name, run, storedBefore, reset, stored), ResetRetryDelay);
             return;
         }
         try {
@@ -249,7 +253,7 @@ public class WorldServer {
         DateTime now = DateTime.Now;
         var lastMidnight = new DateTime(now.Year, now.Month, now.Day);
         if (lastReset < lastMidnight) {
-            GuardedReset("DailyReset", reset => reset.DailyReset(), null);
+            GuardedReset("DailyReset", (reset, before) => reset.DailyReset(before), null);
         }
 
         DateTime nextMidnight = lastMidnight.AddDays(1);
@@ -264,7 +268,7 @@ public class WorldServer {
     }
 
     private void DailyReset() {
-        GuardedReset("DailyReset", db => db.DailyReset(), () => NotifyChannels(new GameResetRequest {
+        GuardedReset("DailyReset", (db, before) => db.DailyReset(before), () => NotifyChannels(new GameResetRequest {
             Daily = new GameResetRequest.Types.Daily(),
         }));
     }
@@ -280,7 +284,7 @@ public class WorldServer {
         DateTime lastResetMidnight = now.Date.AddDays(-daysSinceReset);
 
         if (lastReset < lastResetMidnight) {
-            GuardedReset("WeeklyReset", reset => reset.WeeklyReset(), null);
+            GuardedReset("WeeklyReset", (reset, before) => reset.WeeklyReset(before), null);
         }
 
         DateTime nextReset = now.NextDayOfWeek(Constant.ResetDay).Date;
@@ -302,7 +306,7 @@ public class WorldServer {
         } catch (Exception ex) {
             logger.Fatal(ex, "WeeklyReset: the guilds in memory were not reset");
         }
-        GuardedReset("WeeklyReset", db => db.WeeklyReset(), () => {
+        GuardedReset("WeeklyReset", (db, before) => db.WeeklyReset(before), () => {
             NotifyChannels(new GameResetRequest {
                 Weekly = new GameResetRequest.Types.Weekly(),
             });
@@ -321,7 +325,7 @@ public class WorldServer {
         DateTime firstOfMonth = new DateTime(now.Year, now.Month, 1);
 
         if (lastReset < firstOfMonth) {
-            GuardedReset("MonthlyReset", reset => reset.MonthlyReset(), null);
+            GuardedReset("MonthlyReset", (reset, before) => reset.MonthlyReset(before), null);
         }
 
         DateTime nextMonth = firstOfMonth.AddMonths(1);
@@ -337,7 +341,7 @@ public class WorldServer {
     }
 
     private void MonthlyReset() {
-        GuardedReset("MonthlyReset", db => db.MonthlyReset(), () => NotifyChannels(new GameResetRequest {
+        GuardedReset("MonthlyReset", (db, before) => db.MonthlyReset(before), () => NotifyChannels(new GameResetRequest {
             Monthly = new GameResetRequest.Types.Monthly(),
         }));
     }

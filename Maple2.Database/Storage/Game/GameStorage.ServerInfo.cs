@@ -88,8 +88,13 @@ public partial class GameStorage {
             DateTime Stamp(string key) => rows.FirstOrDefault(row => row.Key == key)?.LastModified ?? DateTime.MinValue;
         }
 
-        public void DailyReset() {
-            RunReset("DailyReset", () => {
+        // The stored time of one reset (DateTime.MinValue before its first run), read without a lock.
+        public DateTime GetResetStamp(string key) {
+            return Context.ServerInfo.AsNoTracking().Where(row => row.Key == key).Select(row => row.LastModified).FirstOrDefault();
+        }
+
+        public void DailyReset(DateTime? storedBefore = null) {
+            RunReset("DailyReset", storedBefore, () => {
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `PrestigeExp` = `PrestigeCurrentExp`");
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `PrestigeLevelsGained` = DEFAULT");
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `PremiumRewardsClaimed` = DEFAULT");
@@ -108,8 +113,8 @@ public partial class GameStorage {
             });
         }
 
-        public void WeeklyReset() {
-            RunReset("WeeklyReset", () => {
+        public void WeeklyReset(DateTime? storedBefore = null) {
+            RunReset("WeeklyReset", storedBefore, () => {
                 // The guild raid records go with the weekly contribution (GuildRules.ResetRaids; Chosen here).
                 Context.Database.ExecuteSqlRaw("UPDATE `guild-member` SET `WeeklyContribution` = 0, `Raids` = NULL");
                 // The rank duel's weekly valor tokens (the dialog's gauge against weeklyRewardMax).
@@ -124,8 +129,8 @@ public partial class GameStorage {
             });
         }
 
-        public void MonthlyReset() {
-            RunReset("MonthlyReset", () => {
+        public void MonthlyReset(DateTime? storedBefore = null) {
+            RunReset("MonthlyReset", storedBefore, () => {
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `MarketLimits` = JSON_SET(MarketLimits, '$.MesoPurchased', 0)");
             });
         }
@@ -136,10 +141,20 @@ public partial class GameStorage {
         // statements used to be stored one by one after the time, so a save between them and the channels' reset
         // wrote the old values back, and a session that ended then kept them. A reset that fails (a deadlock with a
         // save) is rolled back whole and tried again, three tries in all.
-        private void RunReset(string key, Action statements) {
+        // A try whose commit was stored but whose answer was lost (the connection cut after the commit) failed for
+        // this side only: each try first reads the reset's stored time and ends if it moved past the time stored
+        // before the first try (storedBefore, the caller's when it tries again itself: WorldServer.TryReset). A
+        // second run would reset again what the players did since the first (the day's clears, revivals, listings).
+        private void RunReset(string key, DateTime? storedBefore, Action statements) {
             lock (Context) {
+                DateTime? before = storedBefore;
                 for (int tries = 1; ; tries++) {
                     try {
+                        DateTime stamp = GetResetStamp(key);
+                        if (stamp > (before ??= stamp)) {
+                            Logger.LogInformation("{Key}: stored at {Stamp} by an earlier try, not run again", key, stamp);
+                            return;
+                        }
                         using IDbContextTransaction transaction = Context.Database.BeginTransaction();
                         Context.Database.ExecuteSqlRaw("INSERT INTO `server-info` (`Key`, `LastModified`) VALUES ({0}, {1}) ON DUPLICATE KEY UPDATE `LastModified` = VALUES(`LastModified`)",
                             key, DateTime.Now);
