@@ -38,6 +38,29 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     // The point a cube skill's tile packets give: one block below the cube (SplashTiming.TilePoint).
     public Vector3 CubePosition { get; init; }
 
+    // The point a region's hit on a target at a position comes from and the direction from there to the target, as
+    // its packet sends them (the cube's position for a cube skill, else the region's nearest point). The target's
+    // damage record takes them (DamageRecord.RegionFire), and the npc's push reads them from there.
+    public (Vector3 Position, Vector3 Direction) Fire(Vector3 target) {
+        Vector3 point = Source == SkillSource.Cube ? CubePosition : SplashTiming.FirePoint(Points, target, Position);
+        return (point, SplashTiming.FireDirection(point, target));
+    }
+
+    // The damage record of one of the region's attacks.
+    internal DamageRecord Damage(SkillRecord record, SkillMetadataAttack attack) {
+        return new DamageRecord(record.Metadata, attack) {
+            CasterId = Caster.ObjectId, // the attacking actor; OwnerId stays the region id the client finds the region by
+            OwnerId = ObjectId,
+            SkillId = Value.Id,
+            Level = Value.Level,
+            MotionPoint = record.MotionPoint,
+            AttackPoint = record.AttackPoint,
+            Position = Position,
+            Direction = Rotation,
+            RegionFire = Fire,
+        };
+    }
+
     private void BroadcastDamage(DamageRecord record) {
         if (Source != SkillSource.Cube) {
             Field.Broadcast(SkillDamagePacket.Region(record));
@@ -181,16 +204,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
             for (byte j = 0; record.TrySetAttackPoint(j); j++) {
                 SkillMetadataAttack attack = record.Attack;
                 record.TargetUid++;
-                var damage = new DamageRecord(record.Metadata, attack) {
-                    CasterId = Caster.ObjectId, // the attacking actor; OwnerId stays the region id the client finds the region by
-                    OwnerId = ObjectId,
-                    SkillId = Value.Id,
-                    Level = Value.Level,
-                    MotionPoint = record.MotionPoint,
-                    AttackPoint = record.AttackPoint,
-                    Position = Position,
-                    Direction = Rotation,
-                };
+                DamageRecord damage = Damage(record, attack);
                 var targetRecords = new List<TargetRecord>();
                 if (attack.Arrow.BounceType > 0) {
                     IActor[] targets = [];
@@ -261,10 +275,6 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Field.VibrateObjects(damage, Position);
                     foreach (IActor target in targets) {
                         target.ApplyDamage(Caster, damage, attack);
-                        if (damage.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? fired)) {
-                            fired.Position = Source == SkillSource.Cube ? CubePosition : SplashTiming.FirePoint(Points, target.Position, Position);
-                            fired.Direction = SplashTiming.FireDirection(fired.Position, target.Position);
-                        }
                         // TODO: Set PrevUid?
                         targetRecords.Add(new TargetRecord {
                             Uid = (long) ObjectId << 32 | (uint) targetRecords.Count,

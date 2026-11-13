@@ -113,9 +113,10 @@ public static class SkillDamagePacket {
         foreach (RegionTarget target in targets) {
             pWriter.WriteInt(target.ObjectId);
             pWriter.WriteByte((byte) target.Damage.Count);
-            pWriter.WriteShort(CutToShort(target.Position.X));
-            pWriter.WriteShort(CutToShort(target.Position.Y));
-            pWriter.WriteShort(CutToShort(target.Position.Z));
+            Vector3 position = RegionPosition(target.Position);
+            pWriter.WriteShort((short) position.X);
+            pWriter.WriteShort((short) position.Y);
+            pWriter.WriteShort((short) position.Z);
             pWriter.Write<Vector3>(target.Direction);
             foreach ((DamageType type, long amount) in target.Damage) {
                 pWriter.Write<DamageType>(type);
@@ -125,6 +126,10 @@ public static class SkillDamagePacket {
 
         return pWriter;
     }
+
+    // A region target's position as the packet sends it (and the client reads it): each part cut to a short.
+    public static Vector3 RegionPosition(Vector3 position) =>
+        new Vector3(CutToShort(position.X), CutToShort(position.Y), CutToShort(position.Z));
 
     private static short CutToShort(float value) {
         return (short) Math.Clamp(MathF.Truncate(value), short.MinValue, short.MaxValue);

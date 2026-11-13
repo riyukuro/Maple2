@@ -2,6 +2,8 @@
 using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Model.Skill;
 
@@ -21,6 +23,11 @@ public class DamageRecord {
 
     public Vector3 Position;
     public Vector3 Direction;
+
+    // A region's hit (FieldSkill.Fire): the point and direction its packet names for a target at a position. The
+    // target's record takes them (DamageRecordTarget.For), so the packet and the npc's push read the same values.
+    // Null for a cast's hit.
+    public Func<Vector3, (Vector3 Position, Vector3 Direction)>? RegionFire;
 
     public readonly ConcurrentDictionary<int, DamageRecordTarget> Targets; // Target's ObjectId as key
 
@@ -54,6 +61,39 @@ public class DamageRecordTarget {
     public DamageRecordTarget(IActor target) {
         Target = target;
         damage = [];
+    }
+
+    // The record of a target the damage reaches: the position and direction the damage packet sends for it. A
+    // region's hit takes its fire point and the direction from there to the target (DamageRecord.RegionFire). A
+    // cast's hit takes the caster's position; its direction is the caster's facing, the one a type 5 push follows
+    // (NpcControlRules.PushFiveDirection), or for another push the way from the caster to the target.
+    public static DamageRecordTarget For(IActor target, IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
+        var record = new DamageRecordTarget(target);
+        if (damage.RegionFire != null) {
+            (record.Position, record.Direction) = damage.RegionFire(target.Position);
+            return record;
+        }
+
+        // A trigger's caster is at the map origin: the damage's own position stands in for it.
+        Vector3 sourcePosition = caster.Position;
+        if (sourcePosition.LengthSquared() < 0.001f && damage.Position.LengthSquared() > 0.001f) {
+            sourcePosition = damage.Position;
+        }
+        record.Position = sourcePosition;
+        record.Direction = caster.Transform.FrontAxis;
+
+        if (attack.Damage.Push is { Type: 5 }) {
+            record.Direction = NpcControlRules.PushFiveDirection(false, attack.AttackMethodType, damage.Direction, caster.Transform.FrontAxis);
+        } else if (attack.Damage.Push != null) {
+            // Direction should point from source toward the target (the push direction).
+            Vector3 offset = target.Position - sourcePosition;
+            if (offset.LengthSquared() > 0.001f) {
+                record.Direction = Vector3.Normalize(offset);
+            } else if (damage.Direction.LengthSquared() > 0.001f) {
+                record.Direction = Vector3.Normalize(damage.Direction);
+            }
+        }
+        return record;
     }
 
     public void AddDamage(DamageType type, long amount) {

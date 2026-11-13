@@ -698,10 +698,15 @@ public class FieldNpc : Actor<Npc> {
         }
         base.ApplyDamage(caster, damage, attack);
         if (!IsDead && damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hit) && hit.Damage.Any(entry => entry.Amount != 0)) {
-            // applied by the field thread in Update; a region's caster (at the map origin) is no attacker to measure from
-            Vector3 attacker = caster.Position.LengthSquared() < 0.001f ? hit.Position : caster.Position;
-            MovementState.QueueHit(new NpcControlRules.HitSource(hit.Position, attacker, caster.Transform.FrontAxis), attack);
+            // applied by the field thread in Update
+            MovementState.QueueHit(HitSourceOf(caster, damage, hit, attack), attack);
         }
+    }
+
+    // Where the hit came from, from what the damage packet sends (NpcControlRules.Source).
+    internal static NpcControlRules.HitSource HitSourceOf(IActor caster, DamageRecord damage, DamageRecordTarget hit, SkillMetadataAttack attack) {
+        return NpcControlRules.Source(damage.OwnerId, damage.CasterId, damage.Position, damage.Direction,
+            hit.Position, hit.Direction, caster.Position, caster.Transform.FrontAxis, attack.AttackMethodType);
     }
 
     // Drop box semantics (confirmed via KMS2 video analysis):

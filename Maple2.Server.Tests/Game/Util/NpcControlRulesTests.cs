@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -84,10 +85,48 @@ public class NpcControlRulesTests {
         Assert.That(offset.Y, Is.EqualTo(120).Within(0.01));
     }
 
-    // Types 3 and -1 (and 6, not in the data) leave the client's direction zero: no move.
+    // Type 5 takes the record's push direction: a region's from the packet, a cast's only for an attack whose hit comes
+    // from its arrow (attackMethodType 1), as the packet's whole numbers unitized; else the caster's facing.
+    [Test]
+    public void PushTypeFiveDirectionIsTheRecordsOrTheCastersFacing() {
+        var front = new Vector3(1, 0, 0);
+        Assert.That(NpcControlRules.PushFiveDirection(false, 0, new Vector3(0, 1, 0), front), Is.EqualTo(front));
+        Assert.That(NpcControlRules.PushFiveDirection(false, 1, new Vector3(0, 1, 0), front), Is.EqualTo(new Vector3(0, 1, 0)));
+        Vector3 diagonal = NpcControlRules.PushFiveDirection(false, 1, new Vector3(0.6f, 0.8f, 0), front);
+        Assert.That(diagonal.X, Is.EqualTo(MathF.Sqrt(0.5f)).Within(0.001)); // (1, 1, 0) on the wire
+        Assert.That(diagonal.Y, Is.EqualTo(MathF.Sqrt(0.5f)).Within(0.001));
+        Assert.That(NpcControlRules.PushFiveDirection(false, 1, new Vector3(0.3f, 0.2f, 0), front), Is.EqualTo(front)); // zero on the wire
+        Vector3 region = NpcControlRules.PushFiveDirection(true, 0, new Vector3(0.6f, 0.8f, 0), front);
+        Assert.That(region.X, Is.EqualTo(0.6f).Within(0.001));
+        Assert.That(region.Y, Is.EqualTo(0.8f).Within(0.001));
+        Assert.That(NpcControlRules.PushFiveDirection(true, 0, Vector3.Zero, front), Is.EqualTo(front));
+    }
+
+    // Type 6 pushes along -forward of the record's facing read as angles: (-sin z, cos z); a region's facing is zero.
+    [Test]
+    public void PushTypeSixFollowsMinusTheFacing() {
+        Vector3 offset = NpcControlRules.PushOffset(6, From(new Vector3(0, 0, 0)), new Vector3(300, 0, 0), 100);
+        Assert.That(offset.X, Is.EqualTo(0).Within(0.01));
+        Assert.That(offset.Y, Is.EqualTo(100).Within(0.01));
+        var turned = new NpcControlRules.HitSource(default, default, default, new Vector3(0, 0, 90));
+        offset = NpcControlRules.PushOffset(6, turned, new Vector3(300, 0, 0), 100);
+        Assert.That(offset.X, Is.EqualTo(-100).Within(0.01));
+        Assert.That(offset.Y, Is.EqualTo(0).Within(0.01));
+        Assert.That(NpcControlRules.HitFacing(true, new Vector3(0, 0, 90)), Is.EqualTo(Vector3.Zero));
+        Assert.That(NpcControlRules.HitFacing(false, new Vector3(0.6f, 0.4f, 0)), Is.EqualTo(new Vector3(1, 0, 0)));
+    }
+
+    // Types 1, 2 and 4 measure from the record's origin: a cast's packet position (the impact), a region's per-target one cut to shorts.
+    [Test]
+    public void HitOriginIsWhatThePacketCarries() {
+        Assert.That(NpcControlRules.HitOrigin(false, new Vector3(100.4f, 200.6f, 10), new Vector3(5, 5, 5)), Is.EqualTo(new Vector3(100, 201, 10)));
+        Assert.That(NpcControlRules.HitOrigin(true, new Vector3(100, 200, 10), new Vector3(5.5f, -5.7f, 5.9f)), Is.EqualTo(new Vector3(5, -5, 5)));
+    }
+
+    // Types 3 and -1 leave the client's direction zero: no move.
     [Test]
     public void OtherPushTypesDoNotMove() {
-        foreach (int type in new[] { 3, -1, 6, 0 }) {
+        foreach (int type in new[] { 3, -1, 0 }) {
             Assert.That(NpcControlRules.PushOffset(type, From(new Vector3(0, 0, 0)), new Vector3(300, 0, 0), 100), Is.EqualTo(default(Vector3)), $"type {type}");
         }
     }
