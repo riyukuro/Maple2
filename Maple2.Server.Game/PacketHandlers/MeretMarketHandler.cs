@@ -696,6 +696,10 @@ public class MeretMarketHandler : FieldPacketHandler {
             MeretMarketSection.RedMeret => [],
             _ => [],
         };
+        if (section == 0) {
+            IList<SystemBanner> banners = session.GetSystemBanners();
+            entries = entries.Where(entry => entry is not PremiumMarketItem premium || DrawsOnHomePage(premium, banners)).ToList();
+        }
 
         // Featured page needs a multiple of 2 slots. Add to the entries total if odd number.
         byte marketSlots = (byte) (entries.Count % 2 == 0 ? entries.Count : (byte) (entries.Count + 1));
@@ -757,6 +761,19 @@ public class MeretMarketHandler : FieldPacketHandler {
         entries = TakeLimit(entries, meretMarketSearch.StartPage, meretMarketSearch.ItemsPerPage);
 
         session.Send(MeretMarketPacket.LoadBlueprints(entries, totalItems, meretMarketSearch.ItemsPerPage, meretMarketSearch.StartPage));
+    }
+
+    // A home page product (section 0, UIMeratMarketDialog::FillBannerProducts kind 2) draws its cell from a background:
+    // the product's bg number (CDBPremiumProduct +0x9c, the BannerTag the server writes) picks the cell art "bg{n}"
+    // (ASMeratMarketLimitedProduct::vfunc_1, asitemslot.cpp:2209-2230). With bg 0 the client links the system banner
+    // named by the product's category (the Banner string) and draws its image; with no such banner the cell is drawn
+    // with no background, a blank grey slot. Such a product is left off the page.
+    internal static bool DrawsOnHomePage(PremiumMarketItem item, IEnumerable<SystemBanner> banners) {
+        if (item.Metadata.BannerTag != MeretMarketBannerTag.None) {
+            return true;
+        }
+        return item.Metadata.Banner.Length > 0 &&
+               banners.Any(banner => banner.Name == item.Metadata.Banner && banner.Url.Length > 0);
     }
 
     private static MeretMarketSection ToMarketSection(byte section) {

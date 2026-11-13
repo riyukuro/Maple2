@@ -117,13 +117,15 @@ public class SystemShopHandler : FieldPacketHandler {
             return;
         }
 
+        // An item id, not a held item: the bag sends a shop item it holds (invenslot.cpp:855-866), but the Meret Market
+        // home product's Coin Shop button (uimeratmarketdialog.cpp:4145) and the gacha box dialog (uiitemgachaboxdialog.cpp:422)
+        // send the gacha's coin item, which the player need not hold. The shop is the item's own (CItemData::GetShopId).
         int itemId = packet.ReadInt();
-        Item? item = session.Item.Inventory.Find(itemId).FirstOrDefault();
-        if (item == null || item.Metadata.Property.ShopId == 0) {
+        if (!session.ItemMetadata.TryGet(itemId, out ItemMetadata? metadata) || metadata.Property.ShopId == 0) {
             return;
         }
 
-        session.Shop.Load(item.Metadata.Property.ShopId);
+        session.Shop.Load(metadata.Property.ShopId);
         session.Send(SystemShopPacket.Item());
     }
 

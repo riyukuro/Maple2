@@ -505,13 +505,13 @@ public class ShopHandlerTests {
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    private void SystemShop(GameSession session, bool open) {
+    private void SystemShop(GameSession session, bool open, int itemId = ShopItemId) {
         var handler = new SystemShopHandler { ServerTableMetadata = test.ServerTableMetadata };
         handler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(10);
             writer.WriteBool(open);
             if (open) {
-                writer.WriteInt(ShopItemId);
+                writer.WriteInt(itemId);
             }
         }));
     }
@@ -546,14 +546,33 @@ public class ShopHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(10000));
     }
 
+    // The Meret Market home product's Coin Shop button and the gacha box dialog send the gacha's coin item, which
+    // the player need not hold (uimeratmarketdialog.cpp:4145, uiitemgachaboxdialog.cpp:422): the item's shop opens.
     [Test]
-    public void SystemShop_WithoutTheItemOpensNothing() {
+    public void SystemShop_WithoutTheItemOpensItsShop() {
         GameSession session = Login();
         session.Shop.ClearActiveShop();
         Assert.That(session.Item.Inventory.Remove(shopItem.Uid, out _), Is.True);
         test.TakeSent();
 
         SystemShop(session, open: true);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(packet => (TestGameSession.Op(packet), Sub(packet))), Is.EqualTo(new[] {
+            (SendOp.Shop, (byte) 0), (SendOp.Shop, (byte) 1), (SendOp.Shop, (byte) 6), (SendOp.SystemShop, (byte) 10),
+        }));
+        Assert.That(BitConverter.ToInt32(sent[0], 7), Is.EqualTo(ShopId));
+    }
+
+    // An unknown item or an item with no shop opens nothing.
+    [TestCase(99999999)]
+    [TestCase(ProductItemId)]
+    public void SystemShop_ItemWithoutAShopOpensNothing(int itemId) {
+        GameSession session = Login();
+        session.Shop.ClearActiveShop();
+        test.TakeSent();
+
+        SystemShop(session, open: true, itemId: itemId);
 
         Assert.That(test.TakeSent(), Is.Empty);
     }

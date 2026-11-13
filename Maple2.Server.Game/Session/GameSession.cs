@@ -1081,6 +1081,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public bool SendsEvent(GameEvent gameEvent) => ReactorRules.SendsEvent(gameEvent.Metadata.Type, gameEvent.Id, TableMetadata.ReactorTable);
 
     public IEnumerable<PremiumMarketItem> GetPremiumMarketItems(params int[] tabIds) => server.GetPremiumMarketItems(tabIds);
+    public IList<SystemBanner> GetSystemBanners() => server.GetSystemBanners();
 
     public PremiumMarketItem? GetPremiumMarketItem(int id, int subId = 0) => server.GetPremiumMarketItem(id, subId);
 
