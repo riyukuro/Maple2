@@ -608,6 +608,10 @@ public sealed class QuestManager {
         if (QuestRules.CountsAsAllianceMission(quest.Metadata.Basic)) {
             session.ConditionUpdate(ConditionType.quest_alliance, codeLong: (long) quest.Metadata.Basic.Alliance);
         }
+        if (QuestRules.AllianceRankLetter(quest.Metadata.Basic) is { } rankLetter) {
+            session.ConditionUpdate(ConditionType.quest_alliance_by_grade, codeString: rankLetter,
+                targetLong: (long) quest.Metadata.Basic.Alliance);
+        }
         if (QuestRules.CountsAsAllianceFieldMission(quest.Metadata.Basic)) {
             session.ConditionUpdate(ConditionType.quest_field, codeLong: (long) quest.Metadata.Basic.Alliance);
         }

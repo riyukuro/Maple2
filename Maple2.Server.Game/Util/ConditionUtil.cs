@@ -29,6 +29,7 @@ public static class ConditionUtil {
             case ConditionType.trigger:
             case ConditionType.npc_race:
             case ConditionType.vibrate_object:
+            case ConditionType.quest_alliance_by_grade: // code: the mission's rank letter (S, A, B, C or D)
                 if (code.Strings != null && code.Strings.Contains(stringValue)) {
                     return true;
                 }
@@ -248,6 +249,12 @@ public static class ConditionUtil {
                 break;
             case ConditionType.interact_object_rep:
                 // The interact type of the object (2 telescope: the binocular event quest 89050108).
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
+            case ConditionType.quest_alliance_by_grade:
+                // The mission's alliance (1 to 5, 6 to 8 for Kritias, 9 for Georg).
                 if (target.Integers != null && target.Integers.Contains((int) longValue)) {
                     return true;
                 }

@@ -32,6 +32,24 @@ public static class QuestRules {
     public static bool CountsAsAllianceMission(QuestMetadataBasic basic) =>
         basic.Type == QuestType.AllianceQuest && basic.Alliance != AllianceType.AnyFaction;
 
+    // A completed alliance quest of a rank also counts for quest_alliance_by_grade, with the rank's letter as the code
+    // and the alliance as the target: the rows read "complete N D Rank missions" with code D and targets 1 to 5
+    // (22500034), Kritias 6 to 8 (22501017) and Georg 9 (22501045). The quest XML gives the rank as that letter and
+    // the ingest stores its index (S 0, A 1, B 2, C 3, D 4, none 5); each trophy counts its own rank only.
+    public static string? AllianceRankLetter(QuestMetadataBasic basic) {
+        if (basic.Type != QuestType.AllianceQuest || basic.Alliance == AllianceType.AnyFaction) {
+            return null;
+        }
+        return basic.Rank switch {
+            0 => "S",
+            1 => "A",
+            2 => "B",
+            3 => "C",
+            4 => "D",
+            _ => null,
+        };
+    }
+
     // A completed field quest (type 8) of an alliance counts for quest_field with its alliance as the code: the rows
     // read "complete a Maple Alliance field mission" with code 2 (93000159).
     public static bool CountsAsAllianceFieldMission(QuestMetadataBasic basic) =>

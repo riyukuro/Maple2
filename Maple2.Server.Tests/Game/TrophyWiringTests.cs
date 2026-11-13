@@ -801,4 +801,61 @@ public class TrophyWiringTests {
         Assert.That(Achieves(), Is.EqualTo(0));
     }
     #endregion
+
+    #region quest_alliance_by_grade
+    // A mission rank trophy: code the rank letter, target the alliances, one count to complete (as 22500034 "complete
+    // D Rank missions", code D, target 1 to 5).
+    private static AchievementMetadata RankTrophy(int id, string letter, params int[] alliances) {
+        var condition = new ConditionMetadata(ConditionType.quest_alliance_by_grade, 1,
+            new ConditionMetadata.Parameters(Strings: [letter]), new ConditionMetadata.Parameters(Integers: alliances));
+        return new AchievementMetadata(id, $"{id}", false, AchievementCategory.Life, [],
+            new Dictionary<int, AchievementMetadataGrade> { [1] = new AchievementMetadataGrade(1, condition, null) });
+    }
+
+    private Quest StartMission(int id, AllianceType alliance, int rank) {
+        QuestMetadata data = TestGameSession.QuestData(id, QuestType.AllianceQuest);
+        return test.StartQuest(data with { Basic = data.Basic with { Alliance = alliance, Rank = rank } });
+    }
+
+    private GameSession StartWithMissions(params AchievementMetadata[] trophies) {
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        return Start(trophies);
+    }
+
+    // A D-rank Green Hoods mission counts for the D trophy only: a higher rank does not count the lower trophies, as
+    // each reads "complete N <letter> Rank missions".
+    [Test]
+    public void QuestAllianceByGrade_CountsTheMissionsRankOnly() {
+        GameSession session = StartWithMissions(RankTrophy(Trophy, "D", 1, 2, 3, 4, 5), RankTrophy(OtherTrophy, "C", 1, 2, 3, 4, 5));
+        Quest d = StartMission(QuestId, AllianceType.GreenHoods, 4);
+        Quest s = StartMission(QuestId + 1, AllianceType.GreenHoods, 0);
+
+        Assert.That(session.Quest.Complete(s), Is.True);
+        Assert.That(test.TrophyCounter(Trophy), Is.Null);
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null);
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Quest }));
+
+        Assert.That(session.Quest.Complete(d), Is.True);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(OtherTrophy), Is.Null);
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Quest, SendOp.Achieve }));
+    }
+
+    // The Georg trophies (22501045 to 22501047) take alliance 9 only; a Sky Fortress mission of the same rank does not
+    // count for them.
+    [Test]
+    public void QuestAllianceByGrade_OtherAllianceDoesNotCount() {
+        GameSession session = StartWithMissions(RankTrophy(Trophy, "B", 9));
+        Quest skyFortress = StartMission(QuestId, AllianceType.DarkWind, 2);
+        Quest georg = StartMission(QuestId + 1, (AllianceType) 9, 2);
+
+        Assert.That(session.Quest.Complete(skyFortress), Is.True);
+        Assert.That(test.TrophyCounter(Trophy), Is.Null);
+
+        Assert.That(session.Quest.Complete(georg), Is.True);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
+    }
+    #endregion
 }

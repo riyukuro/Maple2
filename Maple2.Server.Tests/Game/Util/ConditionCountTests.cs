@@ -311,6 +311,31 @@ public class ConditionCountTests {
         Assert.That(counted, Is.EqualTo(expected));
     }
 
+    // The rank index the ingest stores (S 0 to D 4, none 5) maps back to the quest XML's letter, the code of the
+    // quest_alliance_by_grade rows; a quest without a rank, a field quest or one without an alliance gives none.
+    [TestCase(QuestType.AllianceQuest, AllianceType.GreenHoods, 0, "S")]
+    [TestCase(QuestType.AllianceQuest, AllianceType.GreenHoods, 1, "A")]
+    [TestCase(QuestType.AllianceQuest, AllianceType.GreenHoods, 2, "B")]
+    [TestCase(QuestType.AllianceQuest, AllianceType.GreenHoods, 3, "C")]
+    [TestCase(QuestType.AllianceQuest, AllianceType.GreenHoods, 4, "D")]
+    [TestCase(QuestType.AllianceQuest, AllianceType.GreenHoods, 5, null)]
+    [TestCase(QuestType.FieldQuest, AllianceType.GreenHoods, 4, null)]
+    [TestCase(QuestType.AllianceQuest, AllianceType.AnyFaction, 4, null)]
+    public void QuestAllianceByGrade_RankLetter(QuestType type, AllianceType alliance, int rank, string? expected) {
+        QuestMetadataBasic basic = Basic(type, 1) with { Alliance = alliance, Rank = rank };
+        Assert.That(QuestRules.AllianceRankLetter(basic), Is.EqualTo(expected));
+    }
+
+    // The code is the letter and the target the alliance (22500034: code D, target 1 to 5).
+    [TestCase("D", 5, true)]
+    [TestCase("C", 5, false)]
+    [TestCase("D", 9, false)]
+    public void QuestAllianceByGrade_CodeLetterTargetAlliance(string letter, int alliance, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.quest_alliance_by_grade, 1,
+            new ConditionMetadata.Parameters(Strings: ["D"]), new ConditionMetadata.Parameters(Integers: [1, 2, 3, 4, 5]));
+        Assert.That(condition.Check(null!, codeString: letter, targetLong: alliance), Is.EqualTo(expected));
+    }
+
     private static QuestMetadataBasic Basic(QuestType type, int repeat) {
         return new QuestMetadataBasic(ChapterId: 0, Type: type, Account: 0, StandardLevel: 1, Forfeitable: false,
             EventTag: string.Empty, AutoStart: false, Disabled: false, UsePostbox: false, StartNpc: 0, CompleteNpc: 0,
