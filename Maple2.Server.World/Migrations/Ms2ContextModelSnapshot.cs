@@ -2050,6 +2050,9 @@ namespace Maple2.Server.World.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
+                    b.Property<long>("ExpiryTime")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Interact")
                         .HasColumnType("json");
 

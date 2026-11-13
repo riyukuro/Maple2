@@ -905,6 +905,7 @@ public partial class GameStorage {
                 Rotation = model.Rotation,
                 Interact = ToInteractCube(model.Interact),
                 Type = PlotCube.CubeType.Construction,
+                ExpiryTime = model.ExpiryTime,
             };
         }
 

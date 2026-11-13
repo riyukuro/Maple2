@@ -20,6 +20,7 @@ internal class UgcMapCube {
     public InteractCube? Interact { get; set; }
 
     public UgcItemLook? Template { get; set; }
+    public long ExpiryTime { get; set; }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator UgcMapCube?(PlotCube? other) {
@@ -32,6 +33,7 @@ internal class UgcMapCube {
             ItemId = other.ItemId,
             Template = other.Template,
             Interact = other.Interact,
+            ExpiryTime = other.ExpiryTime,
         };
     }
 

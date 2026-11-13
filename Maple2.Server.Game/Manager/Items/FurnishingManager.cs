@@ -99,6 +99,8 @@ public class FurnishingManager {
             // We do not remove item from inventory even if it hits 0
             // this allows us to preserve the uid for later.
             item.Amount -= amount;
+            // The placed cube keeps the item's expiry (HeldCube's third field).
+            cube.ExpiryTime = item.ExpiryTime;
             session.Send(item.Amount > 0
                 ? FurnishingStoragePacket.Update(item.Uid, item.Amount)
                 : FurnishingStoragePacket.Remove(item.Uid));

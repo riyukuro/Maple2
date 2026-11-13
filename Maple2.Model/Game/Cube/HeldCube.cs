@@ -12,14 +12,16 @@ public class HeldCube : IByteSerializable, IByteDeserializable {
     public ItemType ItemType { get; protected set; }
 
     public UgcItemLook? Template { get; protected set; }
+    // The cube's expiry time (epoch seconds, 0 for none): a placed cube takes it from the storage item it was placed
+    // from (Item.ExpiryTime), and keeps it in its row.
+    public long ExpiryTime { get; set; }
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(ItemId);
         writer.WriteLong(Id);
         // The client's cube record keeps this long as the cube's expiry time: the build palette fills the same field
-        // from a bag item's expiry (CItem's 4th field, Item.ExpiryTime). A placed cube keeps no expiry here, so 0 is
-        // sent and the client has no end time for a timed furnishing once it is placed (see FORK.md, Cube).
-        writer.WriteLong();
+        // from a bag item's expiry (ugccubepalette.cpp:798, CItem's 4th field, Item.ExpiryTime).
+        writer.WriteLong(ExpiryTime);
 
         writer.WriteBool(Template != null);
         if (Template != null) {
@@ -30,7 +32,7 @@ public class HeldCube : IByteSerializable, IByteDeserializable {
     public void ReadFrom(IByteReader reader) {
         ItemId = reader.ReadInt();
         Id = reader.ReadLong();
-        reader.ReadLong();
+        reader.ReadLong(); // the expiry the client holds: the server keeps its own
 
         bool hasTemplate = reader.ReadBool();
         if (hasTemplate) {
