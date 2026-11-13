@@ -1,6 +1,9 @@
+﻿using System;
 using System.Collections.Generic;
+using Maple2.Model.Game;
 using Maple2.Model.Enum;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using static Maple2.Server.Game.Util.GmCreateRules;
 
@@ -99,5 +102,40 @@ public class GmCreateRulesTests {
 
         Assert.That(GmEffectRules.Contains(new List<string> { recorded }, recorded), Is.True);
         Assert.That(GmEffectRules.Contains(new List<string> { later }, recorded), Is.False);
+    }
+
+    [TestCase(0, 1)]
+    [TestCase(-5, 1)]
+    [TestCase(100, 0)]
+    [TestCase(100, 7)]
+    public void Repeat_BadCountOrRankIsRefused(int repeat, int rarity) {
+        Assert.That(PlanRepeat(repeat, rarity), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Repeat_IsCapped() {
+        Assert.That(PlanRepeat(100, 1), Is.EqualTo(100));
+        Assert.That(PlanRepeat(MaxRepeat, 6), Is.EqualTo(MaxRepeat));
+        Assert.That(PlanRepeat(int.MaxValue, 6), Is.EqualTo(MaxRepeat));
+    }
+
+    [Test]
+    public void OptionSimulator_PacketLayout() {
+        byte[] start = ItemOptionSimulatorPacket.Start().ToArray();
+        Assert.That(start, Is.EqualTo(new byte[] { 0x01, 0x01, 0 }));
+        Assert.That(ItemOptionSimulatorPacket.End().ToArray(), Is.EqualTo(new byte[] { 0x01, 0x01, 2 }));
+
+        byte[] empty = ItemOptionSimulatorPacket.Options(11300001, 4, new List<ItemStats>()).ToArray();
+        Assert.That(empty.Length, Is.EqualTo(15));
+        Assert.That(empty[2], Is.EqualTo(1));
+        Assert.That(BitConverter.ToInt32(empty, 3), Is.EqualTo(11300001));
+        Assert.That(BitConverter.ToInt32(empty, 7), Is.EqualTo(4));
+        Assert.That(BitConverter.ToInt32(empty, 11), Is.EqualTo(0));
+
+        byte[] two = ItemOptionSimulatorPacket.Options(11300001, 4, new List<ItemStats> { new ItemStats(), new ItemStats() }).ToArray();
+        int block = (two.Length - 15) / 2;
+        Assert.That(block, Is.GreaterThan(0));
+        Assert.That(BitConverter.ToInt32(two, 11), Is.EqualTo(2));
+        Assert.That(two.AsSpan(15, block).ToArray(), Is.EqualTo(two.AsSpan(15 + block, block).ToArray()));
     }
 }

@@ -20,6 +20,20 @@ public static class GmCreateRules {
     public const int MaxNpcPerRequest = 50;
     public const int MaxNpcPerField = 200;
 
+    // The item window's repeat tool (0x9A ItemRepeat): rolls per request, and rolls per reply packet. Chosen here: the
+    // window's own default is 100 (CCCompareItemPacket's constructor) and it sets no maximum; 1,000 keeps one click to
+    // ten replies of about 100 option blocks each.
+    public const int MaxRepeat = 1_000;
+    public const int RepeatBatch = 100;
+
+    // The rolls a repeat request gets: 0 = refuse (a count of 0 or less, or a rank outside 1-6).
+    public static int PlanRepeat(int repeat, int rarity) {
+        if (repeat <= 0 || rarity < MinRarity || rarity > MaxRarity) {
+            return 0;
+        }
+        return Math.Min(repeat, MaxRepeat);
+    }
+
     public enum ItemVerdict {
         Refuse, // bad amount or rank: nothing happens
         Full, // no room: inventory-full notice

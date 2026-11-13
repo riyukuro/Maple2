@@ -256,6 +256,7 @@ public enum SendOp : ushort {
     ChangeBackground = 0x00FE,
     RoomStageDungeon = 0x00FF,
     DungeonMission = 0x0100,
+    ItemOptionSimulator = 0x0101, // CSceneStateGame::OnItemOptionSimulator, the reply to RecvOp ItemRepeat
     ItemExchange = 0x0102,
     BindItem = 0x0103,
     TransferEnchant = 0x0104,
