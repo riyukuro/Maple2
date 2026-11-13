@@ -272,7 +272,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     }
 
     // It needs to be epic or better armor and accessories at level 50 and above.
-    private static bool IsValidItem(Item item) {
+    internal static bool IsValidItem(Item item) {
         if (item.Rarity is < Constant.ChangeAttributesMinRarity or > Constant.ChangeAttributesMaxRarity) {
             return false;
         }
@@ -280,6 +280,11 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             return false;
         }
         if (item.Metadata.Limit.Level < Constant.ChangeAttributesMinLevel) {
+            return false;
+        }
+        // The client refuses an item with remakeDisable on both pages (CItem::FUN_1405264c0, item.cpp:1862, and
+        // FUN_140526670, :1903; result 2).
+        if (item.Metadata.Property.RemakeDisable) {
             return false;
         }
 

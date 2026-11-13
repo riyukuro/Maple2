@@ -210,15 +210,22 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
     }
 
     // The checks of the scroll's row, the client's whole test (FUN_140616170, itemremakescrolldata.cpp:283-355), in its
-    // order and with its codes: no options (3); a pet row (onlyPet) takes any pet (1), another row the item types of its
-    // slot list (4); then the row's rarities (5), its levels (6) and its option value (addOpValue 0: 11). The row alone
+    // order and with its codes: an item with remakeDisable (7); no options (3); a row with an item list takes only those
+    // ids (8), else a pet row (onlyPet) takes any pet (1) and another row the item types of its slot list (4); then the row's rarities (5), its levels (6) and its option value (addOpValue 0: 11). The row alone
     // decides: before, the attribute dialog's own gate (rarity 4 to 6, level 50, weapon, armor, accessory or pet) came
     // first, so the rank 3 pet rows (10000040 and 10000097) could never be used, and every row's refusal was 8.
     internal static ChangeAttributesScrollError ScrollFits(Item item, ItemRemakeScrollMetadata metadata) {
+        if (item.Metadata.Property.RemakeDisable) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property;
+        }
         if (item.Stats == null) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
         }
-        if (metadata.OnlyPet) {
+        if (metadata.ItemIds.Length > 0) {
+            if (!metadata.ItemIds.Contains(item.Id)) {
+                return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item;
+            }
+        } else if (metadata.OnlyPet) {
             if (!item.Type.IsPet) {
                 return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target;
             }

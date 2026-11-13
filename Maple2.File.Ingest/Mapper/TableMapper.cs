@@ -1564,7 +1564,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 Rarities: scroll.rank,
                 RollAttribute: scroll.addOpKind == 1,
                 RollValueType: (RollValueType) scroll.addOpValue,
-                OnlyPet: scroll.onlyPet));
+                OnlyPet: scroll.onlyPet) {
+                ItemIds = scroll.item ?? [],
+            });
         }
 
         return new ItemRemakeScrollTable(results);

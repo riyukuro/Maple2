@@ -74,4 +74,50 @@ public class ChangeAttributesScrollValueTests {
             Assert.That(ChangeAttributesScrollHandler.ScrollFits(pet, row), Is.EqualTo(ChangeAttributesScrollError.none));
         });
     }
+
+    // An item with remakeDisable is refused first (itemremakescrolldata.cpp:292, error 7), even with no options.
+    // Before, the property was not ingested and such an item was remade.
+    [Test]
+    public void RemakeDisable_ImpossibleProperty() {
+        Item item = Accessory();
+        ItemRemakeScrollMetadata row = Row(item, RollValueType.Normal);
+        ItemMetadata data = item.Metadata with { Property = item.Metadata.Property with { RemakeDisable = true } };
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(new Item(data, rarity: 4) { Stats = new ItemStats() }, row),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(new Item(data, rarity: 4), row),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property));
+        });
+    }
+
+    // A row with an item list takes only those ids (error 8) and then checks neither the pet kind nor the slot list
+    // (FUN_140616170, :297-313). Before, the list was not ingested and the slot list decided.
+    [Test]
+    public void ItemList_DecidesInsteadOfTheSlots() {
+        Item item = Accessory();
+        ItemRemakeScrollMetadata row = Row(item, RollValueType.Normal) with { ItemTypes = [13] };
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { ItemIds = [11200002] }),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { ItemIds = [11200001] }),
+                Is.EqualTo(ChangeAttributesScrollError.none));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { ItemIds = [11200001], OnlyPet = true }),
+                Is.EqualTo(ChangeAttributesScrollError.none));
+        });
+    }
+
+    // The attribute change dialog refuses an item with remakeDisable on both pages (item.cpp:1862 and :1903).
+    [Test]
+    public void AttributeDialog_RefusesRemakeDisable() {
+        Item item = Accessory();
+        ItemMetadata data = item.Metadata with {
+            Property = item.Metadata.Property with { RemakeDisable = true },
+            Limit = item.Metadata.Limit with { Level = 60 },
+        };
+        ItemMetadata open = data with { Property = data.Property with { RemakeDisable = false } };
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesHandler.IsValidItem(new Item(open, rarity: 4)), Is.True);
+            Assert.That(ChangeAttributesHandler.IsValidItem(new Item(data, rarity: 4)), Is.False);
+        });
+    }
 }

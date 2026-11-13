@@ -73,6 +73,10 @@ public record ItemMetadataProperty(
     // The property element's survival (1 on the 44 items of the survival match). The client never reads it
     // (ItemProperty::Load, commonfiles/itemdatastruct.cpp:1122); the server's survival item rules do (SurvivalItemRules).
     public bool Survival { get; init; }
+    // The property element's remakeDisable (ItemProperty::Load, commonfiles/itemdatastruct.cpp:1133): no remake scroll
+    // (FUN_140616170, itemremakescrolldata.cpp:292, error 7) and no attribute change (CItem::FUN_1405264c0 and
+    // FUN_140526670, item.cpp:1862 and :1903) takes the item. False in a row ingested before this field existed.
+    public bool RemakeDisable { get; init; }
 }
 
 public record ItemMetadataCustomize(

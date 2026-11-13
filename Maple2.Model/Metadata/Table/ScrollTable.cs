@@ -48,7 +48,12 @@ public record ItemRemakeScrollMetadata(
     int[] Rarities,
     bool RollAttribute,
     RollValueType RollValueType,
-    bool OnlyPet);
+    bool OnlyPet) {
+    // The row's item list (XmlTokenList "item", itemremakescrolldata.cpp:178): when it is not empty, the scroll takes
+    // only these item ids, and neither the pet kind nor the slot list is checked (FUN_140616170, :297-313).
+    // Empty in a row ingested before this field existed.
+    public int[] ItemIds { get; init; } = [];
+}
 
 public enum RollValueType {
     None = 0,
