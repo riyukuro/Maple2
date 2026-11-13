@@ -21,7 +21,7 @@ public class NpcTalkHandler : FieldPacketHandler {
         Close = 0,
         Talk = 1,
         Continue = 2,
-        EnchantUnknown = 4,
+        EnchantWithNpc = 4,
         Enchant = 6,
         Quest = 7,
         AcceptAllianceQuest = 8,
@@ -50,7 +50,8 @@ public class NpcTalkHandler : FieldPacketHandler {
             case Command.Continue:
                 HandleContinue(session, packet);
                 return;
-            case Command.EnchantUnknown:
+            case Command.EnchantWithNpc:
+                HandleEnchantWithNpc(session, packet);
                 return;
             case Command.Enchant:
                 HandleEnchant(session, packet);
@@ -263,6 +264,25 @@ public class NpcTalkHandler : FieldPacketHandler {
             case ScriptEventType.EmpowerSelect:
                 session.NpcScript?.EmpowerEvent();
                 return;
+            case ScriptEventType.EnchantComplete:
+            case ScriptEventType.EnchantRetry:
+                EnchantEvent(session, eventType);
+                return;
+        }
+    }
+
+    // NpcTalk 4, the enchant dialog opened by a field npc's talk (EnchantTalk). The item choice (1) needs nothing here:
+    // RequestItemEnchant 1 stages the item and sends the npc's select line. Event 2 follows an enchant try
+    // (RequestItemEnchant 4 and 6), which answers on its own; mode 6 ignores it too.
+    private static void HandleEnchantWithNpc(GameSession session, IByteReader packet) {
+        EnchantTalk.Event talkEvent = EnchantTalk.Read(packet);
+        EnchantEvent(session, talkEvent.Type);
+    }
+
+    // The dialog's result (3: the npc's result line, then the staged item is cleared) and its retry button (4: the same
+    // item staged again), for both talk modes.
+    private static void EnchantEvent(GameSession session, ScriptEventType eventType) {
+        switch (eventType) {
             case ScriptEventType.EnchantComplete:
                 session.ItemEnchant.NpcTalkEvent(eventType);
                 return;
