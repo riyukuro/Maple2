@@ -326,6 +326,43 @@ public class PlayerConfigPersistTests {
         Assert.That((death.Count, death.MsRemaining), Is.EqualTo((3, 10000)));
     }
 
+    // A read after a failed read finds the row's death penalty ended (at 1020) by the time of the read (1050): its
+    // count does not come back over the session's newer, lower one.
+    [Test]
+    public void ReadAfterAFailedRead_AnEndedStoredDeathPenaltyAddsNoCount() {
+        var store = new JsonStore();
+        Logout(World(store)); // count 2, ends at 1020
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, clockMs: () => now);
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        world.Save([], [], new DeathInfo { Count = 1, MsRemaining = 50000, StopTime = 1050 }, CharacterId); // ends at 1100
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs;
+
+        DeathInfo death = world.Retrieve(CharacterId, 1050).Death;
+        Assert.That((death.Count, death.MsRemaining), Is.EqualTo((1, 50000)));
+    }
+
+    // A game-time cooldown runs down only in play, so its stop time says nothing about when it ends: the merge keeps
+    // the one with more time left (the row's 30 s), not the one saved later (the session's 25 s at 2000).
+    [Test]
+    public void ReadAfterAFailedRead_GameTimeCooldownKeepsTheLongerTimeLeft() {
+        var store = new JsonStore();
+        Logout(World(store, inGameTime: true)); // 30 s cooldown at 1000
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, inGameTime: true, clockMs: () => now);
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        world.Save([],
+            [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 25000, StopTime = 2000, Charges = 1 }],
+            new DeathInfo(), CharacterId);
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs;
+
+        Assert.That(world.Retrieve(CharacterId, 2000).SkillCooldowns.Single().MsRemaining, Is.EqualTo(30000));
+    }
+
     // A session that played on while its row was unread, then reads the row: the cooldown and death penalty it got
     // in the meantime stay (the row's cooldown of the same skill ends sooner), the row's other cooldown and its buff
     // come back, and the merged config is written.

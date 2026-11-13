@@ -165,8 +165,9 @@ public class PlayerConfigLookUp {
 
     // Fills the memory from the store for a character this World has nothing for (none saved since it started), or
     // whose stored row was not read before. A character with no row is remembered as empty, so the next login does
-    // not read again. The read runs out of the lock: a slow db holds up no save.
-    private void LoadIfUnknown(long characterId) {
+    // not read again. The read runs out of the lock: a slow db holds up no save. currentTime (epoch seconds) is the
+    // time of the read, for the merge.
+    private void LoadIfUnknown(long characterId, long currentTime) {
         if (store == null || (skillCooldowns.ContainsKey(characterId) && !unread.ContainsKey(characterId))) {
             return;
         }
@@ -205,7 +206,7 @@ public class PlayerConfigLookUp {
             }
             // The character played on from the memory copy while its row was unread: what the session holds now
             // and what the row holds both count.
-            MergeStored(characterId, save, storedDeath);
+            MergeStored(characterId, save, storedDeath, currentTime);
             (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay) hold = pvpHolds.GetValueOrDefault(characterId, ([], false));
             pendingWrites[characterId] = ToSave(buffs.GetValueOrDefault(characterId)?.Values ?? [], skillCooldowns[characterId].Values,
                 deaths.GetValueOrDefault(characterId), hold.Held.Values, hold.Stay);
@@ -214,12 +215,16 @@ public class PlayerConfigLookUp {
     }
 
     // Merges a stored row into the memory copy of a character: per buff and per (held) cooldown the one that ends
-    // later is kept, and one only the row has is added; the death penalty keeps the higher count and the later end of
-    // the two (a merge never shortens it). Whether a PvP-zone stay runs is the memory copy's (the session's newest save).
-    private void MergeStored(long characterId, PlayerConfigSave save, DeathInfo storedDeath) {
+    // later is kept (a game-time one, which runs down only in play, by its time left), and one only the row has is
+    // added. The death penalty (real time) keeps the higher count and the later end of the two when both still run
+    // (a merge never shortens it); one that has ended at currentTime counts for nothing, so an old penalty's count
+    // does not come back. Whether a PvP-zone stay runs is the memory copy's (the session's newest save).
+    private void MergeStored(long characterId, PlayerConfigSave save, DeathInfo storedDeath, long currentTime) {
         ConcurrentDictionary<int, BuffInfo> buffList = buffs.GetOrAdd(characterId, _ => []);
         foreach (BuffInfo stored in save.Buffs.Select(ToInfo)) {
-            if (!buffList.TryGetValue(stored.Id, out BuffInfo? kept) || EndMs(stored.StopTime, stored.MsRemaining) > EndMs(kept.StopTime, kept.MsRemaining)) {
+            bool inGameTime = buffUsesGameTime(stored.Id, (short) stored.Level) == true;
+            if (!buffList.TryGetValue(stored.Id, out BuffInfo? kept)
+                || Ends(inGameTime, stored.StopTime, stored.MsRemaining) > Ends(inGameTime, kept.StopTime, kept.MsRemaining)) {
                 buffList[stored.Id] = stored;
             }
         }
@@ -227,8 +232,12 @@ public class PlayerConfigLookUp {
         (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay) hold = pvpHolds.GetOrAdd(characterId, _ => ([], false));
         MergeCooldowns(hold.Held, save.PvpHeldCooldowns);
 
+        long nowMs = currentTime * 1000;
         DeathInfo? death = deaths.GetValueOrDefault(characterId);
-        if (death == null) {
+        if (storedDeath.Count <= 0 || EndMs(storedDeath.StopTime, storedDeath.MsRemaining) <= nowMs) {
+            return;
+        }
+        if (death == null || death.Count <= 0 || EndMs(death.StopTime, death.MsRemaining) <= nowMs) {
             deaths[characterId] = storedDeath;
             return;
         }
@@ -240,9 +249,11 @@ public class PlayerConfigLookUp {
         };
     }
 
-    private static void MergeCooldowns(ConcurrentDictionary<int, SkillCooldownInfo> list, IEnumerable<PlayerConfigCooldown> stored) {
+    private void MergeCooldowns(ConcurrentDictionary<int, SkillCooldownInfo> list, IEnumerable<PlayerConfigCooldown> stored) {
         foreach (SkillCooldownInfo info in stored.Select(ToInfo)) {
-            if (!list.TryGetValue(info.SkillId, out SkillCooldownInfo? kept) || EndMs(info.StopTime, info.MsRemaining) > EndMs(kept.StopTime, kept.MsRemaining)) {
+            bool inGameTime = usesGameTime(info.SkillId, (short) info.SkillLevel) == true;
+            if (!list.TryGetValue(info.SkillId, out SkillCooldownInfo? kept)
+                || Ends(inGameTime, info.StopTime, info.MsRemaining) > Ends(inGameTime, kept.StopTime, kept.MsRemaining)) {
                 list[info.SkillId] = info;
             }
         }
@@ -250,6 +261,10 @@ public class PlayerConfigLookUp {
 
     // When a run-down timer ends: its stop time (epoch seconds) plus the milliseconds it had left then.
     private static long EndMs(long stopTime, long msRemaining) => stopTime * 1000 + msRemaining;
+
+    // The order of two ends of one timer: a game-time timer does not run down out of play, so its stop time says
+    // nothing and only its time left counts.
+    private static long Ends(bool inGameTime, long stopTime, long msRemaining) => inGameTime ? msRemaining : EndMs(stopTime, msRemaining);
 
     internal static PlayerConfigSave ToSave(IEnumerable<BuffInfo> saveBuffs, IEnumerable<SkillCooldownInfo> skillCooldownInfos, DeathInfo? death,
                                             IEnumerable<SkillCooldownInfo> pvpHeld, bool pvpStay) => new() {
@@ -302,7 +317,7 @@ public class PlayerConfigLookUp {
         Retrieve(characterId, DateTime.Now.ToEpochSeconds());
 
     internal (List<BuffInfo> Buffs, List<SkillCooldownInfo> SkillCooldowns, DeathInfo Death) Retrieve(long characterId, long currentTime) {
-        LoadIfUnknown(characterId);
+        LoadIfUnknown(characterId, currentTime);
         List<BuffInfo> buffs = RetrieveBuffs(characterId, currentTime);
         List<SkillCooldownInfo> skillCooldowns = RetrieveSkillCooldowns(characterId, currentTime);
         DeathInfo death = RetrieveDeath(characterId, currentTime);
@@ -315,7 +330,7 @@ public class PlayerConfigLookUp {
         RetrievePvpHold(characterId, DateTime.Now.ToEpochSeconds());
 
     internal (List<SkillCooldownInfo> Held, bool Stay) RetrievePvpHold(long characterId, long currentTime) {
-        LoadIfUnknown(characterId);
+        LoadIfUnknown(characterId, currentTime);
         if (!pvpHolds.TryGetValue(characterId, out (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay) hold)) {
             return ([], false);
         }
