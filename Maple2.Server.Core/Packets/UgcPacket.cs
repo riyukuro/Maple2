@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Ugc;
 using Maple2.PacketLib.Tools;
@@ -11,6 +12,7 @@ namespace Maple2.Server.Core.Packets;
 
 public static class UgcPacket {
     private enum Command : byte {
+        Error = 0,
         Upload = 2,
         UpdatePath = 4,
         EnableBanner = 7,
@@ -24,6 +26,17 @@ public static class UgcPacket {
         LoadBanner = 18,
         ReserveBanners = 20,
         CostTable = 21,
+    }
+
+    // CUgcManager::FUN_14188f450 (ugcmanager_4.cpp:3805): a byte the client skips (Chosen here: the upload's kind),
+    // the error byte (UgcError), then the client unlocks its upload.
+    public static ByteWriter Error(UgcType type, UgcError error) {
+        var pWriter = Packet.Of(SendOp.Ugc);
+        pWriter.Write<Command>(Command.Error);
+        pWriter.WriteByte((byte) type);
+        pWriter.WriteByte((byte) error);
+
+        return pWriter;
     }
 
     public static ByteWriter Upload(UgcResource ugc) {

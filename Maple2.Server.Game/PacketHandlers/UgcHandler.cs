@@ -83,28 +83,25 @@ public class UgcHandler : FieldPacketHandler {
         // the next is charged, so a retry costs the fee once.
         GiveBack(session, session.UgcFees.TakeBack(session.CharacterId));
 
-        switch (info.Type) {
-            case UgcType.Item:
-            case UgcType.Furniture:
-            case UgcType.Mount:
-                UploadItem(session, packet, info.Type);
-                return;
-            case UgcType.Banner:
-                UploadBanner(session, packet);
-                return;
-            case UgcType.GuildEmblem:
-                UploadGuildEmblem(session, packet);
-                return;
-            case UgcType.GuildBanner:
-                UploadGuildBanner(session, packet);
-                return;
-            case UgcType.LayoutBlueprint:
-                UploadLayoutBlueprint(session, packet);
-                return;
-            default:
-                Logger.Information("Unimplemented Ugc Type: {type}", info.Type);
-                return;
+        // The client locks its upload when it sends this (CUgcManager::LockForUpload) and refuses every later upload
+        // as already running until an upload reply or Ugc 0 unlocks it (FUN_14188f450 ends in UnlockUpload), so
+        // every refusal below answers with Ugc 0.
+        UgcError error = info.Type switch {
+            UgcType.Item or UgcType.Furniture or UgcType.Mount => UploadItem(session, packet, info.Type),
+            UgcType.Banner => UploadBanner(session, packet),
+            UgcType.GuildEmblem => UploadGuildEmblem(session, packet),
+            UgcType.GuildBanner => UploadGuildBanner(session, packet),
+            UgcType.LayoutBlueprint => UploadLayoutBlueprint(session, packet),
+            _ => UnimplementedUpload(info.Type),
+        };
+        if (error != UgcError.none) {
+            session.Send(UgcPacket.Error(info.Type, error));
         }
+    }
+
+    private UgcError UnimplementedUpload(UgcType type) {
+        Logger.Information("Unimplemented Ugc Type: {type}", type);
+        return UgcError.Refused;
     }
 
     // Gives a fee back and drops what the upload staged: the item, and the banner designs of the
@@ -145,7 +142,7 @@ public class UgcHandler : FieldPacketHandler {
         }
     }
 
-    private void UploadItem(GameSession session, IByteReader packet, UgcType ugcType) {
+    private UgcError UploadItem(GameSession session, IByteReader packet, UgcType ugcType) {
         long itemUid = packet.ReadLong();
         int itemId = packet.ReadInt();
         int amount = packet.ReadInt();
@@ -155,13 +152,13 @@ public class UgcHandler : FieldPacketHandler {
         bool useVoucher = packet.ReadBool();
 
         if (!TableMetadata.UgcDesignTable.Entries.TryGetValue(itemId, out UgcDesignTable.Entry? ugcMetadata)) {
-            return;
+            return UgcError.Refused;
         }
 
         // Only an item design goes to the outfit bag (furniture goes to the furnishing storage; a full bag
         // of another kind gets the item by mail).
         if (ugcType == UgcType.Item && session.Item.Inventory.FreeSlots(InventoryType.Outfit) <= 0) {
-            return;
+            return UgcError.s_err_inventory;
         }
 
         // The design window's text field holds UgcNameLengthMax characters, so a longer name is not the client's;
@@ -169,7 +166,7 @@ public class UgcHandler : FieldPacketHandler {
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
         if (!UgcRules.DesignNameValid(name, constants.UgcNameLengthMax)) {
             Logger.Warning("Refused design name of {Length} characters from {CharacterId}", name.Length, session.CharacterId);
-            return;
+            return UgcError.Refused;
         }
 
         // The voucher byte is the client's. Every path below either takes a coupon or the full price, or returns.
@@ -179,7 +176,7 @@ public class UgcHandler : FieldPacketHandler {
             .Select(gameEvent => gameEvent.Metadata.Data is SaleUgcDesign sale ? sale.Rate : 0).DefaultIfEmpty(0).Max();
         long price = EventSaleRules.UgcDesignPrice(ugcMetadata.CreatePrice, saleRate);
         if (price < 0) {
-            return;
+            return UgcError.Refused;
         }
         Item? voucher = useVoucher
             ? session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeDesignCoupon).FirstOrDefault()
@@ -195,7 +192,7 @@ public class UgcHandler : FieldPacketHandler {
             case UgcUploadPayment.Result.Voucher:
                 if (!session.Item.Inventory.Consume(voucher!.Uid, 1)) {
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
-                    return;
+                    return UgcError.Refused;
                 }
                 paid = paid with { VoucherItemId = voucher.Id };
                 break;
@@ -211,22 +208,24 @@ public class UgcHandler : FieldPacketHandler {
                         session.Currency.GameMeret -= price;
                         break;
                     default:
-                        return;
+                        return UgcError.Refused;
                 }
                 break;
             case UgcUploadPayment.Result.NoVoucher:
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
-                return;
+                return UgcError.Refused;
             case UgcUploadPayment.Result.Lack:
-                session.Send(NoticePacket.MessageBox(ugcMetadata.CurrencyType switch {
-                    MeretMarketCurrencyType.Meso => StringCode.s_err_lack_meso,
-                    MeretMarketCurrencyType.Meret => StringCode.s_err_lack_merat,
-                    _ => StringCode.s_err_lack_merat_red,
-                }));
-                return;
+                // Ugc 0 has a text for meso only; the meret texts stay a message box of their own.
+                if (ugcMetadata.CurrencyType == MeretMarketCurrencyType.Meso) {
+                    return UgcError.s_err_lack_meso;
+                }
+                session.Send(NoticePacket.MessageBox(ugcMetadata.CurrencyType == MeretMarketCurrencyType.Meret
+                    ? StringCode.s_err_lack_merat
+                    : StringCode.s_err_lack_merat_red));
+                return UgcError.Refused;
             default:
                 Logger.Error("Unhandled currency type {UgcMetadataCurrencyType}", ugcMetadata.CurrencyType);
-                return;
+                return UgcError.Refused;
         }
 
         Item? item = session.Field?.ItemDrop.CreateItem(itemId, ugcMetadata.ItemRarity);
@@ -256,22 +255,23 @@ public class UgcHandler : FieldPacketHandler {
         session.StagedUgcItem = item;
         session.UgcFees.Paid(paid with { UgcUid = resource.Id });
         session.Send(UgcPacket.Upload(resource));
+        return UgcError.none;
     }
 
-    private void UploadBanner(GameSession session, IByteReader packet) {
-        if (session.Field is null) return;
+    private UgcError UploadBanner(GameSession session, IByteReader packet) {
+        if (session.Field is null) return UgcError.Refused;
         long bannerId = packet.ReadLong();
 
         session.Field.Banners.TryGetValue(bannerId, out FieldUgcBanner? banner);
         if (banner is null) {
             Logger.Warning("Failed to find banner {BannerId}", bannerId);
-            return;
+            return UgcError.Refused;
         }
 
         BannerTable.Entry? bannerMetadata = TableMetadata.BannerTable.Entries.FirstOrDefault(x => x.Id == bannerId);
         if (bannerMetadata is null) {
             Logger.Warning("Failed to find banner metadata {BannerId}", bannerId);
-            return;
+            return UgcError.Refused;
         }
 
         List<BannerSlot> slots = [];
@@ -296,11 +296,11 @@ public class UgcHandler : FieldPacketHandler {
         long fee = UgcRules.BannerUploadFee(bannerMetadata.Price, asked);
         if (fee < 0) {
             Logger.Warning("Refused banner upload {BannerId} from {CharacterId}", bannerId, session.CharacterId);
-            return;
+            return UgcError.Refused;
         }
         if (session.Currency.Meret < fee) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
-            return;
+            return UgcError.Refused;
         }
 
         // The resource is made first, so a failure here takes nothing.
@@ -332,26 +332,27 @@ public class UgcHandler : FieldPacketHandler {
         session.StagedBanner = banner;
 
         session.Send(UgcPacket.Upload(resource));
+        return UgcError.none;
     }
 
-    private void UploadGuildBanner(GameSession session, IByteReader packet) {
+    private UgcError UploadGuildBanner(GameSession session, IByteReader packet) {
         (long guildId, int bannerId) = UgcRules.ReadGuildPoster(packet);
 
         if (session.Guild.Guild is null) {
             Logger.Warning("Failed to find guild for UGC {GuildId}", guildId);
-            return;
+            return UgcError.Refused;
         }
 
         if (!UgcRules.OwnGuild(guildId, session.Guild.Id)) {
             Logger.Warning("Invalid guild for UGC {GuildId}", guildId);
-            return;
+            return UgcError.Refused;
         }
 
         // The client tests no rank right for a poster (CUgcManager::OpenGuildPosterUpload: a guild, and
         // the poster object of the guild house). The id is the object's housePosterId.
         if (!UgcRules.GuildPosterIdValid(bannerId, TableMetadata.InteractObjectTable.Entries.Values.Select(entry => entry.GuildPosterId))) {
             Logger.Warning("Invalid guild poster {PosterId} from {CharacterId}", bannerId, session.CharacterId);
-            return;
+            return UgcError.Refused;
         }
 
         using WebStorage.Request request = WebStorage.Context();
@@ -369,23 +370,24 @@ public class UgcHandler : FieldPacketHandler {
         };
 
         session.Send(UgcPacket.Upload(resource));
+        return UgcError.none;
     }
 
-    private void UploadGuildEmblem(GameSession session, IByteReader packet) {
+    private UgcError UploadGuildEmblem(GameSession session, IByteReader packet) {
         long guildId = UgcRules.ReadGuildMark(packet);
         if (session.Guild.Guild is null) {
             Logger.Error("Cannot upload guild emblem without a guild");
-            return;
+            return UgcError.Refused;
         }
 
         if (!UgcRules.OwnGuild(guildId, session.Guild.Id)) {
             Logger.Warning("Invalid guild for UGC {GuildId}", guildId);
-            return;
+            return UgcError.Refused;
         }
 
         if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.EditEmblem)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
-            return;
+            return UgcError.Refused;
         }
 
         using WebStorage.Request request = WebStorage.Context();
@@ -397,9 +399,10 @@ public class UgcHandler : FieldPacketHandler {
 
         session.StagedGuildEmblemUgc = resource.Id;
         session.Send(UgcPacket.Upload(resource));
+        return UgcError.none;
     }
 
-    private void UploadLayoutBlueprint(GameSession session, IByteReader packet) {
+    private UgcError UploadLayoutBlueprint(GameSession session, IByteReader packet) {
         long blueprintUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
         int itemId = packet.ReadInt();
@@ -408,7 +411,7 @@ public class UgcHandler : FieldPacketHandler {
         Item? item = session.StagedUgcItem;
         if (item is null || item.Uid != itemUid || item.Id != itemId) {
             Logger.Error("Failed to find staged item for UGC {ItemUid} {ItemId}", itemUid, itemId);
-            return;
+            return UgcError.Refused;
         }
 
         using WebStorage.Request request = WebStorage.Context();
@@ -429,6 +432,7 @@ public class UgcHandler : FieldPacketHandler {
 
         session.StagedUgcItem = item;
         session.Send(UgcPacket.Upload(resource));
+        return UgcError.none;
     }
 
     private void HandleConfirmation(GameSession session, IByteReader packet) {
