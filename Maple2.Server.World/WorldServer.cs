@@ -636,11 +636,7 @@ public class WorldServer {
             }
 
             if (rarity <= 0) {
-                if (metadata.Option != null && metadata.Option.ConstantId is < 6 and > 0) {
-                    rarity = metadata.Option.ConstantId;
-                } else {
-                    rarity = 1;
-                }
+                rarity = Item.DefaultRarity(metadata);
             }
 
             return new Item(metadata, rarity, amount);

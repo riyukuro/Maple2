@@ -407,11 +407,7 @@ public class ItemDropManager {
         }
 
         if (rarity <= 0) {
-            if (itemMetadata.Option != null && itemMetadata.Option.ConstantId is < 7 and > 0) {
-                rarity = itemMetadata.Option.ConstantId;
-            } else {
-                rarity = 1;
-            }
+            rarity = Item.DefaultRarity(itemMetadata);
         }
 
         var item = new Item(itemMetadata, rarity, amount);

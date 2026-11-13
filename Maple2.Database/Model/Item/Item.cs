@@ -95,7 +95,7 @@ internal class Item {
 
     // Use explicit Convert() here because we need metadata to construct Item.
     public Maple2.Model.Game.Item Convert(ItemMetadata metadata) {
-        var item = new Maple2.Model.Game.Item(metadata, Rarity, Amount, false) {
+        var item = new Maple2.Model.Game.Item(metadata, Maple2.Model.Game.Item.LoadedRarity(Rarity, metadata), Amount, false) {
             Uid = Id,
             Slot = Slot,
             Group = Group,

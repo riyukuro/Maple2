@@ -232,6 +232,25 @@ public class Item : IByteSerializable, IByteDeserializable {
     public static long LoadedExpiry(long stored, ItemMetadataLife life, long now) =>
         HoldsPastFixedEnd(stored, life.ExpirationTimestamp, now) ? MadeExpiry(life, now) : stored;
 
+    // The rarity an item is made at when its source names none (a table row of grade 0, a mail or GM create). The
+    // client's default rarity of an item id is its data's rank (GetItemRank, commonfiles/itemdata.cpp:2084: a shop's
+    // held count, npcshopproductbase.cpp:475, and a maid ingredient's, manufacturemanager.cpp:310, count only that
+    // rarity), so an item whose option constant is no rarity (a gem's is its own id) is made at its rank, not 1.
+    // Chosen here: an option constant of 1 to 6 still gives the rarity (438 items whose rank differs from it, all
+    // rank 1, keep the rarity the server made them at); an item of neither is made at 1.
+    public static int DefaultRarity(ItemMetadata metadata) {
+        if (metadata.Option?.ConstantId is > 0 and < 7) {
+            return metadata.Option.ConstantId;
+        }
+        return metadata.Property.Rank is > 0 and < 7 ? metadata.Property.Rank.Value : 1;
+    }
+
+    // The rarity a stored item is loaded with. A gem (the gem tab, types 13 and 14) stored at rarity 1 was made
+    // before DefaultRarity (its option constant is no rarity, so it was made at 1); it loads at its default rarity,
+    // which its next save stores, so a gem upgrade that takes it by id and rank counts it. Other rows keep theirs.
+    public static int LoadedRarity(int stored, ItemMetadata metadata) =>
+        stored == 1 && metadata.Inventory() == InventoryType.Gemstone ? DefaultRarity(metadata) : stored;
+
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(Amount);
         writer.WriteInt(-1);
