@@ -285,7 +285,9 @@ public class BlackMarketRefusalTests {
         Assert.That(context.BlackMarketListing.Select(row => row.Deposit).ToList(), Is.EqualTo(new[] { 0L }));
     }
 
-    // A take-back refused (another character's listing, or none): the error; the listing stays, nothing is mailed.
+    // A take-back refused: another character's listing gets the error; one that is gone (sold out, or taken back
+    // already) is answered as removed already, so the client drops it from its list. The listing that is there
+    // stays, nothing is mailed.
     [TestCase(false)]
     [TestCase(true)]
     public void Remove_Refused(bool gone) {
@@ -293,14 +295,36 @@ public class BlackMarketRefusalTests {
         BlackMarketListing listing = List(4);
         GameSession session = Login(test, 0);
 
-        Send(test, session, 3, gone ? listing.Id + 50 : listing.Id);
+        long listingId = gone ? listing.Id + 50 : listing.Id;
+        Send(test, session, 3, listingId);
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3)) }));
+        string answer = gone ? Hex(BlackMarketPacket.Remove(listingId, already: true)) : Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { answer }));
         Assert.That(ItemRows(), Is.EqualTo(new[] { (listing.Id, 4) }));
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetBlackMarketListing(listing.Id), Is.Not.Null);
         Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
         Assert.That(test.World.BlackMarketRequests, Is.Empty);
+    }
+
+    // The take-back sent again after it went through (a second click, or two sessions): the item is mailed
+    // once, and the second answer is the removed-already one (flag 1), not an error.
+    [Test]
+    public void Remove_Twice_MailsOnce() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4, test);
+        GameSession session = Login(test, 0);
+
+        Send(test, session, 3, listing.Id);
+        test.TakeSent();
+        Send(test, session, 3, listing.Id);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(BlackMarketPacket.Remove(listing.Id, already: true)) }));
+        Assert.That(sent[0][^1], Is.EqualTo(1));
+        Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(4));
+        Assert.That(ItemRows().Sum(row => row.Amount), Is.EqualTo(4));
+        Assert.That(test.Errors, Is.Empty);
     }
 
     // A part bought, then the rest taken back: the buyer's mail holds the part, the seller's the rest, and the

@@ -153,6 +153,13 @@ public sealed class BlackMarketManager {
         // The mail and the item's move into it are part of the same step: a mail that fails leaves the listing.
         BlackMarketListing? listing = db.TakeBlackMarketListing(listingId, session.CharacterId, CancelMail, out Mail? mail);
         if (listing == null || mail == null) {
+            // A listing that is gone (sold out, or taken back from another session) is answered as removed
+            // already: the client drops it from its list with s_msg_blackmarket_complete_remove_already
+            // (BlackMarketPageItemRegister::FUN_140f13030). One that is still there was not taken: the error.
+            if (db.GetBlackMarketListing(listingId) == null) {
+                session.Send(BlackMarketPacket.Remove(listingId, already: true));
+                return;
+            }
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close, 3));
             return;
         }

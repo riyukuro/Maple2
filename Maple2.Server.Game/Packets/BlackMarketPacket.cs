@@ -64,11 +64,13 @@ public static class BlackMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter Remove(long listingId) {
+    // Client: CBlackMarketMan::OnBlackMarket mode 3: long listing id, byte; the listing leaves the own list with
+    // message 0x944 for 0 and s_msg_blackmarket_complete_remove_already for any other value.
+    public static ByteWriter Remove(long listingId, bool already = false) {
         var pWriter = Packet.Of(SendOp.BlackMarket);
         pWriter.Write<Command>(Command.Remove);
         pWriter.WriteLong(listingId);
-        pWriter.WriteByte();
+        pWriter.WriteBool(already);
 
         return pWriter;
     }
