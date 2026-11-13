@@ -172,6 +172,32 @@ public class TradeHandlerTests {
         });
     }
 
+    // Part of a stack offered and taken back from the window is written back at once: the stack's row holds the
+    // whole amount again. Before, the return was kept in memory, and the split piece's row (owner 0) and the lowered
+    // stack were what a crash before the next save left.
+    [Test]
+    public void RemoveItem_WritesThePieceBack() {
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(2);
+            writer.WriteInt(0);
+        });
+        // The window's slot names the piece; the uid is only echoed back.
+        Send(giver, 9, writer => {
+            writer.WriteLong(0);
+            writer.WriteInt(0);
+        });
+
+        using GameStorage.Request db = giverTest.Storage.Context();
+        int held = db.GetItemGroups(giver.CharacterId, ItemGroup.Default).TryGetValue(ItemGroup.Default, out List<Item>? rows)
+            ? rows.Where(row => row.Id == 20000001).Sum(row => row.Amount) : 0;
+        Assert.Multiple(() => {
+            Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
+            Assert.That(held, Is.EqualTo(3));
+            Assert.That(giverTest.Errors, Is.Empty);
+        });
+    }
+
     // A cancel: each own item leaves the window and enters the bag, the mesos come back, then EndTrade (failed).
     [Test]
     public void Cancel_ReturnsTheOffers() {

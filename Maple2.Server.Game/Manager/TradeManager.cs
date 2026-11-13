@@ -254,8 +254,10 @@ public class TradeManager : IDisposable {
                 self.Session.Send(TradePacket.RemoveItem(true, tradeSlot, itemUid));
                 other.Session.Send(TradePacket.RemoveItem(false, tradeSlot, itemUid));
                 // The room was checked under the same lock, so the add takes it; should it not, the item's row (the
-                // caller's own) goes to the mail and is not dropped.
-                if (!caller.Item.AddOrMail(item)) {
+                // caller's own) goes to the mail and is not dropped. Written at once: a piece split off a stack is
+                // owner 0 while it is in the window, so a return kept only in memory was lost on a crash before the
+                // next save (the stack's row was already lowered).
+                if (!caller.Item.AddOrMail(item, commit: true)) {
                     logger.Error("Trade item {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", item.Uid, item.Id, item.Amount, caller.CharacterId);
                 }
             }
