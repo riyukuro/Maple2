@@ -10,15 +10,19 @@ using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Model.Widget;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Scheduler;
 using Maple2.Tools.VectorMath;
 using Microsoft.EntityFrameworkCore;
@@ -54,7 +58,7 @@ public abstract class TriggerTestBase {
     }
 
     // The script's context as FieldTrigger makes it; its queue of delayed steps is not started (Events.Count shows them).
-    private TriggerContext NewContext() {
+    protected TriggerContext NewContext() {
         var owner = (FieldTrigger) RuntimeHelpers.GetUninitializedObject(typeof(FieldTrigger));
         GC.SuppressFinalize(owner);
         typeof(FieldEntity<TriggerModel>).GetField("<Field>k__BackingField", Any)!.SetValue(owner, Field);
@@ -222,6 +226,44 @@ public class TriggerFieldObjectTests : TriggerTestBase {
         Assert.That(Field.TriggerObjects.Ladders[501].Visible, Is.False);
         (int id, bool visible, ByteReader rest) = Updates().Single();
         Assert.That((id, visible, rest.ReadBool(), rest.ReadInt()), Is.EqualTo((502, true, true, 7)));
+    }
+
+    // set_cube (52): the named cubes that change take the visibility; one already in that state is not sent.
+    [Test]
+    public void SetCube_ChangedCubes() {
+        Start(new Ms2TriggerCube(601, false), new Ms2TriggerCube(602, true));
+        Field.TriggerObjects.Cubes[602].Visible = true;
+
+        Action("""<action name="set_cube" trigger_ids="601,602,699" is_visible="1" />""");
+
+        Assert.That(Field.TriggerObjects.Cubes[601].Visible, Is.True);
+        (int id, bool visible, ByteReader _) = Updates().Single();
+        Assert.That((id, visible), Is.EqualTo((601, true)));
+    }
+
+    // set_cube: random_count shows that many of the named cubes.
+    [Test]
+    public void SetCube_RandomCount() {
+        Start(new Ms2TriggerCube(601, false), new Ms2TriggerCube(602, false), new Ms2TriggerCube(603, false));
+
+        Action("""<action name="set_cube" trigger_ids="601,602,603" is_visible="1" random_count="2" />""");
+
+        Assert.That(Field.TriggerObjects.Cubes.Values.Count(cube => cube.Visible), Is.EqualTo(2));
+        Assert.That(Updates(), Has.Count.EqualTo(2));
+    }
+
+    // set_rope (60): visibility, the animation and its delay, as set_ladder.
+    [Test]
+    public void SetRope_VisibleAnimated() {
+        Start(new Ms2TriggerRope(701, false));
+
+        Action("""<action name="set_rope" trigger_id="701" visible="1" enable="1" fade="4" />""");
+        Action("""<action name="set_rope" trigger_id="799" visible="1" />""");
+
+        TriggerObjectRope rope = Field.TriggerObjects.Ropes[701];
+        Assert.That((rope.Visible, rope.Animate, rope.Delay), Is.EqualTo((true, true, 4)));
+        (int id, bool visible, ByteReader rest) = Updates().Single();
+        Assert.That((id, visible, rest.ReadBool(), rest.ReadInt()), Is.EqualTo((701, true, true, 4)));
     }
 
     // set_sound (939): the sound object turns on.
@@ -634,6 +676,133 @@ public class TriggerFieldStateTests : TriggerTestBase {
         ByteReader removed = Sent(SendOp.RegionSkill).Single();
         Assert.That((removed.ReadByte(), removed.ReadInt()), Is.EqualTo(((byte) 1, objectId)));
     }
+    // The effect is known to the field's skill data, and the field's own actor (the caster of trigger buffs) is a
+    // real one.
+    private void WithEffect(int id) {
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
+        // No begin condition: the effect is on once held.
+        var always = new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
+            new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, null, null);
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), DisabledBuffTests.Effect(id) with {
+            Condition = always,
+            Reflect = new AdditionalEffectMetadataReflect(0, 0, 0, 0, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
+            Update = new AdditionalEffectMetadataUpdate(null, [], [], [], []),
+            Consume = new AdditionalEffectMetadataConsume(0, 0),
+        }]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(Field, new FieldActor(Field, 99, Field.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
+    }
+
+    // add_buff (977), remove_buff (173), check_any_user_additional_effect (86): the players in the boxes get the
+    // effect, cast by the field; a far box gives none; remove_buff takes it off again.
+    [Test]
+    public void AddBuff_ThenCheckAndRemove() {
+        StartWithBoxes();
+        WithEffect(70000107);
+
+        Action("""<action name="add_buff" box_ids="2" skill_id="70000107" level="1" ignore_player="0" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+        Assert.That(Condition("""<condition name="check_any_user_additional_effect" box_id="1" additional_effect_id="70000107" level="1" />"""), Is.False);
+
+        Action("""<action name="add_buff" box_ids="2,1" skill_id="70000107" level="1" ignore_player="0" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.True);
+        Assert.That(Condition("""<condition name="check_any_user_additional_effect" box_id="1" additional_effect_id="70000107" level="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_any_user_additional_effect" box_id="1" additional_effect_id="70000107" level="1" negate="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_any_user_additional_effect" box_id="2" additional_effect_id="70000107" level="1" />"""), Is.False);
+
+        // Removed from the far box: the player keeps it.
+        Action("""<action name="remove_buff" box_id="2" skill_id="70000107" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.True);
+        Action("""<action name="remove_buff" box_id="1" skill_id="70000107" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+    }
+
+    // add_buff: ignore_player gives the effect to the monsters in the boxes, not the players; the skill-set flag
+    // gives nothing.
+    [Test]
+    public void AddBuff_IgnorePlayerOrSkillSet() {
+        StartWithBoxes();
+        WithEffect(70000107);
+        typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+
+        Action("""<action name="add_buff" box_ids="1" skill_id="70000107" level="1" ignore_player="1" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+        Action("""<action name="add_buff" box_ids="1" skill_id="70000107" level="1" is_skill_set="1" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+    }
+
+    // A map the client never played: the move is refused with a notice and the field-enter error.
+    private void AddUnplayedMap(int id) {
+        test.AddMap(TestGameSession.Map(id, notInPlayedClient: true) with {
+            Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)),
+        });
+    }
+
+    // move_user (974): the players in the box move to the map; the far box moves nobody. The field's own map with a
+    // portal it lacks moves nobody either.
+    [Test]
+    public void MoveUser_PlayersInTheBox() {
+        StartWithBoxes();
+        AddUnplayedMap(99000001);
+
+        Action("""<action name="move_user" map_id="99000001" portal_id="1" box_id="2" />""");
+        Assert.That(test.TakeSentOps(), Is.Empty);
+
+        Action("""<action name="move_user" map_id="99000001" portal_id="1" box_id="1" />""");
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.RequestFieldEnter }));
+
+        Action($"""<action name="move_user" map_id="{Field.MapId}" portal_id="9" box_id="1" />""");
+        Assert.That(test.TakeSentOps(), Is.Empty);
+    }
+
+    // move_random_user (51): the field's own map goes to the portal there (a missing portal: no move, no field
+    // change); another map is a field change of the players picked from the box.
+    [Test]
+    public void MoveRandomUser_OwnMapStaysInTheField() {
+        StartWithBoxes();
+        AddUnplayedMap(99000001);
+
+        Action($"""<action name="move_random_user" map_id="{Field.MapId}" portal_id="9" box_id="1" count="1" />""");
+        Assert.That(test.TakeSentOps(), Is.Empty);
+
+        Action("""<action name="move_random_user" map_id="99000001" portal_id="1" box_id="2" count="1" />""");
+        Assert.That(test.TakeSentOps(), Is.Empty);
+        Action("""<action name="move_random_user" map_id="99000001" portal_id="1" box_id="1" count="5" />""");
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.RequestFieldEnter }));
+    }
+
+    // play_system_sound_by_user_tag (46): the players of the tag hear it.
+    [Test]
+    public void PlaySystemSoundByUserTag_TaggedPlayers() {
+        StartWithBoxes();
+
+        Action("""<action name="play_system_sound_by_user_tag" user_tag_id="2" sound_key="System_Tag_01" />""");
+        Assert.That(Sent(SendOp.PlaySystemSound), Is.Empty);
+        Action("""<action name="play_system_sound_by_user_tag" user_tag_id="1" sound_key="System_Tag_01" />""");
+        Assert.That(Sent(SendOp.PlaySystemSound).Single().ReadUnicodeString(), Is.EqualTo("System_Tag_01"));
+    }
+
+    // show_event_result (42): a notice is a MassiveEvent Banner (2) of type Text (6) with the text and duration, for
+    // the players in the box (or outside it with is_outside); the other types send nothing.
+    [Test]
+    public void ShowEventResult_NoticeInTheBox() {
+        StartWithBoxes();
+
+        Action("""<action name="show_event_result" type="notice" text="$t$" duration="3000" trigger_box_id="1" />""");
+        ByteReader banner = Sent(SendOp.MassiveEvent).Single();
+        Assert.That((banner.ReadByte(), banner.ReadByte(), banner.ReadUnicodeString(), banner.ReadInt()), Is.EqualTo(((byte) 2, (byte) 6, "$t$", 3000)));
+
+        Action("""<action name="show_event_result" type="notice" text="$t$" duration="3000" trigger_box_id="1" is_outside="1" />""");
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
+        Action("""<action name="show_event_result" type="notice" text="$t$" duration="3000" trigger_box_id="2" />""");
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
+        Action("""<action name="show_event_result" type="notice" text="$t$" duration="3000" user_tag_id="2" />""");
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
+        Action("""<action name="show_event_result" type="winner" text="$t$" duration="3000" />""");
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
+    }
 }
 
 public class TriggerNpcTests : TriggerTestBase {
@@ -845,6 +1014,33 @@ public class TriggerNpcTests : TriggerTestBase {
         ByteReader closed = Sent(SendOp.Trigger).Single();
         Assert.That((closed.ReadByte(), closed.ReadBool(), closed.Available), Is.EqualTo(((byte) 21, false, 0)));
     }
+
+    // set_npc_rotation (49): every npc of the spawn point turns to the angle (z, degrees); others keep theirs.
+    [Test]
+    public void SetNpcRotation_TheSpawnPoint() {
+        typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        FieldNpc turned = Mob(9001, 5);
+        FieldNpc other = Mob(9002, 6);
+        Action("""<action name="set_npc_rotation" spawn_id="5" rotation="90" />""");
+        Assert.That(turned.Rotation.Z, Is.EqualTo(90).Within(1e-3));
+        Assert.That(other.Rotation.Z, Is.EqualTo(0).Within(1e-3));
+    }
+
+    // check_npc_additional_effect (51): a monster of the spawn point holds the effect at the level or above.
+    [Test]
+    public void CheckNpcAdditionalEffect_HeldBySpawnPoint() {
+        typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());
+        FieldNpc mob = Mob(9001, 5);
+        typeof(Actor<Npc>).GetField("<Buffs>k__BackingField", Any)!.SetValue(mob, new BuffManager(mob));
+        var held = (ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(mob.Buffs)!;
+        held[70000107] = [DisabledBuffTests.Held(DisabledBuffTests.Effect(70000107), true)];
+
+        Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="5" additional_effect_id="70000107" level="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="5" additional_effect_id="70000107" level="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="6" additional_effect_id="70000107" level="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="6" additional_effect_id="70000107" level="1" negate="1" />"""), Is.True);
+    }
 }
 
 public class TriggerInterfaceTests : TriggerTestBase {
@@ -1043,6 +1239,191 @@ public class TriggerInterfaceTests : TriggerTestBase {
 
         Assert.That(Condition("""<condition name="is_dungeon_room" />"""), Is.False);
         Assert.That(Condition("""<condition name="is_dungeon_room" negate="1" />"""), Is.True);
+    }
+
+    // set_directional_light (69): the DirectionalLight (9) property is added.
+    [Test]
+    public void SetDirectionalLight_AddsTheProperty() {
+        StartWithProperties();
+
+        Action("""<action name="set_directional_light" diffuse_color="255,200,100" specular_color="20,20,20" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 1, (byte) 9)));
+    }
+
+    // set_local_camera (113): LocalCamera with the camera id, the switch and no object.
+    [Test]
+    public void SetLocalCamera_Packet() {
+        Start();
+
+        Action("""<action name="set_local_camera" camera_id="301" enable="1" />""");
+        ByteReader sent = Sent(SendOp.LocalCamera).Single();
+        Assert.That((sent.ReadInt(), sent.ReadBool(), sent.ReadInt()), Is.EqualTo((301, true, 0)));
+    }
+
+    // play_scene_movie (100): Trigger Ui (9) StartMovie (4) with the file and the movie id.
+    [Test]
+    public void PlaySceneMovie_Packet() {
+        Start();
+
+        Action("""<action name="play_scene_movie" file_name="common\JobIntro_Thief.usm" movie_id="1" skip_type="needAll" />""");
+        ByteReader sent = Sent(SendOp.Trigger).Single();
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadString(), sent.ReadInt()), Is.EqualTo(((byte) 9, (byte) 4, "common\\JobIntro_Thief.usm", 1)));
+    }
+
+    // set_pc_emotion_sequence (91): Trigger Ui (9) EmotionSequence (7) with the count and each sequence name.
+    [Test]
+    public void SetPcEmotionSequence_Packet() {
+        Start();
+
+        Action("""<action name="set_pc_emotion_sequence" sequence_names="Bore_A,Idle_A" />""");
+        ByteReader sent = Sent(SendOp.Trigger).Single();
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadInt(), sent.ReadUnicodeString(), sent.ReadUnicodeString()),
+            Is.EqualTo(((byte) 9, (byte) 7, 2, "Bore_A", "Idle_A")));
+    }
+
+    // set_time_scale (37): TimeScale with the switch, the start and end scale, the duration and the interpolator.
+    [Test]
+    public void SetTimeScale_Packet() {
+        Start();
+
+        Action("""<action name="set_time_scale" enable="1" start_scale="1" end_scale="0.1" duration="3" interpolator="2" />""");
+        ByteReader sent = Sent(SendOp.TimeScale).Single();
+        Assert.That((sent.ReadBool(), sent.ReadFloat(), sent.ReadFloat(), sent.ReadFloat(), sent.ReadByte()), Is.EqualTo((true, 1f, 0.1f, 3f, (byte) 2)));
+    }
+
+    // day_of_week (37): today's day (1 = Sunday) is in the list; negate: it is not.
+    [Test]
+    public void DayOfWeek_Today() {
+        Start();
+        int today = (int) DateTime.UtcNow.DayOfWeek + 1;
+        int other = today % 7 + 1;
+
+        Assert.That(Condition($"""<condition name="day_of_week" day_of_weeks="{other},{today}" />"""), Is.True);
+        Assert.That(Condition($"""<condition name="day_of_week" day_of_weeks="{other}" />"""), Is.False);
+        Assert.That(Condition($"""<condition name="day_of_week" day_of_weeks="{other}" negate="1" />"""), Is.True);
+    }
+
+    // wait_seconds_user_value (34): the state has run the seconds the script's user value names; an unset value is 0.
+    [Test]
+    public void WaitSecondsUserValue_ByTheValue() {
+        Start();
+        // The test field skips the FieldManager ctor: its user value table is made here.
+        typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!.SetValue(Field, new TriggerUserValues());
+        Field.UserValues.Set(1, "WaitTime", 60);
+
+        Assert.That(Condition("""<condition name="wait_seconds_user_value" key="WaitTime" />"""), Is.False);
+        context.StartTick = Environment.TickCount64 - 61_000;
+        Assert.That(Condition("""<condition name="wait_seconds_user_value" key="WaitTime" />"""), Is.True);
+        context.StartTick = Environment.TickCount64 - 1;
+        Assert.That(Condition("""<condition name="wait_seconds_user_value" key="Unset" />"""), Is.True);
+    }
+
+    // dungeon_timeout (35): a field without a room timer has not timed out.
+    [Test]
+    public void DungeonTimeout_NoTimer() {
+        Start();
+
+        Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.False);
+    }
+}
+
+// The dungeon rows on a room's lobby field (TestGameSession.EnterDungeon): the room record keeps the result, the
+// variables and the start tick; the player's user record keeps the missions. Made-up room 20003001.
+public class TriggerDungeonTests : TriggerTestBase {
+    private const int Room = 20003001;
+    private DungeonRoomRecord record = null!;
+
+    private void StartRoom() {
+        test = new TestGameSession();
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 2000023);
+        test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [Room] = room }));
+        test.Start();
+        // The player's run is not in the room's results, so the clear grants no rewards (the test has no reward tables).
+        record = test.EnterDungeon(room);
+        // The test field skips the field initializers, so its result logger is set here.
+        typeof(DungeonFieldManager).GetField("resultLogger", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(Field, Log.Logger.ForContext<DungeonFieldManager>());
+        SetTriggers();
+        context = NewContext();
+        test.TakeSent();
+    }
+
+    private static string Hex(ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+
+    // dungeon_clear (154 KR uses): the room is cleared and the give-up vote closed (Stage 1); a clear after the
+    // result is ignored. Outside a dungeon nothing happens.
+    [Test]
+    public void DungeonClear_ClearsTheRoomOnce() {
+        StartRoom();
+        Action("""<action name="dungeon_clear" />""");
+        Assert.That(record.State, Is.EqualTo(DungeonState.Clear));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(Hex(DungeonMissionPacket.Stage(1))));
+        Action("""<action name="dungeon_clear" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        Start();
+        Action("""<action name="dungeon_clear" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // ui_type None clears the room as well (the Colosseum's lost round after the first).
+    [Test]
+    public void DungeonClear_NoneStillClears() {
+        StartRoom();
+        Action("""<action name="dungeon_clear" ui_type="None" />""");
+        Assert.That(record.State, Is.EqualTo(DungeonState.Clear));
+    }
+
+    // dungeon_state: the room's result by name; outside a room only the empty name holds.
+    [Test]
+    public void DungeonState_ReadsTheRoomResult() {
+        StartRoom();
+        Assert.That(Condition("""<condition name="dungeon_state" check_state="Fail" />"""), Is.False);
+        record.State = DungeonState.Fail;
+        Assert.That(Condition("""<condition name="dungeon_state" check_state="Fail" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_state" check_state="" />"""), Is.False);
+
+        Start();
+        Assert.That(Condition("""<condition name="dungeon_state" check_state="" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_state" check_state="Fail" />"""), Is.False);
+    }
+
+    // dungeon_play_time counts from the room's start tick; outside a room it is false.
+    [Test]
+    public void DungeonPlayTime_FromTheRoomStart() {
+        StartRoom();
+        typeof(FieldManager).GetField("<FieldTick>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(Field, 1_000_000L);
+        record.StartTick = 699_000;
+        Assert.That(Condition("""<condition name="dungeon_play_time" play_seconds="300" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_play_time" play_seconds="400" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_play_time" play_seconds="400" operator="Less" />"""), Is.True);
+
+        Start();
+        Assert.That(Condition("""<condition name="dungeon_play_time" play_seconds="0" />"""), Is.False);
+    }
+
+    // dungeon_mission_complete: a mission the player holds gets its full score and is sent; another id is skipped.
+    [Test]
+    public void DungeonMissionComplete_TheHeldMission() {
+        StartRoom();
+        var mission = new DungeonMission(new DungeonMissionMetadata(3, DungeonMissionType.Trigger, [], 0, 500, 0, false));
+        test.Session.Dungeon.UserRecord!.Missions[3] = mission;
+        Action("""<action name="dungeon_mission_complete" mission_id="9" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+        Action("""<action name="dungeon_mission_complete" mission_id="3" />""");
+        Assert.That(mission.Score, Is.EqualTo(500));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(DungeonMissionPacket.Update(mission)) }));
+    }
+
+    // set_dungeon_variable writes the room record's store, which dungeon_variable reads (an unset id reads 0).
+    [Test]
+    public void SetDungeonVariable_TheRoomStore() {
+        StartRoom();
+        Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="0" />"""), Is.True);
+        Action("""<action name="set_dungeon_variable" var_id="2" value="1" />""");
+        Assert.That(record.Variables[2], Is.EqualTo(1));
+        Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="0" />"""), Is.False);
     }
 }
 

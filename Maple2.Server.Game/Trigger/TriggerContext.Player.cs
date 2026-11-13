@@ -60,19 +60,21 @@ public partial class TriggerContext {
             count = players.Length;
         }
 
+        // KR scripts name their own map in 50 of 53 moves (14 of 16 scripts: the warp rooms of 02000471, the error
+        // boxes of 02000389/02000390). Chosen here: those go to the portal in this field, as move_user does; before, they
+        // re-entered the map through PrepareField, a field change. Each of the count players moves; before, a map 0 move
+        // stopped after the first.
         for (int i = 0; i < count; i++) {
             FieldPlayer player = players[i];
-            if (mapId == 0) {
-                if (portalId == 0) {
-                    player.Session.ReturnField();
-                    return;
+            if (mapId == 0 && portalId == 0) {
+                player.Session.ReturnField();
+                continue;
+            }
+            if (mapId == 0 || mapId == Field.MapId) {
+                if (Field.TryGetPortal(portalId, out FieldPortal? portal)) {
+                    player.MoveToPortal(portal);
                 }
-
-                if (!Field.TryGetPortal(portalId, out FieldPortal? portal)) {
-                    return;
-                }
-                player.MoveToPortal(portal);
-                return;
+                continue;
             }
 
             player.Session.Send(player.Session.PrepareField(mapId, portalId)
