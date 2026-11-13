@@ -1173,7 +1173,7 @@ public class ItemUseHandler : FieldPacketHandler {
     // 330001824 has more than one group); the answer shows the first item, the dialog has room for one.
     // Without a box, a rolled item, the cost or room for every rolled item, nothing is taken and the dialog goes back
     // to its list.
-    private static void HandleTreasureMap(GameSession session, IByteReader packet, Item item) {
+    private void HandleTreasureMap(GameSession session, IByteReader packet, Item item) {
         bool free = packet.ReadUnicodeString() == TreasureMapRules.FreeArgument;
         if (!TreasureMapRules.TryPick(item.Metadata.Function?.Parameters, free, out int boxId, out long cost)
             || session.Currency.Meso < cost) {
@@ -1192,7 +1192,12 @@ public class ItemUseHandler : FieldPacketHandler {
             session.Currency.Meso -= cost;
         }
         foreach (Item reward in rewards) {
-            session.Item.Inventory.Add(reward, true);
+            // Only a failed item write gets here (TakesAll checked the bag and furnishing storage); the map is
+            // gone, so the reward goes by mail.
+            if (!session.Item.AddOrMail(reward, true)) {
+                Logger.Error("Treasure map {ItemId} reward {RewardId} x{Amount} was neither added nor mailed to {CharacterId}",
+                    item.Id, reward.Id, reward.Amount, session.CharacterId);
+            }
         }
         Item shown = rewards.First();
         session.Send(ItemScriptPacket.TreasureMapResult(shown.Id, shown.Rarity));

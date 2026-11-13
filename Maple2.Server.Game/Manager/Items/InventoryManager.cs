@@ -410,7 +410,11 @@ public class InventoryManager {
         }
     }
 
+    // A furnishing item goes into furnishing storage (Add), so the room asked about is there.
     public bool CanAdd(Item item) {
+        if (item.Type.IsFurnishing) {
+            return session.Item.Furnishing.Takes([item]);
+        }
         lock (session.Item) {
             if (tabs.TryGetValue(item.Inventory, out ItemCollection? items)) {
                 return items.OpenSlots > 0 || items.GetStackResult(item) == 0;
@@ -422,6 +426,9 @@ public class InventoryManager {
 
     // Room for <paramref name="amount"/> pieces of the item: a free slot, or stacks that take all of them.
     public bool CanAdd(Item item, int amount) {
+        if (item.Type.IsFurnishing) {
+            return session.Item.Furnishing.Takes(item, amount);
+        }
         lock (session.Item) {
             return tabs.TryGetValue(item.Inventory, out ItemCollection? items)
                    && StorageRules.HasRoom(items.OpenSlots, items.GetStackResult(item, amount));
@@ -429,10 +436,14 @@ public class InventoryManager {
     }
 
     // Room for the whole amount of the item: what the stacks do not take fits the open slots at SlotMax each,
-    // so Add takes all of it or (before it changes anything) none. Currency, medals and furnishings need no slot.
+    // so Add takes all of it or (before it changes anything) none. Currency and medals need no slot; a furnishing
+    // item needs room in furnishing storage for all of it (FurnishingManager.Takes).
     public bool HasRoomFor(Item item) {
-        if (item.IsCurrency() || item.Type.IsMedal || item.Type.IsFurnishing) {
+        if (item.IsCurrency() || item.Type.IsMedal) {
             return true;
+        }
+        if (item.Type.IsFurnishing) {
+            return session.Item.Furnishing.Takes([item]);
         }
         lock (session.Item) {
             return tabs.TryGetValue(item.Inventory, out ItemCollection? items)
@@ -440,9 +451,14 @@ public class InventoryManager {
         }
     }
 
-    // Whether Add of each of the items in turn takes all of them. Currency, medals and furnishings need no slot.
+    // Whether Add of each of the items in turn takes all of them. Currency and medals need no slot; the
+    // furnishing items need room in furnishing storage for all of them together.
     public bool TakesAll(IEnumerable<Item> adds) {
         lock (session.Item) {
+            Item[] furnishings = adds.Where(item => !item.IsCurrency() && !item.Type.IsMedal && item.Type.IsFurnishing).ToArray();
+            if (furnishings.Length > 0 && !session.Item.Furnishing.Takes(furnishings)) {
+                return false;
+            }
             foreach (IGrouping<InventoryType, Item> group in adds
                          .Where(item => !item.IsCurrency() && !item.Type.IsMedal && !item.Type.IsFurnishing)
                          .GroupBy(item => item.Inventory)) {
@@ -456,8 +472,12 @@ public class InventoryManager {
 
     public bool CanAdd(ICollection<Item> items) {
         lock (session.Item) {
+            Item[] furnishings = items.Where(item => item.Type.IsFurnishing).ToArray();
+            if (furnishings.Length > 0 && !session.Item.Furnishing.Takes(furnishings)) {
+                return false;
+            }
             // Group items by inventory type
-            Dictionary<InventoryType, List<Item>> itemsByType = items.GroupBy(item => item.Inventory)
+            Dictionary<InventoryType, List<Item>> itemsByType = items.Where(item => !item.Type.IsFurnishing).GroupBy(item => item.Inventory)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
             foreach ((InventoryType inventoryType, List<Item> typeItems) in itemsByType) {

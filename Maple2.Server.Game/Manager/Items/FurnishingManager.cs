@@ -218,6 +218,28 @@ public class FurnishingManager {
     private static UgcMapPackageRules.Stack ToStack(Item item) =>
         new(item.Id, item.Template?.Url, item.Metadata.Housing?.MaidId > 0, item.Amount, item.Metadata.Property.SlotMax);
 
+    // Whether storage takes every piece of these furnishing items, each item's amount as TakeMailed adds it (the
+    // same rule InventoryManager.Add uses: all of them or none). A furnishing item makes no second stack in storage
+    // (AddStorage), so more pieces than its stack size never fit, and each piece of a maid item takes a slot; such
+    // amounts are refused before they are placed one by one.
+    public bool Takes(IEnumerable<Item> items) => Takes(items.Select(item => (item, item.Amount)));
+
+    public bool Takes(Item item, int amount) => Takes([(item, amount)]);
+
+    private bool Takes(IEnumerable<(Item Item, int Amount)> items) {
+        lock (session.Item) {
+            var pieces = new List<UgcMapPackageRules.Stack>();
+            foreach ((Item item, int amount) in items) {
+                bool maidItem = item.Metadata.Housing?.MaidId > 0;
+                if (amount <= 0 || amount > (maidItem ? storage.OpenSlots : Math.Max(1, item.Metadata.Property.SlotMax))) {
+                    return false;
+                }
+                pieces.AddRange(Enumerable.Repeat(ToStack(item) with { Amount = 1 }, amount));
+            }
+            return StorageTakes(pieces);
+        }
+    }
+
     // Where the cubes deleted from a plot (GameStorage.Request.SaveCubes) go back: into furnishing storage as
     // AddStorage adds them one at a time (UgcMapPackageRules.Place), and the ones storage does not take by mail to
     // characterId. Chosen here: the mailed cubes of the same item and design share an item up to its stack size
@@ -334,20 +356,31 @@ public class FurnishingManager {
     public bool TakeMailed(Item item) {
         lock (session.Item) {
             bool maidItem = item.Metadata.Housing?.MaidId > 0;
-            if (item.Amount <= 0 || !StorageTakes(Enumerable.Repeat(ToStack(item) with { Amount = 1 }, item.Amount))) {
+            if (!Takes(item, item.Amount)) {
                 return false;
             }
             int count = storage.Count;
             long itemUid = 0;
             int amount = item.Amount;
+            var added = new List<long>(amount);
             for (int i = 0; i < amount; i++) {
                 Item piece = item.Clone();
                 piece.Amount = 1;
                 itemUid = AddStorage(piece, item.Template);
                 if (itemUid == 0) {
+                    // Only a failed item write gets here (Takes checked the room under the lock). The pieces
+                    // already stored are taken out again, so the caller, which keeps or mails the item, does not
+                    // give them twice.
                     logger.Error("Furnishing {ItemId} from mail did not go into storage ({Added} of {Amount})", item.Id, i, amount);
+                    for (int j = added.Count - 1; j >= 0; j--) {
+                        TakePiece(added[j]);
+                    }
+                    if (storage.Count != count) {
+                        session.Send(FurnishingStoragePacket.Count(storage.Count));
+                    }
                     return false;
                 }
+                added.Add(itemUid);
             }
             if (storage.Count != count) {
                 session.Send(FurnishingStoragePacket.Count(storage.Count));
@@ -364,6 +397,20 @@ public class FurnishingManager {
             }
             return true;
         }
+    }
+
+    // Takes one piece AddStorage put on a stored item back off it: the stack is one less, a stack of one is removed.
+    private void TakePiece(long itemUid) {
+        Item? stored = storage.Get(itemUid);
+        if (stored == null) {
+            return;
+        }
+        if (stored.Amount > 1) {
+            stored.Amount--;
+            session.Send(FurnishingStoragePacket.Update(stored.Uid, stored.Amount));
+            return;
+        }
+        RemoveItem(itemUid);
     }
 
     // Returns the cube to storage: the uid of the storage item it went to, 0 when it was not in the inventory.

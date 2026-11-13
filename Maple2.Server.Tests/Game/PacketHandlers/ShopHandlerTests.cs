@@ -25,6 +25,8 @@ public class ShopHandlerTests {
     private const int AnyFameProductId = 15;
     private const int TrevaProductId = 16;
     private const int ValorProductId = 17;
+    private const int FurnishingProductId = 18;
+    private const int FurnishingItemId = 50400001;
     private const int ShopItemId = 20000001;
     private const int ProductItemId = 20000002;
 
@@ -35,10 +37,10 @@ public class ShopHandlerTests {
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
     private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1, ShopItemMetadata.QuestAlliance? fame = null,
-                                            ShopCurrencyType currency = ShopCurrencyType.Meso) {
+                                            ShopCurrencyType currency = ShopCurrencyType.Meso, int itemId = ProductItemId) {
         var requirements = new ShopItemMetadata.Requirement(0, new ShopItemMetadata.Achievement(0, 0), new ShopItemMetadata.Championship(0, 0),
             new ShopItemMetadata.GuildNpc(default, 0), fame ?? new ShopItemMetadata.QuestAlliance(default, 0));
-        return new ShopItemMetadata(id, ShopId, ProductItemId, 1, new ShopCost { Type = currency, Amount = price }, stock, "", requirements,
+        return new ShopItemMetadata(id, ShopId, itemId, 1, new ShopCost { Type = currency, Amount = price }, stock, "", requirements,
             null, sellUnit, default, "", false, false, 10000, false);
     }
 
@@ -58,6 +60,7 @@ public class ShopHandlerTests {
                 [AnyFameProductId] = Product(AnyFameProductId, price: 10, stock: 0, fame: new ShopItemMetadata.QuestAlliance(AllianceType.AnyFaction, 4)),
                 [TrevaProductId] = Product(TrevaProductId, price: 25, stock: 0, currency: ShopCurrencyType.Treva),
                 [ValorProductId] = Product(ValorProductId, price: 7, stock: 0, currency: ShopCurrencyType.ValorToken),
+                [FurnishingProductId] = Product(FurnishingProductId, price: 30, stock: 0, itemId: FurnishingItemId),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -75,6 +78,7 @@ public class ShopHandlerTests {
         ItemMetadata opener = TestGameSession.Metadata(ShopItemId);
         shopItem = test.Store(opener with { Property = opener.Property with { ShopId = ShopId } });
         test.Register(TestGameSession.Metadata(ProductItemId));
+        test.Register(TestGameSession.Metadata(FurnishingItemId, slotMax: 2));
         GameSession session = test.Start();
         session.Currency.Meso = meso;
         session.Shop.Load(ShopId);
@@ -122,6 +126,34 @@ public class ShopHandlerTests {
         for (int i = 0; i < types.Length; i++) {
             Assert.That(test.TrophyCounter(23200100 + i) ?? 0, Is.EqualTo(i == paid ? price : 0), types[i].ToString());
         }
+    }
+
+    // A furnishing product goes into furnishing storage, all of it or none (InventoryManager.Add; no second stack of
+    // an item there). Storage room for all of it is checked before the payment: a full stack, or more than the stack
+    // has room for, is refused with s_err_inventory and nothing is paid.
+    [TestCase(0, 2, true)]
+    [TestCase(1, 1, true)]
+    [TestCase(1, 2, false)]
+    [TestCase(2, 1, false)]
+    public void Buy_OfAFurnishingNeedsStorageRoomForAllOfIt(int stored, int quantity, bool bought) {
+        GameSession session = Login();
+        for (int i = 0; i < stored; i++) {
+            Assert.That(session.Item.Furnishing.AddCube(FurnishingItemId), Is.Not.Zero);
+        }
+        test.TakeSent();
+
+        Buy(session, FurnishingProductId, quantity);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(bought ? 10000 - 30 * quantity : 10000));
+            Assert.That(session.Item.Furnishing.GetItem(FurnishingItemId)?.Amount ?? 0, Is.EqualTo(bought ? stored + quantity : stored));
+            Assert.That(session.Item.Inventory.Find(FurnishingItemId), Is.Empty);
+            Assert.That(test.Errors, Is.Empty);
+            if (!bought) {
+                Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_inventory)) }));
+            }
+        });
     }
 
     // KMS2: Meso, the bag add (ItemInventory 0 and 7), then Shop 4.

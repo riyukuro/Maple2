@@ -71,7 +71,13 @@ public class ItemPickupHandler : FieldPacketHandler {
             }
 
             item.Slot = -1;
-            if (session.Item.Inventory.Add(item, true) && item.Metadata.Limit.TransferType == TransferType.BindOnLoot) {
+            if (!session.Item.Inventory.Add(item, true)) {
+                // Only a failed item write gets here (CanAdd checked the bag or furnishing storage): the item is put
+                // back on the ground at the player, for them.
+                session.Field.DropItem(session.Player.Position, session.Player.Rotation, item, owner: session.Player, characterId: session.CharacterId);
+                return;
+            }
+            if (item.Metadata.Limit.TransferType == TransferType.BindOnLoot) {
                 session.Item.Bind(item);
             }
         }

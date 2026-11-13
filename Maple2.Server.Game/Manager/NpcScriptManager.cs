@@ -423,7 +423,11 @@ public sealed class NpcScriptManager {
             if (newItem == null) {
                 continue;
             }
-            session.Item.Inventory.Add(newItem, true);
+            // The mesos are already taken: what the bag (or furnishing storage) cannot take goes by mail.
+            if (!session.Item.AddOrMail(newItem, true)) {
+                logger.Error("Script reward {ItemId} x{Amount} of {CharacterId} not given", item.ItemId, item.Amount, session.CharacterId);
+                continue;
+            }
             items.Add(newItem);
         }
 

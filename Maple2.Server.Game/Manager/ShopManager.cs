@@ -520,7 +520,8 @@ public sealed class ShopManager {
 
         Item item = shopItem.Item.Clone();
         item.Amount = (int) itemCount;
-        if (!session.Item.Inventory.CanAdd(item)) {
+        // Room for all of it before the payment (Add takes all or none; a furnishing goes into furnishing storage).
+        if (!session.Item.Inventory.HasRoomFor(item)) {
             session.Send(ShopPacket.Error(ShopError.s_err_inventory));
             return;
         }
@@ -537,7 +538,10 @@ public sealed class ShopManager {
             }
         }
 
-        session.Item.Inventory.Add(item, true, commit: true);
+        if (!session.Item.Inventory.Add(item, true, commit: true)) {
+            // Only a failed item write gets here (the room was checked above).
+            logger.Error("Shop {ShopId} item {ItemId} x{Amount} was paid for and not added", activeShop.Id, item.Id, item.Amount);
+        }
         // KMS2 order: the payment, the item, the bought count, then the result.
         if (shopItem.StockCount > 0) {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));

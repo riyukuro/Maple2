@@ -124,7 +124,8 @@ public class UgcHandler : FieldPacketHandler {
 
         if (fee.VoucherItemId != 0) {
             Item? voucher = session.Field?.ItemDrop.CreateItem(fee.VoucherItemId);
-            if (voucher == null || !session.Item.Inventory.Add(voucher, true)) {
+            // With no room in the bag the coupon goes by mail.
+            if (voucher == null || !session.Item.AddOrMail(voucher, true)) {
                 Logger.Error("Failed to give back design coupon {ItemId} to {CharacterId}", fee.VoucherItemId, session.CharacterId);
             }
             return;

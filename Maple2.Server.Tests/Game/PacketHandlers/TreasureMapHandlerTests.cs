@@ -166,6 +166,27 @@ public class TreasureMapHandlerTests {
         Assert.That(Held(session, PaidReward), Is.EqualTo(0));
     }
 
+    // A furnishing reward goes into furnishing storage; with its stack there full it does not fit, so the appraise is
+    // refused before anything is taken.
+    [Test]
+    public void Appraise_OfAFurnishingWithItsStorageStackFull_KeepsTheMap() {
+        const int cube = 50400001;
+        GameSession session = Login();
+        test.Register(TestGameSession.Metadata(cube, slotMax: 1));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [PaidBox] = TestGameSession.DropBox([(PaidReward, 1)]),
+            [FreeBox] = TestGameSession.DropBox([(cube, 1)]),
+        }));
+        Assert.That(session.Item.Furnishing.AddCube(cube), Is.Not.Zero);
+        test.TakeSent();
+
+        Use(session, "free");
+
+        Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)), Is.EqualTo(new[] { Hex(ItemScriptPacket.TreasureMapFailed()) }));
+        Assert.That(Held(session, MapItemId), Is.EqualTo(2));
+        Assert.That(session.Item.Furnishing.GetItem(cube)?.Amount, Is.EqualTo(1));
+    }
+
     // Room for one of the two groups' items: refused whole, the map is kept.
     [Test]
     public void Appraise_WithRoomForPartOfTheRoll_KeepsTheMap() {
