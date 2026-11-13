@@ -34,5 +34,9 @@ public record FunctionCubeMetadata(
     // an equipment doll (client ObjectData m_cube.m_fittingDoll, commonfiles/objectdata.cpp:236). Null for any other cube.
     public FittingDollData? FittingDoll { get; init; }
 
+    // A trigger tool (ControlType FunctionUI, UseUiFunction TriggerTool: client m_nUiFunction 1,
+    // commonfiles/objectdata.cpp:159). A plot's triggerCount limits these.
+    public bool TriggerTool { get; init; }
+
     public record FittingDollData(Gender Gender, int Type);
 }

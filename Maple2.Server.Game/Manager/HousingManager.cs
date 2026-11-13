@@ -825,6 +825,18 @@ public class HousingManager {
             return false;
         }
 
+        Vector3B cell = position;
+        session.FunctionCubeMetadata.TryGet(itemMetadata.Install.ObjectCubeId, out FunctionCubeMetadata? placedFunction);
+        UgcMapError groupLimit = CubeEditRules.GroupLimit(plot.Metadata.Limit, itemMetadata, placedFunction,
+            plot.Cubes.Values
+                .Where(other => !(isReplace && other.Position == cell))
+                .Select(other => (other.Metadata,
+                    other.Metadata.Install is { } install && session.FunctionCubeMetadata.TryGet(install.ObjectCubeId, out FunctionCubeMetadata? f) ? f : null)));
+        if (groupLimit != UgcMapError.s_ugcmap_ok) {
+            Refuse(groupLimit);
+            return false;
+        }
+
         // The cube's storage stack, and the expiry the cube will take: the stack's, or for a cube bought here that of
         // the new item, which the purchase then keeps (AddCube joins only a stack of that expiry).
         Item? storedItem = null;

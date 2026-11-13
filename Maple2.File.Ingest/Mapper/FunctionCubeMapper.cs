@@ -35,6 +35,7 @@ public class FunctionCubeMapper : TypeMapper<FunctionCubeMetadata> {
                 FittingDoll = functionCube.UseUiFunction.ToString() == "FittingDoll" && functionCube.fittingdoll is { } doll
                     ? new FunctionCubeMetadata.FittingDollData((Gender) (int) doll.fittingdollGender, doll.fittingdollType)
                     : null,
+                TriggerTool = functionCube.ControlType == "FunctionUI" && functionCube.UseUiFunction.ToString() == "TriggerTool",
             };
         }
     }

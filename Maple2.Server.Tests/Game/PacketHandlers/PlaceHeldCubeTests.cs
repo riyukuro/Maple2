@@ -18,7 +18,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // a place with nothing held, or of another item than the one held, is refused with 0x0A s_ugcmap_null_cube_item_info
 // and places and takes nothing. The item ids are made up.
 public class PlaceHeldCubeTests {
-    private const int Cube = 50200911, OtherCube = 50200912;
+    private const int Cube = 50200911, OtherCube = 50200912, House = 50200913;
     private TestGameSession test = null!;
 
     private static ItemMetadata Furnishing(int id) => TestGameSession.Metadata(id) with {
@@ -33,9 +33,11 @@ public class PlaceHeldCubeTests {
         test.SetTable(new FurnishingShopTable(new Dictionary<int, FurnishingShopTable.Entry> {
             [Cube] = new(Cube, true, FurnishingCurrencyType.Meso, 1000),
             [OtherCube] = new(OtherCube, true, FurnishingCurrencyType.Meso, 1000),
+            [House] = new(House, true, FurnishingCurrencyType.Meso, 1000),
         }));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
-        test.Register(Furnishing(Cube), Furnishing(OtherCube));
+        ItemMetadata house = Furnishing(House);
+        test.Register(Furnishing(Cube), Furnishing(OtherCube), house with { Property = house.Property with { Type = 6, SubType = 4 } });
         GameSession session = test.Start();
         session.Housing.InitNewHome("home", null);
         Plot plot = test.EnterHome();
@@ -83,6 +85,19 @@ public class PlaceHeldCubeTests {
         (GameSession session, Plot plot) = StartInHome();
         Place(session, OtherCube, Cube);
         AssertRefused(session, plot);
+    }
+
+    // The home's group allows no house (installableBuildingCount 0): 0x0A s_ugcmap_building_count (45), nothing paid.
+    [Test]
+    public void AHouseAtHome_IsRefusedByTheBuildingLimit() {
+        (GameSession session, Plot plot) = StartInHome();
+        Place(session, House, House);
+        byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_building_count, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
     }
 
     [Test]
