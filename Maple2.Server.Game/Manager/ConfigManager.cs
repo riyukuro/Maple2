@@ -36,8 +36,11 @@ public class ConfigManager {
     private readonly IDictionary<LapenshardSlot, int> lapenshards;
     private readonly IDictionary<int, SkillCooldown> skillCooldowns;
     // The town cooldowns a PvP-zone entry ended, put back on the way out.
-    public readonly PvpCooldownHold<SkillCooldown> PvpHold = new(SettledEnd);
+    public readonly PvpCooldownHold<SkillCooldown> PvpHold = NewPvpHold();
     private readonly IDictionary<int, SkillCastRules.LastCast> lastCasts;
+    // The last town casts of those skills, put back with them: a job skill's cooldown is checked on its last cast
+    // (CastTimingRefusal). Not kept over a session move, like lastCasts.
+    private readonly PvpCooldownHold<SkillCastRules.LastCast> pvpCastHold = new(CastHoldEnd);
     private SkillCastRules.LastMotion? lastMotion;
     public readonly LagBudget Lag = new(); // casts and held-skill iterations that arrive early
     public readonly LagBudget MoveLag = new(); // position syncs that arrive early
@@ -210,7 +213,15 @@ public class ConfigManager {
     // The PvP-zone hold the cache kept; none after a World restart (an empty list, no stay).
     public void SetCachePvpHold(IList<SkillCooldownInfo> held, bool stay, long currentTick) {
         PvpHold.Load(held.Select(cooldown => FromCache(cooldown, currentTick)), cooldown => cooldown.SkillId, stay);
+        pvpCastHold.Load([], cast => cast.SkillId, stay);
     }
+
+    // The hold of the town cooldowns: a skill with recharge uses compares its uses out first.
+    public static PvpCooldownHold<SkillCooldown> NewPvpHold() =>
+        new(SettledEnd, cooldown => cooldown.RechargeMs > 0 ? cooldown.Charges : 0);
+
+    // The tick a last cast stops holding back the next one at (its cooldown from the cast, at most).
+    public static long CastHoldEnd(SkillCastRules.LastCast cast, long tick) => cast.ServerTick + cast.CooldownMs;
 
     public static SkillCooldown FromCache(SkillCooldownInfo cooldown, long currentTick) {
         return new SkillCooldown(cooldown.SkillId, (short) cooldown.SkillLevel) {
@@ -407,6 +418,7 @@ public class ConfigManager {
             List<int> cleared = SkillCastRules.PvpZoneClears(field.Metadata.Property.Type, skillCooldowns.Keys,
                 id => field.SkillMetadata.TryGet(id, skillCooldowns[id].Level, out SkillMetadata? skill) && skill.State.ClearCooldownOnPvpZone);
             PvpHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, skillCooldowns, cleared, Environment.TickCount64);
+            pvpCastHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, lastCasts, cleared, Environment.TickCount64);
             foreach (int skillId in cleared) {
                 SetSkillCooldown(skillId, skillCooldowns[skillId].Level);
             }

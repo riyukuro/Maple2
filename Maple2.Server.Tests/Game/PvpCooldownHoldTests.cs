@@ -1,6 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Manager;
@@ -155,5 +157,62 @@ public class PvpCooldownHoldTests {
         var lookUp = new PlayerConfigLookUp(null!, (_, _) => false);
         Assert.That(lookUp.RetrievePvpHold(CharacterId, 1010), Is.EqualTo((new List<SkillCooldownInfo>(), false)));
         Assert.That(LoginToTown(lookUp, 1010, 100000), Is.Empty);
+    }
+
+    [Test]
+    public void ArenaRoundTrip_PutsTheLastTownCastBack_SoItsCooldownIsChecked() {
+        // A job skill's cooldown is checked on its last cast (ConfigManager.CastTimingRefusal); the clear removes it.
+        var hold = new PvpCooldownHold<SkillCastRules.LastCast>(ConfigManager.CastHoldEnd);
+        var lastCasts = new Dictionary<int, SkillCastRules.LastCast> {
+            [Flagged] = new(Flagged, 0, 30000, 1000, 1000),
+        };
+        List<int> cleared = SkillCastRules.PvpZoneClears(MapType.Pvp, lastCasts.Keys, id => id == Flagged);
+        hold.EnterMap(true, lastCasts, cleared, 3000);
+        foreach (int id in cleared) {
+            lastCasts.Remove(id);
+        }
+        Assert.That(SkillCastRules.CooldownShortfall(lastCasts.Values, Flagged, 0, 10000, 10000), Is.Zero);
+
+        hold.EnterMap(false, lastCasts, [], 10000);
+        Assert.That(SkillCastRules.CooldownShortfall(lastCasts.Values, Flagged, 0, 10000, 10000), Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void RechargeSkill_KeepsTheRecordWithMoreUsesOut() {
+        // 2 uses out in town (the next back at 30 s); one use inside ends later but has 1 out.
+        PvpCooldownHold<SkillCooldown> hold = ConfigManager.NewPvpHold();
+        var cooldowns = new Dictionary<int, SkillCooldown> {
+            [Flagged] = new(Flagged, 1) { EndTick = 30000, Charges = 2, RechargeMs = 20000 },
+        };
+        EnterMap(hold, cooldowns, MapType.Pvp, 3000);
+        cooldowns[Flagged] = new SkillCooldown(Flagged, 1) { EndTick = 40000, Charges = 1, RechargeMs = 20000 };
+
+        EnterMap(hold, cooldowns, MapType.None, 10000);
+        Assert.That(cooldowns[Flagged].Charges, Is.EqualTo(2));
+        Assert.That(cooldowns[Flagged].EndTick, Is.EqualTo(30000));
+    }
+
+    [Test]
+    public void SaveOnAnotherThread_ReadsTheHoldWhileMapEntriesChangeIt() {
+        // The disconnect save (GameSession.SaveCacheConfig) reads a copy while the session thread enters maps.
+        var hold = new PvpCooldownHold<long>((endTick, _) => endTick);
+        var cooldowns = new Dictionary<int, long>();
+        int[] ids = Enumerable.Range(1, 64).ToArray();
+        using var stop = new CancellationTokenSource();
+        Task reader = Task.Run(() => {
+            while (!stop.IsCancellationRequested) {
+                (Dictionary<int, long> held, bool _) = hold.Snapshot();
+                _ = held.Values.Sum();
+            }
+        });
+        for (int i = 0; i < 2000; i++) {
+            foreach (int id in ids) {
+                cooldowns[id] = 1000000;
+            }
+            hold.EnterMap(true, cooldowns, ids, i);
+            hold.EnterMap(false, new Dictionary<int, long>(), [], i);
+        }
+        stop.Cancel();
+        Assert.DoesNotThrowAsync(async () => await reader);
     }
 }

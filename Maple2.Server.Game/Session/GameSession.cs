@@ -1283,6 +1283,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
             long stopTime = DateTime.Now.ToEpochSeconds();
             long fieldTick = fieldTickSnapshot;
+            // A copy taken under the hold's lock: the session thread may be entering a map.
+            (Dictionary<int, SkillCooldown> pvpHeld, bool pvpStay) = Config.PvpHold.Snapshot();
 
             try {
                 PlayerConfigResponse _ = World.PlayerConfig(new PlayerConfigRequest {
@@ -1313,9 +1315,9 @@ public sealed partial class GameSession : Core.Network.Session {
                                 }),
                         },
                         PvpHeldCooldowns = {
-                            Config.PvpHold.Held.Values.Select(cooldown => ConfigManager.ToCache(cooldown, fieldTick, stopTime)),
+                            pvpHeld.Values.Select(cooldown => ConfigManager.ToCache(cooldown, fieldTick, stopTime)),
                         },
-                        PvpStay = Config.PvpHold.InStay,
+                        PvpStay = pvpStay,
                         DeathInfo = new DeathInfo {
                             Count = Config.DeathCount,
                             MsRemaining = (int) (Config.DeathPenaltyEndTick - fieldTick),
