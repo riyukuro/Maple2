@@ -88,10 +88,13 @@ public static class ItemEnchantPacket {
         return pWriter;
     }
 
-    public static ByteWriter UpdateFodder(ICollection<long> fodder) {
+    // The first int is what the client shows as the copies it has against the copies the enchant needs
+    // (uiitemenchantdialog.cpp:1152, shown at :1635), as in UpdateCharges: the fodder weight, which a toolkit
+    // counts twice for a dagger or throwing star, not the number of fodder items.
+    public static ByteWriter UpdateFodder(ICollection<long> fodder, int fodderWeight) {
         var pWriter = Packet.Of(SendOp.ItemEnchant);
         pWriter.Write<Command>(Command.UpdateCatalysts);
-        pWriter.WriteInt(fodder.Count);
+        pWriter.WriteInt(fodderWeight);
         pWriter.WriteInt(fodder.Count);
         foreach (long ingredient in fodder) {
             pWriter.WriteLong(ingredient);

@@ -218,7 +218,7 @@ public class ItemEnchantManager {
                 session.Send(ItemEnchantPacket.UpdateCharges(fodders.Keys, useCharges, fodderWeight, rates));
                 break;
             case EnchantType.Peachy:
-                session.Send(ItemEnchantPacket.UpdateFodder(fodders.Keys));
+                session.Send(ItemEnchantPacket.UpdateFodder(fodders.Keys, fodderWeight));
                 break;
         }
         return true;
