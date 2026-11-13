@@ -361,11 +361,13 @@ public class SessionSaveTransactionTests {
         Assert.That(StoredMeso(), Is.EqualTo(4321));
     }
 
-    // The timed save runs on the field thread and ends the session when it fails twice; while the session changes
-    // field or channel it does not run (that move saves on its own).
+    // The timed save runs on the field thread; a failed one is tried again about 2 s later on the field queue (the
+    // field thread does not wait), and the session is ended when that fails too. While the session changes field or
+    // channel it does not run (that move saves on its own).
     [Test]
     public void TimedSave_Refused_EndsTheSession() {
         test.EnterMap(TestGameSession.Map(2000023));
+        AllowMigrationSave();
         session.Currency.Meso = 4321;
         session.Config.InstantReviveCount += 1;
         RefuseAlways("UPDATE `character-config`");
@@ -375,8 +377,49 @@ public class SessionSaveTransactionTests {
         Assert.That((Ended, test.Errors.Count), Is.EqualTo((false, 0)));
 
         session.State = SessionState.Connected;
+        int queued = session.Field!.Scheduler.Count;
         session.TimedSaveOnField(session.Field!);
+        Assert.That((Ended, StoredMeso(), session.Field!.Scheduler.Count), Is.EqualTo((false, 0L, queued + 1)));
+
+        session.TimedSaveRetry(session.Field!);
         Assert.That((Ended, StoredMeso()), Is.EqualTo((true, 0L)));
+    }
+
+    // A timed save refused once is stored by the try 2 s later, and the session plays on.
+    [Test]
+    public void TimedSave_RefusedOnce_RetryStores() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        AllowMigrationSave();
+        session.State = SessionState.Connected;
+        session.Currency.Meso = 4321;
+        session.Config.InstantReviveCount += 1;
+        RefuseOnce("UPDATE `character-config`");
+
+        session.TimedSaveOnField(session.Field!);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((false, 0L)));
+
+        session.TimedSaveRetry(session.Field!);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((false, 4321L)));
+    }
+
+    // Once a move made its MigrationSave, no timed save (nor its retry) stores anything: the other channel may have
+    // loaded the player and saved it by then. A move refused after it (MigrationRefused, the session plays on here)
+    // saves again.
+    [Test]
+    public void TimedSave_AfterMigrationSave_StoresNothing() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        AllowMigrationSave();
+        session.State = SessionState.Connected;
+        session.MigrationSave();
+        session.Currency.Meso = 4321;
+
+        session.TimedSaveOnField(session.Field!);
+        session.TimedSaveRetry(session.Field!);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((false, 0L)));
+
+        session.MigrationRefused();
+        session.TimedSaveOnField(session.Field!);
+        Assert.That((Ended, StoredMeso()), Is.EqualTo((false, 4321L)));
     }
 
     // A repeatable quest started again stores its started row before its accept items are given: refused, the quest

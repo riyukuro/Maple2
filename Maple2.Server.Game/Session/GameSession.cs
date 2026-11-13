@@ -55,9 +55,15 @@ public sealed partial class GameSession : Core.Network.Session {
     public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
+    // EnterServer finished: the World's cache config (buffs, cooldowns, death) was loaded and the session played, so
+    // Dispose stores it back. A refused entry leaves the World's copy as it was.
+    private bool entered;
     // The timed save while the player stays on one map (TimedSave): a part that cannot be stored is found within
     // this time, not only at the next field entry.
     private static readonly TimeSpan TimedSaveInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan TimedSaveRetryDelay = TimeSpan.FromSeconds(2);
+    // A save slower than this is logged (one line), so a slow database shows before saves start to fail.
+    private const long SlowSaveMs = 500;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -612,6 +618,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
         // Online Notifications
 
+        entered = true;
         return true;
     }
 
@@ -1334,8 +1341,10 @@ public sealed partial class GameSession : Core.Network.Session {
             // Early base dispose to stop further network sends
             base.Dispose(disposing);
 
-            // Cache config & persistence
-            SaveCacheConfig();
+            // Cache config & persistence (the cache config only of a session that entered: see entered)
+            if (entered) {
+                SaveCacheConfig();
+            }
             MigrationSave();
         } catch (Exception ex) {
             Logger.Error(ex, "Error during session cleanup for {Player}", PlayerName);
@@ -1440,6 +1449,12 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
+    // A move that called MigrationSave and then did not leave (the World or the endpoint refused it, and the session
+    // plays on here): the session saves again, by its timed save and at Dispose.
+    internal void MigrationRefused() {
+        preMigrationSaved = false;
+    }
+
     // A session whose save fails (after one immediate try again, for a passing error such as a deadlock) is ended:
     // what it gave or took since its last stored save is in its memory only, and items made since are stored at once
     // while the items it used up are written by the save (a stack's lower amount, a removed item). Played on, every
@@ -1449,7 +1464,7 @@ public sealed partial class GameSession : Core.Network.Session {
     // (MigrationSave), and the next login starts from the last stored state, whole, with no part written alone.
     // False when the session was ended: the caller does nothing more with it.
     public bool SessionSave() {
-        if (SaveTwice()) {
+        if (LockedSave(tries: 2)) {
             return true;
         }
         Logger.Fatal("SessionSave: not stored after a second try, the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
@@ -1462,7 +1477,7 @@ public sealed partial class GameSession : Core.Network.Session {
     // database refuses each time) is not let in, and stays out until its row is fixed. The entry is refused before
     // anything of it is created, so nothing is given that a later save could not match.
     internal bool EntrySave() {
-        if (SaveTwice()) {
+        if (LockedSave(tries: 2)) {
             return true;
         }
         Logger.Fatal("EntrySave: the character's state cannot be stored, the entry is refused AccountId={AccountId} CharacterId={CharacterId}",
@@ -1470,10 +1485,15 @@ public sealed partial class GameSession : Core.Network.Session {
         return false;
     }
 
-    private bool SaveTwice() {
+    private bool LockedSave(int tries) {
         try {
             AcquireLock(AccountId, 5);
-            return Save() || Save();
+            for (int i = 0; i < tries; i++) {
+                if (Save()) {
+                    return true;
+                }
+            }
+            return false;
         } catch (Exception ex) {
             Logger.Error(ex, "SessionSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
@@ -1484,7 +1504,9 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // The timed save, from the session's queue: it runs on the player's field thread, where the packets that change
     // the player are handled, and not while the session changes field or channel (State is ChangeMap then; that
-    // move saves on its own).
+    // move saves on its own), nor once a move made its MigrationSave (the other channel may have loaded the player,
+    // and a later save here would write over what it stored). A failed timed save is tried again about 2 s later on
+    // the same field queue (the field thread does not wait), and the session is ended when that fails too.
     private void TimedSave() {
         FieldManager? field = Field;
         if (State != SessionState.Connected || field == null) {
@@ -1494,11 +1516,23 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     internal void TimedSaveOnField(FieldManager field) {
-        if (State != SessionState.Connected || Field != field) {
+        if (!TimedSaveDue(field) || LockedSave(tries: 1)) {
             return;
         }
-        SessionSave();
+        Logger.Warning("TimedSave: not stored, tried again in {Delay} AccountId={AccountId} CharacterId={CharacterId}", TimedSaveRetryDelay, AccountId, CharacterId);
+        field.Scheduler.Schedule(() => TimedSaveRetry(field), TimedSaveRetryDelay);
     }
+
+    internal void TimedSaveRetry(FieldManager field) {
+        if (!TimedSaveDue(field) || LockedSave(tries: 1)) {
+            return;
+        }
+        Logger.Fatal("TimedSave: not stored after a second try, the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
+            AccountId, CharacterId);
+        Cut();
+    }
+
+    private bool TimedSaveDue(FieldManager field) => State == SessionState.Connected && Field == field && !preMigrationSaved;
 
     /// <summary>
     /// Stores the currency right after a purchase, together with any rows of the same purchase,
@@ -1547,6 +1581,7 @@ public sealed partial class GameSession : Core.Network.Session {
     // exception, or a write the database refused) is rolled back whole; the session keeps its state (SessionSave
     // tries once again, then ends the session).
     private bool Save() {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         try {
             if (SaveRows()) {
                 return true;
@@ -1554,6 +1589,10 @@ public sealed partial class GameSession : Core.Network.Session {
         } catch (Exception ex) {
             // A throw anywhere in the save (a deadlock on a write, the rollback or the commit) is a failed save too.
             Logger.Error(ex, "Save failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+        } finally {
+            if (watch.ElapsedMilliseconds > SlowSaveMs) {
+                Logger.Warning("Save took {Ms} ms AccountId={AccountId} CharacterId={CharacterId}", watch.ElapsedMilliseconds, AccountId, CharacterId);
+            }
         }
         Logger.Error("Save: not stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         return false;

@@ -148,6 +148,12 @@ public class WeddingReservationPayTests(bool mysql) {
 
     private int Coupons() => payer.Session.Item.Inventory.Find(CouponId).Sum(item => item.Amount);
 
+    // The payer's stored coupon rows (a used-up coupon's row goes to owner 0).
+    private int StoredCoupons() {
+        using var context = new Ms2Context(options);
+        return context.Item.Where(item => item.OwnerId == payer.CharacterId && item.ItemId == CouponId).Sum(item => item.Amount);
+    }
+
     [Test]
     public void Confirm_StoresTheMeretsWithTheHall() {
         Assume.That(payer.Session.Marriage.ReserveHall(Reservation()), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
@@ -192,11 +198,17 @@ public class WeddingReservationPayTests(bool mysql) {
 
         Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_result_err_system));
         Assert.That(Coupons(), Is.EqualTo(1));
+        // The coupon's row is written in the hall's transaction: refused with the hall, it stays stored (MySQL only,
+        // the in-memory store has no transactions).
+        if (mysql) {
+            Assert.That(StoredCoupons(), Is.EqualTo(1));
+        }
 
         fault.Fail = false;
         Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_propose_ok));
         Assert.Multiple(() => {
             Assert.That(Coupons(), Is.EqualTo(0));
+            Assert.That(StoredCoupons(), Is.EqualTo(0));
             Assert.That((payer.Session.Currency.Meret, StoredMeret()), Is.EqualTo((1000L, 1000L)));
             Assert.That(StoredHalls(), Is.EqualTo(1));
         });

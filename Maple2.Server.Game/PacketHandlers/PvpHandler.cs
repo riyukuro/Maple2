@@ -202,6 +202,7 @@ public class PvpHandler : FieldPacketHandler {
             if (!PlayerWarpUtil.TryEndpoint(migrate.IpAddress, migrate.Port, out IPEndPoint? endpoint)) {
                 session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                 session.Send(failed);
+                session.MigrationRefused();
                 return;
             }
             session.Send(MigrationPacket.GameToGame(endpoint, migrate.Token, response.MapId));
@@ -211,6 +212,7 @@ public class PvpHandler : FieldPacketHandler {
             // state 0 here.
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             session.Send(failed);
+            session.MigrationRefused();
             return;
         }
         session.Disconnect();
