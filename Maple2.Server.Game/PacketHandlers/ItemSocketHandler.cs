@@ -389,7 +389,7 @@ public class ItemSocketHandler : FieldPacketHandler {
             // The price is taken only for a gemstone that exists and has a slot to go to.
             Item? gem = session.Field?.ItemDrop.CreateItem(itemGemstone.ItemId, rarity: Constant.GemstoneGrade);
             if (gem != null) {
-                RestoreGemstone(gem, itemGemstone);
+                RestoreGemstone(gem, itemGemstone, session.Player.Value.Character);
             }
             SocketPrice? price = null;
             switch (GemstoneUnequipRules.TakeOut(gem != null, gem != null && session.Item.Inventory.CanAdd(gem),
@@ -423,11 +423,15 @@ public class ItemSocketHandler : FieldPacketHandler {
         #region Local Function
         // The gem taken out is the gem that went in: its trade count, binding and lock, not a fresh item's (a fresh
         // transfer unbound a bound gem and reset its trades). Its stats are the fresh gem's, rolled for its id: a gem
-        // upgraded in the socket changed only its id. A gem socketed before its transfer was kept gets back its lock
-        // only: its record's binding was the bag gem's storage binding, not a trade binding.
-        static void RestoreGemstone(Item gem, ItemGemstone socketed) {
+        // upgraded in the socket changed only its id. A gem socketed before its transfer was kept gets back its lock,
+        // and is bound to the character when its rule binds (Bind in the flag): its record's binding was the bag
+        // gem's storage binding, not a trade binding, so a bound gem cannot be told from an unbound one, and binding
+        // never makes a gem looser than it went in.
+        static void RestoreGemstone(Item gem, ItemGemstone socketed, Character character) {
             if (socketed.Transfer != null) {
                 gem.Transfer = socketed.Transfer.Clone();
+            } else if (gem.Transfer != null && gem.Transfer.Flag.HasFlag(TransferFlag.Bind)) {
+                gem.Transfer.BindAnyway(character);
             }
             gem.IsLocked = socketed.IsLocked;
             gem.UnlockTime = socketed.UnlockTime;

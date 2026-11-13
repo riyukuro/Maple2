@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -16,14 +17,15 @@ public class GemstoneSocketStateTests {
     private Item gear = null!;
     private Item gem = null!;
 
-    private GameSession Start() {
+    private GameSession Start(TransferType transferType = TransferType.Tradable) {
         test = new TestGameSession();
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
             [40200001] = new(1, 40200002, [], 3),
         }));
         ItemMetadata gearData = TestGameSession.Metadata(11200001, type: 1);
         gear = test.Store(gearData with { Property = gearData.Property with { SkinType = 1 } });
-        gem = test.Store(TestGameSession.Metadata(40200001, type: 13));
+        ItemMetadata gemData = TestGameSession.Metadata(40200001, type: 13);
+        gem = test.Store(gemData with { Limit = gemData.Limit with { TransferType = transferType } });
         GameSession session = test.Start();
         test.TakeSent();
         gear = session.Item.Inventory.Get(gear.Uid)!;
@@ -120,6 +122,57 @@ public class GemstoneSocketStateTests {
             Assert.That(back, Is.Not.Null);
             Assert.That(back!.IsLocked, Is.True);
             Assert.That(back.Transfer?.Binding, Is.Null);
+        });
+    }
+
+    // A socket row as written before the gem's transfer was kept: the same fields, no Transfer key, and the record's
+    // binding is the bag gem's storage binding. It is read through the column's own converter and written back
+    // unchanged.
+    private Maple2.Model.Game.ItemSocket OldRow(GameSession session) {
+        using var context = new Ms2Context(test.Options);
+        Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter converter = context.Model
+            .FindEntityType(typeof(Maple2.Database.Model.Item))!.FindProperty(nameof(Maple2.Database.Model.Item.Socket))!.GetValueConverter()!;
+        var written = new Maple2.Model.Game.ItemSocket(3, 1);
+        written.Sockets[0] = new ItemGemstone(40200001, new ItemBinding(session.CharacterId, "Stored"), new ItemStats(), isLocked: true);
+        var json = (string) converter.ConvertToProvider((Maple2.Database.Model.ItemSocket) written)!;
+        Assert.That(json, Does.Not.Contain("Transfer"));
+        var row = (Maple2.Database.Model.ItemSocket) converter.ConvertFromProvider(json)!;
+        Assert.That(converter.ConvertToProvider(row), Is.EqualTo(json));
+        return row;
+    }
+
+    // An old row's gem whose rule binds (BindOnEquip here) cannot be told from a bound one: it comes back bound to
+    // the character, never looser than it went in.
+    [Test]
+    public void OldRow_BindingRule_BindsTheGem() {
+        GameSession session = Start(TransferType.BindOnEquip);
+        gear.Socket = OldRow(session);
+        Assert.That(session.Item.Inventory.Consume(gem.Uid, amount: 1), Is.True);
+
+        TakeOff(session);
+
+        Item? back = Single(session);
+        Assert.Multiple(() => {
+            Assert.That(back, Is.Not.Null);
+            Assert.That(back!.Transfer?.Binding?.CharacterId, Is.EqualTo(session.CharacterId));
+            Assert.That(back.IsLocked, Is.True);
+        });
+    }
+
+    // An old row's tradable gem stays unbound: its rule has no binding.
+    [Test]
+    public void OldRow_TradableGem_StaysUnbound() {
+        GameSession session = Start();
+        gear.Socket = OldRow(session);
+        Assert.That(session.Item.Inventory.Consume(gem.Uid, amount: 1), Is.True);
+
+        TakeOff(session);
+
+        Item? back = Single(session);
+        Assert.Multiple(() => {
+            Assert.That(back, Is.Not.Null);
+            Assert.That(back!.Transfer?.Binding, Is.Null);
+            Assert.That(back.IsLocked, Is.True);
         });
     }
 
