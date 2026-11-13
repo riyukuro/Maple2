@@ -186,7 +186,7 @@ public static class HomeActionPacket {
         pWriter.WriteByte();
         pWriter.WriteByte(1);
         pWriter.WriteInt(1);
-        pWriter.Write(StringCode.s_ugcmap_fun_roll);
+        pWriter.WriteInt(StringCodeMap.ToClient(StringCode.s_ugcmap_fun_roll)); // the client's string id, not the enum value
         pWriter.WriteInt(2); // number of strings
         pWriter.WriteUnicodeString(character.Name);
         pWriter.WriteUnicodeString(number.ToString());
