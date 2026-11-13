@@ -19,8 +19,11 @@ public class GuildApplication : IByteSerializable {
         writer.WriteLong(Applicant.CharacterId);
         writer.WriteUnicodeString(Applicant.Name);
         writer.WriteUnicodeString(Applicant.Picture);
-        writer.Write<Job>(Applicant.Job);
+        // The job code, then the job: SetFromJoinRequest (guilddef_1.cpp:696) copies the first into the member's job
+        // code and the second into its job, and the request list names the second from string table 6
+        // (uiguilddialog.cpp:2034), the order of GuildMember.WriteInfo.
         writer.WriteInt((int) Applicant.Job.Code());
+        writer.WriteInt((int) Applicant.Job);
         writer.WriteInt(Applicant.Level);
         writer.Write<AchievementInfo>(Applicant.AchievementInfo);
         writer.WriteLong(CreationTime);

@@ -406,8 +406,8 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(2)); // character
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Applicant"));
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("pic"));
+        Assert.That(reader.ReadInt(), Is.EqualTo((int) Job.Wizard.Code())); // job code first
         Assert.That(reader.ReadInt(), Is.EqualTo((int) Job.Wizard));
-        Assert.That(reader.ReadInt(), Is.EqualTo((int) Job.Wizard.Code()));
         Assert.That(reader.ReadInt(), Is.EqualTo(35));
         Assert.That(reader.ReadInt(), Is.EqualTo(1));
         Assert.That(reader.ReadInt(), Is.EqualTo(2));
