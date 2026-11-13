@@ -8,8 +8,9 @@ namespace Maple2.Server.Game.Util;
 // (questType 8), the week's mission point ladder (questType 3, guide mission_point), the day's daily missions
 // (questType 3, guide daily_pick_once/daily_pick_repeat) and a married player's wedding missions (questType 10). The client's quest-accept check leaves them out (FUN_140746e60, questdata.cpp:673) and its pages only
 // claim them, so a player holds one only when the server starts it. The grant runs at login and at the daily reset;
-// each kind is granted once per period, kept as the start of the last period granted (Character), so a relog, a
-// second reset or an abandon in the same period grants nothing again.
+// each kind is granted once per period, kept as the start of the last period granted (Character), so a relog or an
+// abandon in the same period grants nothing again; a reset after a grant the same day starts again what it dropped
+// and was not completed (QuestManager.RestartGrantedToday).
 public static class DailyQuestGrant {
     // The group of the daily field quests (require groupID of all 90 KR field quests). It has no questgrouptable row,
     // so the client accepts one pick a day, the same for every player (QuestGroupPick).

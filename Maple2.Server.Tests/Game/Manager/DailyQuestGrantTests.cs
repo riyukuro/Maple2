@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -133,10 +133,9 @@ public class DailyQuestGrantTests {
         Assert.That(test.Session.Quest.TryGetQuest(FieldPick(), out _), Is.False);
     }
 
-    // The reset grants the new day's pick after its drop; a second reset the same day drops it (as the client does on
-    // the packet) and grants nothing again.
+    // The reset grants the new day's pick after its drop.
     [Test]
-    public void FieldQuest_ResetGrantsOnce() {
+    public void FieldQuest_ResetGrants() {
         RegisterFieldQuests();
         Character.FieldQuestGrantTime = Epoch(DateTime.Today.AddDays(-1));
 
@@ -144,7 +143,21 @@ public class DailyQuestGrantTests {
 
         Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
         Assert.That(Character.FieldQuestGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+        Assert.That(test.Errors, Is.Empty);
+    }
 
+    // A login between midnight and the reset already granted the day: the reset drops the pick (as the client does on
+    // the packet) and starts it again, not completed; once completed, it stays dropped and nothing is granted.
+    [Test]
+    public void FieldQuest_LoginBeforeReset() {
+        RegisterFieldQuests();
+        test.Session.Quest.Load();
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+        Assert.That(test.Session.Quest.TryGetQuest(FieldPick(), out Quest? quest) && quest.State == QuestState.Started);
+
+        quest!.State = QuestState.Completed;
         test.Session.Quest.ResetDailyQuests(DateTime.Today);
         Assert.That(Held(FieldQuests), Is.Empty);
         Assert.That(test.Errors, Is.Empty);
@@ -395,19 +408,34 @@ public class DailyQuestGrantTests {
         Assert.That(Held(DailyGroup(0)), Is.EqualTo(new[] { DailyPick(0) }));
     }
 
-    // The reset of a new day grants the day's set after its drop; a second reset the same day drops it (as the client
-    // does on 0x19) and grants no second set.
+    // The reset of a new day grants the day's set after its drop.
     [Test]
-    public void DailyMission_ResetGrantsOnce() {
+    public void DailyMission_ResetGrants() {
         RegisterDailyMissions();
         Character.DailyMissionGrantTime = Epoch(DateTime.Today.AddDays(-1));
 
         test.Session.Quest.ResetDailyQuests(DateTime.Today);
         Assert.That(Held(DailyMissions), Has.Length.EqualTo(6));
         Assert.That(Character.DailyMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A login between midnight and the reset already granted the day's set: the reset drops it (as the client does on
+    // 0x19) and starts again the ones not completed; a completed one stays dropped and no group gets a second pick.
+    [Test]
+    public void DailyMission_LoginBeforeReset() {
+        RegisterDailyMissions();
+        test.Session.Quest.Load();
+        int[] granted = Held(DailyMissions);
+        Assume.That(granted, Has.Length.EqualTo(6));
+        Assert.That(test.Session.Quest.TryGetQuest(granted[0], out Quest? done));
+        done!.State = QuestState.Completed;
 
         test.Session.Quest.ResetDailyQuests(DateTime.Today);
-        Assert.That(Held(DailyMissions), Is.Empty);
+
+        Assert.That(Held(DailyMissions), Is.EqualTo(granted.Skip(1).ToArray()));
+        Assert.That(granted.Skip(1).All(id => test.Session.Quest.TryGetQuest(id, out Quest? quest) && quest.State == QuestState.Started));
+        Assert.That(Character.DailyMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
         Assert.That(test.Errors, Is.Empty);
     }
 
@@ -537,18 +565,33 @@ public class DailyQuestGrantTests {
         Assert.That(WeddingPicks().Where(id => test.Session.Quest.TryGetQuest(id, out _)), Is.Empty);
     }
 
-    // The reset of a new day grants the day's three after the 0x26 drop; a second reset drops them and grants none.
+    // The reset of a new day grants the day's three after the 0x26 drop.
     [Test]
-    public void WeddingMission_ResetGrantsOnce() {
+    public void WeddingMission_ResetGrants() {
         RegisterWeddingMissions();
         Marry();
         Character.WeddingMissionGrantTime = Epoch(DateTime.Today.AddDays(-1));
 
         test.Session.Quest.ResetDailyQuests(DateTime.Today);
         Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks()));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A login between midnight and the reset already granted the day's three: the reset drops them (0x26) and starts
+    // again the ones not completed; a completed one stays dropped and is not replaced.
+    [Test]
+    public void WeddingMission_LoginBeforeReset() {
+        RegisterWeddingMissions();
+        Marry();
+        test.Session.Quest.Load();
+        int[] picks = WeddingPicks().ToArray();
+        Assume.That(Held(WeddingMissions), Is.EqualTo(picks));
+        Assert.That(test.Session.Quest.TryGetQuest(picks[0], out Quest? done));
+        done!.State = QuestState.Completed;
 
         test.Session.Quest.ResetDailyQuests(DateTime.Today);
-        Assert.That(Held(WeddingMissions), Is.Empty);
+
+        Assert.That(Held(WeddingMissions), Is.EqualTo(picks.Skip(1).Order().ToArray()));
         Assert.That(test.Errors, Is.Empty);
     }
 

@@ -978,11 +978,38 @@ public sealed class QuestManager {
             session.Scheduler.Schedule(() => ResetDailyQuests(day), day - now);
             return;
         }
-        DropDailyQuests(day, true);
+        List<Quest> dropped = DropDailyQuests(day, true);
         session.Send(QuestPacket.DailyMissionReset(new DateTimeOffset(day).ToUnixTimeSeconds()));
         session.Send(QuestPacket.FieldQuestReset());
         session.Send(QuestPacket.WeddingMissionReset());
+        RestartGrantedToday(dropped, day);
         GrantDailyQuests(day);
+    }
+
+    // A login or channel change between midnight and the reset already granted the day (stamp = day): the reset's
+    // drop took those rows and the grant is not due again. The ones granted that day and not completed are started
+    // again; a completed one stays dropped (its reward was paid), as a second grant would pay it twice.
+    private void RestartGrantedToday(List<Quest> dropped, DateTime day) {
+        Character character = session.Player.Value.Character;
+        long dayStart = day.ToEpochSeconds();
+        List<int> restarted = [];
+        foreach (Quest quest in dropped) {
+            long stamp = QuestDailyReset.KindOf(quest.Metadata.Basic) switch {
+                QuestDailyReset.Kind.FieldQuest => character.FieldQuestGrantTime,
+                QuestDailyReset.Kind.WeddingMission => character.WeddingMissionGrantTime,
+                QuestDailyReset.Kind.DailyMission when DailyQuestGrant.IsDailyMission(quest.Metadata) => character.DailyMissionGrantTime,
+                _ => 0,
+            };
+            if (stamp != dayStart || quest.StartTime < dayStart || quest.State == QuestState.Completed) {
+                continue;
+            }
+            if (Start(quest.Id) == QuestError.none) {
+                restarted.Add(quest.Id);
+            }
+        }
+        if (restarted.Count > 0) {
+            logger.Information("Daily quest reset of {CharacterId}: started again {QuestIds}, granted earlier the same day", session.CharacterId, restarted);
+        }
     }
 
     // The quests the server grants (DailyQuestGrant), at login after the login drop and at the daily reset after its
@@ -1118,12 +1145,15 @@ public sealed class QuestManager {
 
     // atReset: the reset (every row of the three kinds, mission points by their Friday); else the login check, before
     // the quests are sent (the rows a missed reset would have dropped).
-    private void DropDailyQuests(DateTime now, bool atReset) {
+    // Returns the rows dropped.
+    private List<Quest> DropDailyQuests(DateTime now, bool atReset) {
         int missions = 0, fieldQuests = 0, weddingMissions = 0;
+        List<Quest> dropped = [];
         foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).ToList()) {
             if (!QuestDailyReset.Dropped(quest.Metadata.Basic, quest.StartTime, now, atReset) || !Remove(quest)) {
                 continue;
             }
+            dropped.Add(quest);
             switch (QuestDailyReset.KindOf(quest.Metadata.Basic)) {
                 case QuestDailyReset.Kind.DailyMission:
                     missions++;
@@ -1137,10 +1167,11 @@ public sealed class QuestManager {
             }
         }
         if (!atReset && missions + fieldQuests + weddingMissions == 0) {
-            return;
+            return dropped;
         }
         logger.Information("Daily quest {Reset} of {CharacterId}: dropped {Missions} daily missions, {FieldQuests} field quests, {WeddingMissions} wedding missions",
             atReset ? "reset" : "login check", session.CharacterId, missions, fieldQuests, weddingMissions);
+        return dropped;
     }
 
     /// <summary>
