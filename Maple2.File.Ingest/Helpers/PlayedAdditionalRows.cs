@@ -51,6 +51,9 @@ public static class PlayedAdditionalRows {
 
     // The metadata each child of a played level makes, as JSON, for the A/B. SpecialAbility, Status, FinalStatus,
     // Offensive and Defensive all make Status.
+    // Basic leaves out AttackPossible (attackPossible*) and PvpOnOff, which Build also reads from <BasicProperty>:
+    // no KR level both data sets have differs on them (16 played levels set them, each as the pack does), so TakeOver
+    // keeps the pack's; a locale where they differ would need them here and in TakeOver.
     public static Dictionary<string, string> Parts(AdditionalEffectMetadata metadata) {
         AdditionalEffectMetadataProperty property = metadata.Property;
         string status = Json(metadata.Status);
@@ -103,6 +106,55 @@ public static class PlayedAdditionalRows {
             : unread.StartsWith("Condition.", StringComparison.Ordinal) ? "Condition"
             : unread.StartsWith("Additional.", StringComparison.Ordinal) ? "Additional"
             : null;
+    }
+
+    // The children of a played level the takeover leaves to the pack by design: the splash skills and the final
+    // stats (which the final-stat ingest reads from the client's FinalStatus itself). The status stays the pack's
+    // too, but a played <Status> that differs from the pack's StatusProperty holds the level (Holding).
+    public static readonly IReadOnlySet<string> KeptFromPack = new HashSet<string> { "Skill", "Status", "FinalStatus" };
+
+    // The children of a played level the ingest does not read and the pack does not keep (SpecialAbility, Offensive,
+    // Defensive, Spread, ...): the client runs them with the rest of the row, so the row is taken whole or not at all.
+    // A <Status> holds where one of its attributes has another value than the pack's StatusProperty (packRow, the
+    // pack's level as its serializer writes it) has under that name: the client's compulsion event of 10700193,
+    // 10700196 and 10700281, which the pack's rows lack, would be lost while the level took the client's timing.
+    public static IReadOnlyList<string> Holding(XmlElement row, XmlElement? packRow = null) {
+        return row.ChildNodes.OfType<XmlElement>()
+            .Where(child => !Gated.Contains(child.Name) && (!KeptFromPack.Contains(child.Name) || child.Name == "Status" && StatusDiffers(child, packRow)))
+            .Select(child => child.Name)
+            .Distinct()
+            .Order(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static bool StatusDiffers(XmlElement status, XmlElement? packRow) {
+        XmlElement? pack = packRow?["StatusProperty"];
+        return status.Attributes.OfType<XmlAttribute>().Any(attribute => !Numbers(attribute.Value).SequenceEqual(Numbers(pack?.GetAttribute(attribute.Name) ?? "")));
+    }
+
+    // A list as the pack's parser reads it ("1,2", "0.1", "true"): numbers and flags (true 1, false 0) by value, other
+    // text as it is; 0 for an empty list's lone value.
+    private static IEnumerable<string> Numbers(string list) {
+        string[] values = Split(list).Select(Value).ToArray();
+        return values.Length == 1 && values[0] == "0" ? [] : values;
+    }
+
+    private static string Value(string value) {
+        if (bool.TryParse(value, out bool flag)) {
+            return flag ? "1" : "0";
+        }
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
+            ? number.ToString("R", CultureInfo.InvariantCulture) : value;
+    }
+
+    // TakeOver for a level whose played row is row: a level with a holding child stays the pack's whole until that
+    // child is read (Shadow Stance 10800211 would lose its shield and last 60 s without the client's +30 physical
+    // damage). taken still gets the parts that differ; holding gets the children that held them back.
+    public static AdditionalEffectMetadata TakeOver(AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, IEnumerable<string> unread, XmlElement row,
+                                                    XmlElement? packRow, ICollection<string> taken, out IReadOnlyList<string> holding) {
+        holding = Holding(row, packRow);
+        AdditionalEffectMetadata metadata = TakeOver(pack, mapped, unread, taken);
+        return holding.Count > 0 ? pack : metadata;
     }
 
     // The pack's metadata of a level with each TakenOver part that differs replaced by the played level's (mapped),
@@ -344,6 +396,90 @@ public static class PlayedAdditionalRows {
         }
         basic.SetAttribute("level", levelId.ToString(CultureInfo.InvariantCulture));
         return root;
+    }
+
+    // The pack's names the played rows write (ToPack over every played level): "<element>/.../" for an element and
+    // "<element>/.../@<attribute>" for an attribute, the root's children at "<element>/".
+    public static IReadOnlySet<string> Written(IEnumerable<PlayedClientAdditionalEffects.Entry> entries) {
+        var written = new HashSet<string>(StringComparer.Ordinal);
+        foreach (PlayedClientAdditionalEffects.Entry entry in entries.Where(entry => entry.Effect != null)) {
+            foreach ((short level, XmlElement row) in entry.Rows) {
+                Collect(ToPack(entry.Effect!, row, level, new List<string>()), "", written);
+            }
+        }
+        return written;
+    }
+
+    private static void Collect(XmlElement element, string path, ISet<string> written) {
+        foreach (XmlAttribute attribute in element.Attributes) {
+            written.Add(path + "@" + attribute.Name);
+        }
+        foreach (XmlElement child in element.ChildNodes.OfType<XmlElement>()) {
+            written.Add(path + child.Name + "/");
+            Collect(child, path + child.Name + "/", written);
+        }
+    }
+
+    // What no played row has a name for keeps the pack's value: each attribute and element of the pack's row
+    // (pack, written back by the pack's serializer) that no played level writes (written) is copied onto the played
+    // level's row (played, ToPack's), so a part that differs only there is not taken and a part taken keeps it (the
+    // pack's beginCondition allowMapleSurvival: the client's <Condition> has no such attribute, and the item buffs
+    // with it would no longer start on a Maple Survival map). A beginCondition (the level's, or a condition skill's)
+    // or one of its sub conditions the played row has not is made for it; a condition skill only where the played
+    // row's skill at the same place is the same skill; no other element is made. kept gets each name copied whose
+    // value is not empty, 0 or false.
+    public static void KeepPackOnly(XmlElement pack, XmlElement played, IReadOnlySet<string> written, ICollection<string> kept) {
+        Keep(pack, () => played, "", written, kept);
+    }
+
+    private static void Keep(XmlElement pack, Func<XmlElement?> played, string path, IReadOnlySet<string> written, ICollection<string> kept) {
+        foreach (XmlAttribute attribute in pack.Attributes) {
+            if (!written.Contains(path + "@" + attribute.Name) && played() is { } target) {
+                target.SetAttribute(attribute.Name, attribute.Value);
+                if (attribute.Value is not ("" or "0" or "false" or "False")) {
+                    kept.Add(path + "@" + attribute.Name);
+                }
+            }
+        }
+        var index = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (XmlElement child in pack.ChildNodes.OfType<XmlElement>().ToList()) {
+            int place = index.GetValueOrDefault(child.Name);
+            index[child.Name] = place + 1;
+            string sub = path + child.Name + "/";
+            if (!written.Contains(sub)) {
+                if (played() is { } target) {
+                    target.AppendChild(target.OwnerDocument.ImportNode(child, true));
+                    if (child.HasAttributes || child.HasChildNodes) {
+                        kept.Add(sub);
+                    }
+                }
+                continue;
+            }
+            XmlElement? found = null;
+            bool looked = false;
+            Keep(child, () => {
+                if (!looked) {
+                    looked = true;
+                    found = Place(played(), child, place, sub);
+                }
+                return found;
+            }, sub, written, kept);
+        }
+    }
+
+    // The played row's element for the pack's child at place among its kind, made where it may be.
+    private static XmlElement? Place(XmlElement? parent, XmlElement child, int place, string path) {
+        if (parent == null) {
+            return null;
+        }
+        XmlElement? found = parent.ChildNodes.OfType<XmlElement>().Where(element => element.Name == child.Name).ElementAtOrDefault(place);
+        if (child.Name == "conditionSkill") {
+            return found != null && found.GetAttribute("skillID") == child.GetAttribute("skillID") ? found : null;
+        }
+        if (found != null || !path.Contains("beginCondition/", StringComparison.Ordinal)) {
+            return found;
+        }
+        return place == 0 ? (XmlElement) parent.AppendChild(parent.OwnerDocument.CreateElement(child.Name))! : null;
     }
 
     private static XmlElement Condition(XmlDocument document, XmlElement condition, ICollection<string> unread) {

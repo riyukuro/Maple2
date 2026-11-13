@@ -22,6 +22,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
 
     // The played client's own invoke effects and effect groups (PlayedClientAdditionalEffects); empty without a played client.
     private readonly Dictionary<int, PlayedClientAdditionalEffects.Entry> played = [];
+    // The pack's names the played rows write (PlayedAdditionalRows.Written).
+    private readonly IReadOnlySet<string> written = new HashSet<string>();
 
     public AdditionalEffectMapper(M2dReader xmlReader, M2dReader? playedReader = null) {
         parser = new AdditionalEffectParser(xmlReader);
@@ -33,6 +35,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             playedParser = new AdditionalEffectParser(playedReader);
             played = PlayedClientAdditionalEffects.Read(playedReader.Files.Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available);
+            written = PlayedAdditionalRows.Written(played.Values);
             Console.WriteLine($"Additional effects in the played client's data: {played.Count} ({played.Values.Count(entry => entry.GroupId != 0)} in an effect group, " +
                               $"{played.Values.Sum(entry => entry.Levels.Values.Count(invoke => invoke != null))} levels with an invoke effect)");
         }
@@ -61,6 +64,11 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         var shared = new Dictionary<(int Id, short Level), AdditionalEffectMetadata>();
         int takenLevels = 0;
         var takenParts = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        // Levels with parts that differ but a child the ingest does not read, kept the pack's whole.
+        var held = new List<string>();
+        var heldBy = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        // The pack's names no played row writes, kept on the played levels (PlayedAdditionalRows.KeepPackOnly).
+        var keptBy = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach ((int id, IList<AdditionalEffectData> datas) in parser.Parse()) {
             packIds.Add(id);
             foreach (AdditionalEffectData data in datas) {
@@ -76,9 +84,21 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                     // The played level's parts in place of the pack's (PlayedAdditionalRows.TakeOver); the status and
                     // final stats stay the pack's (Build with the pack's Status adds no final stats again).
                     var unread = new List<string>();
-                    AdditionalEffectMetadata mapped = Build(id, PlayedOnly(entry, level, unread), mask, metadata.Status);
+                    var kept = new HashSet<string>(StringComparer.Ordinal);
+                    System.Xml.XmlElement packRow = Serialized(data);
+                    AdditionalEffectMetadata mapped = Build(id, PlayedOnly(entry, level, unread, packRow, written, kept), mask, metadata.Status);
+                    foreach (string name in kept) {
+                        keptBy[name] = keptBy.GetValueOrDefault(name) + 1;
+                    }
                     var taken = new List<string>();
-                    metadata = PlayedAdditionalRows.TakeOver(metadata, mapped, unread, taken);
+                    metadata = PlayedAdditionalRows.TakeOver(metadata, mapped, unread, entry.Rows[level], packRow, taken, out IReadOnlyList<string> holding);
+                    if (taken.Count > 0 && holding.Count > 0) {
+                        held.Add($"{id} {level} ({string.Join(" ", holding)})");
+                        foreach (string child in holding) {
+                            heldBy[child] = heldBy.GetValueOrDefault(child) + 1;
+                        }
+                        taken.Clear();
+                    }
                     takenLevels += taken.Count > 0 ? 1 : 0;
                     foreach (string part in taken) {
                         takenParts[part] = takenParts.GetValueOrDefault(part) + 1;
@@ -97,6 +117,10 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         }
         Console.WriteLine($"Additional effect levels both data sets have with parts taken from the played client's row: {takenLevels} of {shared.Count} " +
                           $"({string.Join(", ", takenParts.Select(pair => $"{pair.Key} {pair.Value}"))})");
+        Console.WriteLine($"Additional effect levels both data sets have kept the pack's for a played child not read: {held.Count} " +
+                          $"({string.Join(", ", heldBy.Select(pair => $"{pair.Key} {pair.Value}"))}): {string.Join("; ", held)}");
+        Console.WriteLine($"Pack names no played row writes, kept from the pack on the levels both data sets have (levels): " +
+                          $"{string.Join(", ", keptBy.Select(pair => $"{pair.Key} {pair.Value}"))}");
         Compare(shared);
 
         // The played client's effects the data pack does not have, where every child of every level is one whose
@@ -209,17 +233,28 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return entry.Rows.Keys.Order().Select(level => PlayedOnly(entry, level));
     }
 
-    public static AdditionalEffectData PlayedOnly(PlayedClientAdditionalEffects.Entry entry, short level, ICollection<string>? unread = null) {
-        return Complete(PlayedAdditionalRows.ToPack(entry.Effect!, entry.Rows[level], level, unread ?? new List<string>()));
+    // pack: the pack's level as its serializer writes it (Serialized), whose names no played row writes (written)
+    // the played level keeps (PlayedAdditionalRows.KeepPackOnly); kept gets those copied.
+    public static AdditionalEffectData PlayedOnly(PlayedClientAdditionalEffects.Entry entry, short level, ICollection<string>? unread = null,
+                                                  System.Xml.XmlElement? pack = null, IReadOnlySet<string>? written = null, ICollection<string>? kept = null) {
+        System.Xml.XmlElement row = PlayedAdditionalRows.ToPack(entry.Effect!, entry.Rows[level], level, unread ?? new List<string>());
+        if (pack != null && written != null) {
+            PlayedAdditionalRows.KeepPackOnly(pack, row, written, kept ?? new List<string>());
+        }
+        return Complete(row);
     }
 
     // A parsed level written back and read again with the elements the converter needs.
     private static AdditionalEffectData Complete(AdditionalEffectData data) {
+        return Complete(Serialized(data));
+    }
+
+    public static System.Xml.XmlElement Serialized(AdditionalEffectData data) {
         var document = new System.Xml.XmlDocument();
         using (System.Xml.XmlWriter writer = document.CreateNavigator()!.AppendChild()) {
             LevelSerializer.Serialize(writer, data);
         }
-        return Complete(document.DocumentElement!);
+        return document.DocumentElement!;
     }
 
     private static AdditionalEffectData Complete(System.Xml.XmlElement root) {
