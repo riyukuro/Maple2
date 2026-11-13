@@ -129,6 +129,11 @@ public sealed class PetManager : IDisposable {
                 return StringCode.s_pet_inventory_not_sendin_petitem;
             }
 
+            // A survival match item stays in the inventory, as for storage (SurvivalItemRules, Chosen here).
+            if (SurvivalItemRules.IsMatchOnly(deposit.Metadata)) {
+                return StringCode.s_pet_inventory_not_sendin;
+            }
+
             // The client does not ask with a summoned pet past its time (petmanager.cpp:533).
             if (Pet.IsExpired()) {
                 return StringCode.s_empty_string;

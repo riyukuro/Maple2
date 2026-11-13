@@ -141,7 +141,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
         }
     }
 
-    private static bool HasSurvival(Maple2.File.Parser.Xml.Map.Survival? survival) {
+    public static bool HasSurvival(Maple2.File.Parser.Xml.Map.Survival? survival) {
         return survival != null && (survival.userDrop != 0 || survival.userAdditionalDrop != 0 || survival.plusInven != 0
             || survival.plusInven_Basic != 0 || survival.plusInven_Zero != 0);
     }

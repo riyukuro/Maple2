@@ -79,6 +79,11 @@ public sealed class SurvivalGameField {
         }
     }
 
+    // True while the game runs and the character is one of its participants (playing or fallen).
+    public bool InRunningGame(long characterId) {
+        lock (mutex) return !state.Ended && state.Get(characterId) != null;
+    }
+
     public bool Hostile(FieldPlayer caster, FieldPlayer target) {
         lock (mutex) return state.Hostile(caster.Value.Character.Id, target.Value.Character.Id);
     }

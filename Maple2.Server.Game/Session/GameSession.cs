@@ -768,7 +768,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
         Housing.EnterBuildField();
         // Survival match items do not outlive the match (SurvivalItemRules, Chosen here).
-        Item.Inventory.ClearSurvivalItems(Field.Metadata.Property.Survival, Field.MapId);
+        Item.Inventory.ClearSurvivalItems(Field.Metadata.Property.Survival, Field.MapId, Field.Survival?.InRunningGame(CharacterId) == true);
 
         PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = AccountId,

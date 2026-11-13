@@ -169,7 +169,13 @@ public class MeretMarketHandler : FieldPacketHandler {
         packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
         Item? item = GetUgcItem(itemUid);
-        if (item?.Template == null || item.Template.Id == 0 || SurvivalItemRules.IsMatchOnly(item.Metadata)) {
+        // A survival match item may not be listed (SurvivalItemRules); the dialog gets the "cannot register this item"
+        // box. Chosen here.
+        if (item != null && SurvivalItemRules.IsMatchOnly(item.Metadata)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_meratmarket_error_register_disable_ugcitem));
+            return;
+        }
+        if (item?.Template == null || item.Template.Id == 0) {
             return;
         }
 

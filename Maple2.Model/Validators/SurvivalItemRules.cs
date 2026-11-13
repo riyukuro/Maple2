@@ -1,3 +1,4 @@
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
@@ -23,17 +24,23 @@ public static class SurvivalItemRules {
         return IsMatchOnly(metadata.Id, metadata.Property.Survival);
     }
 
+    // The match-only items among these (the inventory's tabs), in order.
+    public static List<Item> MatchOnlyItems(IEnumerable<Item> items) {
+        return items.Where(item => IsMatchOnly(item.Metadata)).ToList();
+    }
+
     public const string LeftMatch = "entered a field outside the survival match";
     public const string MatchStart = "entered a survival map that starts empty (plusInven_Zero)";
 
     // Why the match-only items are deleted on entering a field with this survival element, or null to keep them.
     // A field without one is outside the match. A survival map with plusInven_Zero=1, read as "the match starts with
-    // an empty survival inventory", drops what was left from an earlier match. Chosen here.
-    public static string? ClearReason(MapMetadataSurvival? survival) {
+    // an empty survival inventory", drops what was left from an earlier match, but not on the re-entry of a
+    // participant whose game there still runs (a reconnect or channel change back into the match). Chosen here.
+    public static string? ClearReason(MapMetadataSurvival? survival, bool inRunningGame = false) {
         if (survival == null) {
             return LeftMatch;
         }
-        return survival.PlusInvenZero == 1 ? MatchStart : null;
+        return survival.PlusInvenZero == 1 && !inRunningGame ? MatchStart : null;
     }
 
     // The starting kit: the individual drop box a participant's items come from when the game starts

@@ -729,7 +729,7 @@ public class InventoryManager {
     public List<Item> TakeSurvivalItems() {
         lock (session.Item) {
             var taken = new List<Item>();
-            foreach (Item item in tabs.Values.SelectMany(tab => tab.Where(item => SurvivalItemRules.IsMatchOnly(item.Metadata))).ToList()) {
+            foreach (Item item in SurvivalItemRules.MatchOnlyItems(tabs.Values.SelectMany(tab => tab))) {
                 if (RemoveInternal(item.Uid, -1, out Item? removed)) {
                     taken.Add(removed);
                 }
@@ -740,14 +740,14 @@ public class InventoryManager {
 
     // Deletes the survival match items (SurvivalItemRules) on entering a field whose survival element calls for it,
     // with the normal remove packet and one log line per item. Chosen here.
-    public int ClearSurvivalItems(MapMetadataSurvival? survival, int mapId) {
-        string? reason = SurvivalItemRules.ClearReason(survival);
+    public int ClearSurvivalItems(MapMetadataSurvival? survival, int mapId, bool inRunningGame = false) {
+        string? reason = SurvivalItemRules.ClearReason(survival, inRunningGame);
         if (reason == null) {
             return 0;
         }
         lock (session.Item) {
             int count = 0;
-            foreach (Item item in tabs.Values.SelectMany(tab => tab.Where(item => SurvivalItemRules.IsMatchOnly(item.Metadata))).ToList()) {
+            foreach (Item item in SurvivalItemRules.MatchOnlyItems(tabs.Values.SelectMany(tab => tab))) {
                 int amount = item.Amount;
                 if (!RemoveInternal(item.Uid, -1, out Item? removed)) {
                     continue;
