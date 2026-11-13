@@ -243,13 +243,20 @@ public partial class TriggerContext {
         if (type == FieldGame.GuildVsGame) {
             Field.StartGuildVsGame();
         }
-        if (type == FieldGame.MapleSurvival && Field.Survival is null or { Ended: true }) {
+        if (StartsSurvival(type, Field.Survival is { Ended: false })) {
             Field.StartSurvival();
         }
         // The game sets its steps' user values on this trigger (61000023_main waits for them).
         if (type == FieldGame.HideAndSeek && (reset || Field.HideAndSeek is null or { Ended: true })) {
             Field.StartHideAndSeek(TriggerId);
         }
+    }
+
+    // MapleSurvival (82000000) and MapleSurvivalTeam (82000002/3, the squad maps' Countdown) start the field's survival
+    // game when none runs. Chosen here: the squad game has the same rules; the players of different squads are already
+    // enemies (no data or client code gives it other rules). No queue sends players to the squad maps.
+    public static bool StartsSurvival(FieldGame type, bool running) {
+        return type is FieldGame.MapleSurvival or FieldGame.MapleSurvivalTeam && !running;
     }
 
     // The constants of the field's Hide and Seek game; a value of another region is skipped (the ingest already

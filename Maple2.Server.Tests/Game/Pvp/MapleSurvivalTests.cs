@@ -9,6 +9,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 
@@ -197,6 +198,18 @@ public class MapleSurvivalTests {
         Assert.That(widget.Check("TimeOver", string.Empty), Is.False);
         widget.Stop();
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // CreateFieldGame: MapleSurvival and MapleSurvivalTeam start the survival game when none runs; the other games do not.
+    [Test]
+    public void FieldGameStartsSurvival() {
+        Assert.Multiple(() => {
+            Assert.That(Maple2.Server.Game.Trigger.TriggerContext.StartsSurvival(FieldGame.MapleSurvival, false), Is.True);
+            Assert.That(Maple2.Server.Game.Trigger.TriggerContext.StartsSurvival(FieldGame.MapleSurvivalTeam, false), Is.True);
+            Assert.That(Maple2.Server.Game.Trigger.TriggerContext.StartsSurvival(FieldGame.MapleSurvivalTeam, true), Is.False);
+            Assert.That(Maple2.Server.Game.Trigger.TriggerContext.StartsSurvival(FieldGame.HideAndSeek, false), Is.False);
+            Assert.That(Maple2.Server.Game.Trigger.TriggerContext.StartsSurvival(FieldGame.WaterGunBattle, false), Is.False);
+        });
     }
 
     // SpectateMushtopia 0xAB: the watch request is answered with the server's pick; a switch (mode 2) only when the
