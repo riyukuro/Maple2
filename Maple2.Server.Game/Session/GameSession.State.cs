@@ -52,6 +52,9 @@ public partial class GameSession {
 
     public int BonusGameId;
 
+    // The card game (CardReverseGameDialog) of the Ui object last used: its deck, cost and picks left.
+    public CardReverseGame? CardReverseGame;
+
     public MiniGameUserRecord? MiniGameRecord;
 
     // The selected super chat item (charObj+0x11f0): the item id, which the chat line and the field packet carry.

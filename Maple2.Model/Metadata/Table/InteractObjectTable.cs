@@ -16,7 +16,12 @@ public record InteractObjectMetadata(
     InteractObjectMetadataTime Time,
     InteractObjectMetadataDrop Drop,
     InteractObjectMetadataEffect AdditionalEffect,
-    InteractObjectMetadataSpawn[] Spawn);
+    InteractObjectMetadataSpawn[] Spawn,
+    InteractObjectMetadataUi? Ui = null);
+
+// The page a Ui object opens (<ui swf value>): the swf's type name and its parameter, e.g. CardReverseGameDialog with
+// the BonusGame id of its deck.
+public record InteractObjectMetadataUi(string Swf, string Value);
 
 public record InteractObjectMetadataItem(int Id, int Amount, int Rarity, int CheckAmount, int RecipeId);
 
