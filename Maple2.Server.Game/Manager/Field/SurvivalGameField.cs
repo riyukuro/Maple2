@@ -1,4 +1,5 @@
 using System.Numerics;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
@@ -157,7 +158,12 @@ public sealed class SurvivalGameField {
         int own = 0;
         if (SurvivalItemRules.DropsOwnItems(survival)) {
             foreach (Item item in victim.Session.Item.Inventory.TakeSurvivalItems()) {
-                field.DropItem(victim, item);
+                // Detach from the victim in the db as DropItem(IActor, Item) does, but drop with no owner.
+                lock (item) {
+                    using GameStorage.Request db = field.GameStorage.Context();
+                    db.SaveItems(0, item);
+                }
+                field.DropItem(victim.Position, victim.Rotation, item, dropKind: ItemDropKind.PlayerDrop, msDuration: FieldItem.PlayerDropDurationMs);
                 own++;
             }
         }
@@ -165,7 +171,7 @@ public sealed class SurvivalGameField {
         int box = SurvivalItemRules.DeathBox(survival);
         if (box != 0) {
             foreach (Item item in field.ItemDrop.GetIndividualDropItems(victim.Session, victim.Value.Character.Level, box)) {
-                field.DropItem(victim.Position, victim.Rotation, item, owner: victim);
+                field.DropItem(victim.Position, victim.Rotation, item);
                 extra++;
             }
         }
