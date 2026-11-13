@@ -72,6 +72,10 @@ public enum GameEventUserValueType {
     MentoringAttendLevel = 2410,
     MentoringAttendNext = 2411,
 
+    // Daily login mail (DailyLoginReward): 1 once today's mail is sent. Not a KMS2 value; the client keeps any
+    // type in its list and reads this one nowhere.
+    DailyLoginRewardGiven = 2420,
+
     // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
     LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
     LongTermAttendPoints = 2701,

@@ -40,6 +40,7 @@ public sealed class GameEventManager {
         nextUpdateTick = tickCount + 1000;
 
         UpdateDtReward();
+        UpdateDailyLoginReward();
         // Chosen here: the SAHotTime bonus follows its events within this one second step.
         session.Stats.RefreshHotTime();
     }
@@ -230,6 +231,67 @@ public sealed class GameEventManager {
 
             Set(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1);
             Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration);
+            session.Mail.Notify(true);
+        }
+    }
+
+    // The daily login mail (DailyLoginReward): once a day while the event runs, the row's items in one system mail
+    // with the row's mail text. Chosen here: per character, on the first second step in a field of the day (the
+    // server's local day, as the play-time reward's), so a player online at midnight gets the next day's mail
+    // too. The day's mark is stored before the mail is made: a stop between the two loses that day's mail
+    // instead of sending it twice.
+    private void UpdateDailyLoginReward() {
+        if (session.Field is null) return;
+
+        IList<GameEvent> events = session.FindEvent(GameEventType.DailyLoginReward);
+        if (events.Count == 0) {
+            return;
+        }
+
+        long expiry = DtRewardExpiry(DateTime.Now);
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is not DailyLoginReward reward || reward.Items.Length == 0) {
+                continue;
+            }
+            if (Get(GameEventUserValueType.DailyLoginRewardGiven, gameEvent.Id, expiry).Int() != 0) {
+                continue;
+            }
+            Set(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven, 1);
+            if (!Store(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven)) {
+                logger.Error("Failed to store the daily login mail of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
+                continue;
+            }
+
+            var items = new List<Item>();
+            foreach (RewardItem rewardItem in reward.Items) {
+                Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+                if (item != null) {
+                    items.Add(item);
+                }
+            }
+            if (items.Count == 0) {
+                continue;
+            }
+
+            using GameStorage.Request db = session.GameStorage.Context();
+            Mail? mail = db.CreateMail(new Mail {
+                Type = MailType.System,
+                ReceiverId = session.CharacterId,
+                SenderId = session.CharacterId,
+                Content = reward.MailId > 0 ? reward.MailId.ToString() : string.Empty,
+            });
+            if (mail == null) {
+                logger.Error("Failed to create the daily login mail of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
+                continue;
+            }
+            foreach (Item item in items) {
+                Item? created = db.CreateItem(mail.Id, item);
+                if (created == null) {
+                    logger.Error("Failed to create item {ItemId} of the daily login mail of event {EventId}", item.Id, gameEvent.Id);
+                    continue;
+                }
+                mail.Items.Add(created);
+            }
             session.Mail.Notify(true);
         }
     }

@@ -368,13 +368,13 @@ public record ShutdownMapleSurvival : GameEventData;
 public record Ontime : GameEventData;
 
 /// <summary>
-/// Sends a mail with an item to the user every day.
+/// Sends a mail with the items to the user once a day while the event runs.
 /// </summary>
-/// <param name="MailId"></param>
-/// <param name="Item"></param>
+/// <param name="MailId">The mail content id (value1), the text the client shows for the mail.</param>
+/// <param name="Items">The items of value2, "id,count,rank,0" separated by '|'.</param>
 public record DailyLoginReward(
     int MailId,
-    RewardItem Item) : GameEventData;
+    RewardItem[] Items) : GameEventData;
 
 public record SaleAutoPlayInstrument(
     int Discount,
