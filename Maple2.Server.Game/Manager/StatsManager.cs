@@ -15,7 +15,13 @@ namespace Maple2.Server.Game.Manager;
 
 public class StatsManager {
     public IActor Actor { get; private set; }
-    private readonly IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>> levelStats;
+    // The level stats of every job, and the table of the job the stats were last built for (levelStatsJob): a job
+    // change (the GM job command) picks the new job's table at the next Refresh. Before, the table stayed the one of
+    // the job at session start until a channel change, so a Heavy Gunner made a Priest kept SpRegen 0 every 10 s.
+    private readonly IReadOnlyDictionary<JobCode, IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>>> jobStats =
+        new Dictionary<JobCode, IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>>>();
+    private IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>> levelStats;
+    private JobCode levelStatsJob;
     // The effect ids last given by set bonuses (RefreshSetEffects).
     private readonly HashSet<int> setEffectIds = [];
 
@@ -33,7 +39,9 @@ public class StatsManager {
             throw new Exception("Failed to initialize StatsManager, could not find metadata for job " + player.Value.Character.Job.Code() + ".");
         }
 
+        jobStats = userStatsMetadata.JobStats;
         levelStats = stats;
+        levelStatsJob = player.Value.Character.Job.Code();
         if (!stats.TryGetValue(player.Value.Character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
             throw new Exception("Failed to initialize StatsManager, could not find metadata for level " + player.Value.Character.Level + ".");
         }
@@ -141,6 +149,15 @@ public class StatsManager {
         return Math.Max(criticalChance, casterCriticalOverride);
     }
 
+    // The level stats of |job|: the cached table, or the job's own one when the job changed since it was picked.
+    internal IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>> LevelStats(JobCode job) {
+        if (job != levelStatsJob && jobStats.TryGetValue(job, out IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>>? stats)) {
+            levelStats = stats;
+            levelStatsJob = job;
+        }
+        return levelStats;
+    }
+
     /// <param name="levelUp">A level change: KMS2 fills HP and SP on a level up (one Stat packet with both after it).</param>
     public void Refresh(bool levelUp = false) {
         if (Actor is FieldNpc npc) {
@@ -160,7 +177,7 @@ public class StatsManager {
         List<SetBonusMetadata> setBonuses = RefreshSetEffects(player);
 
         Character character = player.Value.Character;
-        if (levelStats.TryGetValue(character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
+        if (LevelStats(character.Job.Code()).TryGetValue(character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
             Values.Reset(metadata, character.Job.Code());
         } else {
             Log.Logger.Error("Failed to refresh stats for {Job} level {Level}.", character.Job.Code(), character.Level);
