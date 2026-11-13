@@ -86,4 +86,29 @@ public class TradeAutoDeclineTests {
         handler.Handle(giverTest.Session, Decline(giverTest.Session.CharacterId));
         Assert.That(giverTest.Session.Trade, Is.SameAs(trade));
     }
+
+    // A third player in the field, neither the requester nor the one asked, who names the requester declines nothing.
+    [Test]
+    public void AThirdPlayerCannotDeclineSomeoneElsesRequest() {
+        var otherTest = new TestGameSession(giverTest.Options);
+        otherTest.Start();
+        FieldManager field = giverTest.Session.Field!;
+        typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(otherTest.Session.Player, 3);
+        field.Players[3] = otherTest.Session.Player;
+        otherTest.Session.Field = field;
+        Assert.That(otherTest.Session.CharacterId, Is.Not.EqualTo(takerTest.Session.CharacterId));
+
+        ByteReader packet = Decline(giverTest.Session.CharacterId);
+        handler.Handle(otherTest.Session, packet);
+        Assert.Multiple(() => {
+            Assert.That(packet.Available, Is.EqualTo(0));
+            Assert.That(giverTest.Session.Trade, Is.SameAs(trade));
+            Assert.That(otherTest.Session.Trade, Is.Null);
+            Assert.That(giverTest.TakeSent().Count(sent => TestGameSession.Op(sent) == SendOp.Trade), Is.EqualTo(0));
+        });
+
+        // The one asked can still decline it afterwards.
+        handler.Handle(takerTest.Session, Decline(giverTest.Session.CharacterId));
+        Assert.That(giverTest.Session.Trade, Is.Null);
+    }
 }

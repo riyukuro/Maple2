@@ -349,7 +349,7 @@ message GuildRequest {
   }
   message RespondApplication {
     int64 guild_id = 1;
-    // the request id or the applicant's character id, see GuildRules.FindGuildApplication
+    // the request id (the accept page's "requestSn"), see GuildRules.FindGuildApplication
     int64 id = 2;
     bool accepted = 3;
   }

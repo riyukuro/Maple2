@@ -851,8 +851,8 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     // CGuildManager::SendGuildMode84: one id of the accept page row and accept or reject. The page hands the
     // script both the request id ("requestSn") and the character id ("charSn", uiguilddialog.cpp:2032-2036);
-    // the script passes back the request id (a live accept sent the row id), so the World matches the id
-    // against the guild's requests (GuildRules.FindGuildApplication). The sender needs the invite right, as for
+    // the script passes back the request id (a live accept matched against the character id found no row), so
+    // the World matches the id against the guild's request ids only (GuildRules.FindGuildApplication). The sender needs the invite right, as for
     // the list (85).
     private void HandleRespondApplication(GameSession session, IByteReader packet) {
         long id = packet.ReadLong();

@@ -13,8 +13,8 @@ public class GuildApplication : IByteSerializable {
     public void WriteTo(IByteWriter writer) {
         writer.WriteLong(Id);
         writer.WriteLong(Guild.Id);
-        // CGuildJoinRequestForGuild::ReadStream: the fourth id is the one the accept page hands back as
-        // "charSn" (Guild 84) and uses for the profile picture, so it is the character id.
+        // CGuildJoinRequestForGuild::ReadStream: the accept page names the fourth id "charSn" and uses it for
+        // the profile picture, so it is the character id. Guild 84 carries the first id ("requestSn").
         writer.WriteLong(Applicant.AccountId);
         writer.WriteLong(Applicant.CharacterId);
         writer.WriteUnicodeString(Applicant.Name);
