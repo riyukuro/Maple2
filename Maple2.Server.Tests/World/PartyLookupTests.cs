@@ -20,6 +20,7 @@ public class PartyLookupTests {
         public readonly HashSet<int> FailMoveFrom = [];
         public bool FailSoloJoin;
         public readonly List<int> Made = [];
+        public readonly List<FieldRequest> Requests = [];
         public readonly List<int> Destroyed = [];
         public DateTime Now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         public readonly List<(DungeonRecruit Recruit, List<long> Targets)> Notices = [];
@@ -31,8 +32,9 @@ public class PartyLookupTests {
         protected override void SendDungeonRecruit(PartyManager manager, DungeonRecruit recruit, List<PlayerInfo> targets) =>
             Notices.Add((recruit, targets.Select(target => target.CharacterId).ToList()));
 
-        protected override int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
-            Made.Add(partyId);
+        protected override int CreateMatchedRoom(FieldRequest request) {
+            Made.Add(request.CreateDungeon.PartyId);
+            Requests.Add(request);
             WhileMakingRoom?.Invoke();
             if (Throw) {
                 throw new InvalidOperationException("room");
@@ -216,6 +218,51 @@ public class PartyLookupTests {
         lookup.SearchDungeonMatch(requestor.CharacterId, requestor, 1, [room]);
 
     private PlayerInfo Leader(PartyManager manager) => manager.Party.Members[manager.Party.LeaderCharacterId].Info;
+
+    // dungeon_random_bonus: every room the matchmaker makes is a random match room (the client's whole matchmaker is
+    // the random match), whichever search brought its members.
+    private void AssertMadeRandom(params int[] dungeonIds) {
+        Assert.That(lookup.Requests.Select(request => (request.CreateDungeon.DungeonId, request.CreateDungeon.RandomMatch)),
+            Is.EqualTo(dungeonIds.Select(id => (id, true))));
+    }
+
+    // Party 32 with no room picked: the recommended rooms.
+    [Test]
+    public void ARecommendedRoomsSearchMakesARandomMatchRoom() {
+        DungeonMatchRoom[] rooms = [new DungeonMatchRoom(100, 1, 2, false), new DungeonMatchRoom(200, 1, 2, false)];
+        PlayerInfo first = Player();
+        PlayerInfo second = Player();
+        Assert.That(lookup.SearchDungeonMatch(first.CharacterId, first, 1, [..rooms]).Error, Is.EqualTo(0));
+        Assert.That(lookup.Made, Is.Empty);
+        Assert.That(lookup.SearchDungeonMatch(second.CharacterId, second, 1, [rooms[1]]).Error, Is.EqualTo(0));
+        AssertMadeRandom(200);
+    }
+
+    // Party 33: the room dialog's party search, one room, reaches World as a search for that room alone.
+    [Test]
+    public void APartySearchForOneRoomMakesARandomMatchRoom() {
+        var room = new DungeonMatchRoom(100, 1, 2, false);
+        Assert.That(Search(Player(), room).Error, Is.EqualTo(0));
+        Assert.That(Search(Player(), room).Error, Is.EqualTo(0));
+        AssertMadeRandom(100);
+    }
+
+    // Party 34: the party goes with the members found so far; the room is still the matchmaker's.
+    [Test]
+    public void ACancelMadeRoomIsARandomMatchRoom() {
+        var room = new DungeonMatchRoom(100, 1, 4, false);
+        PartyResponse first = Search(Player(), room);
+        Assert.That(first.Error, Is.EqualTo(0));
+        Assert.That(Search(Player(), room).Error, Is.EqualTo(0));
+        Assert.That(lookup.Made, Is.Empty);
+        Assert.That(lookup.TryGet(first.PartyId, out PartyManager? party), Is.True);
+
+        DungeonMatchResult result = lookup.DungeonMatch.Cancel(first.PartyId, 1);
+        Assert.That(result.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
+        lookup.CompleteDungeonMatch(party!, result);
+        AssertMadeRandom(100);
+        Assert.That(party!.Party.DungeonSet, Is.True);
+    }
 
     // rv44 MINOR 6: a party whose move into the group it joined fails puts the group back and searches on its own.
     [Test]

@@ -130,6 +130,8 @@ public static class ConditionUtil {
             case ConditionType.dungeon_first_clear:
             case ConditionType.dungeon_clear_group:
             case ConditionType.dungeon_reward_group:
+            // dungeon_random_bonus: the room the matchmaker made (the live rows name no room; the CN rows name rooms).
+            case ConditionType.dungeon_random_bonus:
             case ConditionType.dungeon_rank_clear:
             case ConditionType.dungeon_rank:
             case ConditionType.item_design:

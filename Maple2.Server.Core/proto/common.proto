@@ -7,6 +7,8 @@ message FieldRequest {
     int32 dungeon_id = 1;
     int32 size = 2;
     int32 party_id = 3;
+    // A room the matchmaker made (Party 32/33): its members count dungeon_random_bonus on the clear.
+    bool random_match = 4;
   }
   message DestroyDungeon {
     int32 room_id = 1;

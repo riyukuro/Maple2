@@ -13,6 +13,9 @@ public class DungeonRoomRecord {
     // The trigger dungeon variables of this instance (set_dungeon_variable, dungeon_variable). One record is shared
     // by the lobby and every room field of the instance; an id never set reads 0.
     public readonly ConcurrentDictionary<int, int> Variables = new();
+    // Whether the matchmaker (Party 32/33, the client's random match) made this room: each member counts
+    // dungeon_random_bonus on the clear. False for a room the party leader made.
+    public bool RandomMatch { get; init; }
 
     // The first player who entered the room (dungeon_first_user_mission_score); 0 before anyone did.
     private long firstCharacterId;

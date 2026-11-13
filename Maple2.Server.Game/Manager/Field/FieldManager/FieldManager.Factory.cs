@@ -164,7 +164,8 @@ public partial class FieldManager {
             return field;
         }
 
-        public DungeonFieldManager? CreateDungeon(DungeonRoomMetadata dungeonMetadata, long ownerId, int size = 1, int partyId = 0) {
+        public DungeonFieldManager? CreateDungeon(DungeonRoomMetadata dungeonMetadata, long ownerId, int size = 1, int partyId = 0,
+                                                  bool randomMatch = false) {
             var sw = new Stopwatch();
             sw.Start();
 
@@ -194,7 +195,9 @@ public partial class FieldManager {
                 throw new InvalidOperationException($"Failed to load entities for map: {dungeonMetadata.LobbyFieldId}");
             }
 
-            var dungeonRoomRecord = new DungeonRoomRecord(dungeonMetadata);
+            var dungeonRoomRecord = new DungeonRoomRecord(dungeonMetadata) {
+                RandomMatch = randomMatch,
+            };
             var lobbyField = new DungeonFieldManager(dungeonMetadata, mapMetadata, ugcMetadata, entities, NpcMetadata, ownerId, size, partyId) {
                 DungeonRoomRecord = dungeonRoomRecord,
                 FieldType = FieldType.Default,

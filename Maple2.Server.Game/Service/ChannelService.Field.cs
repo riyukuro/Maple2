@@ -43,7 +43,7 @@ public partial class ChannelService {
             };
         }
 
-        DungeonFieldManager? dungeonField = server.CreateDungeon(dungeonRoom, requestorId, create.Size, create.PartyId);
+        DungeonFieldManager? dungeonField = server.CreateDungeon(dungeonRoom, requestorId, create.Size, create.PartyId, create.RandomMatch);
         if (dungeonField == null) {
             return new FieldResponse {
                 Error = (int) MigrationError.s_move_err_FailCreateDungeon,

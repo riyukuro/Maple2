@@ -495,7 +495,7 @@ public class PartyLookup : IDisposable {
                 Defer(() => RunRoomTask(() => {
                     int lobbyRoomId = 0;
                     try {
-                        lobbyRoomId = CreateMatchedRoom(leaderId, partyId, result.RoomId, size);
+                        lobbyRoomId = CreateMatchedRoom(MatchedRoomRequest(leaderId, partyId, result.RoomId, size));
                     } catch (Exception ex) {
                         logger.Error(ex, "Dungeon match room for party {PartyId} failed", partyId);
                     }
@@ -544,23 +544,30 @@ public class PartyLookup : IDisposable {
     // A room call that gets no answer in this time counts as failed (chosen here).
     public const int RoomCallDeadlineSeconds = 10;
 
+    // The channel call for a room the matchmaker made. Every room made here is a random match room: the client calls
+    // the matchmaker as a whole the random match (UIDungeonRoomDialog shows the Party 33 button when
+    // m_isUseRandomMatch, uidungeonroomdialog.cpp:1200), so its members count dungeon_random_bonus on the clear,
+    // whether they searched with Party 32 or 33, with a room picked or not. A room the party leader makes is not one.
+    internal static FieldRequest MatchedRoomRequest(long leaderId, int partyId, int dungeonId, int size) => new() {
+        RequesterId = leaderId,
+        CreateDungeon = new FieldRequest.Types.CreateDungeon {
+            DungeonId = dungeonId,
+            Size = size,
+            PartyId = partyId,
+            RandomMatch = true,
+        },
+    };
+
     // Virtual: the tests' seam for the channel call.
-    protected virtual int CreateMatchedRoom(long leaderId, int partyId, int dungeonId, int size) {
+    protected virtual int CreateMatchedRoom(FieldRequest request) {
         if (!channelClients.TryGetClient(channelClients.FirstChannel(), out Channel.Service.Channel.ChannelClient? client)) {
             return 0;
         }
         try {
-            FieldResponse response = client.Field(new FieldRequest {
-                RequesterId = leaderId,
-                CreateDungeon = new FieldRequest.Types.CreateDungeon {
-                    DungeonId = dungeonId,
-                    Size = size,
-                    PartyId = partyId,
-                },
-            }, deadline: DateTime.UtcNow.AddSeconds(RoomCallDeadlineSeconds));
+            FieldResponse response = client.Field(request, deadline: DateTime.UtcNow.AddSeconds(RoomCallDeadlineSeconds));
             return response.Error == (int) MigrationError.ok ? response.RoomId : 0;
         } catch (Exception ex) {
-            logger.Error(ex, "Dungeon match room for party {PartyId} not made", partyId);
+            logger.Error(ex, "Dungeon match room for party {PartyId} not made", request.CreateDungeon.PartyId);
             return 0;
         }
     }

@@ -137,8 +137,9 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.FindHome(ownerId);
     }
 
-    public DungeonFieldManager? CreateDungeon(DungeonRoomMetadata metadata, long requesterId, int size, int partyId) {
-        return fieldFactory.CreateDungeon(metadata, requesterId, size, partyId);
+    public DungeonFieldManager? CreateDungeon(DungeonRoomMetadata metadata, long requesterId, int size, int partyId,
+                                              bool randomMatch = false) {
+        return fieldFactory.CreateDungeon(metadata, requesterId, size, partyId, randomMatch);
     }
 
     public FieldManager? CreateRankDuel(int matchId, long first, long second) {

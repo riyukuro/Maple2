@@ -556,9 +556,9 @@ public sealed class TestGameSession {
 
     // The session stands in the lobby field of a dungeon room it entered; the room's record is returned (its State
     // decides whether CompleteDungeon is a clear).
-    public DungeonRoomRecord EnterDungeon(DungeonRoomMetadata metadata) {
+    public DungeonRoomRecord EnterDungeon(DungeonRoomMetadata metadata, bool randomMatch = false) {
         var field = NewField<DungeonFieldManager>(Map(metadata.LobbyFieldId));
-        var record = new DungeonRoomRecord(metadata);
+        var record = new DungeonRoomRecord(metadata) { RandomMatch = randomMatch };
         typeof(DungeonFieldManager).GetField(nameof(DungeonFieldManager.DungeonMetadata), Any)!.SetValue(field, metadata);
         typeof(DungeonFieldManager).GetField("<DungeonRoomRecord>k__BackingField", Any)!.SetValue(field, record);
         typeof(DungeonFieldManager).GetField("<Lobby>k__BackingField", Any)!.SetValue(field, field);
