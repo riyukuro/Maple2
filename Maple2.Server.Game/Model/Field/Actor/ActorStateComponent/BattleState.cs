@@ -40,6 +40,12 @@ public class BattleState {
         this.actor = actor;
     }
 
+    // A GM's mob-attack command aims the npc at its player (debug only); the npc's own update may drop it again.
+    public void ForceTarget(IActor target) {
+        Target = target;
+        actor.AppendDebugMessage($"Forced target '{GetTargetName()}'\n");
+    }
+
     private string GetTargetName() {
         if (Target is null) {
             return "null";

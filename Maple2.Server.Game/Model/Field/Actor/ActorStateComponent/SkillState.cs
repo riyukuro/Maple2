@@ -14,6 +14,10 @@ public class SkillState {
         this.actor = actor;
     }
 
+    // A GM's mob-attack watch: for a few seconds each attack point of the watched skill reports the actors its
+    // range took (debug only, set by the mob-attack command).
+    public MobAttackRules.Watch? AttackWatch { get; set; }
+
     public void SkillCastAttack(SkillRecord cast, byte attackPoint, List<IActor> attackTargets) {
         if (!cast.TrySetAttackPoint(attackPoint)) {
             return;
@@ -98,6 +102,14 @@ public class SkillState {
         TargetSort sort = attack.GetTargetSort(actor.Position, actor.Rotation.Z);
         foreach (IActor target in actor.Field.GetTargets(actor, [attackPrism], attack.Range, queryLimit, sort: sort)) {
             resolvedTargets.Add(target);
+        }
+
+        if (AttackWatch is { } watch) {
+            if (watch.Expired(Environment.TickCount64)) {
+                AttackWatch = null;
+            } else if (watch.SkillId == cast.SkillId) {
+                watch.Report(attackPoint, resolvedTargets);
+            }
         }
 
         NpcSplashRules.Place place = NpcSplashRules.Where(noTarget.Length > 0, flies, resolvedTargets.Count);
