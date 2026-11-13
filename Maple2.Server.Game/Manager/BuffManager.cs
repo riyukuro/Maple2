@@ -157,6 +157,7 @@ public class BuffManager : IUpdatable {
                     if (notifyField) {
                         owner.Field.Broadcast(BuffPacket.Update(existing));
                     }
+                    GiveBackRecharge(existing);
                     TriggerEvent(Actor, Actor, Actor, EventConditionType.OnEffectApplied, skillId: existing.Id);
                 }
                 return;
@@ -528,6 +529,16 @@ public class BuffManager : IUpdatable {
             foreach (int skillId in buff.Metadata.Update.ResetCooldown) {
                 player.Session.Config.SetSkillCooldown(skillId);
             }
+        }
+        GiveBackRecharge(buff);
+    }
+
+    // <RemoveRechargingCount>: each start of the effect on a player, its first copy and every reapply that restarts
+    // or stacks it, gives the skill its uses back (ConfigManager.GiveBackRecharge). The client reads the row nowhere,
+    // so the server sends it. Focused Fire 10600181 puts 10600280 (2 uses, restarting) on its caster with each hit.
+    private void GiveBackRecharge(Buff buff) {
+        if (buff.Metadata.Update?.RemoveRecharge is { Count: > 0 } remove && Actor is FieldPlayer player) {
+            player.Session.Config.GiveBackRecharge(remove.SkillId, remove.Count);
         }
     }
     public void TriggerEvent(IActor caster, IActor owner, IActor target, EventConditionType type, int skillId = 0, int buffId = 0) {

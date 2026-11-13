@@ -40,6 +40,18 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     packEffects.Add((effectId, data.BasicProperty.level));
                 }
             }
+            // And the levels of the played client's effects the pack lacks that the effect ingest takes over
+            // (AdditionalEffectMapper.PlayedOnly): Focused Fire 10600181's charge 10600280.
+            var packIds = packEffects.Select(effect => effect.Id).ToHashSet();
+            foreach ((int effectId, PlayedClientAdditionalEffects.Entry entry) in PlayedClientAdditionalEffects.Read(playedReader.Files
+                         .Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available)) {
+                if (packIds.Contains(effectId) || entry.OwnLevels == null) {
+                    continue;
+                }
+                foreach (short level in entry.OwnLevels.Keys) {
+                    packEffects.Add((effectId, level));
+                }
+            }
             Console.WriteLine($"Skill levels with effects in the played client's skill data: {clientEffects.Count} ({unsupported} effect rows left out for a condition the ingest does not read)");
             clientAttackMethods = PlayedClientSkills.ReadAttackMethods(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), out int duplicateLevels);

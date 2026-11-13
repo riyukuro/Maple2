@@ -70,6 +70,14 @@ public static class SkillCastRules {
         return (long) Math.Max(0, (cooldownSeconds - flat - cooldownSeconds * rate) * 1000);
     }
 
+    // An effect's <RemoveRechargingCount> start on the record (SkillPacket.RechargeUses): settled to this tick, then
+    // count uses back, never under none out. At none out the client clears the skill's cooldown, so the caller drops
+    // the record.
+    public static (long EndTick, int Uses) GiveBackRecharge(long endTick, int uses, long lengthMs, long tick, int count) {
+        (endTick, uses) = SettleRecharge(endTick, uses, lengthMs, tick);
+        return (endTick, Math.Max(uses - Math.Max(count, 0), 0));
+    }
+
     // The recharge uses a cooldown record stands at by this tick, as the client counts them (CSkillSystem::Update
     // with FUN_1417687e0): each ended cooldown gives one use back, and starts again from its end while uses are
     // still out. Returns the end tick and uses left out.

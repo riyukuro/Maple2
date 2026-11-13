@@ -303,5 +303,6 @@ public enum SendOp : ushort {
     LimitBreak = 0x012E,
     AdventureProtect = 0x0131, // byte state, 7: cleared (CSceneStateGame::FUN_14173f7c0)
     HomeBlock = 0x0138,
+    SkillRechargeUses = 0x0139,
 
 }

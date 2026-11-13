@@ -399,6 +399,21 @@ public class ConfigManager {
         return skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) ? cooldown : null;
     }
 
+    // Gives the skill count recharge uses back (an effect's <RemoveRechargingCount>, SkillCastRules.GiveBackRecharge)
+    // and tells the client (min 0: chosen here, no data gives another). The record is the skill's own, as casts keep
+    // it; the client takes the skill's recharge origin itself. None out drops the record, as the client ends the
+    // cooldown.
+    public void GiveBackRecharge(int skillId, int count) {
+        if (skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) && cooldown.RechargeMs > 0) {
+            (cooldown.EndTick, cooldown.Charges) = SkillCastRules.GiveBackRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs,
+                Environment.TickCount64, count);
+            if (cooldown.Charges <= 0) {
+                skillCooldowns.Remove(skillId);
+            }
+        }
+        session.Send(SkillPacket.RechargeUses(skillId, 0, count));
+    }
+
     public void SetSkillCooldown(int skillId, short level = 1, int endTick = 0) {
         var cooldown = new SkillCooldown(skillId, level) {
             EndTick = endTick,

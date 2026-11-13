@@ -97,6 +97,18 @@ public static class SkillPacket {
         return pWriter;
     }
 
+    // CSceneStateGame::FUN_14173fc40 (scenestategame.cpp:8959): the skill (its recharge origin, GetRechargeId) gets
+    // used back, its uses out falling to used - min(used, back) but not under min; at 0 its cooldown ends
+    // (CSkillSystem::FUN_141765e70). An unknown skill is dropped.
+    public static ByteWriter RechargeUses(int skillId, int min, int back) {
+        var pWriter = Packet.Of(SendOp.SkillRechargeUses);
+        pWriter.WriteInt(skillId);
+        pWriter.WriteInt(min);
+        pWriter.WriteInt(back);
+
+        return pWriter;
+    }
+
     public static ByteWriter ResetCooldown() {
         var pWriter = Packet.Of(SendOp.SkillResetCooldown);
 

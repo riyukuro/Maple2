@@ -47,76 +47,132 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
 
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
         int packMasks = 0, masks = 0, changed = 0;
+        var packIds = new HashSet<int>();
         foreach ((int id, IList<AdditionalEffectData> datas) in parser.Parse()) {
+            packIds.Add(id);
             foreach (AdditionalEffectData data in datas) {
                 int packMask = (int) data.MotionProperty.skillUseDisable;
                 int mask = SkillUseDisableMask(id, data.BasicProperty.level, packMask);
                 packMasks += packMask != 0 ? 1 : 0;
                 masks += mask != 0 ? 1 : 0;
                 changed += mask != packMask ? 1 : 0;
-                yield return new AdditionalEffectMetadata(
-                    Id: id,
-                    Level: data.BasicProperty.level,
-                    Condition: data.beginCondition.Convert(),
-                    Property: new AdditionalEffectMetadataProperty(
-                        Type: (BuffType) data.BasicProperty.buffType,
-                        SubType: (BuffSubType) data.BasicProperty.buffSubType,
-                        Category: (BuffCategory) data.BasicProperty.buffCategory,
-                        EventType: (BuffEventType) data.BasicProperty.eventBuffType,
-                        Group: data.BasicProperty.group,
-                        DurationTick: data.BasicProperty.durationTick,
-                        IntervalTick: data.BasicProperty.intervalTick,
-                        DelayTick: data.BasicProperty.delayTick,
-                        MaxCount: data.BasicProperty.maxBuffCount,
-                        UseInGameTime: data.BasicProperty.useInGameTime,
-                        KeepOnDeath: data.BasicProperty.deadKeepEffect,
-                        RemoveOnLogout: data.BasicProperty.logoutClearEffect,
-                        RemoveOnLeaveField: data.BasicProperty.leaveFieldClearEffect,
-                        RemoveOnPvpZone: data.BasicProperty.clearEffectFromPVPZone,
-                        KeepOnEnterPvpZone: data.BasicProperty.doNotClearEffectFromEnterPVPZone,
-                        CasterIndividualBuff: data.BasicProperty.casterIndividualEffect,
-                        Exp: data.ExpProperty.value,
-                        CooldownTime: (int) TimeSpan.FromSeconds(float.TryParse(data.BasicProperty.coolDownTime, out float cooldown) ? cooldown : 0).TotalMilliseconds,
-                        RideId: data.RideeProperty == null! ? 0 : data.RideeProperty.rideeID,
-                        ImmuneBreak: data.MotionProperty.abnormalImmuneBreak,
-                        Stun: data.MotionProperty.stun,
-                        KeepCondition: (BuffKeepCondition) data.BasicProperty.keepCondition,
-                        ResetCondition: (BuffResetCondition) data.BasicProperty.resetCondition,
-                        DotCondition: (BuffDotCondition) data.BasicProperty.dotCondition,
-                        ClearOnDistanceFromCaster: int.TryParse(data.BasicProperty.clearDistanceFromCaster, out int distance) ? distance : 0,
-                        DisableRevivalHere: data.BasicProperty.disableRevivalHere,
-                        SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null,
-                        CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level),
-                        InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0,
-                        SkillUseDisableMask: mask,
-                        IgnoreReduceTime: data.BasicProperty.ignoreReduceTimeCondition,
-                        ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone,
-                        SuperArmor: data.MotionProperty.superArmor,
-                        SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType,
-                        ForceApplyTarget: data.BasicProperty.forceApplyTarget),
-                    Consume: new AdditionalEffectMetadataConsume(
-                        HpRate: data.ConsumeProperty.hpRate,
-                        SpRate: data.ConsumeProperty.spRate),
-                    Reflect: Convert(data.ReflectProperty),
-                    Update: Convert(data),
-                    Status: Convert(data.StatusProperty, data.OffensiveProperty, data.DefensiveProperty),
-                    Recovery: Convert(data.RecoveryProperty),
-                    Dot: new AdditionalEffectMetadataDot(
-                        Damage: Convert(data.DotDamageProperty),
-                        Buff: Convert(data.DotBuffProperty)),
-                    Shield: Convert(data.ShieldProperty),
-                    InvokeEffect: InvokeEffect(id, data.BasicProperty.level, data.InvokeEffectProperty),
-                    ModifyOverlapCount: data.ModifyOverlapCountProperty == null! ? [] : data.ModifyOverlapCountProperty.effectCodes
-                        .Zip(data.ModifyOverlapCountProperty.offsetCounts)
-                        .Select(tuple => new AdditionalEffectMetadataModifyOverlapCount(
-                            Id: tuple.First,
-                            OffsetCount: tuple.Second))
-                        .ToArray(),
-                    Skills: data.conditionSkill.Concat(data.splashSkill).Where(skill => !skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray(),
-                    TickSkills: data.conditionSkill.Concat(data.splashSkill).Where(skill => skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray());
+                yield return Build(id, data, mask);
             }
         }
         Console.WriteLine($"Additional effect levels with a skillUseDisable mask: {masks} ({packMasks} in the data pack, {changed} taken from the played client)");
+
+        // The played client's effects the data pack does not have, where every child of every level is one read in full
+        // (PlayedClientAdditionalEffects.BasicOnly): 10600280, the charge Focused Fire 10600181 puts on its caster.
+        int own = 0, ownLevels = 0;
+        foreach ((int id, PlayedClientAdditionalEffects.Entry entry) in played.OrderBy(pair => pair.Key)) {
+            if (packIds.Contains(id) || entry.OwnLevels == null) {
+                continue;
+            }
+            own++;
+            foreach (AdditionalEffectData data in PlayedOnly(entry.OwnLevels)) {
+                ownLevels++;
+                yield return Build(id, data, 0);
+            }
+        }
+        Console.WriteLine($"Additional effects only the played client has, taken over: {own} ({ownLevels} levels; " +
+                          $"{played.Count(pair => !packIds.Contains(pair.Key) && pair.Value.OwnLevels == null)} left out for a child the ingest does not read)");
+    }
+
+    // A pack row for each played level, read by the pack's serializer from a level with its <Basic> as the
+    // BasicProperty, every other property element empty and an empty <stat> in <beginCondition> (no <RideeProperty>,
+    // <ModifyOverlapCountProperty>: Build reads them absent as none).
+    public static IEnumerable<AdditionalEffectData> PlayedOnly(IReadOnlyDictionary<short, System.Xml.XmlElement> levels) {
+        var serializer = new System.Xml.Serialization.XmlSerializer(typeof(AdditionalEffectData), new System.Xml.Serialization.XmlRootAttribute("level"));
+        string[] empty = typeof(AdditionalEffectData).GetFields()
+            .Where(field => field.FieldType.IsClass && field.FieldType != typeof(string) && !field.FieldType.IsGenericType
+                            && field.Name is not (nameof(AdditionalEffectData.BasicProperty) or nameof(AdditionalEffectData.RideeProperty)
+                                or nameof(AdditionalEffectData.ModifyOverlapCountProperty)))
+            .Select(field => field.Name)
+            .ToArray();
+        foreach ((short level, System.Xml.XmlElement row) in levels.OrderBy(pair => pair.Key)) {
+            var document = new System.Xml.XmlDocument();
+            System.Xml.XmlElement root = document.CreateElement("level");
+            document.AppendChild(root);
+            System.Xml.XmlElement basic = document.CreateElement(nameof(AdditionalEffectData.BasicProperty));
+            if (row.ChildNodes.OfType<System.Xml.XmlElement>().FirstOrDefault(child => child.Name == "Basic") is { } played) {
+                foreach (System.Xml.XmlAttribute attribute in played.Attributes) {
+                    basic.SetAttribute(attribute.Name, attribute.Value);
+                }
+            }
+            basic.SetAttribute("level", level.ToString());
+            root.AppendChild(basic);
+            foreach (string name in empty) {
+                root.AppendChild(document.CreateElement(name));
+            }
+            root[nameof(AdditionalEffectData.beginCondition)]!.AppendChild(document.CreateElement("stat"));
+            yield return (AdditionalEffectData) serializer.Deserialize(new System.Xml.XmlNodeReader(document))!;
+        }
+    }
+
+    private AdditionalEffectMetadata Build(int id, AdditionalEffectData data, int mask) {
+        return new AdditionalEffectMetadata(
+            Id: id,
+            Level: data.BasicProperty.level,
+            Condition: data.beginCondition.Convert(),
+            Property: new AdditionalEffectMetadataProperty(
+                Type: (BuffType) data.BasicProperty.buffType,
+                SubType: (BuffSubType) data.BasicProperty.buffSubType,
+                Category: (BuffCategory) data.BasicProperty.buffCategory,
+                EventType: (BuffEventType) data.BasicProperty.eventBuffType,
+                Group: data.BasicProperty.group,
+                DurationTick: data.BasicProperty.durationTick,
+                IntervalTick: data.BasicProperty.intervalTick,
+                DelayTick: data.BasicProperty.delayTick,
+                MaxCount: data.BasicProperty.maxBuffCount,
+                UseInGameTime: data.BasicProperty.useInGameTime,
+                KeepOnDeath: data.BasicProperty.deadKeepEffect,
+                RemoveOnLogout: data.BasicProperty.logoutClearEffect,
+                RemoveOnLeaveField: data.BasicProperty.leaveFieldClearEffect,
+                RemoveOnPvpZone: data.BasicProperty.clearEffectFromPVPZone,
+                KeepOnEnterPvpZone: data.BasicProperty.doNotClearEffectFromEnterPVPZone,
+                CasterIndividualBuff: data.BasicProperty.casterIndividualEffect,
+                Exp: data.ExpProperty.value,
+                CooldownTime: (int) TimeSpan.FromSeconds(float.TryParse(data.BasicProperty.coolDownTime, out float cooldown) ? cooldown : 0).TotalMilliseconds,
+                RideId: data.RideeProperty == null! ? 0 : data.RideeProperty.rideeID,
+                ImmuneBreak: data.MotionProperty.abnormalImmuneBreak,
+                Stun: data.MotionProperty.stun,
+                KeepCondition: (BuffKeepCondition) data.BasicProperty.keepCondition,
+                ResetCondition: (BuffResetCondition) data.BasicProperty.resetCondition,
+                DotCondition: (BuffDotCondition) data.BasicProperty.dotCondition,
+                ClearOnDistanceFromCaster: int.TryParse(data.BasicProperty.clearDistanceFromCaster, out int distance) ? distance : 0,
+                DisableRevivalHere: data.BasicProperty.disableRevivalHere,
+                SkillUseDisableIds: data.MotionProperty.skillUseDisableIDs is { Length: > 0 } disabled ? disabled : null,
+                CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level),
+                InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0,
+                SkillUseDisableMask: mask,
+                IgnoreReduceTime: data.BasicProperty.ignoreReduceTimeCondition,
+                ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone,
+                SuperArmor: data.MotionProperty.superArmor,
+                SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType,
+                ForceApplyTarget: data.BasicProperty.forceApplyTarget),
+            Consume: new AdditionalEffectMetadataConsume(
+                HpRate: data.ConsumeProperty.hpRate,
+                SpRate: data.ConsumeProperty.spRate),
+            Reflect: Convert(data.ReflectProperty),
+            Update: Convert(data) with {
+                RemoveRecharge = played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? removeEntry)
+                                 && removeEntry.RemoveRecharge.TryGetValue(data.BasicProperty.level, out AdditionalEffectMetadataUpdate.RemoveRechargeUses? remove) ? remove : null,
+            },
+            Status: Convert(data.StatusProperty, data.OffensiveProperty, data.DefensiveProperty),
+            Recovery: Convert(data.RecoveryProperty),
+            Dot: new AdditionalEffectMetadataDot(
+                Damage: Convert(data.DotDamageProperty),
+                Buff: Convert(data.DotBuffProperty)),
+            Shield: Convert(data.ShieldProperty),
+            InvokeEffect: InvokeEffect(id, data.BasicProperty.level, data.InvokeEffectProperty),
+            ModifyOverlapCount: data.ModifyOverlapCountProperty == null! ? [] : data.ModifyOverlapCountProperty.effectCodes
+                .Zip(data.ModifyOverlapCountProperty.offsetCounts)
+                .Select(tuple => new AdditionalEffectMetadataModifyOverlapCount(
+                    Id: tuple.First,
+                    OffsetCount: tuple.Second))
+                .ToArray(),
+            Skills: data.conditionSkill.Concat(data.splashSkill).Where(skill => !skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray(),
+            TickSkills: data.conditionSkill.Concat(data.splashSkill).Where(skill => skill.activeByIntervalTick).Select(skill => skill.Convert()).ToArray());
     }
 
     private static AdditionalEffectMetadataUpdate Convert(AdditionalEffectData data) {

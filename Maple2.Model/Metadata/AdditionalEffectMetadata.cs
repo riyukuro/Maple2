@@ -77,9 +77,13 @@ public record AdditionalEffectMetadataUpdate(
     int[] ImmuneIds,
     BuffCategory[] ImmuneCategories,
     int[] ResetCooldown,
-    AdditionalEffectMetadataUpdate.ModifyDuration[] Duration
+    AdditionalEffectMetadataUpdate.ModifyDuration[] Duration,
+    AdditionalEffectMetadataUpdate.RemoveRechargeUses? RemoveRecharge = null
 ) {
     public record CancelEffect(bool CheckSameCaster, bool PassiveEffect, int[] Ids, BuffCategory[] Categories);
+
+    // <RemoveRechargingCount skillID count>: the start gives the skill back count recharge uses (SkillPacket.RechargeUses).
+    public record RemoveRechargeUses(int SkillId, int Count);
 
     public record ModifyDuration(int Id, float Rate, float Value);
 }
