@@ -852,30 +852,17 @@ public static class Lua {
         return weight;
     }
 
+    // calcTaxiCharge: the fare for a taxi ride over this many maps at this level. The script works in doubles; with
+    // floats the fare can be 1 off (level 45 over 25 maps is 10971, floats gave 10972).
     public static int CalcTaxiCharge(int distance, int level) {
-        float distanceFee = 0;
-
-        var variables = new {
-            A1 = 0.35307f,
-            B1 = -1.4401f,
-            C1 = 34.075f,
-            A2 = 0.23451f,
-            B2 = 24.221f,
-            C2 = 265.66f,
-        };
-
+        double fee;
         if (level <= 24) {
-            float local1 = variables.A1 * (float) Math.Pow(level, 2);
-            float local2 = variables.B1 * level;
-            distanceFee = local1 + local2 + variables.C1;
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-        } else if (level >= 25) {
-            float local1 = variables.A2 * (float) Math.Pow(level - 24, 2);
-            float local2 = variables.B2 * (level - 24);
-            distanceFee = local1 + local2 + variables.C2;
+            fee = 0.35307 * Math.Pow(level, 2) + -1.4401 * level + 34.075;
+        } else {
+            fee = 0.23451 * Math.Pow(level - 24, 2) + 24.221 * (level - 24) + 265.66;
         }
 
-        return (int) Math.Floor(distanceFee * distance / 2 + 0.5f);
+        return (int) Math.Floor(fee * distance / 2 + 0.5);
     }
 
     public static int CalcAirTaxiCharge(int level) {

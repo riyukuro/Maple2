@@ -348,6 +348,8 @@ public class LuaTests {
     [TestCase(15, 20, 1099)]
     [TestCase(5, 50, 2635)]
     [TestCase(5, 90, 7214)]
+    [TestCase(25, 45, 10971)] // floats gave 10972
+    [TestCase(32, 63, 25071)] // floats gave 25072
     public void CalcTaxiCharge(int distance, int level, int expected) {
         // Act
         int maple2LuaResult = maple2Lua.CalcTaxiCharge(distance, (ushort) level);
