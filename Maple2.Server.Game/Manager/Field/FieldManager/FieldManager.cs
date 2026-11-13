@@ -196,6 +196,13 @@ public partial class FieldManager : IField {
         Survival = new SurvivalGameField(this, Players.Values);
     }
 
+    // The Hide and Seek game of a hide-and-seek map (CreateFieldGame HideAndSeek); null before one is made.
+    public HideAndSeekField? HideAndSeek { get; private set; }
+
+    public void StartHideAndSeek(int triggerId) {
+        HideAndSeek = new HideAndSeekField(this, triggerId);
+    }
+
     // Whether a player's hostile skills reach another player here: the rank duel's fight, the PvP zone's or the
     // survival game's.
     public bool PlayerHostile(FieldPlayer caster, FieldPlayer target) {
@@ -514,6 +521,7 @@ public partial class FieldManager : IField {
         RankDuel?.Update(FieldTick);
         PvpZone?.Update(FieldTick);
         Survival?.Update(FieldTick);
+        HideAndSeek?.Update(FieldTick);
     }
 
     public void EnsurePlayerPosition(FieldPlayer player) {

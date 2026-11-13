@@ -193,11 +193,26 @@ public partial class TriggerContext {
         if (type == FieldGame.MapleSurvival && Field.Survival is null or { Ended: true }) {
             Field.StartSurvival();
         }
+        // The game sets its steps' user values on this trigger (61000023_main waits for them).
+        if (type == FieldGame.HideAndSeek && (reset || Field.HideAndSeek is null or { Ended: true })) {
+            Field.StartHideAndSeek(TriggerId);
+        }
     }
 
-    public void FieldGameConstant(string key, string value, string feature, Locale locale) { }
+    // The constants of the field's Hide and Seek game; a value of another region is skipped (the ingest already
+    // dropped the ones of a disabled feature).
+    public void FieldGameConstant(string key, string value, string feature, Locale locale) {
+        DebugLog("[FieldGameConstant] key:{Key}, value:{Value}, locale:{Locale}", key, value, locale);
+        Field.HideAndSeek?.Constant(key, value, locale.ToString());
+    }
 
-    public void FieldGameMessage(int custom, string type, bool arg1, string script, int duration) { }
+    // A banner to one team of the Hide and Seek game (custom 1 the hiders, 2 the seekers); SetEventUI is the only type.
+    public void FieldGameMessage(int custom, string type, bool arg1, string script, int duration) {
+        DebugLog("[FieldGameMessage] custom:{Custom}, type:{Type}, script:{Script}, duration:{Duration}", custom, type, script, duration);
+        if (type == "SetEventUI") {
+            Field.HideAndSeek?.Message(custom, script, duration);
+        }
+    }
     #endregion
 
     #region Conditions
