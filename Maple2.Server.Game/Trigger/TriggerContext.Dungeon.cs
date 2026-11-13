@@ -176,8 +176,13 @@ public partial class TriggerContext {
         }
     }
 
+    // Nothing to do on the server: the client has no reader for it. The tutorial on 52000065 is run by the client's
+    // own guide (table/guide_tutorial_100.xml): this script only feeds it ServerTriggerEvent 260 (GuideEvent), and
+    // guide event 270 sends Tutorial 0x8A (CGuideActionClearTutorial, see TutorialHandler) when the player leaves the
+    // map through the portal the same condition opens. The skip dialog (UI 0x4ea5) sends nothing, and
+    // RequestSkipTutorial 0x59 has no sender in the client.
     public void StartTutorial() {
-        ErrorLog("[StartTutorial]");
+        DebugLog("[StartTutorial]");
     }
 
     #region DarkStream
