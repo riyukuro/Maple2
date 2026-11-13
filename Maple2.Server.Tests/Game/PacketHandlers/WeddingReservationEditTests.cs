@@ -28,6 +28,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class WeddingReservationEditTests(bool mysql) {
     private static readonly string? Connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
     private const int Cost = 300;
+    private const int CouponRank = 3;
 
     private TestGameSession payer = null!;
     private TestGameSession confirmer = null!;
@@ -64,8 +65,14 @@ public class WeddingReservationEditTests(bool mysql) {
         }
         payer.Store(TestGameSession.Metadata(Constant.ProposalItemId));
         confirmer.Register(TestGameSession.Metadata(Constant.ProposalItemId));
-        payer.Register(TestGameSession.Metadata(Constant.Grade1WeddingCouponItemId));
-        confirmer.Register(TestGameSession.Metadata(Constant.Grade1WeddingCouponItemId));
+        ItemMetadata coupon = TestGameSession.Metadata(Constant.Grade1WeddingCouponItemId);
+        // As the KR grade 2 coupon (20303167): rank 3, its option constant 3, stacked to 999.
+        coupon = coupon with {
+            Property = coupon.Property with { Rank = CouponRank, SlotMax = 999 },
+            Option = new ItemMetadataOption(0, default, 0, default, CouponRank, default, 0, 0),
+        };
+        payer.Register(coupon);
+        confirmer.Register(coupon);
         var hall = new WeddingPackage.HallData(1, 2000023, 2000023, 1, Cost, [], []);
         var other = new WeddingPackage.HallData(2, 2000023, 2000023, 1, Cost, [], []);
         var table = new WeddingTable(new Dictionary<MarriageExpType, WeddingReward>(),
@@ -74,6 +81,11 @@ public class WeddingReservationEditTests(bool mysql) {
             test.World.AddPlayer(payer.AccountId, payer.CharacterId, "payer");
             test.World.AddPlayer(confirmer.AccountId, confirmer.CharacterId, "confirmer");
             test.SetTable(table);
+            // The coupon's options roll from these; it has none.
+            test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
+            test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
+            test.SetTable(new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+            test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
             test.AddMap(TestGameSession.Map(2000023));
             test.Start();
             test.EnterMap(TestGameSession.Map(2000023));
@@ -256,6 +268,19 @@ public class WeddingReservationEditTests(bool mysql) {
             Assert.That(StoredHalls(), Is.EqualTo(0));
             Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(1));
         });
+    }
+
+    // The refunded coupon is made at its rank and option constant (Item.DefaultRarity), not at 1.
+    [Test]
+    public void Cancel_Accepted_MailsTheCouponAtItsRank() {
+        Send(payer, 0x10);
+        Send(confirmer, 0x12, 9);
+
+        using GameStorage.Request db = payer.Storage.Context();
+        Item[] coupons = db.GetAllMail(payer.CharacterId).SelectMany(mail => mail.Items)
+            .Where(item => item.Id == Constant.Grade1WeddingCouponItemId).ToArray();
+        Assert.That(coupons, Has.Length.EqualTo(1));
+        Assert.That(coupons[0].Rarity, Is.EqualTo(CouponRank));
     }
 
     // An answer to a cancel nobody asked for, or a no-refund answer to a box never opened, changes nothing.

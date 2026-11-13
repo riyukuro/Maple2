@@ -1164,8 +1164,8 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_system;
         }
 
-        // TODO: Fix rarity ?
-        Item? coupon = session.Field?.ItemDrop.CreateItem(couponItemId, 1, 1);
+        // Made at its rank, as an item no source names a rarity for (Item.DefaultRarity).
+        Item? coupon = session.Field?.ItemDrop.CreateItem(couponItemId);
         if (coupon == null) {
             logger.Error("Failed to create wedding coupon for {CharacterId}", session.CharacterId);
             return WeddingError.s_wedding_result_err_system;
