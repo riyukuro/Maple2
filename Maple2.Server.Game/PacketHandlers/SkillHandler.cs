@@ -424,10 +424,7 @@ public class SkillHandler : FieldPacketHandler {
             count = (byte) Math.Min(maxCount, byte.MaxValue);
         }
 
-        int iterations = packet.ReadInt();
-        if (iterations != 0) {
-            Logger.Information("Unhandled skill-Target iterations: ({Value}): {Record}", iterations, record);
-        }
+        packet.ReadInt(); // the cast's TickSync count so far (CSkillRecord::m_nSendCount), not used here
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Attack.Damage: {skillUid}; AttackPoint: {attackPoint}"));
@@ -498,6 +495,21 @@ public class SkillHandler : FieldPacketHandler {
             session.PlayerName, record.SkillId, record.AttackPoint, record.Attack.Range.ApplyTarget, record.ImpactPosition, session.Player.Position, others);
     }
 
+    // The rest of Skill 1 2, which the client sends when an arrow of the cast ends where it places a region
+    // (CMagic::FUN_14145f570 and FUN_141466da0, magicdata.cpp): the cast's TickSync count so far
+    // (CSkillRecord::m_nSendCount, counted by SendSkill), the arrow's index among those its attack fired
+    // (StateSkill::PickAttackTargets numbers them from 0; a cast of several arrows sends one per arrow), the end
+    // position and the direction.
+    public readonly record struct RegionPath(int SendCount, int Arrow, Vector3 Position, Vector3 Rotation);
+
+    public static RegionPath ReadRegionPath(IByteReader packet) {
+        int sendCount = packet.ReadInt();
+        int arrow = packet.ReadInt();
+        var position = packet.Read<Vector3>();
+        var rotation = packet.Read<Vector3>();
+        return new RegionPath(sendCount, arrow, position, rotation);
+    }
+
     private void HandleCubeMagicPath(GameSession session, IByteReader packet) {
         long skillUid = packet.ReadLong();
         SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
@@ -512,22 +524,13 @@ public class SkillHandler : FieldPacketHandler {
             return;
         }
 
-        int unknown1 = packet.ReadInt(); // Unknown(0)
-        if (unknown1 != 0) {
-            Logger.Error("Unhandled skill-MagicPath value1({Value}): {Record}", unknown1, record);
-        }
-
-        int attackIndex = packet.ReadInt(); // Unknown(0)
-        if (attackIndex != 0) {
-            Logger.Error("Unhandled skill-MagicPath attackIndex ({Value}): {Record}", attackIndex, record);
-        }
-
+        RegionPath path = ReadRegionPath(packet);
         if (session.Player.DebugSkills) {
-            session.Send(NoticePacket.Message($"Skill.Attack.Region: {skillUid}; AttackPoint: {attackPoint}; UnkInt: {unknown1}; UnkInt: {attackIndex}"));
+            session.Send(NoticePacket.Message($"Skill.Attack.Region: {skillUid}; AttackPoint: {attackPoint}; SendCount: {path.SendCount}; Arrow: {path.Arrow}"));
         }
 
-        record.Position = packet.Read<Vector3>();
-        record.Rotation = packet.Read<Vector3>();
+        record.Position = path.Position;
+        record.Rotation = path.Rotation;
 
         // Hide and Seek: where a seek shot lands decides whether it missed (HideAndSeekField.Landed).
         if (record.SkillId == Manager.Field.HideAndSeekField.SeekSkillId) {
