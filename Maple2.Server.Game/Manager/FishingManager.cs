@@ -43,6 +43,13 @@ public class FishingManager {
         this.serverTableMetadata = serverTableMetadata;
     }
 
+    // The buffs just removed held an AutoFish buff: see FishingRules.AutoFishEndNotice.
+    public void AutoFishRemoved(bool stillAutoFish) {
+        if (FishingRules.AutoFishEndNotice(true, stillAutoFish, GuideObject != null)) {
+            session.Send(FishingPacket.Auto(false));
+        }
+    }
+
     public void Reset() {
         if (GuideObject == null) {
             return;

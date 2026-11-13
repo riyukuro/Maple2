@@ -746,6 +746,9 @@ public class BuffManager : IUpdatable {
         if (refreshStats) {
             Actor.Stats.Refresh();
         }
+        if (Actor is FieldPlayer fishing && buffsToRemove.Any(buff => buff.Metadata.Property.EventType == BuffEventType.AutoFish)) {
+            fishing.Session.Fishing.AutoFishRemoved(HasBuff(BuffEventType.AutoFish));
+        }
 
         return true;
 

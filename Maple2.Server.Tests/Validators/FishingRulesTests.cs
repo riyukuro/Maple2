@@ -42,4 +42,13 @@ public class FishingRulesTests {
         // Auto fishing never opens the game.
         Assert.That(FishingRules.IsFightGame(true, true, 100, 3000), Is.False);
     }
+
+    // Fishing mode 10 with 0: only when the last AutoFish buff ends while the player fishes.
+    [TestCase(true, false, true, true)]
+    [TestCase(true, true, true, false)] // another AutoFish buff is still held
+    [TestCase(true, false, false, false)] // not fishing
+    [TestCase(false, false, true, false)] // no AutoFish buff ended
+    public void AutoFishEndNotice(bool removed, bool still, bool fishing, bool expected) {
+        Assert.That(FishingRules.AutoFishEndNotice(removed, still, fishing), Is.EqualTo(expected));
+    }
 }

@@ -23,4 +23,13 @@ public static class FishingRules {
     public static bool IsCatch(bool clientSuccess, bool bite, long nowTick, long biteTick) {
         return clientSuccess && bite && nowTick >= biteTick - BiteSlackTicks;
     }
+
+    // Fishing 0x0073 mode 10 (auto fishing off): the client keeps the auto flag of the last catch answer (mode 8) and
+    // recasts and uses bait by itself while it is on. When the last AutoFish buff ends while the player fishes, mode 10 with 0 turns
+    // the flag off at once. The start of the buff is the client's own: CFishingManager::OnNotifyChangeBuff recasts
+    // when a buff of event type 1 is added, so the server sends nothing then (a mode 10 with 1 would cast twice).
+    // Chosen here: mode 10 at the buff's end (no client code or data says when the server sends it).
+    public static bool AutoFishEndNotice(bool removedAutoFish, bool stillAutoFish, bool fishing) {
+        return removedAutoFish && !stillAutoFish && fishing;
+    }
 }
