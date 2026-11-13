@@ -462,7 +462,8 @@ public class SkillHandler : FieldPacketHandler {
                 Logger.Information("Region owner position {Owner} is {Distance} from the server's {Position}, the area stands at the server's: {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
                     impactPosition2, Vector3.Distance(impactPosition2, session.Player.Position), session.Player.Position, unloggedRegions, targetUid, session.PlayerName, record);
             }
-            area = SkillHitRules.RegionArea(record.Attack, SkillHitRules.RegionCentre(impactPosition2, session.Player.Position), direction.Z);
+            float reach = SkillUtils.KeyMoveReach(record.Motion.MotionProperty, record.Attack.Arrow, record.Rotate2Z, record.CastDirection);
+            area = SkillHitRules.RegionArea(record.Attack, SkillHitRules.RegionCentre(impactPosition2, session.Player.Position), direction.Z, reach);
         }
 
         int refused = 0;

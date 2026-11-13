@@ -54,6 +54,27 @@ public class SkillTargetShapeTests {
         Assert.That(area.Intersects(Mob(1400, 1000, 400)), Is.False, "far above");
     }
 
+    // A region packet of a cast moved by key: the client searched the box or frustum its key move deeper (KR 10200172,
+    // frustum 450 with keyMove 600), so a mob at depth 800 is in only with the key held. Before, the region check took
+    // no reach and refused the hit as Outside.
+    [Test]
+    public void RegionAreaReachesTheKeyMoveFarther() {
+        SkillMetadataAttack attack = Region(SkillRegion.Frustum, 450, 150);
+        attack = attack with {
+            Range = attack.Range with { EndWidth = 450, RangeAdd = new Vector3(0, 100, 0) },
+            Arrow = attack.Arrow with { NonTarget = SkillTargetType.None },
+        };
+        var motion = new SkillMetadataMotionProperty("Berserker_BloodSlash_01_A", 1, 0, false, KeyMove: 600);
+        Vector2 ahead = attack.GetPrism(Vector3.Zero, 0).Polygon.Contains(0, 200) ? Vector2.UnitY : -Vector2.UnitY;
+        float held = SkillUtils.KeyMoveReach(motion, attack.Arrow, 0, new Vector3(ahead, 0));
+        float still = SkillUtils.KeyMoveReach(motion, attack.Arrow, 0, Vector3.Zero);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.RegionArea(attack, Vector3.Zero, 0, held).Intersects(Mob(ahead.X * 800, ahead.Y * 800)), Is.True, "key held");
+            Assert.That(SkillHitRules.RegionArea(attack, Vector3.Zero, 0, still).Intersects(Mob(ahead.X * 800, ahead.Y * 800)), Is.False, "no key");
+            Assert.That(SkillHitRules.RegionArea(attack, Vector3.Zero, 0, held).Intersects(Mob(ahead.X * 1300, ahead.Y * 1300)), Is.False, "past the reach and margin");
+        });
+    }
+
     [Test]
     public void RegionAreaTurnsWithTheFacing() {
         // A box 300 ahead and 150 wide: a mob 400 ahead is in, one 400 behind is not; turned around, the other way.

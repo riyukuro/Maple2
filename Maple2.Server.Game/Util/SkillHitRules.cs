@@ -163,8 +163,9 @@ public static class SkillHitRules {
     }
 
     // A region's area as the client searches it (FUN_141464d00): the attack's range at the owner's position, turned
-    // to its facing, grown by TargetMargin on every side.
-    public static Prism RegionArea(SkillMetadataAttack attack, Vector3 position, float facing) {
+    // to its facing, grown by TargetMargin on every side. reach: the cast's key move reach (SkillUtils.KeyMoveReach),
+    // which the client's search adds to a box or frustum's depth as it does for every PickAttackTargets search.
+    public static Prism RegionArea(SkillMetadataAttack attack, Vector3 position, float facing, float reach = 0) {
         SkillMetadataRange range = attack.Range;
         SkillMetadataRange grown = range.Type == SkillRegion.HoleCylinder
             ? range with {
@@ -180,7 +181,7 @@ public static class SkillHitRules {
                 Height = range.Height + TargetMargin,
                 RangeAdd = range.RangeAdd + new Vector3(0, TargetMargin, TargetMargin),
             };
-        return grown.GetPrism(position, facing, range.ApplyTarget, attack.AttackMethodType != 1);
+        return grown.GetPrism(position, facing, range.ApplyTarget, attack.AttackMethodType != 1, reach);
     }
 
     // An arrow's step as the client sweeps it (FUN_141465b30): the collision box from the last point to the current
