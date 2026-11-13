@@ -273,6 +273,30 @@ public class PvpZoneFieldTests {
         Assert.That(arena.Ended, Is.EqualTo(new[] { 4 }));
     }
 
+    // MassiveEvent 8 (UIMassiveEvent::FUN_1419f6790): the mode, then the countdown's seconds (i32).
+    [Test]
+    public void PvpCountdownIsModeThenSeconds() {
+        Assert.That(Convert.ToHexString(Maple2.Server.Game.Packets.MassiveEventPacket.PvpCountdown(5).ToArray()), Is.EqualTo("6000" + "08" + Int(5)));
+    }
+
+    // A zone with a prepare time counts the fight's start down for it (MassiveEvent 8) to the whole field; none without
+    // one, and none for the Red Arena, whose face-offs have their own texts.
+    [TestCase(2, 5, 5)]
+    [TestCase(3, 5, 5)]
+    [TestCase(5, 5, 5)]
+    [TestCase(6, 5, 5)]
+    [TestCase(2, 0, 0)]
+    [TestCase(1, 5, 0)]
+    public void ZoneStart_CountsThePrepareTimeDown(int type, int prepare, int countdown) {
+        Assert.That(Maple2.Model.Game.Pvp.PvpZoneState.StartCountdownSeconds(type, prepare), Is.EqualTo(countdown));
+        Arena arena = Start(field => field.StartPvpZone(type, 101, prepare, 1, 0, type == 3 ? [1, 2, 101, 102, 103] : [], _ => field.Players.Values),
+            players: 4, arenaMatch: false);
+        foreach (TestGameSession test in arena.Tests) {
+            List<string> sent = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MassiveEvent).Select(Convert.ToHexString).ToList();
+            Assert.That(sent, Is.EqualTo(countdown > 0 ? new[] { "6000" + "08" + Int(countdown) } : Array.Empty<string>()));
+        }
+    }
+
     // The Red Arena: the prepare and start texts (MassiveEvent text of the PvP string kind 3, ids 10 and 11) and the two
     // fighters' points in mode 1; a fighter's death makes the other the winner (s_dualwin1); with no challenger left
     // the zone ends with the winner's s_dualwin9 and the arena row's winner item to the champion only.

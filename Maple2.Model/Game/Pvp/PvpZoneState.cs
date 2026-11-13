@@ -68,6 +68,11 @@ public sealed class PvpZoneState {
     // Chosen here: a death counts as a kill only for a player that hit the victim within this time.
     public const long KillCreditMs = 10_000;
 
+    // The fight's start countdown (MassiveEvent 8, the client's "s_pvp_start" step message counting down its seconds:
+    // UIMassiveEvent::FUN_1419f6790, uimassiveevent.cpp:301). Chosen here: it goes to the field when a zone with a
+    // prepare time is set, for its prepare seconds; the Red Arena (type 1) announces its face-offs with its own texts.
+    public static int StartCountdownSeconds(int type, int prepareSeconds) => type == 1 ? 0 : Math.Max(0, prepareSeconds);
+
     public PvpZoneState(int boxId, int mode, long tick, int prepareSeconds, int matchSeconds, int scoreKill, int scoreDead) {
         BoxId = boxId;
         Mode = mode;

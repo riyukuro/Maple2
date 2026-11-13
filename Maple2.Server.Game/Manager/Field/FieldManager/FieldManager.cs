@@ -13,6 +13,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Field;
+using Maple2.Model.Game.Pvp;
 using Maple2.Model.Game.Ugc;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
@@ -133,6 +134,9 @@ public partial class FieldManager : IField {
             return false;
         }
         PvpZone = zone;
+        if (PvpZoneState.StartCountdownSeconds(type, prepareSeconds) is int countdown and > 0) {
+            Broadcast(MassiveEventPacket.PvpCountdown(countdown));
+        }
         return true;
     }
 
