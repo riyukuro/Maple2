@@ -282,7 +282,7 @@ public sealed class NpcScriptManager {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_meso));
                 return;
             }
-            session.Currency.Meso -= JobCondition.Mesos;
+            session.Currency.ChangeMeso(-JobCondition.Mesos);
         }
 
         if (JobCondition.MoveMapId > 0) {
@@ -414,7 +414,7 @@ public sealed class NpcScriptManager {
         }
 
         if (scriptFunction.CollectMeso > 0) {
-            session.Currency.Meso -= scriptFunction.CollectMeso;
+            session.Currency.ChangeMeso(-scriptFunction.CollectMeso);
         }
 
         IList<Item> items = new List<Item>();
@@ -502,7 +502,7 @@ public sealed class NpcScriptManager {
             if (session.Currency.Meso < salary.Salary) {
                 return false;
             }
-            session.Currency.Meso -= salary.Salary;
+            session.Currency.ChangeMeso(-salary.Salary);
             return true;
         }
         if (session.Currency.Meret < salary.Salary) {

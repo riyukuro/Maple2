@@ -1018,7 +1018,7 @@ public class FieldPlayer : Actor<Player> {
         }
 
         if (metadata.Data.Consume.Meso > 0) {
-            Session.Currency.Meso -= metadata.Data.Consume.Meso;
+            Session.Currency.ChangeMeso(-metadata.Data.Consume.Meso);
         }
         PayCastStats(spiritCost, staminaCost);
         if (hpToConsume > 0) {

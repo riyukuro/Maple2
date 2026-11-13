@@ -328,7 +328,7 @@ public class TradeManager : IDisposable {
                 return;
             }
 
-            self.Session.Currency.Meso -= diff;
+            self.Session.Currency.ChangeMeso(-diff);
             self.Mesos = amount;
 
             OnTradeModified();
@@ -431,7 +431,7 @@ public class TradeManager : IDisposable {
     private void HandOver(Trader trader, GameSession giver, bool success) {
         lock (trader.Session.Item) {
             if (!success && trader.Mesos != 0) {
-                trader.Session.Currency.Meso += trader.Mesos;
+                trader.Session.Currency.ChangeMeso(trader.Mesos);
                 trader.Mesos = 0;
             }
             (Item Item, int Slot)[] items = trader.Items.Select(item => (item, (int) item.Slot)).ToArray();
@@ -459,7 +459,7 @@ public class TradeManager : IDisposable {
 
             long fee = success ? (long) (Constants.TradeFeePercent / 100f * trader.Mesos) : 0;
             if (trader.Mesos - fee != 0) {
-                trader.Session.Currency.Meso += trader.Mesos - fee;
+                trader.Session.Currency.ChangeMeso(trader.Mesos - fee);
             }
 
             // Clear just to be safe in case of multiple calls

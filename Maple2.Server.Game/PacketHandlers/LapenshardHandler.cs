@@ -188,7 +188,7 @@ public class LapenshardHandler : FieldPacketHandler {
                 throw new InvalidOperationException($"Failed to consume fodder: {uid} after validating");
             }
         }
-        session.Currency.Meso -= entry.Meso;
+        session.Currency.ChangeMeso(-entry.Meso);
         if (!session.Item.Inventory.Consume(ingredients)) {
             throw new InvalidOperationException("Failed to consume ingredients after validating");
         }

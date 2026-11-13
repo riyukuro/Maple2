@@ -240,7 +240,7 @@ public partial class TriggerContext {
     private void GiveDarkStreamReward(FieldPlayer player, DarkStreamGame.Reward reward) {
         player.Session.Exp.AddExp(reward.Exp);
         if (reward.Meso > 0) {
-            player.Session.Currency.Meso += reward.Meso;
+            player.Session.Currency.ChangeMeso(reward.Meso);
         }
         if (reward.Habi > 0) {
             player.Session.Currency[CurrencyType.HaviFruit] += reward.Habi;

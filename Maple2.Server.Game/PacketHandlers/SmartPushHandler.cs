@@ -152,7 +152,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
                 session.Currency.Meret -= packageMetadata.MeretCost;
                 break;
             case SmartPushCurrencyType.Meso:
-                session.Currency.Meso -= packageMetadata.MesoCost;
+                session.Currency.ChangeMeso(-packageMetadata.MesoCost);
                 break;
             case SmartPushCurrencyType.None:
                 break;

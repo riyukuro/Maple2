@@ -180,7 +180,7 @@ public class ItemBoxManager {
                 break;
             }
             if (!boxPaid) {
-                session.Currency.Meso -= mesoCost;
+                session.Currency.ChangeMeso(-mesoCost);
             }
 
             foreach (Item newItem in items) {

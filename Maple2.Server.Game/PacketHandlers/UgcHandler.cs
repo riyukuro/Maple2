@@ -132,7 +132,7 @@ public class UgcHandler : FieldPacketHandler {
         }
         switch (fee.Currency) {
             case MeretMarketCurrencyType.Meso:
-                session.Currency.Meso += fee.Amount;
+                session.Currency.ChangeMeso(fee.Amount);
                 break;
             case MeretMarketCurrencyType.Meret:
                 session.Currency.Meret += fee.Amount;
@@ -200,7 +200,7 @@ public class UgcHandler : FieldPacketHandler {
             case UgcUploadPayment.Result.Pay:
                 switch (ugcMetadata.CurrencyType) {
                     case MeretMarketCurrencyType.Meso:
-                        session.Currency.Meso -= price;
+                        session.Currency.ChangeMeso(-price);
                         break;
                     case MeretMarketCurrencyType.Meret:
                         session.Currency.Meret -= price;

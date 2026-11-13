@@ -255,7 +255,7 @@ public class GuildHandler : PacketHandler<GameSession> {
                 return;
             }
             session.Send(GuildPacket.Created(guildName));
-            session.Currency.Meso -= Constants.GuildCreatePrice;
+            session.Currency.ChangeMeso(-Constants.GuildCreatePrice);
 
             session.Guild.Load();
             GuildMember? founder = session.Guild.GetMember(session.CharacterId);
@@ -1227,7 +1227,7 @@ public class GuildHandler : PacketHandler<GameSession> {
         // Order: the meso is taken first, World adds and saves the fund, and only a refusal that World
         // itself answered gives the meso back. An RPC error leaves it taken, because World may have added
         // the fund before the call failed: the guild can not get fund without meso.
-        session.Currency.Meso -= cost;
+        session.Currency.ChangeMeso(-cost);
         try {
             GuildResponse response = World.Guild(new GuildRequest {
                 RequestorId = session.CharacterId,
@@ -1239,7 +1239,7 @@ public class GuildHandler : PacketHandler<GameSession> {
             });
             var error = (GuildError) response.Error;
             if (error != GuildError.none) {
-                session.Currency.Meso += cost;
+                session.Currency.ChangeMeso(cost);
                 session.Send(GuildPacket.Error(error));
                 return;
             }

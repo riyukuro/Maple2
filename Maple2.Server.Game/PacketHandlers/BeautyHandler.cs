@@ -605,7 +605,7 @@ public class BeautyHandler : FieldPacketHandler {
                     session.Send(BeautyPacket.Error(BeautyError.lack_currency));
                     return false;
                 }
-                session.Currency.Meso -= cost.Price;
+                session.Currency.ChangeMeso(-cost.Price);
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret: // TODO: EventMeret?

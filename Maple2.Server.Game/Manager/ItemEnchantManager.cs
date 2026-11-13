@@ -447,7 +447,7 @@ public class ItemEnchantManager {
                 return false;
             }
             if (fee > 0) {
-                session.Currency.Meso -= fee;
+                session.Currency.ChangeMeso(-fee);
             }
 
             foreach ((long fodderUid, _) in fodders) {
@@ -699,7 +699,7 @@ public class ItemEnchantManager {
             }
 
             if (meso > 0) {
-                session.Currency.Meso -= meso;
+                session.Currency.ChangeMeso(-meso);
             }
             List<IngredientInfo> materials = [.. catalysts];
             if (fragments > 0) {

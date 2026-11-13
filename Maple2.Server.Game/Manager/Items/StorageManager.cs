@@ -218,7 +218,7 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
-            session.Currency.Meso -= amount;
+            session.Currency.ChangeMeso(-amount);
             mesos += amount;
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
         }
@@ -240,7 +240,7 @@ public sealed class StorageManager : IDisposable {
 
             mesos -= amount;
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
-            session.Currency.Meso += amount;
+            session.Currency.ChangeMeso(amount);
         }
         StoreMesoMove(-amount);
     }

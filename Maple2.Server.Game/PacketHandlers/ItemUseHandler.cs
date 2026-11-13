@@ -1189,7 +1189,7 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         if (cost > 0) {
-            session.Currency.Meso -= cost;
+            session.Currency.ChangeMeso(-cost);
         }
         foreach (Item reward in rewards) {
             // Only a failed item write gets here (TakesAll checked the bag and furnishing storage); the map is

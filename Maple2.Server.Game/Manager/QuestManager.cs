@@ -750,7 +750,7 @@ public sealed class QuestManager {
         long meso = QuestMesoRules.Meso(reward.Meso, relativeMeso, session.ServerTableMetadata.ConstantsTable.QuestRewardMesoFactor(quest.Metadata.Basic.Type),
             quest.Metadata.Basic.Type == QuestType.GuildQuest ? guildFactor?.UserMeso : null);
         if (meso > 0) {
-            session.Currency.Meso += meso;
+            session.Currency.ChangeMeso(meso);
         }
 
         // The exp the reward line shows: the fixed exp or the relativeExp curve at the player's level, whichever is

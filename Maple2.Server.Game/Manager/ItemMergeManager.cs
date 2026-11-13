@@ -190,7 +190,7 @@ public sealed class ItemMergeManager {
             return;
         }
 
-        session.Currency.Meso += -(mergeSlot.MesoCost * multiplier);
+        session.Currency.ChangeMeso(-(mergeSlot.MesoCost * multiplier));
 
         MergeRoll roll = Roll(mergeSlot, Random.Shared);
 
@@ -275,7 +275,7 @@ public sealed class ItemMergeManager {
             return;
         }
 
-        session.Currency.Meso -= price;
+        session.Currency.ChangeMeso(-price);
         item.Stats.ClearMergeOption();
 
         session.Send(ItemMergePacket.Remove(item));

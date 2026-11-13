@@ -17,6 +17,9 @@ public class CurrencyManager {
     #endregion
 
     private Currency Currency => session.Player.Value.Currency;
+    // Meso is changed by the session's packet thread and by its field's thread (arcade, dark stream, mini game and
+    // trigger rewards): each change reads and writes the balance under this lock, so one cannot undo the other.
+    private readonly object mesoLock = new();
 
     public CurrencyManager(GameSession session) {
         this.session = session;
@@ -69,6 +72,7 @@ public class CurrencyManager {
     //     private set => Currency.EventMeret = value;
     // }
 
+    // A read and a set: a change of the balance goes through ChangeMeso, TryTakeMeso or AddMeso.
     public long Meso {
         get => Currency.Meso;
         set {
@@ -76,11 +80,63 @@ public class CurrencyManager {
                 throw new ArgumentException("Not enough Mesos");
             }
 
-            Currency.Meso = Math.Min(value, Constant.MaxMeso);
-            session.Send(CurrencyPacket.UpdateMeso(Currency));
+            lock (mesoLock) {
+                Currency.Meso = Math.Min(value, Constant.MaxMeso);
+                session.Send(CurrencyPacket.UpdateMeso(Currency));
+            }
             // meso_donation quests count the meso held (QuestManager.UpdateMeso).
             session.Quest?.UpdateMeso();
         }
+    }
+
+    // Adds delta to the balance (a negative delta takes), as `Meso += delta` did, but in one step. A take of more
+    // than is held throws, as the setter does, and changes nothing.
+    public void ChangeMeso(long delta) {
+        lock (mesoLock) {
+            long value = Currency.Meso + delta;
+            if (value < 0) {
+                throw new ArgumentException("Not enough Mesos");
+            }
+            Currency.Meso = Math.Min(value, Constant.MaxMeso);
+            session.Send(CurrencyPacket.UpdateMeso(Currency));
+        }
+        session.Quest?.UpdateMeso();
+    }
+
+    // Takes amount when at least that much is held, checked and taken in one step. With notify false nothing is sent
+    // (the caller sends the balance with NotifyMeso when the rest of its change is done, or gives it back).
+    public bool TryTakeMeso(long amount, bool notify = true) {
+        if (amount < 0) {
+            return false;
+        }
+        lock (mesoLock) {
+            if (Currency.Meso < amount) {
+                return false;
+            }
+            Currency.Meso -= amount;
+            if (notify) {
+                session.Send(CurrencyPacket.UpdateMeso(Currency));
+            }
+        }
+        if (notify) {
+            session.Quest?.UpdateMeso();
+        }
+        return true;
+    }
+
+    // Gives back a take made with TryTakeMeso(notify: false), without a packet.
+    public void ReturnMeso(long amount) {
+        lock (mesoLock) {
+            Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
+        }
+    }
+
+    // Sends the balance (after TryTakeMeso with notify false).
+    public void NotifyMeso() {
+        lock (mesoLock) {
+            session.Send(CurrencyPacket.UpdateMeso(Currency));
+        }
+        session.Quest?.UpdateMeso();
     }
 
     // A meso gain sent with the code of its kind (see CurrencyPacket.UpdateMeso).
@@ -88,8 +144,10 @@ public class CurrencyManager {
         if (amount <= 0) {
             return;
         }
-        Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
-        session.Send(CurrencyPacket.UpdateMeso(Currency, (int) code));
+        lock (mesoLock) {
+            Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
+            session.Send(CurrencyPacket.UpdateMeso(Currency, (int) code));
+        }
         session.Quest?.UpdateMeso();
     }
 

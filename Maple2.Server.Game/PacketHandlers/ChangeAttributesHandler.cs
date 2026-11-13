@@ -190,7 +190,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 return false;
             }
             if (meso > 0) {
-                session.Currency.Meso -= meso;
+                session.Currency.ChangeMeso(-meso);
             }
             if (!session.Item.Inventory.Consume(ingredients)) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));

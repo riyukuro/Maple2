@@ -159,7 +159,7 @@ public partial class FieldManager {
             }
             long exp = reward.ExpRate > 0 ? player.Session.Exp.AddExp(ExpType.arcade, reward.ExpRate) : 0;
             if (reward.Meso > 0) {
-                player.Session.Currency.Meso += reward.Meso;
+                player.Session.Currency.ChangeMeso(reward.Meso);
             }
             ArcadeBest? best;
             // Without an arcade season there is no best to keep (the lobby lists none).

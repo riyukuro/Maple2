@@ -132,7 +132,7 @@ public class MesoMarketHandler : FieldPacketHandler {
         }
 
         session.Player.Value.Account.MesoMarketListed++;
-        session.Currency.Meso -= amount;
+        session.Currency.ChangeMeso(-amount);
         session.Send(MesoMarketPacket.Create(listing, session.Player.Value.Account.MesoMarketListed));
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
     }
@@ -166,7 +166,7 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        session.Currency.Meso += listing.Amount;
+        session.Currency.ChangeMeso(listing.Amount);
         session.Send(MesoMarketPacket.Cancel(listingId));
     }
 

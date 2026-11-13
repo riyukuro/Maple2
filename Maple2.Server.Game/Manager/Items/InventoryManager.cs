@@ -398,7 +398,7 @@ public class InventoryManager {
     private void AddCurrency(Item add) {
         switch (add.Id) {
             case 90000001 or 90000002 or 90000003:
-                session.Currency.Meso += add.Amount;
+                session.Currency.ChangeMeso(add.Amount);
                 break;
             // case 90000011: // Meret (Secondary)
             // case 90000015: // GameMeret (Secondary)

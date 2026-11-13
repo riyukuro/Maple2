@@ -103,7 +103,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
                 }
             }
 
-            session.Currency.Meso -= fee;
+            session.Currency.ChangeMeso(-fee);
             if (!session.Item.Inventory.Add(rewardItem, true)) {
                 session.Item.MailItem(rewardItem);
             }

@@ -131,7 +131,7 @@ public class RevivalHandler : FieldPacketHandler {
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
             }
         } else {
-            session.Currency.Meso -= cost;
+            session.Currency.ChangeMeso(-cost);
         }
     }
 

@@ -101,7 +101,7 @@ public class MasteryHandler : FieldPacketHandler {
             return;
         }
 
-        session.Currency.Meso -= entry.RequiredMeso;
+        session.Currency.ChangeMeso(-entry.RequiredMeso);
 
         if (!entry.NoRewardExp) {
             // The gain the client's craft dialog shows: the recipe's mastery raised by the type's ability.

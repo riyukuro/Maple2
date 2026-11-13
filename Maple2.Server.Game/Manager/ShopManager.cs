@@ -596,12 +596,16 @@ public sealed class ShopManager {
                 return;
             }
 
-            if (session.Currency.CanAddMeso(-buyBackItem.Price) != -buyBackItem.Price) {
+            // The price is checked and taken in one step before the item is given; its packet is sent after the add.
+            // Before, a meso change made between the check and the take (on another thread, or while the add ran)
+            // made the take throw with the item given and no meso taken.
+            if (!session.Currency.TryTakeMeso(buyBackItem.Price, notify: false)) {
                 session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
                 return;
             }
 
             if (!buyBackItems.Remove(id)) {
+                session.Currency.ReturnMeso(buyBackItem.Price);
                 logger.Error("Failed to remove buyback item {Id}", id);
                 return;
             }
@@ -612,11 +616,12 @@ public sealed class ShopManager {
                 // again and no meso is taken. Before, the mesos were taken and the item, out of the list and not in the
                 // bag, was lost. Chosen here: the entry comes back with its id, listed as a sale lists it (Shop 7).
                 buyBackItems[id] = buyBackItem;
+                session.Currency.ReturnMeso(buyBackItem.Price);
                 session.Send(ShopPacket.LoadBuyBackItem(buyBackItem));
                 logger.Error("Buy back of item {Uid} not written for {CharacterId}", buyBackItem.Item.Uid, session.CharacterId);
                 return;
             }
-            session.Currency.Meso -= buyBackItem.Price;
+            session.Currency.NotifyMeso();
         }
         session.SavePurchase();
     }
@@ -661,7 +666,7 @@ public sealed class ShopManager {
         }
 
         if (buyBackItems.Count >= Constant.MaxBuyBackItems && !RemoveBuyBackItem()) {
-            session.Currency.Meso += sellPrice;
+            session.Currency.ChangeMeso(sellPrice);
             return;
         }
 
@@ -675,7 +680,7 @@ public sealed class ShopManager {
 
         // KMS2 order: the item leaves the bag, the buy-back entry is listed, then the mesos are paid.
         session.Send(ShopPacket.LoadBuyBackItem(buyBackItems[entryId]));
-        session.Currency.Meso += sellPrice;
+        session.Currency.ChangeMeso(sellPrice);
     }
 
     private bool Pay(ShopCost cost, int price) {
@@ -685,7 +690,7 @@ public sealed class ShopManager {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
                     return false;
                 }
-                session.Currency.Meso -= price;
+                session.Currency.ChangeMeso(-price);
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:

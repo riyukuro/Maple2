@@ -66,7 +66,7 @@ public partial class TriggerContext {
             record.Rewards[DungeonRewardType.Exp] += (int) totalExp;
 
             if (meso > 0.0f) {
-                player.Session.Currency.Meso += (long) meso;
+                player.Session.Currency.ChangeMeso((long) meso);
                 record.Rewards[DungeonRewardType.Meso] += (int) meso;
             }
             record.ClearedRounds++;

@@ -364,7 +364,7 @@ public class HousingManager {
                 if (session.Currency.Meso < cost) {
                     return false;
                 }
-                session.Currency.Meso -= cost;
+                session.Currency.ChangeMeso(-cost);
                 return true;
             case 90000004 or 90000011 or 90000015 or 90000016:
                 if (session.Currency.Meret < cost) {
@@ -381,7 +381,7 @@ public class HousingManager {
     private static void RefundCost(GameSession session, int itemId, int cost) {
         switch (itemId) {
             case >= 90000001 and <= 90000003:
-                session.Currency.Meso += cost;
+                session.Currency.ChangeMeso(cost);
                 return;
             case 90000004 or 90000011 or 90000015 or 90000016:
                 session.Currency.Meret += cost;
@@ -1203,7 +1203,7 @@ public class HousingManager {
                 }
 
                 if (mesoCost != 0) {
-                    session.Currency.Meso -= mesoCost;
+                    session.Currency.ChangeMeso(-mesoCost);
                 }
                 if (meratCost != 0) {
                     session.Currency.Meret -= meratCost;

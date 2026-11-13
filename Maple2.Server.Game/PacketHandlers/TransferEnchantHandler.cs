@@ -70,7 +70,7 @@ public class TransferEnchantHandler : FieldPacketHandler {
             if (!session.Item.Inventory.Consume(item.Uid)) {
                 return;
             }
-            session.Currency.Meso -= entry.NeedMeso;
+            session.Currency.ChangeMeso(-entry.NeedMeso);
 
             // Each output gets its row from the bag's add (the character's), or from the mail when the bag's write
             // fails. Before, each row was made first with no owner and a failed write threw after the input and the

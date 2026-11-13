@@ -252,7 +252,7 @@ public sealed class MarriageManager {
             return addError != WeddingError.none ? addError : WeddingError.s_wedding_result_not_find_weddinghall;
         }
         WeddingHall.GuestList = list;
-        session.Currency.Meso -= cost;
+        session.Currency.ChangeMeso(-cost);
 
         MailGuests(db, WeddingHall, guests, WeddingGuestMail.Invite);
 
@@ -636,7 +636,7 @@ public sealed class MarriageManager {
                 case DivorceRules.FunctionFile:
                     // The fee is taken first and saved in the transaction of the filing, so that no filed
                     // divorce is stored without its fee paid; a filing that is not stored gives it back.
-                    session.Currency.Meso -= fee;
+                    session.Currency.ChangeMeso(-fee);
                     stored = db.FileDivorce(marriageId, session.CharacterId, now.FromEpochSeconds(), session.Player);
                     if (!stored) {
                         session.Currency.Meso = DivorceRules.MesoAfterFiling(session.Currency.Meso, fee, stored);

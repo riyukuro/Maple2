@@ -1089,7 +1089,7 @@ public sealed partial class GameSession : Core.Network.Session {
         void Give() {
             if (meso > 0) {
                 if (message == ExpMessageCode.s_msg_take_exp) {
-                    Currency.Meso += meso;
+                    Currency.ChangeMeso(meso);
                 } else {
                     Currency.AddMeso(meso, message);
                 }

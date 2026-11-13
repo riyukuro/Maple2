@@ -226,7 +226,7 @@ public class PetHandler : FieldPacketHandler {
             }
 
             // KMS2 order: the meso, then the fodders.
-            session.Currency.Meso -= cost;
+            session.Currency.ChangeMeso(-cost);
             foreach ((Item fodder, PetFusionRules.FodderKind kind, int amount) in taken) {
                 if (!session.Item.Inventory.Consume(fodder.Uid, kind == PetFusionRules.FodderKind.Pet ? -1 : amount)) {
                     throw new InvalidOperationException($"Failed to consume fusion fodder: {fodder.Uid} after validating");
@@ -376,7 +376,7 @@ public class PetHandler : FieldPacketHandler {
             }
 
             // KMS2 order: the meso, then the fodders.
-            session.Currency.Meso -= cost;
+            session.Currency.ChangeMeso(-cost);
             foreach (Item fodder in fodders) {
                 if (!session.Item.Inventory.Consume(fodder.Uid)) {
                     throw new InvalidOperationException($"Failed to consume evolution fodder: {fodder.Uid} after validating");

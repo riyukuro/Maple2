@@ -43,7 +43,7 @@ public class HomeDoctorHandler : FieldPacketHandler {
         }
 
         session.Player.Value.Character.DoctorCooldown = time;
-        session.Currency.Meso -= cost;
+        session.Currency.ChangeMeso(-cost);
         session.Config.UpdateDeathPenalty(0);
         session.Send(HomeDoctor(time));
         session.ConditionUpdate(ConditionType.home_doctor);

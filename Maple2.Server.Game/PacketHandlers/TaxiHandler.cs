@@ -95,7 +95,7 @@ public class TaxiHandler : FieldPacketHandler {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
             return;
         }
-        session.Currency.Meso -= cost;
+        session.Currency.ChangeMeso(-cost);
 
         session.ConditionUpdate(ConditionType.taxiuse);
         session.ConditionUpdate(ConditionType.taxifee, counter: cost);
@@ -136,7 +136,7 @@ public class TaxiHandler : FieldPacketHandler {
                 return;
             }
 
-            session.Currency.Meso -= cost;
+            session.Currency.ChangeMeso(-cost);
         }
 
         session.Send(session.PrepareField(mapId)

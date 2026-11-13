@@ -33,7 +33,7 @@ public class ResolveDeathPenaltyHandler : FieldPacketHandler {
             return;
         }
 
-        session.Currency.Meso -= cost;
+        session.Currency.ChangeMeso(-cost);
         session.Config.UpdateDeathPenalty(0);
         session.ConditionUpdate(ConditionType.resolve_panelty);
     }

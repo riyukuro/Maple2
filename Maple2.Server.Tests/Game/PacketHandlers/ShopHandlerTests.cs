@@ -389,6 +389,68 @@ public class ShopHandlerTests {
         });
     }
 
+    // A meso spend that lands between the buy back's meso check and its take (here made from the entry's removal
+    // packet, as another change could come while the item is added): it finds the price already taken, so it fails,
+    // and the buy back takes the price once with the item given. Before, the spend went through and the take then
+    // threw: the entry was gone and the item given with no meso taken.
+    [Test]
+    public void BuyBack_SpendDuringTheAdd_PriceStillTaken() {
+        GameSession session = Login();
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        long mesos = session.Currency.Meso;
+        long price = mesos - 10000;
+        Assert.That(price, Is.GreaterThan(0));
+        bool? spent = null;
+        var queue = new HookQueue(packet => {
+            if (spent == null && TestGameSession.Op(packet) == SendOp.Shop) {
+                try {
+                    session.Currency.Meso = session.Currency.Meso - (mesos - price + 1);
+                    spent = true;
+                } catch (ArgumentException) {
+                    spent = false;
+                }
+            }
+        });
+        FieldInfo queueField = typeof(Maple2.Server.Core.Network.Session).GetField("sendQueue", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object old = queueField.GetValue(session)!;
+        queueField.SetValue(session, new BlockingCollection<(byte[] packet, int length)>(queue));
+        try {
+            Assert.DoesNotThrow(() => new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(3);
+                writer.WriteInt(entryId);
+            })));
+        } finally {
+            queueField.SetValue(session, old);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(spent, Is.False);
+            Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesos - price));
+        });
+    }
+
+    // A send queue that runs a hook on each packet as it is sent.
+    private sealed class HookQueue(Action<byte[]> hook) : IProducerConsumerCollection<(byte[] packet, int length)> {
+        private readonly ConcurrentQueue<(byte[] packet, int length)> queue = new();
+
+        public bool TryAdd((byte[] packet, int length) item) {
+            hook(item.packet);
+            queue.Enqueue(item);
+            return true;
+        }
+        public bool TryTake(out (byte[] packet, int length) item) => queue.TryDequeue(out item);
+        public int Count => queue.Count;
+        public bool IsSynchronized => false;
+        public object SyncRoot => this;
+        public void CopyTo((byte[] packet, int length)[] array, int index) => queue.CopyTo(array, index);
+        public void CopyTo(Array array, int index) => ((ICollection) queue).CopyTo(array, index);
+        public (byte[] packet, int length)[] ToArray() => queue.ToArray();
+        public IEnumerator<(byte[] packet, int length)> GetEnumerator() => queue.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     // A send queue that records each packet with whether the bag lock was held when it was sent.
     private sealed class CapturingQueue(Func<bool> locked) : IProducerConsumerCollection<(byte[] packet, int length)> {
         private readonly ConcurrentQueue<(byte[] packet, int length)> queue = new();

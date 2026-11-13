@@ -80,9 +80,9 @@ public sealed class BlackMarketManager {
         }
 
         // KMS2 order: Meso (the deposit), the item leaving the bag, then the listing.
-        session.Currency.Meso -= depositFee;
+        session.Currency.ChangeMeso(-depositFee);
         if (!session.Item.Inventory.Remove(itemUid, out item, quantity)) {
-            session.Currency.Meso += depositFee;
+            session.Currency.ChangeMeso(depositFee);
             return;
         }
 
@@ -242,7 +242,7 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        session.Currency.Meso -= cost;
+        session.Currency.ChangeMeso(-cost);
 
         // The world refreshes its search copy and tells the seller. The buy is done, so a failure here is logged.
         try {

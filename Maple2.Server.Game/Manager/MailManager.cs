@@ -231,7 +231,7 @@ public sealed class MailManager {
         }
 
         if (collectMeso) {
-            session.Currency.Meso += mail.Meso;
+            session.Currency.ChangeMeso(mail.Meso);
             session.Send(MailPacket.CollectMeso(mail.Id, now));
         }
         if (collectMeret) {

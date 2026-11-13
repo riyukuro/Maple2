@@ -217,7 +217,7 @@ public class AttendanceHandler : FieldPacketHandler {
                     session.Item.Inventory.Consume(couponUid, 1);
                     break;
                 case AttendanceRules.PayStep.Meso:
-                    session.Currency.Meso -= attendGift.Pay!.Price;
+                    session.Currency.ChangeMeso(-(attendGift.Pay!.Price));
                     break;
                 case AttendanceRules.PayStep.Meret:
                     session.Currency.Meret -= attendGift.Pay!.Price;

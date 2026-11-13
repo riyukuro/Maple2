@@ -444,7 +444,7 @@ public class PlayerCommand : GameCommand {
                 switch (currency.ToLower()) {
                     // Handling meso and meret separately because they are not in the CurrencyType enum.
                     case "meso":
-                        session.Currency.Meso += amount;
+                        session.Currency.ChangeMeso(amount);
                         break;
                     case "meret":
                         session.Currency.Meret += amount;

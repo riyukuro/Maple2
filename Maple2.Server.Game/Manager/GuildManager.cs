@@ -461,7 +461,7 @@ public class GuildManager : IDisposable {
             return error;
         }
 
-        session.Currency.Meso -= charge;
+        session.Currency.ChangeMeso(-charge);
         session.Player.Buffs.AddBuff(session.Player, session.Player, row!.Id, row.Level, field.FieldTick,
             durationMs: (int) Math.Min(row.Duration * 60000L, int.MaxValue));
         session.Send(GuildPacket.UsePersonalBuff(buffId));
