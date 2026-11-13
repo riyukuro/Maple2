@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -191,7 +192,7 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (!ConsumeGemstoneUpgradeIngredients(result.Value.entry)) {
+                if (!TakeGemstoneUpgradePrice(result.Value.entry, null)) {
                     return;
                 }
 
@@ -219,7 +220,7 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (!ConsumeGemstoneUpgradeIngredients(result.Value.entry)) {
+                if (!TakeGemstoneUpgradePrice(result.Value.entry, session.Item.Inventory.Get(gemUid, InventoryType.Gemstone))) {
                     return;
                 }
 
@@ -258,10 +259,12 @@ public class ItemSocketHandler : FieldPacketHandler {
             return ItemSocketRules.GemstoneUpgradeSucceeds(GemstoneUpgradeRate(session, entry), Random.Shared.Next(100));
         }
 
-        bool ConsumeGemstoneUpgradeIngredients(GemstoneUpgradeTable.Entry entry) {
-            IngredientInfo[] ingredients = entry.Ingredients.Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount)).ToArray();
-            if (!session.Item.Inventory.Consume(ingredients)) {
-                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient_count));
+        // The client's request (FUN_140f76970): each ingredient's count lowered by the sale, the owned count leaving
+        // out the gem itself, crystal fragments short paid in mesos, else s_itemsocketsystem_error_lack_price.
+        bool TakeGemstoneUpgradePrice(GemstoneUpgradeTable.Entry entry, Item? gem) {
+            SocketPrice? price = SocketPrice.Check(session, GemstoneUpgradeCosts(session, entry), gem);
+            if (price == null || !price.Take(session)) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_lack_price));
                 return false;
             }
 
@@ -287,6 +290,17 @@ public class ItemSocketHandler : FieldPacketHandler {
 
         // The page shows this rate (s_itemsocketsystem_success_prob); the upgrade rolls the same one.
         session.Send(ItemSocketPacket.StageUpgradeGemstone(itemUid, slot, gemUid, GemstoneUpgradeRate(session, entry)));
+    }
+
+    // The upgrade's sale (FUN_140627a20): the higher of the SaleGemStoneUpgrade game rule and the ReduceGemstoneUpgradeFee
+    // attribute (SA 172), none for a row whose equipPart mask has bit 8; each count is then lowered as an unlock's is
+    // (FUN_140627b80). Chosen here: the server keeps no SaleGemStoneUpgrade event data, so only the attribute applies.
+    private static IEnumerable<SocketCost> GemstoneUpgradeCosts(GameSession session, GemstoneUpgradeTable.Entry entry) {
+        int rate = (entry.EquipPart & 8) != 0 ? 0
+            : EventSaleRules.RemakeDiscount(0, session.Player.Stats.Values[SpecialAttribute.ReduceGemstoneUpgradeFee].Total);
+        float limit = session.ServerTableMetadata.ConstantsTable.IngredientFeeReduceLimit;
+        return entry.Ingredients.Select(ingredient =>
+            new SocketCost(ingredient.ItemTag, ingredient.ItemId, EventSaleRules.RemakeIngredientCount(ingredient.Amount, rate, limit)));
     }
 
     private static int GemstoneUpgradeRate(GameSession session, GemstoneUpgradeTable.Entry entry) {
@@ -593,41 +607,65 @@ public class ItemSocketHandler : FieldPacketHandler {
     // mesos cover them (FUN_140526320; RequestUnlock, FUN_140f76970, FUN_140f71530); any other tag must be held in
     // full. Checked first under lock(session.Item), so the items it takes stay held; the mesos are taken first (the
     // one step another thread can change) and given back once if a later step fails.
+    // One cost item: by its tag when it has one, else by its item id (GetOwnedItemCount).
+    private readonly record struct SocketCost(ItemTag Tag, int ItemId, int Amount) {
+        public SocketCost(IngredientInfo ingredient) : this(ingredient.Tag, 0, ingredient.Amount) { }
+
+        public bool Matches(Item item) => Tag != ItemTag.None ? item.Metadata.Property.Tag == Tag : ItemId != 0 && item.Id == ItemId;
+    }
+
     private sealed class SocketPrice {
         public const long MesosPerChip = 1000;
 
-        private readonly IngredientInfo[] items;
+        private readonly (long Uid, int Amount)[] picks;
         public long Mesos { get; }
 
-        private SocketPrice(IngredientInfo[] items, long mesos) {
-            this.items = items;
+        private SocketPrice((long, int)[] picks, long mesos) {
+            this.picks = picks;
             Mesos = mesos;
         }
 
         public static SocketPrice? Check(GameSession session, IEnumerable<IngredientInfo> price) {
-            var items = new List<IngredientInfo>();
+            return Check(session, price.Select(ingredient => new SocketCost(ingredient)), null);
+        }
+
+        // The stacks each cost is taken from, picked now and taken under the same lock. The excluded item (the gem
+        // being upgraded) counts one less, as the client counts it (CItem::vfunc_4 with SetExcluded). Only crystal
+        // fragments (FUN_140526320, string tag 0x60) may be short, paid at 1000 mesos each.
+        public static SocketPrice? Check(GameSession session, IEnumerable<SocketCost> price, Item? excluded) {
+            var picks = new List<(long, int)>();
+            var used = new Dictionary<long, int>();
             long mesos = 0;
-            foreach (IngredientInfo ingredient in price) {
-                if (ingredient.Amount <= 0) {
+            foreach (SocketCost cost in price) {
+                if (cost.Amount <= 0) {
                     continue;
                 }
-                long held = session.Item.Inventory.Find(ingredient.Tag).Sum(item => (long) item.Amount);
-                if (held >= ingredient.Amount) {
-                    items.Add(ingredient);
+                int remaining = cost.Amount;
+                foreach (Item item in session.Item.Inventory.Filter(item => !item.IsExpired() && cost.Matches(item))) {
+                    int free = item.Amount - used.GetValueOrDefault(item.Uid) - (excluded != null && item.Uid == excluded.Uid ? 1 : 0);
+                    int take = Math.Min(free, remaining);
+                    if (take <= 0) {
+                        continue;
+                    }
+                    used[item.Uid] = used.GetValueOrDefault(item.Uid) + take;
+                    picks.Add((item.Uid, take));
+                    remaining -= take;
+                    if (remaining == 0) {
+                        break;
+                    }
+                }
+                if (remaining == 0) {
                     continue;
                 }
-                if (ingredient.Tag != ItemTag.CrystalPiece) {
+                if (cost.Tag != ItemTag.CrystalPiece) {
                     return null;
                 }
-                mesos += (ingredient.Amount - held) * MesosPerChip;
-                if (held > 0) {
-                    items.Add(new IngredientInfo(ingredient.Tag, (int) held));
-                }
+                mesos += remaining * MesosPerChip;
             }
             if (session.Currency.Meso < mesos) {
                 return null;
             }
-            return new SocketPrice(items.ToArray(), mesos);
+            return new SocketPrice(picks.ToArray(), mesos);
         }
 
         public bool TakeMesos(GameSession session) {
@@ -638,9 +676,15 @@ public class ItemSocketHandler : FieldPacketHandler {
             session.Currency.ReturnMeso(Mesos);
         }
 
-        // The items checked, still held under the same lock.
+        // The stacks checked, still held under the same lock.
         public bool TakeItems(GameSession session) {
-            return items.Length == 0 || session.Item.Inventory.Consume(items);
+            foreach ((long uid, int amount) in picks) {
+                if (!session.Item.Inventory.Consume(uid, amount)) {
+                    Serilog.Log.Fatal("Failed to consume socket price item {ItemUid} x{Amount}", uid, amount);
+                    return false;
+                }
+            }
+            return true;
         }
 
         // Mesos, then items; the mesos come back when the items cannot be taken.
