@@ -29,12 +29,14 @@ public sealed class UgcFeeBook {
         return fee;
     }
 
-    // Mode 3 for the upload: true when it is the paid, pending one. Nothing is given back after it.
-    public bool Finish(long characterId, long ugcUid) {
+    // Mode 3 for the upload: its fee when it is the paid, pending one, else null. Nothing is given back after it
+    // here; the caller gives the fee back itself when the confirmation makes nothing.
+    public UgcPendingFee? Finish(long characterId, long ugcUid) {
         if (pending == null || pending.CharacterId != characterId || pending.UgcUid != ugcUid) {
-            return false;
+            return null;
         }
+        UgcPendingFee fee = pending;
         pending = null;
-        return true;
+        return fee;
     }
 }

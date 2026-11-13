@@ -37,7 +37,7 @@ public class UgcFeeBookTests {
         var book = new UgcFeeBook();
         book.Paid(Fee(7, 100));
         Assert.That(book.TakeBack(8), Is.Null);
-        Assert.That(book.Finish(8, 100), Is.False);
+        Assert.That(book.Finish(8, 100), Is.Null);
         Assert.That(book.TakeBack(7), Is.Not.Null);
     }
 
@@ -45,9 +45,9 @@ public class UgcFeeBookTests {
     public void FinishedIsNotRefunded() {
         var book = new UgcFeeBook();
         book.Paid(Fee(7, 100));
-        Assert.That(book.Finish(7, 101), Is.False);
-        Assert.That(book.Finish(7, 100), Is.True);
-        Assert.That(book.Finish(7, 100), Is.False);
+        Assert.That(book.Finish(7, 101), Is.Null);
+        Assert.That(book.Finish(7, 100), Is.Not.Null);
+        Assert.That(book.Finish(7, 100), Is.Null);
         Assert.That(book.TakeBack(7), Is.Null);
     }
 
@@ -69,7 +69,7 @@ public class UgcFeeBookTests {
         meret += book.TakeBack(7)?.Amount ?? 0; // mode 1 again
         meret -= 300;
         book.Paid(Fee(7, 101));
-        Assert.That(book.Finish(7, 101), Is.True); // mode 3
+        Assert.That(book.Finish(7, 101), Is.Not.Null); // mode 3
         meret += book.TakeBack(7)?.Amount ?? 0; // a late mode 0
 
         Assert.That(meret, Is.EqualTo(700));

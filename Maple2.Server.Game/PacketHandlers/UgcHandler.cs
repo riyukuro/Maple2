@@ -455,7 +455,8 @@ public class UgcHandler : FieldPacketHandler {
 
         // True for the upload that mode 1 charged; after it a mode 0 gives nothing back. A mode 3
         // whose kind is not the resource's finishes nothing, so its fee can still be given back.
-        bool paidUpload = resource.Type == info.Type && session.UgcFees.Finish(session.CharacterId, ugcUid);
+        UgcPendingFee? paidFee = resource.Type == info.Type ? session.UgcFees.Finish(session.CharacterId, ugcUid) : null;
+        bool paidUpload = paidFee != null;
 
         switch (info.Type) {
             case UgcType.Item or UgcType.Furniture or UgcType.Mount:
@@ -592,11 +593,20 @@ public class UgcHandler : FieldPacketHandler {
             // Dont create the item if it's a furniture since it's tied to account id
             if (info.Type is UgcType.Furniture) {
                 uid = session.Item.Furnishing.AddCube(item);
+                if (uid == 0) {
+                    // Furnishing storage did not take it (no free slot, or its write failed): the fee goes back.
+                    Logger.Error("Failed to add UGC furnishing {ItemId} for {CharacterId}; its fee is given back", item.Id, session.CharacterId);
+                    GiveBack(session, paidFee);
+                    return;
+                }
             } else {
                 using GameStorage.Request db = session.GameStorage.Context();
                 Item? newAdd = db.CreateItem(session.CharacterId, item);
                 if (newAdd == null) {
-                    Logger.Error("Failed to create UGC item {ItemId}", item.Id);
+                    // The fee was taken at the upload and the upload is finished: it goes back, as for a failed upload
+                    // (Ugc 0). Before, it was lost. Chosen here: no answer is sent, as before.
+                    Logger.Error("Failed to create UGC item {ItemId} for {CharacterId}; its fee is given back", item.Id, session.CharacterId);
+                    GiveBack(session, paidFee);
                     return;
                 }
 

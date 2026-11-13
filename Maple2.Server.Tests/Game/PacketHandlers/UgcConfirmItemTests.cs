@@ -93,6 +93,48 @@ public class UgcConfirmItemTests {
         });
     }
 
+    // The design's row cannot be written at the confirmation: the fee taken at the upload goes back, once (a later
+    // Ugc 0 gives nothing more), and no row is left. Before, the fee was lost.
+    [Test]
+    public void FailedItemWrite_GivesTheFeeBack() {
+        test = new TestGameSession();
+        test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
+            [Design] = new(1, MeretMarketCurrencyType.Meso, 390, 0, 0),
+        }));
+        test.Register(TestGameSession.Metadata(Design, EquipSlot.CL));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Town));
+        session.Currency.Meso = 5000;
+        var handler = new UgcHandler {
+            WebStorage = new WebStorage(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options,
+                NullLogger<WebStorage>.Instance),
+            ItemMetadata = session.ItemMetadata,
+            TableMetadata = test.TableMetadata,
+            World = null!,
+        };
+        handler.Handle(session, Packet(session, 1, 0));
+        StoredItem staged = session.StagedUgcItem!;
+        long paid = session.Currency.Meso;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "Item");
+        try {
+            handler.Handle(session, Packet(session, 3, staged.Template!.Id));
+        } finally {
+            test.FailSave = null;
+        }
+        long afterConfirm = session.Currency.Meso;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(0)));
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.EqualTo(5000 - 390));
+            Assert.That(afterConfirm, Is.EqualTo(5000));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(context.Item.Count(row => row.ItemId == Design), Is.Zero);
+            Assert.That(session.Item.Inventory.Find(Design), Is.Empty);
+        });
+    }
+
     private sealed class ErrorLines(List<string> errors) : Serilog.Core.ILogEventSink {
         public void Emit(Serilog.Events.LogEvent logEvent) {
             if (logEvent.Level >= Serilog.Events.LogEventLevel.Error) {
