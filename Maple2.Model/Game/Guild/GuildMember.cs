@@ -19,6 +19,9 @@ public class GuildMember : IByteSerializable, IDisposable {
     public int WeeklyContribution;
     public int TotalContribution;
     public int DailyDonationCount;
+    // CGuildMemberRaid (guilddef_1.cpp:724): the member's value per guild raid, by the raid's dungeon room id
+    // (table/guildraid.xml). The raid page shows each value and their sum (UIGuildDialog, uiguilddialog.cpp:2108/2718).
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> Raids = new();
 
     public long AccountId => Info.AccountId;
     public long CharacterId => Info.CharacterId;
@@ -43,11 +46,13 @@ public class GuildMember : IByteSerializable, IDisposable {
         writer.WriteInt(TotalContribution);
         writer.WriteInt(DailyDonationCount);
         writer.WriteLong(DonationTime);
-        writer.WriteInt();
-        // for (int i = 0; i < count; i++) {
-        //     writer.WriteInt();
-        //     writer.WriteInt();
-        // }
+        // CGuildMemberRaid::Write (guilddef_1.cpp:783): the count, then (raid id, value) pairs.
+        KeyValuePair<int, int>[] raids = Raids.ToArray();
+        writer.WriteInt(raids.Length);
+        foreach ((int raidId, int value) in raids) {
+            writer.WriteInt(raidId);
+            writer.WriteInt(value);
+        }
         writer.WriteBool(!Info.Online);
     }
 

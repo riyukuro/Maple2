@@ -203,6 +203,12 @@ message GuildRequest {
   message Rename {
     string name = 1;
   }
+  // Guild 37: a member's new value of a guild raid.
+  message MemberRaid {
+    string name = 1;
+    int32 raid_id = 2;
+    int32 value = 3;
+  }
 
   int64 guild_id = 1;
   repeated int64 receiver_ids = 2;
@@ -231,6 +237,7 @@ message GuildRequest {
     Recall recall = 24;
     TrophyNotice trophy_notice = 25;
     Rename rename = 26;
+    MemberRaid member_raid = 27;
   }
 }
 

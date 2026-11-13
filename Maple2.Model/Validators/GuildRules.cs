@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -511,6 +511,29 @@ public static class GuildRules {
                 }
                 member.WeeklyContribution = 0;
             }
+        }
+        return reset;
+    }
+
+    // A guild raid clear (Guild 37 tells the guild the member's new value, OnPacketMemberRaidCount,
+    // guildmanager.cpp:2120). Chosen here: a clear adds the raid's clearRaidPoint (table/guildraid.xml) to the
+    // member's value. The client never reads clearRaidPoint and shows the value as is (a raid is complete above 0)
+    // and the sums as the raid score, so it could also be a clear count. Returns the member's new value.
+    public static int AddRaidClear(GuildMember member, int raidId, int clearRaidPoint) {
+        int point = Math.Max(clearRaidPoint, 0);
+        return member.Raids.AddOrUpdate(raidId, point, (_, value) => (int) Math.Min((long) value + point, int.MaxValue));
+    }
+
+    // The reset of the guild raid records (Guild 62 clears every member's, guildmanager.cpp:2637). Chosen here:
+    // at the server's weekly reset; the raid rooms' own cooldown is weekly too (dayOfWeeks). Returns the members
+    // that had any.
+    public static int ResetRaids(IEnumerable<GuildMember> members) {
+        int reset = 0;
+        foreach (GuildMember member in members) {
+            if (!member.Raids.IsEmpty) {
+                reset++;
+            }
+            member.Raids.Clear();
         }
         return reset;
     }

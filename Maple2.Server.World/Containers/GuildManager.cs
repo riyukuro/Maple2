@@ -42,6 +42,7 @@ public class GuildManager : IDisposable {
     // guild keeps the 0.
     public void WeeklyReset() {
         GuildRules.ResetWeeklyContribution(Guild.Members.Values);
+        GuildRules.ResetRaids(Guild.Members.Values);
     }
 
     public bool HasPermission(long characterId, GuildPermission permission) {
@@ -900,6 +901,33 @@ public class GuildManager : IDisposable {
                 TrophyId = trophyId,
                 Grade = grade,
                 LastGrade = lastGrade,
+            },
+        });
+
+        return GuildError.none;
+    }
+
+    // Guild 37: a member cleared a guild raid room (table/guildraid.xml); the member's value of the raid grows by
+    // the raid's points (GuildRules.AddRaidClear) and every member is told the new value.
+    public GuildError RaidClear(long requestorId, int dungeonRoomId) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+        if (TableMetadata.GuildTable.Raids?.TryGetValue(dungeonRoomId, out GuildTable.Raid? raid) != true || raid == null) {
+            return GuildError.s_guild_err_unknown;
+        }
+
+        int value = GuildRules.AddRaidClear(requestor, raid.DungeonRoomId, raid.ClearRaidPoint);
+        // Stored now, as a check-in: a failed save keeps the value here for the next save.
+        lock (guildLock) {
+            TrySave();
+        }
+
+        Broadcast(new GuildRequest {
+            MemberRaid = new GuildRequest.Types.MemberRaid {
+                Name = requestor.Name,
+                RaidId = raid.DungeonRoomId,
+                Value = value,
             },
         });
 

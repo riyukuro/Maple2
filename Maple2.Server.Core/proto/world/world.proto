@@ -154,6 +154,8 @@ message GuildInfo {
     int32 weekly_contribution = 8;
     int32 total_contribution = 9;
     int32 daily_donation_count = 10;
+    // The member's guild raid values by raid (dungeon room id), CGuildMemberRaid.
+    map<int32, int32> raids = 11;
   }
   message Rank {
     string name = 1;
@@ -353,6 +355,11 @@ message GuildRequest {
     int64 guild_id = 1;
     string name = 2;
   }
+  // A member cleared a guild raid room; the guild's members are told the member's new value (Guild 37).
+  message RaidClear {
+    int64 guild_id = 1;
+    int32 dungeon_room_id = 2;
+  }
 
   int64 requestor_id = 4;
   oneof guild {
@@ -386,6 +393,7 @@ message GuildRequest {
     SpendFund spend_fund = 30;
     TrophyNotice trophy_notice = 31;
     Rename rename = 32;
+    RaidClear raid_clear = 33;
   }
 }
 

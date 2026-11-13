@@ -68,7 +68,8 @@ public partial class GameStorage {
                 }
                 Context.SaveChanges();
 
-                Context.Database.ExecuteSqlRaw("UPDATE `guild-member` SET `WeeklyContribution` = 0");
+                // The guild raid records go with the weekly contribution (GuildRules.ResetRaids; Chosen here).
+                Context.Database.ExecuteSqlRaw("UPDATE `guild-member` SET `WeeklyContribution` = 0, `Raids` = NULL");
                 // The rank duel's weekly valor tokens (the dialog's gauge against weeklyRewardMax).
                 Context.Database.ExecuteSqlRaw("UPDATE `rank-duel-record` SET `WeeklyReward` = 0");
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `PrestigeRewardsClaimed` = DEFAULT");

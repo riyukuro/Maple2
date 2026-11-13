@@ -44,7 +44,8 @@ public static class GuildPacket {
         UpdateName = 34,
         Achievement = 35,
         CheckInTime = 36,
-        // 37, 38, 39, 40, 41, 42, 43, 44
+        MemberRaid = 37,
+        // 38, 39, 40, 41, 42, 43, 44
         ReceiveApplication = 45,
         WithdrawApplication = 46,
         NotifyApplication = 47,
@@ -436,6 +437,18 @@ public static class GuildPacket {
         return pWriter;
     }
 
+    // Guild 37 (OnPacketMemberRaidCount, guildmanager.cpp:2120): the member's name, the guild raid (its dungeon
+    // room id) and the member's new value of it.
+    public static ByteWriter MemberRaid(string playerName, int raidId, int value) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.MemberRaid);
+        pWriter.WriteUnicodeString(playerName);
+        pWriter.WriteInt(raidId);
+        pWriter.WriteInt(value);
+
+        return pWriter;
+    }
+
     public static ByteWriter CheckInTime(string playerName, long time) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.CheckInTime);
@@ -505,7 +518,8 @@ public static class GuildPacket {
     // s_guild_gain_contribution
     // - You have acquired {0} contributions.
     // Guild 61 has no body: the client sets every member's weekly contribution to 0 and then, as Guild 62, clears
-    // the members' guild raid records (the server keeps none).
+    // the members' guild raid records (the dispatcher's case 0x3d runs on into 0x3e, guildmanager.cpp:367), so this
+    // one packet is also the raid reset.
     public static ByteWriter WeeklyContributionReset() {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.WriteByte((byte) Command.WeeklyContributionReset);

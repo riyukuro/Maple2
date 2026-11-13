@@ -95,6 +95,9 @@ public class GuildManager : IDisposable {
                 TotalContribution = member.TotalContribution,
                 DailyDonationCount = member.DailyDonationCount,
             };
+            foreach ((int raidId, int value) in member.Raids) {
+                result.Raids[raidId] = value;
+            }
             return result;
         }).WhereNotNull().ToArray();
 
@@ -253,14 +256,47 @@ public class GuildManager : IDisposable {
         return true;
     }
 
-    // The weekly reset: this copy's members go to 0 and the client is told with Guild 61.
+    // The weekly reset: this copy's members go to 0 and lose their guild raid records, and the client is told with
+    // Guild 61 (which clears the client's raid records too).
     public void WeeklyReset() {
         if (Guild == null) {
             return;
         }
 
         GuildRules.ResetWeeklyContribution(Guild.Members.Values);
+        GuildRules.ResetRaids(Guild.Members.Values);
         session.Send(GuildPacket.WeeklyContributionReset());
+    }
+
+    // Guild 37: a member's new value of a guild raid, from World.
+    public bool UpdateMemberRaid(string name, int raidId, int value) {
+        GuildMember? member = GetMember(name);
+        if (member == null) {
+            return false;
+        }
+
+        member.Raids[raidId] = value;
+        session.Send(GuildPacket.MemberRaid(member.Name, raidId, value));
+        return true;
+    }
+
+    // A guild raid clear of this player goes to World, which keeps the member's value and tells the guild.
+    public void RaidClear(int dungeonRoomId) {
+        if (Guild == null || session.TableMetadata.GuildTable.Raids?.ContainsKey(dungeonRoomId) != true) {
+            return;
+        }
+
+        try {
+            session.World.Guild(new GuildRequest {
+                RequestorId = session.CharacterId,
+                RaidClear = new GuildRequest.Types.RaidClear {
+                    GuildId = Guild.Id,
+                    DungeonRoomId = dungeonRoomId,
+                },
+            });
+        } catch (Exception ex) {
+            logger.Warning(ex, "Guild raid clear failed: {DungeonRoomId}", dungeonRoomId);
+        }
     }
 
     public bool UpdateMemberContribution(long characterId, long checkInTime, int contribution) {

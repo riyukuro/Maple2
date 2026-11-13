@@ -936,6 +936,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<string>("Raids")
+                        .HasColumnType("json");
+
                     b.Property<byte>("Rank")
                         .HasColumnType("tinyint unsigned");
 

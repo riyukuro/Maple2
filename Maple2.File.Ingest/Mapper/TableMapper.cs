@@ -1346,6 +1346,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
             file.Name.Equals("table/guildquestrewardfactor.xml", StringComparison.OrdinalIgnoreCase));
         Dictionary<short, GuildTable.QuestRewardFactor> questRewardFactors =
             factorEntry == null ? [] : GuildQuestRewardFactors(xmlReader.GetXmlDocument(factorEntry));
+        Maple2.File.IO.Crypto.Common.PackFileEntry? raidEntry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/guildraid.xml", StringComparison.OrdinalIgnoreCase));
+        Dictionary<int, GuildTable.Raid> raids = raidEntry == null ? [] : GuildRaids(xmlReader.GetXmlDocument(raidEntry));
 
         return new GuildTable(
             Buffs: guildBuffs,
@@ -1353,7 +1356,33 @@ public class TableMapper : TypeMapper<TableMetadata> {
             Npcs: guildNpcs,
             Properties: guildProperties,
             Events: guildEvents,
-            QuestRewardFactors: questRewardFactors);
+            QuestRewardFactors: questRewardFactors,
+            Raids: raids);
+    }
+
+    // The parser has no guildraid.xml; its rows are read here as CGuildXmlData::GuildRaid reads them
+    // (guilddef_2.cpp:433): one guildRaid row per dungeon room, of the enabled features and locale.
+    public static Dictionary<int, GuildTable.Raid> GuildRaids(XmlDocument document) {
+        var results = new Dictionary<int, GuildTable.Raid>();
+        foreach (XmlElement node in document.SelectNodes("ms2/guildRaid")?.OfType<XmlElement>() ?? []) {
+            if (!FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"))) {
+                continue;
+            }
+            if (!int.TryParse(node.GetAttribute("dungeonRoomID"), out int roomId) || roomId <= 0) {
+                continue;
+            }
+            int.TryParse(node.GetAttribute("clearRaidPoint"), out int point);
+            results[roomId] = new GuildTable.Raid(
+                DungeonRoomId: roomId,
+                ClearRaidPoint: point,
+                ClearGuildFund: Factor(node, "clearGuildFund"),
+                ClearGuildExp: Factor(node, "clearGuildExp"));
+        }
+        return results;
+
+        static float Factor(XmlElement node, string name) {
+            return float.TryParse(node.GetAttribute(name), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ? value : 1f;
+        }
     }
 
     // The parser has no guildquestrewardfactor.xml; its rows are read here as CGuildXmlData::LoadGuildQuestRewardFactor

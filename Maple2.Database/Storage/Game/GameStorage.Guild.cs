@@ -55,7 +55,10 @@ public partial class GameStorage {
                 .AsEnumerable()
                 .Select(member => {
                     PlayerInfo? info = provider.GetPlayerInfo(member.CharacterId);
-                    return info == null ? null : new GuildMember {
+                    if (info == null) {
+                        return null;
+                    }
+                    var result = new GuildMember {
                         GuildId = member.GuildId,
                         Info = info,
                         Message = member.Message,
@@ -67,6 +70,10 @@ public partial class GameStorage {
                         CheckinTime = member.CheckinTime.ToEpochSeconds(),
                         DonationTime = member.DonationTime.ToEpochSeconds(),
                     };
+                    foreach ((int raidId, int value) in member.Raids ?? new Dictionary<int, int>()) {
+                        result.Raids[raidId] = value;
+                    }
+                    return result;
                 })
                 .WhereNotNull()
                 .ToList();

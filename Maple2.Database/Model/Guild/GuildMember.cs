@@ -16,6 +16,8 @@ internal class GuildMember {
     public int WeeklyContribution { get; set; }
     public int TotalContribution { get; set; }
     public int DailyDonationCount { get; set; }
+    // The member's guild raid values by dungeon room id; null when none.
+    public IDictionary<int, int>? Raids { get; set; }
 
     public Character? Character { get; set; }
 
@@ -33,6 +35,7 @@ internal class GuildMember {
             WeeklyContribution = other.WeeklyContribution,
             TotalContribution = other.TotalContribution,
             DailyDonationCount = other.DailyDonationCount,
+            Raids = other.Raids.IsEmpty ? null : new Dictionary<int, int>(other.Raids),
             CheckinTime = other.CheckinTime.FromEpochSeconds(),
             DonationTime = other.DonationTime.FromEpochSeconds(),
         };
@@ -46,6 +49,7 @@ internal class GuildMember {
         builder.HasOne<Guild>()
             .WithMany(guild => guild.Members)
             .HasForeignKey(member => member.GuildId);
+        builder.Property(member => member.Raids).HasJsonConversion();
 
         IMutableProperty creationTime = builder.Property(member => member.CreationTime)
             .ValueGeneratedOnAdd().Metadata;

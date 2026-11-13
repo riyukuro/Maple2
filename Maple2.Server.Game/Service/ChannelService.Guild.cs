@@ -58,6 +58,8 @@ public partial class ChannelService {
                 return Task.FromResult(UpgradeGuildBuff(request.ReceiverIds, request.UpgradeBuff));
             case GuildRequest.GuildOneofCase.TrophyNotice:
                 return Task.FromResult(GuildTrophyNotice(request.ReceiverIds, request.TrophyNotice));
+            case GuildRequest.GuildOneofCase.MemberRaid:
+                return Task.FromResult(GuildMemberRaid(request.ReceiverIds, request.MemberRaid));
             case GuildRequest.GuildOneofCase.ApplicationResult:
                 return Task.FromResult(GuildApplicationResult(request.GuildId, request.ReceiverIds, request.ApplicationResult));
             default:
@@ -272,6 +274,18 @@ public partial class ChannelService {
             }
 
             session.Send(GuildPacket.Achievement(notice.Name, notice.TrophyId, notice.Grade, notice.LastGrade));
+        }
+
+        return new GuildResponse();
+    }
+
+    private GuildResponse GuildMemberRaid(IEnumerable<long> receiverIds, GuildRequest.Types.MemberRaid raid) {
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session)) {
+                continue;
+            }
+
+            session.Guild.UpdateMemberRaid(raid.Name, raid.RaidId, raid.Value);
         }
 
         return new GuildResponse();
