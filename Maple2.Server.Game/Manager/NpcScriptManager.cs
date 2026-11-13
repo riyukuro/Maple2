@@ -82,6 +82,7 @@ public sealed class NpcScriptManager {
 
         session.Send(NpcTalkPacket.Respond(Npc, TalkType, dialogue));
         Npc.Talk();
+        TalkReached();
         ProcessScriptFunction();
 
         return true;
@@ -155,6 +156,18 @@ public sealed class NpcScriptManager {
 
         State = scriptState;
         Button = GetButton();
+        TalkReached();
+    }
+
+    // talk_in with a target: the target is the npc script the talk reaches (every KR row's target is a <script> id of
+    // the npc in its code; 22200019 "Deliver item 30000181 to npc 11000327" is target 41, the script whose function
+    // collects the item). Counted when the talk enters one of the npc's own script states; the talk's start counts
+    // with target 0 (NpcTalkHandler.BeginTalk) for the rows without a target.
+    private void TalkReached() {
+        if (Npc == null || State == null || State.Type != ScriptStateType.Script || metadata?.Type != ScriptType.Npc) {
+            return;
+        }
+        session.ConditionUpdate(ConditionType.talk_in, targetLong: State.Id, codeLong: Npc.Value.Id);
     }
 
     public bool Continue(int pick) {
@@ -188,6 +201,9 @@ public sealed class NpcScriptManager {
         Button = GetButton();
 
         var dialogue = new NpcDialogue(State.Id, Index, Button);
+        if (Index == 0) {
+            TalkReached();
+        }
         ProcessScriptFunction();
         session.Send(NpcTalkPacket.Continue(TalkType, dialogue, questId));
         return true;

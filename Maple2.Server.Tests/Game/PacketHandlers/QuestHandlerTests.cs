@@ -615,6 +615,46 @@ public class QuestHandlerTests {
         });
     }
 
+    // talk_in's target is the npc script the talk reaches (22200019: target 41, the script whose function collects
+    // the item): the talk opens script 40 and its distractor goes to 41. A row with the matching script counts when
+    // the talk enters it, one with another script (30) does not, and a row without a target counts the talk once.
+    [Test]
+    public void Talk_CountsTheNpcScriptTheTalkReaches() {
+        const int talker = Npc + 1;
+        GameSession session = Login();
+        var ask = new CinematicContent("", NpcTalkButton.None, 0, [new CinematicDistractor([41], [])], []);
+        var deliver = new CinematicContent("", NpcTalkButton.None, 1, [], []);
+        test.Register(new ScriptMetadata(talker, ScriptType.Npc, new Dictionary<int, ScriptState> {
+            [40] = new(40, ScriptStateType.Script, true, null, [ask]),
+            [41] = new(41, ScriptStateType.Script, false, null, [deliver]),
+        }));
+        ConditionMetadata TalkIn(int[]? target) => new(ConditionType.talk_in, 1, new ConditionMetadata.Parameters(Integers: [talker]),
+            target == null ? null : new ConditionMetadata.Parameters(Integers: target));
+        Quest quest = test.StartQuest(Data() with { Conditions = [TalkIn([41]), TalkIn([40]), TalkIn([30]), TalkIn(null)] });
+        test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
+        test.SetServerTable(new ScriptFunctionTable(new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>()));
+
+        NpcTalkHandler.BeginTalk(session, TalkNpc(talker));
+        Assert.That(Enumerable.Range(0, 4).Select(i => quest.Conditions[i].Counter), Is.EqualTo(new long[] { 0, 1, 0, 1 }));
+
+        Assert.That(session.NpcScript!.Continue(0), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(session.NpcScript.State?.Id, Is.EqualTo(41));
+            Assert.That(Enumerable.Range(0, 4).Select(i => quest.Conditions[i].Counter), Is.EqualTo(new long[] { 1, 1, 0, 1 }));
+        });
+    }
+
+    // A field npc of the given id with no movement state to play the talk on.
+    private static FieldNpc TalkNpc(int id) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 0, false, 0, 0, 0, 0, [], [], 0);
+        var metadata = new NpcMetadata(id, "npc", "", null!, null!, basic, null!, null!, null!, null!, null!, null!, null, null!);
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(FieldNpc).GetField(nameof(FieldNpc.SpawnAnimation), any)!.SetValue(npc, "spawn");
+        return npc;
+    }
+
     private static ScriptState State(int id) => new(id, ScriptStateType.Quest, false, null, []);
 
     // The talk of the quest's script at an npc: the progress talk (200) at the complete npc while a condition is

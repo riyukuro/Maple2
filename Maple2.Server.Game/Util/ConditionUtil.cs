@@ -18,7 +18,14 @@ public static class ConditionUtil {
             }
         }
         bool code = condition.Codes == null || condition.Codes.CheckCode(session, condition.Type, codeString, codeLong);
-        bool target = condition.Target == null || condition.Target.CheckTarget(session, condition.Type, targetString, targetLong);
+        bool target;
+        if (condition.Type == ConditionType.talk_in && condition.Target?.Integers == null && condition.Target?.Range == null) {
+            // talk_in without a script target (none, or target=""): the talk's start (target 0) counts, not each npc
+            // script the talk reaches.
+            target = targetLong == 0;
+        } else {
+            target = condition.Target == null || condition.Target.CheckTarget(session, condition.Type, targetString, targetLong);
+        }
         return target && code;
     }
 
@@ -296,6 +303,12 @@ public static class ConditionUtil {
 
     internal static bool CheckTarget(this ConditionMetadata.Parameters target, GameSession session, ConditionType conditionType, string stringValue = "", long longValue = 0) {
         switch (conditionType) {
+            case ConditionType.talk_in: // target: the npc script the talk reaches (NpcScriptManager.TalkReached)
+                if ((target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) ||
+                    (target.Integers != null && target.Integers.Contains((int) longValue))) {
+                    return true;
+                }
+                break;
             case ConditionType.stay_cube:
                 if (target.Strings != null && target.Strings.Contains(stringValue)) {
                     return true;
@@ -523,7 +536,6 @@ public static class ConditionUtil {
             case ConditionType.quest_clear:
             case ConditionType.buff:
             case ConditionType.dialogue:
-            case ConditionType.talk_in:
             case ConditionType.change_profile:
             case ConditionType.buddy_request:
             case ConditionType.job:
