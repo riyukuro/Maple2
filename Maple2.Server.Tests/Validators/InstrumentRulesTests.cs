@@ -88,4 +88,12 @@ public class InstrumentRulesTests {
     public void ExpTicks_AreNeverNegative(long played, float expected) {
         Assert.That(InstrumentRules.ExpTicks(played), Is.EqualTo(expected));
     }
+
+    [TestCase(0L, 1000L, true)]       // no expiry
+    [TestCase(2000L, 1999L, true)]    // still in time
+    [TestCase(2000L, 2000L, false)]   // the expiry second itself, as Item.IsExpired
+    [TestCase(2000L, 5000L, false)]
+    public void IsPlayable_RefusesAnExpiredInstrument(long expiryTime, long now, bool expected) {
+        Assert.That(InstrumentRules.IsPlayable(expiryTime, now), Is.EqualTo(expected));
+    }
 }

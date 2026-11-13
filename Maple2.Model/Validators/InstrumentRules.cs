@@ -16,6 +16,11 @@ public static class InstrumentRules {
     // The client's score writer refuses a score that plays for less than two seconds.
     public const int MinScoreLengthMs = 2000;
 
+    // The client plays no expired instrument: its play, improvise and ensemble requests check the item first
+    // (CItem::FUN_140528980, the s_play_instrument_invalid_instrument box). Four KR instruments expire (34000003,
+    // 34000038 and 34000051 among them), and an expired one stays in the bag until a sort takes it out.
+    public static bool IsPlayable(long expiryTime, long now) => expiryTime <= 0 || now < expiryTime;
+
     // The time a played score counts for: from the start to the stop, and no longer than the score itself
     // (a written score's length, a ready-made score's playTime; 0 when the score gives none).
     public static long PlayedMs(long elapsedMs, int scoreLengthMs) {
