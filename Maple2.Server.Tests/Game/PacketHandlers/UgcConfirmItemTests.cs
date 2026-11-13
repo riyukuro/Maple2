@@ -3,6 +3,7 @@ using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.PacketHandlers;
@@ -19,16 +20,17 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class UgcConfirmItemTests {
     private const int Design = 11300902;
     private const int Town = 90000100;
+    private const int Furniture = 50400013;
     private TestGameSession test = null!;
 
     // Ugc 1 or 3: the mode, the upload head (kind 1, an item, this character, the upload's uid), then for Ugc 1 the
     // item's part.
-    private ByteReader Packet(GameSession session, byte mode, long ugcUid) => TestGameSession.Packet(writer => {
+    private ByteReader Packet(GameSession session, byte mode, long ugcUid, UgcType type = UgcType.Item, int itemId = Design) => TestGameSession.Packet(writer => {
         writer.WriteByte(mode);
         if (mode == 1) {
             writer.WriteLong(0);
         }
-        writer.WriteByte(1);
+        writer.WriteByte((byte) type);
         writer.WriteShort(0);
         writer.WriteInt(0);
         writer.WriteLong(session.AccountId);
@@ -42,7 +44,7 @@ public class UgcConfirmItemTests {
         writer.WriteUnicodeString("");
         if (mode == 1) {
             writer.WriteLong(0);
-            writer.WriteInt(Design);
+            writer.WriteInt(itemId);
             writer.WriteInt(1);
             writer.WriteUnicodeString("shirt");
             writer.WriteByte(0);
@@ -132,6 +134,81 @@ public class UgcConfirmItemTests {
             Assert.That(session.Currency.Meso, Is.EqualTo(5000));
             Assert.That(context.Item.Count(row => row.ItemId == Design), Is.Zero);
             Assert.That(session.Item.Inventory.Find(Design), Is.Empty);
+        });
+    }
+
+    private UgcHandler Handler(GameSession session) => new() {
+        WebStorage = new WebStorage(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options,
+            NullLogger<WebStorage>.Instance),
+        ItemMetadata = session.ItemMetadata,
+        TableMetadata = test.TableMetadata,
+        World = null!,
+    };
+
+    // The paid upload's confirmation finds no staged design of it (here the staged item went, as when a later
+    // upload replaced it): the fee goes back, once. Before, Finish took the fee and the confirmation returned.
+    [Test]
+    public void NoStagedDesign_GivesTheFeeBack() {
+        test = new TestGameSession();
+        test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
+            [Design] = new(1, MeretMarketCurrencyType.Meso, 390, 0, 0),
+        }));
+        test.Register(TestGameSession.Metadata(Design, EquipSlot.CL));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Town));
+        session.Currency.Meso = 5000;
+        UgcHandler handler = Handler(session);
+        handler.Handle(session, Packet(session, 1, 0));
+        long ugcUid = session.StagedUgcItem!.Template!.Id;
+        long paid = session.Currency.Meso;
+        session.StagedUgcItem = null;
+        handler.Handle(session, Packet(session, 3, ugcUid));
+        long afterConfirm = session.Currency.Meso;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(0)));
+
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.EqualTo(5000 - 390));
+            Assert.That(afterConfirm, Is.EqualTo(5000));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    // A furniture design that the furnishing storage does not take (its write fails): the fee goes back and no row
+    // is left.
+    [Test]
+    public void FurnishingNotTaken_GivesTheFeeBack() {
+        test = new TestGameSession();
+        test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
+            [Furniture] = new(1, MeretMarketCurrencyType.Meso, 390, 0, 0),
+        }));
+        test.Register(TestGameSession.Metadata(Furniture, slotMax: 100) with {
+            Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false),
+            Install = new ItemMetadataInstall(true, 0, 0, false, MapAttribute.none),
+        });
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Town));
+        session.Currency.Meso = 5000;
+        UgcHandler handler = Handler(session);
+        handler.Handle(session, Packet(session, 1, 0, UgcType.Furniture, Furniture));
+        long ugcUid = session.StagedUgcItem!.Template!.Id;
+        long paid = session.Currency.Meso;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "Item");
+        try {
+            handler.Handle(session, Packet(session, 3, ugcUid, UgcType.Furniture));
+        } finally {
+            test.FailSave = null;
+        }
+        long afterConfirm = session.Currency.Meso;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(0)));
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.EqualTo(5000 - 390));
+            Assert.That(afterConfirm, Is.EqualTo(5000));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(context.Item.Count(row => row.ItemId == Furniture), Is.Zero);
+            Assert.That(session.Item.Furnishing.GetItem(Furniture), Is.Null);
         });
     }
 

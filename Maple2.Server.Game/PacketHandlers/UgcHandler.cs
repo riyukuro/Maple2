@@ -562,7 +562,9 @@ public class UgcHandler : FieldPacketHandler {
             session.StagedBanner = null;
             List<BannerSlot> staged = banner?.SlotsSnapshot().Where(slot => slot.Template?.Id == ugcUid && slot.Template.CharacterId == session.CharacterId).ToList() ?? [];
             if (banner is null || staged.Count == 0) {
-                Logger.Warning("Failed to find banner for UGC {UgcUid}", ugcUid);
+                // The fee was finished above and no banner shows the picture: it goes back. Before, it was lost.
+                Logger.Warning("Failed to find banner for UGC {UgcUid}; its fee is given back", ugcUid);
+                GiveBack(session, paidFee);
                 return;
             }
 
@@ -583,7 +585,14 @@ public class UgcHandler : FieldPacketHandler {
 
         void ConfirmItem() {
             Item? item = session.StagedUgcItem;
-            if (item?.Template == null || item.Template.Id != ugcUid || !paidUpload || !TableMetadata.UgcDesignTable.Entries.TryGetValue(item.Id, out UgcDesignTable.Entry? ugcMetadata)) {
+            if (!paidUpload) {
+                return;
+            }
+            // The fee of this upload is finished already: with no staged item of it (another upload's, or none) or
+            // no design entry, nothing is made and the fee goes back. Before, it was lost.
+            if (item?.Template == null || item.Template.Id != ugcUid || !TableMetadata.UgcDesignTable.Entries.TryGetValue(item.Id, out UgcDesignTable.Entry? ugcMetadata)) {
+                Logger.Warning("UGC confirmation {UgcUid} of {CharacterId} has no staged design; its fee is given back", ugcUid, session.CharacterId);
+                GiveBack(session, paidFee);
                 return;
             }
 
