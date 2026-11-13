@@ -52,69 +52,169 @@ public partial class GameStorage {
             return plotCubes;
         }
 
+        // Buys an outdoor plot that has no owner and is past its expiry. On a relational DB the claim is one
+        // conditional update (owner 0, expired) in a transaction with the deletes of the old cubes and their maids,
+        // so a second buyer of the same plot (another channel) updates no row and gets null. Null on any failure,
+        // also on a database error; nothing is written then (the caller refunds the cost).
         public PlotInfo? BuyPlot(string characterName, long ownerId, PlotInfo plot, TimeSpan days) {
-            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            try {
+                using IDbContextTransaction? transaction = Context.Database.IsRelational()
+                    ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
+                    : null;
+                UgcMap? ugcMap = Context.UgcMap.AsNoTracking().FirstOrDefault(map => map.Id == plot.Id && !map.Indoor);
+                if (ugcMap == null) {
+                    return null;
+                }
 
-            UgcMap? ugcMap = Context.UgcMap.FirstOrDefault(map => map.Id == plot.Id && !map.Indoor);
-            if (ugcMap == null) {
+                Debug.Assert(ugcMap.MapId == plot.MapId && ugcMap.Number == plot.Number && ugcMap.ApartmentNumber == plot.ApartmentNumber);
+                DateTimeOffset now = DateTimeOffset.Now;
+                if (ugcMap.OwnerId != 0 || ugcMap.ExpiryTime >= now) {
+                    return null;
+                }
+
+                long id = ugcMap.Id;
+                DateTimeOffset expiry = DateTimeOffset.UtcNow + days;
+                ugcMap.OwnerId = ownerId;
+                ugcMap.ExpiryTime = expiry;
+                ugcMap.Name = characterName;
+                // Made before anything is written: a plot without metadata is refused with nothing changed.
+                PlotInfo? result = ToPlotInfo(ugcMap);
+                if (result == null) {
+                    return null;
+                }
+                if (transaction != null) {
+                    int claimed = Context.UgcMap
+                        .Where(map => map.Id == id && !map.Indoor && map.OwnerId == 0 && map.ExpiryTime < now)
+                        .ExecuteUpdate(update => update
+                            .SetProperty(map => map.OwnerId, ownerId)
+                            .SetProperty(map => map.ExpiryTime, expiry)
+                            .SetProperty(map => map.Name, characterName));
+                    if (claimed != 1) {
+                        return null; // bought (or changed) meanwhile
+                    }
+                    DeletePlotCubes(id);
+                    transaction.Commit();
+                } else {
+                    Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+                    UgcMap model = Context.UgcMap.Single(map => map.Id == id);
+                    model.OwnerId = ownerId;
+                    model.ExpiryTime = expiry;
+                    model.Name = characterName;
+                    DeletePlotCubes(id);
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
+                }
+
+                return result;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to buy plot {PlotId}", plot.Id);
                 return null;
             }
-
-            Debug.Assert(ugcMap.MapId == plot.MapId && ugcMap.Number == plot.Number && ugcMap.ApartmentNumber == plot.ApartmentNumber);
-            if (ugcMap.OwnerId != 0 || ugcMap.ExpiryTime >= DateTime.Now) {
-                return null;
-            }
-
-            ugcMap.OwnerId = ownerId;
-            ugcMap.ExpiryTime = DateTime.UtcNow + days;
-            ugcMap.Name = characterName;
-            Context.UgcMap.Update(ugcMap);
-            DeletePlotMaids(ugcMap.Id);
-            Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMap.Id).Delete();
-
-            return Context.TrySaveChanges() ? ToPlotInfo(ugcMap) : null;
         }
 
+        // Extends a plot of plot.OwnerId that has not expired. On a relational DB it is one conditional update on the
+        // owner and expiry that were read, so an extend that raced another change of the plot (another extend, a
+        // forfeit, a new buyer) updates no row and gets null. Null on any failure; nothing is written then.
         public PlotInfo? ExtendPlot(PlotInfo plot, TimeSpan days) {
-            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            try {
+                UgcMap? model = Context.UgcMap.AsNoTracking().FirstOrDefault(map => map.Id == plot.Id);
+                if (model == null || model.OwnerId != plot.OwnerId) {
+                    return null;
+                }
 
-            UgcMap? model = Context.UgcMap.Find(plot.Id);
-            if (model == null) {
+                Debug.Assert(model.MapId == plot.MapId && model.Number == plot.Number && model.ApartmentNumber == plot.ApartmentNumber);
+                if (model.ExpiryTime < DateTimeOffset.Now) {
+                    return null;
+                }
+
+                long id = model.Id;
+                long ownerId = model.OwnerId;
+                DateTimeOffset expiry = model.ExpiryTime;
+                DateTimeOffset extended = expiry + days;
+                model.ExpiryTime = extended;
+                PlotInfo? result = ToPlotInfo(model);
+                if (result == null) {
+                    return null;
+                }
+                if (Context.Database.IsRelational()) {
+                    int updated = Context.UgcMap
+                        .Where(map => map.Id == id && map.OwnerId == ownerId && map.ExpiryTime == expiry)
+                        .ExecuteUpdate(update => update.SetProperty(map => map.ExpiryTime, extended));
+                    if (updated != 1) {
+                        return null;
+                    }
+                } else {
+                    Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+                    Context.UgcMap.Single(map => map.Id == id).ExpiryTime = extended;
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
+                }
+
+                return result;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to extend plot {PlotId}", plot.Id);
                 return null;
             }
-
-            Debug.Assert(model.MapId == plot.MapId && model.Number == plot.Number && model.ApartmentNumber == plot.ApartmentNumber);
-            if (model.ExpiryTime < DateTime.Now) {
-                return null;
-            }
-
-            model.ExpiryTime += days;
-            Context.UgcMap.Update(model);
-
-            return Context.TrySaveChanges() ? ToPlotInfo(model) : null;
         }
 
+        // Gives up a plot of ownerId that has not expired, with its cubes and their maids, in one transaction on a
+        // relational DB (a conditional update on the owner and expiry read). Null on any failure; nothing is written then.
         public PlotInfo? ForfeitPlot(long ownerId, PlotInfo plot) {
-            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            try {
+                using IDbContextTransaction? transaction = Context.Database.IsRelational()
+                    ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
+                    : null;
+                UgcMap? model = Context.UgcMap.AsNoTracking().FirstOrDefault(map => map.Id == plot.Id);
+                if (model == null || model.OwnerId != ownerId) {
+                    return null;
+                }
 
-            UgcMap? model = Context.UgcMap.Find(plot.Id);
-            if (model == null || model.OwnerId != ownerId) {
+                Debug.Assert(model.MapId == plot.MapId && model.Number == plot.Number && model.ApartmentNumber == plot.ApartmentNumber);
+                if (model.ExpiryTime < DateTimeOffset.Now) {
+                    return null;
+                }
+
+                long id = model.Id;
+                DateTimeOffset expiry = model.ExpiryTime;
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                model.OwnerId = 0;
+                model.Name = string.Empty;
+                model.ExpiryTime = now;
+                PlotInfo? result = ToPlotInfo(model);
+                if (result == null) {
+                    return null;
+                }
+                if (transaction != null) {
+                    int updated = Context.UgcMap
+                        .Where(map => map.Id == id && map.OwnerId == ownerId && map.ExpiryTime == expiry)
+                        .ExecuteUpdate(update => update
+                            .SetProperty(map => map.OwnerId, 0L)
+                            .SetProperty(map => map.Name, string.Empty)
+                            .SetProperty(map => map.ExpiryTime, now));
+                    if (updated != 1) {
+                        return null;
+                    }
+                    DeletePlotCubes(id);
+                    transaction.Commit();
+                } else {
+                    Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+                    UgcMap tracked = Context.UgcMap.Single(map => map.Id == id);
+                    tracked.OwnerId = 0;
+                    tracked.Name = string.Empty;
+                    tracked.ExpiryTime = now;
+                    DeletePlotCubes(id);
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
+                }
+
+                return result;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to forfeit plot {PlotId}", plot.Id);
                 return null;
             }
-
-            Debug.Assert(model.MapId == plot.MapId && model.Number == plot.Number && model.ApartmentNumber == plot.ApartmentNumber);
-            if (model.ExpiryTime < DateTime.Now) {
-                return null;
-            }
-
-            model.OwnerId = 0;
-            model.Name = string.Empty;
-            model.ExpiryTime = DateTimeOffset.UtcNow;
-            DeletePlotMaids(model.Id);
-            Context.UgcMapCube.Where(cube => cube.UgcMapId == model.Id).Delete();
-            Context.UgcMap.Update(model);
-
-            return Context.TrySaveChanges() ? ToPlotInfo(model) : null;
         }
 
         public PlotInfo? GetSoonestPlotFromExpire(TimeSpan ugcHomeSaleWaitingTime) {
@@ -416,12 +516,21 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        // The maids of a plot's cubes, before the cubes are deleted without going back to storage.
-        private void DeletePlotMaids(long ugcMapId) {
-            List<long> cubeIds = Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).Select(cube => cube.Id).ToList();
-            if (cubeIds.Count > 0) {
-                Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).Delete();
+        // Deletes a plot's cubes and their maids (the cubes do not go back to storage). On a relational DB the rows
+        // go at once, in the caller's transaction; otherwise they are removed with the caller's next save.
+        private void DeletePlotCubes(long ugcMapId) {
+            if (Context.Database.IsRelational()) {
+                List<long> cubeIds = Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).Select(cube => cube.Id).ToList();
+                if (cubeIds.Count > 0) {
+                    Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).ExecuteDelete();
+                }
+                Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).ExecuteDelete();
+                return;
             }
+            List<UgcMapCube> cubes = Context.UgcMapCube.Where(cube => cube.UgcMapId == ugcMapId).ToList();
+            List<long> ids = cubes.Select(cube => cube.Id).ToList();
+            Context.Maid.RemoveRange(Context.Maid.Where(maid => ids.Contains(maid.Id)).ToList());
+            Context.UgcMapCube.RemoveRange(cubes);
         }
 
         // The maids of an account's homes (the owner list of UserMaid).

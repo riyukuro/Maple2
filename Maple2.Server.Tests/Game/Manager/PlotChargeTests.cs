@@ -13,9 +13,8 @@ namespace Maple2.Server.Tests.Game.Manager;
 
 // Buying and extending an outdoor plot take the contract or extension cost before the plot row is saved and give it
 // back when the save fails: a buy whose row is gone or taken costs nothing and leaves the home's outdoor plot as it
-// was, and an extension whose save fails costs nothing. Each case runs with a meso and a meret cost. A buy that
-// succeeds is not run here: GameStorage.BuyPlot deletes the old cubes with a batch delete, which the in-memory store
-// has not. The map, plot and costs are made up.
+// was, and an extension whose save fails costs nothing. Each case runs with a meso and a meret cost. The map, plot
+// and costs are made up.
 public class PlotChargeTests {
     private const int MapId = 2000901, PlotNumber = 7, Mesos = 90000001, Merets = 90000004;
 
@@ -74,6 +73,18 @@ public class PlotChargeTests {
         Assert.That(session.Player.Value.Home.Outdoor, Is.Null);
     }
 
+    // A buy that is saved takes the cost once.
+    [TestCase(Mesos)]
+    [TestCase(Merets)]
+    public void BuyPlot_Saved_ChargesOnce(int currency) {
+        (GameSession session, _) = Start(currency, expiry: DateTimeOffset.UtcNow.AddDays(-1));
+
+        Assert.That(session.Housing.BuyPlot(PlotNumber), Is.True);
+        Assert.That(Money(session, currency), Is.EqualTo(4000));
+        Assert.That(Money(session, currency == Mesos ? Merets : Mesos), Is.EqualTo(5000));
+        Assert.That(session.Player.Value.Home.Outdoor?.OwnerId, Is.EqualTo(session.AccountId));
+    }
+
     [TestCase(Mesos)]
     [TestCase(Merets)]
     public void BuyPlot_NoRow_RefundsTheCost(int currency) {
@@ -91,7 +102,12 @@ public class PlotChargeTests {
     [TestCase(Merets)]
     public void ExtendPlot_RefundsTheCost_WhenTheSaveFails(int currency) {
         DateTimeOffset expiry = DateTimeOffset.UtcNow.AddDays(10);
-        (GameSession session, Plot plot) = Start(currency, rowOwner: 4242, expiry: expiry);
+        (GameSession session, Plot plot) = Start(currency, expiry: expiry);
+        // The row is the player's: an extension is saved only for the owner the row has.
+        using (var context = new Ms2Context(test.Options)) {
+            context.UgcMap.Single(row => row.Id == plot.Id).OwnerId = session.AccountId;
+            context.SaveChanges();
+        }
         plot.OwnerId = session.AccountId;
         plot.ExpiryTime = expiry.ToUnixTimeSeconds();
         session.Housing.SetPlot(plot);
