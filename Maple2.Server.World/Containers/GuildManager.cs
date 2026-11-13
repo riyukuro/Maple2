@@ -178,6 +178,14 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_unknown;
         }
 
+        // An online member gets Guild 9 from the broadcast; an offline one is told at its next login (Guild 76).
+        if (!member.Info.Online) {
+            var notice = new GuildExpelNotice(requestor.Name, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            if (!db.CreateGuildExpelNotice(member.CharacterId, notice)) {
+                Serilog.Log.Warning("Failed to keep guild expel notice for {CharacterId}", member.CharacterId);
+            }
+        }
+
         Broadcast(new GuildRequest {
             RemoveMember = new GuildRequest.Types.RemoveMember {
                 CharacterId = member.CharacterId,

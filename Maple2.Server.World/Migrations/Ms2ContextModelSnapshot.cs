@@ -888,6 +888,29 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("guild-application", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.GuildExpelNotice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Time")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("guild-expel-notice", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.GuildMember", b =>
                 {
                     b.Property<long>("GuildId")
@@ -2288,6 +2311,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Guild", null)
                         .WithMany()
                         .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.GuildExpelNotice", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

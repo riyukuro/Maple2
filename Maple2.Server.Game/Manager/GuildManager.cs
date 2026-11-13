@@ -64,6 +64,15 @@ public class GuildManager : IDisposable {
         session.Send(GuildPacket.Load(Guild));
     }
 
+    // The expels the world kept while the player was offline; sent at login with or without a guild, then deleted.
+    public void LoadExpelNotices() {
+        using Maple2.Database.Storage.GameStorage.Request db = session.GameStorage.Context();
+        IList<GuildExpelNotice> notices = db.TakeGuildExpelNotices(session.CharacterId);
+        if (notices.Count > 0) {
+            session.Send(GuildPacket.ExpelledOffline(notices));
+        }
+    }
+
     public bool SetGuild(GuildInfo info, bool addTag = true) {
         if (Guild != null) {
             return false;

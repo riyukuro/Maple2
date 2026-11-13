@@ -180,6 +180,32 @@ public partial class GameStorage {
             return SaveChanges() && count > 0;
         }
 
+        public bool CreateGuildExpelNotice(long ownerId, GuildExpelNotice notice) {
+            Context.GuildExpelNotice.Add(new Model.GuildExpelNotice {
+                OwnerId = ownerId,
+                Name = notice.Name,
+                Time = notice.Time,
+            });
+            return Context.TrySaveChanges();
+        }
+
+        // The character's kept guild expels in the order they were kept; they are deleted as they are read.
+        public IList<GuildExpelNotice> TakeGuildExpelNotices(long ownerId) {
+            List<Model.GuildExpelNotice> rows = Context.GuildExpelNotice
+                .Where(notice => notice.OwnerId == ownerId)
+                .OrderBy(notice => notice.Id)
+                .ToList();
+            if (rows.Count == 0) {
+                return Array.Empty<GuildExpelNotice>();
+            }
+
+            Context.GuildExpelNotice.RemoveRange(rows);
+            if (!Context.TrySaveChanges()) {
+                return Array.Empty<GuildExpelNotice>();
+            }
+            return rows.Select(row => new GuildExpelNotice(row.Name, row.Time)).ToList();
+        }
+
         // The guild a character is a member of, 0 for none.
         public long GetGuildId(long characterId) {
             return Context.GuildMember.Where(member => member.CharacterId == characterId)

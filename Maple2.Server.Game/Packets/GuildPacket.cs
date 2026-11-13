@@ -68,6 +68,7 @@ public static class GuildPacket {
         SendMail = 71,
         PvpHistory = 74,
         PvpSeason = 75,
+        ExpelledOffline = 76,
         AddTag = 77,
         RemoveTag = 78,
         Error = 79,
@@ -180,6 +181,21 @@ public static class GuildPacket {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.NotifyExpel);
         pWriter.WriteUnicodeString(playerName);
+
+        return pWriter;
+    }
+
+    // Guild 76 at login, for the expels that came while the player was offline. The client shows
+    // s_guild_notify_expeled_from ({0} has kicked you out of the guild.) for each entry whose reason is "expeled".
+    public static ByteWriter ExpelledOffline(IList<GuildExpelNotice> notices) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.ExpelledOffline);
+        pWriter.WriteInt(notices.Count);
+        foreach (GuildExpelNotice notice in notices) {
+            pWriter.WriteUnicodeString(notice.Name);
+            pWriter.WriteUnicodeString("expeled");
+            pWriter.WriteLong(notice.Time);
+        }
 
         return pWriter;
     }

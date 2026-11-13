@@ -405,6 +405,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // MeretMarket
         // PCBangBonus
         Guild.Load();
+        Guild.LoadExpelNotices();
         foreach ((int id, GroupChatManager groupChat) in GroupChats) {
             groupChat.Load();
         }
