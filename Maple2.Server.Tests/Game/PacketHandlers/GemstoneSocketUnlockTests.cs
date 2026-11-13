@@ -151,6 +151,39 @@ public class GemstoneSocketUnlockTests {
         });
     }
 
+    // A locked copy, or one still unlocking, is refused before anything is taken.
+    [TestCase(true, 0L)]
+    [TestCase(false, 1L)]
+    public void LockedMaterial_IsRefused(bool locked, long unlockIn) {
+        GameSession session = Start(chipCount: 200, mesos: 0);
+        materials[0].IsLocked = locked;
+        materials[0].UnlockTime = unlockIn == 0 ? 0 : DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+
+        Unlock(session, materials[0].Uid, materials[1].Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
+            Assert.That(Chips(session), Is.EqualTo(200));
+            Assert.That(MaterialsLeft(session), Is.EqualTo(2));
+            Assert.That(Sent(), Is.EqualTo(new[] { Error(s_itemsocketsystem_error_invalid_target_ingredient) }));
+        });
+    }
+
+    // An expired copy is refused before anything is taken: its consume would fail after the price.
+    [Test]
+    public void ExpiredMaterial_IsRefused() {
+        GameSession session = Start(chipCount: 200, mesos: 0);
+        materials[0].ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+
+        Unlock(session, materials[0].Uid, materials[1].Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
+            Assert.That(Chips(session), Is.EqualTo(200));
+            Assert.That(Sent(), Is.EqualTo(new[] { Error(s_itemsocketsystem_error_invalid_target_ingredient) }));
+        });
+    }
+
     // An outfit's unlock takes no copy and 690 skin crystals, and binds the outfit to the character.
     [Test]
     public void SkinUnlock_BindsTheItem() {

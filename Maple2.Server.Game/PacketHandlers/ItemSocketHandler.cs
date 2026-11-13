@@ -113,8 +113,10 @@ public class ItemSocketHandler : FieldPacketHandler {
 
                 // The client's list (EnableSocketUnlockFunction::Matches) leaves out the item itself and an item with
                 // a locked gem; an item with other gems is sent after s_itemsocketsystem_socketunlock_msg_ask_unlock_
-                // ingredient_in_gemstone, whose text says its gems go with it.
-                if (material.Uid == item.Uid || !IsSocketMaterialEqual(item, material) || HasLockedGem(material)) {
+                // ingredient_in_gemstone, whose text says its gems go with it. It leaves out an expired item
+                // (CItem::FUN_140528980) and a locked one (CItem::FUN_140528e20: locked, or unlocking until UnlockTime).
+                if (material.Uid == item.Uid || !IsSocketMaterialEqual(item, material) || HasLockedGem(material)
+                    || material.IsExpired() || material.IsLocked || material.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
                     session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient));
                     return;
                 }
