@@ -888,7 +888,11 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
     }
 
-    private static IEnumerable<MarketItem> Sort(IEnumerable<MarketItem> entries, MeretMarketSort sort, bool sortJob, bool sortGender) {
+    // The client's sort names (asbilldata.cpp:32): 1 Buy, 5 ChartOrder, 6 BuyTotal. ChartOrder is the shop table's own
+    // order: shop_merat_custom has no chartOrder column and its rows run by id, so premium products go by id and
+    // designs, which have no table order, follow by sales. 1 and 6 both go by sales: only one count is kept and the
+    // client names no time window for either.
+    internal static IEnumerable<MarketItem> Sort(IEnumerable<MarketItem> entries, MeretMarketSort sort, bool sortJob, bool sortGender) {
         if (sortGender) {
             entries = entries.OrderBy(item => item.ItemMetadata.Limit.Gender);
         }
@@ -903,9 +907,10 @@ public class MeretMarketHandler : FieldPacketHandler {
                 return entries.OrderByDescending(entry => entry.Price);
             case MeretMarketSort.PriceLowest:
                 return entries.OrderBy(entry => entry.Price);
-            // TODO: Implement most popular?
-            // Unsure how most popular is different than top seller.
             case MeretMarketSort.MostPopularPremium:
+                return entries.OrderBy(entry => entry is PremiumMarketItem ? 0 : 1)
+                    .ThenBy(entry => entry is PremiumMarketItem premium ? premium.Id : 0)
+                    .ThenByDescending(entry => entry.SalesCount);
             case MeretMarketSort.MostPopularUgc:
             case MeretMarketSort.TopSeller:
                 return entries.OrderByDescending(entry => entry.SalesCount);
