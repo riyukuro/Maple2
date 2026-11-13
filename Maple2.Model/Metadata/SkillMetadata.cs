@@ -146,7 +146,22 @@ public record SkillMetadataRange(
     Vector3 RangeOffset,
     IncludeCasterType IncludeCaster,
     ApplyTargetType ApplyTarget, // 0,1,2,3,5,6,7,8
-    SkillTargetType CastTarget); // 0,1,2,3,4,5,7
+    SkillTargetType CastTarget, // 0,1,2,3,4,5,7
+    SkillMetadataRangeSelect? Select = null);
+
+// The range's target choice (rangeProperty targetSelectType ... targetStatCompareFunction). Mode 2 keeps only the
+// targets that pass (none if none pass), mode 3 keeps them if any pass, other modes keep all. A target passes when it
+// holds the enabled buff BuffId (0: any; from the caster if BuffFromCaster) and, between two players, shares the
+// caster's party (SameParty) and guild (SameGuild). StatSort orders the targets by Stat: 1 current ascending,
+// 2 descending, 3 current/total ascending, 4 descending; 0 leaves the order.
+public record SkillMetadataRangeSelect(
+    int Mode,
+    int BuffId,
+    bool BuffFromCaster,
+    bool SameParty,
+    bool SameGuild,
+    BasicAttribute Stat,
+    int StatSort);
 
 public record SkillMetadataArrow(
     bool Overlap,

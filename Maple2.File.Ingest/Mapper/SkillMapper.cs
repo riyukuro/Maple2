@@ -190,7 +190,26 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             RangeOffset: region.rangeOffset,
             IncludeCaster: (IncludeCasterType) region.includeCaster,
             ApplyTarget: (ApplyTargetType) region.applyTarget,
-            CastTarget: (SkillTargetType) region.castTarget
+            CastTarget: (SkillTargetType) region.castTarget,
+            Select: ConvertSelect(region)
         );
+    }
+
+    // The client loads the buff, party and guild fields only when targetSelectType is set, and the stat sort always
+    // (Unk_RangeProperty::LoadElement); its search filters by the first and sorts by the second (CBaseCollision).
+    // Select modes other than 2 and 3 filter nothing, so a range with neither is left without one.
+    private static SkillMetadataRangeSelect? ConvertSelect(RegionSkill region) {
+        bool filters = region.targetSelectType is 2 or 3;
+        if (!filters && region.targetStatCompareFunction == 0) {
+            return null;
+        }
+        return new SkillMetadataRangeSelect(
+            Mode: filters ? region.targetSelectType : 0,
+            BuffId: filters ? region.targetHasBuffID : 0,
+            BuffFromCaster: filters && region.targetHasBuffOwner,
+            SameParty: filters && region.targetSelectParty,
+            SameGuild: filters && region.targetSelectGuild,
+            Stat: (BasicAttribute) region.targetStatCompare,
+            StatSort: region.targetStatCompareFunction);
     }
 }

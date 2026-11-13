@@ -923,17 +923,26 @@ public partial class FieldManager {
         switch (range.IncludeCaster) {
             case IncludeCasterType.Priority: {
                     // Caster guaranteed as first target; pool fills remaining slots
-                    IActor[] pool = GetTargetPool(caster, prisms, range.ApplyTarget, targetCount - 1, poolIgnore).ToArray();
+                    IActor[] pool = SelectTargets(caster, prisms, range, targetCount - 1, poolIgnore).ToArray();
                     return Enumerable.Repeat<IActor>(caster, 1).Concat(pool);
                 }
             case IncludeCasterType.Last: {
                     // Pool fills all slots; caster appended only if fewer than targetCount were found
-                    IActor[] pool = GetTargetPool(caster, prisms, range.ApplyTarget, targetCount, poolIgnore).ToArray();
+                    IActor[] pool = SelectTargets(caster, prisms, range, targetCount, poolIgnore).ToArray();
                     return pool.Length < targetCount ? pool.Concat(Enumerable.Repeat<IActor>(caster, 1)) : pool;
                 }
             default: // Exclude
-                return GetTargetPool(caster, prisms, range.ApplyTarget, targetCount, poolIgnore);
+                return SelectTargets(caster, prisms, range, targetCount, poolIgnore);
         }
+    }
+
+    // The range's pool in its prisms; a range with a target choice (Select) filters and sorts the whole pool before
+    // the target count is taken, as the client's search does.
+    private IEnumerable<IActor> SelectTargets(IActor caster, Prism[] prisms, SkillMetadataRange range, int limit, ICollection<IActor>? ignore) {
+        if (!range.Select.Active()) {
+            return GetTargetPool(caster, prisms, range.ApplyTarget, limit, ignore);
+        }
+        return RangeTargetSelect.Apply(range.Select, caster, GetTargetPool(caster, prisms, range.ApplyTarget, int.MaxValue, ignore)).Take(limit);
     }
 
     public IEnumerable<IActor> GetTargets(SkillRecord record, ICollection<IActor>? ignore = null) {
