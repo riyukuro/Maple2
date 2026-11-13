@@ -80,7 +80,13 @@ public partial class FieldManager {
         using GameStorage.Request db = GameStorage.Context();
         if (this is HomeFieldManager homeField) {
             if (session.AccountId == homeField.OwnerId && home.Indoor.MapId == MapId && Plots.TryGetValue(home.Indoor.Number, out Plot? indoorPlot) && !indoorPlot.IsPlanner) {
-                SavePlot(indoorPlot);
+                // A field whose cubes are no longer the home's saves nothing: its list would replace the home's cubes.
+                // The next entry loads the home again (Factory).
+                if (homeField.Outdated(db)) {
+                    logger.Warning("Home {PlotId} of {OwnerId} not saved: its cubes were written since this field loaded them", indoorPlot.Id, homeField.OwnerId);
+                } else {
+                    SavePlot(indoorPlot);
+                }
             }
         }
 
@@ -110,6 +116,7 @@ public partial class FieldManager {
                     }
                     plot.Cubes.Add(result.Position, result);
                 }
+                (this as HomeFieldManager)?.Saved(plot);
             }
         }
     }

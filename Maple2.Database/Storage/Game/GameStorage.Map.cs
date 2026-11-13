@@ -847,6 +847,10 @@ public partial class GameStorage {
             return Context.UgcMapCube.Any(cube => cube.UgcMapId == plotInfoId);
         }
 
+        public HashSet<long> GetCubeIds(long plotInfoId) {
+            return Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfoId).Select(cube => cube.Id).ToHashSet();
+        }
+
         public PlotCube? GetCube(long cubeId) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 

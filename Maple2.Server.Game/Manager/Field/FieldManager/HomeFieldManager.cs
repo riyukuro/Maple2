@@ -11,6 +11,9 @@ public class HomeFieldManager : FieldManager {
     public HomeSurvey? HomeSurvey { get; private set; }
 
     private readonly int roomId;
+    // The cube rows of each plot (by number) as this field loaded them or last saved them (CommitPlot).
+    // Made on first use: a field built without its constructor (the tests) has none.
+    private Dictionary<int, HashSet<long>>? savedCubes;
 
     public HomeFieldManager(Home home, MapMetadata mapMetadata, UgcMapMetadata ugcMetadata, MapEntityMetadata entities, NpcMetadataStorage npcMetadata, int roomId)
         : base(mapMetadata, ugcMetadata, entities, npcMetadata) {
@@ -20,7 +23,11 @@ public class HomeFieldManager : FieldManager {
 
     public override void Init() {
         base.Init();
+        LoadPlots();
+    }
 
+    // The home's plots and cubes as the database has them.
+    internal void LoadPlots() {
         using GameStorage.Request db = GameStorage.Context();
         foreach (Plot plot in db.LoadPlotsForMap(MapId, OwnerId)) {
             // If roomId is -1, it's a planner plot and should start empty.
@@ -28,6 +35,7 @@ public class HomeFieldManager : FieldManager {
                 plot.Cubes.Clear();
             }
             Plots[plot.Number] = plot;
+            Saved(plot);
 
             plot.Cubes.Values
                 .Where(p => p.Interact?.PortalSettings is not null)
@@ -43,6 +51,42 @@ public class HomeFieldManager : FieldManager {
                 AddMaid(plotCube, plot);
             }
         }
+    }
+
+    // Called under lock(Plots), as the plot's cubes are read.
+    internal void Saved(Plot plot) {
+        (savedCubes ??= new Dictionary<int, HashSet<long>>())[plot.Number] = plot.Cubes.Values.Select(cube => cube.Id).Where(id => id < Constant.FurnishingBaseId).ToHashSet();
+    }
+
+    // The cubes of this field are not the home's any more: the database has a cube row this field neither holds nor
+    // loaded or saved, or has lost one it holds. Something other than this field wrote the home's cubes since: a
+    // model house (InitNewHome) or an interior package applied elsewhere, or a save from another instance. A field's
+    // own place and remove write and delete their rows at once (HousingManager.CreateCube, DeleteCube), so its own
+    // edits leave it current. Entering such a field showed the old cubes, and the owner's leave saved them over the
+    // home's (SaveCubes deletes every row the list does not hold).
+    public bool Outdated(GameStorage.Request db) {
+        List<Plot> plots;
+        lock (Plots) {
+            plots = Plots.Values.ToList();
+        }
+        foreach (Plot plot in plots) {
+            if (plot.IsPlanner || plot.Id == 0) {
+                continue;
+            }
+            // Under the plot's edit lock: a place or a remove writes its row and changes the cube list in it, so the
+            // rows and the held cubes are read at one point (and the list is not changed while it is read).
+            lock (plot.EditLock) {
+                HashSet<long> held = plot.Cubes.Values.Select(cube => cube.Id).Where(id => id < Constant.FurnishingBaseId).ToHashSet();
+                if (Outdated(savedCubes?.GetValueOrDefault(plot.Number) ?? [], held, db.GetCubeIds(plot.Id))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public static bool Outdated(IReadOnlySet<long> saved, IReadOnlySet<long> held, IReadOnlySet<long> rows) {
+        return rows.Any(id => !saved.Contains(id) && !held.Contains(id)) || held.Any(id => !rows.Contains(id));
     }
 
     public void SetHomeSurvey(HomeSurvey survey) {

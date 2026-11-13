@@ -362,19 +362,19 @@ public partial class FieldManager {
         /// <summary>
         /// Disposes the field managers that have no players and have been empty for more than 10 minutes.
         /// </summary>
-        // An empty home field loaded while the home had no name, of a home that has one now: the model house was
-        // applied since (RequestHome 3, which deletes the cubes the field still holds and places the template's), so
-        // the field is not entered and the home is loaded again. Without this the owner came back to the old cubes
-        // for the field's empty time, and leaving saved the old list (refused: its rows are gone). Chosen here: a
-        // field that has players, or a player loading its map (TryRetire), keeps them and stays (an unnamed home with
-        // visitors only); a name given another
-        // way (SetName) only reloads an empty field, whose cubes were saved when the owner left.
-        private bool MadeSinceLoaded(HomeFieldManager field) {
-            if (!field.Players.IsEmpty || !string.IsNullOrEmpty(field.Home.Indoor.Name)) {
+        // An empty home field whose cubes are not the home's any more (HomeFieldManager.Outdated): a model house or
+        // interior package was applied since (RequestHome 3 deletes the cubes the field still holds and places the
+        // template's), so the field is not entered and the home is loaded again. Without this the owner came back to
+        // the old cubes for the field's empty time, and leaving saved the old list over the new rows. Before, this
+        // was told by the home's name (a field loaded unnamed, a home named now), which missed a field loaded while
+        // the home was named. Chosen here: a field that has players, or a player loading its map (TryRetire), keeps
+        // them and stays; it saves nothing for the owner (CommitPlot) and is loaded again once empty.
+        private bool Outdated(HomeFieldManager field) {
+            if (!field.Players.IsEmpty) {
                 return false;
             }
             using GameStorage.Request db = GameStorage.Context();
-            return !string.IsNullOrEmpty(db.GetHome(field.OwnerId)?.Indoor.Name);
+            return field.Outdated(db);
         }
 
         private void DisposeLoop() {
@@ -575,7 +575,7 @@ public partial class FieldManager {
                         if (!homes.TryGetValue(ownerId, out HomeFieldManager? homeField)) {
                             return Create(mapId, ownerId: ownerId, roomId: roomId, instanceFieldMetadata: metadata);
                         }
-                        if (MadeSinceLoaded(homeField) && homeField.TryRetire()) {
+                        if (Outdated(homeField) && homeField.TryRetire()) {
                             // Its cubes are not the home's: a model house replaced them in the database (InitNewHome).
                             homes.TryRemove(new KeyValuePair<long, HomeFieldManager>(ownerId, homeField));
                             retired.Enqueue(homeField);

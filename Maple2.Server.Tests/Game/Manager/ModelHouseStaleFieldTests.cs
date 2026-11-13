@@ -11,6 +11,8 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -26,7 +28,7 @@ public class ModelHouseStaleFieldTests {
     private TestGameSession test = null!;
     private ExportedUgcMapMetadata template = null!;
 
-    private (GameSession Session, Plot Plot) Start() {
+    private (GameSession Session, Plot Plot) Start(int oldCubes = 2) {
         test = new TestGameSession();
         test.SetTable(new UgcHousingPointRewardTable(new Dictionary<int, UgcHousingPointRewardTable.Entry>()));
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> { [1] = new(1, 0, 0) }));
@@ -50,7 +52,7 @@ public class ModelHouseStaleFieldTests {
         Assert.That(session.Player.Value.Home.Indoor.Name, Is.Empty);
         Plot plot = test.EnterHome();
         plot.Id = session.Player.Value.Home.Indoor.Id;
-        foreach (int x in new[] { -1, -2 }) {
+        foreach (int x in new[] { -1, -2 }.Take(oldCubes)) {
             session.ItemMetadata.TryGet(OldCube, out ItemMetadata? metadata);
             long uid = session.Item.Furnishing.AddCube(OldCube);
             Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!, uid) { Type = PlotCube.CubeType.Default }, plot, metadata!,
@@ -191,6 +193,128 @@ public class ModelHouseStaleFieldTests {
             Assert.That(left, Is.Not.SameAs(home));
             Assert.That(home.Retired, Is.True);
         });
+    }
+
+    // The field of a named home, loaded with the cubes the home had (none here), as the factory loads it.
+    private HomeFieldManager NamedHomeField(GameSession session) {
+        Home own = session.Player.Value.Home;
+        own.Indoor.Name = "home";
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SavePlotInfo(own.Indoor), Is.True);
+        }
+        var home = (HomeFieldManager) session.Field!;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            typeof(HomeFieldManager).GetField("<Home>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(home, db.GetHome(session.AccountId)!);
+        }
+        home.Plots.Clear();
+        home.LoadPlots();
+        Assert.That(home.Home.Indoor.Name, Is.Not.Empty);
+        return home;
+    }
+
+    // The number of cubes the client is given when it loads the map of the session's field (RequestLoadUgcMap):
+    // LoadCubes mode 0 (Load), after its mode byte and a bool.
+    private int LoadedCubes(GameSession session) {
+        test.TakeSent();
+        new LoadUgcMapHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => writer.WriteInt(GameSession.FIELD_KEY)));
+        byte[] load = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.LoadCubes && packet[2] == 0);
+        return BitConverter.ToInt32(load, 4);
+    }
+
+    private bool Outdated(HomeFieldManager field) {
+        using GameStorage.Request db = test.Storage.Context();
+        return field.Outdated(db);
+    }
+
+    private List<long> CubeRows(GameSession session) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetCubeIds(session.Player.Value.Home.Indoor.Id).ToList();
+    }
+
+    // A home field loaded while the home was named and had no cubes; then the model house is applied (the template
+    // cubes are written to the database). The next entry does not get the old field: it is retired and the home is
+    // loaded from the database again, whose map load gives the client the template cubes. Before, the field was
+    // entered (only a field loaded unnamed was reloaded) and its empty floor was shown.
+    [Test]
+    public void NamedAtLoad_EntryAfterTheModelHouse_LoadsTheCubesTheDatabaseHas() {
+        (GameSession session, Plot _) = Start(oldCubes: 0);
+        HomeFieldManager home = NamedHomeField(session);
+        Commit(home, session);
+        home.Players.Clear();
+        FieldManager.Factory factory = Factory(home);
+        Assert.That(factory.Get(home.MapId, session.AccountId), Is.SameAs(home));
+
+        session.Housing.InitNewHome("home", template);
+        Assert.That(CubeRows(session), Has.Count.EqualTo(2));
+        Assert.That(Outdated(home), Is.True);
+        FieldManager? entered = factory.Get(home.MapId, session.AccountId);
+
+        // The field the factory makes in its place (CreateHome; the test map has no navmesh, so it is built here).
+        test.EnterHome();
+        var fresh = (HomeFieldManager) session.Field!;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            typeof(HomeFieldManager).GetField("<Home>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(fresh, db.GetHome(session.AccountId)!);
+        }
+        fresh.Plots.Clear();
+        fresh.LoadPlots();
+
+        Assert.Multiple(() => {
+            Assert.That(entered, Is.Not.SameAs(home));
+            Assert.That(home.Retired, Is.True);
+            Assert.That(Outdated(fresh), Is.False);
+            Assert.That(LoadedCubes(session), Is.EqualTo(2));
+            Assert.That(fresh.Plots.Values.Single().Cubes.Values.Select(cube => cube.Id), Is.EquivalentTo(CubeRows(session)));
+        });
+    }
+
+    // The same old field kept by a visitor in it (not retired), with the owner coming back into it and leaving: the
+    // leave saves nothing, so the template cubes stay in the database for the next load. Before, its empty list was
+    // saved and every template cube row was deleted.
+    [Test]
+    public void OutdatedField_OwnerLeaving_KeepsTheDatabaseCubes() {
+        (GameSession session, Plot _) = Start(oldCubes: 0);
+        HomeFieldManager home = NamedHomeField(session);
+        Commit(home, session);
+
+        session.Housing.InitNewHome("home", template);
+        Assert.That(Count(session, TemplateCube), Is.EqualTo((0, 2)));
+        Assert.That(Outdated(home), Is.True);
+        try {
+            Commit(home, session);
+        } catch (TargetInvocationException) {
+            // Checked below by the rows.
+        }
+
+        Assert.That(Count(session, TemplateCube), Is.EqualTo((0, 2)));
+    }
+
+    // A field's own place and remove leave it current (they write and delete their rows at once), as does its save.
+    [Test]
+    public void OwnEdits_LeaveTheFieldCurrent() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Assert.That(Outdated(home), Is.False);
+        Commit(home, session);
+        Assert.That(Outdated(home), Is.False);
+        Assert.That(session.Housing.TryRemoveCube(plot, new Vector3B(-1, -1, 0), out _), Is.True);
+        session.ItemMetadata.TryGet(OldCube, out ItemMetadata? metadata);
+        Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!, session.Item.Furnishing.AddCube(OldCube)) { Type = PlotCube.CubeType.Default },
+            plot, metadata!, new Vector3B(-3, -1, 0), 0, out _), Is.True);
+        Assert.That(Outdated(home), Is.False);
+        Commit(home, session);
+        Assert.That(Outdated(home), Is.False);
+    }
+
+    // The rule: a row the field neither holds nor saved, or a held cube without its row, makes the field outdated.
+    [TestCase(new long[] { 1, 2 }, new long[] { 1, 2 }, new long[] { 1, 2 }, false)]
+    [TestCase(new long[] { 1, 2 }, new long[] { 1 }, new long[] { 1, 2 }, false)] // removed here, saved row not yet deleted
+    [TestCase(new long[] { 1 }, new long[] { 1, 3 }, new long[] { 1, 3 }, false)] // placed here
+    [TestCase(new long[] { }, new long[] { }, new long[] { 4, 5 }, true)] // written elsewhere (model house)
+    [TestCase(new long[] { 1, 2 }, new long[] { 1, 2 }, new long[] { 4 }, true)] // replaced elsewhere
+    public void OutdatedRule(long[] saved, long[] held, long[] rows, bool outdated) {
+        Assert.That(HomeFieldManager.Outdated(saved.ToHashSet(), held.ToHashSet(), rows.ToHashSet()), Is.EqualTo(outdated));
     }
 
     // A home retired since the dispose loop's last pass is disposed when the factory is (the channel's shutdown).
