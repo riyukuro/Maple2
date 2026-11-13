@@ -1,4 +1,4 @@
-﻿using Maple2.File.IO;
+using Maple2.File.IO;
 using Maple2.File.Ingest.Helpers;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.AdditionalEffect;
@@ -13,6 +13,9 @@ namespace Maple2.File.Ingest.Mapper;
 public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     private readonly AdditionalEffectParser parser;
     private readonly CooldownGroupRates groupRates;
+    private readonly FinalStatusRows finals;
+    private readonly ClientSpecialAbility specialAbility;
+    private int finalClientLevels, finalPackLevels;
 
     // The played client's own invoke effects and effect groups (PlayedClientAdditionalEffects); empty without a played client.
     private readonly Dictionary<int, PlayedClientAdditionalEffects.Entry> played = [];
@@ -21,6 +24,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         parser = new AdditionalEffectParser(xmlReader);
         groupRates = new CooldownGroupRates(xmlReader);
         Console.WriteLine($"Additional effects with a cooldown group reduction: {groupRates.Count}");
+        finals = new FinalStatusRows(xmlReader);
+        specialAbility = new ClientSpecialAbility(playedReader, xmlReader);
         if (playedReader != null) {
             played = PlayedClientAdditionalEffects.Read(playedReader.Files.Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available);
@@ -60,6 +65,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             }
         }
         Console.WriteLine($"Additional effect levels with a skillUseDisable mask: {masks} ({packMasks} in the data pack, {changed} taken from the played client)");
+        Console.WriteLine($"Additional effect levels with final stats: {finals.Count} ({finalClientLevels} from the played client's level, {finalPackLevels} from the data pack's rows; " +
+                          $"client types without a server stat: {(specialAbility.Unmapped.Count == 0 ? "none" : string.Join(", ", specialAbility.Unmapped.Select(pair => $"{pair.Key} {pair.Value}")))})");
 
         // The played client's effects the data pack does not have, where every child of every level is one read in full
         // (PlayedClientAdditionalEffects.BasicOnly): 10600280, the charge Focused Fire 10600181 puts on its caster.
@@ -160,7 +167,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 RemoveRecharge = played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? removeEntry)
                                  && removeEntry.RemoveRecharge.TryGetValue(data.BasicProperty.level, out AdditionalEffectMetadataUpdate.RemoveRechargeUses? remove) ? remove : null,
             },
-            Status: Convert(data.StatusProperty, data.OffensiveProperty, data.DefensiveProperty),
+            Status: Status(id, data.BasicProperty.level, Convert(data.StatusProperty, data.OffensiveProperty, data.DefensiveProperty)),
             Recovery: Convert(data.RecoveryProperty),
             Dot: new AdditionalEffectMetadataDot(
                 Damage: Convert(data.DotDamageProperty),
@@ -185,6 +192,44 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             return null;
         }
         return new AttackPossibleMetadata(skills, dots, basic.attackPossibleEffectID);
+    }
+
+    // The final stats of a level (FinalStatusRows), added to its stats. The client has no final stats: it writes them
+    // as SpecialAbility types of its level, and not in one way (finalmsprate -0.5 is msp -50, a flat value, in
+    // 70002231; finalmsprate 0.5 is mspRate 500 in 73000001; finalpaprate and finalmaprate 0.252 are finalAttackPower
+    // 252 in 89000002). So where the played client has the level, its rows on the final stats' attributes are added
+    // (ClientSpecialAbility.BasicAttributes; finalAttackPower for finalpap/maprate, wapRate for finalwapmin/maxrate), and
+    // none where its level has none (40500027: finalCapV 50000017, an id, where the client's level is empty).
+    // Chosen here: for a level the client does not have (70002541, 120030062; 89000014-89000018, whose client rows are
+    // Develop-only), each final rate is added as the stat's rate and each final value as its value.
+    private AdditionalEffectMetadataStatus Status(int id, short level, AdditionalEffectMetadataStatus status) {
+        IReadOnlyList<FinalStatusRows.Row>? rows = finals?.Get(id, level);
+        if (rows == null) {
+            return status;
+        }
+        var stats = new ClientSpecialAbility.Stats {
+            Values = new Dictionary<BasicAttribute, long>(status.Values),
+            Rates = new Dictionary<BasicAttribute, float>(status.Rates),
+            SpecialValues = new Dictionary<SpecialAttribute, float>(status.SpecialValues),
+            SpecialRates = new Dictionary<SpecialAttribute, float>(status.SpecialRates),
+            PhysicalDamageTakenRate = status.PhysicalDamageTakenRate,
+            MagicalDamageTakenRate = status.MagicalDamageTakenRate,
+        };
+        Dictionary<string, int>? client = played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry)
+                                          && entry.SpecialAbilities.TryGetValue(level, out Dictionary<string, int>? found) ? found : null;
+        if (FinalStatusRows.Apply(specialAbility, stats, rows, client)) {
+            finalClientLevels++;
+        } else {
+            finalPackLevels++;
+        }
+        return status with {
+            Values = stats.Values,
+            Rates = stats.Rates,
+            SpecialValues = stats.SpecialValues,
+            SpecialRates = stats.SpecialRates,
+            PhysicalDamageTakenRate = stats.PhysicalDamageTakenRate,
+            MagicalDamageTakenRate = stats.MagicalDamageTakenRate,
+        };
     }
 
     private static AdditionalEffectMetadataUpdate Convert(AdditionalEffectData data) {

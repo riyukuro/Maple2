@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Xml;
 using Maple2.Model.Enum;
 
@@ -21,11 +21,15 @@ public static class PlayedClientAdditionalEffects {
     // GroupId: the first level's groupIDs. Levels: every level the client has, with its invoke effect or null.
     // SkillUseDisable: every level's <Motion skillUseDisable> mask, 0 where the level has none (the client's
     // m_motion.m_nSkillUseDisable, summed over the enabled buffs by AdditionalCliList::FUN_140972a00).
-    // RemoveRecharge: each level's <RemoveRechargingCount skillID count>. OwnLevels: every level's row, when each child
+    // RemoveRecharge: each level's <RemoveRechargingCount skillID count>. SpecialAbilities: each level's
+    // <SpecialAbility><v type value/></SpecialAbility> rows, one value per type, the last nonzero one, as the client
+    // keeps them (AdditionalData's level load, additionalactionadditional.cpp:1227; turned into server stats by the
+    // ingest's ClientSpecialAbility); a level without the element has none. OwnLevels: every level's row, when each child
     // of each level is one the ingest reads in full (BasicOnly), for an effect the data pack does not have; else null.
     public sealed record Entry(int GroupId, Dictionary<short, AdditionalEffectMetadataInvokeEffect?> Levels) {
         public Dictionary<short, int> SkillUseDisable { get; init; } = [];
         public Dictionary<short, AdditionalEffectMetadataUpdate.RemoveRechargeUses> RemoveRecharge { get; init; } = [];
+        public Dictionary<short, Dictionary<string, int>> SpecialAbilities { get; init; } = [];
         public Dictionary<short, XmlElement>? OwnLevels { get; init; }
     }
 
@@ -52,6 +56,7 @@ public static class PlayedClientAdditionalEffects {
                 var levels = new Dictionary<short, AdditionalEffectMetadataInvokeEffect?>();
                 var useDisable = new Dictionary<short, int>();
                 var removeRecharge = new Dictionary<short, AdditionalEffectMetadataUpdate.RemoveRechargeUses>();
+                var specialAbilities = new Dictionary<short, Dictionary<string, int>>();
                 var own = new Dictionary<short, XmlElement>();
                 bool whole = true;
                 int groupId = 0;
@@ -69,12 +74,14 @@ public static class PlayedClientAdditionalEffects {
                     if (Child(level, "RemoveRechargingCount") is { } remove) {
                         removeRecharge[levelId] = new AdditionalEffectMetadataUpdate.RemoveRechargeUses(Number(remove, "skillID"), Number(remove, "count"));
                     }
+                    specialAbilities[levelId] = SpecialAbility(Child(level, "SpecialAbility"));
                     own[levelId] = level;
                     whole &= level.ChildNodes.OfType<XmlElement>().All(child => BasicOnly.Contains(child.Name));
                 }
                 entries[id] = new Entry(groupId, levels) {
                     SkillUseDisable = useDisable,
                     RemoveRecharge = removeRecharge,
+                    SpecialAbilities = specialAbilities,
                     OwnLevels = whole && own.Count > 0 ? own : null,
                 };
             }
@@ -107,6 +114,21 @@ public static class PlayedClientAdditionalEffects {
             EffectGroupId: Number(row, "effectGroupID"),
             SkillId: Number(row, "skillID"),
             SkillGroupId: Number(row, "skillGroupID"));
+    }
+
+    // The rows of a <SpecialAbility>: a zero value is skipped, a later row of a type replaces the earlier one.
+    public static Dictionary<string, int> SpecialAbility(XmlElement? element) {
+        var rows = new Dictionary<string, int>();
+        if (element == null) {
+            return rows;
+        }
+        foreach (XmlElement row in element.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "v")) {
+            int value = Number(row, "value");
+            if (row.GetAttribute("type") is { Length: > 0 } type && value != 0) {
+                rows[type] = value;
+            }
+        }
+        return rows;
     }
 
     private static XmlElement? Child(XmlElement parent, string name) {
