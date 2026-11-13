@@ -20,7 +20,9 @@ public static class SkillPacket {
         pWriter.WriteShort(skill.Level);
         pWriter.WriteByte(skill.MotionPoint);
         pWriter.Write<Vector3S>(skill.Position);
-        pWriter.Write<Vector3>(skill.Direction);
+        // The use's own direction (CSceneStateGame::OnSkillUse puts it in the record's m_ptDir): an observer moves a
+        // key-moved cast along it (CMotionController::vfunc_5). Direction is the attack's and is not set yet.
+        pWriter.Write<Vector3>(skill.CastDirection);
         pWriter.Write<Vector3>(skill.Rotation);
         pWriter.WriteShort((short) (skill.Rotate2Z * 10));
         pWriter.WriteBool(skill.Unknown);

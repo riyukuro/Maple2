@@ -265,6 +265,8 @@ public class CombatLayoutTests {
         cast.IsHold = hold;
         cast.HoldInt = 9;
         cast.HoldString = "Hold_A";
+        // The use's direction, not the attack's: an observer moves a key-moved cast along it.
+        cast.CastDirection = new Vector3(0.6f, -0.8f, 0);
 
         ByteReader reader = Reader(SkillPacket.Use(cast), SendOp.SkillUse);
         Assert.That(reader.ReadLong(), Is.EqualTo(9_000_000_001));
@@ -274,7 +276,7 @@ public class CombatLayoutTests {
         Assert.That(reader.ReadShort(), Is.EqualTo(3));
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
         Assert.That((reader.ReadShort(), reader.ReadShort(), reader.ReadShort()), Is.EqualTo(((short) 100, (short) -200, (short) 300)));
-        Assert.That((reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat()), Is.EqualTo((0f, 1f, 0f)));
+        Assert.That((reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat()), Is.EqualTo((0.6f, -0.8f, 0f)));
         Assert.That((reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat()), Is.EqualTo((0f, 0f, 90f)));
         Assert.That(reader.ReadShort(), Is.EqualTo(15));
         Assert.That(reader.ReadBool(), Is.False);
