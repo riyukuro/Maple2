@@ -178,7 +178,7 @@ public enum SendOp : ushort {
     ItemBox = 0x00AC,
     Cash = 0x00AD,
     MyInfo = 0x00AE,
-    //UNKNOWN = 0x00AF, // nullsub
+    ShutdownNotice = 0x00AF, // the KR platform's hook (CClientPlatformNexonKorea::vfunc_26): shutdown time, quit and maintenance notices
     WorldShareInfo = 0x00B0,
     Insignia = 0x00B1,
     GameEvent = 0x00B2,

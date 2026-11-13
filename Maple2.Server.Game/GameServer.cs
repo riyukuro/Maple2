@@ -38,6 +38,9 @@ public class GameServer : Server<GameSession> {
 
     private static short _channel = 0;
 
+    // The shutdown time a GM announced (Unix seconds, 0 for none), sent to the players who enter this channel later.
+    public long ShutdownTime { get; set; }
+
     public GameServer(FieldManager.Factory fieldFactory, PacketRouter<GameSession> router, IComponentContext context, GameStorage gameStorage, ItemMetadataStorage itemMetadataStorage, ServerTableMetadataStorage serverTableMetadataStorage, IGraphicsContext debugGraphicsContext, int port, int channel)
             : base((ushort) port, router, context, serverTableMetadataStorage) {
         _channel = (short) channel;

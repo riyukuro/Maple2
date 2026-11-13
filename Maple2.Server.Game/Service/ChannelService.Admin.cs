@@ -22,6 +22,8 @@ public partial class ChannelService {
                 return Task.FromResult(RemoveStringBoard(request.RemoveStringBoard));
             case AdminRequest.RequestOneofCase.AccountBlock:
                 return Task.FromResult(UpdateAccountBlock(request.AccountBlock));
+            case AdminRequest.RequestOneofCase.ShutdownNotice:
+                return Task.FromResult(ShutdownNotice(request.ShutdownNotice));
             default:
                 return Task.FromResult(new AdminResponse());
         }
@@ -46,6 +48,38 @@ public partial class ChannelService {
         }
 
         return new AdminResponse();
+    }
+
+    // The channel keeps the shutdown time for the players who enter later (GameSession sends it at entry).
+    private AdminResponse ShutdownNotice(AdminRequest.Types.ShutdownNotice notice) {
+        if (notice.Kind == 0) {
+            server.ShutdownTime = notice.Time;
+        }
+        foreach (GameSession session in server.GetSessions()) {
+            bool staff = session.Player.AdminPermissions.HasFlag(AdminPermissions.GameMaster);
+            ByteWriter? packet = ShutdownNoticePacketFor(notice, staff);
+            if (packet != null) {
+                session.Send(packet);
+            }
+        }
+        return new AdminResponse();
+    }
+
+    // Kinds 1 and 2 make the client quit; as with an alert's disconnect, game masters and admins (the requester too)
+    // get the message as a system notice and stay (Chosen here).
+    internal static ByteWriter? ShutdownNoticePacketFor(AdminRequest.Types.ShutdownNotice notice, bool staff) {
+        switch (notice.Kind) {
+            case 0:
+                return ShutdownNoticePacket.Time(notice.Time);
+            case 1:
+                return staff ? ShutdownNoticePacket.Notice(notice.Message) : ShutdownNoticePacket.Quit(notice.Message);
+            case 2:
+                return staff ? ShutdownNoticePacket.Notice(notice.Message) : ShutdownNoticePacket.Maintenance(notice.Message);
+            case 3:
+                return ShutdownNoticePacket.Notice(notice.Message);
+            default:
+                return null;
+        }
     }
 
     // The account's session on this channel reloads its restrictions and tells the client (AdminBlock 0x62).
