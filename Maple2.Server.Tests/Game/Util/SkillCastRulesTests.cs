@@ -825,10 +825,10 @@ public class SkillCastRulesTests {
 
     [Test]
     public void MotionTimingIsTheClients() {
-        // Motions as the played client gives them (SkillMotionData::Load reads sequenceSpeed, movedistance and
-        // splashLifeTick from the <motion>, 1, 0 and 0 when not given): 10100171 plays at 1.15 where the data pack says 1,
-        // 10700273 moves 0 where the data pack says 400, and 10400292's region stays 8000 ms. The motion's attack points
-        // come along in order.
+        // Motions as the played client gives them (SkillMotionData::Load reads sequenceName, sequenceSpeed, movedistance
+        // and splashLifeTick from the <motion>, "", 1, 0 and 0 when not given): 10100171 plays at 1.15 where the data pack
+        // says 1, 10700273 moves 0 where the data pack says 400, and 10400292's region stays 8000 ms. The motion's attack
+        // points come along in order, with the level's motion count.
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
@@ -839,11 +839,29 @@ public class SkillCastRulesTests {
             """);
         Dictionary<(int Skill, short Level, int Motion), PlayedClientSkills.MotionTiming> read = PlayedClientSkills.ReadMotionTimings([document]);
         Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int), PlayedClientSkills.MotionTiming> {
-            [(10100171, 1, 0)] = new(1.15f, 0, 0, "p0,p1"),
-            [(10700273, 1, 0)] = new(1, 0, 0, "p0"),
-            [(10400292, 1, 0)] = new(1, 0, 0, ""),
-            [(10400292, 1, 1)] = new(1, 50, 8000, "p0"),
+            [(10100171, 1, 0)] = new("Knight_FinishBlow_01_A", 1.15f, 0, 0, "p0,p1", 1),
+            [(10700273, 1, 0)] = new("Thief_ChaseSlash_01_A", 1, 0, 0, "p0", 1),
+            [(10400292, 1, 0)] = new("", 1, 0, 0, "", 2),
+            [(10400292, 1, 1)] = new("", 1, 50, 8000, "p0", 2),
         }));
+    }
+
+    [Test]
+    public void MotionPairsOnlyInALevelOfAsManyMotions() {
+        var played = new PlayedClientSkills.MotionTiming("Striker_GigantikBlow1_A", 1.4f, 0, 0, "p0", 2);
+        Assert.That(PlayedClientSkills.SameMotion(played, 2, "Striker_GigantikBlow2_A", "p0"), Is.True, "same count and points: the client's name and speed are taken");
+        Assert.That(PlayedClientSkills.SameMotion(played, 3, "Striker_GigantikBlow2_A", "p0"), Is.False, "a motion put in before it shifts the places");
+        Assert.That(PlayedClientSkills.SameMotion(played, 3, "Striker_GigantikBlow1_A", "p0"), Is.True, "a motion added after it: the same sequence still plays there");
+        Assert.That(PlayedClientSkills.SameMotion(played, 2, "Striker_GigantikBlow1_A", "p1"), Is.False, "other attack points");
+        var empty = new PlayedClientSkills.MotionTiming("", 1, 0, 0, "", 2);
+        Assert.That(PlayedClientSkills.SameMotion(empty, 1, "", ""), Is.False, "an attack-less motion without a name pairs only when the counts agree");
+        Assert.That(PlayedClientSkills.SameMotion(empty, 2, "", ""), Is.True);
+    }
+
+    [Test]
+    public void EmptyClientSequenceKeepsThePacks() {
+        Assert.That(PlayedClientSkills.SequenceName(new("", 1, 0, 0, "p0", 1), "Attack_Idle_A"), Is.EqualTo("Attack_Idle_A"));
+        Assert.That(PlayedClientSkills.SequenceName(new("Striker_GigantikBlow1_A", 1, 0, 0, "p0", 1), ""), Is.EqualTo("Striker_GigantikBlow1_A"));
     }
 
     [Test]

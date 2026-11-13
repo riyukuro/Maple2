@@ -158,7 +158,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         SpRate: level.recoveryProperty.spRate),
                     Skills: level.conditionSkill.Select(skill => skill.Convert()).ToArray(),
                     Motions: level.motion.Select((motion, motionIndex) => new SkillMetadataMotion(
-                        WithClientMotion(id, level.value, motionIndex, string.Join(",", motion.attack.Select(attack => attack.point)), new SkillMetadataMotionProperty(
+                        WithClientMotion(id, level.value, motionIndex, level.motion.Count, string.Join(",", motion.attack.Select(attack => attack.point)), new SkillMetadataMotionProperty(
                             SequenceName: motion.motionProperty.sequenceName,
                             SequenceSpeed: motion.motionProperty.sequenceSpeed,
                             MoveDistance: motion.motionProperty.movedistance,
@@ -318,7 +318,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Console.WriteLine($"Skill attacks given the played client's push over the data pack's: {clientPushesTaken} ({pushPointMismatches} with another point at that place, the data pack's kept)");
         }
         if (clientMotions.Count > 0) {
-            Console.WriteLine($"Skill motions given the played client's sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points at that place, the data pack's kept)");
+            Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
         }
     }
 
@@ -366,17 +366,18 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         return taken;
     }
 
-    // The played client's sequence speed, move distance and splash life tick where it has the motion at that place with
-    // the same attack points in the same order, else the data pack's; the rest of the motion is the data pack's.
-    private SkillMetadataMotionProperty WithClientMotion(int id, short level, int motion, string points, SkillMetadataMotionProperty pack) {
+    // The played client's sequence name, sequence speed, move distance and splash life tick where it has the motion at
+    // that place (PlayedClientSkills.SameMotion), else the data pack's; the rest of the motion is the data pack's.
+    private SkillMetadataMotionProperty WithClientMotion(int id, short level, int motion, int motions, string points, SkillMetadataMotionProperty pack) {
         if (!clientMotions.TryGetValue((id, level, motion), out PlayedClientSkills.MotionTiming? played)) {
             return pack;
         }
-        if (played.Points != points) {
+        if (!PlayedClientSkills.SameMotion(played, motions, pack.SequenceName, points)) {
             motionPointMismatches++;
             return pack;
         }
         SkillMetadataMotionProperty taken = pack with {
+            SequenceName = PlayedClientSkills.SequenceName(played, pack.SequenceName),
             SequenceSpeed = played.SequenceSpeed,
             MoveDistance = played.MoveDistance,
             SplashLifeTick = played.SplashLifeTick,

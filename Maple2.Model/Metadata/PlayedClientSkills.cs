@@ -234,28 +234,43 @@ public static class PlayedClientSkills {
     // and taking it alone would leave the server's swamp without its effect.
     public static int WithTargetCount(int pack, int played) => played != 0 ? played : pack;
 
-    // The sequence speed, move distance and splash life tick of every motion of the client's levels, by skill id, level
-    // and the motion's place in the level, with the points of its attacks in order. SkillMotionData::Load reads them
-    // from the <motion> (skillleveldata.cpp:1162, 1177, 1192; 1, 0 and 0 when not given, SkillMotionData's ctor). The
-    // skills and levels are the client's pick (SelectSkills).
+    // The sequence name, sequence speed, move distance and splash life tick of every motion of the client's levels, by
+    // skill id, level and the motion's place in the level, with the points of its attacks in order and the number of
+    // motions in the level. SkillMotionData::Load reads them from the <motion> (skillleveldata.cpp:1161, 1162, 1177,
+    // 1192; "", 1, 0 and 0 when not given, SkillMotionData's ctor). The skills and levels are the client's pick
+    // (SelectSkills).
     public static Dictionary<(int Skill, short Level, int Motion), MotionTiming> ReadMotionTimings(
             IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
         var result = new Dictionary<(int, short, int), MotionTiming>();
         foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
             foreach ((short value, XmlElement level) in levels) {
                 int motionIndex = 0;
-                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                XmlElement[] motions = level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion").ToArray();
+                foreach (XmlElement motion in motions) {
                     string points = string.Join(",", motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")
                         .Select(attack => attack.GetAttribute("point")));
-                    result[(id, value, motionIndex++)] = new MotionTiming(Real(motion, "sequenceSpeed", 1f), Real(motion, "movedistance"),
-                        Number(motion, "splashLifeTick"), points);
+                    result[(id, value, motionIndex++)] = new MotionTiming(motion.GetAttribute("sequenceName"), Real(motion, "sequenceSpeed", 1f),
+                        Real(motion, "movedistance"), Number(motion, "splashLifeTick"), points, motions.Length);
                 }
             }
         }
         return result;
     }
 
-    public record MotionTiming(float SequenceSpeed, float MoveDistance, int SplashLifeTick, string Points);
+    public record MotionTiming(string SequenceName, float SequenceSpeed, float MoveDistance, int SplashLifeTick, string Points, int Motions);
+
+    // A client motion pairs with the data pack's at the same place when the motion has the same attack points in order
+    // and either both levels have as many motions or both name the same sequence there: a motion put in or taken out
+    // before it shifts every place after it, and a motion without attacks matches on its points alone, so points alone
+    // do not pair. Differing names do not refuse a pair of the same count, as the client's name is the one it plays (KR
+    // 11000145 and 11000146 play Striker_GigantikBlow1_A where the data pack names another sequence or none).
+    public static bool SameMotion(MotionTiming played, int motions, string sequenceName, string points) =>
+        played.Points == points && (played.Motions == motions || (played.SequenceName.Length > 0 && played.SequenceName == sequenceName));
+
+    // The sequence a paired motion plays: the client's, but the data pack's where the client names none. The client
+    // plays no animation for an empty name (StateSkill, stateskill.cpp:2233-2250), where the server's actor cast stops
+    // when it has no sequence to play, so an empty name would stop the cast rather than play it bare.
+    public static string SequenceName(MotionTiming played, string pack) => played.SequenceName.Length > 0 ? played.SequenceName : pack;
 
     // The push of every attack of the client's levels, by skill id, level, the motion's place in the level and the
     // attack's place in the motion, with the attack's point. SkillDamage::Load reads it from the attack's <damage>
