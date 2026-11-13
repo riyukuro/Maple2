@@ -24,22 +24,22 @@ public partial class GameStorage {
                 .ToDictionary(achievement => achievement!.Id, achievement => achievement!);
         }
 
+        // The trophy totals of a character with its account's trophies, as the client tallies them
+        // (AchievementInfo.Add): by the trophy's metadata, so a stored row counts by its id whatever category it was
+        // stored with. A trophy without metadata counts nothing.
         public AchievementInfo GetAchievementInfo(long accountId, long characterId) {
-            Dictionary<AchievementCategory, int> achievementCounts = Context.Achievement
+            var rows = Context.Achievement
                 .Where(achievement => achievement.OwnerId == accountId || achievement.OwnerId == characterId)
-                .GroupBy(achievement => achievement.Category)
-                .Select(group => new {
-                    Category = group.Key,
-                    Count = group.Sum(g => g.CompletedCount),
-                })
-                .ToDictionary(entry => entry.Category, entry => entry.Count);
+                .Select(achievement => new { achievement.Id, achievement.CompletedCount })
+                .ToList();
 
-            return new AchievementInfo {
-                Combat = achievementCounts.GetValueOrDefault(AchievementCategory.Combat, 0),
-                Adventure = achievementCounts.GetValueOrDefault(AchievementCategory.Adventure, 0),
-                Lifestyle = achievementCounts.GetValueOrDefault(AchievementCategory.Life, 0)
-                            + achievementCounts.GetValueOrDefault(AchievementCategory.None, 0),
-            };
+            var info = new AchievementInfo();
+            foreach (var row in rows) {
+                if (game.achievementMetadata.TryGet(row.Id, out AchievementMetadata? metadata)) {
+                    info.Add(metadata, row.CompletedCount);
+                }
+            }
+            return info;
         }
 
         public bool SaveAchievements(long ownerId, ICollection<Achievement> achievements) {

@@ -28,6 +28,26 @@ public struct AchievementInfo {
         };
     }
     public int Total => Combat + Adventure + Lifestyle;
+
+    // The client's trophy totals (CAchieveManager::Tally, achievemanager.cpp:725): a trophy of type 2 adds each of
+    // its cleared grades to the total of its category (1 combat, 2 adventure, 3 life); every other trophy adds
+    // nothing. A negative count takes grades off, not below 0.
+    public void Add(AchievementMetadata metadata, int grades) {
+        if (metadata.Type != 2) {
+            return;
+        }
+        switch (metadata.Category) {
+            case AchievementCategory.Combat:
+                Combat = Math.Max(0, Combat + grades);
+                break;
+            case AchievementCategory.Adventure:
+                Adventure = Math.Max(0, Adventure + grades);
+                break;
+            case AchievementCategory.Life:
+                Lifestyle = Math.Max(0, Lifestyle + grades);
+                break;
+        }
+    }
 }
 
 public class Achievement : IByteSerializable {

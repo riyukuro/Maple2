@@ -50,13 +50,19 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                         Rank: grade.reward.rank)));
             }
 
-            var category = AchievementCategory.Life;
             string[] tags = data.categoryTag;
             if (data.categoryTag.Length > 0) {
-                // skip the first in the array and use it as the trophy category
-                category = GetTrophyCategory(tags[0]);
+                // the first tag is the category the trophy window files it under; the tally goes by the id's digit
                 tags = tags.Skip(1).ToArray();
             }
+            // The client takes the type and category from the id (CAchieveData load, achievedata.cpp:910-911).
+            int type = id / 10000000;
+            var category = ((id / 1000000) % 10) switch {
+                1 => AchievementCategory.Combat,
+                2 => AchievementCategory.Adventure,
+                3 => AchievementCategory.Life,
+                _ => AchievementCategory.None,
+            };
 
             yield return new AchievementMetadata(
                 Id: id,
@@ -65,16 +71,8 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                 Category: category,
                 CategoryTags: tags,
                 Grades: grades,
-                Locked: PlayedClientAchievements.Locked(id, data.locking, playedStates));
+                Locked: PlayedClientAchievements.Locked(id, data.locking, playedStates),
+                Type: type);
         }
-    }
-
-    private static AchievementCategory GetTrophyCategory(string tag) {
-        return tag switch {
-            "combat" => AchievementCategory.Combat,
-            "adventure" => AchievementCategory.Adventure,
-            "living" => AchievementCategory.Life,
-            _ => AchievementCategory.Life,
-        };
     }
 }

@@ -172,20 +172,8 @@ public sealed class AchievementManager {
                 achievement.CurrentGrade++;
             }
 
-            // Update count on player
-            switch (achievement.Category) {
-                case AchievementCategory.Combat:
-                    session.Player.Value.Character.AchievementInfo.Combat++;
-                    break;
-                case AchievementCategory.Adventure:
-                    session.Player.Value.Character.AchievementInfo.Adventure++;
-                    break;
-                case AchievementCategory.Life:
-                    session.Player.Value.Character.AchievementInfo.Lifestyle++;
-                    break;
-                default:
-                    continue; // Invalid category, just skip.
-            }
+            // The player's trophy totals, as the client tallies them (AchievementInfo.Add).
+            session.Player.Value.Character.AchievementInfo.Add(achievement.Metadata, 1);
 
             GiveReward(achievement);
 
@@ -388,18 +376,7 @@ public sealed class AchievementManager {
                 session.Send(AchievementPacket.Update(achievement));
                 return;
             }
-            AchievementInfo info = session.Player.Value.Character.AchievementInfo;
-            switch (achievement.Category) {
-                case AchievementCategory.Combat:
-                    info.Combat = Math.Max(0, info.Combat - 1);
-                    break;
-                case AchievementCategory.Adventure:
-                    info.Adventure = Math.Max(0, info.Adventure - 1);
-                    break;
-                case AchievementCategory.Life:
-                    info.Lifestyle = Math.Max(0, info.Lifestyle - 1);
-                    break;
-            }
+            session.Player.Value.Character.AchievementInfo.Add(achievement.Metadata, -1);
             session.Send(AchievementPacket.Update(achievement));
             return;
         }
