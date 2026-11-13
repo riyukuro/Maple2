@@ -84,6 +84,16 @@ public static class DamageCalculator {
         return (long) (target.Stats.Values[BasicAttribute.Health].Total * rate * (1 - cut));
     }
 
+    // A hit of constDamageByTargetHP (or the spirit a hit of constDamageByTargetSP takes): what takes the current value
+    // down to the attack's value, nothing when it is already there or below, and nothing for a value of 0 or less (not
+    // given). KR: 1 on the Zakum rage attack 50100116 (health and spirit) and the Pink Bean curses 99999737 and
+    // 99999814 (health). The client only tells such an attack as a damaging one (SkillDamage::HasDamage) and never
+    // computes the amount. Chosen here: down to the value, from the motion name Attack_Rage_HPSP and the curse's
+    // tooltip (health drops to 1).
+    internal static long DownTo(long current, long value) {
+        return value > 0 ? Math.Max(0, current - value) : 0;
+    }
+
     // The caster's bonus against an npc of the target's rank: Common Monster Damage (s_item_opt_sa_improve_damage_
     // normalNpc), Elite Monster Damage (_namedNpc) or Bonus Boss Damage (_bossNpc). The ranks are those of the server
     // table monsterExpTable's columns (MonsterExpMetadata.ForClass): class 3 elite and 7 dungeon elite, 4 boss and 6

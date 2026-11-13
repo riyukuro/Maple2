@@ -137,8 +137,9 @@ public static class PlayedClientActionAdditionals {
     // rows of the pack attack they are placed on (Place; a dependOnDamageCount use to the on-damage rows). There the
     // n-th use of an effect id and level is the n-th row giving that id and level, and that row's <target> or
     // <caster> test gets HasNotBuffOwned when the use's same test has hasNotBuffOwner for a hasNotBuffID the row's test
-    // also tests. Marked counts the tests changed. KR: the actionAdditional rows of 10300222..10300226 (hasNotBuffID
-    // 10300227), one use per attack row.
+    // also tests. Marked counts the tests changed. Uses beyond the rows giving their id and level mark nothing (the
+    // client's later use has no pack row of its own; Merge does not add it either, as the id is given). KR: the
+    // actionAdditional rows of 10300222..10300226 (hasNotBuffID 10300227), one use per attack row, so none is left.
     public static SkillMetadataLevel MarkNotBuffOwned(SkillMetadataLevel level, LevelUses uses, out int marked) {
         static bool Owned(BuffTest? test) => test is { HasNotBuffOwner: true, HasNotBuffId: not 0 };
         bool any = uses.Level.Concat(uses.Attacks.Values.SelectMany(attack => attack.Uses)).Any(use => Owned(use.TargetTest) || Owned(use.CasterTest));

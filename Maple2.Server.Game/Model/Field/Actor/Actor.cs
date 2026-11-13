@@ -138,6 +138,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             } else if (Buffs.Invincible || refused) {
                 // KMS2 sends each hit on a holder of an invincible buff as type 4 or 8 (by the buff) with amount 0.
                 targetRecord.AddDamage(Buffs.Invincible ? Buffs.InvincibleHitType : DamageType.Invincible, 0);
+            } else if (attack.Damage.ConstDamageByTargetHp > 0) {
+                // The hit takes the health down to the value, counting the hits before it; it never kills, and a
+                // target already there takes a hit of 0 (still a hit for the hit events).
+                long down = DamageCalculator.DownTo(Stats.Values[BasicAttribute.Health].Current + damageAmount, attack.Damage.ConstDamageByTargetHp);
+                targetRecord.AddDamage(DamageType.Normal, down);
+                damageAmount -= down;
             } else if (attack.Damage.DamageByTargetMaxHp > 0) {
                 long share = DamageCalculator.TargetMaxHpDamage(caster, this, attack.Damage.DamageByTargetMaxHp);
                 targetRecord.AddDamage(DamageType.Normal, share);
@@ -154,6 +160,17 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                     Logger.Error(e, "Error calculating damage for {Caster} on {Target} with attack {Attack}", caster, this, attack);
                     damageAmount = 0; // No damage dealt
                 }
+            }
+        }
+
+        // constDamageByTargetSP: the spirit of a player hit (npcs have none) goes down to the value as well, unless
+        // the hit was taken by invincibility or refused (attackPossible).
+        if (attack.Damage.ConstDamageByTargetSp > 0 && this is FieldPlayer && !Buffs.Invincible && !refused) {
+            Stat spirit = Stats.Values[BasicAttribute.Spirit];
+            long down = DamageCalculator.DownTo(spirit.Current, attack.Damage.ConstDamageByTargetSp);
+            if (down > 0) {
+                spirit.Add(-down);
+                Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Spirit));
             }
         }
 

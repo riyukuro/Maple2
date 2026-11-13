@@ -218,7 +218,11 @@ public record SkillMetadataDamage(
     long Value,
     float DamageByTargetMaxHp,
     bool SuperArmorBreak,
-    SkillMetadataPush? Push);
+    SkillMetadataPush? Push,
+    // constDamageByTargetHP / constDamageByTargetSP: a hit takes the target's health down to this value (never below
+    // it, never a kill) and its spirit, where it has spirit, down to the other; 0 when not given. See Actor.ApplyDamage.
+    long ConstDamageByTargetHp = 0,
+    long ConstDamageByTargetSp = 0);
 
 public record SkillMetadataPush(
     int Type, // 0, 1, 2, 3, 4, 5, -1

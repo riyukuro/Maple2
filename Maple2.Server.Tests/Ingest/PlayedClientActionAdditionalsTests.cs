@@ -166,9 +166,10 @@ public class PlayedClientActionAdditionalsTests {
             Probability: 1, CasterTest: caster ? test : null, TargetTest: caster ? null : test));
     }
 
-    private static PlayedClientActionAdditionals.Use NotBuffUse(int id, int notBuffId, bool owner, short level = 1, bool caster = false) {
+    private static PlayedClientActionAdditionals.Use NotBuffUse(int id, int notBuffId, bool owner, short level = 1, bool caster = false,
+            bool onDamage = true) {
         var test = new PlayedClientActionAdditionals.BuffTest(0, 0, false, notBuffId, owner);
-        return new PlayedClientActionAdditionals.Use(EffectId: id, Level: level, Target: 2, Owner: 1, OnDamage: true, OverlapCount: 1,
+        return new PlayedClientActionAdditionals.Use(EffectId: id, Level: level, Target: 2, Owner: 1, OnDamage: onDamage, OverlapCount: 1,
             LinkSkillId: 0, AllowOnBattleMount: false, Probability: 1, CasterTest: caster ? test : null, TargetTest: caster ? null : test);
     }
 
@@ -229,6 +230,36 @@ public class PlayedClientActionAdditionalsTests {
                 Is.EqualTo(new[] { false, true }));
             Assert.That(marked.Motions[0].Attacks[0].Skills[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.False);
             Assert.That(marked.Motions[0].Attacks[1].SkillsOnDamage[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.False);
+        });
+    }
+
+    // The same per row on the level's rows and on an attack's rows run on every hit (not dependOnDamageCount); a flagged
+    // use past the last row of its id and level marks nothing.
+    [Test]
+    public void MarksTheHasNotBuffOwnerPerRow_LevelAndAttackRows() {
+        SkillMetadataAttack attack = Attack("p0", NotBuffRow(947, 957), NotBuffRow(947, 957)) with {
+            SkillsOnDamage = [NotBuffRow(947, 957)],
+        };
+        var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
+            Skills = [NotBuffRow(948, 958), NotBuffRow(948, 958)],
+            Motions = [new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>())],
+        };
+        var uses = new PlayedClientActionAdditionals.LevelUses(
+            [NotBuffUse(948, 958, owner: true), NotBuffUse(948, 958, owner: false), NotBuffUse(948, 958, owner: true)],
+            new Dictionary<(int, int), PlayedClientActionAdditionals.AttackUses> {
+                [(0, 0)] = new("p0", [
+                    NotBuffUse(947, 957, owner: false, onDamage: false), NotBuffUse(947, 957, owner: true, onDamage: false),
+                    NotBuffUse(947, 957, owner: false),
+                ]),
+            });
+        SkillMetadataLevel marked = PlayedClientActionAdditionals.MarkNotBuffOwned(level, uses, out int count);
+        Assert.Multiple(() => {
+            Assert.That(count, Is.EqualTo(2));
+            Assert.That(marked.Skills.Select(row => row.Condition!.Condition.Target!.HasNotBuffOwned), Is.EqualTo(new[] { true, false }),
+                "the level's third use has no row left");
+            Assert.That(marked.Motions[0].Attacks[0].Skills.Select(row => row.Condition!.Condition.Target!.HasNotBuffOwned),
+                Is.EqualTo(new[] { false, true }));
+            Assert.That(marked.Motions[0].Attacks[0].SkillsOnDamage[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.False);
         });
     }
 

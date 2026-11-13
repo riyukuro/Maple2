@@ -159,7 +159,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                     Probability: attack.damageProperty.pushprob,
                                     Priority: attack.damageProperty.pushPriority,
                                     PriorityHitImmune: attack.damageProperty.pushPriorityHitImmune
-                                ) : null
+                                ) : null,
+                                ConstDamageByTargetHp: attack.damageProperty.constDamageByTargetHP,
+                                ConstDamageByTargetSp: attack.damageProperty.constDamageByTargetSP
                             ),
                             Skills: attack.conditionSkill.Where(skill => !skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
                             SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
