@@ -89,6 +89,60 @@ public class InventoryDeleteListTests {
         });
     }
 
+    // An item on the list given back to the bag (an add without commit) between the session save's bag save and its
+    // commit: the committed owner-0 write is followed by a write back to the character. Before, the row stayed owner
+    // 0 while the bag held the item, until the next save (a crash then lost it).
+    [Test]
+    public void GivenBackBeforeTheCommit_RowIsTheCharactersAgain() {
+        GameSession session = Start();
+        StoredItem item = Held(session);
+        lock (session.Item) {
+            Assert.That(session.Item.Inventory.Consume(item.Uid, 1), Is.True);
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.BeginTransaction();
+            session.Item.Inventory.Save(db);
+            lock (session.Item) {
+                Assert.That(session.Item.Inventory.Add(item.Clone()), Is.True);
+            }
+            Assert.That(db.Commit(), Is.True);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(Owner(item.Uid), Is.EqualTo(test.CharacterId));
+            Assert.That(Deletes(session), Is.Empty);
+        });
+    }
+
+    // An item on the list whose commit add fails keeps its entry, so the next save still writes the row to owner 0.
+    // Before, the entry was taken off before the save that failed, and the row stayed the character's with the item
+    // in neither the bag nor the list (the next load gave it back, while the caller kept or mailed it).
+    [Test]
+    public void FailedCommitAdd_KeepsTheEntry() {
+        GameSession session = Start();
+        StoredItem item = Held(session);
+        lock (session.Item) {
+            Assert.That(session.Item.Inventory.Consume(item.Uid, 1), Is.True);
+        }
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                               && entry.Entity.GetType().Name == "Item");
+        bool added;
+        try {
+            added = session.Item.Inventory.Add(item.Clone(), commit: true);
+        } finally {
+            test.FailSave = null;
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(added, Is.False);
+            Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
+            Assert.That(Owner(item.Uid), Is.Zero);
+        });
+    }
+
     // A new item whose commit add fails, and whose row's undo fails too, has its row written to owner 0 at the next
     // bag save. Before, the row stayed the character's at slot -1 while the caller mailed the item as a new row, so
     // the next load gave it twice.

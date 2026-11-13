@@ -327,8 +327,11 @@ public class InventoryManager {
             }
             // An item that comes back to the bag with a uid on the delete list (taken, then given back as a copy with
             // its uid) is no longer deleted: the entry stayed, and once the item left the bag again (stored, traded,
-            // mailed) the next save of the bag wrote its row to owner 0.
-            Forget(add.Uid);
+            // mailed) the next save of the bag wrote its row to owner 0. A commit add takes the entry off only once its
+            // save is kept (below): one that fails undoes the add, and the entry must still write the row.
+            if (!commit) {
+                Forget(add.Uid);
+            }
 
             bool mergedAway = add.Amount == 0;
             if (mergedAway && !commit) {
@@ -366,6 +369,7 @@ public class InventoryManager {
                     session.Send(ItemInventoryPacket.Error(s_err_inventory));
                     return false;
                 }
+                Forget(add.Uid);
                 if (mergedAway) {
                     CountDestroyed(add);
                 }
@@ -1055,14 +1059,30 @@ public class InventoryManager {
     // committed (at once without a transaction, at the commit of the session save's transaction), so a save that fails
     // or is rolled back writes it again next time. Before, the list was never emptied. Chosen here: an entry is taken
     // off by reference, so the same item put on the list again between this save and its commit is taken off too.
+    // The bag lock is not held from this save to the commit of the session save's transaction: an item of the list
+    // that came back to the bag in that time (an add without commit) has its owner-0 write committed while the bag
+    // holds it, so its row is written back to the character right after the commit. Before, the row stayed owner 0
+    // until the next save, and a crash in that time lost the item. Chosen here: a crash between the commit and that
+    // write still loses it, and a failed write is logged and left to the next save.
     public void Save(GameStorage.Request db) {
         lock (session.Item) {
             Item[] discarded = delete.ToArray();
             if (discarded.Length > 0 && db.SaveItems(0, discarded)) {
                 db.AfterCommit(() => {
                     lock (session.Item) {
+                        var back = new List<Item>();
                         foreach (Item item in discarded) {
                             delete.Remove(item);
+                            if (Get(item.Uid) is { } held && !delete.Any(entry => entry.Uid == item.Uid)) {
+                                back.Add(held);
+                            }
+                        }
+                        if (back.Count == 0) {
+                            return;
+                        }
+                        using GameStorage.Request again = session.GameStorage.Context();
+                        if (!again.SaveItems(session.CharacterId, back.ToArray())) {
+                            logger.Error("Items {Uids}: back in the bag, rows left owner 0 until the next save", string.Join(",", back.Select(item => item.Uid)));
                         }
                     }
                 });
