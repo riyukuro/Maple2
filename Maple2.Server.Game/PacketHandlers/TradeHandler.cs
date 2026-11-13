@@ -139,10 +139,18 @@ public class TradeHandler : FieldPacketHandler {
         session.Trade?.Accept(session);
     }
 
+    // The requester's character id. The request box's decline (uimessagebox.cpp:1507) follows Acknowledge, so the
+    // receiver holds the trade; the client's own refusal (trade refusal option or GM action block 0x20,
+    // CTradeManagerEx::OnTradeRequest trademanagerex_1.cpp:390/397) comes without one, so the request is found
+    // through the requester.
     private static void HandleDecline(GameSession session, IByteReader packet) {
         long characterId = packet.ReadLong();
 
-        session.Trade?.Decline(session);
+        TradeManager? trade = session.Trade;
+        if (trade == null && session.Field != null && session.Field.TryGetPlayerById(characterId, out FieldPlayer? requester)) {
+            trade = requester.Session.Trade;
+        }
+        trade?.Decline(session);
     }
 
     private static void HandleCancel(GameSession session) {

@@ -137,9 +137,10 @@ public class TradeManager : IDisposable {
         }
     }
 
+    // Called by |receiver|, after Acknowledge (the request box) or without it (the client's own refusal).
     public void Decline(GameSession caller) {
         lock (mutex) {
-            if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
+            if (state is not (TradeState.Requested or TradeState.Acknowledged) || !IsReceiver(caller)) {
                 return;
             }
 
