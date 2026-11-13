@@ -48,7 +48,7 @@ public partial class GameStorage {
             foreach (PlotCube cube in plotCubes) {
                 if (cube.Interact?.Metadata.Nurturing is null) continue;
 
-                cube.Interact!.Nurturing = GetNurturing(ownerId, cube.ItemId, cube.Interact.Metadata.Nurturing);
+                cube.Interact!.Nurturing = GetNurturing(ownerId, cube.Interact.Metadata.Id, cube.Interact.Metadata.Nurturing);
             }
 
             return plotCubes;
@@ -652,7 +652,7 @@ public partial class GameStorage {
             foreach (PlotCube cube in plotCubes) {
                 if (cube.Interact?.Metadata.Nurturing is null) continue;
 
-                cube.Interact!.Nurturing = GetNurturing(plotInfo.OwnerId, cube.ItemId, cube.Interact.Metadata.Nurturing);
+                cube.Interact!.Nurturing = GetNurturing(plotInfo.OwnerId, cube.Interact.Metadata.Id, cube.Interact.Metadata.Nurturing);
             }
 
             return plotCubes;
@@ -735,7 +735,7 @@ public partial class GameStorage {
 
                 PlotCube? plotCube = ToPlotCube(model);
                 if (plotCube?.Interact?.Metadata.Nurturing is not null) {
-                    plotCube.Interact.Nurturing = GetNurturing(plotInfo.OwnerId, cube.ItemId, plotCube.Interact.Metadata.Nurturing);
+                    plotCube.Interact.Nurturing = GetNurturing(plotInfo.OwnerId, plotCube.Interact.Metadata.Id, plotCube.Interact.Metadata.Nurturing);
                 }
 
                 return plotCube;

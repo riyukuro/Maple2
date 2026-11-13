@@ -47,9 +47,26 @@ public class InteractCube : IByteSerializable {
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteUnicodeString(Id);
-        writer.Write(State);
+        writer.WriteInt((int) State);
+        // A nest cube (control type Nurturing, CNurturingCubeObject, functioncubeobject.cpp:1784) always reads its pet
+        // after the state: two longs, three shorts and a long. A nest whose pet row is not loaded still sends a new
+        // pet, so the record stays whole.
         if (Nurturing is not null) {
             writer.WriteClass<Nurturing>(Nurturing);
+            return;
         }
+        if (Metadata.ControlType is not InteractCubeControlType.Nurturing) {
+            return;
+        }
+        if (Metadata.Nurturing is not null) {
+            writer.WriteClass<Nurturing>(new Nurturing(Metadata.Nurturing));
+            return;
+        }
+        writer.WriteLong();
+        writer.WriteLong();
+        writer.WriteShort();
+        writer.WriteShort();
+        writer.WriteShort();
+        writer.WriteLong();
     }
 }

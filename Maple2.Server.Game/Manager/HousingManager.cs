@@ -669,7 +669,7 @@ public class HousingManager {
         if (functionCubeMetadata is not null) {
             result.Interact = new InteractCube(position, functionCubeMetadata);
             if (result.Interact.Nurturing is not null && result.Interact.Metadata.Nurturing is not null) {
-                Nurturing? nurturing = db.GetNurturing(session.AccountId, result.ItemId, result.Interact.Metadata.Nurturing);
+                Nurturing? nurturing = db.GetNurturing(session.AccountId, result.Interact.Metadata.Id, result.Interact.Metadata.Nurturing);
                 if (nurturing is null) {
                     nurturing = db.CreateNurturing(session.AccountId, result.Interact.Metadata.Nurturing, result.Interact.Metadata.Id);
                     if (nurturing is null) {

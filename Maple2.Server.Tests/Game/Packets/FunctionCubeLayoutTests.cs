@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -20,6 +21,8 @@ public class FunctionCubeLayoutTests {
         cube.Id = id;
         cube.State = state;
         cube.Nurturing = nurturing;
+        typeof(InteractCube).GetField(nameof(InteractCube.Metadata))!.SetValue(cube, new FunctionCubeMetadata(0, 0,
+            ConfigurableCubeType.None, state, nurturing is null ? InteractCubeControlType.None : InteractCubeControlType.Nurturing, [], 0, null));
         return cube;
     }
 
