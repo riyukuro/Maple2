@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -30,8 +32,10 @@ public class MentorHandlerTests {
     private GameSession session => test.Session;
     private GameSession other => otherTest.Session;
 
+    private DbContextOptions options = null!;
+
     private void Login(bool season) {
-        DbContextOptions options = new DbContextOptionsBuilder()
+        options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
@@ -412,5 +416,57 @@ public class MentorHandlerTests {
         Assert.That(db.AddMentoringRequest(session.CharacterId, 515151, 2, 100, 20, out MentoringEntry? third), Is.Null);
         Assert.That(db.AcceptMentoring(third!.Id, 515151, 1, out _), Is.EqualTo(MentorError.InvalidTarget));
         Assert.That(db.GetMentoringEntry(third.Id), Is.Null);
+    }
+
+    // A request another game server stored while this mentee's pair was accepted (its "has a mentor" check ran
+    // first): the accept answers 7 and removes it, and the list shows the ones left.
+    [Test]
+    public void Accept_ARequestLeftAfterThePairIsRemoved() {
+        MentorAndMentee();
+        InviteOther();
+        long id = Rows().Single().Id;
+        Send(other, Accept, writer => writer.WriteLong(id));
+        long stuck;
+        using (var context = new Ms2Context(options)) {
+            var row = new Maple2.Database.Model.Mentoring { MentorId = 424242, MenteeId = other.CharacterId, CreationTime = DateTime.UtcNow };
+            context.Mentoring.Add(row);
+            context.SaveChanges();
+            stuck = row.Id;
+        }
+        Mentor(otherTest);
+        Send(other, Accept, writer => writer.WriteLong(stuck));
+
+        Assert.That(Mentor(otherTest), Is.EqualTo(new[] { Error(MentorError.MenteeHasAlreadyMentor), "0200000000" }));
+        Assert.That(Rows().Select(row => row.Id), Is.EqualTo(new[] { id }));
+    }
+
+    // A partner's logout and login after the pair list was sent: Mentor 15 with that partner alone, once per change.
+    [Test]
+    public void PairOnline_APartnersLoginAndLogoutArePushed() {
+        MentorAndMentee();
+        InviteOther();
+        long id = Rows().Single().Id;
+        Send(other, Accept, writer => writer.WriteLong(id));
+        session.Mentoring.Load();
+        Mentor(test);
+
+        Channel(-1);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Hex(MentorPacket.PairOnline((other.CharacterId, false))) }));
+        Channel(-1);
+        Assert.That(Mentor(test), Is.Empty);
+        Channel(1);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Hex(MentorPacket.PairOnline((other.CharacterId, true))) }));
+
+        session.Mentoring.Dispose();
+        Channel(-1);
+        Assert.That(Mentor(test), Is.Empty);
+
+        void Channel(int channel) {
+            session.PlayerInfo.ReceiveUpdate(new PlayerUpdateRequest {
+                AccountId = other.AccountId,
+                CharacterId = other.CharacterId,
+                Channel = channel,
+            });
+        }
     }
 }

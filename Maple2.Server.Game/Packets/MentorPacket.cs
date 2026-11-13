@@ -159,12 +159,17 @@ public static class MentorPacket {
 
     // CMentoringManager::OnPairMode: per pair the other character's id and whether it is online.
     public static ByteWriter PairOnline(IReadOnlyCollection<Entry> pairs) {
+        return PairOnline(pairs.Select(pair => (pair.Partner.CharacterId, pair.Partner.Online)).ToArray());
+    }
+
+    // The client sets the flag of each listed partner only, so one partner can be sent alone.
+    public static ByteWriter PairOnline(params (long CharacterId, bool Online)[] partners) {
         var pWriter = Packet.Of(SendOp.Mentor);
         pWriter.WriteByte((byte) Command.PairMode);
-        pWriter.WriteInt(pairs.Count);
-        foreach (Entry pair in pairs) {
-            pWriter.WriteLong(pair.Partner.CharacterId);
-            pWriter.WriteBool(pair.Partner.Online);
+        pWriter.WriteInt(partners.Length);
+        foreach ((long characterId, bool online) in partners) {
+            pWriter.WriteLong(characterId);
+            pWriter.WriteBool(online);
         }
 
         return pWriter;

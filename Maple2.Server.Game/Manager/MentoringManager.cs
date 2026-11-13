@@ -8,6 +8,9 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.World.Service;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
+using System.Collections.Concurrent;
+using Maple2.Server.Core.Sync;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -27,12 +30,24 @@ public class MentoringManager : IDisposable {
     // request or pair is stored or sent.
     private ReturnUser? Season => session.FindEvent(GameEventType.ReturnUser).FirstOrDefault()?.Metadata.Data as ReturnUser;
 
+    // The partners whose login and logout are pushed as Mentor 15 (the online flag last sent for each).
+    // A listener stops once its partner's entry is removed or replaced.
+    private sealed class PartnerState(bool online) {
+        public volatile bool Online = online;
+    }
+    private readonly ConcurrentDictionary<long, PartnerState> partnerOnline = new();
+    private readonly CancellationTokenSource tokenSource = new();
+
     public MentoringManager(GameSession session) {
         this.session = session;
     }
 
     public void Dispose() {
-        session.Dispose();
+        if (tokenSource.IsCancellationRequested) {
+            return;
+        }
+        tokenSource.Cancel();
+        partnerOnline.Clear();
     }
 
     // The register button of the mentee page (Mentor 4, role Mentee) and of the mentor page (Mentor 8, role Mentor).
@@ -95,6 +110,7 @@ public class MentoringManager : IDisposable {
         session.Send(MentorPacket.MenteeInvitations(requests));
         session.Send(MentorPacket.MyList(pairs));
         session.Send(MentorPacket.PairOnline(pairs));
+        ListenPartners(pairs);
     }
 
     // The mentee page's list request (Mentor 2).
@@ -187,8 +203,9 @@ public class MentoringManager : IDisposable {
         }
         if (error != null || pair == null) {
             session.Send(MentorPacket.Error(error ?? MentorError.TargetNotExists));
-            if (error == MentorError.InvalidTarget) {
-                // The mentor has all its mentees: the request was removed, the list shows the ones left.
+            if (error is MentorError.InvalidTarget or MentorError.MenteeHasAlreadyMentor) {
+                // The mentor has all its mentees, or this player has a mentor already: the request was removed,
+                // the list shows the ones left.
                 session.Send(MentorPacket.MenteeInvitations(Lists().Requests));
             }
             return;
@@ -226,6 +243,43 @@ public class MentoringManager : IDisposable {
         MentorPacket.Entry[] pairs = Lists().Pairs;
         session.Send(MentorPacket.MyList(pairs));
         session.Send(MentorPacket.PairOnline(pairs));
+        ListenPartners(pairs);
+    }
+
+    // A partner's login or logout (its channel changes) is sent as Mentor 15 with that partner alone, while the
+    // pair is listed. A partner no longer in the list stops its listener at its next update.
+    private void ListenPartners(MentorPacket.Entry[] pairs) {
+        if (tokenSource.IsCancellationRequested) {
+            return;
+        }
+        HashSet<long> current = pairs.Select(pair => pair.Partner.CharacterId).ToHashSet();
+        foreach (long id in partnerOnline.Keys.Where(id => !current.Contains(id)).ToArray()) {
+            partnerOnline.TryRemove(id, out _);
+        }
+
+        CancellationToken token = tokenSource.Token;
+        foreach (MentorPacket.Entry pair in pairs) {
+            long partnerId = pair.Partner.CharacterId;
+            if (partnerOnline.TryGetValue(partnerId, out PartnerState? known)) {
+                known.Online = pair.Partner.Online;
+                continue;
+            }
+            var state = new PartnerState(pair.Partner.Online);
+            if (!partnerOnline.TryAdd(partnerId, state)) {
+                continue;
+            }
+            session.PlayerInfo.Listen(partnerId, new PlayerInfoListener(UpdateField.Channel, (_, info) => {
+                if (token.IsCancellationRequested || !partnerOnline.TryGetValue(partnerId, out PartnerState? now) || now != state) {
+                    return true;
+                }
+                bool online = info.Channel >= 0;
+                if (online != state.Online) {
+                    state.Online = online;
+                    session.Send(MentorPacket.PairOnline((partnerId, online)));
+                }
+                return false;
+            }));
+        }
     }
 
     // The waiting requests to this player (as mentee) and its pairs, each with the other character.

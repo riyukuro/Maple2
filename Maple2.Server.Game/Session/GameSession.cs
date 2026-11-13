@@ -1273,6 +1273,7 @@ public sealed partial class GameSession : Core.Network.Session {
         } finally {
             SafeDispose(Guild);
             SafeDispose(Buddy);
+            SafeDispose(Mentoring);
             SafeDispose(Party);
             foreach ((int groupChatId, GroupChatManager groupChat) in GroupChats) {
                 try { groupChat.CheckDisband(); } catch (Exception ex) { Logger.Error(ex, "Error disbanding group chat {Id} for {Player}", groupChatId, PlayerName); }

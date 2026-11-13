@@ -65,7 +65,7 @@ public partial class GameStorage {
 
         // The mentee's accept of the request id: only a waiting request to this mentee. The pair is stored and the
         // mentee's other waiting requests are removed. The error when no such request waits (2), the mentee has a
-        // mentor (7) or the mentor has maxMentees mentees (3: the request is removed).
+        // mentor (7) or the mentor has maxMentees mentees (3); on 7 and 3 the request is removed.
         public MentorError? AcceptMentoring(long id, long menteeId, int maxMentees, out MentoringEntry? entry) {
             entry = null;
             Model.Mentoring? request = Context.Mentoring.AsTracking()
@@ -74,6 +74,10 @@ public partial class GameStorage {
                 return MentorError.TargetNotExists;
             }
             if (Context.Mentoring.Any(row => row.MenteeId == menteeId && row.Accepted)) {
+                // A request stored on another game server while this mentee's pair was accepted: it can never be
+                // accepted, so it is removed.
+                Context.Mentoring.Remove(request);
+                Context.TrySaveChanges();
                 return MentorError.MenteeHasAlreadyMentor;
             }
             if (Context.Mentoring.Count(row => row.MentorId == request.MentorId && row.Accepted) >= maxMentees) {
