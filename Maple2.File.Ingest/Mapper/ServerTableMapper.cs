@@ -1641,6 +1641,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return ReadDailyLoginReward(value1, value2, value3);
             case GameEventType.LoginNotice:
                 return new LoginNotice();
+            case GameEventType.ItemBox:
+                return ReadItemBox(value1);
             case GameEventType.Festival:
                 // GameEventFestival::vfunc_2 reads value1 and value2 as unsigned numbers (FUN_140718200).
                 return new Festival(
@@ -1995,6 +1997,35 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             MaxRound: maxRound,
             FieldId: fieldId,
             Steps: steps.ToArray());
+    }
+
+    // GameEventItemBox::vfunc_2 loads value1 and gives its first element, whatever its name, to
+    // ItemBoxEventContext::Load: fieldID and boxItemID as unsigned numbers, bannerPath, title and desc as text.
+    // Null without that element, or without a field or a box item, as the dialog then has no box to offer.
+    public static ItemBox? ReadItemBox(string value1) {
+        if (string.IsNullOrWhiteSpace(value1)) {
+            return null;
+        }
+        var document = new XmlDocument();
+        try {
+            document.LoadXml(value1);
+        } catch (XmlException) {
+            return null;
+        }
+        if (document.DocumentElement is not { } root) {
+            return null;
+        }
+        int fieldId = int.TryParse(root.GetAttribute("fieldID"), out int parsedField) ? parsedField : 0;
+        int boxItemId = int.TryParse(root.GetAttribute("boxItemID"), out int parsedItem) ? parsedItem : 0;
+        if (fieldId <= 0 || boxItemId <= 0) {
+            return null;
+        }
+        return new ItemBox(
+            FieldId: fieldId,
+            BoxItemId: boxItemId,
+            Title: root.GetAttribute("title"),
+            Desc: root.GetAttribute("desc"),
+            BannerPath: root.GetAttribute("bannerPath"));
     }
 
     private static XmlElement? LoadElement(string value, string name) {

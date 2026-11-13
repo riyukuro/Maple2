@@ -181,6 +181,18 @@ public class GameEvent : IByteSerializable {
                 // GameEventLoginNotice has no reader of its own: GameEvent::vfunc_4 reads the id.
                 writer.WriteInt(Id);
                 break;
+            case ItemBox itemBox:
+                // GameEvent::vfunc_4 reads the id, then ItemBoxEventContext::Read (gameeventcontext.cpp) the box; its
+                // last int is the event id (GameEventItemBox::vfunc_2 sets it), the key of the user value 1400 the
+                // dialog reads.
+                writer.WriteInt(Id);
+                writer.WriteInt(itemBox.FieldId);
+                writer.WriteInt(itemBox.BoxItemId);
+                writer.WriteUnicodeString(itemBox.Title);
+                writer.WriteUnicodeString(itemBox.Desc);
+                writer.WriteUnicodeString(itemBox.BannerPath);
+                writer.WriteInt(Id);
+                break;
             case GuildVsGameOpen:
                 // GameEventGuildVsGameOpen reads only the base event's id.
                 writer.WriteInt(Id);

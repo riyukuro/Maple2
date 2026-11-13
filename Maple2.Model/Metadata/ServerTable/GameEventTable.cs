@@ -563,6 +563,15 @@ public record DungeonEnterTime(
 
 public record LoginNotice : GameEventData;
 
+// value1 <v fieldID boxItemID bannerPath title desc/> as ItemBoxEventContext::Load reads it (gameeventcontext.cpp):
+// the box the open box dialog offers once a day in the field while the event runs.
+public record ItemBox(
+    int FieldId,
+    int BoxItemId,
+    string Title,
+    string Desc,
+    string BannerPath) : GameEventData;
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]
 [JsonDerivedType(typeof(StringBoard), "StringBoard")]
 [JsonDerivedType(typeof(StringBoardLink), "StringBoardLink")]
@@ -581,6 +590,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(ReturnUserCandidate), "ReturnUserCandidate")]
 [JsonDerivedType(typeof(ActiveUser), "ActiveUser")]
 [JsonDerivedType(typeof(LoginNotice), "LoginNotice")]
+[JsonDerivedType(typeof(ItemBox), "ItemBox")]
 [JsonDerivedType(typeof(FieldEffect), "FieldEffect")]
 [JsonDerivedType(typeof(Festival), "Festival")]
 [JsonDerivedType(typeof(QuestTag), "QuestTag")]

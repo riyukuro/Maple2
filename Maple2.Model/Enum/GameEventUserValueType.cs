@@ -26,6 +26,10 @@ public enum GameEventUserValueType {
     MapleopolyFreeRollAmount = 801,
     MapleopolyTotalTrips = 802, // unsure
 
+    // Item box (ItemBox): the day (yyyymmdd, server time) the box was last taken; the open box dialog
+    // (uiitemeventopenboxdialog.cpp) stays closed while it is today or later.
+    ItemBoxReceivedDay = 1400,
+
     // Time run (TimeRunEvent), read by its dialog (uitimeruneventdialog.cpp)
     TimeRunFinalRewardReceived = 1500, // 1 once the final reward is claimed
     TimeRunStepRewardKey = 1501, // the key (distance) of the last step reward claimed

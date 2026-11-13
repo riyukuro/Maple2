@@ -115,9 +115,10 @@ public sealed class GameEventManager {
     // The values stored for the account instead of the character.
     // Chosen here: an item collection's claim is the account's as well, so that one set of condition items, which
     // stay with the player, is not claimed by every character of the account in turn.
-    // So is the daily login mail's mark (UpdateDailyLoginReward).
+    // So are the daily login mail's mark (UpdateDailyLoginReward) and the item box's day (EventRewardHandler).
     public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type)
-        || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven;
+        || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven
+            or GameEventUserValueType.ItemBoxReceivedDay;
 
     private static readonly GameEventUserValueType[] StampValueTypes = [
         GameEventUserValueType.StampCompleteRewardClaimed,

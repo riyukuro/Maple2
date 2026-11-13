@@ -9,6 +9,7 @@ public static class EventRewardPacket {
     private enum Command : byte {
         ClaimStampReward = 0,
         ClaimStampCompleteReward = 1,
+        OpenEventBox = 2,
         ClaimTimeRunFinalReward = 3,
         ClaimTimeRunStepReward = 4,
         FlipGalleryCard = 7,
@@ -64,6 +65,16 @@ public static class EventRewardPacket {
             pWriter.WriteInt(item.ItemId);
             pWriter.WriteShort(item.Rarity);
         }
+
+        return pWriter;
+    }
+
+    // The item box reply (UIItemEventOpenBoxDialog, uiitemeventopenboxdialog.cpp:139): mode 2 and whether the box
+    // was given; false shows s_event_open_item_box_ui_fail. Either way the dialog closes.
+    public static ByteWriter OpenEventBox(bool ok) {
+        var pWriter = Packet.Of(SendOp.EventReward);
+        pWriter.WriteByte((byte) Command.OpenEventBox);
+        pWriter.WriteBool(ok);
 
         return pWriter;
     }

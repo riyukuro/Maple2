@@ -84,19 +84,18 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimStampCompleteReward:
                 HandleClaimStampCompleteReward(session);
                 return;
+            case Command.OpenEventBox:
+                HandleOpenEventBox(session);
+                return;
             // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
-            // item box, snowman, level-up package and burning level-up events, and
+            // snowman, level-up package and burning level-up events, and
             // GameEvent writes none of them), so the client's dialogs have no event to show and
             // there is nothing to pay out. The client has no refusal text for them: read and logged.
             // Client writers:
-            //   2      uiitemeventopenboxdialog.cpp:226
             //   5      uibuddyeventlistener.cpp:667 (needs client feature 0x82)
             //   12, 13 uisnowmaneventdialog.cpp:343, :365
             //   15     uileveluppackagewidgetdialog.cpp:580
             //   16     uicharacterlistdialog.cpp:2093
-            case Command.OpenEventBox: // the event box dialog's open button; no body
-                Logger.Debug("EventReward {Command} from {CharacterId}", command, session.CharacterId);
-                return;
             case Command.VipGmClick: // always 1; sent by any player when the buddy event page opens, not a GM mode
             case Command.ClaimSnowmanDailyReward: // snowman index
             case Command.ClaimSnowmanAccumReward: // snowman index
@@ -357,6 +356,50 @@ public class EventRewardHandler : FieldPacketHandler {
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey, key);
         StoreClaim(session, gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey);
         session.Send(EventRewardPacket.ClaimTimeRunStepReward(rewardItem));
+    }
+
+    // The item box (ItemBox): 2, no body, from the open box dialog's button (uiitemeventopenboxdialog.cpp:226).
+    // The dialog opens on entering the event's field while the event runs, unless the day the box was last taken
+    // (user value 1400, yyyymmdd of the server's time, keyed by the event id) is today or later
+    // (uiitemeventopenboxdialog.cpp:164). The server checks the same, gives the box item (to the bag, else by mail),
+    // stores the day and replies 2 with true; any refusal replies false, which shows the client's failure notice.
+    // Chosen here: the day is kept for the account (no client code says which), so that the account's other
+    // characters do not take the day's box again.
+    private void HandleOpenEventBox(GameSession session) {
+        if (session.Field == null) {
+            return;
+        }
+        int today = EventItemBoxRules.Day(session.GameEvent.Clock());
+        GameEvent? gameEvent = session.FindEvent(GameEventType.ItemBox)
+            .Where(found => found.Metadata.Data is ItemBox box && box.FieldId == session.Field.MapId)
+            .MinBy(found => found.Id);
+        if (gameEvent?.Metadata.Data is not ItemBox itemBox) {
+            Logger.Debug("OpenEventBox from {CharacterId} refused: no item box in field {MapId}", session.CharacterId, session.Field.MapId);
+            session.Send(EventRewardPacket.OpenEventBox(false));
+            return;
+        }
+
+        int last = session.GameEvent.Get(GameEventUserValueType.ItemBoxReceivedDay, gameEvent.Id, gameEvent.EndTime).Int();
+        if (!EventItemBoxRules.CanOpen(last, today)) {
+            Logger.Debug("OpenEventBox from {CharacterId} refused: taken on {Day}", session.CharacterId, last);
+            session.Send(EventRewardPacket.OpenEventBox(false));
+            return;
+        }
+
+        Item? item = session.Field.ItemDrop.CreateItem(itemBox.BoxItemId);
+        if (item == null) {
+            Logger.Error("Item box: event {EventId} item {ItemId} could not be made", gameEvent.Id, itemBox.BoxItemId);
+            session.Send(EventRewardPacket.OpenEventBox(false));
+            return;
+        }
+        if (!session.Item.AddOrMail(item, true)) {
+            Logger.Error("Item box: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+            session.Send(EventRewardPacket.OpenEventBox(false));
+            return;
+        }
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay, today);
+        StoreClaim(session, gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay);
+        session.Send(EventRewardPacket.OpenEventBox(true));
     }
 
     private void HandleClaimTimeRunFinalReward(GameSession session) {

@@ -136,7 +136,9 @@ public class AttendGiftReplayTests {
     public void Replay_TakesTheMinigames() {
         Assert.That(AttendGiftReplay.Types, Is.SupersetOf(new[] {
             GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent, GameEventType.CoupleDance,
+            GameEventType.ItemBox,
         }));
+        Assert.That(AttendGiftReplay.NeedData, Does.Contain(GameEventType.ItemBox));
     }
 
     // Each minigame's play item and rewards must be items of the client's item data.
@@ -162,6 +164,8 @@ public class AttendGiftReplayTests {
             Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.CoupleDance,
                 new CoupleDance([prizes], 3, unknown, [], 5, 63000062, [])), MinigameRank), Is.False);
             Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.DailyLoginReward, Daily(Unknown)), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.ItemBox, new ItemBox(2000064, Prize, "", "", "")), MinigameRank), Is.True);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.ItemBox, new ItemBox(2000064, Unknown, "", "", "")), MinigameRank), Is.False);
         });
     }
 
