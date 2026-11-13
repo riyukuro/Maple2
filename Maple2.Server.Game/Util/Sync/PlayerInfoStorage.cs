@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -26,14 +27,16 @@ public class PlayerInfoStorage {
         listeners = new ConcurrentDictionary<long, IDictionary<int, PlayerInfoListener>>();
     }
 
-    public bool GetOrFetch(long characterId, [NotNullWhen(true)] out PlayerInfo? info) {
+    public bool GetOrFetch(long characterId, [NotNullWhen(true)] out PlayerInfo? info,
+                           [CallerFilePath] string callerFile = "", [CallerLineNumber] int callerLine = 0) {
         if (cache.TryGetValue(characterId, out info)) {
             return true;
         }
         // A name lookup that found no character gives id 0 (a whisper to an unknown name): that is a normal not-found,
-        // not a request the World would refuse.
+        // not a request the World would refuse. The caller is logged so a lookup that should never see id 0 can be found.
         if (characterId <= 0) {
-            logger.Debug("No PlayerInfo for character id {CharacterId}", characterId);
+            logger.Debug("No PlayerInfo for character id {CharacterId} (from {CallerFile}:{CallerLine})",
+                characterId, Path.GetFileName(callerFile), callerLine);
             return false;
         }
 
@@ -78,7 +81,8 @@ public class PlayerInfoStorage {
         } catch (RpcException ex) when (ex.StatusCode == StatusCode.NotFound) {
             return false;
         } catch (RpcException ex) {
-            logger.Error("Failed to fetch PlayerInfo: {Status}", ex.Status);
+            logger.Error("Failed to fetch PlayerInfo for {CharacterId} (from {CallerFile}:{CallerLine}): {Status}",
+                characterId, Path.GetFileName(callerFile), callerLine, ex.Status);
             return false;
         }
     }
