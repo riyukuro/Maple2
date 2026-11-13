@@ -530,4 +530,20 @@ public class LuaTests {
     public void TestCalcSendMailFee_ClientScript(int meso, int normal, int rare, int elite, int excellent, int legendary, int epic, long expected) {
         Assert.That(Server.Game.LuaFunctions.Lua.CalcSendMailFee(meso, normal, rare, elite, excellent, legendary, epic), Is.EqualTo(expected));
     }
+
+    // The client's calcRevivalMeso in its CN branch: the script's round(x, -3) rounds a half up. Level 15 with all 3
+    // revivals left is 11000 + 1100 * 5 = 16500, so 17000 (half-to-even gave 16000).
+    [TestCase(10, 3, 11000)]
+    [TestCase(15, 3, 17000)]
+    [TestCase(30, 1, 67000)] // 33000 + 1675 * 20 = 66500; half-to-even gave 66000
+    [TestCase(35, 3, 39000)] // 38500; half-to-even gave 38000
+    public void TestCalcRevivalMeso_ClientScriptCn(int level, int dailyRemain, int expected) {
+        string old = Server.Game.LuaFunctions.Lua.Locale;
+        Server.Game.LuaFunctions.Lua.Locale = "CN";
+        try {
+            Assert.That(Server.Game.LuaFunctions.Lua.CalcRevivalMeso(level, dailyRemain, 0), Is.EqualTo(expected));
+        } finally {
+            Server.Game.LuaFunctions.Lua.Locale = old;
+        }
+    }
 }

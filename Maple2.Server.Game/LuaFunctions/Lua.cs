@@ -905,13 +905,16 @@ public static class Lua {
 
                 int local3 = Math.Min(GetMesoRevivalDailyMaxCount() - dailyRemain + 1, local1.Length);
 
-                float local4 = local1[local3 - 1];
-                float local5 = (local2[local3 - 1] - local1[local3 - 1]) / 40f;
+                double local4 = local1[local3 - 1];
+                double local5 = (local2[local3 - 1] - local1[local3 - 1]) / 40.0;
                 int local6 = Math.Max(level - 10, 0);
 
                 local4 += local5 * local6;
 
-                return (int) Math.Round(local4 / 1000) * 1000; // Rounding to nearest 1000
+                // The script's round(x, -3): floor(x * 10^-3 + 0.5 + FLOAT_EPSILON) / 10^-3, so a half rounds up
+                // (16500 gives 17000; Math.Round's half-to-even gave 16000).
+                double scale = Math.Pow(10, -3);
+                return (int) (Math.Floor(local4 * scale + 0.5 + 1e-6) / scale);
             }
         } else if (dailyCount == 1) {
             return 10000;
