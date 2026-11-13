@@ -56,6 +56,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly Dictionary<(int Skill, short Level, int Motion), PlayedClientSkills.MotionTiming> clientMotions = [];
     private int clientMotionsTaken;
     private int motionPointMismatches;
+    // The played client's attack pushes (PlayedClientSkills.ReadAttackPushes); empty without a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush Push, string Point)> clientPushes = [];
+    private int clientPushesTaken;
+    private int pushPointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -104,6 +108,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientMotions = PlayedClientSkills.ReadMotionTimings(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill motions in the played client's skill data: {clientMotions.Count}");
+            clientPushes = PlayedClientSkills.ReadAttackPushes(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill attacks in the played client's skill data (push): {clientPushes.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -196,7 +203,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 Value: attack.damageProperty.value,
                                 DamageByTargetMaxHp: attack.damageProperty.damageByTargetMaxHP,
                                 SuperArmorBreak: attack.damageProperty.superArmorBreak,
-                                Push: attack.damageProperty.push > 0 ? new SkillMetadataPush(
+                                Push: WithClientPush(id, level.value, motionIndex, attackIndex, attack.point, attack.damageProperty.push > 0 ? new SkillMetadataPush(
                                     Type: attack.damageProperty.push,
                                     EaseType: attack.damageProperty.pushEaseType,
                                     ApplyField: attack.damageProperty.pushApplyField,
@@ -208,7 +215,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                     Probability: attack.damageProperty.pushprob,
                                     Priority: attack.damageProperty.pushPriority,
                                     PriorityHitImmune: attack.damageProperty.pushPriorityHitImmune
-                                ) : null,
+                                ) : null),
                                 ConstDamageByTargetHp: attack.damageProperty.constDamageByTargetHP,
                                 ConstDamageByTargetSp: attack.damageProperty.constDamageByTargetSP
                             ),
@@ -307,6 +314,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientRanges.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's range shape over the data pack's: {clientRangesTaken}, target count: {clientTargetCountsTaken} ({rangePointMismatches} with another point at that place, the data pack's kept; {clientTargetCountsZero} with no client target count, the data pack's kept)");
         }
+        if (clientPushes.Count > 0) {
+            Console.WriteLine($"Skill attacks given the played client's push over the data pack's: {clientPushesTaken} ({pushPointMismatches} with another point at that place, the data pack's kept)");
+        }
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points at that place, the data pack's kept)");
         }
@@ -373,6 +383,35 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         };
         if (taken != pack) {
             clientMotionsTaken++;
+        }
+        return taken;
+    }
+
+    // The played client's push where it has the attack at that place with the same point, else the data pack's. As
+    // for the data pack's, a push type of 0 or less is no push.
+    private SkillMetadataPush? WithClientPush(int id, short level, int motion, int attack, string point, SkillMetadataPush? pack) {
+        if (!clientPushes.TryGetValue((id, level, motion, attack), out (PlayedClientSkills.AttackPush Push, string Point) played)) {
+            return pack;
+        }
+        if (played.Point != point) {
+            pushPointMismatches++;
+            return pack;
+        }
+        PlayedClientSkills.AttackPush push = played.Push;
+        SkillMetadataPush? taken = push.Type > 0 ? new SkillMetadataPush(
+            Type: push.Type,
+            EaseType: push.EaseType,
+            ApplyField: push.ApplyField,
+            Distance: push.Distance,
+            UpDistance: push.UpDistance,
+            Down: push.Down,
+            Fall: push.Fall,
+            Duration: push.Duration,
+            Probability: push.Probability,
+            Priority: push.Priority,
+            PriorityHitImmune: push.PriorityHitImmune) : null;
+        if (taken != pack) {
+            clientPushesTaken++;
         }
         return taken;
     }

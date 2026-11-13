@@ -846,6 +846,28 @@ public class SkillCastRulesTests {
         }));
     }
 
+    [Test]
+    public void AttackPushIsTheClients() {
+        // Pushes as the played client gives them (SkillDamage::Load reads them from the attack's <damage>; the
+        // probability is 1 and the rest 0 when not given): 50001402 pushes 750 up where the data pack says 0, and
+        // 10600191's attack pushes nothing where the data pack pushes it 150 away, and an ease type out of 0-2 is 0.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="50001402"><level value="7"><motion><attack point="p0"><damage rate="1" push="1" pushdistance="300" pushduration="0.3" pushEaseType="1" pushApplyField="2" pushUpDistance="750" pushDown="1" pushFall="1" pushPriority="50" pushPriorityHitImmune="200" pushprob="0.5" /></attack></motion></level></skill>
+              <skill id="10600191"><level value="1"><motion><attack point="p0"><damage rate="1" /></attack><attack point="p1" /></motion></level></skill>
+              <skill id="10600192"><level value="1"><motion><attack point="p0"><damage push="2" pushEaseType="5" /></attack></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush, string)> read = PlayedClientSkills.ReadAttackPushes([document]);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), (PlayedClientSkills.AttackPush, string)> {
+            [(50001402, 7, 0, 0)] = (new PlayedClientSkills.AttackPush(1, 1, 2, 300, 750, 1, true, 0.3f, 0.5f, 50, 200), "p0"),
+            [(10600191, 1, 0, 0)] = (new PlayedClientSkills.AttackPush(0, 0, 0, 0, 0, 0, false, 0, 1, 0, 0), "p0"),
+            [(10600191, 1, 0, 1)] = (new PlayedClientSkills.AttackPush(0, 0, 0, 0, 0, 0, false, 0, 1, 0, 0), "p1"),
+            [(10600192, 1, 0, 0)] = (new PlayedClientSkills.AttackPush(2, 0, 0, 0, 0, 0, false, 0, 1, 0, 0), "p0"),
+        }));
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]

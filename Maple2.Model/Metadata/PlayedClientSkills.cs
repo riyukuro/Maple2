@@ -257,6 +257,39 @@ public static class PlayedClientSkills {
 
     public record MotionTiming(float SequenceSpeed, float MoveDistance, int SplashLifeTick, string Points);
 
+    // The push of every attack of the client's levels, by skill id, level, the motion's place in the level and the
+    // attack's place in the motion, with the attack's point. SkillDamage::Load reads it from the attack's <damage>
+    // (skillattackdata.cpp:271-283; the probability is 1 and the rest 0 when not given, SkillDamage::SkillDamage). The
+    // skills and levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (AttackPush Push, string Point)> ReadAttackPushes(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var result = new Dictionary<(int, short, int, int), (AttackPush, string)>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        XmlElement? damage = attack.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "damage");
+                        var push = new AttackPush(Number(damage, "push"), PushEaseType(Number(damage, "pushEaseType")), Number(damage, "pushApplyField"),
+                            Real(damage, "pushdistance"), Real(damage, "pushUpDistance"), Number(damage, "pushDown"), Number(damage, "pushFall") != 0,
+                            Real(damage, "pushduration"), Real(damage, "pushprob", 1f), Number(damage, "pushPriority"),
+                            Number(damage, "pushPriorityHitImmune"));
+                        result[(id, value, motionIndex, attackIndex++)] = (push, attack.GetAttribute("point"));
+                    }
+                    motionIndex++;
+                }
+            }
+        }
+        return result;
+    }
+
+    public record AttackPush(int Type, int EaseType, int ApplyField, float Distance, float UpDistance, int Down, bool Fall, float Duration,
+        float Probability, int Priority, int PriorityHitImmune);
+
+    // The client's push ease types are 0 to 2; any other value is 0 (skillattackdata.cpp:276-277).
+    private static int PushEaseType(int value) => value is >= 0 and <= 2 ? value : 0;
+
     // The cooldown of each of the client's levels that gives one, in milliseconds, by skill id and level
     // (SkillLevelData::Load reads the level's cooldown attribute; SkillLevelData::GetCooldown is the length the
     // client's skill slot counts down and its tooltip shows). The data pack's beginCondition cooldownTime differs
