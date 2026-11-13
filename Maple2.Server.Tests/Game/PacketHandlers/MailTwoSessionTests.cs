@@ -140,7 +140,8 @@ public class MailTwoSessionTests {
             writer.WriteLong(mailId);
         }));
 
-        Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Error(MailError.mail_not_found, Read)) }));
+        // Not the sender's mail: taken off the sender's list (mode 0xd), not an error the client has no text for.
+        Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Deleted(mailId)) }));
         recipient.Mail.Notify(true);
         Assert.That(Hex(Mail(recipientTest)).Last(), Is.EqualTo(Hex(MailPacket.Notify(1, true, 0))));
     }

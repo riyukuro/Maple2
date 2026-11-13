@@ -124,7 +124,7 @@ public class MailHandler : FieldPacketHandler {
         long mailId = packet.ReadLong();
 
         MailError error = session.Mail.Read(mailId);
-        if (error != MailError.none) {
+        if (error != MailError.none && !Gone(session, mailId, error)) {
             session.Send(MailPacket.Error(error, (byte) Command.Read));
         }
     }
@@ -133,9 +133,20 @@ public class MailHandler : FieldPacketHandler {
         long mailId = packet.ReadLong();
 
         MailError error = session.Mail.Collect(mailId);
-        if (error != MailError.none) {
+        if (error != MailError.none && !Gone(session, mailId, error)) {
             session.Send(MailPacket.Error(error, (byte) Command.Collect));
         }
+    }
+
+    // A mail the player no longer has (expired and deleted, or not theirs): the client has no error text for it (OnMail
+    // mode 0x14 shows "System Error: Mail" for any code it does not know, scenestategame.cpp:11733), so the mail is
+    // taken off the client's list instead (mode 0xd, CUserMail::RemoveMail, scenestategame.cpp:11596).
+    private static bool Gone(GameSession session, long mailId, MailError error) {
+        if (error != MailError.mail_not_found) {
+            return false;
+        }
+        session.Send(MailPacket.Deleted(mailId));
+        return true;
     }
 
     private static void HandleAdBill(GameSession session, IByteReader packet) {
@@ -159,7 +170,7 @@ public class MailHandler : FieldPacketHandler {
             long mailId = packet.ReadLong();
 
             MailError error = session.Mail.Read(mailId);
-            if (error != MailError.none && !MailRules.BulkSkips(error)) {
+            if (error != MailError.none && !Gone(session, mailId, error) && !MailRules.BulkSkips(error)) {
                 session.Send(MailPacket.Error(error, (byte) Command.BulkRead));
                 return;
             }
@@ -173,7 +184,7 @@ public class MailHandler : FieldPacketHandler {
             long mailId = packet.ReadLong();
 
             MailError error = session.Mail.Collect(mailId);
-            if (error != MailError.none && !MailRules.BulkSkips(error)) {
+            if (error != MailError.none && !Gone(session, mailId, error) && !MailRules.BulkSkips(error)) {
                 session.Send(MailPacket.Error(error, (byte) Command.BulkCollect));
                 return;
             }

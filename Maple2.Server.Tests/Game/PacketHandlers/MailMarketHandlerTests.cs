@@ -65,13 +65,13 @@ public class MailMarketHandlerTests {
     [Test]
     public void Mail_RefusedCollectNamesTheCommand() {
         test = new TestGameSession();
+        Mail mail = StoreMail(); // nothing on it: already collected
         GameSession session = Login();
 
-        MailRequest(session, 11, 987654);
+        MailRequest(session, 11, mail.Id);
 
         List<byte[]> sent = test.TakeSent();
-        Assert.That(sent, Has.Count.EqualTo(1));
-        Assert.That(TestGameSession.Op(sent[0]), Is.EqualTo(SendOp.Mail));
+        Assert.That(Convert.ToHexString(sent.Single()), Is.EqualTo(Hex(MailPacket.Error(MailError.s_mail_error_already_receive, 11))));
         Assert.That(sent[0].Skip(2).Take(2), Is.EqualTo(new byte[] { 20, 11 }));
     }
 
