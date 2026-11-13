@@ -131,10 +131,25 @@ public static class MapleSurvivalPacket {
         return pWriter;
     }
 
-    // 0x1a: the players still alive.
-    public static ByteWriter AliveCount(int alive) {
+    // The kill log's status line (UISurvivalKillLogDialog::RefreshStatus, survivalkilllogdialog.cpp:227) calls the
+    // movie's setStatus with the 0x1b ints and the 0x1a int (maplesurvival.cpp:568). The movie
+    // (uisurvivalkilllogdialog.gfx) shows the first in m_textSurvivor and the third in m_textKilledByMe unless it is
+    // 65535; it does not read the second.
+
+    // 0x1a: the player's own kills (m_textKilledByMe).
+    public static ByteWriter OwnKills(int kills) {
         ByteWriter pWriter = Survival(0x1a);
+        pWriter.WriteInt(kills);
+        return pWriter;
+    }
+
+    // 0x1b: the survivors (m_textSurvivor), a second int and a flag. Chosen here: the second int is the match's
+    // participants and the flag 0, as no client code shown here reads them.
+    public static ByteWriter Survivors(int alive, int participants) {
+        ByteWriter pWriter = Survival(0x1b);
         pWriter.WriteInt(alive);
+        pWriter.WriteInt(participants);
+        pWriter.WriteByte(0);
         return pWriter;
     }
 

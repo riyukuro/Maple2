@@ -55,7 +55,12 @@ public sealed class SurvivalGameField {
         ArenaMatchField? arena = field.Arena;
         state = new SurvivalGameState(list.Select(player => player.Value.Character.Id), arena != null ? arena.UnitOf : null);
         field.Broadcast(MapleSurvivalPacket.GameStart());
-        field.Broadcast(MapleSurvivalPacket.AliveCount(state.Alive));
+        // The kill log's status: the survivors, and each participant's own kills (0). It used to get the survivors in
+        // 0x1a, which the kill log shows as the player's own kills.
+        field.Broadcast(MapleSurvivalPacket.Survivors(state.Alive, state.Entries.Count));
+        foreach (FieldPlayer player in list) {
+            player.Session.Send(MapleSurvivalPacket.OwnKills(0));
+        }
         logger.Information("Maple Survival game on {MapId} started with {Count} players", field.MapId, list.Count);
         if (!state.Ended) {
             GiveKits(list);
@@ -155,7 +160,10 @@ public sealed class SurvivalGameField {
                 }
             });
         }
-        field.Broadcast(MapleSurvivalPacket.AliveCount(state.Alive));
+        field.Broadcast(MapleSurvivalPacket.Survivors(state.Alive, state.Entries.Count));
+        if (killer != 0 && state.Get(killer) is { } killerEntry && field.TryGetPlayerById(killer, out FieldPlayer? killerPlayer)) {
+            killerPlayer.Session.Send(MapleSurvivalPacket.OwnKills(killerEntry.Kills));
+        }
         if (field.TryGetPlayerById(characterId, out FieldPlayer? fallen)) {
             fallen.Session.Send(MapleSurvivalPacket.GameFinish(false, [characterId]));
         }
