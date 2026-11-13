@@ -40,6 +40,8 @@ public class DungeonManager {
 
     private readonly ILogger logger = Log.Logger.ForContext<DungeonManager>();
     private readonly object seasonMailLock = new();
+    // The account reward rooms whose account record exists; their counts are saved for the account too.
+    private readonly HashSet<int> accountRooms = [];
 
     // When this session began: the client's kept open periods are the events it has seen since.
     private readonly DateTime loginTime = DateTime.Now;
@@ -53,6 +55,8 @@ public class DungeonManager {
     private void Init() {
         using GameStorage.Request db = session.GameStorage.Context();
         Records = db.GetDungeonRecords(session.CharacterId);
+        Dictionary<int, DungeonRecord> accountRecords = db.GetDungeonAccountRecords(session.AccountId);
+        long now = DateTime.Now.ToEpochSeconds();
         int seasonRankMinLevel = session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel;
 
         foreach (DungeonRoomMetadata metadata in session.TableMetadata.DungeonRoomTable.Entries.Values) {
@@ -64,6 +68,21 @@ public class DungeonManager {
                     continue;
                 }
                 Records.Add(metadata.Id, record);
+            }
+            // An account reward room (isAccountReward) counts its rewards for the account: the character's record
+            // shows the account's counts (DungeonAccountRecord). The first account count is made from what the
+            // account's characters took in their periods, so another character does not get a fresh limit.
+            if (metadata.Reward.AccountWide) {
+                if (accountRecords.TryGetValue(metadata.Id, out DungeonRecord? account)) {
+                    CopyAccountCounts(account, record);
+                } else {
+                    DungeonRoomRules.MergeAccountCounts(record, db.GetAccountCharacterDungeonRecords(session.AccountId, metadata.Id), now);
+                    if (!db.CreateDungeonAccountRecord(session.AccountId, record)) {
+                        logger.Error("Failed to create the account dungeon record for dungeonId {dungeonId}", metadata.Id);
+                        continue;
+                    }
+                }
+                accountRooms.Add(metadata.Id);
             }
             // A period end written by an older rule is healed before the client or a script reads it.
             DungeonRoomRules.HealCooldown(record, metadata.CooldownType, metadata.CooldownValue, DateTime.Now);
@@ -89,7 +108,7 @@ public class DungeonManager {
             record.UnionSubClears = 0;
         }
         using GameStorage.Request db = session.GameStorage.Context();
-        db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
+        db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
         session.Send(DungeonRoomPacket.Load(Records));
     }
 
@@ -138,7 +157,7 @@ public class DungeonManager {
         }
         if (changed) {
             using GameStorage.Request db = session.GameStorage.Context();
-            db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
+            db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
         }
     }
 
@@ -182,7 +201,7 @@ public class DungeonManager {
             record.ExtraSubClears = 0;
         }
         using GameStorage.Request db = session.GameStorage.Context();
-        db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
+        db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
         session.Send(DungeonRoomPacket.Load(Records));
     }
 
@@ -1224,7 +1243,17 @@ public class DungeonManager {
         }
     }
 
+    private static void CopyAccountCounts(DungeonRecord account, DungeonRecord record) {
+        record.UnionClears = account.UnionClears;
+        record.UnionSubClears = account.UnionSubClears;
+        record.ExtraSubClears = account.ExtraSubClears;
+        record.ExtraClears = account.ExtraClears;
+        record.UnionCooldownTimestamp = account.UnionCooldownTimestamp;
+        record.UnionSubCooldownTimestamp = account.UnionSubCooldownTimestamp;
+        record.ExtraCooldownTimestamp = account.ExtraCooldownTimestamp;
+    }
+
     public void Save(GameStorage.Request db) {
-        db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
+        db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
     }
 }

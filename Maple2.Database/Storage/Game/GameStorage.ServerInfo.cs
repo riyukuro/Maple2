@@ -110,6 +110,7 @@ public partial class GameStorage {
                 // Dungeon daily clears
                 // Bought extra counts (ExtraCurrentSubClears) last the record's period and event counts their own, as online.
                 Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentSubClears` = 0");
+                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-account-record` SET `CurrentSubClears` = 0");
             });
         }
 
@@ -126,6 +127,7 @@ public partial class GameStorage {
                 // Dungeon weekly clears, as DungeonManager.ResetWeeklyClears: a record whose own period is over (its
                 // UnionCooldownTime) loses its clears and bought extra counts; event counts keep their own expiry.
                 Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentClears` = 0, `ExtraCurrentSubClears` = 0 WHERE `UnionCooldownTime` < {0}", DateTime.Now);
+                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-account-record` SET `CurrentClears` = 0, `ExtraCurrentSubClears` = 0 WHERE `UnionCooldownTime` < {0}", DateTime.Now);
             });
         }
 

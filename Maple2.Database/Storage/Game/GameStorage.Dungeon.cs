@@ -30,5 +30,46 @@ public partial class GameStorage {
 
             return Context.TrySaveChanges();
         }
+
+        // The account reward rooms' counts of the account (dungeon-account-record), by room.
+        public Dictionary<int, DungeonRecord> GetDungeonAccountRecords(long accountId) {
+            return Context.DungeonAccountRecord.Where(record => record.AccountId == accountId)
+                .AsEnumerable()
+                .ToDictionary(record => record.DungeonId, record => {
+                    var result = new DungeonRecord(record.DungeonId);
+                    record.CopyTo(result);
+                    return result;
+                });
+        }
+
+        // The rows of a room that the account's characters keep (dungeon-record), which an account count is first
+        // made from.
+        public List<DungeonRecord> GetAccountCharacterDungeonRecords(long accountId, int dungeonId) {
+            return Context.DungeonRecord
+                .Where(record => record.DungeonId == dungeonId
+                                 && Context.Character.Any(character => character.Id == record.OwnerId && character.AccountId == accountId))
+                .AsEnumerable()
+                .Select<Model.DungeonRecord, DungeonRecord>(record => record)
+                .ToList();
+        }
+
+        public bool CreateDungeonAccountRecord(long accountId, DungeonRecord record) {
+            Context.DungeonAccountRecord.Add(Model.DungeonAccountRecord.From(accountId, record));
+            return Context.TrySaveChanges();
+        }
+
+        // The counts of the given account rooms' records, with the character's rows.
+        public bool SaveDungeonRecords(long accountId, long ownerId, IReadOnlySet<int> accountRooms, params DungeonRecord[] records) {
+            foreach (DungeonRecord record in records) {
+                Model.DungeonRecord model = record;
+                model.OwnerId = ownerId;
+                Context.DungeonRecord.Update(model);
+                if (accountRooms.Contains(record.DungeonId)) {
+                    Context.DungeonAccountRecord.Update(Model.DungeonAccountRecord.From(accountId, record));
+                }
+            }
+
+            return Context.TrySaveChanges();
+        }
     }
 }

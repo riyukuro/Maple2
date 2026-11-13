@@ -796,6 +796,40 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("dark-stream-record", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.DungeonAccountRecord", b =>
+                {
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("DungeonId")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("CurrentClears")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("CurrentSubClears")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<DateTime>("DailyResetTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("ExtraCooldownTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<byte>("ExtraCurrentClears")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("ExtraCurrentSubClears")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<DateTime>("UnionCooldownTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("AccountId", "DungeonId");
+
+                    b.ToTable("dungeon-account-record", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.DungeonRecord", b =>
                 {
                     b.Property<long>("OwnerId")
@@ -2400,6 +2434,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Character", null)
                         .WithOne()
                         .HasForeignKey("Maple2.Database.Model.DarkStreamRecord", "CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.DungeonAccountRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

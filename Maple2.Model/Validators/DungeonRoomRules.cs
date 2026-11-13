@@ -333,4 +333,37 @@ public static class DungeonRoomRules {
     // UnionCooldownTimestamp, the day the room's cooldownValue names, which the client counts down to), as
     // RewardCount reads them; a record still in its period keeps them.
     public static bool PeriodOver(DungeonRecord record, long now) => now > record.UnionCooldownTimestamp;
+
+    // An account reward room's first account counts (isAccountReward, commonfiles/dungeonroom.cpp:384; the room
+    // window adds s_dungeonRoom_reward_account to its counts, uidungeonroomdialog.cpp:887): the counts its characters
+    // took while each kept its own, so that a character made or played after the switch does not get a fresh limit.
+    // Each count block sums the rows still in their period (as HasCountLeft reads them: the clears and bought counts
+    // until UnionCooldownTimestamp, the timed clears until UnionSubCooldownTimestamp, the event counts until
+    // ExtraCooldownTimestamp), each at most a byte; each period end is the latest of the rows.
+    public static void MergeAccountCounts(DungeonRecord target, IEnumerable<DungeonRecord> rows, long now) {
+        int clears = 0, bought = 0, subClears = 0, extra = 0;
+        long end = 0, subEnd = 0, extraEnd = 0;
+        foreach (DungeonRecord row in rows) {
+            end = Math.Max(end, row.UnionCooldownTimestamp);
+            subEnd = Math.Max(subEnd, row.UnionSubCooldownTimestamp);
+            extraEnd = Math.Max(extraEnd, row.ExtraCooldownTimestamp);
+            if (now < row.UnionCooldownTimestamp) {
+                clears += row.UnionClears;
+                bought += row.ExtraSubClears;
+            }
+            if (now < row.UnionSubCooldownTimestamp) {
+                subClears += row.UnionSubClears;
+            }
+            if (now < row.ExtraCooldownTimestamp) {
+                extra += row.ExtraClears;
+            }
+        }
+        target.UnionClears = (byte) Math.Min(clears, byte.MaxValue);
+        target.ExtraSubClears = (byte) Math.Min(bought, byte.MaxValue);
+        target.UnionSubClears = (byte) Math.Min(subClears, byte.MaxValue);
+        target.ExtraClears = (byte) Math.Min(extra, byte.MaxValue);
+        target.UnionCooldownTimestamp = end;
+        target.UnionSubCooldownTimestamp = subEnd;
+        target.ExtraCooldownTimestamp = extraEnd;
+    }
 }

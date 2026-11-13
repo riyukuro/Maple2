@@ -49,6 +49,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<WeddingHall> WeddingHall { get; set; } = null!;
     internal DbSet<Nurturing> Nurturing { get; set; } = null!;
     internal DbSet<DungeonRecord> DungeonRecord { get; set; } = null!;
+    internal DbSet<DungeonAccountRecord> DungeonAccountRecord { get; set; } = null!;
     internal DbSet<DarkStreamRecord> DarkStreamRecord { get; set; } = null!;
     internal DbSet<ArcadeRecord> ArcadeRecord { get; set; } = null!;
     internal DbSet<SurvivalRecord> SurvivalRecord { get; set; } = null!;
@@ -117,6 +118,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<PlayerReport>(PlayerReport.Configure);
 
         modelBuilder.Entity<DungeonRecord>(Maple2.Database.Model.DungeonRecord.Configure);
+        modelBuilder.Entity<DungeonAccountRecord>(Maple2.Database.Model.DungeonAccountRecord.Configure);
         modelBuilder.Entity<DarkStreamRecord>(Maple2.Database.Model.DarkStreamRecord.Configure);
         modelBuilder.Entity<ArcadeRecord>(Maple2.Database.Model.ArcadeRecord.Configure);
         modelBuilder.Entity<SurvivalRecord>(Maple2.Database.Model.SurvivalRecord.Configure);
