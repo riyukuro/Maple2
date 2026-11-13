@@ -23,7 +23,9 @@ public record ItemMetadata(
 
 public record ItemMetadataLife(
     long ExpirationDuration,
-    long ExpirationTimestamp);
+    long ExpirationTimestamp,
+    int ExpirationType = 0, // life expirationType: 1 weeks, 2 months (ItemPeriod, commonfiles/itemdatastruct.cpp:809)
+    int WeeksMonths = 0); // life numberOfWeeksMonths, as the data has it (0 is 1, as the client's tooltip counts it)
 
 public record ItemMetadataProperty(
     bool IsSkin,

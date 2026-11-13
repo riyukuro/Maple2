@@ -89,13 +89,16 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     data.life.expirationPeriod[5]).ToEpochSeconds();
             }
 
+            // A weeks or months item ends on the calendar (Item.CalendarExpiry, from the type and count kept below); the
+            // duration only marks it as timed. A count of 0 is 1, as the client's tooltip counts it.
             long expirationDuration = 0;
+            int weeksMonths = Math.Max(data.life.numberOfWeeksMonths, 1);
             if (data.life.expirationType > 0) {
                 expirationDuration = data.life.expirationType switch {
                     1 => // Week
-                        DateTime.UnixEpoch.AddDays(7 * data.life.numberOfWeeksMonths).ToEpochSeconds(),
+                        DateTime.UnixEpoch.AddDays(7 * weeksMonths).ToEpochSeconds(),
                     2 => // Month
-                        DateTime.UnixEpoch.AddMonths(1 * data.life.numberOfWeeksMonths).ToEpochSeconds(),
+                        DateTime.UnixEpoch.AddMonths(1 * weeksMonths).ToEpochSeconds(),
                     _ => 0,
                 };
             } else if (data.life.usePeriod > 0) {
@@ -203,7 +206,9 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 DefaultHairs: hairList.ToArray(),
                 Life: new ItemMetadataLife(
                     ExpirationDuration: expirationDuration,
-                    ExpirationTimestamp: expirationTimestamp
+                    ExpirationTimestamp: expirationTimestamp,
+                    ExpirationType: data.life.expirationType is 1 or 2 ? data.life.expirationType : 0,
+                    WeeksMonths: data.life.expirationType is 1 or 2 ? data.life.numberOfWeeksMonths : 0
                 ),
                 Property: new ItemMetadataProperty(
                     IsSkin: data.property.skin,

@@ -195,28 +195,47 @@ public class Item : IByteSerializable, IByteDeserializable {
     }
 
     private long GetExpiryTime() {
-        if (Metadata.Life.ExpirationTimestamp > 0) {
 #if DEBUG
+        if (Metadata.Life.ExpirationTimestamp > 0) {
             return (long) (DateTime.Now.AddYears(1).ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
-#else
-            return MadeExpiry(Metadata.Life, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
 #endif
-        }
-
-        if (Metadata.Life.ExpirationDuration > 0) {
-            return (long) (DateTime.Now.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds + Metadata.Life.ExpirationDuration;
-        }
-        return 0;
+        return MadeExpiry(Metadata.Life, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     }
 
-    // The expiry an item is made with: its fixed end date while that is ahead (FixedExpiry), else its lifetime from
-    // now (usePeriod, weeks or months), else none. An item of a past end date and a lifetime lasts that lifetime.
-    public static long MadeExpiry(ItemMetadataLife life, long now) {
+    // The expiry an item is made with: its fixed end date while that is ahead (FixedExpiry), else the end of its weeks
+    // or months on the calendar (CalendarExpiry), else its usePeriod from now, else none. An item of a past end date
+    // and a lifetime lasts that lifetime.
+    public static long MadeExpiry(ItemMetadataLife life, long now, TimeZoneInfo? zone = null) {
         long fixedEnd = FixedExpiry(life.ExpirationTimestamp, now);
         if (fixedEnd > 0) {
             return fixedEnd;
         }
+        if (life.ExpirationType is 1 or 2) {
+            return CalendarExpiry(life.ExpirationType, life.WeeksMonths, now, zone ?? TimeZoneInfo.Local);
+        }
         return life.ExpirationDuration > 0 ? now + life.ExpirationDuration : 0;
+    }
+
+    // An item of life expirationType 2 lasts to the last second of the month, the month it is made counting as the
+    // first: KMS2 sends every one made in month M with numberOfWeeksMonths 2 to expire at the end of month M+1,
+    // 23:59:59 KST (340 of 364 records across builds 2486-2549, made on any day of the month; the rest are rows of
+    // other data). The tooltip says the same ("including the month it is got", s_item_end_time_tooltip_expirationtype_
+    // monthly) and takes a count of 0 as 1 (astooltip.cpp:3123-3135). Type 1 counts weeks the same way. Chosen here
+    // (no KMS2 record holds a weekly item): a week ends on the day before the server's weekly reset day
+    // (Constant.ResetDay), 23:59:59. The calendar is the server's zone.
+    public static long CalendarExpiry(int type, int count, long now, TimeZoneInfo zone) {
+        int n = Math.Max(count, 1);
+        DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeSeconds(now).UtcDateTime, zone);
+        DateTime after;
+        if (type == 2) {
+            after = new DateTime(local.Year, local.Month, 1).AddMonths(n);
+        } else {
+            int toLastDay = ((int) Constant.ResetDay - 1 - (int) local.DayOfWeek + 14) % 7;
+            after = local.Date.AddDays(toLastDay + 1 + 7 * (n - 1));
+        }
+        DateTime end = DateTime.SpecifyKind(after.AddSeconds(-1), DateTimeKind.Unspecified);
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(end, zone)).ToUnixTimeSeconds();
     }
 
     // The expiry an item of a fixed end date (life expirationTimestamp) is made with. Every such date in the item data
