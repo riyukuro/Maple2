@@ -53,6 +53,8 @@ public abstract class TriggerTestBase {
         GC.SuppressFinalize(owner);
         typeof(FieldEntity<TriggerModel>).GetField("<Field>k__BackingField", Any)!.SetValue(owner, Field);
         typeof(FieldEntity<TriggerModel>).GetField("<Value>k__BackingField", Any)!.SetValue(owner, new TriggerModel(1, "main", Vector3.Zero, Vector3.Zero));
+        // The script has one state, "end", for the skip actions to name.
+        typeof(FieldTrigger).GetField("trigger", Any)!.SetValue(owner, new Trigger([new Trigger.State("end", null, null, null)]));
         var created = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
         ILogger logger = Log.Logger.ForContext<TriggerContext>();
         typeof(TriggerContext).GetField("owner", Any)!.SetValue(created, owner);
@@ -354,5 +356,92 @@ public class TriggerInteractTests : TriggerTestBase {
         Assert.That(Sent(SendOp.InteractObject), Has.Count.EqualTo(2));
         Assert.That(Condition("""<condition name="object_interacted" interact_ids="10001,10002" state="0" />"""), Is.True);
         Assert.That(Condition("""<condition name="object_interacted" interact_ids="10003" state="0" />"""), Is.False);
+    }
+}
+
+public class TriggerCinematicTests : TriggerTestBase {
+    // The Cinematic SetSkip packet (command 4): the label type (2 skip state, 1 skip scene, 0 none) and its string.
+    private (byte Type, string Text) Skip() {
+        ByteReader reader = Sent(SendOp.Cinematic).Single();
+        Assert.That(reader.ReadByte(), Is.EqualTo(4));
+        return (reader.ReadByte(), reader.ReadString());
+    }
+
+    // set_skip (2258 KR uses): a state to skip to shows the skip key; the empty state (1002 uses) takes it away, as
+    // the client turns the skip off on type 0 (UICutSceneCinematic::FUN_14190a4c0).
+    [Test]
+    public void SetSkip_StateThenNone() {
+        Start();
+
+        Action("""<action name="set_skip" state="end" />""");
+        Assert.That(Skip(), Is.EqualTo(((byte) 2, "")));
+        Assert.That(context.TryGetSkip(out TriggerState? state), Is.True);
+
+        Action("""<action name="set_skip" state="" />""");
+        Assert.That(Skip(), Is.EqualTo(((byte) 0, "")));
+        Assert.That(context.TryGetSkip(out state), Is.False);
+    }
+
+    // set_scene_skip (736): the scene label carries the action; the empty state takes the key away.
+    [Test]
+    public void SetSceneSkip_StateThenNone() {
+        Start();
+
+        Action("""<action name="set_scene_skip" state="end" action="exit" />""");
+        Assert.That(Skip(), Is.EqualTo(((byte) 1, "exit")));
+        Assert.That(context.TryGetSkip(out TriggerState? state), Is.True);
+
+        Action("""<action name="set_scene_skip" />""");
+        Assert.That(Skip(), Is.EqualTo(((byte) 0, "")));
+        Assert.That(context.TryGetSkip(out state), Is.False);
+    }
+
+    // set_cinematic_ui: 1 puts the client in the cinematic key mode, 0 takes it out (command 1, a bool;
+    // OnPacketKeyMode), 2 closes the script and direction (command 2), 3 the letterbox view (command 3: an int id 3, then the
+    // script; OnPacketStartCinematic).
+    [Test]
+    public void SetCinematicUi_ByType() {
+        Start();
+
+        Action("""<action name="set_cinematic_ui" type="1" />""");
+        Action("""<action name="set_cinematic_ui" type="0" />""");
+        Action("""<action name="set_cinematic_ui" type="2" />""");
+        Action("""<action name="set_cinematic_ui" type="3" script="abc" />""");
+
+        List<ByteReader> sent = Sent(SendOp.Cinematic);
+        Assert.That(sent, Has.Count.EqualTo(4));
+        Assert.That((sent[0].ReadByte(), sent[0].ReadBool()), Is.EqualTo(((byte) 1, true)));
+        Assert.That((sent[1].ReadByte(), sent[1].ReadBool()), Is.EqualTo(((byte) 1, false)));
+        Assert.That(sent[2].ReadByte(), Is.EqualTo(2));
+        Assert.That((sent[3].ReadByte(), sent[3].ReadInt(), sent[3].ReadUnicodeString()), Is.EqualTo(((byte) 3, 3, "abc")));
+    }
+
+    // set_onetime_effect: the effect id and switch, the path only when switched on.
+    [Test]
+    public void SetOnetimeEffect_PathWhenOn() {
+        Start();
+
+        Action("""<action name="set_onetime_effect" id="5" enable="1" path="BG/Common/Sound/Eff_Sound.xml" />""");
+        Action("""<action name="set_onetime_effect" id="5" enable="0" path="BG/Common/Sound/Eff_Sound.xml" />""");
+
+        List<ByteReader> sent = Sent(SendOp.OneTimeEffect);
+        Assert.That(sent, Has.Count.EqualTo(2));
+        Assert.That((sent[0].ReadInt(), sent[0].ReadBool(), sent[0].ReadUnicodeString()), Is.EqualTo((5, true, "BG/Common/Sound/Eff_Sound.xml")));
+        Assert.That((sent[1].ReadInt(), sent[1].ReadBool(), sent[1].Available), Is.EqualTo((5, false, 0)));
+    }
+
+    // add_cinematic_talk: the client reads npc id, illustration (byte string), text, duration and the align byte
+    // (UICutSceneCinematic::FUN_141909880).
+    [Test]
+    public void AddCinematicTalk_Talk() {
+        Start();
+
+        Action("""<action name="add_cinematic_talk" npc_id="11000064" illust_id="Lennon_normal" msg="hi" duration="3000" align="right" />""");
+
+        ByteReader reader = Sent(SendOp.Cinematic).Single();
+        Assert.That(reader.ReadByte(), Is.EqualTo(6));
+        Assert.That((reader.ReadInt(), reader.ReadString(), reader.ReadUnicodeString(), reader.ReadInt()), Is.EqualTo((11000064, "Lennon_normal", "hi", 3000)));
+        reader.ReadByte();
+        Assert.That(reader.Available, Is.EqualTo(0));
     }
 }

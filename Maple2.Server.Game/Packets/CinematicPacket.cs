@@ -102,6 +102,17 @@ public static class CinematicPacket {
         return pWriter;
     }
 
+    // Type 0 takes the skip key off the screen: the client sets no label and skip state 0, so a skip request is no
+    // longer sent (UICutSceneCinematic::FUN_14190a4c0, uicutscenecinematic.cpp:709; RequestSkip returns on state 0).
+    public static ByteWriter ClearSkip() {
+        var pWriter = Packet.Of(SendOp.Cinematic);
+        pWriter.Write<Command>(Command.SetSkip);
+        pWriter.WriteByte(0);
+        pWriter.WriteString(string.Empty);
+
+        return pWriter;
+    }
+
     public static ByteWriter StartSkip() {
         var pWriter = Packet.Of(SendOp.Cinematic);
         pWriter.Write<Command>(Command.StartSkip);

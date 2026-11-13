@@ -73,13 +73,15 @@ public partial class TriggerContext {
     public void SetSceneSkip(string state, string nextState) {
         WarnLog("[SetSceneSkip] state:{State}, nextState:{NextState}", state, nextState);
         skipState = owner.GetState(state);
-        Broadcast(CinematicPacket.SetSkipScene(nextState));
+        Broadcast(skipState == null ? CinematicPacket.ClearSkip() : CinematicPacket.SetSkipScene(nextState));
     }
 
     public void SetSkip(string state) {
-        WarnLog("[SetSkip] state:{State}", nameof(state));
+        WarnLog("[SetSkip] state:{State}", state);
+        // KR scripts end a skippable part with an empty state (1002 of 2258 set_skip rows, 359 of 736 set_scene_skip
+        // rows): with no state to skip to, the skip key goes away.
         skipState = owner.GetState(state);
-        Broadcast(CinematicPacket.SetSkipState(""));
+        Broadcast(skipState == null ? CinematicPacket.ClearSkip() : CinematicPacket.SetSkipState(""));
     }
 
     public void AddBalloonTalk(int spawnId, string msg, int duration, int delayTick, int npcId) {
