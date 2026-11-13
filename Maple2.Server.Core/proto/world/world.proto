@@ -441,6 +441,9 @@ message GuildRequest {
     int64 winner_guild_id = 2;
     repeated Round rounds = 3;
     repeated int64 fighters = 4;
+    // The fighters in the field at the end with one of the day's rewards left (GuildPvp.HasFighterReward): only a
+    // guild with one of them pays (takes a daily slot and moves its score).
+    repeated int64 payable_fighters = 5;
   }
 
   int64 requestor_id = 4;

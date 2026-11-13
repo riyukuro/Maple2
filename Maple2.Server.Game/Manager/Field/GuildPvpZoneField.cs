@@ -290,6 +290,13 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
         }
         // Only the players sent into a fought round took part (not walk-ins, not a walkover).
         end.Fighters.AddRange(state.RoundFighters);
+        // The fighters the result can pay (in the field now, under their own daily cap): the World takes a guild's
+        // daily slot and moves its score only for a guild with one of them.
+        HashSet<long> roundFighters = state.RoundFighters.ToHashSet();
+        DateTime now = DateTime.Now;
+        end.PayableFighters.AddRange(playersInBox(0)
+            .Where(player => roundFighters.Contains(player.Value.Character.Id) && Maple2.Model.Game.GuildPvp.HasFighterReward(player.Value.Character, now))
+            .Select(player => player.Value.Character.Id).Distinct());
         int winsA = state.Wins(GuildPvpZoneState.TeamA);
         int winsB = state.Wins(GuildPvpZoneState.TeamB);
         HashSet<long> fighters = end.Fighters.ToHashSet();

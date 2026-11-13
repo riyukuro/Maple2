@@ -620,7 +620,7 @@ public partial class WorldService {
     // The match field ended the match. With a winner, both guilds' records move (the winner by guildPVPWinPoint,
     // the loser by guildPVPLosePoint) and each keeps the match in its history from its own side; a draw changes
     // nothing. A match without a fought round won (every round a walkover or a draw, a guild that never came, or a
-    // forfeit before any fought win) is a no-fight match: it counts as a win and a loss with no round results (the
+    // forfeit before any fought win, or a winner whose only fought round was lost) is a no-fight match: it counts as a win and a loss with no round results (the
     // loser's row f20 1), and moves no score and pays no reward. A fought match moves a guild's score only when it
     // pays (inside the guild's daily cap). The answer has both guilds' new scores and whether each guild's fighters get the reward, the
     // winner first (Pvp 'u').
@@ -642,12 +642,13 @@ public partial class WorldService {
         managerB.RollPvp(now);
         var constants = managerA.ServerTableMetadata.ConstantsTable;
         long[] fighters = end.Fighters.ToArray();
-        bool fought = FoughtMatch(end.Rounds);
+        bool fought = FoughtMatch(end.Rounds, end.WinnerGuildId == match.A ? 1 : 2);
+        long[] payable = end.PayableFighters.ToArray();
 
         (int Score, int Delta, bool Reward) Apply(GuildManager self, GuildManager other, bool selfIsA) {
             bool won = end.WinnerGuildId == self.Guild.Id;
             GuildPvpMatch history = PvpHistory(end.Rounds, self.Guild.Id, self.Guild.Name, other.Guild.Id, other.Guild.Name, selfIsA, won, fought, time);
-            return self.EndPvp(history, won, fought, won ? constants.guildPVPWinPoint : constants.guildPVPLosePoint, fighters, now);
+            return self.EndPvp(history, won, fought, won ? constants.guildPVPWinPoint : constants.guildPVPLosePoint, fighters, payable, now);
         }
 
         (int scoreA, int deltaA, bool rewardA) = Apply(managerA, managerB, true);
@@ -698,9 +699,10 @@ public partial class WorldService {
         };
     }
 
-    // A match with at least one fought round won (not a walkover, a forfeit's cut round or a draw).
-    internal static bool FoughtMatch(IEnumerable<GuildRequest.Types.PvpEnd.Types.Round> rounds) {
-        return rounds.Any(round => round.Fought && round.Winner != 0);
+    // A match whose winner (1 guild A, 2 guild B) won at least one fought round (not a walkover, a forfeit's cut
+    // round or a draw): the same rule as the field's GuildPvpZoneState.WonFoughtRound for the win's trophies.
+    internal static bool FoughtMatch(IEnumerable<GuildRequest.Types.PvpEnd.Types.Round> rounds, int winner) {
+        return winner is 1 or 2 && rounds.Any(round => round.Fought && round.Winner == winner);
     }
 
     private GuildResponse UpgradeGuildBuff(long requestorId, GuildRequest.Types.UpgradeBuff upgrade) {

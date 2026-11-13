@@ -28,9 +28,10 @@ public sealed record GuildPvpRound(IReadOnlyList<long> FightersA, IReadOnlyList<
 // arena); a team with no fighter left loses the round, and at the round's time (the script's match_time) the team
 // with more fighters left wins it, equal counts are a draw round; a team with nobody to send loses the round without
 // a fight (a walkover: no fighters, not a fought round); a team that was seen in the field and then has no player
-// left in it after the start forfeits the match (both gone: a draw), the round it cut short going to the other team
-// for the result only (not fought); a team never seen forfeits nothing, it loses its rounds by walkover (so the
-// first guild in an empty field wins no fought round); the match ends when a team has the wins it needs or after MaxRounds
+// left in it after the start forfeits the match (both gone, or the other team never seen: a draw), the round it cut
+// short going to the other team for the result only (not fought); a team never seen forfeits nothing, it loses its
+// rounds by walkover once both were seen or WalkoverGraceMs after the start (so the first guild in an empty field
+// wins no fought round, and a late guild still gets to fight); the match ends when a team has the wins it needs or after MaxRounds
 // rounds, the team with more round wins winning, equal wins a draw; BreakMs passes between rounds.
 public sealed class GuildPvpZoneState {
     public const int NoTeam = 0;
@@ -40,6 +41,10 @@ public sealed class GuildPvpZoneState {
     public const int MaxRounds = 5;
     public const int DefaultWins = 3;
     public const long BreakMs = 10_000;
+    // Chosen here: with present given, no round is given by walkover before both teams were seen or this long after
+    // the start, so a guild that accepted the join box late and loads slowly still gets to fight (without it the
+    // walkovers at the start, +10 s and +20 s end the match before it arrives).
+    public const long WalkoverGraceMs = 60_000;
 
     public int BoxId { get; }
     public int StandA { get; }
@@ -142,7 +147,7 @@ public sealed class GuildPvpZoneState {
             bool goneA = seen[TeamA] && !presentA;
             bool goneB = seen[TeamB] && !presentB;
             if (tick >= StartTick && (goneA || goneB)) {
-                Forfeit(goneA && goneB ? NoTeam : goneA ? TeamB : TeamA, tick, events);
+                Forfeit(goneA && goneB ? NoTeam : goneA ? SeenOrNone(TeamB) : SeenOrNone(TeamA), tick, events);
                 return events;
             }
         }
@@ -161,17 +166,25 @@ public sealed class GuildPvpZoneState {
             return events;
         }
 
-        Round++;
+        var picks = new List<long>[TeamB + 1];
         for (int team = TeamA; team <= TeamB; team++) {
             IReadOnlyList<long> picked = stand(team);
             if (picked.Count == 0) {
                 picked = others(team);
             }
-            fighters[team] = picked.Distinct().Take(FightersPerTeam).ToList();
+            picks[team] = picked.Distinct().Take(FightersPerTeam).ToList();
+        }
+        bool hasA = picks[TeamA].Count > 0;
+        bool hasB = picks[TeamB].Count > 0;
+        if ((!hasA || !hasB) && present != null && !(seen[TeamA] && seen[TeamB]) && tick < StartTick + WalkoverGraceMs) {
+            // A team not seen yet may still be loading: wait for it (no round) until the grace ends.
+            return events;
+        }
+        Round++;
+        for (int team = TeamA; team <= TeamB; team++) {
+            fighters[team] = picks[team];
             left[team] = fighters[team].ToHashSet();
         }
-        bool hasA = fighters[TeamA].Count > 0;
-        bool hasB = fighters[TeamB].Count > 0;
         if (!hasA || !hasB) {
             // Nobody to send: the round goes to the other team without a fight (both empty: a draw round).
             fighters[TeamA] = [];
@@ -190,14 +203,17 @@ public sealed class GuildPvpZoneState {
     }
 
     // The team's last player left the field: once the match started, a team that was seen forfeits (the other
-    // team wins). Nothing for a team never seen or before the start.
+    // team wins if it was seen too, else the match is a draw: a guild never in the field wins nothing). Nothing for
+    // a team never seen or before the start.
     public List<GuildPvpZoneEvent> Forfeit(int team, long tick) {
         var events = new List<GuildPvpZoneEvent>();
         if (!Ended && IsTeam(team) && seen[team] && tick >= StartTick) {
-            Forfeit(team == TeamA ? TeamB : TeamA, tick, events);
+            Forfeit(SeenOrNone(team == TeamA ? TeamB : TeamA), tick, events);
         }
         return events;
     }
+
+    private int SeenOrNone(int team) => seen[team] ? team : NoTeam;
 
     // The match ends with the winner (NoTeam: both gone, a draw). A running round is cut short: it goes to the
     // winner for the result only (no fighters, not fought); the fought rounds before it stay as they were.

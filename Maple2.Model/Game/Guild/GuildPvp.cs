@@ -111,6 +111,14 @@ public class GuildPvp {
         return (point, true);
     }
 
+    // Whether the character has one of the day's DailyRewardCap left (nothing taken): the field sends the World
+    // only such fighters as payable, so a guild whose fighters are all at their cap takes no guild slot or score.
+    public static bool HasFighterReward(Character character, DateTime now) {
+        int day = character.GuildPvpRewardDay;
+        int count = character.GuildPvpRewardCount;
+        return TakeDaily(ref day, ref count, now);
+    }
+
     // A character's reward of a match: a fighter of a guild the World paid gets it while the character has one of
     // the day's DailyRewardCap left (taken here). False: no reward and no championship count.
     public static bool TakeFighterReward(Character character, bool fighter, bool guildPaid, DateTime now) {

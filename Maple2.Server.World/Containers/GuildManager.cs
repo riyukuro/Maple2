@@ -1386,19 +1386,20 @@ public class GuildManager : IDisposable {
     public int OnlineCount() => Guild.Members.Values.Count(member => member.Info.Online);
 
     // A played championship match (one of the two guilds' view, Guild A = this guild): the win or loss counts, the
-    // match goes into the history and the members who fought get a match more. Only a fought match (a fought round
-    // won) with one of this guild's members among the fighters pays the reward, at most GuildPvp.DailyRewardCap times
+    // match goes into the history and the members who fought get a match more. Only a fought match (the winner won a
+    // fought round) with one of this guild's members among the payable fighters (in the field at the end, under
+    // their own daily cap) pays the reward, at most GuildPvp.DailyRewardCap times
     // a day, and only a match that pays moves the score by the points (GuildPvp.Settle). Saved; the members get the new record and the result (Guild 0x29, 0x2a).
     // Returns the new score, the change and whether the fighters get the reward.
     public (int Score, int Delta, bool Reward) EndPvp(GuildPvpMatch match, bool won, bool fought, int point, IReadOnlyCollection<long> fighters,
-                                                      DateTime now) {
+                                                      IReadOnlyCollection<long> payable, DateTime now) {
         var counts = new List<GuildRequest.Types.PvpRating.Types.Count>();
         string pvp;
         int score;
         int delta;
         bool reward;
         lock (guildLock) {
-            (delta, reward) = Guild.Pvp.Settle(fought, fighters.Any(Guild.Members.ContainsKey), point, now);
+            (delta, reward) = Guild.Pvp.Settle(fought, payable.Any(Guild.Members.ContainsKey), point, now);
             if (won) {
                 Guild.Pvp.Wins++;
             } else {
