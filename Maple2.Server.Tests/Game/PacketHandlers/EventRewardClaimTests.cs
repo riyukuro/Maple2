@@ -17,7 +17,7 @@ using Maple2.Server.Game.Session;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // The event reward claims through their handlers: the attendance gift (Attendance 0), the long-term attendance
-// calendar (EventReward 25, 26, 27), the stamp card (EventReward 0, 1) and the time run (EventReward 3, 4).
+// calendar (EventReward 25, 26, 27), the stamp card (EventReward 0, 1), the time run (EventReward 3, 4) and the bingo card (EventReward 22, 23).
 public class EventRewardClaimTests {
     private const int EventId = 7001;
     private const int ItemA = 20000001;
@@ -660,6 +660,104 @@ public class EventRewardClaimTests {
         ClaimFinal(session);
         Assert.That(SentHex(), Is.Empty);
         Assert.That(Held(session, ItemC), Is.EqualTo(4));
+    }
+    #endregion
+
+    #region BingoEvent
+    private const int Pencil = 20000011;
+    private const int CashPencil = 20000012;
+    private const int Seed = 12345;
+    // The first row of the board of seed 12345 (BingoEventRulesTests).
+    private static readonly int[] FirstRow = [17, 2, 10, 16, 1];
+
+    // Two days of called numbers; eight reward rows, row 0 gives ItemB, the others ItemC.
+    private static BingoEvent Bingo() {
+        return new BingoEvent(Pencil, CashPencil, [[17, 2], [10]],
+            Enumerable.Range(0, 8).Select(i => new BingoEvent.BingoReward([new RewardItem(i == 0 ? ItemB : ItemC, 1, 1)])).ToArray());
+    }
+
+    private GameSession LoginBingo(DateTime? start = null) {
+        GameSession session = Login(GameEventType.BingoEvent, Bingo(), start: start ?? DateTime.Now, before: target => {
+            target.Store(TestGameSession.Metadata(Pencil), 10);
+            target.Store(TestGameSession.Metadata(CashPencil), 30);
+        });
+        session.GameEvent.Get(GameEventUserValueType.BingoUid, EventId, gameEvent.EndTime);
+        session.GameEvent.Set(EventId, GameEventUserValueType.BingoUid, Seed);
+        test.TakeSent();
+        return session;
+    }
+
+    private static void Cross(GameSession session, int pencil, int number) {
+        Reward(session, 22, writer => {
+            writer.WriteInt(pencil);
+            writer.WriteInt(number);
+        });
+    }
+
+    private static void ClaimBingo(GameSession session, int row) => Reward(session, 23, writer => writer.WriteInt(row));
+
+    // 22: the number joins the checked list, which is stored and sent in 21; one pencil is used.
+    [Test]
+    public void Bingo_Cross_StoresTheNewListAndUsesAPencil() {
+        GameSession session = LoginBingo();
+
+        Cross(session, CashPencil, 17);
+        Cross(session, CashPencil, 2);
+
+        Assert.That(Value(session, GameEventUserValueType.BingoNumbersChecked), Is.EqualTo("17,2"));
+        Assert.That(Held(session, CashPencil), Is.EqualTo(28));
+        Assert.That(SentHex()[^1], Is.EqualTo(Hex(EventRewardPacket.UpdateBingo("17,2", ""))));
+    }
+
+    // The free pencil crosses only a number called today; the cash pencil any number of the board, none off it.
+    [Test]
+    public void Bingo_FreePencil_OnlyTodaysNumbers() {
+        GameSession session = LoginBingo();
+
+        Cross(session, Pencil, 10);
+        Cross(session, CashPencil, 26);
+        Assert.That(Value(session, GameEventUserValueType.BingoNumbersChecked) ?? "", Is.Empty);
+
+        Cross(session, Pencil, 17);
+        Assert.That(Value(session, GameEventUserValueType.BingoNumbersChecked), Is.EqualTo("17"));
+        Assert.That(Held(session, Pencil), Is.EqualTo(9));
+        Assert.That(Held(session, CashPencil), Is.EqualTo(30));
+    }
+
+    // A day past the table wraps (BingoContext::GetTodayNumbers): the third day calls the first day's numbers
+    // again, the fourth the second's.
+    [Test]
+    public void Bingo_DayPastTheTable_Wraps() {
+        GameSession session = LoginBingo(DateTime.Now.AddDays(-3));
+
+        Cross(session, Pencil, 17);
+        Cross(session, Pencil, 10);
+
+        Assert.That(Value(session, GameEventUserValueType.BingoNumbersChecked), Is.EqualTo("10"));
+    }
+
+    // 23: a row is given once its line count is crossed, once.
+    [Test]
+    public void Bingo_ClaimRow_NeedsItsLines() {
+        GameSession session = LoginBingo();
+
+        ClaimBingo(session, 0);
+        Assert.That(Held(session, ItemB), Is.EqualTo(0));
+        Assert.That(Value(session, GameEventUserValueType.BingoRewardsClaimed) ?? "", Is.Empty);
+
+        foreach (int number in FirstRow) {
+            Cross(session, CashPencil, number);
+        }
+        test.TakeSent();
+        ClaimBingo(session, 1);
+        ClaimBingo(session, 7);
+        Assert.That(Held(session, ItemC), Is.EqualTo(0));
+
+        ClaimBingo(session, 0);
+        ClaimBingo(session, 0);
+        Assert.That(Held(session, ItemB), Is.EqualTo(1));
+        Assert.That(Value(session, GameEventUserValueType.BingoRewardsClaimed), Is.EqualTo("0"));
+        Assert.That(test.Errors, Is.Empty);
     }
     #endregion
 

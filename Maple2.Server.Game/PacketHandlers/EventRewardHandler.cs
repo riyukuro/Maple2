@@ -480,30 +480,28 @@ public class EventRewardHandler : FieldPacketHandler {
         session.Send(EventRewardPacket.ClaimGalleryReward(gallery.RewardItems));
     }
 
+    // Bingo. 20 opens the card: the board seed, the checked numbers, the claimed rows and today's numbers. The
+    // dialog (uibingoeventdialog.cpp) crosses a number with 22 + int pencil + int number: the free pencil only for a
+    // number called today, the cash pencil for any number of the board; 21 answers with the new lists. 23 + int row
+    // claims a reward row, offered once its line count is crossed (BingoEventRules). Refusals get no reply.
     private void HandleOpenBingo(GameSession session) {
         GameEvent? gameEvent = session.FindEvent(GameEventType.BingoEvent).FirstOrDefault();
         if (gameEvent?.Metadata.Data is not BingoEvent bingoEvent) {
             return;
         }
 
-        DateTime startTime = gameEvent.StartTime.FromEpochSeconds();
-        // days since event started
-        int days = Math.Max(0, (int) (DateTime.UtcNow - startTime).TotalDays);
-        if (days >= bingoEvent.Numbers.Length) {
-            Logger.Error("Bingo event is incorrectly set up. There are not enough days for the event.");
-            return;
-        }
-
         // This uid sets up what board layout the user will have.
         GameEventUserValue uid = session.GameEvent.Get(GameEventUserValueType.BingoUid, gameEvent.Id, gameEvent.EndTime);
-        if (string.IsNullOrEmpty(uid.Value)) {
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoUid, Random.Shared.Next().ToString());
+        if (!int.TryParse(uid.Value, out int seed)) {
+            seed = Random.Shared.Next();
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoUid, seed);
         }
 
         GameEventUserValue checkedNumbers = session.GameEvent.Get(GameEventUserValueType.BingoNumbersChecked, gameEvent.Id, gameEvent.EndTime);
         GameEventUserValue rewardsClaimed = session.GameEvent.Get(GameEventUserValueType.BingoRewardsClaimed, gameEvent.Id, gameEvent.EndTime);
 
-        session.Send(EventRewardPacket.OpenBingo(int.Parse(uid.Value), checkedNumbers.Value, rewardsClaimed.Value, bingoEvent.Numbers[days]));
+        int[] today = BingoEventRules.TodayNumbers(bingoEvent, gameEvent.StartTime.FromEpochSeconds(), DateTime.Now);
+        session.Send(EventRewardPacket.OpenBingo(seed, checkedNumbers.Value, rewardsClaimed.Value, today));
     }
 
     private void HandleCrossOffBingoNumber(GameSession session, IByteReader packet) {
@@ -516,32 +514,30 @@ public class EventRewardHandler : FieldPacketHandler {
         int bingoNumber = packet.ReadInt();
 
         // Check if the item is a pencil
-        if (itemId != bingoEvent.PencilItemId && itemId != bingoEvent.PencilPlusItemId) {
+        if (itemId != bingoEvent.PencilItemId && itemId != bingoEvent.PencilPlusItemId || !BingoEventRules.OnBoard(bingoNumber)) {
             return;
         }
 
         GameEventUserValue checkedNumbers = session.GameEvent.Get(GameEventUserValueType.BingoNumbersChecked, gameEvent.Id, gameEvent.EndTime);
-        List<int> checkedNumbersList = string.IsNullOrEmpty(checkedNumbers.Value) ? [] : checkedNumbers.Value.Split(',').Select(int.Parse).ToList();
+        List<int> checkedNumbersList = BingoEventRules.Parse(checkedNumbers.Value);
         if (checkedNumbersList.Contains(bingoNumber)) {
             return;
         }
 
         if (itemId == bingoEvent.PencilItemId) {
-            DateTime startTime = gameEvent.StartTime.FromEpochSeconds();
-            int days = Math.Max(0, (int) (DateTime.UtcNow - startTime).TotalDays);
-            if (!bingoEvent.Numbers[days].Contains(bingoNumber)) {
+            int[] today = BingoEventRules.TodayNumbers(bingoEvent, gameEvent.StartTime.FromEpochSeconds(), DateTime.Now);
+            if (!today.Contains(bingoNumber)) {
                 return;
             }
         }
 
         Item? item = session.Item.Inventory.Find(itemId).FirstOrDefault();
-        if (item == null) {
+        if (item == null || !session.Item.Inventory.Consume(item.Uid, 1)) {
             return;
         }
 
         checkedNumbersList.Add(bingoNumber);
-        session.Item.Inventory.Consume(item.Uid, 1);
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoNumbersChecked, checkedNumbers.Value);
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoNumbersChecked, string.Join(',', checkedNumbersList));
 
         GameEventUserValue rewardsClaimed = session.GameEvent.Get(GameEventUserValueType.BingoRewardsClaimed, gameEvent.Id, gameEvent.EndTime);
 
@@ -551,32 +547,35 @@ public class EventRewardHandler : FieldPacketHandler {
     private void HandleClaimBingoReward(GameSession session, IByteReader packet) {
         int index = packet.ReadInt();
         GameEvent? gameEvent = session.FindEvent(GameEventType.BingoEvent).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not BingoEvent bingoEvent) {
-            return;
-        }
-
-        if (index >= bingoEvent.Rewards.Length) {
+        if (gameEvent?.Metadata.Data is not BingoEvent bingoEvent || session.Field == null) {
             return;
         }
 
         GameEventUserValue rewardsClaimed = session.GameEvent.Get(GameEventUserValueType.BingoRewardsClaimed, gameEvent.Id, gameEvent.EndTime);
-        List<int> rewardsClaimedList = string.IsNullOrEmpty(rewardsClaimed.Value) ? [] : rewardsClaimed.Value.Split(',').Select(int.Parse).ToList();
+        List<int> rewardsClaimedList = BingoEventRules.Parse(rewardsClaimed.Value);
         if (rewardsClaimedList.Contains(index)) {
             return;
         }
+
+        GameEventUserValue uid = session.GameEvent.Get(GameEventUserValueType.BingoUid, gameEvent.Id, gameEvent.EndTime);
+        GameEventUserValue checkedNumbers = session.GameEvent.Get(GameEventUserValueType.BingoNumbersChecked, gameEvent.Id, gameEvent.EndTime);
+        int lines = int.TryParse(uid.Value, out int seed) ? BingoEventRules.CountLines(seed, BingoEventRules.Parse(checkedNumbers.Value)) : 0;
+        if (!BingoEventRules.CanClaim(bingoEvent, index, lines)) {
+            Logger.Debug("ClaimBingoReward from {CharacterId} refused: row {Index}, lines {Lines}", session.CharacterId, index, lines);
+            return;
+        }
+
         rewardsClaimedList.Add(index);
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoRewardsClaimed, string.Join(',', rewardsClaimedList));
 
-        GameEventUserValue checkedNumbers = session.GameEvent.Get(GameEventUserValueType.BingoNumbersChecked, gameEvent.Id, gameEvent.EndTime);
-
         foreach (RewardItem rewardItem in bingoEvent.Rewards[index].Items) {
-            Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
             if (item == null) {
                 continue;
             }
 
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
+            if (!session.Item.AddOrMail(item, true)) {
+                Logger.Error("Bingo reward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
             }
         }
         session.Send(EventRewardPacket.ClaimBingoReward(bingoEvent.Rewards[index].Items));
