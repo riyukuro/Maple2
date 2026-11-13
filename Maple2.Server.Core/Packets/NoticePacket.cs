@@ -32,13 +32,11 @@ public static class NoticePacket {
         return pWriter;
     }
 
+    // Any flags: the client reads the Mint repeat count and the LargeAlert value after the text
+    // (CSceneStateGame::OnNotice, scenestategame.cpp; decoder unit_1407a4f20_packetserializers.cpp:761), so these
+    // go through Notice, which writes them.
     public static ByteWriter Message(InterfaceText text, Flags flags = Flags.Message) {
-        var pWriter = Packet.Of(SendOp.Notice);
-        pWriter.Write<Command>(Command.Notice);
-        pWriter.Write<Flags>(flags);
-        pWriter.WriteClass<InterfaceText>(text);
-
-        return pWriter;
+        return Notice(flags, text);
     }
 
     public static ByteWriter MessageBox(InterfaceText text) {
