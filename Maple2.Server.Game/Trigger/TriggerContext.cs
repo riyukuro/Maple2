@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Tools.Scheduler;
 using Serilog;
@@ -82,12 +83,19 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     // Accessors
-    // The boss gauge's points (shadow_expedition_points, point >= GreaterEqual) have no known source: no table, npc
-    // field or script raises them and the client only shows what 0xE1 sends. The threshold passes, as it did before
-    // the attribute was read, so the scripts go on.
+    // The open boss gauge holds at least point points (the kill share, FieldManager.ShadowGauge). With no gauge
+    // open it waits for one (52010038_qd tests 150 points before its gauge script opens it), unless no script of
+    // the field opens one: then it passes as before (no KR shadow map is such a field).
     public bool ShadowExpeditionPoints(int point) {
-        DebugLog("[GetShadowExpeditionPoints] point:{Point} passes (no points source)", point);
-        return true;
+        ScoreBoard.Board? board = Field.ScoreBoardOpen;
+        int? points = board?.Kind == ShadowExpeditionPacket.BossGauge ? board.Points : null;
+        bool reached = ShadowGaugeReached(points, Field.OpensShadowGauge, point);
+        DebugLog("[GetShadowExpeditionPoints] point:{Point}, points:{Points}, reached:{Reached}", point, points, reached);
+        return reached;
+    }
+
+    public static bool ShadowGaugeReached(int? points, bool fieldOpensGauge, int point) {
+        return points == null ? !fieldOpensGauge : points >= point;
     }
 
     // The instance's dungeon variable equals value; an id never set reads 0.

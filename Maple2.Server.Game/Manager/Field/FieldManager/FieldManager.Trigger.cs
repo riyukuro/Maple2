@@ -75,6 +75,11 @@ public partial class FieldManager {
         Broadcast(ScoreBoard.OpenPacket(board));
     }
 
+    // Whether one of the field's trigger scripts opens a boss gauge, read once.
+    public bool OpensShadowGauge => opensShadowGauge ??= TriggerCache != null && Entities.TriggerModels.Values.Any(model =>
+        TriggerCache.TryGet(Metadata.XBlock, model.Name.ToLower(), out Trigger.Helpers.Trigger? trigger) && trigger.OpensShadowGauge());
+    private bool? opensShadowGauge;
+
     // Closes the open board (0xE1 command 2) and stops the gauge's count.
     public void CloseScoreBoard() {
         lock (scoreBoardLock) {

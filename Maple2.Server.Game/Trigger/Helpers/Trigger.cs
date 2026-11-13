@@ -24,6 +24,14 @@ public partial class Trigger {
         }
     }
 
+    // Whether any state opens a boss gauge (shadow_expedition_open_boss_gauge): on enter, on exit or under a condition.
+    public bool OpensShadowGauge() {
+        return States.Any(state => (state.Enter?.Actions ?? Enumerable.Empty<IAction>())
+            .Concat(state.Exit?.Actions ?? Enumerable.Empty<IAction>())
+            .Concat(ConditionActions(state.Conditions))
+            .Any(action => action is ShadowExpeditionOpenBossGauge));
+    }
+
     private static IEnumerable<IAction> ConditionActions(IEnumerable<ICondition> conditions) {
         foreach (ICondition condition in conditions) {
             foreach (IAction action in condition.Actions) {
