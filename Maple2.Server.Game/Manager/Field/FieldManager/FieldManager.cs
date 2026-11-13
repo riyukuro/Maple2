@@ -208,6 +208,13 @@ public partial class FieldManager : IField {
         HideAndSeek = new HideAndSeekField(this, triggerId);
     }
 
+    // The guild vs game of a guild vs game map (CreateFieldGame GuildVsGame, or its first arrival); null before.
+    public GuildVsGameField? GuildVsGame { get; private set; }
+
+    public GuildVsGameField StartGuildVsGame() {
+        return GuildVsGame ??= new GuildVsGameField(this);
+    }
+
     // Whether a player's hostile skills reach another player here: the rank duel's fight, the PvP zone's or the
     // survival game's, or a Hide and Seek seeker's on a hider.
     public bool PlayerHostile(FieldPlayer caster, FieldPlayer target) {

@@ -948,6 +948,36 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // A member's contribution earned outside the guild dialog (the guild vs game's result): the member's weekly and
+    // total contribution grow, and every member is told (Guild 53, as for a check-in, without its time).
+    public GuildError AddContribution(long requestorId, int contribution) {
+        if (contribution <= 0) {
+            return GuildError.s_guild_err_unknown;
+        }
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        // Under the member's lock, as a check-in's add; stored now, only the member's row.
+        lock (requestor) {
+            requestor.WeeklyContribution += contribution;
+            requestor.TotalContribution += contribution;
+        }
+        lock (guildLock) {
+            TrySaveMember(requestor);
+        }
+
+        Broadcast(new GuildRequest {
+            UpdateMember = new GuildRequest.Types.UpdateMember {
+                RequestorId = requestor.CharacterId,
+                CharacterId = requestor.CharacterId,
+                Contribution = contribution,
+            },
+        });
+
+        return GuildError.none;
+    }
+
     public GuildError UpdateNotice(long requestorId, string message) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;

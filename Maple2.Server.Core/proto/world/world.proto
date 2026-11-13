@@ -362,6 +362,11 @@ message GuildRequest {
     int64 guild_id = 1;
     int32 dungeon_room_id = 2;
   }
+  // Contribution a member earned outside the guild dialog (the guild vs game's result).
+  message AddContribution {
+    int64 guild_id = 1;
+    int32 contribution = 2;
+  }
 
   int64 requestor_id = 4;
   oneof guild {
@@ -396,6 +401,7 @@ message GuildRequest {
     TrophyNotice trophy_notice = 31;
     Rename rename = 32;
     RaidClear raid_clear = 33;
+    AddContribution add_contribution = 34;
   }
 }
 

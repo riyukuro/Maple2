@@ -1640,6 +1640,10 @@ public partial class FieldManager {
     #region Events
     public void OnAddPlayer(FieldPlayer added) {
         added.Session.Ride.EnterField(this);
+        // A guild vs game player takes its team's tag before the field sends it (FieldPacket.AddPlayer).
+        if (FieldInstance.Type == InstanceType.GuildVsGame) {
+            StartGuildVsGame().Arrive(added);
+        }
         Players[added.ObjectId] = added;
         // A dungeon room's timer starts with its first player; later players get the running one.
         if (RoomTimer == null && this is DungeonFieldManager dungeonField) {

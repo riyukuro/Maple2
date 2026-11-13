@@ -125,7 +125,8 @@ public static class FieldPacket {
         }
         pWriter.WriteLong(player.Account.PremiumTime);
         pWriter.WriteInt();
-        pWriter.WriteByte();
+        // The user tag: a guild vs game player's team (the script's UserTagSymbol marks), 0 elsewhere.
+        pWriter.WriteByte(session.Field?.GuildVsGame != null ? (byte) session.Player.TagId : (byte) 0);
         pWriter.WriteShort();
 
         return pWriter;

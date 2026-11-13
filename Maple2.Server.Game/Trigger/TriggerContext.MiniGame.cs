@@ -187,9 +187,12 @@ public partial class TriggerContext {
     #endregion
 
     #region HideAndSeek
-    // The survival maps' field game: MapleSurvival starts the game (SurvivalGameField); the others are not
-    // built.
+    // The field games: MapleSurvival (SurvivalGameField), HideAndSeek (HideAndSeekField) and GuildVsGame
+    // (GuildVsGameField, made at the map's first arrival too); the others are not built.
     public void CreateFieldGame(FieldGame type, bool reset) {
+        if (type == FieldGame.GuildVsGame) {
+            Field.StartGuildVsGame();
+        }
         if (type == FieldGame.MapleSurvival && Field.Survival is null or { Ended: true }) {
             Field.StartSurvival();
         }

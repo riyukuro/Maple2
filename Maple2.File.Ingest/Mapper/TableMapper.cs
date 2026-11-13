@@ -1349,6 +1349,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
         Maple2.File.IO.Crypto.Common.PackFileEntry? raidEntry = xmlReader.Files.FirstOrDefault(file =>
             file.Name.Equals("table/guildraid.xml", StringComparison.OrdinalIgnoreCase));
         Dictionary<int, GuildTable.Raid> raids = raidEntry == null ? [] : GuildRaids(xmlReader.GetXmlDocument(raidEntry));
+        Maple2.File.IO.Crypto.Common.PackFileEntry? contributionEntry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/guildcontribution.xml", StringComparison.OrdinalIgnoreCase));
+        Dictionary<string, int> contributions =
+            contributionEntry == null ? [] : GuildContributions(xmlReader.GetXmlDocument(contributionEntry));
 
         return new GuildTable(
             Buffs: guildBuffs,
@@ -1357,7 +1361,25 @@ public class TableMapper : TypeMapper<TableMetadata> {
             Properties: guildProperties,
             Events: guildEvents,
             QuestRewardFactors: questRewardFactors,
-            Raids: raids);
+            Raids: raids,
+            Contributions: contributions);
+    }
+
+    // The parser has no guildcontribution.xml; its rows are read here as CGuildXmlData::LoadGuildContribution reads
+    // them (guilddef_2.cpp:603): one contribution row per type, of the enabled features and locale.
+    public static Dictionary<string, int> GuildContributions(XmlDocument document) {
+        var results = new Dictionary<string, int>();
+        foreach (XmlElement node in document.SelectNodes("ms2/contribution")?.OfType<XmlElement>() ?? []) {
+            if (!FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"))) {
+                continue;
+            }
+            string type = node.GetAttribute("type");
+            if (type.Length == 0 || !int.TryParse(node.GetAttribute("value"), out int value)) {
+                continue;
+            }
+            results[type] = value;
+        }
+        return results;
     }
 
     // The parser has no guildraid.xml; its rows are read here as CGuildXmlData::GuildRaid reads them

@@ -88,8 +88,11 @@ public static class GuildPacket {
         StorageGift = 109,
         StorageHistory = 112,
         Donated = 113, // client CGuildManager::OnPacketMyDonation (case 0x71); 110 is read as a storage item
+        VsGameMatchCanceled = 117,
         VsGameTicket = 118,
         VsGameOpen = 119,
+        VsGameResult = 122,
+        VsGameReward = 123,
         // 114, 115, 116, 120
     }
 
@@ -877,6 +880,42 @@ public static class GuildPacket {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.VsGameOpen);
         pWriter.WriteInt(gameId);
+
+        return pWriter;
+    }
+
+    // CGuildManager case 0x75 (guildmanager.cpp:369): no opponent was found for the guild's vs-game; the client clears
+    // its ticket and prints s_guild_notify_vsGame_match_canceled.
+    public static ByteWriter VsGameMatchCanceled() {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.VsGameMatchCanceled);
+
+        return pWriter;
+    }
+
+    // CGuildManager::FUN_1413c4870 (0x7a) -> UIPvPGuildTeamResultDialog::SetVsGameResult: both guilds (id, name,
+    // mark, score); the client takes win/lose/draw from the scores and names the other guild in its line.
+    public static ByteWriter VsGameResult(IReadOnlyList<(long GuildId, string Name, string Mark, int Score)> guilds) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.VsGameResult);
+        for (int i = 0; i < 2; i++) {
+            (long guildId, string name, string mark, int score) = i < guilds.Count ? guilds[i] : (0L, string.Empty, string.Empty, 0);
+            pWriter.WriteLong(guildId);
+            pWriter.WriteUnicodeString(name);
+            pWriter.WriteUnicodeString(mark);
+            pWriter.WriteInt(score);
+        }
+
+        return pWriter;
+    }
+
+    // CGuildManager::OnPacketVsGameReward (0x7b): the notice of a vs-game reward, kind 1 the guild exp and 2 the
+    // guild fund.
+    public static ByteWriter VsGameReward(byte kind, int amount) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.Write<Command>(Command.VsGameReward);
+        pWriter.WriteByte(kind);
+        pWriter.WriteInt(amount);
 
         return pWriter;
     }

@@ -13,7 +13,10 @@ public record GuildTable(
     // table was read.
     IReadOnlyDictionary<short, GuildTable.QuestRewardFactor>? QuestRewardFactors = null,
     // table/guildraid.xml by dungeon room id. Null when the data was ingested before the table was read.
-    IReadOnlyDictionary<int, GuildTable.Raid>? Raids = null) : Table {
+    IReadOnlyDictionary<int, GuildTable.Raid>? Raids = null,
+    // table/guildcontribution.xml: a member's contribution by its type (winMiniGame, loseMiniGame, ...). Null when the
+    // data was ingested before the table was read.
+    IReadOnlyDictionary<string, int>? Contributions = null) : Table {
 
     // A guild raid (CGuildXmlData::GuildRaid, guilddef_2.cpp:433): its dungeon room, the raid points of a clear and
     // the guild fund and exp factors of a clear (1 when the row has none, as the client's defaults).

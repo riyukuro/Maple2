@@ -304,6 +304,29 @@ public class GuildManager : IDisposable {
         });
     }
 
+    // Contribution this player earned outside the guild dialog (the guild vs game's result) goes to World, which keeps
+    // the member's value and tells the guild; off the caller's thread, as a raid clear. Null when nothing is added.
+    public Task? AddContribution(int contribution) {
+        if (Guild == null || contribution <= 0) {
+            return null;
+        }
+
+        var request = new GuildRequest {
+            RequestorId = session.CharacterId,
+            AddContribution = new GuildRequest.Types.AddContribution {
+                GuildId = Guild.Id,
+                Contribution = contribution,
+            },
+        };
+        return Task.Run(() => {
+            try {
+                session.World.Guild(request);
+            } catch (Exception ex) {
+                logger.Warning(ex, "Guild contribution failed: {Contribution}", contribution);
+            }
+        });
+    }
+
     public bool UpdateMemberContribution(long characterId, long checkInTime, int contribution) {
         GuildMember? member = GetMember(characterId);
         if (member == null) {
@@ -314,7 +337,10 @@ public class GuildManager : IDisposable {
         member.TotalContribution += contribution;
 
         session.Send(GuildPacket.GuildContribution(member, contribution));
-        session.Send(GuildPacket.CheckInTime(member.Name, checkInTime));
+        // Only a check-in sends its time; a contribution without one (the guild vs game's) leaves it.
+        if (checkInTime > 0) {
+            session.Send(GuildPacket.CheckInTime(member.Name, checkInTime));
+        }
         return true;
     }
 

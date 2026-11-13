@@ -63,6 +63,8 @@ public partial class WorldService {
                 return Task.FromResult(GuildTrophyNotice(request.RequestorId, request.TrophyNotice));
             case GuildRequest.GuildOneofCase.RaidClear:
                 return Task.FromResult(GuildRaidClear(request.RequestorId, request.RaidClear));
+            case GuildRequest.GuildOneofCase.AddContribution:
+                return Task.FromResult(GuildAddContribution(request.RequestorId, request.AddContribution));
             case GuildRequest.GuildOneofCase.UpgradeNpc:
                 return Task.FromResult(UpgradeGuildNpc(request.RequestorId, request.UpgradeNpc));
             case GuildRequest.GuildOneofCase.UpgradeHouse:
@@ -482,6 +484,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = clear.GuildId };
+    }
+
+    private GuildResponse GuildAddContribution(long requestorId, GuildRequest.Types.AddContribution add) {
+        if (!guildLookup.TryGet(add.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.AddContribution(requestorId, add.Contribution);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = add.GuildId };
     }
 
     private GuildResponse UpgradeGuildBuff(long requestorId, GuildRequest.Types.UpgradeBuff upgrade) {
