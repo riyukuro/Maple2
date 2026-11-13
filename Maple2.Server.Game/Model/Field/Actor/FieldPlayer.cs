@@ -371,6 +371,21 @@ public class FieldPlayer : Actor<Player> {
         session.ConditionUpdate(ConditionType.stay_cube, codeLong: session.Field.MapId, targetString: attribute.Value.ToString());
     }
 
+    // survive_cube is the same kind of time condition: one second alive in a liquid, with the map as the code and the
+    // liquid as the target (trophy 22210016: 60 in lava). Lava is a fluid cube, which stay_cube skips. Chosen here: the
+    // liquids are those of the player's cell and of the cell under the feet, so standing in shallow lava counts as well
+    // as swimming in it; a death adds nothing but does not reset the sum. A liquid in both cells counts once.
+    internal static void ReportSurviveCube(GameSession session, bool dead, IEnumerable<LiquidType> liquids) {
+        if (dead || session.Field == null) {
+            return;
+        }
+        foreach (LiquidType liquid in liquids.Distinct()) {
+            if (liquid != LiquidType.none) {
+                session.ConditionUpdate(ConditionType.survive_cube, codeLong: session.Field.MapId, targetString: liquid.ToString());
+            }
+        }
+    }
+
     public void OnStateSync(StateSync stateSync) {
         int syncEmotion = TrophyTimeRules.EmotionSkillId(stateSync);
         if (syncEmotion != emotionSkillId) {
@@ -405,6 +420,11 @@ public class FieldPlayer : Actor<Player> {
                 StandingOnBlock = entity;
                 ReportStayCube(Session, entity);
             });
+            if (Session.Field?.AccelerationStructure is { HasFluids: true } fluids) {
+                var liquids = new HashSet<LiquidType>();
+                fluids.QueryFluidsAt(Position, fluid => liquids.Add(fluid.LiquidType));
+                ReportSurviveCube(Session, IsDead, liquids);
+            }
         }
 
         // Condition updates

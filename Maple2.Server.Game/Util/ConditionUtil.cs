@@ -190,6 +190,7 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve_grade:
             case ConditionType.stay_map:
             case ConditionType.stay_cube:
+            case ConditionType.survive_cube:
             // jump: the map of the jump (quests 70400081 and 70400103 name one map each).
             case ConditionType.jump:
             case ConditionType.spawner:
@@ -313,6 +314,7 @@ public static class ConditionUtil {
                 }
                 break;
             case ConditionType.stay_cube:
+            case ConditionType.survive_cube:
                 if (target.Strings != null && target.Strings.Contains(stringValue)) {
                     return true;
                 }

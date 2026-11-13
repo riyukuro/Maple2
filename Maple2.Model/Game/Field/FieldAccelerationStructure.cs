@@ -182,6 +182,20 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
         });
     }
 
+    // Whether the field has a fluid cube at all, found once (survive_cube looks for fluids only where there are some).
+    public bool HasFluids => hasFluids ??= alignedEntities.Concat(alignedTrimmedEntities).Concat(unalignedEntities)
+        .Any(entity => entity is FieldFluidEntity || entity is FieldCellEntities cell && cell.Entities.Any(child => child is FieldFluidEntity));
+    private bool? hasFluids;
+
+    // The fluids in the cell of position and in the cell under it, surface or not (one query: QueryCells spans both).
+    public void QueryFluidsAt(Vector3 position, Action<FieldFluidEntity> callback) {
+        QueryCells(position with { Z = position.Z - BLOCK_SIZE }, position, entity => {
+            if (entity is FieldFluidEntity fluid) {
+                callback(fluid);
+            }
+        });
+    }
+
     public void QuerySellableTiles(Vector3 min, Vector3 max, Action<FieldSellableTile> callback) {
         QueryCells(min, max, entity => {
             if (entity is FieldSellableTile tile) {
@@ -578,6 +592,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
     }
 
     public void AddEntities(Dictionary<Vector3S, List<FieldEntity>> gridAlignedEntities, Vector3S minIndex, Vector3S maxIndex, List<FieldEntity> unalignedEntities, int vibrateCount) {
+        hasFluids = null;
         if (minIndex.X == short.MaxValue) {
             minIndex = new Vector3S(0, 0, 0);
             maxIndex = new Vector3S(0, 0, 0);
@@ -840,6 +855,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
     }
 
     public void ReadFrom(IByteReader reader) {
+        hasFluids = null;
         ReadFormat(reader);
         GridSize = reader.Read<Vector3S>();
         MinIndex = reader.Read<Vector3S>();

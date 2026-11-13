@@ -30,7 +30,7 @@ public sealed class QuestManager {
     private ChangeJobMetadata? changeJobMetadata;
 
     private readonly HashSet<ConditionType> throttleStates = [
-        ConditionType.fall, ConditionType.swim, ConditionType.swimtime, ConditionType.run, ConditionType.stay_cube,
+        ConditionType.fall, ConditionType.swim, ConditionType.swimtime, ConditionType.run, ConditionType.stay_cube, ConditionType.survive_cube,
         ConditionType.crawl, ConditionType.glide, ConditionType.climb, ConditionType.ropetime, ConditionType.laddertime,
         ConditionType.holdtime, ConditionType.riding, ConditionType.emotiontime,
     ];

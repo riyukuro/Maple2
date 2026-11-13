@@ -655,6 +655,33 @@ public class TrophyWiringTests {
         Assert.That(grass.Conditions[0].Counter, Is.EqualTo(2));
     }
 
+    // survive_cube: one second alive in a liquid of the player's cell or the cell under it (trophy 22210016: 60 in lava).
+    [Test]
+    public void SurviveCube_CountsASecondAliveInTheLiquidOfTheCondition() {
+        GameSession session = Start();
+        Quest lava = test.StartQuest(QuestWith(QuestId, new ConditionMetadata(ConditionType.survive_cube, 60, null,
+            new ConditionMetadata.Parameters(Strings: ["lava"]))));
+        Quest here = test.StartQuest(QuestWith(QuestId + 1, ConditionType.survive_cube, codes: [Town]));
+        Quest elsewhere = test.StartQuest(QuestWith(QuestId + 2, ConditionType.survive_cube, codes: [Town + 1]));
+        Quest stay = test.StartQuest(QuestWith(QuestId + 3, ConditionType.stay_cube));
+        test.EnterMap(TestGameSession.Map(Town));
+
+        // Lava in both cells is one second.
+        Maple2.Server.Game.Model.FieldPlayer.ReportSurviveCube(session, false, [LiquidType.lava, LiquidType.lava]);
+        Maple2.Server.Game.Model.FieldPlayer.ReportSurviveCube(session, false, [LiquidType.lava]);
+        Assert.That(lava.Conditions[0].Counter, Is.EqualTo(2));
+        Assert.That(here.Conditions[0].Counter, Is.EqualTo(2));
+        Assert.That(elsewhere.Conditions[0].Counter, Is.Zero);
+
+        // Dead in lava adds nothing and keeps the sum; water is not lava; no liquid counts nothing.
+        Maple2.Server.Game.Model.FieldPlayer.ReportSurviveCube(session, true, [LiquidType.lava]);
+        Maple2.Server.Game.Model.FieldPlayer.ReportSurviveCube(session, false, [LiquidType.water]);
+        Maple2.Server.Game.Model.FieldPlayer.ReportSurviveCube(session, false, []);
+        Assert.That(lava.Conditions[0].Counter, Is.EqualTo(2));
+        Assert.That(here.Conditions[0].Counter, Is.EqualTo(3));
+        Assert.That(stay.Conditions[0].Counter, Is.Zero);
+    }
+
     [Test]
     public void InstrumentTime_CountsForTheCategoryOfTheInstrument() {
         GameSession session = Start();
