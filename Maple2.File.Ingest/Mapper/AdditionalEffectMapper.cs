@@ -59,6 +59,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         var packIds = new HashSet<int>();
         // The pack's metadata of the levels the played client also has, for the A/B of the played rows' mapping.
         var shared = new Dictionary<(int Id, short Level), AdditionalEffectMetadata>();
+        int takenLevels = 0;
+        var takenParts = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach ((int id, IList<AdditionalEffectData> datas) in parser.Parse()) {
             packIds.Add(id);
             foreach (AdditionalEffectData data in datas) {
@@ -69,7 +71,18 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 changed += mask != packMask ? 1 : 0;
                 AdditionalEffectMetadata metadata = Build(id, data, mask);
                 if (played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.Rows.ContainsKey(data.BasicProperty.level)) {
-                    shared.TryAdd((id, data.BasicProperty.level), metadata);
+                    short level = data.BasicProperty.level;
+                    shared.TryAdd((id, level), metadata);
+                    // The played level's parts in place of the pack's (PlayedAdditionalRows.TakeOver); the status and
+                    // final stats stay the pack's (Build with the pack's Status adds no final stats again).
+                    var unread = new List<string>();
+                    AdditionalEffectMetadata mapped = Build(id, PlayedOnly(entry, level, unread), mask, metadata.Status);
+                    var taken = new List<string>();
+                    metadata = PlayedAdditionalRows.TakeOver(metadata, mapped, unread, taken);
+                    takenLevels += taken.Count > 0 ? 1 : 0;
+                    foreach (string part in taken) {
+                        takenParts[part] = takenParts.GetValueOrDefault(part) + 1;
+                    }
                 }
                 yield return metadata;
             }
@@ -82,6 +95,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         if (played.Count == 0) {
             yield break;
         }
+        Console.WriteLine($"Additional effect levels both data sets have with parts taken from the played client's row: {takenLevels} of {shared.Count} " +
+                          $"({string.Join(", ", takenParts.Select(pair => $"{pair.Key} {pair.Value}"))})");
         Compare(shared);
 
         // The played client's effects the data pack does not have, where every child of every level is one whose
@@ -194,8 +209,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return entry.Rows.Keys.Order().Select(level => PlayedOnly(entry, level));
     }
 
-    public static AdditionalEffectData PlayedOnly(PlayedClientAdditionalEffects.Entry entry, short level) {
-        return Complete(PlayedAdditionalRows.ToPack(entry.Effect!, entry.Rows[level], level, new List<string>()));
+    public static AdditionalEffectData PlayedOnly(PlayedClientAdditionalEffects.Entry entry, short level, ICollection<string>? unread = null) {
+        return Complete(PlayedAdditionalRows.ToPack(entry.Effect!, entry.Rows[level], level, unread ?? new List<string>()));
     }
 
     // A parsed level written back and read again with the elements the converter needs.
@@ -228,7 +243,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return (AdditionalEffectData) LevelSerializer.Deserialize(new System.Xml.XmlNodeReader(document))!;
     }
 
-    private AdditionalEffectMetadata Build(int id, AdditionalEffectData data, int mask) {
+    // status: the level's stats as they are (no final stats added), for a played level built to take parts from.
+    private AdditionalEffectMetadata Build(int id, AdditionalEffectData data, int mask, AdditionalEffectMetadataStatus? status = null) {
         return new AdditionalEffectMetadata(
             Id: id,
             Level: data.BasicProperty.level,
@@ -279,7 +295,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 RemoveRecharge = played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? removeEntry)
                                  && removeEntry.RemoveRecharge.TryGetValue(data.BasicProperty.level, out AdditionalEffectMetadataUpdate.RemoveRechargeUses? remove) ? remove : null,
             },
-            Status: Status(id, data.BasicProperty.level, Convert(data.StatusProperty, data.OffensiveProperty, data.DefensiveProperty)),
+            Status: status ?? Status(id, data.BasicProperty.level, Convert(data.StatusProperty, data.OffensiveProperty, data.DefensiveProperty)),
             Recovery: Convert(data.RecoveryProperty),
             Dot: new AdditionalEffectMetadataDot(
                 Damage: Convert(data.DotDamageProperty),

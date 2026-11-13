@@ -87,6 +87,124 @@ public static class PlayedAdditionalRows {
         };
     }
 
+    // The parts the ingest takes over on a level both data sets have (AdditionalEffectMapper.Map): what the played
+    // client loads is its <additional> row (SkillDataTableCli::LoadAdditionalFile, skilldatatablecli.cpp:354), the
+    // pack's rows (and the client's own legacy additionaleffect/ files, never read) are older. Out: Skill (the splash
+    // skills), Status and the final stats, kept from the pack.
+    public static readonly IReadOnlyList<string> TakenOver = [
+        "Basic", "Motion", "Exp", "Ridee", "Condition", "Additional", "CancelEffect", "ImmuneEffect", "ResetSkillCoolDownTime",
+        "ModifyEffectDuration", "Recovery", "DotDamage", "DotBuff", "Shield", "Reflect", "Consume", "ModifyOverlapCount",
+    ];
+
+    // The attributes of a played level with no pack name (ToPack's unread, "<child>.<attribute>"), as the part
+    // whose metadata they would change: a part with one is not taken over (its mapped test would be wider).
+    private static string? PartOf(string unread) {
+        return unread.StartsWith("additional.", StringComparison.Ordinal) ? "Basic"
+            : unread.StartsWith("Condition.", StringComparison.Ordinal) ? "Condition"
+            : unread.StartsWith("Additional.", StringComparison.Ordinal) ? "Additional"
+            : null;
+    }
+
+    // The pack's metadata of a level with each TakenOver part that differs replaced by the played level's (mapped),
+    // where none of the level's unread attributes is on that part. taken gets the parts replaced.
+    public static AdditionalEffectMetadata TakeOver(AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, IEnumerable<string> unread, ICollection<string> taken) {
+        Dictionary<string, string> before = Parts(pack);
+        Dictionary<string, string> after = Parts(mapped);
+        var blocked = unread.Select(PartOf).OfType<string>().ToHashSet();
+        foreach (string part in TakenOver) {
+            if (before[part] != after[part] && !blocked.Contains(part)) {
+                taken.Add(part);
+            }
+        }
+        if (taken.Count == 0) {
+            return pack;
+        }
+
+        AdditionalEffectMetadataProperty property = pack.Property;
+        AdditionalEffectMetadataProperty client = mapped.Property;
+        if (taken.Contains("Basic")) {
+            property = property with {
+                Type = client.Type,
+                SubType = client.SubType,
+                Category = client.Category,
+                EventType = client.EventType,
+                Group = client.Group,
+                DurationTick = client.DurationTick,
+                IntervalTick = client.IntervalTick,
+                DelayTick = client.DelayTick,
+                MaxCount = client.MaxCount,
+                UseInGameTime = client.UseInGameTime,
+                KeepOnDeath = client.KeepOnDeath,
+                RemoveOnLogout = client.RemoveOnLogout,
+                RemoveOnLeaveField = client.RemoveOnLeaveField,
+                RemoveOnPvpZone = client.RemoveOnPvpZone,
+                KeepOnEnterPvpZone = client.KeepOnEnterPvpZone,
+                CasterIndividualBuff = client.CasterIndividualBuff,
+                CooldownTime = client.CooldownTime,
+                KeepCondition = client.KeepCondition,
+                ResetCondition = client.ResetCondition,
+                DotCondition = client.DotCondition,
+                ClearOnDistanceFromCaster = client.ClearOnDistanceFromCaster,
+                DisableRevivalHere = client.DisableRevivalHere,
+                IgnoreReduceTime = client.IgnoreReduceTime,
+                ClearCooldownOnPvpZone = client.ClearCooldownOnPvpZone,
+                ForceApplyTarget = client.ForceApplyTarget,
+            };
+        }
+        if (taken.Contains("Motion")) {
+            property = property with {
+                ImmuneBreak = client.ImmuneBreak,
+                Stun = client.Stun,
+                SkillUseDisableIds = client.SkillUseDisableIds,
+                SuperArmor = client.SuperArmor,
+                SuperArmorApplyField = client.SuperArmorApplyField,
+            };
+        }
+        if (taken.Contains("Exp")) {
+            property = property with { Exp = client.Exp };
+        }
+        if (taken.Contains("Ridee")) {
+            property = property with { RideId = client.RideId };
+        }
+
+        AdditionalEffectMetadataUpdate update = pack.Update;
+        if (taken.Contains("CancelEffect")) {
+            update = update with { Cancel = mapped.Update.Cancel };
+        }
+        if (taken.Contains("ImmuneEffect")) {
+            update = update with { ImmuneIds = mapped.Update.ImmuneIds, ImmuneCategories = mapped.Update.ImmuneCategories };
+        }
+        if (taken.Contains("ResetSkillCoolDownTime")) {
+            update = update with { ResetCooldown = mapped.Update.ResetCooldown };
+        }
+        if (taken.Contains("ModifyEffectDuration")) {
+            update = update with { Duration = mapped.Update.Duration };
+        }
+
+        // The condition skills are the client's, the splash skills the pack's, condition skills first as Build has them.
+        SkillEffectMetadata[] skills = pack.Skills, tickSkills = pack.TickSkills;
+        if (taken.Contains("Additional")) {
+            skills = mapped.Skills.Where(skill => skill.Condition != null).Concat(pack.Skills.Where(skill => skill.Condition == null)).ToArray();
+            tickSkills = mapped.TickSkills.Where(skill => skill.Condition != null).Concat(pack.TickSkills.Where(skill => skill.Condition == null)).ToArray();
+        }
+
+        return pack with {
+            Property = property,
+            Condition = taken.Contains("Condition") ? mapped.Condition : pack.Condition,
+            Update = update,
+            Recovery = taken.Contains("Recovery") ? mapped.Recovery : pack.Recovery,
+            Dot = new AdditionalEffectMetadataDot(
+                Damage: taken.Contains("DotDamage") ? mapped.Dot.Damage : pack.Dot.Damage,
+                Buff: taken.Contains("DotBuff") ? mapped.Dot.Buff : pack.Dot.Buff),
+            Shield = taken.Contains("Shield") ? mapped.Shield : pack.Shield,
+            Reflect = taken.Contains("Reflect") ? mapped.Reflect : pack.Reflect,
+            Consume = taken.Contains("Consume") ? mapped.Consume : pack.Consume,
+            ModifyOverlapCount = taken.Contains("ModifyOverlapCount") ? mapped.ModifyOverlapCount : pack.ModifyOverlapCount,
+            Skills = skills,
+            TickSkills = tickSkills,
+        };
+    }
+
     // The children that make the metadata's Status.
     public static readonly IReadOnlySet<string> StatusChildren = new HashSet<string> { "SpecialAbility", "Status", "FinalStatus", "Offensive", "Defensive" };
 
@@ -204,17 +322,17 @@ public static class PlayedAdditionalRows {
                     root.AppendChild(Additional(document, child, unread));
                     break;
                 case "Skill": {
-                    XmlElement splash = document.CreateElement("splashSkill");
-                    CopyAttributes(child, splash);
-                    splash.SetAttribute("splash", "1");
-                    // AdditionalActionSkill::Load (additionalactionadditional.cpp:681) reads chainDistance and no chain
-                    // flag; the pack has chain="1" with each chainDistance.
-                    if (child.HasAttribute("chainDistance")) {
-                        splash.SetAttribute("chain", "1");
+                        XmlElement splash = document.CreateElement("splashSkill");
+                        CopyAttributes(child, splash);
+                        splash.SetAttribute("splash", "1");
+                        // AdditionalActionSkill::Load (additionalactionadditional.cpp:681) reads chainDistance and no chain
+                        // flag; the pack has chain="1" with each chainDistance.
+                        if (child.HasAttribute("chainDistance")) {
+                            splash.SetAttribute("chain", "1");
+                        }
+                        root.AppendChild(splash);
+                        break;
                     }
-                    root.AppendChild(splash);
-                    break;
-                }
                 default:
                     if (SameClass.Contains(child.Name)) {
                         root.AppendChild(document.ImportNode(Renamed(child, child.Name + "Property"), true));
