@@ -13,8 +13,9 @@ public enum GuildPvpZoneEventType {
 
 public readonly record struct GuildPvpZoneEvent(GuildPvpZoneEventType Type, int Team = 0, long CharacterId = 0);
 
-// One fought round: each team's fighters and the winner team (0 a draw).
-public sealed record GuildPvpRound(IReadOnlyList<long> FightersA, IReadOnlyList<long> FightersB, int Winner);
+// One round: each team's fighters and the winner team (0 a draw). A walkover (a team had nobody to send) is not
+// fought: it has no fighters, and it counts for the match's winner only.
+public sealed record GuildPvpRound(IReadOnlyList<long> FightersA, IReadOnlyList<long> FightersB, int Winner, bool Fought = true);
 
 // The guild arena's PvP zone (64000001, set_pvp_zone type 4 with the boxes 102, 103, 112, 113, 10, 11, 1, 3; the
 // client's PvP mode 4). From the map and the client: guild 1 waits on its stand (portal 10, box 102 "Guild1_player"
@@ -26,8 +27,9 @@ public sealed record GuildPvpRound(IReadOnlyList<long> FightersA, IReadOnlyList<
 // in the field; a fighter is out when it dies, leaves the field or leaves the fight box (the ring-out under the
 // arena); a team with no fighter left loses the round, and at the round's time (the script's match_time) the team
 // with more fighters left wins it, equal counts are a draw round; a team with nobody to send loses the round without
-// a fight; the match ends when a team has the wins it needs or after MaxRounds rounds, the team with more round
-// wins winning, equal wins a draw; BreakMs passes between rounds.
+// a fight (a walkover: no fighters, not a fought round); a team with no player left in the field after the start
+// forfeits the match (both gone: a draw); the match ends when a team has the wins it needs or after MaxRounds
+// rounds, the team with more round wins winning, equal wins a draw; BreakMs passes between rounds.
 public sealed class GuildPvpZoneState {
     public const int NoTeam = 0;
     public const int TeamA = 1;
@@ -55,12 +57,17 @@ public sealed class GuildPvpZoneState {
     public long RoundEndTick { get; private set; }
     public long LastEndTick { get; private set; }
     public IReadOnlyList<GuildPvpRound> Rounds => rounds;
+    // The rounds fought (not walkovers) and their fighters, each once: the match's points, rewards and
+    // participation count go by them.
+    public int FoughtRounds => rounds.Count(round => round.Fought);
+    public IEnumerable<long> RoundFighters => rounds.Where(round => round.Fought).SelectMany(round => round.FightersA.Concat(round.FightersB)).Distinct();
 
     private readonly List<GuildPvpRound> rounds = [];
     private readonly int[] wins = new int[3];
     private readonly List<long>[] fighters = [[], [], []];
     private readonly HashSet<long>[] left = [[], [], []];
     private long nextRoundTick;
+    private bool roundFought;
 
     public GuildPvpZoneState(int boxId, long tick, int prepareSeconds, int matchSeconds, IReadOnlyList<int> boxIds) {
         BoxId = boxId;
@@ -102,12 +109,16 @@ public sealed class GuildPvpZoneState {
         return a != NoTeam && b != NoTeam && a != b;
     }
 
+    // The team with more round wins.
     public int Winner => wins[TeamA] > wins[TeamB] ? TeamA : wins[TeamB] > wins[TeamA] ? TeamB : NoTeam;
+    // The match's winner once it ended (a forfeit's is the team that stayed).
+    public int MatchWinner { get; private set; }
 
     // The zone's clock. stand(team): the team's living players in its stand box, others(team): its other living
-    // players in the field, both in the caller's order; inFight(id): whether a fighter is still in the fight box.
+    // players in the field, both in the caller's order; inFight(id): whether a fighter is still in the fight box;
+    // present(team): whether the team has a player in the field at all (none: it forfeits once the match started).
     public List<GuildPvpZoneEvent> Update(long tick, Func<int, IReadOnlyList<long>> stand, Func<int, IReadOnlyList<long>> others,
-                                          Func<long, bool> inFight) {
+                                          Func<long, bool> inFight, Func<int, bool>? present = null) {
         var events = new List<GuildPvpZoneEvent>();
         if (Ended) {
             return events;
@@ -122,6 +133,14 @@ public sealed class GuildPvpZoneState {
                 EndRound(tick, a > b ? TeamA : b > a ? TeamB : NoTeam, events);
             }
             return events;
+        }
+        if (present != null && tick >= StartTick) {
+            bool presentA = present(TeamA);
+            bool presentB = present(TeamB);
+            if (!presentA || !presentB) {
+                End(tick, presentA ? TeamA : presentB ? TeamB : NoTeam, events);
+                return events;
+            }
         }
         if (tick < nextRoundTick) {
             return events;
@@ -140,9 +159,15 @@ public sealed class GuildPvpZoneState {
         bool hasB = fighters[TeamB].Count > 0;
         if (!hasA || !hasB) {
             // Nobody to send: the round goes to the other team without a fight (both empty: a draw round).
+            fighters[TeamA] = [];
+            fighters[TeamB] = [];
+            left[TeamA] = [];
+            left[TeamB] = [];
+            roundFought = false;
             EndRound(tick, hasA ? TeamA : hasB ? TeamB : NoTeam, events);
             return events;
         }
+        roundFought = true;
         Fighting = true;
         RoundEndTick = tick + RoundMs;
         events.Add(new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundStart));
@@ -173,29 +198,34 @@ public sealed class GuildPvpZoneState {
 
     private void EndRound(long tick, int winner, List<GuildPvpZoneEvent> events) {
         Fighting = false;
-        rounds.Add(new GuildPvpRound(fighters[TeamA].ToList(), fighters[TeamB].ToList(), winner));
+        rounds.Add(new GuildPvpRound(fighters[TeamA].ToList(), fighters[TeamB].ToList(), winner, roundFought));
         if (IsTeam(winner)) {
             wins[winner]++;
         }
         events.Add(new GuildPvpZoneEvent(GuildPvpZoneEventType.RoundEnd, winner));
         if (wins[TeamA] >= WinsNeeded || wins[TeamB] >= WinsNeeded || Round >= MaxRounds) {
-            Ended = true;
-            LastEndTick = tick;
-            events.Add(new GuildPvpZoneEvent(GuildPvpZoneEventType.End, Winner));
+            End(tick, Winner, events);
             return;
         }
         nextRoundTick = tick + BreakMs;
     }
 
-    // The field ends the match early (a guild left the field entirely): the rounds stand as they are.
+    private void End(long tick, int winner, List<GuildPvpZoneEvent> events) {
+        Fighting = false;
+        Ended = true;
+        LastEndTick = tick;
+        MatchWinner = winner;
+        events.Add(new GuildPvpZoneEvent(GuildPvpZoneEventType.End, winner));
+    }
+
+    // The field ends the match early (a field without a match found no two guilds): the rounds stand as they are.
     public List<GuildPvpZoneEvent> Stop(long tick) {
         if (Ended) {
             return [];
         }
-        Fighting = false;
-        Ended = true;
-        LastEndTick = tick;
-        return [new GuildPvpZoneEvent(GuildPvpZoneEventType.End, Winner)];
+        var events = new List<GuildPvpZoneEvent>();
+        End(tick, Winner, events);
+        return events;
     }
 
     private static bool IsTeam(int team) => team is TeamA or TeamB;

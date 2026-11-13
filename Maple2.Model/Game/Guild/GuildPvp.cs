@@ -19,6 +19,12 @@ public class GuildPvp {
     public int Losses { get; set; }
     public List<GuildPvpMatch> History { get; set; } = [];
     public List<GuildPvpSeason> Seasons { get; set; } = [];
+    // The matches whose reward the guild's fighters got on RewardDay (yyyymmdd, local), at most DailyRewardCap.
+    public int RewardDay { get; set; }
+    public int RewardCount { get; set; }
+
+    // Chosen here (the client has no limit): a guild's matches pay the reward at most this many times a day.
+    public const int DailyRewardCap = 10;
 
     // The grade of a score: the first index whose threshold is above it, else the count (CGuildInfo::GetGrade).
     public static int Grade(int score, IReadOnlyList<int> grades) {
@@ -68,6 +74,20 @@ public class GuildPvp {
         return true;
     }
 
+    // Takes one of the day's rewards; false when the cap is reached.
+    public bool TakeReward(DateTime now) {
+        int day = now.Year * 10000 + now.Month * 100 + now.Day;
+        if (RewardDay != day) {
+            RewardDay = day;
+            RewardCount = 0;
+        }
+        if (RewardCount >= DailyRewardCap) {
+            return false;
+        }
+        RewardCount++;
+        return true;
+    }
+
     public void AddMatch(GuildPvpMatch match) {
         History.Add(match);
         while (History.Count > HistoryCapacity) {
@@ -83,6 +103,8 @@ public class GuildPvp {
             Losses = Losses,
             History = History.ToList(),
             Seasons = Seasons.ToList(),
+            RewardDay = RewardDay,
+            RewardCount = RewardCount,
         };
     }
 }
@@ -93,7 +115,8 @@ public record GuildPvpMatch {
     public long GuildB { get; init; }
     public string NameA { get; init; } = string.Empty;
     public string NameB { get; init; } = string.Empty;
-    // f20: 1 when the match was not fought; the page shows it as a loss (0x3eb) with no rounds.
+    // f20: 1 for the loser of a match without a fought round (CGuildDialog's history row: no round results is a
+    // no-fight match, 0x3ea a win, with f20 1 0x3eb a loss).
     public bool NoFight { get; init; }
     // f58/f80: each round's fighters, "id,name:id,name" (the page shows the names).
     public string[] PlayersA { get; init; } = new string[5];

@@ -1330,23 +1330,33 @@ public class GuildManager : IDisposable {
 
     // The guild championship record moves into the current season (GuildPvp.Roll): a record of an earlier season
     // is closed with its rank among the guilds of that season, and the members' season counts start again.
-    // Outside every season the record stays. True when it changed (then saved).
+    // Outside every season the record stays. True when it changed (then saved). The closed season's standings are
+    // read before guildLock is taken (a database query); a roll of another season in between takes rank 0.
     public bool RollPvp(DateTime now) {
         SeasonDataTable.Entry? season = GuildPvp.CurrentSeason(TableMetadata.SeasonDataTable.GuildPvp, now);
         if (season == null) {
             return false;
         }
+        int closing;
+        lock (guildLock) {
+            if (Guild.Pvp.SeasonId == season.Id) {
+                return false;
+            }
+            closing = Guild.Pvp.SeasonId != 0 && (Guild.Pvp.Wins > 0 || Guild.Pvp.Losses > 0) ? Guild.Pvp.SeasonId : 0;
+        }
+        int closingRank = 0;
+        if (closing != 0) {
+            try {
+                using GameStorage.Request db = GameStorage.Context();
+                IList<GuildPvpStanding> standings = db.GetGuildPvpStandings(closing);
+                int index = standings.ToList().FindIndex(standing => standing.GuildId == Guild.Id);
+                closingRank = index < 0 ? 0 : index + 1;
+            } catch (Exception) { /* the season row keeps rank 0 */ }
+        }
         lock (guildLock) {
             bool changed = Guild.Pvp.Roll(season.Id, closedId => {
                 TableMetadata.SeasonDataTable.GuildPvp.TryGetValue(closedId, out SeasonDataTable.Entry? closed);
-                int rank = 0;
-                try {
-                    using GameStorage.Request db = GameStorage.Context();
-                    IList<GuildPvpStanding> standings = db.GetGuildPvpStandings(closedId);
-                    int index = standings.ToList().FindIndex(standing => standing.GuildId == Guild.Id);
-                    rank = index < 0 ? 0 : index + 1;
-                } catch (Exception) { /* the season row keeps rank 0 */ }
-                return (closed, rank);
+                return (closed, closedId == closing ? closingRank : 0);
             });
             if (!changed) {
                 return false;
@@ -1375,15 +1385,25 @@ public class GuildManager : IDisposable {
     // The members online, for the registration's minimum.
     public int OnlineCount() => Guild.Members.Values.Count(member => member.Info.Online);
 
-    // A played championship match (one of the two guilds' view, Guild A = this guild): the score moves by the
-    // win or loss points, the match goes into the history and the members who fought get a match more. Saved; the
-    // members get the new record and the result (Guild 0x29, 0x2a). Returns the new score and the change.
-    public (int Score, int Delta) EndPvp(GuildPvpMatch match, bool won, int point, IReadOnlyCollection<long> fighters) {
+    // A played championship match (one of the two guilds' view, Guild A = this guild): the win or loss counts, the
+    // match goes into the history and the members who fought get a match more. Only a fought match (a round that
+    // was not a walkover) moves the score by the points and pays the reward, the reward at most
+    // GuildPvp.DailyRewardCap times a day. Saved; the members get the new record and the result (Guild 0x29, 0x2a).
+    // Returns the new score, the change and whether the fighters get the reward.
+    public (int Score, int Delta, bool Reward) EndPvp(GuildPvpMatch match, bool won, bool fought, int point, IReadOnlyCollection<long> fighters,
+                                                      DateTime now) {
         var counts = new List<GuildRequest.Types.PvpRating.Types.Count>();
         string pvp;
         int score;
+        bool reward = false;
+        if (!fought) {
+            point = 0;
+        }
         lock (guildLock) {
             Guild.Pvp.Score += point;
+            if (fought) {
+                reward = Guild.Pvp.TakeReward(now);
+            }
             if (won) {
                 Guild.Pvp.Wins++;
             } else {
@@ -1410,7 +1430,7 @@ public class GuildManager : IDisposable {
         var rating = new GuildRequest.Types.PvpRating { Pvp = pvp, Won = won, Opponent = match.NameB };
         rating.Counts.AddRange(counts);
         Broadcast(new GuildRequest { PvpRating = rating }, member => member.Info.Online);
-        return (score, point);
+        return (score, point, reward);
     }
 
     private GuildTable.Property GuildProperty() {

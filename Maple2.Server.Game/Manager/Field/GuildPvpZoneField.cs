@@ -24,8 +24,9 @@ public sealed record GuildPvpFieldMatch(int MatchId, long GuildA, long GuildB, F
 // left, the round wins), and the fighters left go back to their stand (portals 10, 11). The deaths raise guildpvp_die
 // and, for the other guild's fighter that hit within PvpZoneState.KillCreditMs, guildpvp_kill. At the end: TeamPvp 't'
 // with the winner guild, the win or loss pose and guildpvp_win for the winners here; with a match, the World moves
-// both guilds' scores (GuildPvpEnd) and each player of the two guilds here gets the result (Pvp 'u') and the client
-// constants' guild reward (PvpGuildRewardItem, PvpGuildRewardWinnerCount or LoserCount). A draw has no result.
+// both guilds' scores (GuildPvpEnd), each player of the two guilds here gets the result (Pvp 'u'), and the match's
+// round fighters the client constants' guild reward (PvpGuildRewardItem, PvpGuildRewardWinnerCount or LoserCount) when
+// the World pays it. A guild with nobody left in the field forfeits. A draw has no result.
 public sealed class GuildPvpZoneField : IPvpZoneField {
     // The fighters stand this far apart along X in the arena.
     private const float FighterSpacing = 150f;
@@ -112,7 +113,8 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
                 }
             }
             HashSet<long> inArena = playersInBox(state.BoxId).Where(player => !player.IsDead).Select(player => player.Value.Character.Id).ToHashSet();
-            Apply(state.Update(tick, team => Living(state.StandOf(team), team), team => Living(0, team), inArena.Contains));
+            Apply(state.Update(tick, team => Living(state.StandOf(team), team), team => Living(0, team), inArena.Contains,
+                team => playersInBox(0).Any(player => TeamOf(player) == team)));
         }
     }
 
@@ -270,11 +272,14 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
                 PlayersA = Players(round.FightersA),
                 PlayersB = Players(round.FightersB),
                 Winner = round.Winner,
+                Fought = round.Fought,
             });
         }
-        end.Fighters.AddRange(state.Rounds.SelectMany(round => round.FightersA.Concat(round.FightersB)).Distinct());
+        // Only the players sent into a fought round took part (not walk-ins, not a walkover).
+        end.Fighters.AddRange(state.RoundFighters);
         int winsA = state.Wins(GuildPvpZoneState.TeamA);
         int winsB = state.Wins(GuildPvpZoneState.TeamB);
+        HashSet<long> fighters = end.Fighters.ToHashSet();
         Task.Run(() => {
             GuildResponse? response = null;
             try {
@@ -283,7 +288,7 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
                 logger.Warning(ex, "Guild PvP match {MatchId}: the end was not sent", match.MatchId);
             }
             if (response is { PvpScores.Count: >= 2 }) {
-                field.Scheduler.Schedule(() => Result(response, winsA, winsB));
+                field.Scheduler.Schedule(() => Result(response, winsA, winsB, fighters));
             }
         });
     }
@@ -293,30 +298,42 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
         return string.Join(":", fighters.Select(id => $"{id},{(fighterNames.TryGetValue(id, out string? name) ? name : string.Empty)}"));
     }
 
-    // The World moved the scores: the result and the reward for each player of the two guilds here.
-    private void Result(GuildResponse response, int winsA, int winsB) {
+    // The World counted the match (a winner): each player of the two guilds here gets the result window. The reward
+    // (PvpGuildRewardItem, mailed when the bag is full) and guild_championship of the season go only to the match's
+    // fighters, once each, and only for a guild the World pays (Reward: a fought match under its daily cap); the
+    // others' window shows no reward.
+    private void Result(GuildResponse response, int winsA, int winsB, IReadOnlySet<long> fighters) {
         GuildResponse.Types.PvpScore winnerRow = response.PvpScores[0];
         GuildResponse.Types.PvpScore loserRow = response.PvpScores[1];
         int Rounds(long guildId) => guildId == guilds[GuildPvpZoneState.TeamA] ? winsA : guildId == guilds[GuildPvpZoneState.TeamB] ? winsB : 0;
         var winnerSide = new PvpPacket.GuildSide(winnerRow.Name, winnerRow.GuildId, Rounds(winnerRow.GuildId), winnerRow.Score, winnerRow.Delta, winnerRow.Emblem);
         var loserSide = new PvpPacket.GuildSide(loserRow.Name, loserRow.GuildId, Rounds(loserRow.GuildId), loserRow.Score, loserRow.Delta, loserRow.Emblem);
         ConstantsTable constants = field.ServerTableMetadata.ConstantsTable;
+        int seasonId = Maple2.Model.Game.GuildPvp.CurrentSeason(field.TableMetadata.SeasonDataTable.GuildPvp, DateTime.Now)?.Id ?? 0;
+        var paid = new HashSet<long>();
         foreach (FieldPlayer player in playersInBox(0).ToList()) {
             long guildId = player.Session.Guild.Id;
             if (guildId == 0 || (guildId != winnerRow.GuildId && guildId != loserRow.GuildId)) {
                 continue;
             }
-            int count = guildId == winnerRow.GuildId ? constants.PvpGuildRewardWinnerCount : constants.PvpGuildRewardLoserCount;
+            long characterId = player.Value.Character.Id;
+            GuildResponse.Types.PvpScore row = guildId == winnerRow.GuildId ? winnerRow : loserRow;
+            bool fighter = fighters.Contains(characterId) && paid.Add(characterId);
+            int count = !fighter || !row.Reward ? 0
+                : guildId == winnerRow.GuildId ? constants.PvpGuildRewardWinnerCount : constants.PvpGuildRewardLoserCount;
             player.Session.Send(PvpPacket.GuildResult(winnerSide, loserSide, count));
+            if (seasonId > 0 && fighter) {
+                PvpConditions.GuildChampionship(player, seasonId);
+            }
             try {
                 if (count > 0 && constants.PvpGuildRewardItem > 0) {
                     Item? item = field.ItemDrop.CreateItem(constants.PvpGuildRewardItem, amount: count);
-                    if (item == null || !player.Session.Item.Inventory.Add(item, notifyNew: true, commit: true)) {
-                        logger.Warning("Guild PvP reward of {CharacterId} not added", player.Value.Character.Id);
+                    if (item == null || !player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
+                        logger.Warning("Guild PvP reward of {CharacterId} not added", characterId);
                     }
                 }
             } catch (Exception ex) {
-                logger.Error(ex, "Guild PvP reward of {CharacterId} not given", player.Value.Character.Id);
+                logger.Error(ex, "Guild PvP reward of {CharacterId} not given", characterId);
             }
         }
     }

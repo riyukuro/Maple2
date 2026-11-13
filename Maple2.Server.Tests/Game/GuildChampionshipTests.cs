@@ -332,6 +332,64 @@ public class GuildChampionshipTests {
         Assert.That(zone.Update(1_000_000, _ => [11], _ => [], _ => true), Is.Empty);
     }
 
+    // A walkover is not a fought round: no fighters, so no points, reward or participation count for anyone.
+    [Test]
+    public void Zone_WalkoverIsNotFought() {
+        GuildPvpZoneState zone = Zone();
+        for (int i = 0; i < 3; i++) {
+            zone.Update(i * GuildPvpZoneState.BreakMs, team => team == GuildPvpZoneState.TeamA ? [11, 12] : [], _ => [], _ => true);
+        }
+        Assert.That(zone.Ended, Is.True);
+        Assert.That(zone.Rounds.Select(round => round.Fought), Is.All.False);
+        Assert.That(zone.Rounds.SelectMany(round => round.FightersA.Concat(round.FightersB)), Is.Empty);
+        Assert.That((zone.FoughtRounds, zone.RoundFighters.Count()), Is.EqualTo((0, 0)));
+    }
+
+    // The match's fighters are those of the fought rounds, each once; a player who never fought is not one.
+    [Test]
+    public void Zone_RoundFightersAreTheFoughtRoundsOnly() {
+        GuildPvpZoneState zone = Zone();
+        Start(zone, 0);
+        zone.Out(21, 1);
+        zone.Out(22, 2);
+        // Round 2: guild B has nobody to send (a walkover won by A, its stand fighters not counted again).
+        zone.Update(2 + GuildPvpZoneState.BreakMs, team => team == GuildPvpZoneState.TeamA ? [14] : [], _ => [], _ => true);
+        Assert.That(zone.Rounds.Select(round => round.Fought), Is.EqualTo(new[] { true, false }));
+        Assert.That(zone.FoughtRounds, Is.EqualTo(1));
+        Assert.That(zone.RoundFighters, Is.EquivalentTo(new long[] { 11, 12, 13, 21, 22 }));
+    }
+
+    // A guild with no player left in the field after the start forfeits: the guild that stayed wins the match.
+    [Test]
+    public void Zone_GuildGoneForfeits() {
+        GuildPvpZoneState zone = Zone();
+        Assert.That(zone.Update(0, team => Stands[team], _ => [], _ => true, _ => true).Single().Type,
+            Is.EqualTo(GuildPvpZoneEventType.RoundStart));
+        zone.Out(11, 1);
+        zone.Out(12, 2);
+        zone.Out(13, 3);
+        List<GuildPvpZoneEvent> events = zone.Update(4, team => Stands[team], _ => [], _ => true, team => team == GuildPvpZoneState.TeamA);
+        Assert.That(events.Single(), Is.EqualTo(new GuildPvpZoneEvent(GuildPvpZoneEventType.End, GuildPvpZoneState.TeamA)));
+        Assert.That((zone.Ended, zone.MatchWinner, zone.Winner), Is.EqualTo((true, GuildPvpZoneState.TeamA, GuildPvpZoneState.TeamB)));
+
+        GuildPvpZoneState empty = Zone();
+        Assert.That(empty.Update(0, _ => [], _ => [], _ => true, _ => false).Single(),
+            Is.EqualTo(new GuildPvpZoneEvent(GuildPvpZoneEventType.End, GuildPvpZoneState.NoTeam)));
+    }
+
+    // A guild's matches pay the reward at most DailyRewardCap times a day; the next day starts again.
+    [Test]
+    public void Reward_DailyCap() {
+        var pvp = new GuildPvp();
+        var day = new DateTime(2026, 11, 13, 23, 0, 0);
+        for (int i = 0; i < GuildPvp.DailyRewardCap; i++) {
+            Assert.That(pvp.TakeReward(day), Is.True);
+        }
+        Assert.That(pvp.TakeReward(day.AddMinutes(30)), Is.False);
+        Assert.That(pvp.Clone().TakeReward(day), Is.False, "the count is kept with the record");
+        Assert.That(pvp.TakeReward(day.AddHours(1)), Is.True);
+    }
+
     // Without a stand, the team's other players in the field fight; after MaxRounds draws the match is a draw.
     [Test]
     public void Zone_OthersFightAndDrawsEndAfterMaxRounds() {
@@ -450,6 +508,58 @@ public class GuildChampionshipTests {
 
         test.Open = false;
         Assert.That(test.Lookup.Register(1, 1000, "a"), Is.EqualTo(GuildError.s_guild_err_isNotVsGameTime));
+    }
+
+    private static int Matched(LookupTest test, long a, long b) {
+        test.Lookup.Register(a, 1000, "a");
+        test.Lookup.Register(b, 1000, "b");
+        test.Tick();
+        return test.Fields[^1].Match;
+    }
+
+    // After a match both guilds wait Cooldown before they can register again.
+    [Test]
+    public void Lookup_RegisterCooldownAfterAMatch() {
+        var test = new LookupTest();
+        test.Lookup.End(Matched(test, 1, 2));
+        test.Now += (long) GuildPvpLookup.Cooldown.TotalMilliseconds - 1;
+        Assert.That(test.Lookup.Register(1, 1000, "a"), Is.EqualTo(GuildError.s_guild_search_last_request));
+        Assert.That(test.Lookup.IsWaiting(1), Is.False);
+        test.Now++;
+        Assert.That(test.Lookup.Register(1, 1000, "a"), Is.EqualTo(GuildError.none));
+    }
+
+    // The same two guilds are not paired again within PairCooldown; another guild can pair with either.
+    [Test]
+    public void Lookup_NoRepairWithinPairCooldown() {
+        var test = new LookupTest();
+        test.Lookup.End(Matched(test, 1, 2));
+        test.Now += (long) GuildPvpLookup.Cooldown.TotalMilliseconds;
+        test.Lookup.Register(1, 1000, "a");
+        test.Lookup.Register(2, 1000, "b");
+        test.Tick();
+        Assert.That(test.Fields, Has.Count.EqualTo(1));
+        Assert.That((test.Lookup.IsWaiting(1), test.Lookup.IsWaiting(2)), Is.EqualTo((true, true)));
+        test.Lookup.Register(3, 1500, "c");
+        test.Tick();
+        Assert.That((test.Fields[^1].A, test.Fields[^1].B), Is.EqualTo((1L, 3L)));
+        Assert.That(test.Lookup.IsWaiting(2), Is.True);
+    }
+
+    // A disbanded guild leaves the queue and its match.
+    [Test]
+    public void Lookup_DropLeavesQueueAndMatch() {
+        var test = new LookupTest();
+        test.Lookup.Register(1, 1000, "a");
+        test.Lookup.Drop(1);
+        Assert.That(test.Lookup.IsWaiting(1), Is.False);
+
+        int matchId = Matched(test, 2, 3);
+        test.Lookup.Drop(2);
+        Assert.That(test.Lookup.MatchOf(2), Is.Null);
+        Assert.That(test.Lookup.MatchOf(3), Is.Null);
+        Assert.That(test.Of(3)[^1].PvpState.State, Is.EqualTo((int) GuildPvpState.None));
+        Assert.That(test.Lookup.End(matchId), Is.Null);
     }
 
     // A match whose field was not made is dropped; both guilds are told 0x28 false.

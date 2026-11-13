@@ -463,6 +463,13 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            // guild_championship: the target is the guild championship season of the match (90000006 "Season 1
+            // Participant", target 1, 20 times); 21300012 has none and counts every season.
+            case ConditionType.guild_championship:
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
             case ConditionType.item_move:
                 // The target is the id of the box the item goes on (902, 905, 906 in one region), not a minimum:
                 // the client's CConditionParam::Matches finds the value in the id list.

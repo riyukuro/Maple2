@@ -150,6 +150,7 @@ public partial class WorldService {
         if (error != GuildError.none) {
             return new GuildResponse { Error = (int) error };
         }
+        guildPvpLookup.Drop(disband.GuildId);
 
         return new GuildResponse { GuildId = disband.GuildId };
     }
@@ -618,7 +619,10 @@ public partial class WorldService {
 
     // The match field ended the match. With a winner, both guilds' records move (the winner by guildPVPWinPoint,
     // the loser by guildPVPLosePoint) and each keeps the match in its history from its own side; a draw changes
-    // nothing. The answer has both guilds' new scores, the winner first (Pvp 'u').
+    // nothing. A match without a fought round (every round a walkover, or a guild that never came) is a no-fight
+    // match: it counts as a win and a loss with no round results (the loser's row f20 1), and moves no score and
+    // pays no reward. The answer has both guilds' new scores and whether each guild's fighters get the reward, the
+    // winner first (Pvp 'u').
     private GuildResponse GuildPvpEnd(GuildRequest.Types.PvpEnd end) {
         GuildPvpLookup.Match? match = guildPvpLookup.End(end.MatchId);
         if (match == null) {
@@ -637,32 +641,35 @@ public partial class WorldService {
         managerB.RollPvp(now);
         var constants = managerA.ServerTableMetadata.ConstantsTable;
         long[] fighters = end.Fighters.ToArray();
+        bool fought = end.Rounds.Any(round => round.Fought);
 
-        (int Score, int Delta) Apply(GuildManager self, GuildManager other, bool selfIsA) {
+        (int Score, int Delta, bool Reward) Apply(GuildManager self, GuildManager other, bool selfIsA) {
             bool won = end.WinnerGuildId == self.Guild.Id;
-            var rounds = end.Rounds.Take(5).ToList();
+            var rounds = fought ? end.Rounds.Take(5).ToList() : [];
             var history = new GuildPvpMatch {
                 GuildA = self.Guild.Id,
                 GuildB = other.Guild.Id,
                 NameA = self.Guild.Name,
                 NameB = other.Guild.Name,
+                NoFight = !fought && !won,
                 PlayersA = rounds.Select(round => selfIsA ? round.PlayersA : round.PlayersB).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
                 PlayersB = rounds.Select(round => selfIsA ? round.PlayersB : round.PlayersA).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
                 Results = rounds.Select(round => round.Winner == 0 ? (byte) 0 : (round.Winner == 1) == selfIsA ? (byte) 'W' : (byte) 'L')
                     .Concat(Enumerable.Repeat((byte) 0, 5)).Take(5).ToArray(),
                 Time = time,
             };
-            return self.EndPvp(history, won, won ? constants.guildPVPWinPoint : constants.guildPVPLosePoint, fighters);
+            return self.EndPvp(history, won, fought, won ? constants.guildPVPWinPoint : constants.guildPVPLosePoint, fighters, now);
         }
 
-        (int scoreA, int deltaA) = Apply(managerA, managerB, true);
-        (int scoreB, int deltaB) = Apply(managerB, managerA, false);
+        (int scoreA, int deltaA, bool rewardA) = Apply(managerA, managerB, true);
+        (int scoreB, int deltaB, bool rewardB) = Apply(managerB, managerA, false);
         var scoreRowA = new GuildResponse.Types.PvpScore {
             GuildId = match.A,
             Name = managerA.Guild.Name,
             Emblem = managerA.Guild.Emblem,
             Score = scoreA,
             Delta = deltaA,
+            Reward = rewardA,
         };
         var scoreRowB = new GuildResponse.Types.PvpScore {
             GuildId = match.B,
@@ -670,6 +677,7 @@ public partial class WorldService {
             Emblem = managerB.Guild.Emblem,
             Score = scoreB,
             Delta = deltaB,
+            Reward = rewardB,
         };
         var response = new GuildResponse();
         if (end.WinnerGuildId == match.A) {

@@ -73,6 +73,18 @@ public class PvpConditionTests {
         Assert.That(condition.Check(null!, targetLong: effectId), Is.EqualTo(expected));
     }
 
+    // 90000006 counts the matches of season 1; 21300012 (no target) those of every season.
+    [TestCase(1, true)]
+    [TestCase(9, false)]
+    public void GuildChampionship_IsTheSeasonOfTheMatch(int seasonId, bool expected) {
+        var seasonRow = new ConditionMetadata(ConditionType.guild_championship, 20, null, new ConditionMetadata.Parameters(Integers: [1]));
+        var anySeason = new ConditionMetadata(ConditionType.guild_championship, 1, null, null);
+        Assert.Multiple(() => {
+            Assert.That(seasonRow.Check(null!, targetLong: seasonId), Is.EqualTo(expected));
+            Assert.That(anySeason.Check(null!, targetLong: seasonId), Is.True);
+        });
+    }
+
     [Test]
     public void TeamWin_RaisesTheWinLeadAndSeconds() {
         var updates = PvpConditions.TeamWinUpdates(40, 299_999);

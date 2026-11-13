@@ -434,6 +434,8 @@ message GuildRequest {
       string players_b = 2;
       // 1: guild A won the round, 2: guild B, 0: a draw.
       int32 winner = 3;
+      // false: a walkover (a team had nobody to send)
+      bool fought = 4;
     }
     int32 match_id = 1;
     int64 winner_guild_id = 2;
@@ -517,6 +519,8 @@ message GuildResponse {
     string emblem = 3;
     int32 score = 4;
     int32 delta = 5;
+    // whether the guild's fighters get the match reward (a fought match, under the guild's daily cap)
+    bool reward = 6;
   }
   repeated PvpScore pvp_scores = 16;
   // the error's argument (Guild error {0}: the members online the guild championship needs)

@@ -19,7 +19,9 @@ namespace Maple2.Server.Game.Util;
 //   a walkover (the opponent never came or left before the fight) raises nothing, and an opponent that left during
 //   the fight gives pvp_win alone (chosen here: no proof the rest was earned);
 // - guildpvp_kill and guildpvp_die for a death in a guild championship round, and guildpvp_win for the winning
-//   guild's players in the field at the end.
+//   guild's players in the field at the end;
+// - guild_championship for each fighter of a guild championship match that counted (a winner: the match the
+//   member's participation count, CGuildMember fe0, also counts), with the season as the target and no code.
 public static class PvpConditions {
     private static readonly ILogger Logger = Log.Logger.ForContext(typeof(PvpConditions));
 
@@ -38,6 +40,8 @@ public static class PvpConditions {
     public static void GuildDeath(FieldPlayer victim, int mapId) => Raise(victim, mapId, [new Update(ConditionType.guildpvp_die)]);
 
     public static void GuildWin(FieldPlayer winner, int mapId) => Raise(winner, mapId, [new Update(ConditionType.guildpvp_win)]);
+
+    public static void GuildChampionship(FieldPlayer fighter, int seasonId) => Raise(fighter, 0, [new Update(ConditionType.guild_championship, seasonId)]);
 
     public static void TeamWin(FieldPlayer winner, int mapId, int lead, long fightMs) => Raise(winner, mapId, TeamWinUpdates(lead, fightMs));
 

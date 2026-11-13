@@ -12,7 +12,9 @@ namespace Maple2.Server.World.Containers;
 // 0x2b, then 0x27 state 1); the timer pairs the registered guilds by the closest score, the longest waiting first,
 // makes the match field of the championship map (64000001) and tells both guilds (Guild 0x28, 0x27 state 2). A
 // guild left unpaired for the matching time (the constant guildPVPMatchingTime, in minutes) is told so (0x28 false)
-// and goes back to state 0. The queue is under one lock; the channel calls run after it, as in GuildVsGameLookup.
+// and goes back to state 0. Chosen here (the client has no rule): after a match a guild cannot register again for
+// Cooldown, and the same two guilds are not paired again for PairCooldown. A disbanded guild leaves the queue and its
+// match (Drop). The queue is under one lock; the channel calls run after it, as in GuildVsGameLookup.
 public sealed class GuildPvpLookup : IDisposable {
     // Makes the match field: (match id, guild A, guild B) -> (error, channel, map id, room id).
     public delegate (MigrationError Error, int Channel, int MapId, int RoomId) MakeField(int matchId, long guildA, long guildB);
@@ -33,12 +35,17 @@ public sealed class GuildPvpLookup : IDisposable {
     private sealed record Waiter(long GuildId, int Score, long Tick);
 
     public static readonly TimeSpan MatchLifetime = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan PairCooldown = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(5);
 
     private readonly ILogger logger = Log.Logger.ForContext<GuildPvpLookup>();
     private readonly object mutex = new();
     private readonly List<Waiter> waiting = [];
     private readonly Dictionary<int, Match> matches = [];
+    // The tick until which a guild cannot register, and a pair (lower id first) cannot be paired.
+    private readonly Dictionary<long, long> registerAfter = [];
+    private readonly Dictionary<(long, long), long> pairAfter = [];
     private readonly MakeField makeField;
     private readonly Notify notify;
     private readonly Func<bool> isOpen;
@@ -80,7 +87,8 @@ public sealed class GuildPvpLookup : IDisposable {
     public bool IsOpen => isOpen();
 
     // Pvp 1: the guild (with its score) waits for a match; the members get Guild 0x2b with the registering member's
-    // name and the state 1. A guild already waiting is told again; one in a match cannot register.
+    // name and the state 1. A guild already waiting is told again; one in a match cannot register, one whose match
+    // ended less than Cooldown ago is told to wait (s_guild_search_last_request, "Please wait a moment.").
     public GuildError Register(long guildId, int score, string memberName) {
         lock (mutex) {
             if (!isOpen()) {
@@ -88,6 +96,9 @@ public sealed class GuildPvpLookup : IDisposable {
             }
             if (MatchOfInternal(guildId) != null) {
                 return GuildError.s_guild_err_cant_during_pvp;
+            }
+            if (registerAfter.TryGetValue(guildId, out long after) && tick() < after) {
+                return GuildError.s_guild_search_last_request;
             }
             if (waiting.All(waiter => waiter.GuildId != guildId)) {
                 waiting.Add(new Waiter(guildId, score, tick()));
@@ -125,13 +136,45 @@ public sealed class GuildPvpLookup : IDisposable {
     public Match? End(int matchId) {
         Match? match;
         lock (mutex) {
-            matches.Remove(matchId, out match);
+            if (matches.Remove(matchId, out match)) {
+                Rest(match);
+            }
         }
         if (match != null) {
             TellClosed(match);
         }
         return match;
     }
+
+    // A disbanded guild: out of the queue, and its match is gone (the field's end then finds no match).
+    public void Drop(long guildId) {
+        Match? match;
+        lock (mutex) {
+            waiting.RemoveAll(waiter => waiter.GuildId == guildId);
+            registerAfter.Remove(guildId);
+            match = MatchOfInternal(guildId);
+            if (match != null) {
+                matches.Remove(match.Id);
+                Rest(match);
+            }
+        }
+        if (match != null) {
+            logger.Information("Guild championship match {MatchId}: guild {GuildId} disbanded", match.Id, guildId);
+            TellClosed(match);
+        }
+    }
+
+    // Under the lock: the match's guilds rest for Cooldown, the pair for PairCooldown.
+    private void Rest(Match match) {
+        long now = tick();
+        registerAfter[match.A] = now + (long) Cooldown.TotalMilliseconds;
+        registerAfter[match.B] = now + (long) Cooldown.TotalMilliseconds;
+        pairAfter[Pair(match.A, match.B)] = now + (long) PairCooldown.TotalMilliseconds;
+    }
+
+    private static (long, long) Pair(long a, long b) => a < b ? (a, b) : (b, a);
+
+    private bool Paired(long a, long b, long now) => pairAfter.TryGetValue(Pair(a, b), out long after) && now < after;
 
     public bool IsWaiting(long guildId) {
         lock (mutex) {
@@ -168,15 +211,27 @@ public sealed class GuildPvpLookup : IDisposable {
                 timedOut.AddRange(waiting.Select(waiter => waiter.GuildId));
                 waiting.Clear();
             }
-            // The longest waiting guild takes the guild of the closest score (the longer waiting one of a tie).
-            while (waiting.Count >= 2) {
-                Waiter first = waiting[0];
-                Waiter other = waiting.Skip(1).OrderBy(waiter => Math.Abs((long) waiter.Score - first.Score)).First();
+            // The longest waiting guild takes the guild of the closest score (the longer waiting one of a tie) it was
+            // not paired with within PairCooldown; a guild without one keeps waiting.
+            for (int i = 0; i < waiting.Count;) {
+                Waiter first = waiting[i];
+                Waiter? other = waiting.Skip(i + 1).Where(waiter => !Paired(first.GuildId, waiter.GuildId, now))
+                    .OrderBy(waiter => Math.Abs((long) waiter.Score - first.Score)).FirstOrDefault();
+                if (other == null) {
+                    i++;
+                    continue;
+                }
                 waiting.Remove(first);
                 waiting.Remove(other);
                 var match = new Match { Id = ++nextMatchId, A = first.GuildId, B = other.GuildId, MadeTick = now };
                 matches[match.Id] = match;
                 made.Add(match);
+            }
+            foreach (long guildId in registerAfter.Where(pair => now >= pair.Value).Select(pair => pair.Key).ToList()) {
+                registerAfter.Remove(guildId);
+            }
+            foreach ((long, long) pair in pairAfter.Where(pair => now >= pair.Value).Select(pair => pair.Key).ToList()) {
+                pairAfter.Remove(pair);
             }
             foreach (Waiter waiter in waiting.Where(waiter => now - waiter.Tick >= (long) matchingTime.TotalMilliseconds).ToList()) {
                 waiting.Remove(waiter);

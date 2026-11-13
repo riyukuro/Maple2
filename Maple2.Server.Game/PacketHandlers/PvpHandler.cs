@@ -210,8 +210,8 @@ public class PvpHandler : FieldPacketHandler {
         }
     }
 
-    // Pvp 3: the client sends it only in state 2 (matched) for the guild it cheers for; the World names the match's
-    // field.
+    // Pvp 3: the client sends it only in state 2 (matched); the match is the one of the player's own guild (the
+    // cheered guild of Pvp 4 is not checked), and the World names the match's field.
     private static void HandleGuildJoin(GameSession session) {
         long guildId = session.Guild.Id;
         if (guildId == 0) {
