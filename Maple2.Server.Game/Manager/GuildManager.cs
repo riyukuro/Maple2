@@ -6,6 +6,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util.Sync;
@@ -197,6 +198,8 @@ public class GuildManager : IDisposable {
 
         Guild = null;
         session.Player.Value.Character.GuildId = 0;
+        // A guild recall can no longer be answered out of the guild.
+        session.CloseRecall(RecallScrollType.Guild);
         session.Player.Value.Character.GuildName = string.Empty;
         session.Field?.Broadcast(GuildPacket.RemoveTag(session.PlayerName));
     }
@@ -230,6 +233,8 @@ public class GuildManager : IDisposable {
         session.Send(string.IsNullOrEmpty(requestorName)
             ? GuildPacket.NotifyLeave(member.Name)
             : GuildPacket.NotifyExpelMember(requestorName, member.Name));
+        // Nor one from a caller who left the guild.
+        session.CloseRecall(RecallScrollType.Guild, characterId);
         return true;
     }
 

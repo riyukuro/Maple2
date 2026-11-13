@@ -239,6 +239,9 @@ public class FieldPlayer : Actor<Player> {
             partyBuffTick = tickCount + PartyBuffIntervalMs;
             UpdatePartyBuffs();
             Session.Stats.RefreshExpiry();
+            // Chosen here: an expired recall's notice is closed on this once-a-second tick (the notify dialog's
+            // own timing is not decompiled; the answer is refused once the end time has passed).
+            Session.CloseExpiredRecalls(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
 
         if (Field.MapId == Constant.DefaultHomeMapId) {

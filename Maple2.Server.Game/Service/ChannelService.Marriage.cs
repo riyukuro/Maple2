@@ -37,10 +37,7 @@ public partial class ChannelService {
             return new MarriageResponse { Error = 1 };
         }
 
-        lock (session.Recalls) {
-            session.Recalls[(int) RecallScrollType.Wedding] = new PendingRecall(recall.CallerId, recall.Name, recall.MapId, recall.EndTime);
-        }
-        session.Send(RecallScrollPacket.Notify(RecallScrollType.Wedding, recall.Name, recall.MapId, recall.EndTime));
+        session.OfferRecall(RecallScrollType.Wedding, new PendingRecall(recall.CallerId, recall.Name, recall.MapId, recall.EndTime));
         return new MarriageResponse();
     }
 }

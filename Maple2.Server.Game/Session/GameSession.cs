@@ -121,6 +121,29 @@ public sealed partial class GameSession : Core.Network.Session {
     public readonly HashSet<string> CubeStarted = [];
     // The recall offered to this player per RecallScrollType (party, guild, wedding); lock the array to use it.
     public readonly PendingRecall?[] Recalls = new PendingRecall?[3];
+
+    // Closes the notice of a recall that can no longer be answered (RecallScroll mode 0); with a callerId other
+    // than 0, only a recall from that caller. Sends nothing when no such recall is pending.
+    public void CloseRecall(RecallScrollType type, long callerId = 0) {
+        if (RecallSlots.Take(Recalls, type, callerId)) {
+            Send(RecallScrollPacket.Close(type));
+        }
+    }
+
+    // Stores an offered recall and shows its notice; a pending recall of that type it replaces is closed first.
+    public void OfferRecall(RecallScrollType type, PendingRecall recall) {
+        if (RecallSlots.Offer(Recalls, type, recall)) {
+            Send(RecallScrollPacket.Close(type));
+        }
+        Send(RecallScrollPacket.Notify(type, recall.CallerName, recall.MapId, recall.EndTime));
+    }
+
+    // Closes the notices whose end time has passed (FieldPlayer.Update, once a second).
+    public void CloseExpiredRecalls(long now) {
+        foreach (RecallScrollType type in RecallSlots.TakeExpired(Recalls, now)) {
+            Send(RecallScrollPacket.Close(type));
+        }
+    }
     // The recall invite (s2c RecallUser 4) this player has not answered yet.
     public volatile PendingUserRecall? UserRecall;
     // Set once this client picked an NPC with the debug camera (SetDebugMode 4, select), which opens its NPC

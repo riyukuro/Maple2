@@ -239,10 +239,7 @@ public partial class ChannelService {
                 continue;
             }
 
-            lock (session.Recalls) {
-                session.Recalls[(int) RecallScrollType.Guild] = new PendingRecall(recall.CharacterId, recall.Name, recall.MapId, recall.EndTime);
-            }
-            session.Send(RecallScrollPacket.Notify(RecallScrollType.Guild, recall.Name, recall.MapId, recall.EndTime));
+            session.OfferRecall(RecallScrollType.Guild, new PendingRecall(recall.CharacterId, recall.Name, recall.MapId, recall.EndTime));
         }
 
         return new GuildResponse();

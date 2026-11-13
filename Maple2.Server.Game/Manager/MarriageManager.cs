@@ -471,6 +471,10 @@ public sealed class MarriageManager {
         if (DivorceRules.JustDivorced(beforeId, before, Marriage.Id, Marriage.Status)) {
             session.ConditionUpdate(ConditionType.wedding_divorce);
         }
+        // A wedding recall can no longer be answered once the couple cannot recall (divorced).
+        if (!CanRecall(Marriage.Status)) {
+            session.CloseRecall(RecallScrollType.Wedding);
+        }
     }
 
     // The partner reads the marriage again: directly on this channel, through the world server on another.

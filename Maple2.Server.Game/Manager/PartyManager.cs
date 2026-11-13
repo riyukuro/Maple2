@@ -4,6 +4,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
 using Maple2.Server.Core.Sync;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util.Sync;
@@ -172,6 +173,8 @@ public class PartyManager : IDisposable {
 
         Party = null;
         session.Player.Value.Character.PartyId = 0;
+        // A party recall can no longer be answered out of the party.
+        session.CloseRecall(RecallScrollType.Party);
     }
 
     public bool AddMember(PartyMember member) {
@@ -201,6 +204,8 @@ public class PartyManager : IDisposable {
         }
 
         session.Send(isKick ? PartyPacket.Kicked(member.CharacterId) : PartyPacket.Leave(member.CharacterId, isSelf));
+        // Nor one from a caller who left the party.
+        session.CloseRecall(RecallScrollType.Party, characterId);
         return true;
     }
 
