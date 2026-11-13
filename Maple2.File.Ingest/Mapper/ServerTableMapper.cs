@@ -1677,6 +1677,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return replayAttendGift ? StampEventReader.Parse(value1, value2, value3, value4) : null;
             case GameEventType.MapleSurvivalOpenPeriod:
                 return new MapleSurvivalOpenPeriod();
+            case GameEventType.GuildVsGameOpen:
+                return new GuildVsGameOpen();
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
             case GameEventType.LevelUpPackage:

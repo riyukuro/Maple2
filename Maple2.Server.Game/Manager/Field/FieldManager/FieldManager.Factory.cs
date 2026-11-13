@@ -266,11 +266,41 @@ public partial class FieldManager {
             }
         }
 
-        // Whether the PvP match field of this room (a rank duel that still takes its duelists, or an individual arena)
-        // still runs on this channel. Never creates a field.
+        // Whether the PvP match field of this room (a rank duel that still takes its duelists, an individual arena, or
+        // a guild vs game match whose game has not ended) still runs on this channel. Never creates a field.
         public bool HasPvpMatch(int roomId) {
             return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && !field.Disposed
-                                                  && (field.RankDuel is { Runs: true } || field.Arena != null));
+                                                  && (field.RankDuel is { Runs: true } || field.Arena != null
+                                                      || field.GuildVsGame is { MatchId: > 0, State.Ended: false }));
+        }
+
+        // A field for a guild vs game match (World GuildVsGameLookup): a new room of the guild vs game map (the
+        // instance field of type GuildVsGame, 66200001), its teams the two guilds. The field tells the World when the
+        // game ended.
+        public FieldManager? CreateGuildVsGame(int matchId, long blueGuildId, long redGuildId) {
+            int mapId = ServerTableMetadata.InstanceFieldTable.Entries.Values
+                .Where(entry => entry.Type == InstanceType.GuildVsGame).Select(entry => entry.MapId).Order().FirstOrDefault();
+            if (mapId == 0) {
+                logger.Error("No guild vs game map in the instance field table");
+                return null;
+            }
+            SemaphoreSlim mapLock = GetMapLock(mapId);
+            mapLock.Wait();
+            try {
+                FieldManager? field = Create(mapId);
+                field?.StartGuildVsGame().SetMatch(matchId, blueGuildId, redGuildId, id => Task.Run(() => {
+                    try {
+                        World.Guild(new Maple2.Server.World.Service.GuildRequest {
+                            VsGameEnd = new Maple2.Server.World.Service.GuildRequest.Types.VsGameEnd { MatchId = id },
+                        }, deadline: DateTime.UtcNow.AddSeconds(10));
+                    } catch (Exception ex) {
+                        logger.Warning(ex, "Guild vs game match {MatchId}: the end was not sent", id);
+                    }
+                }));
+                return field;
+            } finally {
+                mapLock.Release();
+            }
         }
 
         /// <summary>

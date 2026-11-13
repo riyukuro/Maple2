@@ -26,8 +26,9 @@ public sealed class GuildVsGameState {
     // CreateFieldGame has no reset).
     public bool Ended { get; private set; }
 
-    // Chosen here: the teams by the guilds' arrival, the first guild to arrive blue and the second red; a player of
-    // any other guild (or none) is on no team. The match only sends the two guilds' members here.
+    // Chosen here: the teams by the guilds' order, the first guild blue and the second red (a match field joins its
+    // two guilds by their tickets before anyone arrives; a field without a match by arrival); a player of any other
+    // guild (or none) is on no team. The match only sends the two guilds' members here.
     public int Join(long guildId) {
         if (guildId == 0) {
             return NoTeam;
@@ -86,7 +87,7 @@ public sealed class GuildVsGameState {
     private static bool IsTeam(int team) => team is BlueTeam or RedTeam;
 }
 
-// The guild vs game of its field (CreateFieldGame GuildVsGame, or the first arrival in the map): it tags the players
+// The guild vs game of its field (a World match, CreateFieldGame GuildVsGame, or the first arrival in the map): it tags the players
 // with their guild's team, scores the rounds and gives the result and rewards the script asks for.
 public sealed class GuildVsGameField {
     public const string ContributionWin = "winMiniGame";
@@ -101,9 +102,20 @@ public sealed class GuildVsGameField {
     private readonly Dictionary<int, (string Name, string Mark)> guildInfo = [];
 
     public GuildVsGameState State { get; } = new();
+    // The World's match of this field (GuildVsGameLookup), 0 for a field entered without one.
+    public int MatchId { get; private set; }
+    private Action<int>? onEnd;
 
     public GuildVsGameField(FieldManager field) {
         this.field = field;
+    }
+
+    // The match's two guilds take the teams before anyone arrives: blue the first ticket, red the second.
+    public void SetMatch(int matchId, long blueGuildId, long redGuildId, Action<int> end) {
+        MatchId = matchId;
+        onEnd = end;
+        State.Join(blueGuildId);
+        State.Join(redGuildId);
     }
 
     // Tags an arriving player with the team of its guild before the field sends the player (FieldPacket.AddPlayer).
@@ -189,8 +201,17 @@ public sealed class GuildVsGameField {
         }, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
-    // GuildVsGameEndGame: the game takes no more rounds or rewards.
-    public void End() => State.End();
+    // GuildVsGameEndGame: the game takes no more rounds or rewards; the World ends the match (the guilds' open game
+    // is cleared).
+    public void End() {
+        if (State.Ended) {
+            return;
+        }
+        State.End();
+        if (MatchId > 0) {
+            onEnd?.Invoke(MatchId);
+        }
+    }
 
     // Each team player here earns the guild contribution of a win or a loss (table/guildcontribution.xml).
     public void GiveContribution(int team, bool isWin) {

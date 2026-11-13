@@ -60,11 +60,28 @@ public partial class ChannelService {
                 return Task.FromResult(GuildTrophyNotice(request.ReceiverIds, request.TrophyNotice));
             case GuildRequest.GuildOneofCase.MemberRaid:
                 return Task.FromResult(GuildMemberRaid(request.ReceiverIds, request.MemberRaid));
+            case GuildRequest.GuildOneofCase.VsGameTicket:
+                return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds,
+                    GuildPacket.VsGameTicket(request.VsGameTicket.Registered, request.VsGameTicket.Notify)));
+            case GuildRequest.GuildOneofCase.VsGameOpen:
+                return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds, GuildPacket.VsGameOpen(request.VsGameOpen.GameId)));
+            case GuildRequest.GuildOneofCase.VsGameCanceled:
+                return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds, GuildPacket.VsGameMatchCanceled()));
             case GuildRequest.GuildOneofCase.ApplicationResult:
                 return Task.FromResult(GuildApplicationResult(request.GuildId, request.ReceiverIds, request.ApplicationResult));
             default:
                 return Task.FromResult(new GuildResponse { Error = (int) GuildError.s_guild_err_none });
         }
+    }
+
+    // The guild vs game's notices (World GuildVsGameLookup): Guild 118, 119 or 117 to the guild's members here.
+    private GuildResponse GuildVsGameNotice(long guildId, IEnumerable<long> receiverIds, Maple2.PacketLib.Tools.ByteWriter packet) {
+        foreach (long characterId in receiverIds) {
+            if (server.GetSession(characterId, out GameSession? session) && session.Guild.Id == guildId) {
+                session.Send(packet);
+            }
+        }
+        return new GuildResponse();
     }
 
     private GuildResponse GuildInvite(long guildId, IEnumerable<long> receiverIds, GuildRequest.Types.Invite invite) {

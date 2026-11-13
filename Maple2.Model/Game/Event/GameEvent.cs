@@ -179,6 +179,10 @@ public class GameEvent : IByteSerializable {
                 break;
             case LoginNotice:
                 break;
+            case GuildVsGameOpen:
+                // GameEventGuildVsGameOpen reads only the base event's id.
+                writer.WriteInt(Id);
+                break;
             case FieldEffect fieldEffect:
                 writer.WriteInt(Id);
                 writer.WriteByte((byte) fieldEffect.MapIds.Length);

@@ -16,6 +16,8 @@ public partial class ChannelService {
                 return Task.FromResult(DestroyDungeon(request.DestroyDungeon));
             case FieldRequest.FieldOneofCase.CreatePvpMatch:
                 return Task.FromResult(CreatePvpMatch(request.CreatePvpMatch));
+            case FieldRequest.FieldOneofCase.CreateGuildVsGame:
+                return Task.FromResult(CreateGuildVsGame(request.CreateGuildVsGame));
             case FieldRequest.FieldOneofCase.CheckDungeon:
                 return Task.FromResult(new FieldResponse {
                     Error = (int) FieldEntryRules.DungeonRoomError(server.HasDungeon(request.CheckDungeon.RoomId)),
@@ -75,6 +77,14 @@ public partial class ChannelService {
             MapId = field.MapId,
             RoomId = field.RoomId,
         };
+    }
+
+    // The guild vs game match field (World GuildVsGameLookup): a new room of the guild vs game map for the two guilds.
+    private FieldResponse CreateGuildVsGame(FieldRequest.Types.CreateGuildVsGame create) {
+        FieldManager? field = server.CreateGuildVsGame(create.MatchId, create.BlueGuildId, create.RedGuildId);
+        return field == null
+            ? new FieldResponse { Error = (int) MigrationError.s_move_err_FailCreateDungeon }
+            : new FieldResponse { Error = (int) MigrationError.ok, MapId = field.MapId, RoomId = field.RoomId };
     }
 
     private FieldResponse DestroyDungeon(FieldRequest.Types.DestroyDungeon destroy) {

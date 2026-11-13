@@ -248,9 +248,10 @@ public class GuildAndNpcJumpPacketTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
-    // Guild 115 is answered with the error packet (mode 79): byte 1, the error byte 47, int 0.
+    // Guild 115 outside a GuildVsGameOpen event is answered with the error packet (mode 79): byte 1, the error byte
+    // 47, int 0.
     [Test]
-    public void VsGameRegister_IsRefusedWithError47() {
+    public void VsGameRegister_OutsideTheEventIsError47() {
         Assert.That(GuildRules.CheckVsGameRegister(true, false), Is.EqualTo(GuildError.s_guild_err_isNotVsGameTime));
         Assert.That(GuildRules.CheckVsGameRegister(false, false), Is.EqualTo(GuildError.s_guild_err_no_authority));
         Assert.That(GuildRules.CheckVsGameRegister(false, true), Is.EqualTo(GuildError.s_guild_err_no_authority));

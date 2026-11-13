@@ -65,6 +65,15 @@ public partial class WorldService {
                 return Task.FromResult(GuildRaidClear(request.RequestorId, request.RaidClear));
             case GuildRequest.GuildOneofCase.AddContribution:
                 return Task.FromResult(GuildAddContribution(request.RequestorId, request.AddContribution));
+            case GuildRequest.GuildOneofCase.VsGameRegister:
+                return Task.FromResult(GuildVsGameRegister(request.RequestorId, request.VsGameRegister));
+            case GuildRequest.GuildOneofCase.VsGameUnregister:
+                return Task.FromResult(GuildVsGameUnregister(request.RequestorId, request.VsGameUnregister));
+            case GuildRequest.GuildOneofCase.VsGameJoin:
+                return Task.FromResult(GuildVsGameJoin(request.RequestorId, request.VsGameJoin));
+            case GuildRequest.GuildOneofCase.VsGameEnd:
+                guildVsGameLookup.End(request.VsGameEnd.MatchId);
+                return Task.FromResult(new GuildResponse());
             case GuildRequest.GuildOneofCase.UpgradeNpc:
                 return Task.FromResult(UpgradeGuildNpc(request.RequestorId, request.UpgradeNpc));
             case GuildRequest.GuildOneofCase.UpgradeHouse:
@@ -497,6 +506,39 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = add.GuildId };
+    }
+
+    // Guild 115: only a member with the mini game right takes the guild's ticket.
+    private GuildResponse GuildVsGameRegister(long requestorId, GuildRequest.Types.VsGameRegister register) {
+        if (!guildLookup.TryGet(register.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.HasPermission(requestorId, GuildPermission.StartMiniGame)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_no_authority };
+        }
+        return new GuildResponse { Error = (int) guildVsGameLookup.Register(register.GuildId), GuildId = register.GuildId };
+    }
+
+    private GuildResponse GuildVsGameUnregister(long requestorId, GuildRequest.Types.VsGameUnregister unregister) {
+        if (!guildLookup.TryGet(unregister.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.HasPermission(requestorId, GuildPermission.StartMiniGame)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_no_authority };
+        }
+        return new GuildResponse { Error = (int) guildVsGameLookup.Unregister(unregister.GuildId), GuildId = unregister.GuildId };
+    }
+
+    // Guild 120: any member of a matched guild enters its match field.
+    private GuildResponse GuildVsGameJoin(long requestorId, GuildRequest.Types.VsGameJoin join) {
+        if (!guildLookup.TryGet(join.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.Guild.Members.ContainsKey(requestorId)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_member };
+        }
+        GuildError error = guildVsGameLookup.Join(join.GuildId, out int channel, out int mapId, out int roomId);
+        return new GuildResponse { Error = (int) error, GuildId = join.GuildId, Channel = channel, MapId = mapId, RoomId = roomId };
     }
 
     private GuildResponse UpgradeGuildBuff(long requestorId, GuildRequest.Types.UpgradeBuff upgrade) {

@@ -1271,25 +1271,31 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
     }
 
-    // Guild 115 (CGuildManager::SendGuildMode115, guildmanager.cpp:1425): no body; the guild asks for a
-    // ticket of the guild vs-game. The client tests the mini game right (0x400) itself. The server runs no
-    // vs-game, so no time takes applications and the answer is error 47.
+    // Guild 115 (CGuildManager::SendGuildMode115, guildmanager.cpp:1425): no body; the guild asks for a ticket of
+    // the guild vs game. The client tests the mini game right (0x400) itself and asks only without a ticket or an open
+    // game. The World takes the ticket while a GuildVsGameOpen event is on and tells the members (118); two tickets
+    // make a match (World GuildVsGameLookup), whose members get the entry prompt (119).
     private void HandleCreateGuildEvent(GameSession session) {
         if (session.Guild.Guild == null) {
             return;
         }
 
         bool hasRight = session.Guild.HasPermission(session.CharacterId, GuildPermission.StartMiniGame);
-        GuildError error = GuildRules.CheckVsGameRegister(hasRight, isVsGameTime: false);
+        GuildError error = GuildRules.CheckVsGameRegister(hasRight, isVsGameTime: session.FindEvent(GameEventType.GuildVsGameOpen).Count > 0);
         if (error == GuildError.none) {
-            error = GuildError.s_guild_err_isNotVsGameTime; // not reached: no vs-game time
+            error = VsGameRequest(session, new GuildRequest {
+                RequestorId = session.CharacterId,
+                VsGameRegister = new GuildRequest.Types.VsGameRegister { GuildId = session.Guild.Id },
+            })?.Error is { } code ? (GuildError) code : GuildError.s_guild_err_unknown;
         }
-        session.Send(GuildPacket.Error(error));
+        if (error != GuildError.none) {
+            session.Send(GuildPacket.Error(error));
+        }
     }
 
-    // Guild 116 (CGuildManager::SendGuildMode116, guildmanager.cpp:1444): no body; the guild's vs-game
-    // ticket is withdrawn. The client sends it only while its ticket flag is set, and the server never sets
-    // it (115 is refused). The answer puts the flag back to the server's state: no ticket, without a line.
+    // Guild 116 (CGuildManager::SendGuildMode116, guildmanager.cpp:1444): no body; the guild's ticket is withdrawn.
+    // The World tells the members (118 false); a guild already matched or without a ticket gets 118 false without a
+    // line.
     private void HandleStartGuildEvent(GameSession session) {
         if (session.Guild.Guild == null) {
             return;
@@ -1299,17 +1305,44 @@ public class GuildHandler : PacketHandler<GameSession> {
             return;
         }
 
-        session.Send(GuildPacket.VsGameTicket(registered: false, notify: false));
+        GuildResponse? response = VsGameRequest(session, new GuildRequest {
+            RequestorId = session.CharacterId,
+            VsGameUnregister = new GuildRequest.Types.VsGameUnregister { GuildId = session.Guild.Id },
+        });
+        if (response == null || response.Error != (int) GuildError.none) {
+            session.Send(GuildPacket.VsGameTicket(registered: false, notify: false));
+        }
     }
 
-    // Guild 120 (CGuildManager::SendGuildMode120, guildmanager.cpp:3386): no body; the member takes the
-    // entry prompt of 119 (FUN_1413c45e0, :2679). The server opens no vs-game and sends no prompt, so there
-    // is nothing to enter: the client's open game is cleared (119 with the id 0 shows no prompt).
+    // Guild 120 (CGuildManager::SendGuildMode120, guildmanager.cpp:3386): no body; the member takes the entry
+    // prompt of 119 (FUN_1413c45e0, :2679). The member moves into the match field the World names; a match that is
+    // gone clears the client's open game (119 with the id 0 shows no prompt).
     private void HandleJoinGuildEvent(GameSession session) {
         if (session.Guild.Guild == null) {
             return;
         }
+        if (session.Field?.GuildVsGame is { MatchId: > 0 }) {
+            return;
+        }
 
-        session.Send(GuildPacket.VsGameOpen(0));
+        GuildResponse? response = VsGameRequest(session, new GuildRequest {
+            RequestorId = session.CharacterId,
+            VsGameJoin = new GuildRequest.Types.VsGameJoin { GuildId = session.Guild.Id },
+        });
+        if (response == null || response.Error != (int) GuildError.none) {
+            session.Send(GuildPacket.VsGameOpen(0));
+            return;
+        }
+        PvpHandler.MoveToMatch(session, new PvpResponse { Channel = response.Channel, MapId = response.MapId, RoomId = response.RoomId },
+            GuildPacket.VsGameOpen(0));
+    }
+
+    private GuildResponse? VsGameRequest(GameSession session, GuildRequest request) {
+        try {
+            return World.Guild(request);
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Guild vs game request {Request} failed", request.GuildCase);
+            return null;
+        }
     }
 }

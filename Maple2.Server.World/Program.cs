@@ -88,6 +88,8 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
         .SingleInstance();
     autofac.RegisterType<PvpLookup>()
         .SingleInstance();
+    autofac.RegisterType<GuildVsGameLookup>()
+        .SingleInstance();
 
     // Register WorldServer and inject dependencies
     autofac.RegisterType<WorldServer>()

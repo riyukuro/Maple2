@@ -342,6 +342,12 @@ public record LongTermAttendGift(
 /// </summary>
 public record MapleSurvivalOpenPeriod : GameEventData;
 
+/// <summary>
+/// The guild vs game's registration time (GameEventGuildVsGameOpen: OnStart opens the client's registration, its
+/// end closes it). No values.
+/// </summary>
+public record GuildVsGameOpen : GameEventData;
+
 
 /// <summary>
 /// Closes Maple Survival (Mushking Royale)
@@ -573,6 +579,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(LongTermAttendGift), "LongTermAttendGift")]
 [JsonDerivedType(typeof(StampEvent), "StampEvent")]
 [JsonDerivedType(typeof(MapleSurvivalOpenPeriod), "MapleSurvivalOpenPeriod")]
+[JsonDerivedType(typeof(GuildVsGameOpen), "GuildVsGameOpen")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
 [JsonDerivedType(typeof(Ontime), "Ontime")]
 [JsonDerivedType(typeof(DailyLoginReward), "DailyLoginReward")]

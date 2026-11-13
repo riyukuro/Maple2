@@ -30,6 +30,9 @@ public class GameServer : Server<GameSession> {
     private readonly ConcurrentDictionary<int, PremiumMarketItem> premiumMarketCache;
     private readonly GameStorage gameStorage;
     private readonly IGraphicsContext debugGraphicsContext;
+    // The events and the sessions that loaded them; set in the constructor (a test's server makes it on first use).
+    private ChannelGameEvents<GameSession>? gameEvents;
+    private readonly Timer? eventEdgeTimer;
 
     private readonly ItemMetadataStorage itemMetadataStorage;
 
@@ -52,7 +55,11 @@ public class GameServer : Server<GameSession> {
             itemId => itemMetadataStorage.TryGet(itemId, out ItemMetadata? itemMetadata) ? itemMetadata : null);
 
         debugGraphicsContext.Initialize();
+        gameEvents = new ChannelGameEvents<GameSession>(eventCache, DateTime.Now);
+        eventEdgeTimer = new Timer(_ => SendEventEdges(DateTime.Now), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
+
+    private ChannelGameEvents<GameSession> GameEvents => gameEvents ??= new ChannelGameEvents<GameSession>(eventCache, DateTime.Now);
 
     public override void OnConnected(GameSession session) {
         lock (mutex) {
@@ -73,6 +80,7 @@ public class GameServer : Server<GameSession> {
         // and causing all subsequent heartbeats to fail.
         // For cross-channel migration this is a non-issue since each server has its own dict.
         sessions.TryRemove(KeyValuePair.Create(session.CharacterId, session));
+        GameEvents.Drop(session);
     }
 
     public bool GetSession(long characterId, [NotNullWhen(true)] out GameSession? session) {
@@ -134,6 +142,10 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.CreateRankDuel(matchId, first, second);
     }
 
+    public FieldManager? CreateGuildVsGame(int matchId, long blueGuildId, long redGuildId) {
+        return fieldFactory.CreateGuildVsGame(matchId, blueGuildId, redGuildId);
+    }
+
     // Whether the rank duel field of this room still runs on this channel. Never creates a field.
     public bool HasPvpMatch(int roomId) {
         return fieldFactory.HasPvpMatch(roomId);
@@ -157,19 +169,20 @@ public class GameServer : Server<GameSession> {
     }
 
     public IList<GameEvent> FindEvent(GameEventType type) {
-        return eventCache.Values.Where(gameEvent => gameEvent.Metadata.Type == type && gameEvent.IsActive()).ToList();
+        return GameEvents.Active(DateTime.Now).Where(gameEvent => gameEvent.Metadata.Type == type).ToList();
     }
 
     public GameEvent? FindEvent(int eventId) {
-        return eventCache.TryGetValue(eventId, out GameEvent? gameEvent) && gameEvent.IsActive() ? gameEvent : null;
+        return GameEvents.Find(eventId, DateTime.Now);
     }
 
     public void AddEvent(GameEvent gameEvent) {
-        if (!eventCache.TryAdd(gameEvent.Id, gameEvent)) {
+        List<GameSession>? receivers = GameEvents.Add(gameEvent, DateTime.Now);
+        if (receivers == null) {
             return;
         }
 
-        foreach (GameSession session in sessions.Values) {
+        foreach (GameSession session in receivers) {
             if (!session.SendsEvent(gameEvent)) {
                 continue;
             }
@@ -178,7 +191,7 @@ public class GameServer : Server<GameSession> {
     }
 
     public void RemoveEvent(int eventId) {
-        if (!eventCache.Remove(eventId, out GameEvent? gameEvent)) {
+        if (GameEvents.Remove(eventId) is not var (gameEvent, receivers)) {
             return;
         }
         if (gameEvent.Metadata.Data is DungeonOpenPeriod) {
@@ -187,8 +200,46 @@ public class GameServer : Server<GameSession> {
             }
         }
 
-        foreach (GameSession session in sessions.Values) {
+        foreach (GameSession session in receivers) {
             session.Send(GameEventPacket.Remove(gameEvent.Id));
+        }
+    }
+
+    // The session's events at its entry (GameEventPacket.Load), sent so that no edge comes between (see
+    // ChannelGameEvents.Load). By start, then id: where the client keeps one value per key (a beauty shop's sale
+    // rate), the last of the list stays, and EventSaleRules.BeautyShopRate picks the same one.
+    public void LoadEvents(GameSession session) {
+        GameEvents.Load(session, DateTime.Now, active => session.Send(GameEventPacket.Load(active.Where(session.SendsEvent)
+            .OrderBy(gameEvent => gameEvent.StartTime).ThenBy(gameEvent => gameEvent.Id).ToArray())));
+    }
+
+    // The day-of-week and time-of-day edges of the events (ChannelGameEvents.Tick), to the sessions that loaded them.
+    public void SendEventEdges(DateTime now) {
+        ChannelGameEvents<GameSession>.Edges edges;
+        try {
+            edges = GameEvents.Tick(now);
+        } catch (Exception ex) {
+            Logger.Error(ex, "Failed to find the game event edges");
+            return;
+        }
+        if (!edges.Any) {
+            return;
+        }
+        foreach (GameEvent gameEvent in edges.Started) {
+            Logger.Information("Game event {Id} ({Type}) comes on", gameEvent.Id, gameEvent.Metadata.Type);
+        }
+        foreach (GameEvent gameEvent in edges.Stopped) {
+            Logger.Information("Game event {Id} ({Type}) goes off", gameEvent.Id, gameEvent.Metadata.Type);
+        }
+        foreach (GameSession session in edges.Receivers) {
+            GameEvent[] started = edges.Started.Where(session.SendsEvent).ToArray();
+            int[] stopped = edges.Stopped.Where(session.SendsEvent).Select(gameEvent => gameEvent.Id).ToArray();
+            if (stopped.Length > 0) {
+                session.Send(GameEventPacket.Remove(stopped));
+            }
+            if (started.Length > 0) {
+                session.Send(GameEventPacket.Add(started));
+            }
         }
     }
 
@@ -199,7 +250,7 @@ public class GameServer : Server<GameSession> {
         lock (endedOpenPeriods) {
             events = endedOpenPeriods.ToList();
         }
-        events.AddRange(eventCache.Values);
+        events.AddRange(GameEvents.All());
         var periods = new List<DungeonRoomRules.OpenPeriod>();
         foreach (GameEvent gameEvent in events) {
             if (gameEvent.Metadata.Data is DungeonOpenPeriod period) {
@@ -209,7 +260,7 @@ public class GameServer : Server<GameSession> {
         return periods;
     }
 
-    public IEnumerable<GameEvent> GetEvents() => eventCache.Values.Where(gameEvent => gameEvent.IsActive());
+    public IEnumerable<GameEvent> GetEvents() => GameEvents.Active(DateTime.Now);
 
     public IList<SystemBanner> GetSystemBanners() => bannerCache;
 
@@ -280,6 +331,7 @@ public class GameServer : Server<GameSession> {
 
     public override Task StopAsync(CancellationToken cancellationToken) {
         debugGraphicsContext.CleanUp();
+        eventEdgeTimer?.Dispose();
 
         lock (mutex) {
             foreach (GameSession session in connectingSessions) {

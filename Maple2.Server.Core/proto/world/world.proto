@@ -367,6 +367,22 @@ message GuildRequest {
     int64 guild_id = 1;
     int32 contribution = 2;
   }
+  // Guild 115: the guild takes a guild vs game ticket.
+  message VsGameRegister {
+    int64 guild_id = 1;
+  }
+  // Guild 116: the guild gives its ticket back.
+  message VsGameUnregister {
+    int64 guild_id = 1;
+  }
+  // Guild 120: the room of the guild's match (the answer's channel, map_id and room_id).
+  message VsGameJoin {
+    int64 guild_id = 1;
+  }
+  // The match field ended the game.
+  message VsGameEnd {
+    int32 match_id = 1;
+  }
 
   int64 requestor_id = 4;
   oneof guild {
@@ -402,6 +418,10 @@ message GuildRequest {
     Rename rename = 32;
     RaidClear raid_clear = 33;
     AddContribution add_contribution = 34;
+    VsGameRegister vs_game_register = 35;
+    VsGameUnregister vs_game_unregister = 36;
+    VsGameJoin vs_game_join = 37;
+    VsGameEnd vs_game_end = 38;
   }
 }
 
@@ -422,6 +442,10 @@ message GuildResponse {
   // add exp fund: what the guild got (the fund stops at the guild level's fund max)
   int32 added_exp = 10;
   int32 added_fund = 11;
+  // guild vs game join: the match field
+  int32 channel = 12;
+  int32 map_id = 13;
+  int32 room_id = 14;
 }
 
 message GroupChatInfoRequest {

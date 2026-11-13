@@ -211,6 +211,18 @@ message GuildRequest {
     int32 raid_id = 2;
     int32 value = 3;
   }
+  // Guild 118: whether the guild holds a guild vs game ticket, with the member's line or without.
+  message VsGameTicket {
+    bool registered = 1;
+    bool notify = 2;
+  }
+  // Guild 119: the guild's open game (its entry prompt); 0 clears it.
+  message VsGameOpen {
+    int32 game_id = 1;
+  }
+  // Guild 117: the guild's ticket was canceled.
+  message VsGameCanceled {
+  }
 
   int64 guild_id = 1;
   repeated int64 receiver_ids = 2;
@@ -240,6 +252,9 @@ message GuildRequest {
     TrophyNotice trophy_notice = 25;
     Rename rename = 26;
     MemberRaid member_raid = 27;
+    VsGameTicket vs_game_ticket = 28;
+    VsGameOpen vs_game_open = 29;
+    VsGameCanceled vs_game_canceled = 30;
   }
 }
 

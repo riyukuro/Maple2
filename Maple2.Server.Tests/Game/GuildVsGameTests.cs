@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Trigger;
 
@@ -5,6 +6,29 @@ namespace Maple2.Server.Tests.Game;
 
 // The guild vs game's teams, rounds and rewards (66200001_gd) and its number meshes.
 public class GuildVsGameTests {
+    // A match field's guilds take the teams by their tickets before anyone arrives; the end reaches the World once.
+    [Test]
+    public void MatchTeamsAndEndOnce() {
+        var game = new GuildVsGameField(null!);
+        var ended = new List<int>();
+        game.SetMatch(7, 700, 500, ended.Add);
+        Assert.Multiple(() => {
+            Assert.That(game.MatchId, Is.EqualTo(7));
+            Assert.That(game.State.GuildOf(GuildVsGameState.BlueTeam), Is.EqualTo(700));
+            Assert.That(game.State.GuildOf(GuildVsGameState.RedTeam), Is.EqualTo(500));
+            Assert.That(game.State.Join(500), Is.EqualTo(GuildVsGameState.RedTeam));
+            Assert.That(game.State.Join(900), Is.EqualTo(GuildVsGameState.NoTeam));
+        });
+        game.End();
+        game.End();
+        Assert.That(ended, Is.EqualTo(new[] { 7 }));
+
+        // A field without a match calls nothing.
+        var plain = new GuildVsGameField(null!);
+        plain.End();
+        Assert.That(plain.State.Ended, Is.True);
+    }
+
     [Test]
     public void TeamsByArrival() {
         var state = new GuildVsGameState();
