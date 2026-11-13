@@ -5,7 +5,8 @@ namespace Maple2.Model.Validators;
 
 // Job 0x0025 mode 10 (skill reset): i32 rank.
 // The client's reset box sends 0 for every rank, 1 for the base job's skills and 2 for the
-// awakening skills (its job rank numbers), not the server's SkillRank values.
+// awakening skills (its job rank numbers), not the server's SkillRank values. The skill tab save
+// (SkillBookTree 1) sends the same numbers.
 public static class JobRules {
     public static SkillRank? ResetRank(int clientRank) {
         return clientRank switch {

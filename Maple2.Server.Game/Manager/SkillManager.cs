@@ -92,7 +92,8 @@ public class SkillManager {
         return SkillBook.SkillTabs.FirstOrDefault(skillTab => skillTab.Id == id);
     }
 
-    public bool SaveSkillTab(long activeSkillTabId, SkillRank ranks, SkillTab? tab = null) {
+    // clientRank: the client's rank number of the request, echoed in the reply.
+    public bool SaveSkillTab(long activeSkillTabId, SkillRank ranks, int clientRank, SkillTab? tab = null) {
         if (GetSkillTab(activeSkillTabId) != null) {
             SkillBook.ActiveSkillTabId = activeSkillTabId;
         }
@@ -103,7 +104,7 @@ public class SkillManager {
             if (activeTab != null) {
                 SkillInfo.SetTab(activeTab);
             }
-            session.Send(SkillBookPacket.Save(SkillBook, 0, ranks));
+            session.Send(SkillBookPacket.Save(SkillBook, 0, clientRank));
             return true;
         }
 
@@ -113,7 +114,7 @@ public class SkillManager {
             // Need to create a new tab
             bool result = CreateSkillTab(tab);
             if (result) {
-                session.Send(SkillBookPacket.Save(SkillBook, tab.Id, ranks));
+                session.Send(SkillBookPacket.Save(SkillBook, tab.Id, clientRank));
             }
             return result;
         }
@@ -133,7 +134,7 @@ public class SkillManager {
             }
         }
 
-        session.Send(SkillBookPacket.Save(SkillBook, tab.Id, ranks));
+        session.Send(SkillBookPacket.Save(SkillBook, tab.Id, clientRank));
         return true;
     }
 

@@ -29,12 +29,13 @@ public static class SkillBookPacket {
         return pWriter;
     }
 
-    public static ByteWriter Save(SkillBook skillBook, long savedTabId, SkillRank ranksSaved) {
+    // rank: the client's job rank number of the request (0 every rank, 1 base job, 2 awakening).
+    public static ByteWriter Save(SkillBook skillBook, long savedTabId, int rank) {
         var pWriter = Packet.Of(SendOp.SkillBookTree);
         pWriter.Write<Command>(Command.Save);
         pWriter.WriteLong(skillBook.ActiveSkillTabId);
         pWriter.WriteLong(savedTabId);
-        pWriter.WriteInt((int) ranksSaved);
+        pWriter.WriteInt(rank);
 
         return pWriter;
     }

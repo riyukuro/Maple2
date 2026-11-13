@@ -54,15 +54,19 @@ public class SkillBookHandler : FieldPacketHandler {
     private void HandleSave(GameSession session, IByteReader packet) {
         long activeSkillTab = packet.ReadLong();
         long savedSkillTab = packet.ReadLong();
-        var ranksToSave = (SkillRank) packet.ReadInt();
-
-        if (!Enum.IsDefined<SkillRank>(ranksToSave)) {
+        // The client's job rank number (0 every rank, 1 base job, 2 awakening; skillpointsimulator.cpp GetUsedPoints),
+        // not the server's SkillRank. The reply echoes it: the client commits that rank of its simulator
+        // (uiskillbookautodistributedialog.cpp RequestTree and the mode 1 reply).
+        int clientRank = packet.ReadInt();
+        SkillRank? rank = JobRules.ResetRank(clientRank);
+        if (rank == null) {
             return;
         }
+        SkillRank ranksToSave = rank.Value;
 
         // Switching Active Tab
         if (savedSkillTab == 0) {
-            session.Config.Skill.SaveSkillTab(activeSkillTab, ranksToSave);
+            session.Config.Skill.SaveSkillTab(activeSkillTab, ranksToSave, clientRank);
             return;
         }
 
@@ -74,7 +78,7 @@ public class SkillBookHandler : FieldPacketHandler {
             var skillTab = packet.ReadClass<SkillTab>();
             if (skillTab.Id != savedSkillTab) continue;
 
-            session.Config.Skill.SaveSkillTab(activeSkillTab, ranksToSave, skillTab);
+            session.Config.Skill.SaveSkillTab(activeSkillTab, ranksToSave, clientRank, skillTab);
             return;
         }
     }
