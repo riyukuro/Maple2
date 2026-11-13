@@ -78,6 +78,30 @@ public class StatIdTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
     }
 
+    // UnlimitedEnchantInfo::ReadFromStream (unlimitedenchantinfo.cpp:101) reads each special entry as u16 id and a
+    // BaseOption, and BaseOption::Read (0x140266d60) is one int (the stream's int read, kept as m_nValue): the
+    // special list is short + int per entry, the reader's last field.
+    [Test]
+    public void LimitBreak_SpecialEntryIsShortAndInt() {
+        var limitBreak = new ItemLimitBreak(5, new Dictionary<BasicAttribute, BasicOption>(), new Dictionary<SpecialAttribute, SpecialOption> {
+            { SpecialAttribute.Experience, new SpecialOption(30) },
+        });
+        var writer = new ByteWriter();
+        limitBreak.WriteTo(writer);
+        byte[] bytes = writer.ToArray();
+        var reader = new ByteReader(bytes, 0);
+        Assert.That(reader.ReadInt(), Is.EqualTo(5));
+        Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadShort(), Is.EqualTo((short) SpecialAttribute.Experience));
+        Assert.That(reader.ReadInt(), Is.EqualTo(30));
+        Assert.That(bytes, Has.Length.EqualTo(18));
+
+        var read = new ItemLimitBreak(0, new Dictionary<BasicAttribute, BasicOption>(), new Dictionary<SpecialAttribute, SpecialOption>());
+        read.ReadFrom(new ByteReader(bytes, 0));
+        Assert.That(read.SpecialOptions[SpecialAttribute.Experience], Is.EqualTo(new SpecialOption(30)));
+    }
+
     // A kept basic option of 0x0075/0x0076 names the client's id; a special option's id is unchanged.
     [Test]
     public void Lock_ClientIdToServer() {
