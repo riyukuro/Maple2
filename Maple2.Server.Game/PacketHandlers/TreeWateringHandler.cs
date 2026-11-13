@@ -67,6 +67,11 @@ public class TreeWateringHandler : FieldPacketHandler {
         if (item == null) {
             return;
         }
-        session.Item.AddOrMail(item, true);
+        // A reward the bag and the mail both refuse (only a failed write) is logged; its count is already up, so it
+        // is not given again. Before, its result was not read and the reward was lost with no trace.
+        if (!session.Item.AddOrMail(item, true)) {
+            Logger.Error("Tree watering event {EventId}: reward {ItemId} x{Amount} of {CharacterId} neither added nor mailed",
+                gameEvent.Id, reward.ItemId, reward.Amount, session.CharacterId);
+        }
     }
 }

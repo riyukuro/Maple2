@@ -11,6 +11,8 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -247,6 +249,38 @@ public class TreeWateringSessionTests {
         Start(fieldId: FieldId + 1);
         Assert.That(Send(TreeWateringEvent.Action.Water), Is.Null);
         Assert.That(Held(WaterRewardId), Is.EqualTo(0));
+    }
+
+    // A reward neither the bag nor the mail can write is logged with its item; the watering still counts. Before,
+    // the result was not read and the reward was lost with no trace.
+    [Test]
+    public void Water_UnwrittenRewardIsLogged() {
+        Start();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "Item");
+        var errors = new List<string>();
+        ILogger before = Log.Logger;
+        (byte Mode, byte Result, int[] Values)? reply;
+        try {
+            Log.Logger = new LoggerConfiguration().WriteTo.Sink(new ErrorLines(errors)).CreateLogger();
+            reply = Send(TreeWateringEvent.Action.Water);
+        } finally {
+            Log.Logger = before;
+            test.FailSave = null;
+        }
+        Assert.Multiple(() => {
+            Assert.That(reply, Is.EqualTo(((byte) 2, (byte) 0, new[] { 1, 2 })));
+            Assert.That(Held(WaterRewardId), Is.Zero);
+            Assert.That(errors.Count(line => line.Contains("reward " + WaterRewardId)), Is.EqualTo(1));
+        });
+    }
+
+    private sealed class ErrorLines(List<string> errors) : Serilog.Core.ILogEventSink {
+        public void Emit(Serilog.Events.LogEvent logEvent) {
+            if (logEvent.Level >= Serilog.Events.LogEventLevel.Error) {
+                errors.Add(logEvent.RenderMessage());
+            }
+        }
     }
 
     // The emotion after the day's waterings, once a day; before them nothing.
