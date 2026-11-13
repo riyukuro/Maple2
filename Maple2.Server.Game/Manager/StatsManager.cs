@@ -108,15 +108,14 @@ public class StatsManager {
     /// <summary>
     /// Get actor's critical damage result. Takes into consideration the target's critical damage resistance.
     /// </summary>
-    /// <param name="targetCriticalDamageResistance">Target's critical damage resistance</param>
+    /// <param name="targetCriticalDamageResistance">Target's critical damage resistance (a rate: 0.2 cuts the bonus by a fifth)</param>
     /// <param name="mode">Unknown. Used for Lua script. If 0, the cap of damage is 250%. If 14, it's 300%</param>
     /// <returns>Critical damage</returns>
     public float GetCriticalDamage(float targetCriticalDamageResistance, int mode = 0) {
         float criticalDamage = Actor switch {
-            FieldPlayer or FieldNpc => Lua.CalcCritDamage(Values[BasicAttribute.CriticalDamage].Total, mode),
+            FieldPlayer or FieldNpc => Lua.CalcCritDamage(Values[BasicAttribute.CriticalDamage].Total, mode, targetCriticalDamageResistance),
             _ => 0,
         };
-        //TODO: Apply target's resistance. Need to figure out formula for this.
         return criticalDamage;
     }
 
