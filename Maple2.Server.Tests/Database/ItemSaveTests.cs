@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game;
@@ -222,6 +224,68 @@ public class ItemSaveTests {
         Assert.Multiple(() => {
             Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(2), "the new session's save: its amount");
             Assert.That(test.Errors, Has.Some.Contains("entered again"));
+        });
+    }
+
+    // A purchase's save after another entry of the account: refused by the same check as a session save, before
+    // the purchase's rows or the currency are written.
+    [Test]
+    public void PurchaseSaveAfterAnotherEntry_WritesNothing() {
+        StartSaving();
+        Assume.That(session.SessionSave(), Is.True, "first save");
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.BeginTransaction();
+            db.ClaimSession(test.AccountId);
+            Assume.That(db.Commit(), Is.True);
+        }
+
+        int ran = 0;
+        Assert.Multiple(() => {
+            Assert.That(session.TrySavePurchase(_ => {
+                ran++;
+                return true;
+            }), Is.False, "the old session's purchase");
+            Assert.That(ran, Is.EqualTo(0), "the purchase's rows");
+            Assert.That(test.Errors, Has.Some.Contains("entered again"));
+        });
+    }
+
+    // A move to another game server: the session saves before it sends the move. Sent first, the client could
+    // enter the other server while the save waited, and that entry's claim refused the save (what was played
+    // since the last timed save was lost).
+    [Test]
+    public void Migrate_SavesBeforeTheMoveIsSent() {
+        const int mapId = 2000062;
+        StartSaving();
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+        bool? sentAtSave = null;
+        test.World.OnAcquire = () => sentAtSave ??= session.GetLastSentPacket(SendOp.GameToGame) != null;
+
+        session.Migrate(mapId);
+
+        using var context = new Ms2Context(options);
+        Assert.Multiple(() => {
+            Assert.That(sentAtSave, Is.False, "the move sent when the save took the lock");
+            Assert.That(session.GetLastSentPacket(SendOp.GameToGame), Is.Not.Null, "the move");
+            Assert.That(context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).MapId, Is.EqualTo(mapId));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The move to the home planner, the same order.
+    [Test]
+    public void MigrateToPlanner_SavesBeforeTheMoveIsSent() {
+        StartSaving();
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+        bool? sentAtSave = null;
+        test.World.OnAcquire = () => sentAtSave ??= session.GetLastSentPacket(SendOp.GameToGame) != null;
+
+        session.MigrateToPlanner(PlotMode.Normal);
+
+        Assert.Multiple(() => {
+            Assert.That(sentAtSave, Is.False, "the move sent when the save took the lock");
+            Assert.That(session.GetLastSentPacket(SendOp.GameToGame), Is.Not.Null, "the move");
+            Assert.That(test.Errors, Is.Empty);
         });
     }
 

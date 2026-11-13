@@ -1332,9 +1332,11 @@ public sealed partial class GameSession : Core.Network.Session {
                 CutAfterSend();
                 return;
             }
-            Send(MigrationPacket.GameToGame(endpoint, response.Token, Constant.DefaultHomeMapId));
+            // Saved before the move is sent: the client enters the other server only after this save held the
+            // account's row, so the new entry's claim cannot come first and refuse it (see Migrate).
             State = SessionState.ChangeMap;
             MigrationSave();
+            Send(MigrationPacket.GameToGame(endpoint, response.Token, Constant.DefaultHomeMapId));
         } catch (RpcException ex) {
             Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
@@ -1375,7 +1377,6 @@ public sealed partial class GameSession : Core.Network.Session {
             }
             beforeMove?.Invoke();
             Dungeon?.LeaveStage();
-            Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
 
             if (isInstanced) {
                 Player.Value.Character.ReturnChannel = Player.Value.Character.Channel;
@@ -1384,8 +1385,12 @@ public sealed partial class GameSession : Core.Network.Session {
                 Player.Value.Character.ReturnChannel = 0;
             }
 
+            // Saved before the move is sent, as the channel change does: sent first, the client could enter the other
+            // server while this save still waited (on a reset being stored, up to 60 s), and that entry's claim of the
+            // account refused the save; what was played since the last timed save was lost.
             State = SessionState.ChangeMap;
             MigrationSave();
+            Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
         } catch (RpcException ex) {
             Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
