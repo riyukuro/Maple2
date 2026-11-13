@@ -32,4 +32,18 @@ public class SurvivalItemRulesTests {
             Assert.That(SurvivalItemRules.ClearReason(Match with { PlusInvenZero = 0 }), Is.Null);
         });
     }
+
+    [Test]
+    public void KitAndDeathDropBoxes() {
+        Assert.Multiple(() => {
+            Assert.That(SurvivalItemRules.KitBox(Match), Is.EqualTo(311000042));
+            Assert.That(SurvivalItemRules.KitBox(Match with { PlusInven = 0 }), Is.Zero);
+            Assert.That(SurvivalItemRules.KitBox(null), Is.Zero);
+            Assert.That(SurvivalItemRules.DropsOwnItems(Match), Is.True);
+            Assert.That(SurvivalItemRules.DropsOwnItems(Match with { UserDrop = 0 }), Is.False);
+            Assert.That(SurvivalItemRules.DropsOwnItems(null), Is.False);
+            Assert.That(SurvivalItemRules.DeathBox(Match), Is.EqualTo(311000039));
+            Assert.That(SurvivalItemRules.DeathBox(null), Is.Zero);
+        });
+    }
 }

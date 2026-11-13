@@ -1,6 +1,9 @@
 using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
+using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Widget;
@@ -29,6 +32,8 @@ public sealed class SurvivalGameField {
     private readonly long startTick;
     // The participants whose result (0x11) went out: once each, when its squad's rank is known.
     private readonly HashSet<long> resulted = [];
+    // The participants that got the starting kit: once each per game, so a rejoin gets none (Chosen here).
+    private readonly HashSet<long> kitted = [];
     private long nextStormTick;
     private long nextNoticeTick;
 
@@ -51,6 +56,9 @@ public sealed class SurvivalGameField {
         field.Broadcast(MapleSurvivalPacket.GameStart());
         field.Broadcast(MapleSurvivalPacket.AliveCount(state.Alive));
         logger.Information("Maple Survival game on {MapId} started with {Count} players", field.MapId, list.Count);
+        if (!state.Ended) {
+            GiveKits(list);
+        }
         if (state.Ended) {
             Finish();
             RunAfter();
@@ -80,7 +88,12 @@ public sealed class SurvivalGameField {
     }
 
     public void Death(FieldPlayer victim) {
-        lock (mutex) Fall(victim.Value.Character.Id);
+        lock (mutex) {
+            bool running = !state.Ended;
+            if (Fall(victim.Value.Character.Id) && running) {
+                DeathDrop(victim);
+            }
+        }
         RunAfter();
     }
 
@@ -89,9 +102,10 @@ public sealed class SurvivalGameField {
         RunAfter();
     }
 
-    private void Fall(long characterId) {
+    // True when the participant was still playing.
+    private bool Fall(long characterId) {
         if (!state.Fall(characterId, field.FieldTick, out long killer)) {
-            return;
+            return false;
         }
         if (killer != 0) {
             field.Broadcast(MapleSurvivalPacket.KillFeed(names.GetValueOrDefault(killer, string.Empty), names.GetValueOrDefault(characterId, string.Empty), 0, state.Alive));
@@ -104,6 +118,55 @@ public sealed class SurvivalGameField {
         SendResults(state.UnitOf(characterId).Where(member => member.Rank != 0 && !state.Ended));
         if (state.Ended) {
             Finish();
+        }
+        return true;
+    }
+
+    // The starting kit (SurvivalItemRules.KitBox) into each participant's inventory, once per participant per game; an
+    // item the inventory cannot take lands at the player. Chosen here.
+    private void GiveKits(IEnumerable<FieldPlayer> players) {
+        int box = SurvivalItemRules.KitBox(field.Metadata.Property.Survival);
+        if (box == 0) {
+            return;
+        }
+        foreach (FieldPlayer player in players) {
+            if (!kitted.Add(player.Value.Character.Id)) {
+                continue;
+            }
+            int count = 0;
+            foreach (Item item in field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, box)) {
+                count++;
+                if (!player.Session.Item.Inventory.Add(item, notifyNew: true)) {
+                    logger.Warning("Survival kit item {ItemId} did not fit for {CharacterId}; dropped at the player", item.Id, player.Value.Character.Id);
+                    field.DropItem(player.Position, player.Rotation, item, owner: player, characterId: player.Value.Character.Id);
+                }
+            }
+            logger.Information("Survival kit: character {CharacterId}, map {MapId}, box {BoxId}, {Count} items", player.Value.Character.Id, field.MapId, box, count);
+        }
+    }
+
+    // The death drop (SurvivalItemRules.DropsOwnItems, DeathBox) at the body of a participant killed while the game
+    // runs, once per death, with no owner; the items despawn like other field drops. Chosen here.
+    private void DeathDrop(FieldPlayer victim) {
+        MapMetadataSurvival? survival = field.Metadata.Property.Survival;
+        int own = 0;
+        if (SurvivalItemRules.DropsOwnItems(survival)) {
+            foreach (Item item in victim.Session.Item.Inventory.TakeSurvivalItems()) {
+                field.DropItem(victim, item);
+                own++;
+            }
+        }
+        int extra = 0;
+        int box = SurvivalItemRules.DeathBox(survival);
+        if (box != 0) {
+            foreach (Item item in field.ItemDrop.GetIndividualDropItems(victim.Session, victim.Value.Character.Level, box)) {
+                field.DropItem(victim.Position, victim.Rotation, item, owner: victim);
+                extra++;
+            }
+        }
+        if (own + extra > 0) {
+            logger.Information("Survival death drop: character {CharacterId}, map {MapId}, {Own} own items, {Extra} from box {BoxId}",
+                victim.Value.Character.Id, field.MapId, own, extra, box);
         }
     }
 

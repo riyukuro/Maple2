@@ -35,4 +35,22 @@ public static class SurvivalItemRules {
         }
         return survival.PlusInvenZero == 1 ? MatchStart : null;
     }
+
+    // The starting kit: the individual drop box a participant's items come from when the game starts
+    // (plusInven=1 with plusInven_Basic, box 311000042 on the KR maps), or 0 for none. Once per participant per game.
+    // Chosen here.
+    public static int KitBox(MapMetadataSurvival? survival) {
+        return survival is { PlusInven: 1, PlusInvenBasic: > 0 } ? survival.PlusInvenBasic : 0;
+    }
+
+    // The death drop of a participant killed while the game runs: its match-only items (userDrop=1; never the
+    // OutsideSourceIds) and one roll of the userAdditionalDrop box (311000039 on the KR maps), all at the body with no
+    // owner (userDropOwnership is 0 on every map). Chosen here.
+    public static bool DropsOwnItems(MapMetadataSurvival? survival) {
+        return survival?.UserDrop == 1;
+    }
+
+    public static int DeathBox(MapMetadataSurvival? survival) {
+        return survival is { UserAdditionalDrop: > 0 } ? survival.UserAdditionalDrop : 0;
+    }
 }

@@ -724,6 +724,20 @@ public class InventoryManager {
         }
     }
 
+    // Takes the survival match items (SurvivalItemRules.IsMatchOnly) out of the inventory with the normal remove packet,
+    // for the death drop at the body (SurvivalGameField). Chosen here.
+    public List<Item> TakeSurvivalItems() {
+        lock (session.Item) {
+            var taken = new List<Item>();
+            foreach (Item item in tabs.Values.SelectMany(tab => tab.Where(item => SurvivalItemRules.IsMatchOnly(item.Metadata))).ToList()) {
+                if (RemoveInternal(item.Uid, -1, out Item? removed)) {
+                    taken.Add(removed);
+                }
+            }
+            return taken;
+        }
+    }
+
     // Deletes the survival match items (SurvivalItemRules) on entering a field whose survival element calls for it,
     // with the normal remove packet and one log line per item. Chosen here.
     public int ClearSurvivalItems(MapMetadataSurvival? survival, int mapId) {
