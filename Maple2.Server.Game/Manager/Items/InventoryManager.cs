@@ -238,20 +238,48 @@ public class InventoryManager {
                     return false;
                 }
 
+                // An item that has a row (a mail attachment, a storage or market row) is split off its row: each
+                // piece but the last is written as a new bag row in the same save that lowers the item's row, and
+                // the last piece is the item itself, so its row moves to the bag. New pieces only, with the row
+                // left as it was, gave the whole amount again on every relog (the mail still owned all of it).
+                int total = add.Amount;
                 int remaining = add.Amount;
                 while (remaining > 0) {
-                    Item piece = add.Clone(newRow: true);
-                    piece.Slot = -1;
-                    piece.Amount = Math.Min(slotMax, remaining);
+                    Item piece;
+                    if (add.Uid != 0 && remaining <= slotMax) {
+                        // Stacked like the pieces before it (the room check and TakesAll count it so), not put in
+                        // the slot it had where it came from (a mail attachment's slot is its place in the mail).
+                        piece = add;
+                        piece.Slot = -1;
+                    } else if (add.Uid != 0) {
+                        using (GameStorage.Request split = session.GameStorage.Context()) {
+                            Item? splitOff = split.SplitItem(session.CharacterId, add, slotMax);
+                            if (splitOff == null) {
+                                logger.Error("Item {ItemId} x{Amount}: {Remaining} not split off after the room check",
+                                    add.Id, total, remaining);
+                                return false;
+                            }
+                            piece = splitOff;
+                        }
+                        add.Amount -= piece.Amount;
+                    } else {
+                        piece = add.Clone(newRow: true);
+                        piece.Slot = -1;
+                        piece.Amount = Math.Min(slotMax, remaining);
+                    }
+                    int chunk = piece.Amount; // An add that merges away completely leaves the piece at 0.
                     if (!Add(piece, notifyNew, commit, onAdded)) {
                         // Only a database write fails here after the check. The pieces already given stay given;
-                        // the item keeps the rest, so a caller that drops or mails it on false hands out only that.
+                        // the item keeps the rest (its row too: a split lowered it), so a caller that drops or
+                        // mails it on false hands out only that.
                         logger.Error("Item {ItemId} x{Amount}: {Remaining} not added after the room check",
-                            add.Id, add.Amount, remaining);
-                        add.Amount = remaining;
+                            add.Id, total, remaining);
+                        if (add.Uid == 0) {
+                            add.Amount = remaining;
+                        }
                         return false;
                     }
-                    remaining -= piece.Amount;
+                    remaining -= chunk;
                 }
 
                 return true;

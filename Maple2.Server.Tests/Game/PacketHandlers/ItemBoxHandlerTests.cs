@@ -272,6 +272,29 @@ public class ItemBoxHandlerTests {
         Assert.That(session.Item.Inventory.Find(RewardA).All(item => item.GachaDismantleId == GachaInfoId), Is.True);
     }
 
+    // RewardA x3 at SlotMax 1 goes in as three pieces; with the second piece's write failing, one is in the bag and
+    // the rest is mailed, and the gacha script still shows the 3 the capsule gave (it showed the mailed 2).
+    [Test]
+    public void OpenGachaBox_Use_FailedWriteMidwayShowsWhatTheCapsuleGave() {
+        GameSession session = Login(ItemFunction.OpenGachaBox, $"{GachaInfoId}", amount: 2, rewardSlotMax: 1);
+        int writes = 0;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "Item") && ++writes == 2;
+
+        Use(session, "");
+        test.FailSave = null;
+
+        byte[] script = test.TakeSent().Last();
+        Assert.Multiple(() => {
+            Assert.That(TestGameSession.Op(script), Is.EqualTo(SendOp.ItemScript));
+            Assert.That(BitConverter.ToInt32(script, 3), Is.EqualTo(2));
+            Assert.That(BitConverter.ToInt32(script, 7), Is.EqualTo(RewardA));
+            Assert.That(BitConverter.ToInt32(script, 11), Is.EqualTo(3));
+            Assert.That(Held(session, RewardA), Is.EqualTo(1));
+            Assert.That(Mails(), Is.EqualTo(1));
+        });
+    }
+
     [Test]
     public void OpenGachaBox_Use_WithoutItsGachaRowKeepsTheBox() {
         GameSession session = Login(ItemFunction.OpenGachaBox, "999", amount: 1);

@@ -309,7 +309,8 @@ public class ItemCollection : IEnumerable<Item> {
 
     // Whether Add(item, stack: true) of each of the items in turn takes all of them, changing nothing: an item goes
     // to its own slot when that slot is free, else on the stacks it can join (the bag's and the items placed before
-    // it), and what is left takes an open slot.
+    // it), and what is left takes an open slot. An item of more than SlotMax goes in as pieces of at most SlotMax
+    // (InventoryManager.Add), each on the stacks first, so what is left of it takes a slot per SlotMax.
     public bool TakesAll(IEnumerable<Item> adds) {
         mutex.EnterReadLock();
         try {
@@ -322,7 +323,9 @@ public class ItemCollection : IEnumerable<Item> {
             int open = OpenSlots;
             foreach (Item add in adds) {
                 int remaining = add.Amount;
-                if (!ValidSlot(add.Slot) || taken.Contains(add.Slot)) {
+                int slotMax = Math.Max(1, add.Metadata.Property.SlotMax);
+                bool split = add.Amount > slotMax;
+                if (split || !ValidSlot(add.Slot) || taken.Contains(add.Slot)) {
                     for (int i = 0; i < placed.Count && remaining > 0; i++) {
                         (Item stack, int amount) = placed[i];
                         int room = stack.Metadata.Property.SlotMax - amount;
@@ -337,17 +340,21 @@ public class ItemCollection : IEnumerable<Item> {
                         continue;
                     }
                 }
-                if (open <= 0) {
-                    return false;
-                }
-                open--;
-                placed.Add((add, remaining));
-                if (ValidSlot(add.Slot) && taken.Add(add.Slot)) {
-                    continue;
-                }
-                for (short slot = 0; slot < Size; slot++) {
-                    if (taken.Add(slot)) {
-                        break;
+                while (remaining > 0) {
+                    if (open <= 0) {
+                        return false;
+                    }
+                    open--;
+                    int piece = Math.Min(remaining, slotMax);
+                    placed.Add((add, piece));
+                    remaining -= piece;
+                    if (!split && ValidSlot(add.Slot) && taken.Add(add.Slot)) {
+                        continue;
+                    }
+                    for (short slot = 0; slot < Size; slot++) {
+                        if (taken.Add(slot)) {
+                            break;
+                        }
                     }
                 }
             }

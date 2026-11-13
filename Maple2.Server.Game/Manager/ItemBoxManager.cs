@@ -184,7 +184,8 @@ public class ItemBoxManager {
             }
 
             foreach (Item newItem in items) {
-                totalItems.Add(newItem);
+                // A copy with the amount the box gave: a failed add leaves the item with only the rest it mails.
+                totalItems.Add(newItem.Clone());
                 if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
@@ -240,7 +241,8 @@ public class ItemBoxManager {
             }
 
             foreach (Item newItem in items) {
-                totalItems.Add(newItem);
+                // A copy with the amount the box gave: a failed add leaves the item with only the rest it mails.
+                totalItems.Add(newItem.Clone());
                 if (!AddFromBox(item, newItem)) {
                     session.Item.MailItem(newItem);
                 }
@@ -479,9 +481,10 @@ public class ItemBoxManager {
             }
 
             IEnumerable<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, gachaEntry.DropBoxId);
-            totalItems = totalItems.Concat(items).ToList();
             foreach (Item createdItem in items) {
                 createdItem.GachaDismantleId = gachaInfoId;
+                // A copy with the amount the capsule gave: a failed add leaves the item with only the rest it mails.
+                totalItems.Add(createdItem.Clone());
                 if (!AddFromBox(item, createdItem)) {
                     session.Item.MailItem(createdItem);
                 }

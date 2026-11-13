@@ -188,7 +188,9 @@ public sealed class MailManager {
         // Furnishing goes into furnishing storage (InventoryManager.Add), which must take all of it; it needs no bag slot.
         List<Item> furnishing = mail.Items.Where(item => item.Type.IsFurnishing).ToList();
         List<Item> bag = mail.Items.Where(item => !item.Type.IsFurnishing).ToList();
-        if (bag.Count > 0 && !session.Item.Inventory.CanAdd(bag)) {
+        // TakesAll counts the slots each attachment needs (one per SlotMax); CanAdd counted one per attachment, so an
+        // attachment of more than SlotMax passed with one slot open and the collect stopped partway.
+        if (bag.Count > 0 && !session.Item.Inventory.TakesAll(bag)) {
             return MailError.s_mail_error_receiveitem_to_inven;
         }
         if (furnishing.Count > 0 && !session.Item.Furnishing.StorageTakes(furnishing.SelectMany(item =>
