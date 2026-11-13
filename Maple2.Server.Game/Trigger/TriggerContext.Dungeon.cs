@@ -259,18 +259,16 @@ public partial class TriggerContext {
 
     #region ShadowExpedition
     // The boss gauge of the Shadow Expedition fields: the score board 0xE1 opens as the boss gauge with the
-    // script's title and most points, at 0 points; close_boss_gauge closes it. What raises the points is not
-    // given by the scripts, the client or the tables, so the gauge stays at 0.
+    // script's title and most points, at 0 points, and fills with the share of the field's monsters killed
+    // (ShadowGauge); close_boss_gauge closes it.
     public void ShadowExpeditionOpenBossGauge(int maxGaugePoint, string title) {
         DebugLog("[ShadowExpeditionOpenBossGauge] maxGaugePoint:{Max}, title:{Title}", maxGaugePoint, title);
-        Field.ScoreBoardOpen = new ScoreBoard.Board(ShadowExpeditionPacket.BossGauge, title, 0, maxGaugePoint);
-        Field.Broadcast(ScoreBoard.OpenPacket(Field.ScoreBoardOpen));
+        Field.OpenShadowGauge(title, maxGaugePoint);
     }
 
     public void ShadowExpeditionCloseBossGauge() {
         DebugLog("[ShadowExpeditionCloseBossGauge]");
-        Field.ScoreBoardOpen = null;
-        Field.Broadcast(ShadowExpeditionPacket.Close());
+        Field.CloseScoreBoard();
     }
     #endregion
 

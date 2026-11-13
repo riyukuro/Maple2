@@ -74,6 +74,8 @@ public class FieldNpc : Actor<Npc> {
 
     // The uid of the maid this npc is (FieldMaidPacket), 0 for other npcs.
     public long MaidUid { get; init; }
+    // Spawned by a player's item (ItemUseHandler), not by the field: a boss gauge never counts it.
+    public bool PlayerSummon { get; init; }
 
     // The shop a SpawnNpc game event gives this npc instead of its own, 0 for none (EventNpcRules.ShopId).
     public int EventShopId { get; set; }
@@ -596,6 +598,7 @@ public class FieldNpc : Actor<Npc> {
         SpringFarmSpawnCleared();
         Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
         Field.AddScoreBoardScore(TriggerScore);
+        Field.ShadowGaugeKilled(ObjectId);
         if (GetLastAttacker() is FieldPlayer lastHitter) {
             // The killing blow counts for npc_lasthit, with the NPC id as the code (field boss achievements).
             lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit, codeLong: Value.Id, targetLong: Field.MapId);

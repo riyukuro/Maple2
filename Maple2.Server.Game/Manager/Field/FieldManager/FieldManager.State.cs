@@ -195,6 +195,7 @@ public partial class FieldManager {
             Origin = owner?.Position ?? spawnPosition,
             SpawnPointId = owner?.Value.Id ?? 0,
             MaidUid = maidUid,
+            PlayerSummon = playerSummon,
             SpawnBuffsPending = npc.Property.Buffs.Length > 0,
         };
 
@@ -213,6 +214,9 @@ public partial class FieldManager {
             Npcs[fieldNpc.ObjectId] = fieldNpc;
         } else {
             Mobs[fieldNpc.ObjectId] = fieldNpc;
+            if (!playerSummon) {
+                ShadowGauge?.Count(fieldNpc.ObjectId);
+            }
         }
 
         return fieldNpc;
@@ -1884,6 +1888,7 @@ public partial class FieldManager {
             return;
         }
         NpcEffects.TryRemove(objectId, out _);
+        ShadowGaugeRemoved(objectId);
         npc.RemoveSummons();
         Broadcast(FieldPacket.RemoveNpc(objectId));
         Broadcast(ProxyObjectPacket.RemoveNpc(objectId));

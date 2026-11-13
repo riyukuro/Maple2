@@ -68,6 +68,7 @@ public partial class TriggerContext {
     // 99999841) names no kind the client shows, so it only logs. set_score sends the points to the open board.
     public void ScoreBoardCreate(string type, string title, int maxScore) {
         Field.ScoreBoardScore = null;
+        Field.ShadowGauge = null;
         byte? kind = ScoreBoard.Kind(type, maxScore);
         if (kind == null) {
             Field.ScoreBoardOpen = null;
@@ -84,8 +85,7 @@ public partial class TriggerContext {
         Field.ScoreBoardScore = null;
         DebugLog("[ScoreBoardRemove] kind:{Kind}", Field.ScoreBoardOpen?.Kind);
         if (Field.ScoreBoardOpen != null) {
-            Field.ScoreBoardOpen = null;
-            Field.Broadcast(ShadowExpeditionPacket.Close());
+            Field.CloseScoreBoard();
         }
     }
 

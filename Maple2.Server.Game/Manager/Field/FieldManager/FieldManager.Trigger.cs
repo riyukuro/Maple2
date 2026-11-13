@@ -28,6 +28,8 @@ public partial class FieldManager {
     // The 0xE1 board open in the field (score_board_create or shadow_expedition_open_boss_gauge; null when none
     // is open): set_score updates its points, a player who enters gets it, remove/close clears it.
     public ScoreBoard.Board? ScoreBoardOpen;
+    // The kill count behind the open boss gauge of shadow_expedition_open_boss_gauge; null when none is open.
+    public ShadowGauge? ShadowGauge;
     // Dungeon variables of a field that is not part of a dungeon instance (a dungeon's fields use their room
     // record's store instead).
     public readonly ConcurrentDictionary<int, int> DungeonVariables = new();
@@ -59,6 +61,46 @@ public partial class FieldManager {
         }
         Broadcast(ShadowExpeditionPacket.SetPoints(total));
         return true;
+    }
+
+    // shadow_expedition_open_boss_gauge: the 0xE1 boss gauge at 0 points, counting the monsters alive now (not a
+    // player's summon; one a destroy_monster of the same tick still holds leaves the count when it goes).
+    public void OpenShadowGauge(string title, int maxPoints) {
+        ScoreBoard.Board board;
+        lock (scoreBoardLock) {
+            ShadowGauge = new ShadowGauge(ShadowGauge.AtOpen(Mobs.Values.Select(mob => (mob.ObjectId, mob.IsDead, mob.PlayerSummon))), maxPoints);
+            ScoreBoardScore = 0;
+            board = ScoreBoardOpen = new ScoreBoard.Board(ShadowExpeditionPacket.BossGauge, title, 0, maxPoints);
+        }
+        Broadcast(ScoreBoard.OpenPacket(board));
+    }
+
+    // Closes the open board (0xE1 command 2) and stops the gauge's count.
+    public void CloseScoreBoard() {
+        lock (scoreBoardLock) {
+            ShadowGauge = null;
+            ScoreBoardOpen = null;
+        }
+        Broadcast(ShadowExpeditionPacket.Close());
+    }
+
+    // A monster's death or removal while a boss gauge is open: the gauge's new points go to the board.
+    public void ShadowGaugeKilled(int objectId) => SetShadowGaugePoints(ShadowGauge?.Killed(objectId));
+
+    public void ShadowGaugeRemoved(int objectId) => SetShadowGaugePoints(ShadowGauge?.Removed(objectId));
+
+    private void SetShadowGaugePoints(int? points) {
+        if (points == null) {
+            return;
+        }
+        lock (scoreBoardLock) {
+            if (ScoreBoardOpen == null || ShadowGauge == null) {
+                return;
+            }
+            ScoreBoardScore = points;
+            ScoreBoardOpen = ScoreBoardOpen with { Points = points.Value };
+        }
+        Broadcast(ShadowExpeditionPacket.SetPoints(points.Value));
     }
 
     // A picked-up score orb gives no item, board or not: true for it (its amount added to an open board).
