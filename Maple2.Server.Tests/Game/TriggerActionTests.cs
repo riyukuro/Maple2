@@ -548,13 +548,17 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
 
         Assert.That(breakable.State, Is.EqualTo(BreakableState.Show));
-        // The state change sends its own Update (1), then the action sends the batch (0) of what it set.
-        ByteReader[] sent = Sent(SendOp.Breakable).ToArray();
-        Assert.That(sent.Select(r => r.ReadByte()), Is.EqualTo(new byte[] { 1, 0 }));
-        Assert.That((sent[1].ReadInt(), sent[1].ReadString()), Is.EqualTo((1, "bb")));
+        // One Update (1) with the new state; the client replays a state's animation on every packet it gets.
+        ByteReader shown = Sent(SendOp.Breakable).Single();
+        Assert.That((shown.ReadByte(), shown.ReadString(), shown.ReadByte()), Is.EqualTo(((byte) 1, "bb", (byte) BreakableState.Show)));
+
+        // Already shown: nothing is sent.
+        Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
+        Assert.That(Sent(SendOp.Breakable), Is.Empty);
 
         Action("""<action name="set_breakable" trigger_ids="7001" enable="0" />""");
         Assert.That(breakable.State, Is.EqualTo(BreakableState.Hide));
+        Assert.That(Sent(SendOp.Breakable).Single().ReadByte(), Is.EqualTo(1));
     }
 
     // set_skill (36171): an enabled trigger skill is placed as a region skill of the field; disabled, it is taken

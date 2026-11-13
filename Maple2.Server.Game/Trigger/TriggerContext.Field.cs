@@ -171,17 +171,16 @@ public partial class TriggerContext {
 
     public void SetBreakable(int[] triggerIds, bool enabled) {
         DebugLog("[SetBreakable] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
-        var updated = new List<FieldBreakable>(triggerIds.Length);
+        // A changed state sends its own Update. The client replays a state's effect and animation on every packet
+        // (CBreakableObject::SetState, breakableobject.cpp), so no second batch is sent, and nothing for a breakable
+        // already in the state.
         foreach (int triggerId in triggerIds) {
             if (!Field.TryGetBreakable(triggerId, out FieldBreakable? breakable)) {
                 continue;
             }
 
             breakable.UpdateState(enabled ? BreakableState.Show : BreakableState.Hide);
-            updated.Add(breakable);
         }
-
-        Field.Broadcast(BreakablePacket.Update(updated));
     }
 
     public void SetCube(int[] triggerIds, bool visible, int randomCount) {
