@@ -45,6 +45,27 @@ public static class MaidRules {
     // maid_auth: the talker's account owns the maid (null: the npc is not a placed maid).
     public static bool IsOwner(Maid? maid, long accountId) => maid != null && maid.OwnerId == accountId;
 
+    // A maid_expired or maid_ready_to_pay value of npcScriptCondition: "1" true, "!1" false, null when the
+    // condition does not have it (it is not checked).
+    public static bool? ConditionFlag(string? value) => value switch {
+        "1" => true,
+        "!1" => false,
+        _ => null,
+    };
+
+    // CMaid::IsExpired (commonfiles/maid.cpp:262): the contract end is before now (epoch seconds).
+    public static bool IsExpired(Maid maid, long now) => maid.ExpiryTime < now;
+
+    // maid_expired: a maid npc's script state for an expired contract ("1") or a running one ("!1"). The craft
+    // choice of a maid goes to both a state of each kind (Goto 10 and 9010 of npc 11000512), so without the check
+    // the talk picks one of them at random. null (no maid_expired) passes; a npc with no placed maid fails a check.
+    public static bool ExpiredMatches(bool? expired, Maid? maid, long now) {
+        if (expired is not { } wanted) {
+            return true;
+        }
+        return maid != null && IsExpired(maid, now) == wanted;
+    }
+
     // CMaid::GetMoodGrade: 0 up to mood 30, 1 up to 70, else 2 (the recipe lead time of the mood).
     public static int MoodGrade(int mood) => mood <= 30 ? 0 : mood <= 70 ? 1 : 2;
 

@@ -325,4 +325,46 @@ public class MaidTests {
         MaidRules.ApplyDebug(maid, MaidRules.DebugCommand.Expiry, 1, -900, exps, 10, 10);
         Assert.That(maid.ExpiryTime, Is.EqualTo(2400)); // a negative span is ignored
     }
+
+    private static Maid Hired(long expiryTime) =>
+        new() { Uid = 1, OwnerId = 5, ItemId = CubeItemId, MaidId = MaidId, CreationTime = 0, ExpiryTime = expiryTime };
+
+    // npcScriptCondition maid_expired / maid_ready_to_pay: "1", "!1" or absent; absent is no condition.
+    [Test]
+    public void ConditionFlagKeepsAbsentApart() {
+        Assert.That(MaidRules.ConditionFlag("1"), Is.True);
+        Assert.That(MaidRules.ConditionFlag("!1"), Is.False);
+        Assert.That(MaidRules.ConditionFlag(""), Is.Null);
+        Assert.That(MaidRules.ConditionFlag(null), Is.Null);
+    }
+
+    // CMaid::IsExpired: m_nExpireTime < GetServerTime().
+    [Test]
+    public void IsExpiredOnlyAfterTheEnd() {
+        Maid maid = Hired(1000);
+        Assert.That(MaidRules.IsExpired(maid, 999), Is.False);
+        Assert.That(MaidRules.IsExpired(maid, 1000), Is.False);
+        Assert.That(MaidRules.IsExpired(maid, 1001), Is.True);
+    }
+
+    // The craft choice of maid npc 11000512 goes to state 10 (maid_expired="!1", the craft menu) or 9010
+    // (maid_expired="1", the contract-up text): a maid hired until later passes only 10, an expired one only 9010.
+    [Test]
+    public void CraftChoicePicksByTheContract() {
+        bool? craft = MaidRules.ConditionFlag("!1");
+        bool? contractUp = MaidRules.ConditionFlag("1");
+        Maid hired = Hired(1_800_000_000);
+        const long now = 1_700_000_000;
+        Assert.That(MaidRules.ExpiredMatches(craft, hired, now), Is.True);
+        Assert.That(MaidRules.ExpiredMatches(contractUp, hired, now), Is.False);
+
+        Maid expired = Hired(now - 1);
+        Assert.That(MaidRules.ExpiredMatches(craft, expired, now), Is.False);
+        Assert.That(MaidRules.ExpiredMatches(contractUp, expired, now), Is.True);
+
+        // No maid_expired: no check, also for a npc without a placed maid; with one, no maid fails.
+        Assert.That(MaidRules.ExpiredMatches(null, hired, now), Is.True);
+        Assert.That(MaidRules.ExpiredMatches(null, null, now), Is.True);
+        Assert.That(MaidRules.ExpiredMatches(craft, null, now), Is.False);
+    }
 }

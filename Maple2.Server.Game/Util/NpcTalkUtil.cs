@@ -149,6 +149,11 @@ public static class NpcTalkUtil {
         if (scriptCondition.Maid is { Authority: true } && !MaidRules.IsOwner(maidUid == 0 ? null : session.Field.GetMaid(maidUid), session.AccountId)) {
             return false;
         }
+        // maid_expired: the contract of the npc's maid has ended, or not.
+        if (scriptCondition.Maid is { Expired: not null } maidCondition && !MaidRules.ExpiredMatches(maidCondition.Expired,
+                maidUid == 0 ? null : session.Field.GetMaid(maidUid), DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            return false;
+        }
         if (scriptCondition.JobCode.Count > 0 && !scriptCondition.JobCode.Contains(session.Player.Value.Character.Job.Code())) {
             return false;
         }

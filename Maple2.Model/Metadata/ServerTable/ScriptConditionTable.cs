@@ -28,10 +28,12 @@ public record ScriptConditionMetadata(
     int ReceivedRewardDungeonId = 0,
     int CompleteRewardDungeonId = 0) {
 
+    // Expired and ReadyToPay: maid_expired and maid_ready_to_pay, "1" true, "!1" false, null when the condition has
+    // neither (no check).
     public record MaidData(
         bool Authority,
-        bool Expired,
-        bool ReadyToPay,
+        bool? Expired,
+        bool? ReadyToPay,
         int ClosenessRank,
         KeyValuePair<int, bool> ClosenessTime,
         KeyValuePair<int, bool> MoodTime,

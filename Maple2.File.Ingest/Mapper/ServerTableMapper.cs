@@ -250,8 +250,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     Type: ScriptType.Npc,
                     Maid: new ScriptConditionMetadata.MaidData(
                         Authority: scriptCondition.maid_auth,
-                        Expired: scriptCondition.maid_expired != "!1",
-                        ReadyToPay: scriptCondition.maid_ready_to_pay != "!1",
+                        Expired: MaidRules.ConditionFlag(scriptCondition.maid_expired),
+                        ReadyToPay: MaidRules.ConditionFlag(scriptCondition.maid_ready_to_pay),
                         ClosenessRank: scriptCondition.maid_affinity_grade,
                         ClosenessTime: ParseToIntKeyValuePair(scriptCondition.maid_affinity_time),
                         MoodTime: ParseToIntKeyValuePair(scriptCondition.maid_mood_time),
@@ -339,8 +339,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     Type: ScriptType.Quest,
                     Maid: new ScriptConditionMetadata.MaidData(
                         Authority: scriptCondition.maid_auth,
-                        Expired: scriptCondition.maid_expired != "!1",
-                        ReadyToPay: scriptCondition.maid_ready_to_pay != "!1",
+                        Expired: MaidRules.ConditionFlag(scriptCondition.maid_expired),
+                        ReadyToPay: MaidRules.ConditionFlag(scriptCondition.maid_ready_to_pay),
                         ClosenessRank: scriptCondition.maid_affinity_grade,
                         ClosenessTime: ParseToIntKeyValuePair(scriptCondition.maid_affinity_time),
                         MoodTime: ParseToIntKeyValuePair(scriptCondition.maid_mood_time),
