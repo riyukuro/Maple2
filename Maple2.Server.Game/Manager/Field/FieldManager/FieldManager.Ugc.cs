@@ -3,6 +3,7 @@ using System.Numerics;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Ugc;
 using Maple2.Model.Metadata;
@@ -207,6 +208,13 @@ public partial class FieldManager {
         }
         Plot? plot;
         switch (session.HeldCube) {
+            // The client places only the cube it holds (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:936-960):
+            // a place of another item, or with nothing held, is refused with an answer. Chosen here: the code
+            // s_ugcmap_null_cube_item_info, as no client check names this case.
+            case PlotCube held when held.ItemId != cubeItem.ItemId:
+            case null:
+                session.Send(CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_null_cube_item_info, session.Player.ObjectId));
+                return;
             case PlotCube _:
                 if (itemMetadata.Install is null || itemMetadata.Housing is null) {
                     logger.Error("Item {CubeItemItemId} is not a housing item.", cubeItem.ItemId);
