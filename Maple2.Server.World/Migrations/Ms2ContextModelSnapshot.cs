@@ -581,6 +581,43 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("character-config", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.CharacterPlayerConfig", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Buffs")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<int>("DeathCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeathMsRemaining")
+                        .HasColumnType("int");
+
+                    b.Property<long>("DeathStopTime")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PvpHeldCooldowns")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<bool>("PvpStay")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("SkillCooldowns")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.HasKey("CharacterId");
+
+                    b.ToTable("character-player-config", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.CharacterUnlock", b =>
                 {
                     b.Property<long>("CharacterId")
@@ -2282,6 +2319,15 @@ namespace Maple2.Server.World.Migrations
                         });
 
                     b.Navigation("SkillBook");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.CharacterPlayerConfig", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithOne()
+                        .HasForeignKey("Maple2.Database.Model.CharacterPlayerConfig", "CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.CharacterUnlock", b =>
