@@ -174,10 +174,11 @@ public sealed class GuildVsGameField {
                     if (coin <= 0) {
                         break;
                     }
+                    // A full bag sends the coin by mail: before, the bag's refusal dropped it.
                     foreach (FieldPlayer player in players) {
                         Item? item = field.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
-                        if (item == null || !player.Session.Item.Inventory.Add(item, true)) {
-                            logger.Warning("Guild vs game coin of {CharacterId} not given", player.Session.CharacterId);
+                        if (item == null || !player.Session.Item.AddOrMail(item, true)) {
+                            logger.Error("Guild vs game coin of {CharacterId} not given", player.Session.CharacterId);
                         }
                     }
                     break;

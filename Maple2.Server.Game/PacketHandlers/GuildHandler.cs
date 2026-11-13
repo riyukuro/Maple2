@@ -550,9 +550,13 @@ public class GuildHandler : PacketHandler<GameSession> {
             session.Send(GuildPacket.CheckedIn());
             session.ConditionUpdate(ConditionType.guild_attendance);
             session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.CheckInPlayerExpRate);
-            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, session.Guild.Properties.CheckInCoin);
-            if (guildCoin != null) {
-                session.Item.Inventory.Add(guildCoin, true);
+            int coin = session.Guild.Properties.CheckInCoin;
+            if (coin > 0) {
+                // The check-in is taken by the World by now: a full bag sends the coin by mail (before, it was dropped).
+                Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
+                if (guildCoin == null || !session.Item.AddOrMail(guildCoin, true)) {
+                    Logger.Error("Guild check-in coin of {CharacterId} not given", session.CharacterId);
+                }
             }
         } catch (RpcException) { /* ignored */ }
     }
