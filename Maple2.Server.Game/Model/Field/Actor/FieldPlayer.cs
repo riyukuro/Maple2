@@ -479,7 +479,8 @@ public class FieldPlayer : Actor<Player> {
                 break;
             case ActorState.Hold:
                 if (UpdateStateSyncTimeTracking()) {
-                    Session.ConditionUpdate(ConditionType.holdtime, targetLong: Value.Character.MapId);
+                    // The row with a code names the map as the code (21300021: code 65000003).
+                    Session.ConditionUpdate(ConditionType.holdtime, targetLong: Value.Character.MapId, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Ride:
