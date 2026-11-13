@@ -482,6 +482,9 @@ public class FieldNpc : Actor<Npc> {
         return MovementState.TryStandby(null, true);
     }
 
+    private float AirPatrolSpeed(string sequence) =>
+        PatrolRules.AirMultiplier(Patrol!.PatrolSpeed, sequence, Value.Metadata.Action.WalkSpeed, Value.Metadata.Action.RunSpeed);
+
     private NpcTask? NextWaypoint() {
         MS2WayPoint currentWaypoint = Patrol!.WayPoints[currentWaypointIndex];
         MS2WayPoint? waypointBefore = null;
@@ -501,9 +504,9 @@ public class FieldNpc : Actor<Npc> {
 
         if (currentWaypoint.AirWayPoint) {
             if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
-                approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: (float) Patrol.PatrolSpeed / 2, lookAt: true);
+                approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: AirPatrolSpeed(patrolSequence.Name), lookAt: true);
             } else if (FlySequence is not null) {
-                approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: FlySequence.Name, speed: (float) Patrol.PatrolSpeed / 2, lookAt: true);
+                approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: FlySequence.Name, speed: AirPatrolSpeed(FlySequence.Name), lookAt: true);
             } else {
                 Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
             }
