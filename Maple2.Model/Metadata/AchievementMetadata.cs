@@ -28,4 +28,6 @@ public record AchievementMetadataReward(
     AchievementRewardType Type,
     int Code,
     int Value,
-    int Rank);
+    int Rank,
+    // A skill point reward's tree: 0 the first, 1 the awakening one (subJobLevel, achievedata.cpp:938).
+    int SubJobLevel = 0);

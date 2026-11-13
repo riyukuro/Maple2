@@ -764,6 +764,28 @@ public class TrophyWiringTests {
         session.Achievement.ClaimReward(Trophy);
         Assert.That(Sent(), Is.Empty);
     }
+
+    // A skill point reward goes to the tree its subJobLevel names (achievedata.cpp:938): 1 the awakening tree, as
+    // KR 21100076 and 21230121 give theirs; without it, the first tree. Their rank is 1 either way.
+    [TestCase(1, 0, 4)]
+    [TestCase(0, 4, 0)]
+    public void Claim_SkillPointsGoToTheSubJobLevelsTree(int subJobLevel, int first, int awakening) {
+        AchievementMetadata trophy = TestGameSession.Trophy(Trophy, ConditionType.use_merat, [10, Goal]);
+        var grades = new Dictionary<int, AchievementMetadataGrade>(trophy.Grades);
+        grades[1] = grades[1] with { Reward = new AchievementMetadataReward(AchievementRewardType.skillpoint, 0, 4, 1, subJobLevel) };
+        GameSession session = Start(trophy with { Grades = grades });
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, session);
+        typeof(Maple2.Server.Game.Manager.ConfigManager).GetField("skillPoints", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session.Config, new SkillPoint());
+        int[] before = session.Config.ExtraSkillPoints();
+        session.Currency.Meret = 100;
+        session.Currency.Meret -= 10;
+
+        session.Achievement.ClaimReward(Trophy);
+
+        int[] after = session.Config.ExtraSkillPoints();
+        Assert.That((after[0] - before[0], after[1] - before[1]), Is.EqualTo((first, awakening)));
+    }
     #endregion
 
     #region fame_grade

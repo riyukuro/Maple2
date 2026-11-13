@@ -47,7 +47,8 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                         Type: (AchievementRewardType) grade.reward.type,
                         Code: grade.reward.code,
                         Value: grade.reward.value,
-                        Rank: grade.reward.rank)));
+                        Rank: grade.reward.rank,
+                        SubJobLevel: grade.reward.subJobLevel)));
             }
 
             string[] tags = data.categoryTag;

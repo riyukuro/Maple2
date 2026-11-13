@@ -287,7 +287,10 @@ public sealed class AchievementManager {
                 session.Send(EmotePacket.Learn(session.Player.Value.Unlock.GetEmote(grade.Reward.Code)));
                 break;
             case AchievementRewardType.skillpoint:
-                session.Config.AddSkillPoint(SkillPointSource.Trophy, grade.Reward.Value, (short) (grade.Reward.Rank - 1));
+                // The client reads the tree from subJobLevel (0 the first, 1 the awakening one; achievedata.cpp:938) and
+                // names the awakening points so (s_reward_notify_skill_point_sub_1, achievemanager.cpp:627); rank is
+                // 1 on every KR skill point reward.
+                session.Config.AddSkillPoint(SkillPointSource.Trophy, grade.Reward.Value, (short) (grade.Reward.SubJobLevel == 1 ? 1 : 0));
                 break;
             case AchievementRewardType.statpoint:
                 session.Config.AddStatPoint(AttributePointSource.Trophy, grade.Reward.Value);
