@@ -239,23 +239,28 @@ public static class InGameRankPacket {
         }
     }
 
-    public static ByteWriter Arcade(GameRankingType type) {
+    // The arcade boards (0x67, 0x68), as GameRanking::Arcade reads them (gamerankingcli.cpp:1199): the header, then a
+    // count of rows, each a rank, the character id (its portrait), name and profile image, four ints the client reads
+    // but does not show (the game, the season, the job code and the level), the score (m_48, the shown point,
+    // gamerankingcli.cpp:184-192) and the date it was set.
+    public static ByteWriter Arcade(GameRankingType type, IList<ArcadeRankInfo> rankInfos) {
         var pWriter = new ByteWriter();
-        pWriter.Write<GameRankingType>(type);
+        pWriter.WriteInt((int) type);
         pWriter.WriteInt(0);
         pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        pWriter.WriteInt(1); // count
-
-        pWriter.WriteInt(1); // rank
-        pWriter.WriteLong(); // character id
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // name
-        pWriter.WriteUnicodeStringWithLength(string.Empty); // profile
-        pWriter.WriteInt(); // arcade id
-        pWriter.WriteInt(); // season id
-        pWriter.WriteInt((int) JobCode.None); // job code
-        pWriter.WriteInt(); // level
-        pWriter.WriteInt(); // score
-        pWriter.WriteUnicodeStringWithLength(); // timestamp
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (ArcadeRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(info.ArcadeId); // m_38, read, not shown
+            pWriter.WriteInt(info.SeasonId); // m_44, read, not shown
+            pWriter.WriteInt(info.JobCode); // m_3c, read, not shown
+            pWriter.WriteInt(info.Level); // m_40, read, not shown
+            pWriter.WriteInt(info.Score);
+            pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.SetTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        }
 
         return pWriter;
     }

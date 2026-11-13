@@ -80,6 +80,8 @@ public class WebController : ControllerBase {
             GameRankingType.ColosseumPersonal or GameRankingType.ColosseumPersonalPreviousSeason => PersonalColosseum(type, seasonId, rankingId, characterId),
             GameRankingType.GuildPvp or GameRankingType.GuildPvpPreviousSeason => GuildPvpBoard(type, seasonId, userName),
             GameRankingType.GuildPvpPersonal or GameRankingType.GuildPvpPersonalPreviousSeason => PersonalGuildPvp(type, seasonId, characterId),
+            GameRankingType.Arcade or GameRankingType.ArcadePreviousSeason => ArcadeBoard(type, rankingId, seasonId, userName),
+            GameRankingType.ArcadePersonal or GameRankingType.ArcadePersonalPreviousSeason => PersonalArcade(type, rankingId, seasonId, characterId),
             GameRankingType.Ugc or GameRankingType.UgcPreviousSeason => HomeCommend(type, seasonId, userName),
             GameRankingType.UgcPersonal or GameRankingType.UgcPersonalPreviousSeason => PersonalHomeCommend(type, seasonId, accountId),
             _ => new ByteWriter(),
@@ -411,6 +413,36 @@ public class WebController : ControllerBase {
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
             using GameStorage.Request db = gameStorage.Context();
             ByteWriter writer = DarkStreamRanking.Board(db, type, jobCode, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter ArcadeBoard(GameRankingType type, int arcadeId, int seasonId, string userName) {
+        string cacheKey = $"Arcade_{type}_{arcadeId}_{seasonId}_{SearchKey(userName)}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = ArcadeRanking.Board(db, type, arcadeId, seasonId, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalArcade(GameRankingType type, int arcadeId, int seasonId, long characterId) {
+        string cacheKey = $"PersonalArcade_{type}_{arcadeId}_{seasonId}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = ArcadeRanking.Personal(db, type, arcadeId, seasonId, characterId);
             cachedData = writer.Buffer[..writer.Length];
             cache.Set(cacheKey, cachedData, RankingCacheDuration);
         }
