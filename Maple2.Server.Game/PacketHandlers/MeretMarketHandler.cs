@@ -829,10 +829,9 @@ public class MeretMarketHandler : FieldPacketHandler {
                 session.Currency.ChangeMeso(-price);
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.Meret:
-                if (session.Currency.CanAddMeret(-price) != -price) {
+                if (!session.Currency.TryTakeMeret(price)) {
                     return StringCode.s_err_lack_merat;
                 }
-                session.Currency.ChangeMeret(-price);
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.RedMeret:
                 if (session.Currency.CanAddGameMeret(-price) != -price) {

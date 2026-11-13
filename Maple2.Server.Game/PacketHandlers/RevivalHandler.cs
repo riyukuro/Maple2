@@ -174,7 +174,16 @@ public class RevivalHandler : FieldPacketHandler {
             return;
         }
 
+        // The merets are taken before the revive, without a packet (another thread can take them too: a wedding hall
+        // paid by the partner), shown after it as before, and given back when the revive does not happen.
+        if (!useCoupon && !session.Currency.TryTakeMeret(cost, notify: false)) {
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+            return;
+        }
         if (!session.Player.Revive(true)) {
+            if (!useCoupon) {
+                session.Currency.ReturnMeret(cost);
+            }
             return;
         }
         session.Player.Tombstone = null;
@@ -183,7 +192,7 @@ public class RevivalHandler : FieldPacketHandler {
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
             }
         } else {
-            session.Currency.ChangeMeret(-cost);
+            session.Currency.NotifyMeretTaken(cost);
         }
         if (debuffCode != 0) {
             session.Player.Buffs.AddBuff(session.Player, session.Player, debuffCode, 1, session.Field.FieldTick);

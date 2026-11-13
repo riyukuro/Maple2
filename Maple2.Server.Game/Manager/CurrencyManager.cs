@@ -1,7 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
-using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -69,8 +68,10 @@ public class CurrencyManager {
 
     // Takes amount when at least that much is held, checked and taken in one step (packet and use_merat as a take).
     // With notify false nothing is sent or reported: the caller calls NotifyMeretTaken once what was paid for is
-    // stored, or ReturnMeret.
-    public bool TryTakeMeret(long amount, bool notify = true) {
+    // stored, or ReturnMeret. The merets are taken on other threads too (a wedding hall paid by the partner), so a
+    // payer's own check of the balance can be out of date at its take: a take there goes through this, not
+    // ChangeMeret, which throws. reportSpent false: the packet is sent and the caller reports the spend itself.
+    public bool TryTakeMeret(long amount, bool notify = true, bool reportSpent = true) {
         if (amount < 0) {
             return false;
         }
@@ -85,7 +86,9 @@ public class CurrencyManager {
             }
             change = SetMeretLocked(Currency.Meret - amount);
         }
-        ReportMeretSpent(change);
+        if (reportSpent) {
+            ReportMeretSpent(change);
+        }
         return true;
     }
 
@@ -98,14 +101,21 @@ public class CurrencyManager {
     }
 
     // Gives back a TryTakeMeret(amount, notify: false) and sends the balance (a Meret packet sent meanwhile showed it
-    // without the take). Chosen here: sent with a change of 0, as the take was never shown.
+    // without the take). Chosen here: sent with a change of 0, as the take was never shown. As ReturnMeso, the
+    // give-back stops at MaxMeret and a part over it is logged.
     public void ReturnMeret(long amount) {
         if (amount <= 0) {
             return;
         }
+        long over;
         lock (walletLock) {
-            Currency.Meret += Math.Min(amount, Constant.MaxMeret - Currency.Meret);
+            long room = Constant.MaxMeret - Currency.Meret;
+            over = Math.Max(0, amount - room);
+            Currency.Meret += amount - over;
             session.Send(CurrencyPacket.UpdateMeret(Currency, 0));
+        }
+        if (over > 0) {
+            logger.Warning("Meret give-back of {Amount} for {CharacterId} over the cap by {Over}", amount, session.CharacterId, over);
         }
     }
 
@@ -334,11 +344,10 @@ public class CurrencyManager {
 
             long delta;
             ConditionType? condition;
-            ByteWriter packet;
             lock (walletLock) {
-                delta = SetLocked(type, value, out condition, out packet);
+                delta = SetLocked(type, value, out condition);
             }
-            Report(condition, delta, packet);
+            Report(condition, delta);
         }
     }
 
@@ -348,27 +357,27 @@ public class CurrencyManager {
     public void Change(CurrencyType type, long delta) {
         long change;
         ConditionType? condition;
-        ByteWriter packet;
         lock (walletLock) {
             long value = this[type] + delta;
             if (value < 0) {
                 throw new ArgumentException($"Not enough {type}");
             }
-            change = SetLocked(type, value, out condition, out packet);
+            change = SetLocked(type, value, out condition);
         }
-        Report(condition, change, packet);
+        Report(condition, change);
     }
 
-    // A gain is counted by its condition (get_honor_token and the like) after the lock is let go, then the balance
-    // packet built under the lock is sent: the order the setter sent them in.
-    private void Report(ConditionType? condition, long delta, ByteWriter packet) {
+    // A gain is counted by its condition (get_honor_token and the like) after the lock is let go. The balance packet
+    // is sent under the lock (SetLocked), as the meso and meret packets are: each carries the whole balance, and one
+    // sent after the lock could reach the client after a later change's packet, showing a stale balance. Chosen here:
+    // the packet now comes before the condition's updates (the setter sent the condition first).
+    private void Report(ConditionType? condition, long delta) {
         if (condition != null && delta > 0) {
             session.ConditionUpdate(condition.Value, delta);
         }
-        session.Send(packet);
     }
 
-    private long SetLocked(CurrencyType type, long value, out ConditionType? condition, out ByteWriter packet) {
+    private long SetLocked(CurrencyType type, long value, out ConditionType? condition) {
         condition = null;
         long delta;
         long overflow;
@@ -430,7 +439,7 @@ public class CurrencyManager {
                 throw new ArgumentOutOfRangeException(nameof(type), type, "Invalid currency type.");
         }
 
-        packet = CurrencyPacket.UpdateCurrency(Currency, type, delta, overflow);
+        session.Send(CurrencyPacket.UpdateCurrency(Currency, type, delta, overflow));
         return delta;
     }
 }

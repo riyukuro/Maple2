@@ -155,7 +155,9 @@ public class SkillManager {
                 }
                 break;
             case SkillBookRules.ExpandPayment.Meret:
-                session.Currency.ChangeMeret(-price);
+                if (!session.Currency.TryTakeMeret(price)) {
+                    return false;
+                }
                 break;
             default:
                 return false;

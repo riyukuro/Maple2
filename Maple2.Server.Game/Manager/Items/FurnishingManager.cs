@@ -152,7 +152,10 @@ public class FurnishingManager {
                     session.Currency.ChangeMeso(-furnishingShopMetadata.Price);
                     break;
                 case FurnishingCurrencyType.Meret:
-                    session.Currency.ChangeMeret(-furnishingShopMetadata.Price, reportSpent: false);
+                    if (!session.Currency.TryTakeMeret(furnishingShopMetadata.Price, reportSpent: false)) {
+                        error = UgcMapError.s_err_ugcmap_not_enough_merat_balance;
+                        return false;
+                    }
                     break;
             }
         }

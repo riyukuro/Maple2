@@ -298,14 +298,16 @@ public class PartyHandler : FieldPacketHandler {
     // StateRecall with no scroll: the player agreed to pay PartyRecallMerat merets instead.
     private void HandleSummonParty(GameSession session) {
         int price = Constants.PartyRecallMerat;
-        if (session.Currency.CanAddMeret(-price) != -price) {
+        // Taken before the recall goes out, shown after it as before; given back when the recall is not sent.
+        if (!session.Currency.TryTakeMeret(price, notify: false)) {
             return;
         }
         if (!session.Party.Recall()) {
+            session.Currency.ReturnMeret(price);
             return;
         }
 
-        session.Currency.ChangeMeret(-price);
+        session.Currency.NotifyMeretTaken(price);
     }
 
     // Party 32: the dungeon match search (PartyDungeonMatch.ReadSearch). World runs the matchmaker (the user's

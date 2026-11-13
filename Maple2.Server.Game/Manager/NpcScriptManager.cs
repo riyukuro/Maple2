@@ -505,11 +505,7 @@ public sealed class NpcScriptManager {
             session.Currency.ChangeMeso(-salary.Salary);
             return true;
         }
-        if (session.Currency.Meret < salary.Salary) {
-            return false;
-        }
-        session.Currency.ChangeMeret(-salary.Salary);
-        return true;
+        return session.Currency.TryTakeMeret(salary.Salary);
     }
 
     #region EnchantTalk

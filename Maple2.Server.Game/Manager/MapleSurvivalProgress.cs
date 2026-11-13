@@ -47,11 +47,10 @@ public static class MapleSurvivalProgress {
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
         MapleSurvivalTable.Period? period = table == null ? null : SurvivalRules.CurrentPeriod(table, DateTime.Now);
-        if (!paid || period == null || account.ActiveGoldPass || price != period.PassPrice || session.Currency.Meret < period.PassPrice) {
+        if (!paid || period == null || account.ActiveGoldPass || price != period.PassPrice || !session.Currency.TryTakeMeret(period.PassPrice)) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
         }
-        session.Currency.ChangeMeret(-period.PassPrice);
         account.ActiveGoldPass = true;
         // survival_buy_gold_pass (23200042 "(Account) Royalety: Activate {0} Gold Royale Pass").
         session.ConditionUpdate(ConditionType.survival_buy_gold_pass);

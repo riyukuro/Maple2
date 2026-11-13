@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -15,18 +17,70 @@ namespace Maple2.Server.Tests.Game.Manager;
 public class WalletChangeThreadsTests {
     private const int Count = 20000;
 
-    private static void TwoThreads(Action change) {
+    private static void TwoThreads(Action change) => TwoThreads(change, change);
+
+    private static void TwoThreads(Action mine, Action others) {
         using var start = new Barrier(2);
-        void Run() {
+        void Run(Action change) {
             start.SignalAndWait();
             for (int i = 0; i < Count; i++) {
                 change();
             }
         }
-        var other = new Thread(Run);
+        var other = new Thread(() => Run(others));
         other.Start();
-        Run();
+        Run(mine);
         other.Join();
+    }
+
+    // A wallet's packet is sent in the change's step, so the packets show the balances in the order they were
+    // reached and the last one shows the final balance. Before, a packet went after the lock and a later
+    // balance could be shown before an earlier one.
+    [Test]
+    public void TokenPackets_InBalanceOrder() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.TakeSent();
+        TwoThreads(() => session.Currency.Change(CurrencyType.StarPoint, 1));
+        List<long> shown = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.CurrencyToken)
+            .Select(packet => BitConverter.ToInt64(packet, 3)).ToList();
+        Assert.That(shown, Is.EqualTo(Enumerable.Range(1, 2 * Count).Select(value => (long) value)));
+    }
+
+    // A payer's check of its merets can be out of date at the take: another thread (a wedding hall paid by the
+    // partner) can take them between the two. The style slot extend then refuses as a lack of merets; before,
+    // its take threw.
+    [Test]
+    public void StyleSlotExtend_AgainstAnotherTake_RefusedNotThrown() {
+        var test = new TestGameSession();
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
+            BeautyStyleExpandSlotPrice = 980, BeautyStyleExpandSlotCount1time = 3, BeautyStyleMaxSlotCount = 6,
+        });
+        GameSession session = test.Start();
+        session.Beauty = new BeautyManager(session);
+        session.Currency.Meret = 980;
+        int thrown = 0;
+        int extended = 0;
+        TwoThreads(() => {
+            try {
+                if (session.Beauty.ExtendSlots()) {
+                    extended++;
+                    session.Player.Value.Unlock.HairSlotExpand = 0;
+                    session.Currency.ReturnMeret(980);
+                }
+            } catch (ArgumentException) {
+                thrown++;
+            }
+        }, () => {
+            if (session.Currency.TryTakeMeret(980, notify: false)) {
+                session.Currency.ReturnMeret(980);
+            }
+        });
+        Assert.Multiple(() => {
+            Assert.That(thrown, Is.Zero);
+            Assert.That(extended, Is.Positive);
+            Assert.That(session.Currency.Meret, Is.EqualTo(980));
+        });
     }
 
     [Test]

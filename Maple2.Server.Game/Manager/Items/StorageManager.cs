@@ -272,17 +272,19 @@ public sealed class StorageManager : IDisposable {
                 session.Send(StorageInventoryPacket.Error(s_store_err_expand_max));
                 return;
             }
-            if (session.Currency.Meret < Constants.StoreExpandPrice1Row) {
+            // Taken before the expand (which cannot be undone) and shown at the old place, after it.
+            if (!session.Currency.TryTakeMeret(Constants.StoreExpandPrice1Row, notify: false)) {
                 session.Send(StorageInventoryPacket.Error(s_cannot_charge_merat));
                 return;
             }
 
             if (!items.Expand(newSize)) {
+                session.Currency.ReturnMeret(Constants.StoreExpandPrice1Row);
                 session.Send(StorageInventoryPacket.Error(s_store_err_code));
                 return;
             }
 
-            session.Currency.ChangeMeret(-Constants.StoreExpandPrice1Row);
+            session.Currency.NotifyMeretTaken(Constants.StoreExpandPrice1Row);
             expand += Constant.InventoryExpandRowCount;
 
             // The client's reader of the expansion (CStore::Dispatch 0xd) sets the store's capacity; the items and

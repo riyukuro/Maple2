@@ -694,12 +694,10 @@ public sealed class ShopManager {
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:
-                if (session.Currency.CanAddMeret(-price) != -price) {
+                if (!session.Currency.TryTakeMeret(price)) {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_merat));
                     return false;
                 }
-
-                session.Currency.ChangeMeret(-price);
                 break;
             case ShopCurrencyType.GameMeret:
                 if (session.Currency.CanAddGameMeret(-price) != -price) {

@@ -203,7 +203,12 @@ public class UgcHandler : FieldPacketHandler {
                         session.Currency.ChangeMeso(-price);
                         break;
                     case MeretMarketCurrencyType.Meret:
-                        session.Currency.ChangeMeret(-price);
+                        // Another thread can take merets between the check and here (a wedding hall paid by
+                        // the partner): then answered as the lack branch does.
+                        if (!session.Currency.TryTakeMeret(price)) {
+                            session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
+                            return UgcError.Refused;
+                        }
                         break;
                     case MeretMarketCurrencyType.RedMeret:
                         session.Currency.ChangeGameMeret(-price);
@@ -299,7 +304,9 @@ public class UgcHandler : FieldPacketHandler {
             Logger.Warning("Refused banner upload {BannerId} from {CharacterId}", bannerId, session.CharacterId);
             return UgcError.Refused;
         }
-        if (session.Currency.Meret < fee) {
+        // Taken here without a packet (another thread can take merets too: a wedding hall paid by the partner),
+        // shown once the resource is made, and given back when it is not.
+        if (!session.Currency.TryTakeMeret(fee, notify: false)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
             return UgcError.Refused;
         }
@@ -308,10 +315,11 @@ public class UgcHandler : FieldPacketHandler {
         using WebStorage.Request request = WebStorage.Context();
         UgcResource? resource = request.CreateUgc(UgcType.Banner, session.CharacterId);
         if (resource == null) {
+            session.Currency.ReturnMeret(fee);
             Logger.Fatal("Failed to create UGC resource for banner {BannerId}", bannerId);
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {bannerId}");
         }
-        session.Currency.ChangeMeret(-fee);
+        session.Currency.NotifyMeretTaken(fee);
         session.UgcFees.Paid(new UgcPendingFee(session.CharacterId, resource.Id, MeretMarketCurrencyType.Meret, fee, 0));
 
         UgcItemLook ugc = new() {

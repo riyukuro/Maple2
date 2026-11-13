@@ -151,12 +151,10 @@ public class TaxiHandler : FieldPacketHandler {
         }
 
         long price = TaxiRules.AirFare(Constants.MeratAirTaxiPrice, AirTaxiReduceRate(session));
-        if (session.Currency.Meret < price) {
+        if (!session.Currency.TryTakeMeret(price)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
             return;
         }
-
-        session.Currency.ChangeMeret(-price);
 
         session.Send(session.PrepareField(mapId)
             ? FieldEnterPacket.Request(session.Player)

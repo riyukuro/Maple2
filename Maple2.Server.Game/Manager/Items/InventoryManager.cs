@@ -753,17 +753,21 @@ public class InventoryManager {
                 return false;
             }
 
-            if (charge && session.Currency.Meret < Constants.InventoryExpandPrice1Row) {
+            // Taken before the expand (which cannot be undone) and shown at the old place, after it.
+            if (charge && !session.Currency.TryTakeMeret(Constants.InventoryExpandPrice1Row, notify: false)) {
                 session.Send(ItemInventoryPacket.Error(s_cannot_charge_merat));
                 return false;
             }
 
             if (!items.Expand((short) (BaseSize(type) + newExpand))) {
+                if (charge) {
+                    session.Currency.ReturnMeret(Constants.InventoryExpandPrice1Row);
+                }
                 return false;
             }
 
             if (charge) {
-                session.Currency.ChangeMeret(-Constants.InventoryExpandPrice1Row);
+                session.Currency.NotifyMeretTaken(Constants.InventoryExpandPrice1Row);
             }
             session.Player.Value.Unlock.Expand[type] = newExpand;
 

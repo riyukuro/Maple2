@@ -209,9 +209,17 @@ public class AttendanceHandler : FieldPacketHandler {
                 return;
         }
 
+        // The merets are held before the gift without a packet (another thread can take merets too: a wedding hall
+        // paid by the partner) and given back when the gift fails; the packet goes where the take was.
+        long meretPrice = step == AttendanceRules.PayStep.Meret ? attendGift.Pay!.Price : 0;
+        if (meretPrice > 0 && !session.Currency.TryTakeMeret(meretPrice, notify: false)) {
+            session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMerat));
+            return;
+        }
+
         // The gift first: the price is taken and the bought day counted only when the mail is stored,
         // so a failed gift costs nothing. The coupon was tested above, so its consume does not fail.
-        AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent), () => {
+        bool given = AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent), () => {
             switch (step) {
                 case AttendanceRules.PayStep.Coupon:
                     session.Item.Inventory.Consume(couponUid, 1);
@@ -220,10 +228,17 @@ public class AttendanceHandler : FieldPacketHandler {
                     session.Currency.ChangeMeso(-(attendGift.Pay!.Price));
                     break;
                 case AttendanceRules.PayStep.Meret:
-                    session.Currency.ChangeMeret(-attendGift.Pay!.Price);
+                    if (meretPrice > 0) {
+                        session.Currency.NotifyMeretTaken(meretPrice);
+                    } else {
+                        session.Currency.ChangeMeret(-attendGift.Pay!.Price);
+                    }
                     break;
             }
             session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, paid + 1);
         });
+        if (!given && meretPrice > 0) {
+            session.Currency.ReturnMeret(meretPrice);
+        }
     }
 }

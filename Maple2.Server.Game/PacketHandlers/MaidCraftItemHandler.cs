@@ -275,12 +275,8 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     return;
                 }
                 // The merets are taken before the add, under the same lock, so a balance spent meanwhile is found
-                // before anything is given (the setter refuses a negative balance).
-                try {
-                    if (cost > 0) {
-                        session.Currency.ChangeMeret(-cost);
-                    }
-                } catch (ArgumentException) {
+                // before anything is given (TryTakeMeret checks and takes in one step).
+                if (cost > 0 && !session.Currency.TryTakeMeret(cost)) {
                     if (!field.SetMaidCraft(found, recipeId, start, duration)) {
                         Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret receive",
                             recipeId, maidUid);

@@ -271,11 +271,10 @@ public sealed class PetManager : IDisposable {
 
         int cost = PetRules.RenameCost(ItemPet.RenameRemaining, session.ServerTableMetadata.ConstantsTable.PetChangeNameMerat);
         if (cost > 0) {
-            if (session.Currency.CanAddMeret(-cost) != -cost) {
+            if (!session.Currency.TryTakeMeret(cost)) {
                 session.Send(PetPacket.Error(PetError.s_err_lack_merat_ask));
                 return;
             }
-            session.Currency.ChangeMeret(-cost);
         }
 
         ItemPet.Name = name;

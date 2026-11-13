@@ -270,11 +270,10 @@ public class UserChatHandler : FieldPacketHandler {
                 meretCost -= (int) (meretCost * Convert.ToSingle(gameEvent.WorldChatDiscount) / 10000);
             }
 
-            if (session.Currency.Meret < meretCost) {
+            if (!session.Currency.TryTakeMeret(meretCost)) {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
                 return;
             }
-            session.Currency.ChangeMeret(-meretCost);
         }
 
         var request = new ChatRequest {
@@ -307,11 +306,10 @@ public class UserChatHandler : FieldPacketHandler {
                 meretCost -= (int) (meretCost * Convert.ToSingle(gameEvent.ChannelChatDiscount) / 10000);
             }
 
-            if (session.Currency.Meret < meretCost) {
+            if (!session.Currency.TryTakeMeret(meretCost)) {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
                 return;
             }
-            session.Currency.ChangeMeret(-meretCost);
         }
 
         // The linked items go first, as in the other lines; channel chat sent none, so its item links showed nothing.

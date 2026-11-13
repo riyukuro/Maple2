@@ -870,8 +870,9 @@ public class RequestCubeHandler : FieldPacketHandler {
                 return;
             }
 
-            long negAmount = -1 * blueprintCost;
-            if (session.Currency.CanAddMeret(negAmount) != negAmount) {
+            // Taken here without a packet (another thread can take merets too: a wedding hall paid by the partner),
+            // given back when a row cannot be made, and shown where the take was before.
+            if (!session.Currency.TryTakeMeret(blueprintCost, notify: false)) {
                 session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
                 return;
             }
@@ -888,6 +889,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             };
             HomeLayout? layout = db.SaveHomeLayout(homeLayout);
             if (layout is null) {
+                session.Currency.ReturnMeret(blueprintCost);
                 Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
                 session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
                 return;
@@ -910,12 +912,13 @@ public class RequestCubeHandler : FieldPacketHandler {
             Item? created = db.CreateItem(session.CharacterId, item);
             if (created is null) {
                 db.RemoveHomeLayout(layout);
+                session.Currency.ReturnMeret(blueprintCost);
                 Logger.Error("Failed to create blueprint item for {CharacterId}", session.CharacterId);
                 session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
                 return;
             }
 
-            session.Currency.ChangeMeret(-blueprintCost);
+            session.Currency.NotifyMeretTaken(blueprintCost);
             // The room was checked under the same lock, so the add takes it; should it not, the paid item goes by mail,
             // and the request is answered with a failure so the client's upload dialog does not wait on it (before, no
             // answer was sent). Chosen here: no extra notice says the blueprint was mailed.

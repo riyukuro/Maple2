@@ -367,11 +367,7 @@ public class HousingManager {
                 session.Currency.ChangeMeso(-cost);
                 return true;
             case 90000004 or 90000011 or 90000015 or 90000016:
-                if (session.Currency.Meret < cost) {
-                    return false;
-                }
-                session.Currency.ChangeMeret(-cost);
-                return true;
+                return session.Currency.TryTakeMeret(cost);
         }
         return false;
     }
@@ -1197,6 +1193,11 @@ public class HousingManager {
                     (session.Currency.CanAddMeso(-mesoCost) != -mesoCost || session.Currency.CanAddMeret(-meratCost) != -meratCost)) {
                     error = HomeBuildRules.Refused;
                 }
+                // A raise of the merets is taken first, without a packet: it is the take another thread can come
+                // before (a wedding hall paid by the partner); its packet goes after the meso one, as before.
+                if (error == UgcMapError.s_ugcmap_ok && meratCost > 0 && !session.Currency.TryTakeMeret(meratCost, notify: false)) {
+                    error = HomeBuildRules.Refused;
+                }
                 if (error != UgcMapError.s_ugcmap_ok) {
                     session.Send(CubePacket.UpdateBuildBudget((byte) error));
                     return;
@@ -1205,7 +1206,9 @@ public class HousingManager {
                 if (mesoCost != 0) {
                     session.Currency.ChangeMeso(-mesoCost);
                 }
-                if (meratCost != 0) {
+                if (meratCost > 0) {
+                    session.Currency.NotifyMeretTaken(meratCost);
+                } else if (meratCost < 0) {
                     session.Currency.ChangeMeret(-meratCost);
                 }
                 Home.BuildMeso = meso;

@@ -83,12 +83,21 @@ public class SmartPushHandler : PacketHandler<GameSession> {
             return;
         }
 
+        // The merets are taken before the item, without a packet (another thread can take them too: a wedding hall
+        // paid by the partner), and shown where they were taken before; a failed item take gives them back.
+        long meretCost = package == null ? metadata.MeretCost : Math.Max(0, package.MeretCost);
+        if (meretCost > 0 && !session.Currency.TryTakeMeret(meretCost, notify: false)) {
+            return;
+        }
         if (!TakeRequiredItem(session, metadata)) {
+            session.Currency.ReturnMeret(meretCost);
             return;
         }
 
         if (package != null) {
             PayPackage(session, metadata, package);
+        } else if (meretCost > 0) {
+            session.Currency.NotifyMeretTaken(meretCost);
         } else {
             session.Currency.ChangeMeret(-metadata.MeretCost);
         }
@@ -135,7 +144,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         return found;
     }
 
-    // The caller has tested the price.
+    // The caller has tested the price and taken the merets (TryTakeMeret without a packet).
     private static void PayPackage(GameSession session, SmartPushMetadata smartPushMetadata, AutoActionMetaData packageMetadata) {
         SmartPushCurrencyType currencyType;
         if (packageMetadata.MeretCost > 0) {
@@ -149,7 +158,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         // Check if player has enough currency
         switch (currencyType) {
             case SmartPushCurrencyType.Meret:
-                session.Currency.ChangeMeret(-packageMetadata.MeretCost);
+                session.Currency.NotifyMeretTaken(packageMetadata.MeretCost);
                 break;
             case SmartPushCurrencyType.Meso:
                 session.Currency.ChangeMeso(-packageMetadata.MesoCost);

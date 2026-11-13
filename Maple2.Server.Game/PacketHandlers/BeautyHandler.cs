@@ -610,12 +610,10 @@ public class BeautyHandler : FieldPacketHandler {
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret: // TODO: EventMeret?
             case ShopCurrencyType.GameMeret:
-                if (session.Currency.CanAddMeret(-cost.Price) != -cost.Price) {
+                if (!session.Currency.TryTakeMeret(cost.Price)) {
                     session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
                     return false;
                 }
-
-                session.Currency.ChangeMeret(-cost.Price);
                 break;
             case ShopCurrencyType.Item:
                 var ingredient = new ItemComponent(cost.PaymentItemId, -1, cost.Price, ItemTag.None);

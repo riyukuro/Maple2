@@ -132,7 +132,10 @@ public class EventRewardHandler : FieldPacketHandler {
                 session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points - 1);
                 break;
             case LongTermAttendRules.AttendStep.Merat:
-                session.Currency.ChangeMeret(-gift.Merat);
+                if (!session.Currency.TryTakeMeret(gift.Merat)) {
+                    Logger.Debug("LongTermAttend from {CharacterId} refused: {Step}", session.CharacterId, LongTermAttendRules.AttendStep.NoMerat);
+                    return;
+                }
                 break;
             default:
                 // The client checks the same before it sends; it has no reply for a refusal.
