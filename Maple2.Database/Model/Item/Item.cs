@@ -100,7 +100,7 @@ internal class Item {
             Slot = Slot,
             Group = Group,
             CreationTime = CreationTime.ToEpochSeconds(),
-            ExpiryTime = Maple2.Model.Game.Item.LoadedExpiry(ExpiryTime.ToEpochSeconds(), metadata.Life.ExpirationTimestamp, DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
+            ExpiryTime = Maple2.Model.Game.Item.LoadedExpiry(ExpiryTime.ToEpochSeconds(), metadata.Life, DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
             TimeChangedOption = TimeChangedOption,
             RemainUses = RemainUses,
             IsLocked = IsLocked,

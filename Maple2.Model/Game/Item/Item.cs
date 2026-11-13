@@ -196,7 +196,7 @@ public class Item : IByteSerializable, IByteDeserializable {
 #if DEBUG
             return (long) (DateTime.Now.AddYears(1).ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
 #else
-            return FixedExpiry(Metadata.Life.ExpirationTimestamp, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            return MadeExpiry(Metadata.Life, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 #endif
         }
 
@@ -206,17 +206,31 @@ public class Item : IByteSerializable, IByteDeserializable {
         return 0;
     }
 
+    // The expiry an item is made with: its fixed end date while that is ahead (FixedExpiry), else its lifetime from
+    // now (usePeriod, weeks or months), else none. An item of a past end date and a lifetime lasts that lifetime.
+    public static long MadeExpiry(ItemMetadataLife life, long now) {
+        long fixedEnd = FixedExpiry(life.ExpirationTimestamp, now);
+        if (fixedEnd > 0) {
+            return fixedEnd;
+        }
+        return life.ExpirationDuration > 0 ? now + life.ExpirationDuration : 0;
+    }
+
     // The expiry an item of a fixed end date (life expirationTimestamp) is made with. Every such date in the item data
     // is past (the latest is 2020-03-01), and the client takes the expiry the server sends (CItem::IsExpired,
     // commonfiles/item.cpp:1303): an item made with one was expired from the start, so no price or deck took it (a
     // card game's coins, 30000536). Chosen here: a date already past when the item is made gives no expiry.
     public static long FixedExpiry(long timestamp, long now) => timestamp > now ? timestamp : 0;
 
-    // The expiry a stored item is loaded with. A row made before FixedExpiry holds its item's past fixed end date and
-    // was expired from the start: it loads with no expiry, which its next save stores (the loaded values differ, so
-    // the row is not seeded as saved).
-    public static long LoadedExpiry(long stored, long timestamp, long now) =>
-        stored > 0 && stored == timestamp && FixedExpiry(timestamp, now) == 0 ? 0 : stored;
+    // Whether a stored expiry is its item's past fixed end date: a row made before FixedExpiry, expired from the start.
+    public static bool HoldsPastFixedEnd(long stored, long timestamp, long now) =>
+        stored > 0 && stored == timestamp && FixedExpiry(timestamp, now) == 0;
+
+    // The expiry a stored item is loaded with. A row holding its item's past fixed end date loads with the expiry the
+    // item is made with now (MadeExpiry), which its next save stores (the loaded values differ, so the row is not
+    // seeded as saved).
+    public static long LoadedExpiry(long stored, ItemMetadataLife life, long now) =>
+        HoldsPastFixedEnd(stored, life.ExpirationTimestamp, now) ? MadeExpiry(life, now) : stored;
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(Amount);

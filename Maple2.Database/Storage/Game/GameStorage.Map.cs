@@ -1081,7 +1081,10 @@ public partial class GameStorage {
                 Rotation = model.Rotation,
                 Interact = ToInteractCube(model.Interact),
                 Type = PlotCube.CubeType.Construction,
-                ExpiryTime = model.ExpiryTime,
+                // A cube placed holding its item's past fixed end date loads with none, so a pickup gives back the
+                // expiry a new item is made with (FurnishingManager.KeptExpiry), not an expired item.
+                ExpiryTime = Maple2.Model.Game.Item.HoldsPastFixedEnd(model.ExpiryTime, itemMetadata.Life.ExpirationTimestamp,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds()) ? 0 : model.ExpiryTime,
             };
         }
 
