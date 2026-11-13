@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Tools.Collision;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Util;
 
@@ -191,10 +192,11 @@ public static class NpcProjectileRules {
     // position + extent, CMagic::UpdateTargetPosition).
     public static Vector3 AimPoint(Vector3 position, float height) => position + new Vector3(0, 0, height / 2);
 
-    // How far along the travel a point is, to take the nearest hit first.
-    public static float Along(Vector3 from, Vector3 forward, Vector3 point) {
-        return (point.X - from.X) * forward.X + (point.Y - from.Y) * forward.Y;
-    }
+    // The order of a step's hits: the attack's direction (nearest ahead when it has none), from the step's start,
+    // facing the travel (the client's m_kDir is the aim matrix's first column and m_kRight that cross z, the same
+    // frame as a facing angle's).
+    public static TargetSort StepSort(SkillMetadataAttack attack, Vector3 from, Vector3 facing) =>
+        new(attack.Direction ?? 3, from, Vector3.Zero.Angle2D(facing));
 
     // The flight of one shot, one Step at a time from its spawn (Delay after the target packet).
     public sealed class Flight {

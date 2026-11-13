@@ -252,4 +252,20 @@ public class NpcProjectileRulesTests {
         Assert.That(flight.Next(new Vector3(0, 1000, 0))!.Value.Arrived, Is.False);
         Assert.That(flight.Next(new Vector3(0, 1000, 0))!.Value.Arrived, Is.True);
     }
+
+    // A step's hits are put in the attack's order (nearest ahead without one) from the step's start, facing the
+    // travel: travel (1, 0) is facing 90, whose forward is (1, 0).
+    [Test]
+    public void AStepSortsItsHitsFromItsStartFacingTheTravel() {
+        SkillMetadataAttack Attack(int? direction) => new("p0", 0, 1, 0, 0, 0, 0, [], null, null!, Wave(), null!, [], [],
+            Direction: direction);
+        TargetSort sort = NpcProjectileRules.StepSort(Attack(null), new Vector3(5, 6, 7), Vector3.UnitX);
+        Assert.Multiple(() => {
+            Assert.That(sort.Direction, Is.EqualTo(3));
+            Assert.That(sort.Origin, Is.EqualTo(new Vector3(5, 6, 7)));
+            Assert.That(sort.Degrees, Is.EqualTo(90).Within(1e-3));
+            Assert.That(NpcProjectileRules.StepSort(Attack(4), Vector3.Zero, -Vector3.UnitY).Degrees, Is.EqualTo(0).Within(1e-3));
+            Assert.That(NpcProjectileRules.StepSort(Attack(4), Vector3.Zero, -Vector3.UnitY).Direction, Is.EqualTo(4));
+        });
+    }
 }

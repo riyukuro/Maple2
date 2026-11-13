@@ -10,27 +10,28 @@ using Maple2.Tools.Collision;
 namespace Maple2.Server.Game.Util;
 
 public static class SkillUtils {
-    public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle, ApplyTargetType applyTarget) {
+    // An attack's area at position facing angle, placed as the client places its collision shape (StateSkill
+    // FUN_1417e95a0: DetectWithEulerRotation at the position plus the range offset turned to the facing, rotated by
+    // the facing plus the range's z rotation). An attack of method type 1 takes neither the offset nor the rotation.
+    public static Prism GetPrism(this SkillMetadataAttack attack, in Vector3 position, float angle,
+            ApplyTargetType applyTarget = ApplyTargetType.None) =>
+        attack.Range.GetPrism(position, angle, applyTarget, attack.AttackMethodType != 1);
+
+    public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle, ApplyTargetType applyTarget, bool placed = true) {
+        Vector3 offset = placed ? TurnOffset(range.RangeOffset, angle) : Vector3.Zero;
+        float adjustedAngle = angle + (placed ? range.RotateZDegree : 0) + 180;
+        var origin = new Vector2(position.X + offset.X, position.Y + offset.Y);
+        float bottom = position.Z + offset.Z;
         // Region buffs use the same box shape but are centered on the target instead of projecting forward from the caster.
         if (range.Type == SkillRegion.Box && applyTarget is ApplyTargetType.RegionBuff or ApplyTargetType.RegionBuff2) {
-            float adjustedAngle = angle + range.RotateZDegree + 180;
             float length = range.Distance + range.RangeAdd.Y;
             float width = range.Width + range.RangeAdd.X;
-            var origin = new Vector2(position.X + range.RangeOffset.X, position.Y + range.RangeOffset.Y);
-            return new Prism(new Rectangle(origin, width, length, adjustedAngle),
-                position.Z + range.RangeOffset.Z, range.Height + range.RangeAdd.Z);
+            return new Prism(new Rectangle(origin, width, length, adjustedAngle), bottom, range.Height + range.RangeAdd.Z);
         }
-
-        return range.GetPrism(position, angle);
-    }
-
-    public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle) {
         if (range.Type == SkillRegion.None) {
             return new Prism(IPolygon.Null, 0, 0);
         }
 
-        float adjustedAngle = angle + range.RotateZDegree + 180;
-        var origin = new Vector2(position.X + range.RangeOffset.X, position.Y + range.RangeOffset.Y);
         float boxWidth = range.Width + range.RangeAdd.X;
         IPolygon polygon = range.Type switch {
             // Box projects forward from caster (0 to distance), same as Frustum but with equal widths.
@@ -41,8 +42,11 @@ public static class SkillUtils {
             _ => throw new ArgumentOutOfRangeException($"Invalid range type: {range.Type}"),
         };
 
-        return new Prism(polygon, position.Z + range.RangeOffset.Z, range.Height + range.RangeAdd.Z);
+        return new Prism(polygon, bottom, range.Height + range.RangeAdd.Z);
     }
+
+    public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle) =>
+        range.GetPrism(position, angle, ApplyTargetType.None);
 
     // The client's search frame for an attack cast at position facing angle (StateSkill FUN_1417e95a0 setting up the
     // detect context): the origin is the position plus the range offset turned to the facing, the facing is the angle

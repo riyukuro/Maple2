@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
@@ -91,7 +92,7 @@ public class SkillState {
 
         // Apply damage to targets server-side for NPC attacks
         // Always use the attack range prism to resolve targets so spatial checks are respected
-        Tools.Collision.Prism attackPrism = attack.Range.GetPrism(actor.Position, actor.Rotation.Z);
+        Tools.Collision.Prism attackPrism = attack.GetPrism(actor.Position, actor.Rotation.Z);
         var resolvedTargets = new List<IActor>();
         int queryLimit = attack.TargetCount > 0 ? attack.TargetCount : 1;
         // The client never searches for an npc's cast, so its order is the one the client gives a cast it searches for.
@@ -217,11 +218,13 @@ public class SkillState {
             Tools.Collision.Prism box = NpcProjectileRules.SweepBox(from, next, forward, arrow);
             Vector3 travel = next - from;
             Vector3 facing = travel.LengthSquared() > 1e-6f ? Vector3.Normalize(travel) : forward;
-            List<IActor> found = field.GetTargets(actor, [NpcProjectileRules.QueryBox(box)], attack.Range, int.MaxValue)
+            IEnumerable<IActor> inBox = field.GetTargets(actor, [NpcProjectileRules.QueryBox(box)], attack.Range, int.MaxValue)
                 .Where(target => target.ObjectId != actor.ObjectId && !excluded.Contains(target.ObjectId))
-                .Where(target => box.Intersects(HitBox(target)))
-                .OrderBy(target => NpcProjectileRules.Along(from, facing, target.Position))
-                .ToList();
+                .Where(target => box.Intersects(HitBox(target)));
+            // The client's arrow search puts the box's hits in the attack's order, from the step's start facing the
+            // travel (StateSkill FUN_1417e9d20, DetectWithMatrixRotation).
+            List<IActor> found = RangeTargetSelect.Apply(attack.Range.Select, actor, inBox, SkillRegion.Box,
+                NpcProjectileRules.StepSort(attack, from, facing)).ToList();
             foreach (IActor target in found) {
                 hitActors[target.ObjectId] = target;
             }

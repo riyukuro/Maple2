@@ -1271,7 +1271,7 @@ public class DebugFieldRenderer : IFieldRenderer {
                         if (zOffset != 0) {
                             adjustedPoint.Z += zOffset;
                         }
-                        Prism prism = attack.Range.GetPrism(adjustedPoint, angle, attack.Range.ApplyTarget);
+                        Prism prism = attack.GetPrism(adjustedPoint, angle, attack.Range.ApplyTarget);
 
                         RenderPrism(window, prism, attack.Range);
                     }
@@ -1307,7 +1307,7 @@ public class DebugFieldRenderer : IFieldRenderer {
             return;
         }
         SkillMetadataAttack attack = skillRecord.Attack;
-        Prism prism = SkillUtils.GetPrism(attack.Range, actor.Position, actor.Rotation.Z);
+        Prism prism = SkillUtils.GetPrism(attack, actor.Position, actor.Rotation.Z);
 
         RenderPrism(window, prism, attack.Range);
     }

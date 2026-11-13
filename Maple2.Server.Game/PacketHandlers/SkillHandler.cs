@@ -17,6 +17,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -329,8 +330,9 @@ public class SkillHandler : FieldPacketHandler {
             // When the client reports no valid target (TargetId=0), the NPC may have died since the last
             // SubCommand.Target. Do server-side detection to find hittable corpses in attack range.
             if (targets.All(t => t.TargetId == 0) && session.Field != null) {
-                float angle = MathF.Atan2(record.Direction.Y, record.Direction.X) * (180f / MathF.PI);
-                Prism attackPrism = record.Attack.Range.GetPrism(record.Position, angle);
+                // The facing of the cast's direction (0 faces -y, as Angle2D).
+                float angle = Vector3.Zero.Angle2D(record.Direction);
+                Prism attackPrism = record.Attack.GetPrism(record.Position, angle);
                 foreach (FieldNpc npc in attackPrism.Filter(session.Field.Mobs.Values.Where(n => n.IsCorpse), record.Attack.TargetCount)) {
                     record.Targets.TryAdd(npc.ObjectId, npc);
                 }

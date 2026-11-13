@@ -103,7 +103,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 foreach (SkillMetadataAttack attack in motion.Attacks) {
                     float skillAngle = UseDirection ? Rotation.Z : 0;
                     Prism[] prisms = Points
-                        .Select(point => attack.Range.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
+                        .Select(point => attack.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
                         .ToArray();
                     if (Field.GetTargets(Caster, prisms, attack.Range, attack.TargetCount).Any()) {
                         Active = true;
@@ -193,7 +193,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 } else {
                     float skillAngle = UseDirection ? Rotation.Z : 0;
                     Prism[] prisms = Points
-                        .Select(point => attack.Range.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
+                        .Select(point => attack.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
                         .ToArray();
                     IActor[] targets = Field.GetTargets(Caster, prisms, attack.Range, attack.TargetCount).ToArray();
                     // if (targets.Length > 0) {

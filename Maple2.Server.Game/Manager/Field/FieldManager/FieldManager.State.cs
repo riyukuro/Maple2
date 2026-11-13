@@ -976,7 +976,7 @@ public partial class FieldManager {
     }
 
     public IEnumerable<IActor> GetTargets(SkillRecord record, ICollection<IActor>? ignore = null) {
-        Prism[] prisms = [record.Attack.Range.GetPrism(record.ImpactPosition, record.Rotation.Z)];
+        Prism[] prisms = [record.Attack.GetPrism(record.ImpactPosition, record.Rotation.Z)];
         TargetSort sort = record.Attack.GetTargetSort(record.ImpactPosition, record.Rotation.Z);
         return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore, sort);
     }

@@ -344,4 +344,34 @@ public class RangeTargetSelectTests {
             Assert.That(plain.Origin.Y, Is.EqualTo(20).Within(1e-3));
         });
     }
+
+    // The attack's area stands where its search does: the offset turned to the facing and the facing plus the range's z
+    // rotation; an attack of method type 1 takes neither. A box 50 wide, 100 deep, its offset 150 ahead.
+    [Test]
+    public void GetPrism_OffsetIsInFront() {
+        SkillMetadataRange range = Range(null) with {
+            Type = SkillRegion.Box, Distance = 100, Width = 50, RangeOffset = new Vector3(0, 150, 0),
+        };
+        SkillMetadataAttack Attack(int method, float rotate = 0) => new("p0", 0, 1, 0, 0, 0, 0, [], null,
+            range with { RotateZDegree = rotate }, null!, null!, [], [], AttackMethodType: method);
+        Prism ahead = Attack(0).GetPrism(Vector3.Zero, 0);
+        Prism east = Attack(0).GetPrism(Vector3.Zero, 90);
+        Prism turned = Attack(0, rotate: 90).GetPrism(Vector3.Zero, 0);
+        Prism arrow = Attack(1, rotate: 90).GetPrism(Vector3.Zero, 0);
+        Assert.Multiple(() => {
+            // Facing 0 is forward (0, -1): the box runs from y -150 to -250.
+            Assert.That(ahead.Contains(new Vector3(0, -200, 10)), Is.True);
+            Assert.That(ahead.Contains(new Vector3(0, 200, 10)), Is.False, "not behind");
+            Assert.That(ahead.Contains(new Vector3(0, -50, 10)), Is.False, "not at the caster");
+            // Facing 90 is forward (1, 0).
+            Assert.That(east.Contains(new Vector3(200, 0, 10)), Is.True);
+            Assert.That(east.Contains(new Vector3(0, -200, 10)), Is.False);
+            // The z rotation turns the box, not the offset: from (0, -150) it runs along (1, 0).
+            Assert.That(turned.Contains(new Vector3(50, -150, 10)), Is.True);
+            Assert.That(turned.Contains(new Vector3(0, -200, 10)), Is.False);
+            // Method type 1: at the caster, facing (0, -1).
+            Assert.That(arrow.Contains(new Vector3(0, -50, 10)), Is.True);
+            Assert.That(arrow.Contains(new Vector3(0, -200, 10)), Is.False);
+        });
+    }
 }
