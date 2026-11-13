@@ -261,8 +261,10 @@ public class NpcTalkHandler : FieldPacketHandler {
                 CinematicEventScript[] eventScripts = state.Contents.First().Events;
                 session.NpcScript = new NpcScriptManager(session, eventScripts);
                 return;
+            // The merge dialog's result line request (UIItemMergeOptionDialog::RequestResultTalk,
+            // uiitemmergeoptiondialog.cpp:1028, sent once the result is shown, in mode 6 or 4): the smith's line was
+            // already sent after the result (ItemMergeManager), so nothing answers it in either mode.
             case ScriptEventType.EmpowerSelect:
-                session.NpcScript?.EmpowerEvent();
                 return;
             case ScriptEventType.EnchantComplete:
             case ScriptEventType.EnchantRetry:

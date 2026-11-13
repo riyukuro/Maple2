@@ -63,13 +63,6 @@ public sealed class NpcScriptManager {
         this.eventScripts = eventScripts;
     }
 
-    public void EmpowerEvent() {
-        CinematicEventScript script = eventScripts[Index];
-        ScriptContent content = script.Contents[Random.Shared.Next(script.Contents.Length - 1)];
-        session.Send(NpcTalkPacket.Update(content));
-        Index++;
-    }
-
     public bool BeginNpcTalk() {
         if (State == null || Npc == null) {
             session.Send(NpcTalkPacket.Close());
