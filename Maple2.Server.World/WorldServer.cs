@@ -192,6 +192,53 @@ public class WorldServer {
         scheduler.Stop();
     }
 
+    // A reset whose database part fails (RunReset's three tries, a database down) is logged and tried again 5 min
+    // later until it is stored; it does not stop the schedule (each run is guarded here, so the next day's, week's or
+    // month's run comes as planned). A try again is dropped once a later run of the same reset has begun. The
+    // channels are told only once the reset is stored, and a channel that cannot be told does not stop the others
+    // (its sessions take the reset at their next save).
+    private static readonly TimeSpan ResetRetryDelay = TimeSpan.FromMinutes(5);
+    private readonly Dictionary<string, int> resetRuns = new();
+
+    private void GuardedReset(string name, Action<GameStorage.Request> reset, Action? stored) {
+        int run;
+        lock (resetRuns) {
+            run = resetRuns[name] = resetRuns.GetValueOrDefault(name) + 1;
+        }
+        TryReset(name, run, reset, stored);
+    }
+
+    private void TryReset(string name, int run, Action<GameStorage.Request> reset, Action? stored) {
+        lock (resetRuns) {
+            if (resetRuns[name] != run) {
+                return;
+            }
+        }
+        try {
+            using GameStorage.Request db = gameStorage.Context();
+            reset(db);
+        } catch (Exception ex) {
+            logger.Fatal(ex, "{Reset} not stored, tried again in {Delay}", name, ResetRetryDelay);
+            scheduler.Schedule(() => TryReset(name, run, reset, stored), ResetRetryDelay);
+            return;
+        }
+        try {
+            stored?.Invoke();
+        } catch (Exception ex) {
+            logger.Error(ex, "{Reset} stored, its notice failed", name);
+        }
+    }
+
+    private void NotifyChannels(GameResetRequest request) {
+        foreach ((int channelId, ChannelClient channelClient) in channelClients) {
+            try {
+                channelClient.GameReset(request);
+            } catch (Exception ex) {
+                logger.Error(ex, "Channel {ChannelId} not told of the reset", channelId);
+            }
+        }
+    }
+
     #region Daily Reset
     private void StartDailyReset() {
         // Daily reset
@@ -202,7 +249,7 @@ public class WorldServer {
         DateTime now = DateTime.Now;
         var lastMidnight = new DateTime(now.Year, now.Month, now.Day);
         if (lastReset < lastMidnight) {
-            db.DailyReset();
+            GuardedReset("DailyReset", reset => reset.DailyReset(), null);
         }
 
         DateTime nextMidnight = lastMidnight.AddDays(1);
@@ -217,13 +264,9 @@ public class WorldServer {
     }
 
     private void DailyReset() {
-        using GameStorage.Request db = gameStorage.Context();
-        db.DailyReset();
-        foreach ((int channelId, ChannelClient channelClient) in channelClients) {
-            channelClient.GameReset(new GameResetRequest {
-                Daily = new GameResetRequest.Types.Daily(),
-            });
-        }
+        GuardedReset("DailyReset", db => db.DailyReset(), () => NotifyChannels(new GameResetRequest {
+            Daily = new GameResetRequest.Types.Daily(),
+        }));
     }
     #endregion
 
@@ -237,7 +280,7 @@ public class WorldServer {
         DateTime lastResetMidnight = now.Date.AddDays(-daysSinceReset);
 
         if (lastReset < lastResetMidnight) {
-            db.WeeklyReset();
+            GuardedReset("WeeklyReset", reset => reset.WeeklyReset(), null);
         }
 
         DateTime nextReset = now.NextDayOfWeek(Constant.ResetDay).Date;
@@ -253,16 +296,19 @@ public class WorldServer {
     private void WeeklyReset() {
         // The guilds held in memory first: a save of one after the database reset would write the old weekly
         // contribution back.
-        guildLookup.WeeklyReset();
-        using GameStorage.Request db = gameStorage.Context();
-        db.WeeklyReset();
-        foreach ((int channelId, ChannelClient channelClient) in channelClients) {
-            channelClient.GameReset(new GameResetRequest {
+        // A try again of the database part does not reset them again.
+        try {
+            guildLookup.WeeklyReset();
+        } catch (Exception ex) {
+            logger.Fatal(ex, "WeeklyReset: the guilds in memory were not reset");
+        }
+        GuardedReset("WeeklyReset", db => db.WeeklyReset(), () => {
+            NotifyChannels(new GameResetRequest {
                 Weekly = new GameResetRequest.Types.Weekly(),
             });
-        }
-        // Guild 61 cleared the client's vs game ticket (see GuildPacket.WeeklyContributionReset).
-        guildVsGameLookup.ResendTickets();
+            // Guild 61 cleared the client's vs game ticket (see GuildPacket.WeeklyContributionReset).
+            guildVsGameLookup.ResendTickets();
+        });
     }
     #endregion
 
@@ -275,7 +321,7 @@ public class WorldServer {
         DateTime firstOfMonth = new DateTime(now.Year, now.Month, 1);
 
         if (lastReset < firstOfMonth) {
-            db.MonthlyReset();
+            GuardedReset("MonthlyReset", reset => reset.MonthlyReset(), null);
         }
 
         DateTime nextMonth = firstOfMonth.AddMonths(1);
@@ -291,13 +337,9 @@ public class WorldServer {
     }
 
     private void MonthlyReset() {
-        using GameStorage.Request db = gameStorage.Context();
-        db.MonthlyReset();
-        foreach ((int channelId, ChannelClient channelClient) in channelClients) {
-            channelClient.GameReset(new GameResetRequest {
-                Monthly = new GameResetRequest.Types.Monthly(),
-            });
-        }
+        GuardedReset("MonthlyReset", db => db.MonthlyReset(), () => NotifyChannels(new GameResetRequest {
+            Monthly = new GameResetRequest.Types.Monthly(),
+        }));
     }
     #endregion
 

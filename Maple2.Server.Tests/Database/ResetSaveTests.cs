@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
+using System.Threading;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -10,6 +13,7 @@ using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game;
 using Maple2.Tools.Scheduler;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Maple2.Server.Tests.Database;
 
@@ -97,5 +101,115 @@ public class ResetSaveTests {
         Assert.That((session.Player.Value.Account.PrestigeLevelsGained, session.Config.InstantReviveCount), Is.EqualTo((3, 2)));
         Assert.That(session.SessionSave(), Is.True);
         Assert.That(Stored(), Is.EqualTo((3, 2)));
+    }
+
+    private bool Ended => (int) typeof(Maple2.Server.Core.Network.Session).GetField("disconnecting", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)! == 1;
+
+    // A reset being stored, as RunReset holds it: its server-info row is written first and held until the commit
+    // (Dispose without Commit rolls it back). Also holds the rows of this account a daily reset writes.
+    private sealed class ResetHold : IDisposable {
+        private readonly Ms2Context context;
+        private readonly IDbContextTransaction transaction;
+
+        public ResetHold(DbContextOptions options, string key, long accountId, long characterId) {
+            context = new Ms2Context(options);
+            transaction = context.Database.BeginTransaction();
+            context.Database.ExecuteSqlRaw("INSERT INTO `server-info` (`Key`, `LastModified`) VALUES ({0}, {1}) ON DUPLICATE KEY UPDATE `LastModified` = VALUES(`LastModified`)",
+                key, DateTime.Now);
+            if (key == "DailyReset") {
+                context.Database.ExecuteSqlRaw("UPDATE `account` SET `PrestigeLevelsGained` = DEFAULT WHERE `Id` = {0}", accountId);
+                context.Database.ExecuteSqlRaw("UPDATE `character-config` SET `InstantRevivalCount` = 0 WHERE `CharacterId` = {0}", characterId);
+            }
+        }
+
+        public void Commit() => transaction.Commit();
+
+        public void Dispose() {
+            transaction.Dispose();
+            context.Dispose();
+        }
+    }
+
+    // A timed save that finds a reset being stored does not wait for it on the field thread and is no failed save: it
+    // comes back 2 s later, as often as needed, and stores once the reset is done. It used to wait for the lock in the
+    // database (up to 50 s, the field thread held), fail, and its try again ended the session: a reset cut players.
+    [Test]
+    public void TimedSave_ResetRunning_ComesBackLater() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+        session.State = SessionState.Connected;
+        Played();
+        int queued = session.Field!.Scheduler.Count;
+
+        var watch = Stopwatch.StartNew();
+        using (new ResetHold(options, "DailyReset", test.AccountId, test.CharacterId)) {
+            session.TimedSaveOnField(session.Field!);
+            Assert.That((Ended, test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((false, 0, queued + 1)));
+            session.TimedSaveRetry(session.Field!);
+            Assert.That((Ended, test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((false, 0, queued + 2)));
+        }
+        Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the field thread waited for the reset");
+        Assert.That(Stored(), Is.EqualTo((0, 0)));
+
+        // The reset rolled back: the next timed save stores.
+        session.TimedSaveOnField(session.Field!);
+        Assert.That((Ended, Stored()), Is.EqualTo((false, (3, 2))));
+    }
+
+    // A session save (logout, field entry) waits for a reset being stored, then takes it and stores it.
+    [Test]
+    public void SessionSave_ResetRunning_WaitsAndTakesIt() {
+        Played();
+        Assume.That(session.SessionSave(), Is.True);
+        Assume.That(Stored(), Is.EqualTo((3, 2)));
+
+        var hold = new ResetHold(options, "DailyReset", test.AccountId, test.CharacterId);
+        var release = new Thread(() => {
+            Thread.Sleep(1000);
+            hold.Commit();
+            hold.Dispose();
+        });
+        var watch = Stopwatch.StartNew();
+        release.Start();
+        bool saved = session.SessionSave();
+        release.Join();
+        Assert.Multiple(() => {
+            Assert.That((saved, test.Errors.Count), Is.EqualTo((true, 0)));
+            Assert.That(watch.Elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(900)));
+            Assert.That(Stored(), Is.EqualTo((0, 0)));
+            Assert.That((session.Player.Value.Account.PrestigeLevelsGained, session.Config.InstantReviveCount), Is.EqualTo((0, 0)));
+        });
+    }
+
+    // The monthly reset, as the daily one: a save after it takes it and stores it.
+    [Test]
+    public void SaveAfterTheMonthlyReset_StoresTheReset() {
+        session.Player.Value.Account.MesoMarketPurchased = 5;
+        Assume.That(session.SessionSave(), Is.True);
+        Assume.That(StoredMesoPurchased(), Is.EqualTo(5));
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.MonthlyReset();
+        }
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That((StoredMesoPurchased(), session.Player.Value.Account.MesoMarketPurchased), Is.EqualTo((0, 0)));
+    }
+
+    private int StoredMesoPurchased() {
+        using var context = new Ms2Context(options);
+        return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId).MarketLimits.MesoPurchased;
+    }
+
+    // A purchase's save after the reset takes it as the session save does.
+    [Test]
+    public void PurchaseAfterTheReset_TakesTheReset() {
+        Played();
+        Assume.That(session.SessionSave(), Is.True);
+
+        WorldDailyReset();
+        Assert.That(session.SavePurchase(), Is.True);
+        Assert.That((session.Player.Value.Account.PrestigeLevelsGained, session.Config.InstantReviveCount), Is.EqualTo((0, 0)));
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That(Stored(), Is.EqualTo((0, 0)));
     }
 }

@@ -1,9 +1,13 @@
-﻿using Maple2.Database.Model;
+﻿using System.Diagnostics;
+using Maple2.Database.Model;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Maple2.Database.Storage;
+
+// A save's read of the reset times found a reset being stored, and did not wait (or waited its time out).
+public sealed class ResetRunningException(string message) : Exception(message);
 
 public partial class GameStorage {
     // The times of the last daily, weekly and monthly reset the World stored (server-info).
@@ -36,14 +40,49 @@ public partial class GameStorage {
             return model.LastModified;
         }
 
+        private static readonly string[] ResetKeys = ["DailyReset", "WeeklyReset", "MonthlyReset"];
+        private static readonly TimeSpan ResetPoll = TimeSpan.FromMilliseconds(100);
+
+        // MySQL's ER_LOCK_NOWAIT: the row a NOWAIT read asked for is locked. MySqlConnector's exception is read by its
+        // Number (the provider's assembly is not referenced here).
+        private static bool IsLockNowait(Exception? ex) {
+            for (; ex != null; ex = ex.InnerException) {
+                if (ex is System.Data.Common.DbException && ex.GetType().GetProperty("Number")?.GetValue(ex) is 3572) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // The times of the last daily, weekly and monthly reset (DateTime.MinValue for one never run). In an open
-        // transaction on a relational store the rows are read with a share lock: a reset (RunReset, its server-info
-        // row first) cannot commit until this transaction ends, so the rows this transaction reads or writes hold
-        // every reset up to these times and none after them.
-        public ResetStamps GetResetStamps() {
-            List<ServerInfo> rows = IsTransaction && Context.Database.IsRelational()
-                ? Context.ServerInfo.FromSqlRaw("SELECT * FROM `server-info` LOCK IN SHARE MODE").AsNoTracking().ToList()
-                : Context.ServerInfo.AsNoTracking().ToList();
+        // transaction on a relational store the three rows are read with a share lock (by their keys, so the lock
+        // holds only those rows, not the event-run rows of the table nor its gaps; the World makes the three rows at
+        // its start): a reset (RunReset, its server-info row first) cannot commit until this transaction ends, so the
+        // rows this transaction reads or writes hold every reset up to these times and none after them.
+        // A reset being stored holds its row for its whole run (about 1 to 5 s for a daily reset over 50k characters,
+        // up to 30 s before the command times out). The lock is not waited on in the database: the read fails at once
+        // (NOWAIT) and is tried again every 100 ms for up to wait, then ResetRunningException. A save that can come
+        // back later (the timed save) passes no wait and does not hold its field thread; the others wait for the reset.
+        public ResetStamps GetResetStamps(TimeSpan wait = default) {
+            List<ServerInfo> rows;
+            if (IsTransaction && Context.Database.IsRelational()) {
+                var watch = Stopwatch.StartNew();
+                while (true) {
+                    try {
+                        rows = Context.ServerInfo
+                            .FromSqlRaw("SELECT * FROM `server-info` WHERE `Key` IN ('DailyReset', 'WeeklyReset', 'MonthlyReset') FOR SHARE NOWAIT")
+                            .AsNoTracking().ToList();
+                        break;
+                    } catch (Exception ex) when (IsLockNowait(ex)) {
+                        if (watch.Elapsed >= wait) {
+                            throw new ResetRunningException($"a reset is being stored (waited {watch.ElapsedMilliseconds} ms)");
+                        }
+                        Thread.Sleep(ResetPoll);
+                    }
+                }
+            } else {
+                rows = Context.ServerInfo.AsNoTracking().Where(row => ResetKeys.Contains(row.Key)).ToList();
+            }
             return new ResetStamps(Stamp("DailyReset"), Stamp("WeeklyReset"), Stamp("MonthlyReset"));
 
             DateTime Stamp(string key) => rows.FirstOrDefault(row => row.Key == key)?.LastModified ?? DateTime.MinValue;

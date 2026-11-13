@@ -237,7 +237,7 @@ public class SessionSaveTransactionTests {
     }
 
     // One try of the save, without the session save's second try and end: what one failed save stores.
-    private bool SaveOnce() => (bool) typeof(GameSession).GetMethod("Save", BindingFlags.NonPublic | BindingFlags.Instance, Type.EmptyTypes)!.Invoke(session, null)!;
+    private bool SaveOnce() => (bool) typeof(GameSession).GetMethod("Save", BindingFlags.NonPublic | BindingFlags.Instance, [typeof(TimeSpan)])!.Invoke(session, [TimeSpan.FromSeconds(60)])!;
     private bool Ended => (int) typeof(Maple2.Server.Core.Network.Session).GetField("disconnecting", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)! == 1;
 
     // A completion whose quest row is refused pays nothing: the reward items get their rows at once, so the completed
