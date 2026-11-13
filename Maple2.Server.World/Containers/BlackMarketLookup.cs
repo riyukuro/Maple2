@@ -57,19 +57,19 @@ public class BlackMarketLookup : IDisposable {
                 continue;
             }
 
-            if (minEnchantLevel > 0 && listing.Item.Enchant?.Enchants < minEnchantLevel) {
+            if (minEnchantLevel > 0 && (listing.Item.Enchant?.Enchants ?? 0) < minEnchantLevel) {
                 continue;
             }
 
-            if (maxEnchantLevel > 0 && listing.Item.Enchant?.Enchants > maxEnchantLevel) {
+            if (maxEnchantLevel > 0 && (listing.Item.Enchant?.Enchants ?? 0) > maxEnchantLevel) {
                 continue;
             }
 
-            if (minSocketCount > 0 && listing.Item.Socket?.Sockets.Length < minSocketCount) {
+            if (minSocketCount > 0 && (listing.Item.Socket?.Sockets.Length ?? 0) < minSocketCount) {
                 continue;
             }
 
-            if (maxSocketCount > 0 && listing.Item.Socket?.Sockets.Length > maxSocketCount) {
+            if (maxSocketCount > 0 && (listing.Item.Socket?.Sockets.Length ?? 0) > maxSocketCount) {
                 continue;
             }
 

@@ -52,12 +52,12 @@ public class BlackMarketRefusalTests {
     }
 
     // A listing of amount items; by another account unless a seller is given.
-    private BlackMarketListing List(int amount, TestGameSession? seller = null, int days = 1) {
+    private BlackMarketListing List(int amount, TestGameSession? seller = null, int days = 1, ItemSocket? socket = null) {
         test.Register(metadata);
         MoveIdsClear();
         Item item;
         using (GameStorage.Request db = test.Storage.Context()) {
-            item = db.CreateItem(0, new Item(metadata, amount: amount)) ?? throw new InvalidOperationException("item row not created");
+            item = db.CreateItem(0, new Item(metadata, amount: amount) { Socket = socket }) ?? throw new InvalidOperationException("item row not created");
         }
         using (GameStorage.Request db = test.Storage.Context()) {
             return db.CreateBlackMarketingListing(new BlackMarketListing(item) {
@@ -305,6 +305,27 @@ public class BlackMarketRefusalTests {
         Assert.That(db.GetBlackMarketListing(listing.Id), Is.Not.Null);
         Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
         Assert.That(test.World.BlackMarketRequests, Is.Empty);
+    }
+
+    // The search's socket bounds count an item without sockets as 0 sockets: a minimum of 1 leaves it out, as it
+    // leaves out an item with its sockets all locked, and a maximum keeps it.
+    [Test]
+    public void Search_SocketBounds_CountNoSocketsAsZero() {
+        test = new TestGameSession();
+        BlackMarketListing none = List(1);
+        BlackMarketListing locked = List(1, socket: new ItemSocket(3, 0));
+        BlackMarketListing one = List(1, socket: new ItemSocket(3, 1));
+        using var lookup = new Maple2.Server.World.Containers.BlackMarketLookup(test.Storage);
+        string[] categories = { metadata.Property.BlackMarketCategory };
+
+        ICollection<long> Find(int minSockets, int maxSockets) => lookup.Search(categories, 0, 0, JobFilterFlag.None, 0, 0, 0,
+            minSockets, maxSockets, "", 1, BlackMarketSort.PriceAscending, new Dictionary<BasicAttribute, BasicOption>(), new Dictionary<SpecialAttribute, SpecialOption>());
+
+        Assert.Multiple(() => {
+            Assert.That(Find(1, 3), Is.EquivalentTo(new[] { one.Id }));
+            Assert.That(Find(0, 3), Is.EquivalentTo(new[] { none.Id, locked.Id, one.Id }));
+            Assert.That(Find(0, 0), Is.EquivalentTo(new[] { none.Id, locked.Id, one.Id }));
+        });
     }
 
     // The take-back sent again after it went through (a second click, or two sessions): the item is mailed
