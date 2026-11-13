@@ -171,6 +171,33 @@ public class DailyQuestGrantTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // Online across the reset with yesterday's field quest completed: the reset drops it (0x1E) and grants the new
+    // day's pick once; a channel change (Load) after it, done or not, grants nothing more.
+    [Test]
+    public void FieldQuest_OnlineAcrossResetGrantsOnce() {
+        RegisterFieldQuests();
+        int yesterday = FieldQuests.First(id => id != FieldPick());
+        test.Session.QuestMetadata.TryGet(yesterday, out QuestMetadata? metadata);
+        Quest old = test.StartQuest(metadata!);
+        old.State = QuestState.Completed;
+        old.StartTime = Epoch(DateTime.Today.AddDays(-1).AddHours(12));
+        Character.FieldQuestGrantTime = Epoch(DateTime.Today.AddDays(-1));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+        Assert.That(Character.FieldQuestGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+
+        test.Session.Quest.Load();
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+
+        Assert.That(test.Session.Quest.TryGetQuest(FieldPick(), out Quest? quest));
+        quest!.State = QuestState.Completed;
+        test.Session.Quest.Load();
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+        Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // A login between midnight and the reset already granted the day: the reset drops the pick (as the client does on
     // the packet) and starts it again, not completed; once completed, it stays dropped and nothing is granted.
     [Test]
