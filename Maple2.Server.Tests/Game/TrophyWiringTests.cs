@@ -380,8 +380,11 @@ public class TrophyWiringTests {
 
     // A home at level 1 whose plot holds a bed (decoration score 50... see InteriorPointRules) when furnished.
     private (GameSession Session, Plot Plot) StartInHome(bool furnished) {
+        // One reward row a bed's score reaches (the check-in takes the highest row above 0 at or below the score and needs
+        // a box, InteriorRewardRules.RewardPoint); the box has no drops here.
         test.SetTable(new UgcHousingPointRewardTable(new Dictionary<int, UgcHousingPointRewardTable.Entry> {
-            [100] = new(100, 0),
+            [0] = new(0, 330000925),
+            [1] = new(1, 330000925),
         }));
         // Level 2 at 40 exp, level 3 at 1000.
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> {
@@ -438,12 +441,14 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.EqualTo(new[] { SendOp.ResponseCube, SendOp.Achieve }));
     }
 
+    // An empty home scores 0, which reaches only the housingPoint 0 row that is never taken: the check-in is refused
+    // (ResponseCube 0x28, take_interior_gift_fail_from_db), the day stays open and nothing is counted.
     [Test]
     public void CheckIn_OfAnEmptyHomeCountsNoExp() {
         (GameSession session, Plot _) = StartInHome(furnished: false);
 
         CubeHandler().Handle(session, CheckIn());
-        Assert.That(session.Player.Value.Home.DecorationRewardTimestamp, Is.Not.Zero);
+        Assert.That(session.Player.Value.Home.DecorationRewardTimestamp, Is.Zero);
         Assert.That(test.TrophyCounter(ExpTrophy), Is.Null);
         Assert.That(test.TrophyCounter(LevelTrophy), Is.EqualTo(1));
         Assert.That(Sent(), Is.EqualTo(new[] { SendOp.ResponseCube }));

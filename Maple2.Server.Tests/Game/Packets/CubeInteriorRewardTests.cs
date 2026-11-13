@@ -32,6 +32,20 @@ public class CubeInteriorRewardTests {
         Assert.That(InteriorRewardRules.CheckInError(false, true), Is.EqualTo(UgcMapError.s_ugcmap_ok));
     }
 
+    // The row with the highest housingPoint at or below the score; the 0 row is never taken (GetDropBox).
+    [TestCase(0, null)]
+    [TestCase(99, null)]
+    [TestCase(100, 100)]
+    [TestCase(299, 100)]
+    [TestCase(300, 300)]
+    [TestCase(1099, 700)]
+    [TestCase(5000, 1100)]
+    public void RewardPoint(long score, int? expected) {
+        int[] points = [0, 100, 300, 500, 700, 1100];
+        Assert.That(InteriorRewardRules.RewardPoint(points, score), Is.EqualTo(expected));
+        Assert.That(InteriorRewardRules.RewardPoint(new[] { 1100, 700, 500, 300, 100, 0 }, score), Is.EqualTo(expected));
+    }
+
     [Test]
     public void GradeError() {
         int[] claimed = [1, 2];

@@ -595,22 +595,16 @@ public class HousingManager {
 
         int decorationScore = DecorationScore(plot);
 
-        int housingPoint = decorationScore switch {
-            < 300 => 100,
-            < 500 => 300,
-            < 700 => 500,
-            < 1100 => 700,
-            _ => 1100,
-        };
-
-        tableMetadata.UgcHousingPointRewardTable.Entries.TryGetValue(housingPoint, out UgcHousingPointRewardTable.Entry? reward);
-        if (reward is null) {
-            logger.Error("Failed to get reward for decoration score {DecorationScore}.", housingPoint);
+        // The row the client shows and offers (InteriorRewardRules.RewardPoint); a score with no row gets 85, as a box
+        // that cannot be made.
+        UgcHousingPointRewardTable.Entry? reward = null;
+        int? housingPoint = InteriorRewardRules.RewardPoint(tableMetadata.UgcHousingPointRewardTable.Entries.Keys, decorationScore);
+        if (housingPoint is null || !tableMetadata.UgcHousingPointRewardTable.Entries.TryGetValue(housingPoint.Value, out reward) || reward.IndividualDropBoxId <= 0) {
             session.Send(CubePacket.InteriorCheckInError(InteriorRewardRules.CheckInError(false, false)));
             return;
         }
 
-        ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, decorationScore, reward.IndividualDropBoxId);
+        ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, reward.IndividualDropBoxId);
         foreach (Item item in items) {
             if (!session.Item.Inventory.Add(item, true)) {
                 session.Item.MailItem(item);

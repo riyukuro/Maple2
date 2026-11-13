@@ -16,6 +16,20 @@ public static class InteriorRewardRules {
         return hasReward ? UgcMapError.s_ugcmap_ok : UgcMapError.s_ugcmap_take_interior_gift_fail_from_db;
     }
 
+    // The check-in's reward row for a decoration score (CMasteryInteriorTable::GetDropBox, masteryinteriortable.cpp:359,
+    // which the point dialog's CanReceiveReward and RefreshInfo also use): the row with the highest housingPoint at or
+    // below the score, of a point above 0. The housingPoint 0 row is never taken, so a score below the lowest other
+    // row (100 in the KR data) has no reward and the client offers no check-in.
+    public static int? RewardPoint(IEnumerable<int> housingPoints, long score) {
+        int best = 0;
+        foreach (int point in housingPoints) {
+            if (point <= score && point > best) {
+                best = point;
+            }
+        }
+        return best == 0 ? null : best;
+    }
+
     // RequestCube 0x29, a housing grade reward (the mastery dialog's housing tab, uimasterydialog.cpp:517). The client
     // offers a grade only when it is reached and not claimed (uimasterydialog.cpp:958: "active" when the decoration
     // level is at least the grade, "inactive" once claimed, else "lock"). A claimed grade gets 86 ("You have already
