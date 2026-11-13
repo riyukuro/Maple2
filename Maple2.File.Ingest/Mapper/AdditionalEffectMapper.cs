@@ -89,7 +89,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         CooldownGroupRates: groupRates.Get(id, data.BasicProperty.level),
                         InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0,
                         SkillUseDisableMask: mask,
-                        IgnoreReduceTime: data.BasicProperty.ignoreReduceTimeCondition),
+                        IgnoreReduceTime: data.BasicProperty.ignoreReduceTimeCondition,
+                        ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),

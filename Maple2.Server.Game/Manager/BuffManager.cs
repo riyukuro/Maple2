@@ -585,6 +585,11 @@ public class BuffManager : IUpdatable {
             }
             Remove(buffsToRemove.ToArray());
         }
+        // The effects that clear their cooldown there can come again at once (SkillCastRules.PvpZoneClears).
+        foreach (int id in SkillCastRules.PvpZoneClears(Actor.Field.Metadata.Property.Type, CooldownTimes.Keys,
+                     id => Actor.Field.SkillMetadata.TryGetEffect(id, 1, out AdditionalEffectMetadata? effect) && effect.Property.ClearCooldownOnPvpZone)) {
+            CooldownTimes.TryRemove(id, out _);
+        }
 
         if (Actor.Field.Metadata.Property.Region == MapRegion.ShadowWorld) {
             if (Actor is FieldPlayer player) {

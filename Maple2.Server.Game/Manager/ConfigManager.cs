@@ -369,6 +369,14 @@ public class ConfigManager {
 
     public void LoadSkillCooldowns() {
         SettleRecharges(Environment.TickCount64);
+        if (session.Field is { } field) {
+            // Entering a PvP zone ends the cooldowns of the skills that clear there (SkillCastRules.PvpZoneClears).
+            List<int> cleared = SkillCastRules.PvpZoneClears(field.Metadata.Property.Type, skillCooldowns.Keys,
+                id => field.SkillMetadata.TryGet(id, skillCooldowns[id].Level, out SkillMetadata? skill) && skill.State.ClearCooldownOnPvpZone);
+            foreach (int skillId in cleared) {
+                SetSkillCooldown(skillId, skillCooldowns[skillId].Level);
+            }
+        }
         foreach ((int skillId, SkillCooldown cooldown) in skillCooldowns) {
             if (Environment.TickCount64 > cooldown.EndTick) {
                 skillCooldowns.Remove(skillId);

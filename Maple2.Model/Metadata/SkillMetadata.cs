@@ -50,7 +50,9 @@ public record SkillMetadataState(
     // The played client's count when a played client was given (PlayedClientSkills), else the data pack's.
     int RechargeMaxCount,
     // The skill counts its recharge uses on its origin skill (PlayedClientSkills).
-    bool RechargeShared = false);
+    bool RechargeShared = false,
+    // stateAttr clearCooldownFromPVPZone: entering a PvP zone ends the skill's cooldown.
+    bool ClearCooldownOnPvpZone = false);
 
 public record SkillMetadataLevel(
     BeginCondition Condition,

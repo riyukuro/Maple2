@@ -164,7 +164,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     IgnoreReduceCooldown: data.basic.stateAttr.ignoreReduceCooldown == 1,
                     CooldownGroupId: data.basic.stateAttr.cooldownGroupID,
                     RechargeMaxCount: client?.RechargeMaxCount ?? data.basic.stateAttr.rechargeMaxCount,
-                    RechargeShared: client?.RechargeShared ?? false),
+                    RechargeShared: client?.RechargeShared ?? false,
+                    ClearCooldownOnPvpZone: data.basic.stateAttr.clearCooldownFromPVPZone != 0),
                 Levels: levels
             );
         }

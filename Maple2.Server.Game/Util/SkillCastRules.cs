@@ -15,6 +15,14 @@ public static class SkillCastRules {
 
     public static bool OnCooldown(long tick, long endTick) => tick < endTick - CooldownSlackMs;
 
+    // clearCooldownFromPVPZone, loaded with a skill's stateAttr (skilloverlapcompare.cpp:867) and an effect's
+    // BasicProperty (additionalactionadditional.cpp:1073) and read nowhere else in the client: entering a PvP
+    // zone (a map of type Pvp, as for clearEffectFromPVPZone) ends the cooldown of each flagged skill or effect.
+    // The ids whose cooldown ends on entering a map of this type.
+    public static List<int> PvpZoneClears(MapType mapType, IEnumerable<int> ids, Func<int, bool> flagged) {
+        return mapType == MapType.Pvp ? ids.Where(flagged).ToList() : [];
+    }
+
     // The cooldown that refuses a use of the skill at this tick: its own, or that of a skill of the same cooldown
     // group (group 0 is no group). The one that ends last when several do.
     public static SkillCooldown? BlockingCooldown(IEnumerable<SkillCooldown> cooldowns, int skillId, int groupId, long tick) {
