@@ -220,55 +220,41 @@ public class InventoryManager {
                 return false;
             }
 
-            // Unified logic for stack splitting (works for both SlotMax == 1 and SlotMax > 1)
+            // Bound before the split, so the pieces and the stacks they are matched with carry the same transfer.
+            if (add.Metadata.Limit.TransferType is TransferType.BindOnLoot) {
+                add.Transfer?.Bind(session.Player.Value.Character);
+            }
+
+            // More than one slot's worth goes in as pieces of at most SlotMax, all of it or none: the room is
+            // checked up front with the stacking rule ItemCollection.Add uses (same id, rarity, transfer, lock,
+            // binding and expiry), so a stack of the same id that does not take the item no longer counts as room.
+            // Each piece fills the stacks that take it before it opens a slot, which needs no more slots than
+            // the check counted. Delivering part and returning false made the callers drop, mail or refund the
+            // full amount again (a duplicate) or nothing (a loss).
             int slotMax = Math.Max(1, add.Metadata.Property.SlotMax);
             if (add.Amount > slotMax) {
-                int totalAmount = add.Amount;
-
-                // 1. Fill partially filled stacks first
-                foreach (Item existing in items.Where(x => x.Id == add.Id && x.Rarity == add.Rarity && x.Amount < slotMax && !x.IsExpired())) {
-                    int canFill = slotMax - existing.Amount;
-                    int toFill = Math.Min(canFill, totalAmount);
-                    if (toFill <= 0) continue;
-                    totalAmount -= toFill;
-                    Item? itemToStack = session.Field.ItemDrop.CreateItem(add.Id, add.Rarity, toFill);
-                    if (itemToStack is null) return false;
-                    if (!Add(itemToStack, notifyNew, commit, onAdded)) {
-                        logger.Error("Failed to add partial stack during multi-step stacking");
-                        return false;
-                    }
-                }
-
-                int fullStacks = totalAmount / slotMax;
-                int remainder = totalAmount % slotMax;
-                int stacksNeeded = fullStacks + (remainder > 0 ? 1 : 0);
-
-                if (items.OpenSlots < stacksNeeded) {
+                if (items.OpenSlots < StorageRules.SlotsNeeded(items.GetStackResult(add), slotMax)) {
                     session.Send(ItemInventoryPacket.Error(s_err_inventory));
                     return false;
                 }
 
-                // 2. Add full stacks
-                for (int i = 0; i < fullStacks; i++) {
-                    Item? stackItem = session.Field.ItemDrop.CreateItem(add.Id, add.Rarity);
-                    if (stackItem is null) return false;
-                    stackItem.Amount = slotMax;
-                    if (!Add(stackItem, notifyNew, commit, onAdded)) return false;
-                }
-
-                // 3. Add remainder stack
-                if (remainder > 0) {
-                    Item? remainderItem = session.Field.ItemDrop.CreateItem(add.Id, add.Rarity);
-                    if (remainderItem is null) return false;
-                    remainderItem.Amount = remainder;
-                    if (!Add(remainderItem, notifyNew, commit, onAdded)) return false;
+                int remaining = add.Amount;
+                while (remaining > 0) {
+                    Item piece = add.Clone(newRow: true);
+                    piece.Slot = -1;
+                    piece.Amount = Math.Min(slotMax, remaining);
+                    if (!Add(piece, notifyNew, commit, onAdded)) {
+                        // Only a database write fails here after the check. The pieces already given stay given;
+                        // the item keeps the rest, so a caller that drops or mails it on false hands out only that.
+                        logger.Error("Item {ItemId} x{Amount}: {Remaining} not added after the room check",
+                            add.Id, add.Amount, remaining);
+                        add.Amount = remaining;
+                        return false;
+                    }
+                    remaining -= piece.Amount;
                 }
 
                 return true;
-            }
-
-            if (add.Metadata.Limit.TransferType is TransferType.BindOnLoot) {
-                add.Transfer?.Bind(session.Player.Value.Character);
             }
 
             // A new item gets its row only when it fits: a row created first stayed with the character at slot -1

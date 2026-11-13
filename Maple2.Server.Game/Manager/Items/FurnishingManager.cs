@@ -370,10 +370,18 @@ public class FurnishingManager {
                 if (itemUid == 0) {
                     // Only a failed item write gets here (Takes checked the room under the lock). The pieces
                     // already stored are taken out again, so the caller, which keeps or mails the item, does not
-                    // give them twice.
+                    // give them twice. The rows they touched are written back now: a row AddStorage created holds
+                    // its piece in the database, which a crash before the next storage save gave next to the mail.
                     logger.Error("Furnishing {ItemId} from mail did not go into storage ({Added} of {Amount})", item.Id, i, amount);
                     for (int j = added.Count - 1; j >= 0; j--) {
                         TakePiece(added[j]);
+                    }
+                    Item[] undone = added.Distinct().Select(uid => storage.Get(uid)).OfType<Item>().ToArray();
+                    if (undone.Length > 0) {
+                        using GameStorage.Request db = session.GameStorage.Context();
+                        if (!db.SaveItems(session.AccountId, undone)) {
+                            logger.Error("Furnishing {ItemId}: the pieces taken back were not written", item.Id);
+                        }
                     }
                     if (storage.Count != count) {
                         session.Send(FurnishingStoragePacket.Count(storage.Count));

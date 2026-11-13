@@ -50,7 +50,9 @@ public class ItemPickupHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            if (!session.Item.Inventory.CanAdd(fieldItem)) {
+            // Room for the whole amount (Add takes all of it or none): a free slot alone does not hold a drop of
+            // more than SlotMax next to stacks that do not take it.
+            if (!session.Item.Inventory.HasRoomFor(fieldItem.Value)) {
                 session.Send(ItemPickupPacket.Refuse(objectId));
                 return;
             }
@@ -72,8 +74,8 @@ public class ItemPickupHandler : FieldPacketHandler {
 
             item.Slot = -1;
             if (!session.Item.Inventory.Add(item, true)) {
-                // Only a failed item write gets here (CanAdd checked the bag or furnishing storage): the item is put
-                // back on the ground at the player, for them.
+                // Only a failed item write gets here (HasRoomFor checked the bag or furnishing storage): what Add did
+                // not deliver (the item keeps that amount) is put back on the ground at the player, for them.
                 session.Field.DropItem(session.Player.Position, session.Player.Rotation, item, owner: session.Player, characterId: session.CharacterId);
                 return;
             }

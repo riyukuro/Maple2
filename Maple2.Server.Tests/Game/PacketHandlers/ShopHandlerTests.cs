@@ -156,6 +156,25 @@ public class ShopHandlerTests {
         });
     }
 
+    // Two slots' worth bought next to a locked stack of the product (which does not take it) with exactly two open
+    // slots: the room check before the payment and the add count the same slots, so all of it is delivered (the add
+    // filled the locked stack's slot count first, gave 100 and dropped the rest after the payment).
+    [Test]
+    public void Buy_OfMoreThanSlotMax_DeliversAllThatWasPaidFor() {
+        GameSession session = Login();
+        Item sample = session.Field!.ItemDrop.CreateItem(ProductItemId)!;
+        Manager.BagSplitTests.Bag(session, sample, (short) (session.Item.Inventory.Filter(_ => true, sample.Inventory).Count + 3), locked: 50);
+        test.TakeSent();
+
+        Buy(session, ProductId, 200);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 30 * 200));
+            Assert.That(Manager.BagSplitTests.Held(session, ProductItemId), Is.EqualTo(200));
+            Assert.That(Manager.BagSplitTests.Held(session, ProductItemId, locked: true), Is.EqualTo(50));
+        });
+    }
+
     // KMS2: Meso, the bag add (ItemInventory 0 and 7), then Shop 4.
     [Test]
     public void Buy_PaysAddsThenAnswers() {

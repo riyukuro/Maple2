@@ -92,9 +92,10 @@ public class Item : IByteSerializable, IByteDeserializable {
         }
     }
 
-    public Item Clone() {
+    // newRow: the copy has no uid, so adding it makes a row of its own (a piece split off an item).
+    public Item Clone(bool newRow = false) {
         return new Item(Metadata, Rarity, Amount, false) {
-            Uid = Uid,
+            Uid = newRow ? 0 : Uid,
             CreationTime = CreationTime,
             ExpiryTime = ExpiryTime,
             TimeChangedOption = TimeChangedOption,

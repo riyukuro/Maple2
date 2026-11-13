@@ -538,9 +538,10 @@ public sealed class ShopManager {
             }
         }
 
-        if (!session.Item.Inventory.Add(item, true, commit: true)) {
-            // Only a failed item write gets here (the room was checked above).
-            logger.Error("Shop {ShopId} item {ItemId} x{Amount} was paid for and not added", activeShop.Id, item.Id, item.Amount);
+        // The room was checked above, so only a failed item write leaves part of it out of the bag: that part
+        // (the amount the item keeps) goes by mail, as it is paid for.
+        if (!session.Item.AddOrMail(item, true, commit: true)) {
+            logger.Error("Shop {ShopId} item {ItemId} x{Amount} was paid for and neither added nor mailed", activeShop.Id, item.Id, item.Amount);
         }
         // KMS2 order: the payment, the item, the bought count, then the result.
         if (shopItem.StockCount > 0) {

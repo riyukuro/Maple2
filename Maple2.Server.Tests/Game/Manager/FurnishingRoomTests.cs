@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Reflection;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using StoredItem = Maple2.Model.Game.Item;
 using Maple2.Model.Metadata;
@@ -96,6 +97,10 @@ public class FurnishingRoomTests {
             Assert.That(taken, Is.False);
             Assert.That(writes, Is.EqualTo(2));
             Assert.That(session.Item.Furnishing.GetItem(MaidItem)?.Amount ?? 0, Is.Zero);
+            // The row the first piece created holds nothing in the database either, before any storage save.
+            using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.GetItemGroups(test.AccountId, ItemGroup.Furnishing)[ItemGroup.Furnishing]
+                .Where(row => row.Id == MaidItem).Sum(row => row.Amount), Is.Zero);
         });
     }
 
