@@ -49,7 +49,8 @@ public record AdditionalEffectMetadataProperty(
     int[]? SkillUseDisableIds = null, // MotionProperty skillUseDisableIDs: the skills the holder cannot cast
     CooldownGroupRate[]? CooldownGroupRates = null, // SpecialEffectProperty type 4: shorter cooldowns for a cooldown group
     int InvokeGroupId = 0, // the played client's Basic groupIDs of the first level: the group an invoke's effectGroupID names
-    int SkillUseDisableMask = 0); // MotionProperty skillUseDisable: bit n set = the holder casts no skill of main type n
+    int SkillUseDisableMask = 0, // MotionProperty skillUseDisable: bit n set = the holder casts no skill of main type n
+    bool IgnoreReduceTime = false); // BasicProperty ignoreReduceTimeCondition: the holder's duration reductions do not apply
 
 public record CooldownGroupRate(int GroupId, float Rate);
 

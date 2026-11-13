@@ -40,4 +40,18 @@ public class BuffDurationReductionTests {
         Assert.That(Buff.ReducedDuration(Property(BuffType.Debuff, BuffSubType.Status, 0), 0, 15, 15), Is.EqualTo(0));
         Assert.That(Buff.ReducedDuration(Property(BuffType.Debuff, BuffSubType.Status, 0), 5000, 0, 2000), Is.EqualTo(0));
     }
+
+    // ignoreReduceTimeCondition: a status debuff (50000203, 10 s) and a motion debuff with stun 0 (40500031, 1 s)
+    // keep their full duration whatever the holder's reductions; without it the same debuffs are shortened.
+    [Test]
+    public void IgnoreReduceTimeKeepsTheDuration() {
+        AdditionalEffectMetadataProperty status = Property(BuffType.Debuff, BuffSubType.Status, 0);
+        AdditionalEffectMetadataProperty motion = Property(BuffType.Debuff, BuffSubType.Motion, 0);
+        Assert.Multiple(() => {
+            Assert.That(Buff.ReducedDuration(status with { IgnoreReduceTime = true }, 10000, 15, 28), Is.EqualTo(10000));
+            Assert.That(Buff.ReducedDuration(motion with { IgnoreReduceTime = true }, 1000, 15, 28), Is.EqualTo(1000));
+            Assert.That(Buff.ReducedDuration(status, 10000, 15, 28), Is.EqualTo(9720));
+            Assert.That(Buff.ReducedDuration(motion, 1000, 15, 28), Is.EqualTo(985));
+        });
+    }
 }

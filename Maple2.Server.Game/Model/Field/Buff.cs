@@ -113,9 +113,11 @@ public class Buff : IUpdatable, IByteSerializable {
     // (sub-type 2) by attribute 36 (debuff duration reduction), a motion debuff (sub-type 8) with stun 0 or 1 by
     // attribute 34 (stun duration reduction). The totals are per mille and the result is rounded down
     // (1500 ms at 5 is sent as 1492, 9999000 ms at 28 as 9719028). Motion debuffs with stun 2 or 4 keep their
-    // duration, and so do debuffs on npcs.
+    // duration, and so do debuffs on npcs. A debuff with ignoreReduceTimeCondition (the client loads it with the
+    // effect level's basic properties, AdditionalLevelData +ignoreReduceTimeCondition, and reads it nowhere else)
+    // keeps its duration too: mostly boss mechanics (50000203, 10 s, status) that gear must not shorten.
     public static int ReducedDuration(AdditionalEffectMetadataProperty property, int durationMs, long reduceStun, long reduceDebuff) {
-        if (durationMs <= 0 || property.Type != BuffType.Debuff) {
+        if (durationMs <= 0 || property.Type != BuffType.Debuff || property.IgnoreReduceTime) {
             return durationMs;
         }
         long reduce = property.SubType switch {
