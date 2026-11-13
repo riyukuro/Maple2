@@ -41,6 +41,7 @@ public class WeddingReservationEditTests(bool mysql) {
     [SetUp]
     public void SetUp() {
         fault.Fail = false;
+        fault.FailMail = false;
         if (mysql) {
             if (Connection == null) {
                 Assert.Ignore("the hall's row lock is MySQL's: set MS2_TEST_GAME_DB");
@@ -122,13 +123,18 @@ public class WeddingReservationEditTests(bool mysql) {
         context.Buddy.Where(buddy => characters.Contains(buddy.OwnerId)).ExecuteDelete();
     }
 
-    // A save that deletes a hall row fails, as a database that refuses it would.
+    // A save that deletes a hall row (Fail) or adds a mail (FailMail) fails, as a database that refuses it would.
     private sealed class HallDeleteFault : SaveChangesInterceptor {
         public bool Fail;
+        public bool FailMail;
 
         public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
             if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.WeddingHall>()
                     .Any(entry => entry.State == EntityState.Deleted)) {
+                throw new DbUpdateException("The test made this save fail");
+            }
+            if (FailMail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Mail>()
+                    .Any(entry => entry.State == EntityState.Added)) {
                 throw new DbUpdateException("The test made this save fail");
             }
             return result;
@@ -351,6 +357,72 @@ public class WeddingReservationEditTests(bool mysql) {
             Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(0));
             Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
             Assert.That(confirmer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
+        });
+    }
+
+    // The coupon is mailed in the delete's transaction: a mail that fails keeps the hall on both and sends no 0x13
+    // (the hall was deleted and the coupon lost, only logged). The in-memory store has no rollback: MySQL only.
+    [Test]
+    public void Cancel_CouponMailFails_KeepsTheHall() {
+        if (!mysql) {
+            Assert.Ignore("the in-memory store does not roll the delete back");
+        }
+        Send(payer, 0x10);
+        payer.TakeSent();
+        confirmer.TakeSent();
+        fault.FailMail = true;
+
+        Send(confirmer, 0x12, 9);
+        fault.FailMail = false;
+        Assert.Multiple(() => {
+            Assert.That(Wedding(confirmer), Is.EqualTo(new List<(byte, byte[])> { (2, [unchecked((byte) WeddingError.s_wedding_result_err_system)]) }));
+            Assert.That(Wedding(payer), Is.Empty);
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(0));
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
+            Assert.That(confirmer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
+        });
+
+        // The hall kept can still be cancelled, with its coupon.
+        Send(payer, 0x10);
+        Send(confirmer, 0x12, 9);
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(0));
+            Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(1));
+        });
+    }
+
+    // A 0x0D ask of the other direction ends when a hall is stored: the confirmer's old ask (hall B, from the payer)
+    // could be confirmed after the stored hall A was cancelled, and the payer paid for B.
+    [Test]
+    public void StoredHall_EndsThePartnersOldAsk() {
+        using (GameStorage.Request db = payer.Storage.Context()) {
+            Assume.That(db.CancelWeddingHall(payer.Session.Marriage.WeddingHall.Id), Is.Not.Null);
+        }
+        payer.Session.Marriage.WeddingHall = WeddingHall.Default;
+        confirmer.Session.Marriage.WeddingHall = WeddingHall.Default;
+        confirmer.Session.Currency.Meret = 1000;
+        Assume.That(confirmer.Session.SavePurchase(), Is.True);
+
+        // The payer asks for B; the confirmer asks for A and the payer says yes, so A is stored, paid by the confirmer.
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation(Now + 2 * 86400, hallId: 2)),
+            Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        WeddingHall a = Reservation(Now + 3 * 86400);
+        a.ReserverAccountId = confirmer.AccountId;
+        a.ReserverCharacterId = confirmer.CharacterId;
+        Assume.That(confirmer.Session.Marriage.ReserveHall(a), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        Assume.That(payer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_propose_ok));
+        Assert.That(confirmer.Session.Marriage.UnconfirmedReservation, Is.Null);
+
+        // A is cancelled; the old ask for B is not there to be confirmed.
+        Send(confirmer, 0x10);
+        Send(payer, 0x12, 9);
+        Assume.That(StoredHalls(), Is.EqualTo(0));
+        long merets = payer.Session.Currency.Meret;
+        Assert.Multiple(() => {
+            Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_result_err_invalid_wedding_hall));
+            Assert.That(StoredHalls(), Is.EqualTo(0));
+            Assert.That(payer.Session.Currency.Meret, Is.EqualTo(merets));
         });
     }
 

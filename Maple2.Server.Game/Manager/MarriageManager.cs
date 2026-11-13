@@ -776,6 +776,8 @@ public sealed class MarriageManager {
 
     public void RemoveWeddingHall(bool update = true) {
         session.Marriage.WeddingHall = WeddingHall.Default;
+        // The hall was cancelled by the partner while not in the same field: this side's 0x0D ask ends too.
+        ClearReservationAsk();
         if (update) {
             session.Send(WeddingPacket.UpdateHall(WeddingHall));
         }
@@ -965,8 +967,8 @@ public sealed class MarriageManager {
         }
 
         // The ask is answered once the hall is stored (a second yes paid and stored the hall again); a hall that
-        // was not stored can be confirmed again.
-        ClearReservationAsk();
+        // was not stored can be confirmed again. The partner's ask of the other direction ends with it.
+        ClearHallAsks(partner);
         WeddingHall = weddingHall;
         partner.Session.Marriage.WeddingHall = weddingHall;
 
@@ -1171,22 +1173,31 @@ public sealed class MarriageManager {
 
         using GameStorage.Request db = session.GameStorage.Context();
 
-        // The row is deleted first, the guests read and the row deleted under the row's lock, and the coupon mailed
-        // only once it is gone: the coupon used to be mailed first and a failed delete only logged, so the couple
-        // kept the hall and the coupon. A hall that stays sends no 0x13 and mails nothing.
+        // The guests are read and the row deleted under the row's lock, and the coupon mailed in the same
+        // transaction: the coupon used to be mailed first and a failed delete only logged, so the couple kept the
+        // hall and the coupon, and then a mail that failed after the delete lost the coupon. A hall that stays
+        // sends no 0x13 and mails nothing; a coupon mail that fails keeps the hall.
         WeddingHall cancelled = WeddingHall;
-        Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(cancelled.Id);
-        if (cancelGuests == null) {
-            logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, cancelled.Id);
+        Mail? couponMail = null;
+        Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(cancelled.Id, () => StoreCancelCoupon(db, cancelled, coupon, out couponMail));
+        if (cancelGuests == null || couponMail == null) {
+            logger.Error("Failed to cancel wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, cancelled.Id);
             return WeddingError.s_wedding_result_err_system;
         }
 
         WeddingHall = WeddingHall.Default;
         fieldPartner.Session.Marriage.WeddingHall = WeddingHall.Default;
+        ClearHallAsks(fieldPartner);
         session.Send(WeddingPacket.AcceptCancelReservation());
         fieldPartner.Session.Send(WeddingPacket.AcceptCancelReservation());
 
-        MailCancelCoupon(db, cancelled, coupon);
+        try {
+            session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = cancelled.ReserverCharacterId,
+                MailId = couponMail.Id,
+            });
+        } catch { /* ignored */
+        }
         MailGuests(db, cancelled, cancelGuests.Keys, WeddingGuestMail.Cancel);
 
         session.ConditionUpdate(ConditionType.wedding_hall_cancel);
@@ -1194,11 +1205,11 @@ public sealed class MarriageManager {
         return WeddingError.none;
     }
 
-    // The coupon of the cancelled hall's grade (40000013) to the partner who reserved it. The hall is gone by now,
-    // so a mail that fails is logged with what it held.
-    private void MailCancelCoupon(GameStorage.Request db, WeddingHall cancelled, Item coupon) {
+    // The coupon of the cancelled hall's grade (40000013) to the partner who reserved it, written inside the
+    // cancel's transaction (CancelWeddingHall): false keeps the hall.
+    private bool StoreCancelCoupon(GameStorage.Request db, WeddingHall cancelled, Item coupon, out Mail? mail) {
         long receiverId = cancelled.ReserverCharacterId;
-        Mail? mail = db.CreateMail(new Mail {
+        mail = db.CreateMail(new Mail {
             ReceiverId = receiverId,
             SenderId = receiverId,
             Type = MailType.System,
@@ -1206,18 +1217,20 @@ public sealed class MarriageManager {
         });
         Item? stored = mail == null ? null : db.CreateItem(mail.Id, coupon);
         if (mail == null || stored == null) {
-            logger.Error("Wedding hall {HallId} cancelled, but its coupon {ItemId} was not mailed to {CharacterId}", cancelled.Id, coupon.Id, receiverId);
-            return;
+            logger.Error("Wedding hall {HallId} kept: its coupon {ItemId} could not be mailed to {CharacterId}", cancelled.Id, coupon.Id, receiverId);
+            mail = null;
+            return false;
         }
 
         mail.Items.Add(stored);
-        try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = receiverId,
-                MailId = mail.Id,
-            });
-        } catch { /* ignored */
-        }
+        return true;
+    }
+
+    // A hall stored, changed or cancelled ends both partners' 0x0D asks: an ask of the other direction left open
+    // could be confirmed later, after a cancel or a ceremony that passed, and its asker paid for a second hall.
+    private void ClearHallAsks(FieldPlayer? partner) {
+        ClearReservationAsk();
+        partner?.Session.Marriage.ClearReservationAsk();
     }
 
     // The answer to the no-refund box (Wedding 0x11: 9 yes, 10 no), only after the server opened it. Yes cancels
@@ -1248,6 +1261,7 @@ public sealed class MarriageManager {
 
         session.Send(WeddingPacket.AcceptCancelReservation());
         WeddingHall = WeddingHall.Default;
+        ClearHallAsks(fieldPartner);
         session.ConditionUpdate(ConditionType.wedding_hall_cancel);
         if (fieldPartner != null) {
             fieldPartner.Session.Send(WeddingPacket.AcceptCancelReservation());
@@ -1371,6 +1385,7 @@ public sealed class MarriageManager {
 
         WeddingHall = weddingHall;
         partner.Session.Marriage.WeddingHall = weddingHall;
+        ClearHallAsks(partner);
         if (WeddingInviteRules.ChangeMail(before, weddingHall)) {
             MailGuests(db, weddingHall, weddingHall.GuestList.Keys, WeddingGuestMail.Change);
         }

@@ -337,8 +337,9 @@ public partial class GameStorage {
         // A cancelled reservation: the hall row is deleted under the same lock as in AddWeddingGuests, and
         // the guests it held at that moment are returned for the cancel mails. An invitation is stored before
         // the cancel (its guest is in the returned list) or finds the hall gone. Null when the hall is gone or
-        // the delete failed.
-        public Dictionary<long, long>? CancelWeddingHall(long hallId) {
+        // the delete failed. alsoStore, when given, writes on this request in the same transaction (the cancel's
+        // coupon mail): it returning false keeps the hall, so the delete and those writes are kept together or not.
+        public Dictionary<long, long>? CancelWeddingHall(long hallId, Func<bool>? alsoStore = null) {
             try {
                 using IDbContextTransaction transaction = Context.Database.BeginTransaction();
                 // The in-memory store (the tests) has no row lock to take.
@@ -356,7 +357,9 @@ public partial class GameStorage {
 
                 var guests = new Dictionary<long, long>(hall.GuestList);
                 Context.WeddingHall.Remove(hall);
-                if (!Context.TrySaveChanges()) {
+                if (!Context.TrySaveChanges() || (alsoStore != null && !alsoStore())) {
+                    // The writes left pending would be written by the request's next save.
+                    Context.ChangeTracker.Clear();
                     return null;
                 }
 
@@ -364,6 +367,7 @@ public partial class GameStorage {
                 return guests;
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to cancel wedding hall {HallId}", hallId);
+                Context.ChangeTracker.Clear();
                 return null;
             }
         }
