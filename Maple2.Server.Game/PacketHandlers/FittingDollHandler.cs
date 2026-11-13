@@ -310,7 +310,8 @@ public class FittingDollHandler : FieldPacketHandler {
 
     // Destroys a doll item bound to a character outside the plot owner's account, which no recall can give back to
     // anyone the owner plays. The client asks only for such an item (Unk_Inventory::FUN_140a66200, inventory.cpp:1661,
-    // reasons 4 and 5: the binding's character is not in the account's character list): after the owner confirms
+    // reasons 4 and 5: the character of the item's binding, or of a gem's (FittingDollRules.BindingOwner), is not in
+    // the account's character list): after the owner confirms
     // s_strDestroyDollItem on a take-off (uimessagebox.cpp:1433), and for each such item before a recall (mypc.cpp:4095,
     // then mode 10). It needs feature FittingDollEquipAll (0xd4), on in KR. The row is deleted only while it is still
     // on the cube; the field then gets the take-off (0x7B mode 7), as the client has no other answer for it.
@@ -333,9 +334,10 @@ public class FittingDollHandler : FieldPacketHandler {
                 if (item == null) {
                     return FittingDollRules.Error.InvalidItem;
                 }
-                long bound = item.Transfer?.Binding?.CharacterId ?? 0;
+                (long bound, bool gem) = FittingDollRules.BindingOwner(item, session.CharacterId);
                 if (bound == 0) {
-                    return FittingDollRules.Error.InvalidItem; // unbound: taken off as any item
+                    // Nothing binds it to someone else: taken off as any item.
+                    return item.Transfer?.Binding is { CharacterId: not 0 } ? FittingDollRules.Error.InvalidBinding : FittingDollRules.Error.InvalidItem;
                 }
                 using (GameStorage.Request db = session.GameStorage.Context()) {
                     // A character of the account gets the item back with a take-off or a recall. A character that
@@ -349,8 +351,8 @@ public class FittingDollHandler : FieldPacketHandler {
                     }
                 }
 
-                Logger.Information("Account {AccountId} destroyed fitting doll {DollUid} item {ItemId} uid {ItemUid} bound to character {CharacterId}",
-                    session.AccountId, doll.Uid, item.Id, item.Uid, bound);
+                Logger.Information("Account {AccountId} destroyed fitting doll {DollUid} item {ItemId} uid {ItemUid} bound to character {CharacterId} ({Binding})",
+                    session.AccountId, doll.Uid, item.Id, item.Uid, bound, gem ? "gem" : "item");
                 doll.Items.Remove(slot);
                 session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
                 return FittingDollRules.Error.None;

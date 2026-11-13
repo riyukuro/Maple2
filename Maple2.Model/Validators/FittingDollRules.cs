@@ -105,6 +105,24 @@ public static class FittingDollRules {
     public static bool BoundToOther(ItemBinding? binding, long characterId) =>
         binding != null && binding.CharacterId != 0 && binding.CharacterId != characterId;
 
+    // The character whose binding keeps characterId from taking the item, as the client finds it before it offers a
+    // destroy (FUN_1406344b0, itemsocketsystemutil.cpp:2550): the item's own binding to another character (kind 1),
+    // else, when a gem in an unlocked slot is bound to another character, the binding of the last bound gem
+    // (CItemSocket::GetGemBindOwner takes the last one, which may be characterId's own: kind 2). 0 when nothing binds
+    // the item to someone else.
+    public static (long CharacterId, bool Gem) BindingOwner(Item item, long characterId) {
+        ItemBinding? binding = item.Transfer?.Binding;
+        if (BoundToOther(binding, characterId)) {
+            return (binding!.CharacterId, false);
+        }
+        ItemGemstone?[] gems = item.Socket?.Sockets ?? [];
+        if (!gems.Any(gem => gem != null && gem.ItemId != 0 && BoundToOther(gem.Binding, characterId))) {
+            return (0, false);
+        }
+        long owner = gems.LastOrDefault(gem => gem != null && gem.ItemId != 0 && gem.Binding is { CharacterId: not 0 })!.Binding!.CharacterId;
+        return (owner, true);
+    }
+
     // Mannequins work only in the indoor home. An outdoor plot can be forfeited or expire without its cubes being
     // removed one by one, which would leave the items on a cube that no longer exists.
     public static bool Allowed(int plotMapId) => plotMapId == Constant.DefaultHomeMapId;

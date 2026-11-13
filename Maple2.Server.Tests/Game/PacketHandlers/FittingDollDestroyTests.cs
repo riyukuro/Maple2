@@ -45,8 +45,9 @@ public class FittingDollDestroyTests {
         })!.Id;
     }
 
-    // A doll in the session's home holding a top bound to |bound| (0: unbound).
-    private void Start(Func<long> bound) {
+    // A doll in the session's home holding a top bound to |bound| (0: unbound), with one gem per |gems| entry bound to
+    // that character (0: an unbound gem).
+    private void Start(Func<long> bound, Func<long[]>? gems = null) {
         test = new TestGameSession();
         test.Start();
         plot = test.EnterHome();
@@ -55,6 +56,7 @@ public class FittingDollDestroyTests {
         ItemMetadata topMetadata = TestGameSession.Metadata(Top, EquipSlot.CL);
         test.Register(dollMetadata, topMetadata);
         long character = bound();
+        long[] gemOwners = gems?.Invoke() ?? [];
         PlotCube cube;
         using (GameStorage.Request db = test.Storage.Context()) {
             cube = db.CreateCube(plot, new PlotCube(dollMetadata) { Position = new Vector3B(1, 2, 3), Type = PlotCube.CubeType.Construction })!;
@@ -62,6 +64,8 @@ public class FittingDollDestroyTests {
                 Group = ItemGroup.FittingDoll,
                 Slot = (short) EquipSlot.CL,
                 Transfer = new ItemTransfer(binding: character == 0 ? null : new ItemBinding(character, "bound")),
+                Socket = new ItemSocket(3, gemOwners.Select(owner =>
+                    (ItemGemstone?) new ItemGemstone(40000001, owner == 0 ? null : new ItemBinding(owner, "gem"), new ItemStats())).ToArray()),
             })!;
         }
         doll = new FieldFittingDoll(9000, cube, plot, new FunctionCubeMetadata.FittingDollData(Gender.Male, 0));
@@ -185,5 +189,73 @@ public class FittingDollDestroyTests {
             Assert.That(Row(top.Uid), Is.EqualTo((test.CharacterId, ItemGroup.Default)));
             Assert.That(doll.Items, Is.Empty);
         });
+    }
+
+    // Reason 5: the item itself is free, a gem in it is bound outside the account.
+    [Test]
+    public void UnboundItemWithAGemBoundToAnotherAccountsCharacterIsDestroyed() {
+        Start(() => 0, () => [NewCharacter(OtherAccount)]);
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { PutOff() }));
+        Assert.That(Row(top.Uid), Is.Null);
+    }
+
+    [Test]
+    public void ItemBoundToTheSenderWithAGemBoundToAnotherAccountsCharacterIsDestroyed() {
+        Start(() => test.CharacterId, () => [0, NewCharacter(OtherAccount)]);
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { PutOff() }));
+        Assert.That(Row(top.Uid), Is.Null);
+    }
+
+    // Reason 2: the gem's character is in the account.
+    [Test]
+    public void GemBoundToACharacterOfTheAccountIsKept() {
+        Start(() => 0, () => [NewCharacter(test.AccountId)]);
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { Error(0x12) }));
+        AssertKept();
+    }
+
+    // The client names the last bound gem (CItemSocket::GetGemBindOwner): here the sender's own, so no destroy is offered.
+    [Test]
+    public void LastBoundGemDecidesTheOwner() {
+        Start(() => 0, () => [NewCharacter(OtherAccount), test.CharacterId]);
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { Error(0x12) }));
+        AssertKept();
+    }
+
+    [Test]
+    public void UnboundGemsAreNoBinding() {
+        Start(() => 0, () => [0, 0]);
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { Error(0xc) }));
+        AssertKept();
+    }
+
+    // The item binding comes first: a character of the account keeps it whatever its gems.
+    [Test]
+    public void ItemBindingInTheAccountWinsOverAForeignGem() {
+        Start(() => NewCharacter(test.AccountId), () => [NewCharacter(OtherAccount)]);
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { Error(0x12) }));
+        AssertKept();
+    }
+
+    // A character waiting for its deletion is still in the account.
+    [Test]
+    public void ItemBoundToAPendingDeleteCharacterOfTheAccountIsKept() {
+        Start(() => {
+            long character = NewCharacter(test.AccountId);
+            using var context = new Ms2Context(test.Options);
+            context.Character.Single(row => row.Id == character).DeleteTime = DateTime.Now.AddDays(1);
+            context.SaveChanges();
+            return character;
+        });
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { Error(0x12) }));
+        AssertKept();
+    }
+
+    [Test]
+    public void SecondDestroyOfTheSameItemIsRefused() {
+        Start(() => NewCharacter(OtherAccount));
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { PutOff() }));
+        Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { Error(0xc) }));
+        Assert.That(Row(top.Uid), Is.Null);
     }
 }
