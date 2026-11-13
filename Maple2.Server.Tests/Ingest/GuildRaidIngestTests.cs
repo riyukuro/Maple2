@@ -45,4 +45,20 @@ public class GuildRaidIngestTests {
         // The client's factors start at 1 when the row leaves them out.
         Assert.That(rows[70002], Is.EqualTo(new GuildTable.Raid(DungeonRoomId: 70002, ClearRaidPoint: 40, ClearGuildFund: 1f, ClearGuildExp: 1f)));
     }
+    // A row with a locale is read only for that locale; a row without one is read for every locale.
+    [Test]
+    public void ReadsTheRowsOfTheLocale() {
+        var document = new XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <guildRaid dungeonRoomID="70001" clearRaidPoint="300" feature="TestRaid01" locale="KR" />
+              <guildRaid dungeonRoomID="70002" clearRaidPoint="40" feature="TestRaid01" locale="NA" />
+              <guildRaid dungeonRoomID="70003" clearRaidPoint="9" feature="TestRaid01" />
+            </ms2>
+            """);
+
+        Assert.That(TableMapper.GuildRaids(document).Keys, Is.EquivalentTo(new[] { 70001, 70003 }));
+        FeatureLocaleFilter.Locale = "NA";
+        Assert.That(TableMapper.GuildRaids(document).Keys, Is.EquivalentTo(new[] { 70002, 70003 }));
+    }
 }

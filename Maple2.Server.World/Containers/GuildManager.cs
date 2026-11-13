@@ -707,6 +707,15 @@ public class GuildManager : IDisposable {
         }
     }
 
+    private bool TrySaveMember(GuildMember member) {
+        try {
+            using GameStorage.Request db = GameStorage.Context();
+            return db.SaveGuildMember(member);
+        } catch (Exception) {
+            return false;
+        }
+    }
+
     // No contributor: the members get the new fund (51) without a contribution line, then the house (57).
     private void BroadcastHouse(string requestorName, int guildExp, int guildFund, int rank, int theme) {
         Broadcast(new GuildRequest {
@@ -918,10 +927,8 @@ public class GuildManager : IDisposable {
         }
 
         int value = GuildRules.AddRaidClear(requestor, raid.DungeonRoomId, raid.ClearRaidPoint);
-        // Stored now, as a check-in: a failed save keeps the value here for the next save.
-        lock (guildLock) {
-            TrySave();
-        }
+        // Stored now, only the member's row: a failed save keeps the value here for the next save of the guild.
+        TrySaveMember(requestor);
 
         Broadcast(new GuildRequest {
             MemberRaid = new GuildRequest.Types.MemberRaid {

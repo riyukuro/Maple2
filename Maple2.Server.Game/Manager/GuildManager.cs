@@ -280,23 +280,28 @@ public class GuildManager : IDisposable {
         return true;
     }
 
-    // A guild raid clear of this player goes to World, which keeps the member's value and tells the guild.
-    public void RaidClear(int dungeonRoomId) {
+    // A guild raid clear of this player goes to World, which keeps the member's value and tells the guild. The
+    // call runs off the caller's thread (the dungeon field's), so a slow World does not hold the field up.
+    // Returns the call, null when the clear does not count.
+    public Task? RaidClear(int dungeonRoomId) {
         if (Guild == null || session.TableMetadata.GuildTable.Raids?.ContainsKey(dungeonRoomId) != true) {
-            return;
+            return null;
         }
 
-        try {
-            session.World.Guild(new GuildRequest {
-                RequestorId = session.CharacterId,
-                RaidClear = new GuildRequest.Types.RaidClear {
-                    GuildId = Guild.Id,
-                    DungeonRoomId = dungeonRoomId,
-                },
-            });
-        } catch (Exception ex) {
-            logger.Warning(ex, "Guild raid clear failed: {DungeonRoomId}", dungeonRoomId);
-        }
+        var request = new GuildRequest {
+            RequestorId = session.CharacterId,
+            RaidClear = new GuildRequest.Types.RaidClear {
+                GuildId = Guild.Id,
+                DungeonRoomId = dungeonRoomId,
+            },
+        };
+        return Task.Run(() => {
+            try {
+                session.World.Guild(request);
+            } catch (Exception ex) {
+                logger.Warning(ex, "Guild raid clear failed: {DungeonRoomId}", dungeonRoomId);
+            }
+        });
     }
 
     public bool UpdateMemberContribution(long characterId, long checkInTime, int contribution) {

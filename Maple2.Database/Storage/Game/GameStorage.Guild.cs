@@ -298,8 +298,8 @@ public partial class GameStorage {
         }
 
         public bool SaveGuildMember(GuildMember member) {
-            Model.GuildMember? model = Context.GuildMember.Find(member.GuildId, member.CharacterId);
-            if (model == null) {
+            // Not Find: that would track the stored row next to the one Update attaches, under the same key.
+            if (!Context.GuildMember.Any(row => row.GuildId == member.GuildId && row.CharacterId == member.CharacterId)) {
                 return false;
             }
 
