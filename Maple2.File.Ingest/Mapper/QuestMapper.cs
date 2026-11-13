@@ -70,7 +70,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     DurationMinutes: QuestPeriod.DurationMinutes(data.basic.usePeriod),
                     Alliance: (Maple2.Model.Enum.AllianceType) (int) data.basic.alliance,
                     Rank: (int) data.basic.rank,
-                    CompletionTicket: data.basic.property != null && data.basic.property.Contains(QuestPropertyType.availablecompletionticket)
+                    CompletionTicket: data.basic.property != null && data.basic.property.Contains(QuestPropertyType.availablecompletionticket),
+                    GuideType: (int) (data.guide?.guideType ?? 0)
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,

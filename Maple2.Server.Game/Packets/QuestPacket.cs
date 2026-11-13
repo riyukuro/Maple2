@@ -25,14 +25,14 @@ public static class QuestPacket {
         ExplorationProgress = 21,
         LoadQuestStates = 22,
         LoadQuests = 23,
-        Unknown25 = 25,
+        DailyMissionReset = 25,
         ExplorationReward = 26,
-        Unknown30 = 30,
+        FieldQuestReset = 30,
         DailyReputationMissions = 31,
         WeeklyReputationMissions = 32,
         AllianceAccept = 34,
         AllianceComplete = 35,
-        Unknown38 = 38,
+        WeddingMissionReset = 38,
     }
 
     public static ByteWriter Error(QuestError error) {
@@ -169,11 +169,13 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    // CMentoringMission?
-    public static ByteWriter Unknown25() {
+    // Quest 0x19, the daily mission reset (CQuestManager::OnQuest, questmanager_2.cpp:1083): the client drops its daily
+    // missions (questType 3) of guide daily_pick_once and daily_pick_repeat, and those of guide mission_point when
+    // now (epoch seconds) is at or past the Friday after their start (QuestDailyReset.DailyMissionDropped).
+    public static ByteWriter DailyMissionReset(long now) {
         var pWriter = Packet.Of(SendOp.Quest);
-        pWriter.Write<Command>(Command.Unknown25);
-        pWriter.WriteLong();
+        pWriter.Write<Command>(Command.DailyMissionReset);
+        pWriter.WriteLong(now);
 
         return pWriter;
     }
@@ -186,10 +188,11 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    // CFieldQuest?
-    public static ByteWriter Unknown30() {
+    // Quest 0x1E, the field quest reset (questmanager_2.cpp:1142): the client drops its daily field quests (questType 8,
+    // repeatable 2; RemoveQuestsByTypeAndState(8, 2, 0), grouped ones too) and closes its quest dialogs.
+    public static ByteWriter FieldQuestReset() {
         var pWriter = Packet.Of(SendOp.Quest);
-        pWriter.Write<Command>(Command.Unknown30);
+        pWriter.Write<Command>(Command.FieldQuestReset);
 
         return pWriter;
     }
@@ -240,9 +243,11 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown38() {
+    // Quest 0x26, the wedding mission reset (questmanager_2.cpp:1172): the client drops all its wedding missions
+    // (questType 10).
+    public static ByteWriter WeddingMissionReset() {
         var pWriter = Packet.Of(SendOp.Quest);
-        pWriter.Write<Command>(Command.Unknown38);
+        pWriter.Write<Command>(Command.WeddingMissionReset);
 
         return pWriter;
     }

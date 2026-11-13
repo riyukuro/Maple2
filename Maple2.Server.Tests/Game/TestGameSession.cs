@@ -392,6 +392,7 @@ public sealed class TestGameSession {
         typeof(QuestManager).GetField("missionMetadata", Any)!.SetValue(quest, new List<QuestMetadata>());
         // No condition type is throttled here: every counted update is sent.
         typeof(QuestManager).GetField("throttleStates", Any)!.SetValue(quest, new HashSet<ConditionType>());
+        typeof(QuestManager).GetField("logger", Any)!.SetValue(quest, Serilog.Log.Logger.ForContext<QuestManager>());
         session.Config = Uninitialized<ConfigManager>();
         // No favorite designer: what the meret market manager reads.
         typeof(ConfigManager).GetField("favoriteDesigners", Any)!.SetValue(session.Config, new List<long>());

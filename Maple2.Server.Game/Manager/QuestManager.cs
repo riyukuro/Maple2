@@ -63,6 +63,7 @@ public sealed class QuestManager {
 
     public void Load() {
         DropEndedMissions(DateTime.Now);
+        DropDailyQuests(DateTime.Now, false);
         // The held items are counted again on login (a counter stored before held counts, or items moved since).
         foreach (Quest quest in HeldCandidates(AnyHeld)) {
             CountHeld(quest, AnyHeld);
@@ -888,6 +889,47 @@ public sealed class QuestManager {
     private void DropEndedMissions(DateTime now) {
         DropMissions(2, AllianceMissions.PeriodStart(2, 0, now));
         DropMissions(3, AllianceMissions.PeriodStart(3, MissionWeekday(), now));
+    }
+
+    /// <summary>
+    /// The daily quest resets (QuestDailyReset): the held daily missions, daily field quests and wedding missions are
+    /// dropped as the client drops them on Quest 0x19, 0x1E and 0x26, then those are sent. now is the start of the day
+    /// the reset begins (AllianceMissions.ResetPeriodStart), so a reset a moment before midnight counts the new day
+    /// for the mission point missions too.
+    /// </summary>
+    public void ResetDailyQuests(DateTime now) {
+        DateTime day = AllianceMissions.ResetPeriodStart(2, 0, now);
+        DropDailyQuests(day, true);
+        session.Send(QuestPacket.DailyMissionReset(new DateTimeOffset(day).ToUnixTimeSeconds()));
+        session.Send(QuestPacket.FieldQuestReset());
+        session.Send(QuestPacket.WeddingMissionReset());
+    }
+
+    // atReset: the reset (every row of the three kinds, mission points by their Friday); else the login check, before
+    // the quests are sent (the rows a missed reset would have dropped).
+    private void DropDailyQuests(DateTime now, bool atReset) {
+        int missions = 0, fieldQuests = 0, weddingMissions = 0;
+        foreach (Quest quest in characterValues.Values.Concat(accountValues.Values).ToList()) {
+            if (!QuestDailyReset.Dropped(quest.Metadata.Basic, quest.StartTime, now, atReset) || !Remove(quest)) {
+                continue;
+            }
+            switch (QuestDailyReset.KindOf(quest.Metadata.Basic)) {
+                case QuestDailyReset.Kind.DailyMission:
+                    missions++;
+                    break;
+                case QuestDailyReset.Kind.FieldQuest:
+                    fieldQuests++;
+                    break;
+                case QuestDailyReset.Kind.WeddingMission:
+                    weddingMissions++;
+                    break;
+            }
+        }
+        if (!atReset && missions + fieldQuests + weddingMissions == 0) {
+            return;
+        }
+        logger.Information("Daily quest {Reset} of {CharacterId}: dropped {Missions} daily missions, {FieldQuests} field quests, {WeddingMissions} wedding missions",
+            atReset ? "reset" : "login check", session.CharacterId, missions, fieldQuests, weddingMissions);
     }
 
     /// <summary>

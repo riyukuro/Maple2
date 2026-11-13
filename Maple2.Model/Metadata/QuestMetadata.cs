@@ -53,7 +53,11 @@ public record QuestMetadataBasic(
     // may be completed with completion tickets (Quest sub-type 33). The client also asks its feature
     // FameCompletionTicket (UIAllianceQuestDialog::CanUseCompletionTicket), in its own region's column, which need not
     // be the server's LOCALE; the server leaves that test to the client.
-    bool CompletionTicket = false);
+    bool CompletionTicket = false,
+    // guide guideType in the client's numbering (CQuestData m_338, Parse_140217a00): 1 level, 2 level_boost,
+    // 3 daily_pick_once, 4 daily_pick_repeat, 5 mission_point; 0 none. The daily reset drops daily missions by it
+    // (QuestDailyReset).
+    int GuideType = 0);
 
 public record QuestMetadataRequire(
     short Level,

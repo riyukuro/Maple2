@@ -1060,6 +1060,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // that read the quests are handled, with the time of the reset.
         DateTime resetTime = DateTime.Now;
         Scheduler.Schedule(() => Quest.ResetAllianceMissions(resetTime));
+        // Daily missions, daily field quests and wedding missions (Quest 0x19, 0x1E, 0x26), on the same queue.
+        Scheduler.Schedule(() => Quest.ResetDailyQuests(resetTime));
         // Long-term attendance: the day's attend point, on the session's own queue like the handler's grant.
         Scheduler.Schedule(() => GameEvent.GrantLongTermAttendPoints());
         // Pet fusion count
