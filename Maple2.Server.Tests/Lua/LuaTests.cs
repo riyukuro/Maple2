@@ -519,4 +519,15 @@ public class LuaTests {
     public void TestCalcGatheringObjectMaxCount_ClientScript(int high, int normal, int expected) {
         Assert.That(Server.Game.LuaFunctions.Lua.CalcGatheringObjectMaxCount(high, normal), Is.EqualTo(expected));
     }
+
+    // The client's calcSendMailFee in doubles, truncated to a 64-bit integer by CLua::CalcSendMailFee.
+    [TestCase(0, 0, 0, 0, 0, 0, 0, 0L)]
+    [TestCase(50, 1, 0, 0, 0, 0, 0, 6L)]
+    [TestCase(1000, 1, 1, 0, 0, 0, 1, 53L)]
+    [TestCase(999, 0, 0, 0, 0, 0, 0, 49L)]
+    [TestCase(16777219, 0, 0, 0, 0, 0, 0, 838860L)] // floats gave 838861
+    [TestCase(1024846460, 0, 0, 0, 0, 0, 0, 51242323L)] // floats gave 51242324
+    public void TestCalcSendMailFee_ClientScript(int meso, int normal, int rare, int elite, int excellent, int legendary, int epic, long expected) {
+        Assert.That(Server.Game.LuaFunctions.Lua.CalcSendMailFee(meso, normal, rare, elite, excellent, legendary, epic), Is.EqualTo(expected));
+    }
 }

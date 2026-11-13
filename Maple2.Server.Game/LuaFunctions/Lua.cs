@@ -770,57 +770,29 @@ public static class Lua {
     }
     #endregion
 
-    [SuppressMessage("ReSharper", "CompareOfFloatsByEqualityOperator")]
-    public static int CalcSendMailFee(int meso, int normalItemCount, int rateItemCount, int eliteItemCount, int excellentItemCount, int legendaryItemCount, int epicItemCount) {
-        float normalFee = normalItemCount * 0.055f;
-        float rareFee = rateItemCount * 0.07f;
-        float eliteFee = eliteItemCount * 0.09f;
-        float excellentFee = excellentItemCount * 0.115f;
-        float legendaryFee = legendaryItemCount * 0.145f;
-        float epicFee = epicItemCount * 0.18f;
+    // calcSendMailFee: each rarity's item count times its rate, rounded up, plus 5% of the meso (5 up to 100 meso, 0 for
+    // none). The script works in doubles and the client truncates the sum to a 64-bit integer (CLua::CalcSendMailFee);
+    // with floats the meso part was 1 over from 16777219 meso (838860, floats gave 838861).
+    public static long CalcSendMailFee(int meso, int normalItemCount, int rateItemCount, int eliteItemCount, int excellentItemCount, int legendaryItemCount, int epicItemCount) {
+        double itemFee = MailItemFee(normalItemCount * 0.055) + MailItemFee(rateItemCount * 0.07) + MailItemFee(eliteItemCount * 0.09)
+            + MailItemFee(excellentItemCount * 0.115) + MailItemFee(legendaryItemCount * 0.145) + MailItemFee(epicItemCount * 0.18);
 
-        int feeFloored = (int) Math.Floor(normalFee);
-        if (normalFee != feeFloored) {
-            normalFee = feeFloored + 1;
-        }
-
-        feeFloored = (int) Math.Floor(rareFee);
-        if (rareFee != feeFloored) {
-            rareFee = feeFloored + 1;
-        }
-
-        feeFloored = (int) Math.Floor(eliteFee);
-        if (eliteFee != feeFloored) {
-            eliteFee = feeFloored + 1;
-        }
-
-        feeFloored = (int) Math.Floor(excellentFee);
-        if (excellentFee != feeFloored) {
-            excellentFee = feeFloored + 1;
-        }
-
-        feeFloored = (int) Math.Floor(legendaryFee);
-        if (legendaryFee != feeFloored) {
-            legendaryFee = feeFloored + 1;
-        }
-
-        feeFloored = (int) Math.Floor(epicFee);
-        if (epicFee != feeFloored) {
-            epicFee = feeFloored + 1;
-        }
-
-        feeFloored = (int) normalFee + (int) rareFee + (int) eliteFee + (int) excellentFee + (int) legendaryFee + (int) epicFee;
-
-        float mesoFee;
+        double mesoFee;
         if (meso == 0) {
             mesoFee = 0;
         } else if (meso <= 100) {
             mesoFee = 5;
         } else {
-            mesoFee = meso * 0.05f;
+            mesoFee = meso * 0.05;
         }
 
-        return feeFloored + (int) mesoFee;
+        return (long) (itemFee + mesoFee);
+    }
+
+    [SuppressMessage("ReSharper", "CompareOfFloatsByEqualityOperator")]
+    private static double MailItemFee(double fee) {
+        double floored = Math.Floor(fee);
+        return fee == floored ? fee : floored + 1;
     }
 
     public static float CalcNpcSpawnWeight(int mainTagCount, int subTagCount, int rareDegree, int difficultyDiff) {
