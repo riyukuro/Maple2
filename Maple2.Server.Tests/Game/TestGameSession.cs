@@ -135,6 +135,8 @@ public sealed class TestGameSession {
         SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata>()));
         // A shop load reads the running game events (NpcShopShowItem).
         SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));
+        // An eventTag quest asks for its term tag: no terms until a test sets them.
+        SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry>()));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];

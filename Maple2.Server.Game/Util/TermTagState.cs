@@ -8,6 +8,8 @@ namespace Maple2.Server.Game.Util;
 public sealed class TermTagState {
     private readonly object mutex = new();
     private readonly Dictionary<int, TermTagTable.Entry> overrides = [];
+    // The GM-started terms whose end the clients have not been sent yet.
+    private readonly HashSet<int> unended = [];
 
     public (List<TermTagTable.Entry> Finished, List<TermTagTable.Entry> Running) Split(TermTagTable table, long now) {
         var finished = new List<TermTagTable.Entry>();
@@ -26,9 +28,28 @@ public sealed class TermTagState {
 
     public static bool Running(TermTagTable.Entry entry, long now) => entry.Start <= now && now < entry.End;
 
-    public void Set(TermTagTable.Entry entry) {
+    // A GM change of a term. A term set running (a start) is ended in the clients by Expired once its end passes;
+    // one set ended was sent its end with the change.
+    public void Set(TermTagTable.Entry entry, long now) {
         lock (mutex) {
             overrides[entry.Id] = entry;
+            if (Running(entry, now)) {
+                unended.Add(entry.Id);
+            } else {
+                unended.Remove(entry.Id);
+            }
+        }
+    }
+
+    // The GM-started terms whose end has passed since the last call, each once: their end goes to the clients.
+    public List<TermTagTable.Entry> Expired(long now) {
+        lock (mutex) {
+            List<TermTagTable.Entry> expired = unended.Select(id => overrides[id]).Where(entry => entry.End <= now)
+                .OrderBy(entry => entry.Id).ToList();
+            foreach (TermTagTable.Entry entry in expired) {
+                unended.Remove(entry.Id);
+            }
+            return expired;
         }
     }
 

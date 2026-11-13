@@ -163,6 +163,19 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // The client uses a nest only when its quest tag is the NurturingQuestTag constant and that term tag runs
+        // (functioncubeobject.cpp:1934-1937), and only within MasteryObjectInteractionDistance of the character
+        // (statenurturing.cpp:200-201); a use of any other nest is not taken.
+        string tag = fieldCube.Value.Nurturing.QuestTag;
+        if (tag != Constants.NurturingQuestTag ||
+            session.TermTags.Find(session.ServerTableMetadata.TermTagTable, tag) is not { } term ||
+            !TermTagState.Running(term, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            return;
+        }
+        if (!InteractRules.InReach(session.Player.Position, fieldCube.Position, Constants.MasteryObjectInteractionDistance)) {
+            return;
+        }
+
         Plot? plot = session.Housing.GetFieldPlot();
         if (plot is null) {
             return;

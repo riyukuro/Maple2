@@ -11,8 +11,8 @@ namespace Maple2.Server.Game.Commands;
 
 // "termtag": starts or ends a term of the TermTag table on this channel (TermTagPacket start/end to its players; the
 // players who enter later get it in their load). The client opens term-gated content, e.g. the nurturing cubes of
-// the NurturingQuestTag constant, only while the term runs. A started term is not ended in the clients when its end
-// passes; "termtag end" or a new entry does that.
+// the NurturingQuestTag constant, only while the term runs. A started term is ended in the online clients when its
+// end passes (GameServer.SendTermEnds), the same as "termtag end".
 public class TermTagCommand : GameCommand {
     public TermTagCommand(GameSession session) : base(AdminPermissions.EventManagement, "termtag", "Start or end an event term on this channel.") {
         AddCommand(new ListCommand(session));
@@ -62,7 +62,12 @@ public class TermTagCommand : GameCommand {
             }
             long now = Now();
             TermTagTable.Entry started = entry with { Start = now, End = now + minutes * 60L };
-            session.TermTags.Set(started);
+            session.TermTags.Set(started, now);
+            // The client's start does not replace a running term it holds (TermTagManagerCli::OnStart inserts,
+            // unit_140ad5f00_termtagmanagercli.cpp:62), so a restart ends the old one first (OnEnd erases it, :76).
+            if (TermTagState.Running(entry, now)) {
+                session.BroadcastChannel(TermTagPacket.End([entry]));
+            }
             session.BroadcastChannel(TermTagPacket.Start([started]));
             ctx.Console.Out.WriteLine($"Started {started.Name} ({started.Id}) for {minutes} minutes on this channel.");
         }
@@ -87,7 +92,7 @@ public class TermTagCommand : GameCommand {
                 return;
             }
             TermTagTable.Entry ended = entry with { End = now };
-            session.TermTags.Set(ended);
+            session.TermTags.Set(ended, now);
             session.BroadcastChannel(TermTagPacket.End([ended]));
             ctx.Console.Out.WriteLine($"Ended {ended.Name} ({ended.Id}) on this channel.");
         }

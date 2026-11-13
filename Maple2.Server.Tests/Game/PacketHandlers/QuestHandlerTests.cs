@@ -708,7 +708,7 @@ public class QuestHandlerTests {
         Assert.That(NpcTalkUtil.GetQuestScriptState(session, bare, Npc), Is.Null);
     }
 
-    // A timed quest whose end time has come (a duration that ran out, an event tag whose QuestTag event is over) gets
+    // A timed quest whose end time has come (a duration that ran out, an event tag whose term is over) gets
     // invalid_date (4) and nothing, as the shared completion check gives it; inside its time it completes.
     [TestCase(30, -10, false)]
     [TestCase(30, -40, true)]
@@ -734,13 +734,17 @@ public class QuestHandlerTests {
         });
     }
 
+    // The term of an eventTag quest is the term tag of that name (the client's GetEndTime, questdata.cpp:274): a
+    // running term completes it, a term that is over gives invalid_date. A QuestTag game event is no term.
     [TestCase(true, false)]
     [TestCase(false, true)]
     public void Complete_OfAnEventTagQuestNeedsItsTerm(bool live, bool expired) {
         var prepared = new TestGameSession();
-        if (live) {
-            prepared.AddEvent(1, GameEventType.QuestTag, new QuestTag("tag"));
-        }
+        prepared.AddEvent(1, GameEventType.QuestTag, new QuestTag("tag"));
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        prepared.SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry> {
+            [1] = new(1, "tag", now - 3600, live ? now + 3600 : now - 60),
+        }));
         GameSession session = Login(prepared: prepared);
         Quest quest = test.StartQuest(Data() with { Basic = Data().Basic with { EventTag = "tag" } });
         quest.Conditions[0].Counter = 1;
@@ -752,6 +756,42 @@ public class QuestHandlerTests {
             Assert.That(test.TakeSent().Select(Convert.ToHexString).First() == Error(QuestError.s_quest_error_invalid_date), Is.EqualTo(expired));
             Assert.That(quest.State, Is.EqualTo(expired ? QuestState.Started : QuestState.Completed));
         });
+    }
+
+    // An eventTag quest can start only while the term tag of its name runs on the channel (questdata.cpp:358-363), as
+    // the client offers it; a live QuestTag game event of that tag does not open it.
+    [TestCase(true, false, true)]
+    [TestCase(false, true, false)]
+    [TestCase(false, false, false)]
+    public void CanStart_AnEventTagQuestFollowsItsTermTag(bool termRunning, bool questTagEvent, bool expected) {
+        var prepared = new TestGameSession();
+        if (questTagEvent) {
+            prepared.AddEvent(1, GameEventType.QuestTag, new QuestTag("tag"));
+        }
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        prepared.SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry> {
+            [1] = new(1, "tag", now - 3600, termRunning ? now + 3600 : now - 60),
+        }));
+        GameSession session = Login(prepared: prepared);
+
+        Assert.That(session.Quest.CanStart(Data() with { Basic = Data().Basic with { EventTag = "tag" } }), Is.EqualTo(expected));
+    }
+
+    // The channel's GM start of a term opens its eventTag quests; its end closes them.
+    [Test]
+    public void CanStart_AGmStartedTermOpensItsQuests() {
+        var prepared = new TestGameSession();
+        prepared.SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry> { [1] = new(1, "tag", 1000, 2000) }));
+        GameSession session = Login(prepared: prepared);
+        QuestMetadata metadata = Data() with { Basic = Data().Basic with { EventTag = "tag" } };
+        Assert.That(session.Quest.CanStart(metadata), Is.False);
+
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        session.TermTags.Set(new TermTagTable.Entry(1, "tag", now - 10, now + 600), now);
+        Assert.That(session.Quest.CanStart(metadata), Is.True);
+
+        session.TermTags.Set(new TermTagTable.Entry(1, "tag", now - 10, now - 1), now);
+        Assert.That(session.Quest.CanStart(metadata), Is.False);
     }
 
     // Quest 26 (the world map's exploration reward): the round's item, "id,grade,count" of fieldMission.xml as the

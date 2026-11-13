@@ -157,7 +157,7 @@ public static class QuestRules {
 
     // CQuestCommon::GetEndTime (questdata.cpp:253), in epoch seconds: a reset weekday gives the start of that weekday
     // after the start, else a duration the start plus its minutes (a quest not started counts from now); an event tag
-    // gives the end of its term (the QuestTag event), 0 when the term is gone or the quest was started outside it;
+    // gives the end of its term (the term tag of that name), 0 when the term is gone or the quest was started outside it;
     // with both, the earlier one.
     public static long EndTime(QuestMetadataBasic basic, long startTime, long now, (long Start, long End)? term) {
         long period = 0;

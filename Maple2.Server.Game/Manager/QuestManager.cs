@@ -153,10 +153,6 @@ public sealed class QuestManager {
 
     private void Initialize(GameStorage.Request db) {
         IEnumerable<QuestMetadata> quests = session.QuestMetadata.GetQuests();
-        IList<QuestTag> events = session.FindEvent(GameEventType.QuestTag)
-            .Where(gameEvent => gameEvent.Metadata.Data is QuestTag)
-            .Select(gameEvent => (QuestTag) gameEvent.Metadata.Data)
-            .ToList();
         foreach (QuestMetadata metadata in quests) {
             // A live card's quest is started whether or not it is an auto start quest (the replayed card's are).
             bool stampQuest = StampQuests().Contains(metadata.Id);
@@ -435,8 +431,11 @@ public sealed class QuestManager {
             return false;
         }
 
+        // Client: CQuestCommon (questdata.cpp:358-363, :1585) offers an eventTag quest only while the term tag of that
+        // name is registered and active (TermTagContext::IsActiveAt), not on a QuestTag game event (that one fills
+        // the client's event quest list, gameevent.cpp:1255).
         if (metadata.Basic.EventTag != string.Empty && !StampQuests().Contains(metadata.Id) &&
-            !session.FindEvent(GameEventType.QuestTag).Any(gameEvent => gameEvent.Metadata.Data is QuestTag tag && tag.Tag == metadata.Basic.EventTag)) {
+            (Term(metadata.Basic.EventTag) is not { } term || !TermTagState.Running(term, DateTimeOffset.UtcNow.ToUnixTimeSeconds()))) {
             return false;
         }
 
@@ -701,8 +700,8 @@ public sealed class QuestManager {
                && QuestRules.CanStartAgain(quest.Metadata.Basic.Repeat, quest.Metadata.Basic.ResetWeekday, quest.StartTime, DateTime.Now);
     }
 
-    // QuestRules.IsExpired with the quest's term: the QuestTag event of its tag. A stamp quest is started without one
-    // (CanStart), so its tag sets no end.
+    // QuestRules.IsExpired with the quest's term: the channel's term tag of its event tag (CQuestCommon::GetEndTime,
+    // questdata.cpp:274). A stamp quest is started without one (CanStart), so its tag sets no end.
     public bool IsExpired(Quest quest) {
         QuestMetadataBasic basic = quest.Metadata.Basic;
         if (!string.IsNullOrEmpty(basic.EventTag) && StampQuests().Contains(quest.Id)) {
@@ -710,14 +709,15 @@ public sealed class QuestManager {
         }
         (long, long)? term = null;
         if (!string.IsNullOrEmpty(basic.EventTag)) {
-            GameEvent? gameEvent = session.FindEvent(GameEventType.QuestTag)
-                .FirstOrDefault(gameEvent => gameEvent.Metadata.Data is QuestTag tag && tag.Tag == basic.EventTag);
-            if (gameEvent != null) {
-                term = (gameEvent.StartTime, gameEvent.EndTime);
+            if (Term(basic.EventTag) is { } entry) {
+                term = (entry.Start, entry.End);
             }
         }
         return QuestRules.IsExpired(basic, quest.StartTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), term);
     }
+
+    // The term tag of this name on this channel (the TermTag table's row, or the GM's start or end of it).
+    private TermTagTable.Entry? Term(string tag) => session.TermTags.Find(session.ServerTableMetadata.TermTagTable, tag);
 
     public bool CanComplete(Quest quest) {
         return quest.State != QuestState.Completed && quest.Conditions

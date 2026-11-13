@@ -100,7 +100,7 @@ public class TermTagTests {
         Assert.That(finished, Is.EqualTo(new[] { Old, Cats }));
         Assert.That(running, Is.Empty);
 
-        state.Set(Cats with { Start = 2500, End = 3500 });
+        state.Set(Cats with { Start = 2500, End = 3500 }, 2500);
         (finished, running) = state.Split(table, 3000);
         Assert.That(finished, Is.EqualTo(new[] { Old }));
         Assert.That(running, Is.EqualTo(new[] { Cats with { Start = 2500, End = 3500 } }));
@@ -162,6 +162,54 @@ public class TermTagTests {
         }
         tests[1].Session.LoadTermTags();
         Assert.That(tests[1].TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(TermTagPacket.Load([Old, ended], [])) }));
+    }
+
+    // A started term ends in the online clients when its end passes (TermTag mode 2), once; a term "termtag end"
+    // ended is not sent a second end.
+    [Test]
+    public void Start_EndsWhenItsEndPasses() {
+        (GameServer server, TestGameSession[] tests) = Channel(new TermTagTable(new Dictionary<int, TermTagTable.Entry> { [153] = Cats, [7] = Old }));
+        GameSession gm = tests[0].Session;
+        Assert.That(new TermTagCommand(gm).Invoke(["start", "CatTerm", "1"], new TestConsole()), Is.EqualTo(0));
+        Assert.That(new TermTagCommand(gm).Invoke(["start", "OldTerm", "1"], new TestConsole()), Is.EqualTo(0));
+        Assert.That(new TermTagCommand(gm).Invoke(["end", "OldTerm"], new TestConsole()), Is.EqualTo(0));
+        TermTagTable.Entry started = gm.TermTags.Find(gm.ServerTableMetadata.TermTagTable, "CatTerm")!;
+        foreach (TestGameSession test in tests) {
+            test.TakeSent();
+        }
+
+        server.SendTermEnds(started.End - 1);
+        Assert.That(tests[0].TakeSent(), Is.Empty);
+
+        server.SendTermEnds(started.End);
+        foreach (TestGameSession test in tests) {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(TermTagPacket.End([started])) }));
+        }
+
+        server.SendTermEnds(started.End + 60);
+        Assert.That(tests[0].TakeSent(), Is.Empty);
+        Assert.That(tests[1].TakeSent(), Is.Empty);
+    }
+
+    // A second start of a running term ends the running one first: the client's start does not replace a term it
+    // holds, its end removes it.
+    [Test]
+    public void Command_RestartEndsTheRunningTermFirst() {
+        (_, TestGameSession[] tests) = Channel(new TermTagTable(new Dictionary<int, TermTagTable.Entry> { [153] = Cats }));
+        GameSession gm = tests[0].Session;
+        Assert.That(new TermTagCommand(gm).Invoke(["start", "CatTerm", "30"], new TestConsole()), Is.EqualTo(0));
+        TermTagTable.Entry first = gm.TermTags.Find(gm.ServerTableMetadata.TermTagTable, "CatTerm")!;
+        foreach (TestGameSession test in tests) {
+            test.TakeSent();
+        }
+
+        Assert.That(new TermTagCommand(gm).Invoke(["start", "CatTerm", "60"], new TestConsole()), Is.EqualTo(0));
+        TermTagTable.Entry second = gm.TermTags.Find(gm.ServerTableMetadata.TermTagTable, "CatTerm")!;
+        Assert.That(second.End, Is.EqualTo(second.Start + 3600));
+        foreach (TestGameSession test in tests) {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Is.EqualTo(new[] { Hex(TermTagPacket.End([first])), Hex(TermTagPacket.Start([second])) }));
+        }
     }
 
     // An unknown term, or the end of a term that is not running, sends nothing.

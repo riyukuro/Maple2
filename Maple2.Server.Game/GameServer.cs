@@ -13,6 +13,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Core.Helpers;
 using Maple2.Server.Game.Util;
@@ -64,7 +65,10 @@ public class GameServer : Server<GameSession> {
 
         debugGraphicsContext.Initialize();
         gameEvents = new ChannelGameEvents<GameSession>(eventCache, DateTime.Now);
-        eventEdgeTimer = new Timer(_ => SendEventEdges(DateTime.Now), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        eventEdgeTimer = new Timer(_ => {
+            SendEventEdges(DateTime.Now);
+            SendTermEnds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     private ChannelGameEvents<GameSession> GameEvents => gameEvents ??= new ChannelGameEvents<GameSession>(eventCache, DateTime.Now);
@@ -227,6 +231,16 @@ public class GameServer : Server<GameSession> {
     }
 
     // The day-of-week and time-of-day edges of the events (ChannelGameEvents.Tick), to the sessions that loaded them.
+    // A term a GM started ends in the online clients when its end passes (TermTag mode 2, as "termtag end" sends);
+    // the players who enter later get it as finished in their load.
+    public void SendTermEnds(long now) {
+        List<TermTagTable.Entry> expired = TermTags.Expired(now);
+        if (expired.Count == 0) {
+            return;
+        }
+        Broadcast(TermTagPacket.End(expired));
+    }
+
     public void SendEventEdges(DateTime now) {
         ChannelGameEvents<GameSession>.Edges edges;
         try {
