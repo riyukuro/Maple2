@@ -897,6 +897,10 @@ public class FieldNpc : Actor<Npc> {
         Patrol = newPatrolData;
         currentWaypointIndex = 0;
         scriptPatrol = byScript;
+        if (byScript) {
+            Logger.Debug("Npc {NpcId} ({ObjectId}) on map {MapId} takes patrol {Patrol} from a trigger at {Position}",
+                Value.Metadata.Id, ObjectId, Field.MapId, newPatrolData.Name, Position);
+        }
     }
 
     // On a path a script set that has not ended (a path that is not a loop ends at its last waypoint).
