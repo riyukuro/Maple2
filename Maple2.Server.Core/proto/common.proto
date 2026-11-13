@@ -448,6 +448,14 @@ message AdminRequest {
     string message = 3;
   }
 
+  // The notice config (NoticeConfig, kept by the world server). kind: 0 the field notice banner (NoticeDialog 0xCF
+  // at a player's first field entry on a channel), 1 the lobby's login notice (a LoginNotice game event at login).
+  // action: 0 off, 1 on, 2 show the banner to every player now, 3 status only. The answer carries the config.
+  message Notice {
+    int32 kind = 1;
+    int32 action = 2;
+  }
+
   int64 requester_id = 1;
   oneof request {
     Alert alert = 2;
@@ -456,12 +464,16 @@ message AdminRequest {
     ListStringBoard list_string_board = 5;
     AccountBlock account_block = 6;
     ShutdownNotice shutdown_notice = 7;
+    Notice notice = 8;
   }
 }
 
 message AdminResponse {
   int32 error = 1;
   string message = 2;
+  // The notice config after a Notice request.
+  bool notice_banner = 3;
+  bool notice_login = 4;
 }
 
 message DisconnectRequest {

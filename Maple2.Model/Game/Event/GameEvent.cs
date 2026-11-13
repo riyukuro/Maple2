@@ -178,6 +178,8 @@ public class GameEvent : IByteSerializable {
                 }
                 break;
             case LoginNotice:
+                // GameEventLoginNotice has no reader of its own: GameEvent::vfunc_4 reads the id.
+                writer.WriteInt(Id);
                 break;
             case GuildVsGameOpen:
                 // GameEventGuildVsGameOpen reads only the base event's id.

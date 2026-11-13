@@ -7,6 +7,7 @@ using Grpc.Health.V1;
 using Grpc.Net.Client;
 using Maple2.Database.Extensions;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Helpers;
 using Maple2.Server.Core.Sync;
@@ -288,6 +289,19 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
                     Message = message,
                 },
             });
+        }
+        // The notice banner, when on (a new channel starts with it off). A failed replay leaves the channel up.
+        if (worldServer.NoticeConfig().banner) {
+            try {
+                channel.Client.Admin(new AdminRequest {
+                    Notice = new AdminRequest.Types.Notice {
+                        Kind = NoticeRules.Banner,
+                        Action = NoticeRules.On,
+                    },
+                });
+            } catch (RpcException ex) {
+                logger.Warning(ex, "Channel {Channel}: notice banner replay failed", channel.Id);
+            }
         }
     }
 

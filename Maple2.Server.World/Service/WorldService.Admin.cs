@@ -1,4 +1,5 @@
 ﻿using Grpc.Core;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.World.Service;
 
@@ -15,6 +16,8 @@ public partial class WorldService {
                 return Task.FromResult(RemoveStringBoard(request.RemoveStringBoard));
             case AdminRequest.RequestOneofCase.ListStringBoard:
                 return Task.FromResult(ListStringBoards());
+            case AdminRequest.RequestOneofCase.Notice:
+                return Task.FromResult(Notice(request));
             default:
                 return Task.FromResult(new AdminResponse());
         }
@@ -43,6 +46,29 @@ public partial class WorldService {
         return new AdminResponse {
             Message = responseMessage,
         };
+    }
+
+    // The notice config (NoticeRules). A banner change or show goes to every channel; the login notice is read by the
+    // login server at each login (a status request).
+    private AdminResponse Notice(AdminRequest request) {
+        AdminRequest.Types.Notice notice = request.Notice;
+        if (!NoticeRules.ValidRequest(notice.Kind, notice.Action)) {
+            (bool bannerNow, bool loginNow) = worldServer.NoticeConfig();
+            return new AdminResponse {
+                Error = 1,
+                Message = $"Unknown notice request: kind {notice.Kind}, action {notice.Action}",
+                NoticeBanner = bannerNow,
+                NoticeLogin = loginNow,
+            };
+        }
+
+        (bool banner, bool login) = worldServer.ApplyNotice(notice.Kind, notice.Action);
+        AdminResponse response = notice.Kind == NoticeRules.Banner && notice.Action != NoticeRules.Status
+            ? Alert(request)
+            : new AdminResponse();
+        response.NoticeBanner = banner;
+        response.NoticeLogin = login;
+        return response;
     }
 
     private AdminResponse AddStringBoard(AdminRequest.Types.AddStringBoard add) {

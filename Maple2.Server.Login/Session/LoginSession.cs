@@ -8,6 +8,7 @@ using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
@@ -100,6 +101,30 @@ public class LoginSession : Core.Network.Session {
             Logger.Warning("World unavailable; lock for account {AccountId} not released", accountId);
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to release lock for account {AccountId}", accountId);
+        }
+    }
+
+    // The login's game events: the table's active ones, and a LoginNotice while the GM notice config has the login
+    // notice on and the table has none (NoticeRules).
+    public void SendEvents() {
+        List<GameEvent> events = Server.GetEvents().ToList();
+        if (!events.Any(gameEvent => gameEvent.Metadata.Data is LoginNotice) && LoginNoticeOn()) {
+            events.Add(NoticeRules.LoginNoticeEvent(DateTime.Now));
+        }
+        Send(GameEventPacket.Load(events.ToArray()));
+    }
+
+    private bool LoginNoticeOn() {
+        try {
+            return World.Admin(new AdminRequest {
+                Notice = new AdminRequest.Types.Notice {
+                    Kind = NoticeRules.Login,
+                    Action = NoticeRules.Status,
+                },
+            }).NoticeLogin;
+        } catch (RpcException ex) {
+            Logger.Warning(ex, "World unavailable; no login notice");
+            return false;
         }
     }
 

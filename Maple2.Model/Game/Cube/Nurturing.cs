@@ -102,4 +102,14 @@ public class Nurturing : IByteSerializable {
         writer.WriteShort(); // Unknown
         writer.WriteLong(LastFeedTime.ToUnixTimeSeconds());
     }
+
+    // The system mail (systemmailcontent id) that carries the feeding gift to the owner when a visitor plays with the
+    // pet; null for a pet whose event has no such mail. 180524005 is the Rainbow Slime nest's KR mail (its 2 rainbow
+    // coins are the nest's rewardItemByFeeding, 30001135 x2).
+    public static string? OwnerMailContent(string questTag) => questTag switch {
+        "20180524_RainbowSlime" => "180524005",
+        "NurturingPumpkinDevil" => "18101804",
+        "NurturingGhostCats" => "19101804",
+        _ => null,
+    };
 }

@@ -140,6 +140,15 @@ public sealed class TestLoginSession {
             return new PlayerUpdateResponse();
         }
 
+        // The world's notice config (NoticeRules): NoticeLogin is what a status request answers.
+        public readonly List<AdminRequest> Admins = [];
+        public bool NoticeLogin;
+
+        public override AdminResponse Admin(AdminRequest request, CallOptions options) {
+            Admins.Add(request);
+            return new AdminResponse { NoticeLogin = NoticeLogin };
+        }
+
         // The club requests; ClubError is what the world answers (0: done).
         public readonly List<ClubRequest> Clubs = [];
         public int ClubError;

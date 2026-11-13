@@ -653,6 +653,7 @@ public sealed partial class GameSession : Core.Network.Session {
     private long resummonPetUid;
     // The client was told the pet is away (a field that allows no pet); sent once until the pet is back.
     private bool resummonUnSummonSent;
+    private bool noticeBannerSent;
     // The pet to bring back after a move to another channel or game server (MigrateOutRequest.pet_uid).
     public long SummonedPetUid => Pet?.Pet.Uid ?? resummonPetUid;
 
@@ -861,6 +862,14 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
+    // The notice banner of the GM notice config, at a field entry, once per session (NoticeRules).
+    public void SendNoticeBanner() {
+        if (NoticeRules.BannerAtEntry(server.NoticeBanner, noticeBannerSent)) {
+            noticeBannerSent = true;
+            Send(NoticeDialogPacket.Show());
+        }
+    }
+
     public bool EnterField() {
         if (Field == null) return false;
 
@@ -941,6 +950,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
         AnnounceOpenGlobalPortal();
         AnnounceOpenFieldWar();
+        SendNoticeBanner();
 
         Send(PremiumCubPacket.Activate(Player.ObjectId, Player.Value.Account.PremiumTime));
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));

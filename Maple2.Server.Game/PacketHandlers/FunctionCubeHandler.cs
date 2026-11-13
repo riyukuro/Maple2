@@ -329,13 +329,8 @@ public class FunctionCubeHandler : FieldPacketHandler {
     private Mail? CreateOwnerMail(GameSession session, long ownerId, FunctionCubeMetadata.NurturingData nurturing) {
         using GameStorage.Request db = session.GameStorage.Context();
 
-        string contentId = nurturing.QuestTag switch {
-            "NurturingPumpkinDevil" => "18101804",
-            "NurturingGhostCats" => "19101804",
-            _ => "",
-        };
-
-        if (string.IsNullOrEmpty(contentId)) {
+        string? contentId = Nurturing.OwnerMailContent(nurturing.QuestTag);
+        if (contentId == null) {
             Logger.Warning("Unknown event tag {0} for nurturing mail", nurturing.QuestTag);
             return null;
         }

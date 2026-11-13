@@ -41,6 +41,11 @@ public class WorldServer {
     private readonly EventQueue scheduler;
     private readonly CancellationTokenSource tokenSource = new();
     private readonly ConcurrentDictionary<int, string> memoryStringBoards;
+    // The notice config (NoticeRules): set by the GM notice command, NOTICE_BANNER=1 / NOTICE_LOGIN=1 turn it on at
+    // start. Not stored: a world restart goes back to the environment's.
+    private readonly object noticeMutex = new();
+    private bool noticeBanner;
+    private bool noticeLogin;
     private static int _globalIdCounter;
 
     private readonly ILogger logger = Log.ForContext<WorldServer>();
@@ -63,6 +68,8 @@ public class WorldServer {
         scheduler = new EventQueue(logger);
         scheduler.Start();
         memoryStringBoards = [];
+        noticeBanner = Environment.GetEnvironmentVariable("NOTICE_BANNER") == "1";
+        noticeLogin = Environment.GetEnvironmentVariable("NOTICE_LOGIN") == "1";
 
         // World initialization: set all characters offline and cleanup unowned items
         using GameStorage.Request db = gameStorage.Context();
@@ -678,5 +685,19 @@ public class WorldServer {
 
     public IReadOnlyDictionary<int, string> GetCustomStringBoards() {
         return memoryStringBoards;
+    }
+
+    public (bool banner, bool login) NoticeConfig() {
+        lock (noticeMutex) {
+            return (noticeBanner, noticeLogin);
+        }
+    }
+
+    // The config after a notice request (NoticeRules.Apply).
+    public (bool banner, bool login) ApplyNotice(int kind, int action) {
+        lock (noticeMutex) {
+            (noticeBanner, noticeLogin) = NoticeRules.Apply(noticeBanner, noticeLogin, kind, action);
+            return (noticeBanner, noticeLogin);
+        }
     }
 }

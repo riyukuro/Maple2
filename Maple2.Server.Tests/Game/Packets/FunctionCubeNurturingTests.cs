@@ -94,6 +94,23 @@ public class FunctionCubeNurturingTests {
         Assert.That(NurturingRecord.CubeIds(fed, ownerId: 1, itemId: 100, cubeId: 850), Is.EqualTo(new long[] { 850, 801, 850 }));
     }
 
+    // A visitor's play mails the owner the pet's rewardItemByFeeding. The Rainbow Slime nest (cube 50400282, tag
+    // 20180524_RainbowSlime, 30001135 x2) had no mail, so its owner got nothing; KR system mail 180524005 is the
+    // one that says another player played with the slime and hands over 2 rainbow coins.
+    [TestCase("20180524_RainbowSlime", "180524005")]
+    [TestCase("NurturingPumpkinDevil", "18101804")]
+    [TestCase("NurturingGhostCats", "19101804")]
+    public void OwnerMail_HasTheEventsMail(string questTag, string content) {
+        Assert.That(Nurturing.OwnerMailContent(questTag), Is.EqualTo(content));
+    }
+
+    [TestCase("NurturingRainbowSlime")] // no rewardItemByFeeding in its data: the handler sends no mail before this
+    [TestCase("tag")]
+    [TestCase("")]
+    public void OwnerMail_NoneForAnUnknownEvent(string questTag) {
+        Assert.That(Nurturing.OwnerMailContent(questTag), Is.Null);
+    }
+
     private static Nurturing PetOf() {
         var data = new Maple2.Model.Metadata.FunctionCubeMetadata.NurturingData(default, default,
             [new Maple2.Model.Metadata.FunctionCubeMetadata.NurturingData.Growth(1000, 1, default)], "tag");

@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -26,6 +27,8 @@ public partial class ChannelService {
                 return Task.FromResult(UpdateAccountBlock(request.AccountBlock));
             case AdminRequest.RequestOneofCase.ShutdownNotice:
                 return Task.FromResult(ShutdownNotice(request.ShutdownNotice));
+            case AdminRequest.RequestOneofCase.Notice:
+                return Task.FromResult(Notice(request.Notice));
             default:
                 return Task.FromResult(new AdminResponse());
         }
@@ -125,6 +128,29 @@ public partial class ChannelService {
             default:
                 return null;
         }
+    }
+
+    // The notice banner of the GM notice config (NoticeRules): kept for the sessions' first field entry, or shown now
+    // to every player in a field. The login notice is the login server's.
+    private AdminResponse Notice(AdminRequest.Types.Notice notice) {
+        if (notice.Kind != NoticeRules.Banner) {
+            return new AdminResponse();
+        }
+        switch (notice.Action) {
+            case NoticeRules.Off:
+            case NoticeRules.On:
+                server.NoticeBanner = notice.Action == NoticeRules.On;
+                break;
+            case NoticeRules.Show:
+                foreach (GameSession session in server.GetSessions()) {
+                    if (session.Player is null || session.Field is null) {
+                        continue;
+                    }
+                    session.Send(NoticeDialogPacket.Show());
+                }
+                break;
+        }
+        return new AdminResponse();
     }
 
     private AdminResponse AddStringBoard(AdminRequest.Types.AddStringBoard addStringBoard) {
