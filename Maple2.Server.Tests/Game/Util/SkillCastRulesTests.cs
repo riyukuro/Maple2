@@ -846,6 +846,14 @@ public class SkillCastRulesTests {
         }));
     }
 
+    // A held state skill takes its ep again a second after the last take, whatever its motion's sequence speed: the
+    // client checks the stamina once a second from the state's start. Sequence speed 1.15 used to give 1150 ms.
+    [Test]
+    public void StateSkillTakesItsCostEverySecond() {
+        Assert.That(SkillCastRules.StateSkillTickMs, Is.EqualTo(1000));
+        Assert.That(SkillCastRules.NextStateTick(5000), Is.EqualTo(6000));
+    }
+
     [Test]
     public void MotionPairsOnlyInALevelOfAsManyMotions() {
         var played = new PlayedClientSkills.MotionTiming("Striker_GigantikBlow1_A", 1.4f, 0, 0, "p0", 2);

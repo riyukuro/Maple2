@@ -331,7 +331,7 @@ public class FieldPlayer : Actor<Player> {
                 return;
             }
 
-            stateSkill.StateNextTick = tickCount + (int) TimeSpan.FromSeconds(Math.Max(0.01f, stateSkill.Motion.MotionProperty.SequenceSpeed)).TotalMilliseconds;
+            stateSkill.StateNextTick = SkillCastRules.NextStateTick(tickCount);
             if (!SkillCastConsume(stateSkill)) {
                 ActiveSkills.StateSkill = null;
                 Field.Broadcast(SkillPacket.Cancel(stateSkill));

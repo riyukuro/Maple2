@@ -6,6 +6,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -45,7 +46,7 @@ public class StateSkillHandler : FieldPacketHandler {
             return;
         }
 
-        cast.StateNextTick = session.Field.FieldTick + (int) TimeSpan.FromSeconds(cast.Motion.MotionProperty.SequenceSpeed).TotalMilliseconds;
+        cast.StateNextTick = SkillCastRules.NextStateTick(session.Field.FieldTick);
         session.Player.ActiveSkills.Add(cast);
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
     }

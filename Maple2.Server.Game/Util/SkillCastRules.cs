@@ -36,6 +36,14 @@ public static class SkillCastRules {
 
     public static bool RefusedDead(bool isDead, bool allowDead) => isDead && !allowDead;
 
+    // A state skill (a move state held on its key) takes its cost again every second while it is held. The
+    // client keeps no count of its own: StateMoveSkill checks once a second from the state's start that the stamina left
+    // covers the level's ep and leaves the state when it does not (statemanager.cpp:784-794, Unk_IntervalTimer armed on
+    // entry), and it never takes the ep itself. The motion's sequence speed has no part in it.
+    public const int StateSkillTickMs = 1000;
+
+    public static long NextStateTick(long tick) => tick + StateSkillTickMs;
+
     public static bool OnCooldown(long tick, long endTick) => tick < endTick - CooldownSlackMs;
 
     // clearCooldownFromPVPZone, loaded with a skill's stateAttr (skilloverlapcompare.cpp:867) and an effect's
