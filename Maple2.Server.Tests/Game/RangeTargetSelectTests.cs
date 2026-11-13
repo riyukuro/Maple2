@@ -10,6 +10,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
 
@@ -454,5 +455,38 @@ public class RangeTargetSelectTests {
             Assert.That(Step(marked, 4), Is.EqualTo(new[] { b }), "only the marked one");
             Assert.That(Step(marked, 4, excluded: b), Is.EqualTo(new[] { c }), "the marked one is left out, so all");
         });
+    }
+
+    // The step and bounce searches leave out the range's excluded targets as the plain search does: a target holding
+    // an enabled copy of the range's not-buff is neither stepped on nor bounced to; a disabled copy does not count.
+    [Test]
+    public void GetStepTargets_LeavesOutTheExcluded() {
+        Scene scene = Start();
+        int b = scene.B.ObjectId, c = scene.C.ObjectId;
+        SkillMetadataRange range = Range(null) with { HasNotBuffId = 10600151 };
+        int[] Step() => Ids(scene.Field.GetStepTargets(scene.A, Around[0], range, _ => true, new TargetSort(3, Vector3.Zero, 90)));
+        Mark(scene.B, scene.A);
+        Assert.That(Step(), Is.EqualTo(new[] { c }));
+        Mark(scene.B, scene.A, enabled: false);
+        Assert.That(Step(), Is.EqualTo(new[] { b, c }), "a disabled copy");
+    }
+
+    [Test]
+    public void GetBounceTargets_LeavesOutTheExcluded() {
+        Scene scene = Start();
+        int b = scene.B.ObjectId, c = scene.C.ObjectId;
+        SkillMetadataArrow arrow = new(false, false, false, SkillTargetType.None, default, 3, 600, false, Vector3.Zero, Vector3.Zero, 0);
+        SkillMetadataAttack attack = new("p0", 0, 5, 0, 0, 0, 0, [], null, Range(null) with { HasNotBuffId = 10600151 }, arrow,
+            null!, [], []);
+        var data = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
+            Motions = [new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>())],
+        };
+        var metadata = (SkillMetadata) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadata)) with { Data = data };
+        var record = new SkillRecord(metadata, 1, scene.A);
+        int[] Bounce() => Ids(scene.Field.GetBounceTargets(record, scene.A));
+        Mark(scene.B, scene.A);
+        Assert.That(Bounce(), Is.EqualTo(new[] { c }));
+        Mark(scene.B, scene.A, enabled: false);
+        Assert.That(Bounce(), Is.EqualTo(new[] { b, c }), "a disabled copy");
     }
 }

@@ -284,9 +284,10 @@ public static class SkillUtils {
         }
 
         // hasNotBuffOwner (HasNotBuffOwned): only a buff ownedBy cast fails the test, as hasBuffOwner counts only one.
-        if (condition.HasNotBuffIds.Length > 0 && condition.HasNotBuffIds.Any(id => condition.HasNotBuffOwned
-                ? target.Buffs.EnumerateBuffs(id).Any(buff => buff.Caster.ObjectId == ownedBy.ObjectId)
-                : target.Buffs.HasBuff(id))) {
+        // Only an enabled copy fails it, as the client's buff tests count only enabled records (HasEnabledWithId /
+        // HasEnabledWithIdAndCaster, basecollision.cpp:333-336) and as RangeTargetSelect.Excludes does.
+        if (condition.HasNotBuffIds.Length > 0 && condition.HasNotBuffIds.Any(id => target.Buffs.EnumerateBuffs(id)
+                .Any(buff => buff.Enabled && (!condition.HasNotBuffOwned || buff.Caster.ObjectId == ownedBy.ObjectId)))) {
             return false;
         }
 

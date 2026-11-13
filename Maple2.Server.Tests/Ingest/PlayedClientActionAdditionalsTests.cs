@@ -203,6 +203,35 @@ public class PlayedClientActionAdditionalsTests {
         Assert.That(none, Is.Zero);
     }
 
+    // Row by row: of two rows of the same effect, level and buff, only the one whose own use has the owner flag is
+    // marked, and a use of one attack never marks the same effect's row on another attack, nor an on-damage use a
+    // row run on every hit.
+    [Test]
+    public void MarksTheHasNotBuffOwnerPerRow() {
+        SkillMetadataAttack first = Attack("p0") with {
+            Skills = [NotBuffRow(946, 956)],
+            SkillsOnDamage = [NotBuffRow(946, 956), NotBuffRow(946, 956)],
+        };
+        SkillMetadataAttack second = Attack("p1") with { SkillsOnDamage = [NotBuffRow(946, 956)] };
+        var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
+            Skills = [],
+            Motions = [new SkillMetadataMotion(null!, [first, second], new Dictionary<string, byte>())],
+        };
+        var uses = new PlayedClientActionAdditionals.LevelUses([],
+            new Dictionary<(int, int), PlayedClientActionAdditionals.AttackUses> {
+                [(0, 0)] = new("p0", [NotBuffUse(946, 956, owner: false), NotBuffUse(946, 956, owner: true)]),
+                [(0, 1)] = new("p1", [NotBuffUse(946, 956, owner: false)]),
+            });
+        SkillMetadataLevel marked = PlayedClientActionAdditionals.MarkNotBuffOwned(level, uses, out int count);
+        Assert.Multiple(() => {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(marked.Motions[0].Attacks[0].SkillsOnDamage.Select(row => row.Condition!.Condition.Target!.HasNotBuffOwned),
+                Is.EqualTo(new[] { false, true }));
+            Assert.That(marked.Motions[0].Attacks[0].Skills[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.False);
+            Assert.That(marked.Motions[0].Attacks[1].SkillsOnDamage[0].Condition!.Condition.Target!.HasNotBuffOwned, Is.False);
+        });
+    }
+
     // TiXmlElement::QueryBoolAttribute: a prefix of "true", "yes" or "1" in any case is set; "false", "no", "0" and
     // anything else (a 2, an empty value) is not.
     [Test]

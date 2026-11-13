@@ -87,23 +87,7 @@ public static class PlayedClientActionAdditionals {
 
         Use[] own = Missing(uses.Level);
         int count = own.Length;
-        // The pack attack each client attack's uses go to, in the client's attack order.
-        var placed = new Dictionary<(int, int), List<Use>>();
-        int unplaced = 0;
-        foreach (((int motion, int attack), AttackUses attackUses) in uses.Attacks.OrderBy(entry => entry.Key)) {
-            SkillMetadataAttack[] packAttacks = motion < level.Motions.Length ? level.Motions[motion].Attacks : [];
-            int index = attack < packAttacks.Length && packAttacks[attack].Point == attackUses.Point
-                ? attack
-                : Array.FindIndex(packAttacks, other => other.Point == attackUses.Point);
-            if (index < 0) {
-                unplaced += attackUses.Uses.Length;
-                continue;
-            }
-            if (!placed.TryGetValue((motion, index), out List<Use>? list)) {
-                placed[(motion, index)] = list = [];
-            }
-            list.AddRange(attackUses.Uses);
-        }
+        Dictionary<(int, int), List<Use>> placed = Place(level, uses, out int unplaced);
         SkillMetadataMotion[] motions = level.Motions.Select((motion, motionIndex) => motion with {
             Attacks = motion.Attacks.Select((attack, attackIndex) => {
                 if (!placed.TryGetValue((motionIndex, attackIndex), out List<Use>? attackUses)) {
@@ -125,47 +109,86 @@ public static class PlayedClientActionAdditionals {
         return count == 0 ? level : level with { Skills = [.. level.Skills, .. own.Select(ToEffect)], Motions = motions };
     }
 
+    // The pack attack each client attack's uses go to, in the client's attack order: the attack at the same place of the
+    // same motion, or, when the attack there has another point, the motion's first attack with the use's point.
+    // Unplaced counts the uses with no such attack.
+    private static Dictionary<(int, int), List<Use>> Place(SkillMetadataLevel level, LevelUses uses, out int unplaced) {
+        var placed = new Dictionary<(int, int), List<Use>>();
+        unplaced = 0;
+        foreach (((int motion, int attack), AttackUses attackUses) in uses.Attacks.OrderBy(entry => entry.Key)) {
+            SkillMetadataAttack[] packAttacks = motion < level.Motions.Length ? level.Motions[motion].Attacks : [];
+            int index = attack < packAttacks.Length && packAttacks[attack].Point == attackUses.Point
+                ? attack
+                : Array.FindIndex(packAttacks, other => other.Point == attackUses.Point);
+            if (index < 0) {
+                unplaced += attackUses.Uses.Length;
+                continue;
+            }
+            if (!placed.TryGetValue((motion, index), out List<Use>? list)) {
+                placed[(motion, index)] = list = [];
+            }
+            list.AddRange(attackUses.Uses);
+        }
+        return placed;
+    }
+
     // The level with hasNotBuffOwner taken over onto the data pack's own rows, which do not give it (the parser's
-    // condition has no such field): a row whose <target> or <caster> tests a hasNotBuffID that a use of the same effect
-    // id and level anywhere in the level tests with hasNotBuffOwner gets HasNotBuffOwned on that test. Marked counts
-    // the tests changed. KR: the actionAdditional rows of 10300222..10300226 (hasNotBuffID 10300227).
+    // condition has no such field), row by row: the level's uses go to the level's rows, and an attack's uses to the
+    // rows of the pack attack they are placed on (Place; a dependOnDamageCount use to the on-damage rows). There the
+    // n-th use of an effect id and level is the n-th row giving that id and level, and that row's <target> or
+    // <caster> test gets HasNotBuffOwned when the use's same test has hasNotBuffOwner for a hasNotBuffID the row's test
+    // also tests. Marked counts the tests changed. KR: the actionAdditional rows of 10300222..10300226 (hasNotBuffID
+    // 10300227), one use per attack row.
     public static SkillMetadataLevel MarkNotBuffOwned(SkillMetadataLevel level, LevelUses uses, out int marked) {
-        Use[] all = [.. uses.Level, .. uses.Attacks.Values.SelectMany(attack => attack.Uses)];
-        HashSet<(int, short, int)> targetOwned = all.Where(use => use.TargetTest is { HasNotBuffOwner: true, HasNotBuffId: not 0 })
-            .Select(use => (use.EffectId, use.Level, use.TargetTest!.Value.HasNotBuffId)).ToHashSet();
-        HashSet<(int, short, int)> casterOwned = all.Where(use => use.CasterTest is { HasNotBuffOwner: true, HasNotBuffId: not 0 })
-            .Select(use => (use.EffectId, use.Level, use.CasterTest!.Value.HasNotBuffId)).ToHashSet();
-        int count = 0;
-        if (targetOwned.Count == 0 && casterOwned.Count == 0) {
+        static bool Owned(BuffTest? test) => test is { HasNotBuffOwner: true, HasNotBuffId: not 0 };
+        bool any = uses.Level.Concat(uses.Attacks.Values.SelectMany(attack => attack.Uses)).Any(use => Owned(use.TargetTest) || Owned(use.CasterTest));
+        if (!any) {
             marked = 0;
             return level;
         }
 
-        BeginConditionTarget? Mark(BeginConditionTarget? test, SkillEffectMetadata effect, HashSet<(int, short, int)> owned) {
-            if (test == null || test.HasNotBuffOwned || !effect.Skills.Any(skill => test.HasNotBuffIds.Any(id => owned.Contains((skill.Id, skill.Level, id))))) {
+        int count = 0;
+        BeginConditionTarget? Mark(BeginConditionTarget? test, BuffTest? useTest) {
+            if (test == null || test.HasNotBuffOwned || !Owned(useTest) || !test.HasNotBuffIds.Contains(useTest!.Value.HasNotBuffId)) {
                 return test;
             }
             count++;
             return test with { HasNotBuffOwned = true };
         }
-        SkillEffectMetadata MarkEffect(SkillEffectMetadata effect) {
-            if (effect.Condition is not { } condition) {
-                return effect;
-            }
-            BeginConditionTarget? target = Mark(condition.Condition.Target, effect, targetOwned);
-            BeginConditionTarget? caster = Mark(condition.Condition.Caster, effect, casterOwned);
-            if (ReferenceEquals(target, condition.Condition.Target) && ReferenceEquals(caster, condition.Condition.Caster)) {
-                return effect;
-            }
-            return effect with { Condition = condition with { Condition = condition.Condition with { Target = target, Caster = caster } } };
+        // Each row paired with the first use left that gives one of its effect ids and levels, in order.
+        SkillEffectMetadata[] MarkRows(SkillEffectMetadata[] rows, IEnumerable<Use> rowUses) {
+            List<Use> left = rowUses.ToList();
+            return rows.Select(effect => {
+                int index = left.FindIndex(use => effect.Skills.Any(skill => skill.Id == use.EffectId && skill.Level == use.Level));
+                if (index < 0) {
+                    return effect;
+                }
+                Use use = left[index];
+                left.RemoveAt(index);
+                if (effect.Condition is not { } condition) {
+                    return effect;
+                }
+                BeginConditionTarget? target = Mark(condition.Condition.Target, use.TargetTest);
+                BeginConditionTarget? caster = Mark(condition.Condition.Caster, use.CasterTest);
+                if (ReferenceEquals(target, condition.Condition.Target) && ReferenceEquals(caster, condition.Condition.Caster)) {
+                    return effect;
+                }
+                return effect with { Condition = condition with { Condition = condition.Condition with { Target = target, Caster = caster } } };
+            }).ToArray();
         }
 
+        Dictionary<(int, int), List<Use>> placed = Place(level, uses, out _);
         SkillMetadataLevel result = level with {
-            Skills = level.Skills.Select(MarkEffect).ToArray(),
-            Motions = level.Motions.Select(motion => motion with {
-                Attacks = motion.Attacks.Select(attack => attack with {
-                    Skills = attack.Skills.Select(MarkEffect).ToArray(),
-                    SkillsOnDamage = attack.SkillsOnDamage.Select(MarkEffect).ToArray(),
+            Skills = MarkRows(level.Skills, uses.Level),
+            Motions = level.Motions.Select((motion, motionIndex) => motion with {
+                Attacks = motion.Attacks.Select((attack, attackIndex) => {
+                    if (!placed.TryGetValue((motionIndex, attackIndex), out List<Use>? attackUses)) {
+                        return attack;
+                    }
+                    return attack with {
+                        Skills = MarkRows(attack.Skills, attackUses.Where(use => !use.OnDamage)),
+                        SkillsOnDamage = MarkRows(attack.SkillsOnDamage, attackUses.Where(use => use.OnDamage)),
+                    };
                 }).ToArray(),
             }).ToArray(),
         };

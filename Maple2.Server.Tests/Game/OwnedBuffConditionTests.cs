@@ -36,6 +36,7 @@ public class OwnedBuffConditionTests {
         typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(buff, caster);
         typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(buff, holder);
         typeof(Buff).GetField("<Stacks>k__BackingField", Any)!.SetValue(buff, stacks);
+        typeof(Buff).GetField("<Enabled>k__BackingField", Any)!.SetValue(buff, true);
         var buffs = (ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(holder.Buffs)!;
         buffs.GetOrAdd(BuffId, _ => []).Add(buff);
     }
@@ -94,6 +95,11 @@ public class OwnedBuffConditionTests {
             Assert.That(owned.Check(b, b, target), Is.True, "A's copy does not stop B");
             Assert.That(any.Check(b, b, target), Is.False, "without hasNotBuffOwner any copy does");
         });
+        // Only an enabled copy fails it, as the client's buff tests count only enabled records.
+        var buffs = (ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(target.Buffs)!;
+        typeof(Buff).GetField("<Enabled>k__BackingField", Any)!.SetValue(buffs[BuffId][0], false);
+        Assert.That(buffs[BuffId][0].Enabled, Is.False);
+        Assert.That(owned.Check(a, a, target) && any.Check(b, b, target), Is.True, "a disabled copy");
     }
 
     // The stack count is compared on the caster's own copy: another caster's copy with the count does not pass.
