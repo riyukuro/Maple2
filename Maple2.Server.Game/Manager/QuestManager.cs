@@ -489,6 +489,16 @@ public sealed class QuestManager {
 
     private bool HasState(int questId, QuestState state) => TryGetQuest(questId, out Quest? quest) && quest.State == state;
 
+    // CQuestManager::CanEnterSkyFortress (questmanager_2.cpp:1723), the server's part: the quest the sky fortress
+    // season (1) requires is rewarded (IsQuestRewarded, state 2), and the player is not on the target field already.
+    // A table stored before the seasons were read has none: the constant then names the same quest (91000013 in KR).
+    // Chosen here: the client's third check (the player on the home field 62000000 or FUN_1409312f0) is left to it.
+    public bool CanEnterSkyFortress(int mapId) {
+        FameTable fame = session.TableMetadata.FameTable;
+        int questId = fame.SeasonRequireQuests == null ? session.ServerTableMetadata.ConstantsTable.FameContentsRequireQuestID : fame.SeasonRequireQuest(1);
+        return HasState(questId, QuestState.Completed) && session.Field?.MapId != mapId;
+    }
+
     // The quests of a group the client accepts now (QuestGroupPick): the pick over the group's quests in id order,
     // seeded by the first one's repeat.
     public List<int> GroupPicks(int groupId, DateTime now) {

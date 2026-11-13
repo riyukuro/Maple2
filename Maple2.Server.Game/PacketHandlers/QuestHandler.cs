@@ -495,7 +495,8 @@ public class QuestHandler : FieldPacketHandler {
     }
 
     private void HandleSkyFortressTeleport(GameSession session) {
-        if (!session.Quest.TryGetQuest(Constants.FameContentsRequireQuestID, out Quest? quest) || quest.State != QuestState.Completed) {
+        // SendQuestMode14 (questmanager_2.cpp:1748): CanEnterSkyFortress of the fortress field.
+        if (!session.Quest.CanEnterSkyFortress(Constants.FameContentsSkyFortressGotoMapID)) {
             return;
         }
 

@@ -10,12 +10,19 @@ public record FameTable(
     IReadOnlyList<FameTable.PickMethod> PickMethods,
     IReadOnlyDictionary<int, AllianceType> OfficerNpcKinds,
     IReadOnlyList<FameTable.Grade>? GradeRows = null,
-    IReadOnlyList<FameTable.Log>? LogRows = null) : Table {
+    IReadOnlyList<FameTable.Log>? LogRows = null,
+    IReadOnlyDictionary<int, int>? SeasonRequireQuests = null) : Table {
     // Empty in a table stored before the rows were read.
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<Grade> Grades => GradeRows ?? [];
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<Log> Logs => LogRows ?? [];
+
+    // table/famedef.xml <season requireQuest> by season (1 SkyFotress, 2 KritiasExped, 3 Georg; Parse_14021a480,
+    // commonenum.cpp:743), as GetSeasonRequireLvBySeason (famegradedata.cpp:855) reads it: 0 for a season the table
+    // lacks. Null in a table stored before the seasons were read.
+    public int SeasonRequireQuest(int season) =>
+        SeasonRequireQuests != null && SeasonRequireQuests.TryGetValue(season, out int quest) ? quest : 0;
 
     public record Grade(AllianceType Alliance, int Level, int RequirePoint);
 

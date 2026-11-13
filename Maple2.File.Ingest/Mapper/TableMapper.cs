@@ -433,9 +433,25 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
             logs[id] = new FameTable.Log(id, alliance, ParseIntOrZero(node.GetAttribute("grade")));
         }
+        // LoadFameDef: each available season's requireQuest by its name (Parse_14021a480, commonenum.cpp:743); a later
+        // season of the same name replaces the earlier one (SetAt).
+        var seasons = new Dictionary<int, int>();
+        foreach (XmlElement node in (fameDef.SelectNodes("/ms2/season")?.OfType<XmlElement>() ?? [])) {
+            if (!Available(node)) {
+                continue;
+            }
+            int season = node.GetAttribute("name").ToLowerInvariant() switch {
+                "skyfotress" => 1,
+                "kritiasexped" => 2,
+                "georg" => 3,
+                _ => 0,
+            };
+            seasons[season] = ParseIntOrZero(node.GetAttribute("requireQuest"));
+        }
         return new FameTable(methods, officers,
             grades.Values.OrderBy(row => row.Alliance).ThenBy(row => row.Level).ToList(),
-            logs.Values.OrderBy(row => row.Id).ToList());
+            logs.Values.OrderBy(row => row.Id).ToList(),
+            seasons);
 
         static int ParseIntOrZero(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
     }
