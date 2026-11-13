@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
 
 
@@ -28,17 +29,7 @@ public partial class WorldService {
         Dictionary<SpecialAttribute, SpecialOption> specialOptions = new();
         if (search.StatOptions != null) {
             foreach (StatOption statOption in search.StatOptions) {
-                switch (statOption.StatId) {
-                    case >= 1000 and < 11000: // BasicAttribute with percent value
-                        basicOptions[(BasicAttribute) (statOption.StatId - 1000)] = new BasicOption((float) (statOption.Value + 5) / 10000);
-                        break;
-                    case >= 11000: // SpecialAttribute with percent value
-                        specialOptions[(SpecialAttribute) (statOption.StatId - 11000)] = new SpecialOption((float) (statOption.Value + 5) / 10000);
-                        break;
-                    default: // BasicAttribute with flat value
-                        basicOptions[(BasicAttribute) statOption.StatId] = new BasicOption(statOption.Value);
-                        break;
-                }
+                ReadStat(basicOptions, specialOptions, statOption.StatId, statOption.Value);
             }
         }
 
@@ -55,8 +46,26 @@ public partial class WorldService {
         };
     }
 
-    private static void ReadStat(Dictionary<BasicAttribute, BasicOption> basicOptions, Dictionary<SpecialAttribute, SpecialOption> specialOptions, int statId, int value) {
-
+    // One search option: statId is the client's key (BlackMarketStatKey) with the server's basic stat id
+    // (BlackMarketHandler.ServerStatKey). A rate comes as the client sends it, in hundredths of a percent less 5
+    // (UIBlackMarketPage, uiblackmarketpage.cpp:910-929). A stat the server has no member for is left out.
+    public static void ReadStat(Dictionary<BasicAttribute, BasicOption> basicOptions, Dictionary<SpecialAttribute, SpecialOption> specialOptions, int statId, int value) {
+        BlackMarketStatKey? key = BlackMarketStatKey.Decode(statId);
+        if (key is not { } stat || stat.Stat > byte.MaxValue) {
+            return;
+        }
+        float rate = (float) (value + 5) / 10000;
+        if (stat.Special) {
+            if (!Enum.IsDefined((SpecialAttribute) stat.Stat)) {
+                return;
+            }
+            specialOptions[(SpecialAttribute) stat.Stat] = stat.Percent ? new SpecialOption(rate) : new SpecialOption(value);
+            return;
+        }
+        if (!Enum.IsDefined((BasicAttribute) stat.Stat)) {
+            return;
+        }
+        basicOptions[(BasicAttribute) stat.Stat] = stat.Percent ? new BasicOption(rate) : new BasicOption(value);
     }
 
     private BlackMarketResponse Add(BlackMarketRequest.Types.Add add) {
