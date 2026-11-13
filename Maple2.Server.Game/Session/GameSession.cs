@@ -862,12 +862,18 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    // The notice banner of the GM notice config, at a field entry, once per session (NoticeRules).
+    // The notice banner of the GM notice config, at a field entry, once per session, NoticeRules.BannerDelay later
+    // (the client opens the notice dialog a few ticks after the entry).
     public void SendNoticeBanner() {
         if (NoticeRules.BannerAtEntry(server.NoticeBanner, noticeBannerSent)) {
             noticeBannerSent = true;
-            Send(NoticeDialogPacket.Show());
+            Scheduler.Schedule(ShowNoticeBanner, NoticeRules.BannerDelay);
         }
+    }
+
+    public void ShowNoticeBanner() {
+        if (Field == null) return;
+        Send(NoticeDialogPacket.Show());
     }
 
     public bool EnterField() {

@@ -9,7 +9,10 @@ using Maple2.Server.Game;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Service;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Web.Controllers;
 using Maple2.Server.World.Service;
+using Maple2.Tools.Scheduler;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
@@ -75,20 +78,69 @@ public class NoticeBannerTests {
         Assert.That(server.NoticeBanner, Is.False); // a show leaves the flag
     }
 
-    // EnterField: the banner once per channel session while the channel has it on.
+    // EnterField: the banner once per channel session while the channel has it on, NoticeRules.BannerDelay after the
+    // entry (the client opens its notice dialog a few ticks after the entry and drops a 0xCF that comes before).
     [Test]
-    public void TheBannerComesOnceAtFieldEntry() {
+    public void TheBannerComesOnceAfterFieldEntry() {
         var test = new TestGameSession();
         GameSession session = test.Start();
         test.TakeSent();
         var server = (GameServer) typeof(GameSession).GetField("server", Any)!.GetValue(session)!;
+        typeof(GameSession).GetField(nameof(GameSession.Scheduler))!.SetValue(session, new EventQueue(Serilog.Log.Logger));
+        int queued = session.Scheduler.Count;
 
         session.SendNoticeBanner();
-        Assert.That(test.TakeSentOps(), Has.No.Member(SendOp.NoticeDialog)); // off
+        Assert.That(session.Scheduler.Count, Is.EqualTo(queued)); // off
 
         server.NoticeBanner = true;
         session.SendNoticeBanner();
         session.SendNoticeBanner();
-        Assert.That(test.TakeSentOps().Count(op => op == SendOp.NoticeDialog), Is.EqualTo(1));
+        Assert.Multiple(() => {
+            Assert.That(session.Scheduler.Count, Is.EqualTo(queued + 1));
+            Assert.That(test.TakeSentOps(), Has.No.Member(SendOp.NoticeDialog)); // not in the entry burst
+        });
+
+        session.ShowNoticeBanner(); // the scheduled send
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.NoticeDialog)
+            .Select(Convert.ToHexString), Is.EqualTo(new[] { "CF0000" }));
+    }
+
+    [Test]
+    public void TheDelayCoversTheDialogOpening() {
+        Assert.That(NoticeRules.BannerDelay, Is.EqualTo(TimeSpan.FromSeconds(5)));
+    }
+
+    // OnServerEnter ends with the maview url, the web api url and the allowed url patterns; the banner page is
+    // "maview:/Game/Banner", so the maview url is the web server's (no path, no trailing slash).
+    [Test]
+    public void ServerEnterGivesTheWebServerAsTheMaviewUrl() {
+        Assert.Multiple(() => {
+            Assert.That(ServerEnterPacket.MaviewUrl(new Uri("http://127.0.0.1:4600")), Is.EqualTo("http://127.0.0.1:4600"));
+            Assert.That(ServerEnterPacket.MaviewUrl(new Uri("http://localhost:4000/")), Is.EqualTo("http://localhost:4000"));
+            Assert.That(ServerEnterPacket.AllowedUrls(new Uri("http://127.0.0.1:4600")), Is.EqualTo("^https?://127\\.0\\.0\\.1(:\\d+)?"));
+            Assert.That(ServerEnterPacket.AllowedUrls(new Uri("http://localhost:4000")), Is.EqualTo("^https?://localhost(:\\d+)?"));
+        });
+
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        byte[] packet = ServerEnterPacket.Request(session.Player).ToArray();
+        string maview = ServerEnterPacket.MaviewUrl(Target.WebUri), allowed = ServerEnterPacket.AllowedUrls(Target.WebUri);
+        string tail = Convert.ToHexString(Str(maview)) + "0000" + Convert.ToHexString(Str(allowed));
+        Assert.That(Convert.ToHexString(packet), Does.EndWith(tail));
+    }
+
+    private static byte[] Str(string value) {
+        byte[] text = System.Text.Encoding.Unicode.GetBytes(value);
+        return BitConverter.GetBytes((short) value.Length).Concat(text).ToArray();
+    }
+
+    // The web server's banner page when the server has no Data/game/banner.html.
+    [Test]
+    public void TheBannerPageSaysThereIsNoNotice() {
+        var page = new GameController().GetBanner() as ContentHttpResult;
+        Assert.That(page, Is.Not.Null);
+        Assert.That((page!.ResponseContent, page.ContentType),
+            Is.EqualTo((GameController.DefaultBanner, "text/html; charset=utf-8")));
+        Assert.That(GameController.DefaultBanner, Does.Contain("There is no notice."));
     }
 }

@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Game;
+﻿using System.Text.RegularExpressions;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -48,10 +49,17 @@ public static class ServerEnterPacket {
         }
         pWriter.WriteLong();
         pWriter.WriteUnicodeString();
-        pWriter.WriteUnicodeString("http://127.0.0.1:8080");
+        pWriter.WriteUnicodeString(MaviewUrl(Target.WebUri));
         pWriter.WriteUnicodeString();
-        pWriter.WriteUnicodeString("^https?://127\\.0\\.0\\.1(:\\d+)?");
+        pWriter.WriteUnicodeString(AllowedUrls(Target.WebUri));
 
         return pWriter;
     }
+
+    // CSceneStateGame::OnServerEnter: the maview url (CWebBrowserService::SetMaviewUrl; the base of "maview:" urls such
+    // as the notice banner's), the web api url and the url patterns the in-game browser may open (CAtlRegExp, space
+    // separated; COffscreenWebBrowser::OnBeforeBrowse hands any other url to the system). Chosen here: the web server.
+    public static string MaviewUrl(Uri web) => web.GetLeftPart(UriPartial.Authority);
+
+    public static string AllowedUrls(Uri web) => $"^https?://{Regex.Escape(web.Host)}(:\\d+)?";
 }
