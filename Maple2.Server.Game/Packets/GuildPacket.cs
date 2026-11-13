@@ -45,7 +45,7 @@ public static class GuildPacket {
         Achievement = 35,
         CheckInTime = 36,
         MemberRaid = 37,
-        // 38
+        PvpMemberCounts = 38,
         PvpState = 39,
         PvpMatched = 40,
         PvpRating = 41,
@@ -881,6 +881,21 @@ public static class GuildPacket {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.WriteByte((byte) Command.PvpMatched);
         pWriter.WriteBool(matched);
+
+        return pWriter;
+    }
+
+    // 0x26 (CGuildManager::FUN_1413c23d0, guildmanager.cpp:2329): per member, the name and the championship matches
+    // fought this season and in all (CGuildMember fe0, fe4); an open guild dialog redraws each named member's row.
+    public static ByteWriter PvpMemberCounts(ICollection<GuildMember> members) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpMemberCounts);
+        pWriter.WriteInt(members.Count);
+        foreach (GuildMember member in members) {
+            pWriter.WriteUnicodeString(member.Name);
+            pWriter.WriteInt(member.PvpSeasonCount);
+            pWriter.WriteInt(member.PvpTotalCount);
+        }
 
         return pWriter;
     }

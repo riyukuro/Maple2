@@ -135,6 +135,35 @@ public class GuildPvp {
         return true;
     }
 
+    // A match's member counts on a channel's guild copy, before the copy takes the new record: a record of another
+    // season (the World rolled it, GuildManager.RollPvp) starts every member's season count again, then the counts
+    // the World sent are set. Returns the members whose counts changed, in member order (Guild 0x26).
+    public static List<GuildMember> ApplyMemberCounts(Guild guild, int seasonId, IEnumerable<(long CharacterId, int Season, int Total)> counts) {
+        var changed = new List<GuildMember>();
+        if (guild.Pvp.SeasonId != seasonId) {
+            foreach (GuildMember member in guild.Members.Values) {
+                if (member.PvpSeasonCount != 0) {
+                    member.PvpSeasonCount = 0;
+                    changed.Add(member);
+                }
+            }
+        }
+        foreach ((long characterId, int season, int total) in counts) {
+            if (!guild.Members.TryGetValue(characterId, out GuildMember? member)) {
+                continue;
+            }
+            if (member.PvpSeasonCount == season && member.PvpTotalCount == total) {
+                continue;
+            }
+            member.PvpSeasonCount = season;
+            member.PvpTotalCount = total;
+            if (!changed.Contains(member)) {
+                changed.Add(member);
+            }
+        }
+        return changed;
+    }
+
     public void AddMatch(GuildPvpMatch match) {
         History.Add(match);
         while (History.Count > HistoryCapacity) {

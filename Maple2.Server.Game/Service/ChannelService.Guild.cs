@@ -117,15 +117,14 @@ public partial class ChannelService {
                     break;
                 case GuildRequest.GuildOneofCase.PvpRating when pvp != null:
                     // A copy per session: the history and seasons are read by the session's own handlers.
+                    List<GuildMember> changed = GuildPvp.ApplyMemberCounts(guild, pvp.SeasonId,
+                        request.PvpRating.Counts.Select(count => (count.CharacterId, count.Season, count.Total)));
                     guild.Pvp = pvp.Clone();
-                    foreach (GuildRequest.Types.PvpRating.Types.Count count in request.PvpRating.Counts) {
-                        if (guild.Members.TryGetValue(count.CharacterId, out GuildMember? member)) {
-                            member.PvpSeasonCount = count.Season;
-                            member.PvpTotalCount = count.Total;
-                        }
-                    }
                     session.Send(GuildPacket.PvpRating(pvp.Score, pvp.Wins, pvp.Losses));
                     session.Send(GuildPacket.PvpResult(request.PvpRating.Won, request.PvpRating.Opponent));
+                    if (changed.Count > 0) {
+                        session.Send(GuildPacket.PvpMemberCounts(changed));
+                    }
                     break;
             }
         }

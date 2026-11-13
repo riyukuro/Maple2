@@ -91,6 +91,66 @@ public class GuildChampionshipTests {
         End(reader, writer);
     }
 
+    private static Guild CountGuild(int seasonId) {
+        var guild = new Guild(9001, "Blue", 1, 11, "Ann") { Pvp = new GuildPvp { SeasonId = seasonId } };
+        foreach ((long id, string name) in new[] { (11L, "Ann"), (12L, "Bo"), (13L, "Cy") }) {
+            var info = new PlayerInfo(new CharacterInfo(1, id, name, "", "", Gender.Male, Job.Newbie, 50), "", new AchievementInfo(), []);
+            guild.Members[id] = new GuildMember { GuildId = guild.Id, Info = info };
+        }
+        return guild;
+    }
+
+    // 0x26 (CGuildManager::FUN_1413c23d0): the count, then per member the name and the season and total counts.
+    [Test]
+    public void PvpMemberCounts_AreNameSeasonTotal() {
+        Guild guild = CountGuild(1);
+        guild.Members[11].PvpSeasonCount = 3;
+        guild.Members[11].PvpTotalCount = 9;
+        guild.Members[13].PvpSeasonCount = 1;
+        guild.Members[13].PvpTotalCount = 2;
+        ByteWriter writer = GuildPacket.PvpMemberCounts([guild.Members[11], guild.Members[13]]);
+        ByteReader reader = Guild(writer, 0x26);
+        Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        Assert.That((reader.ReadUnicodeString(), reader.ReadInt(), reader.ReadInt()), Is.EqualTo(("Ann", 3, 9)));
+        Assert.That((reader.ReadUnicodeString(), reader.ReadInt(), reader.ReadInt()), Is.EqualTo(("Cy", 1, 2)));
+        End(reader, writer);
+    }
+
+    // A match's counts: only the fighters whose counts moved are listed and changed.
+    [Test]
+    public void ApplyMemberCounts_SameSeason_SetsTheFighters() {
+        Guild guild = CountGuild(1);
+        guild.Members[12].PvpSeasonCount = 4;
+        guild.Members[12].PvpTotalCount = 4;
+        guild.Members[13].PvpSeasonCount = 2;
+        guild.Members[13].PvpTotalCount = 5;
+
+        List<GuildMember> changed = GuildPvp.ApplyMemberCounts(guild, 1, [(11, 1, 1), (13, 2, 5), (99, 7, 7)]);
+
+        Assert.That(changed.Select(member => member.CharacterId), Is.EqualTo(new[] { 11L }));
+        Assert.That((guild.Members[11].PvpSeasonCount, guild.Members[11].PvpTotalCount), Is.EqualTo((1, 1)));
+        Assert.That((guild.Members[12].PvpSeasonCount, guild.Members[12].PvpTotalCount), Is.EqualTo((4, 4)));
+        Assert.That((guild.Members[13].PvpSeasonCount, guild.Members[13].PvpTotalCount), Is.EqualTo((2, 5)));
+    }
+
+    // The World rolled the record into a new season (its members' season counts start again): the copy's members
+    // who did not fight go to 0 as well, and are listed with the fighters.
+    [Test]
+    public void ApplyMemberCounts_NewSeason_StartsTheSeasonCountsAgain() {
+        Guild guild = CountGuild(1);
+        guild.Members[11].PvpSeasonCount = 6;
+        guild.Members[11].PvpTotalCount = 6;
+        guild.Members[12].PvpSeasonCount = 3;
+        guild.Members[12].PvpTotalCount = 8;
+
+        List<GuildMember> changed = GuildPvp.ApplyMemberCounts(guild, 2, [(11, 1, 7)]);
+
+        Assert.That(changed.Select(member => member.CharacterId), Is.EquivalentTo(new[] { 11L, 12L }));
+        Assert.That((guild.Members[11].PvpSeasonCount, guild.Members[11].PvpTotalCount), Is.EqualTo((1, 7)));
+        Assert.That((guild.Members[12].PvpSeasonCount, guild.Members[12].PvpTotalCount), Is.EqualTo((0, 8)));
+        Assert.That((guild.Members[13].PvpSeasonCount, guild.Members[13].PvpTotalCount), Is.EqualTo((0, 0)));
+    }
+
     // 0x2b, 0x2c: the member's name.
     [Test]
     public void PvpRegisteredAndUnregistered_AreTheName() {
