@@ -1172,14 +1172,19 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
             bool ClientQuest(int questId) => playedQuests == null || playedQuests.Contains(questId);
             // An event whose data was not read (null) is not a candidate.
-            GameEventMetadata[] readableEvents = ended.Where(e => e.Type != GameEventType.StampEvent || e.Data is StampEvent).ToArray();
+            GameEventMetadata[] readableEvents = ended.Where(e => !AttendGiftReplay.NeedData.Contains(e.Type) || e.Data != null).ToArray();
+            // An event with a play item is taken only with a row that gives it (AttendGiftReplay.Companions), whose
+            // items the client has too.
+            bool Playable(GameEventMetadata e) => AttendGiftReplay.PlayItem(e.Data) == 0
+                || AttendGiftReplay.Companions(e, ended).Any(companion => AttendGiftReplay.ClientHasRewards(companion, ClientRank));
             foreach (GameEventType type in AttendGiftReplay.Types)
                 foreach (GameEventMetadata[] readable in AttendGiftReplay.Pools(readableEvents, type)) {
-                    GameEventMetadata? replay = AttendGiftReplay.Pick(readable, now, type, ClientRank, ClientQuest);
+                    GameEventMetadata? replay = AttendGiftReplay.Pick(readable, now, type, ClientRank, ClientQuest, Playable);
                     int[] passed = AttendGiftReplay.Candidates(readable, now, type).TakeWhile(e => e != replay).Select(e => e.Id).ToArray();
                     if (passed.Length > 0) {
                         Console.WriteLine($"{AttendGiftReplay.Option}: {type} {string.Join(", ", passed)} not replayed, a reward item has no rank in the client's item data"
-                                          + (type == GameEventType.StampEvent ? " or a stamp quest is not in the client's quest table" : string.Empty));
+                                          + (type is GameEventType.StampEvent or GameEventType.TimeRunEvent ? " or a quest is not in the client's quest table" : string.Empty)
+                                          + (type is GameEventType.RPS or GameEventType.BingoEvent or GameEventType.TimeRunEvent ? " or no ended row gives its play item" : string.Empty));
                     }
                     if (replay == null) {
                         Console.WriteLine($"{AttendGiftReplay.Option}: no ended {type} event to replay");
@@ -1187,6 +1192,14 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                         GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
                         results.Add(moved.Id, moved);
                         Console.WriteLine($"{AttendGiftReplay.Option}: {type} {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
+                        foreach (GameEventMetadata companion in AttendGiftReplay.Companions(replay, ended)) {
+                            if (results.ContainsKey(companion.Id) || !AttendGiftReplay.ClientHasRewards(companion, ClientRank)) {
+                                continue;
+                            }
+                            GameEventMetadata movedCompanion = AttendGiftReplay.Shift(companion, moved.StartTime - replay.StartTime);
+                            results.Add(movedCompanion.Id, movedCompanion);
+                            Console.WriteLine($"{AttendGiftReplay.Option}: {companion.Type} {companion.Id} replayed with {replay.Id}, {movedCompanion.StartTime:yyyy-MM-dd HH:mm} to {movedCompanion.EndTime:yyyy-MM-dd HH:mm}");
+                        }
                     }
                 }
         }

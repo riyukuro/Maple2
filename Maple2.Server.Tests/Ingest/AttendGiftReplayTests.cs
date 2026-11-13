@@ -115,4 +115,99 @@ public class AttendGiftReplayTests {
             Assert.That(moved.StartTime.Kind, Is.EqualTo(DateTimeKind.Unspecified));
         });
     }
+
+    // The event minigames (rock paper scissors, bingo, time run, couple dance) and the rows that feed them.
+    private const int Ticket = 900301;
+    private const int Prize = 900302;
+    private const int Unknown = 900399;
+
+    private static int MinigameRank(int itemId) => itemId == Unknown ? 0 : 1;
+
+    private static GameEventMetadata With(int id, GameEventType type, string start, string end, GameEventData data) {
+        return Event(id, type, start, end) with { Data = data };
+    }
+
+    private static Rps RpsData(int ticket, int prize) =>
+        new(ticket, [new Rps.RewardData(1, [new RewardItem(prize, 1, 1)])], "");
+
+    private static DailyLoginReward Daily(int itemId) => new(0, [new RewardItem(itemId, 1, 15)]);
+
+    [Test]
+    public void Replay_TakesTheMinigames() {
+        Assert.That(AttendGiftReplay.Types, Is.SupersetOf(new[] {
+            GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent, GameEventType.CoupleDance,
+        }));
+    }
+
+    // Each minigame's play item and rewards must be items of the client's item data.
+    [Test]
+    public void ClientHasRewards_MinigameItems() {
+        GameEventMetadata Of(GameEventType type, GameEventData data) => With(1, type, "2029-01-01 00:00", "2029-01-05 23:59", data);
+        var timeRunQuests = new[] { new TimeRunEvent.Quest(800001, 10, 0) };
+        var steps = new Dictionary<int, RewardItem>();
+        RewardItem[] prizes = [new RewardItem(Prize, 1, 5)];
+        RewardItem[] unknown = [new RewardItem(Unknown, 1, 5)];
+        Assert.Multiple(() => {
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.RPS, RpsData(Ticket, Prize)), MinigameRank), Is.True);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.RPS, RpsData(Unknown, Prize)), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.RPS, RpsData(Ticket, Unknown)), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.BingoEvent,
+                new BingoEvent(Ticket, 0, [], [new BingoEvent.BingoReward(prizes)])), MinigameRank), Is.True);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.BingoEvent,
+                new BingoEvent(Ticket, Unknown, [], [new BingoEvent.BingoReward(prizes)])), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.TimeRunEvent,
+                new TimeRunEvent(Ticket, timeRunQuests, steps, new RewardItem(Prize, 1, 1))), MinigameRank), Is.True);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.TimeRunEvent,
+                new TimeRunEvent(Ticket, timeRunQuests, steps, new RewardItem(Unknown, 1, 1))), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.CoupleDance,
+                new CoupleDance([prizes], 3, unknown, [], 5, 63000062, [])), MinigameRank), Is.False);
+            Assert.That(AttendGiftReplay.ClientHasRewards(Of(GameEventType.DailyLoginReward, Daily(Unknown)), MinigameRank), Is.False);
+        });
+    }
+
+    // The time run's start item starts all its quests, so each must be in the client's quest table.
+    [Test]
+    public void ClientHasQuests_TimeRunQuests() {
+        GameEventMetadata timeRun = With(1, GameEventType.TimeRunEvent, "2029-01-01 00:00", "2029-01-05 23:59",
+            new TimeRunEvent(Ticket, [new TimeRunEvent.Quest(800001, 10, 0), new TimeRunEvent.Quest(800002, 10, 1)],
+                new Dictionary<int, RewardItem>(), new RewardItem(Prize, 1, 1)));
+        Assert.That(AttendGiftReplay.ClientHasQuests(timeRun, questId => questId == 800001), Is.False);
+        Assert.That(AttendGiftReplay.ClientHasQuests(timeRun, _ => true), Is.True);
+    }
+
+    // The rows that give the play item during the event (KR 900090 and 120105): a row of another item or of
+    // another period is not one.
+    [Test]
+    public void Companions_RowsThatGiveThePlayItemDuringTheEvent() {
+        GameEventMetadata rps = With(900, GameEventType.RPS, "2029-02-14 07:00", "2029-03-14 07:00", RpsData(Ticket, Prize));
+        GameEventMetadata[] ended = [
+            rps,
+            With(120, GameEventType.DailyLoginReward, "2029-02-14 07:00", "2029-03-14 07:00", Daily(Ticket)),
+            With(121, GameEventType.DailyLoginReward, "2029-02-14 07:00", "2029-03-14 07:00", Daily(Prize)),
+            With(122, GameEventType.DailyLoginReward, "2028-02-14 07:00", "2028-03-14 07:00", Daily(Ticket)),
+            With(160, GameEventType.DTReward, "2029-03-01 07:00", "2029-03-20 07:00",
+                new DTReward([new DTReward.Entry(0, 1800, 0, new RewardItem(Ticket, 1, 1))])),
+        ];
+        Assert.That(AttendGiftReplay.Companions(rps, ended).Select(e => e.Id), Is.EqualTo(new[] { 120, 160 }));
+        Assert.That(AttendGiftReplay.Companions(With(901, GameEventType.CoupleDance, "2029-02-14 07:00", "2029-03-14 07:00",
+            new CoupleDance([], 0, [], [], 5, 63000062, [])), ended), Is.Empty);
+    }
+
+    // An RPS no row feeds is passed over for an older one that has its ticket row; the companion moves with it.
+    [Test]
+    public void Pick_PassesOverAMinigameNoRowFeeds_CompanionMovesWithIt() {
+        GameEventMetadata older = With(900, GameEventType.RPS, "2029-02-14 07:00", "2029-03-14 07:00", RpsData(Ticket, Prize));
+        GameEventMetadata newer = With(901, GameEventType.RPS, "2029-04-14 07:00", "2029-05-14 07:00", RpsData(Ticket, Prize));
+        GameEventMetadata row = With(120, GameEventType.DailyLoginReward, "2029-02-15 07:00", "2029-03-14 07:00", Daily(Ticket));
+        GameEventMetadata[] ended = [older, newer, row];
+
+        GameEventMetadata? picked = AttendGiftReplay.Pick(ended, Now, GameEventType.RPS, MinigameRank,
+            playable: e => AttendGiftReplay.Companions(e, ended).Length > 0);
+        Assert.That(picked?.Id, Is.EqualTo(900));
+
+        GameEventMetadata moved = AttendGiftReplay.Redate(picked!, Now);
+        GameEventMetadata movedRow = AttendGiftReplay.Shift(row, moved.StartTime - picked!.StartTime);
+        Assert.That(movedRow.StartTime, Is.EqualTo(new DateTime(2030, 6, 16, 7, 0, 0)));
+        Assert.That(movedRow.EndTime, Is.EqualTo(moved.EndTime));
+    }
 }
