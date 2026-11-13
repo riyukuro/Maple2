@@ -40,6 +40,11 @@ public class AchievementHandler : FieldPacketHandler {
 
     private void HandleReward(GameSession session, IByteReader packet) {
         int achievementId = packet.ReadInt();
+        // The trophy window takes no claim while the player is dead (UIAchieveDialog onReward, uiachievedialog.cpp:249:
+        // it shows its own text and sends nothing).
+        if (session.Player.IsDead) {
+            return;
+        }
 
         session.Achievement.ClaimReward(achievementId);
     }

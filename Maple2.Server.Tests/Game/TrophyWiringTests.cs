@@ -765,6 +765,28 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.Empty);
     }
 
+    // A dead player's claim (Achieve 3) is not taken: the trophy window sends none (uiachievedialog.cpp:249).
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void Claim_NotTakenWhileDead(bool dead, bool given) {
+        AchievementMetadata trophy = TestGameSession.Trophy(Trophy, ConditionType.use_merat, [10, Goal]);
+        var grades = new Dictionary<int, AchievementMetadataGrade>(trophy.Grades);
+        grades[1] = grades[1] with { Reward = new AchievementMetadataReward(AchievementRewardType.title, 10000001, 1, 1) };
+        GameSession session = Start(trophy with { Grades = grades });
+        session.Currency.Meret = 100;
+        session.Currency.Meret -= 10;
+        // The flag alone is what the handler reads.
+        typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session.Player, dead);
+
+        new AchievementHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(Trophy);
+        }));
+
+        Assert.That(session.Player.Value.Unlock.HasTitle(10000001), Is.EqualTo(given));
+    }
+
     // A skill point reward goes to the tree its subJobLevel names (achievedata.cpp:938): 1 the awakening tree, as
     // KR 21100076 and 21230121 give theirs; without it, the first tree. Their rank is 1 either way.
     [TestCase(1, 0, 4)]
