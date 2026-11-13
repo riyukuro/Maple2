@@ -64,6 +64,16 @@ public class ItemTagMapTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(7));
     }
 
+    // The preview row's item id is 0: the client takes the tag's item (CIngredientInfo::GetItemId falls back to
+    // CItemDataTable::GetTagItemId, filled from table/itemdata.xml <tag itemID>), which the KR data gives for all five
+    // tags. A tag that maps to 0 here would drop its row from the dialog.
+    [Test]
+    public void LimitBreakCatalystTagsHaveClientNumbers() {
+        ItemTag[] tags = [.. Maple2.Server.Core.Formulas.LimitBreak.GetCatalysts(0).Select(ingredient => ingredient.Tag), ItemTag.CrystalPiece];
+
+        Assert.That(tags.Select(ItemTagMap.ToClient), Is.EqualTo(new[] { 98, 97, 210, 211, 96 }));
+    }
+
     [Test]
     public void ItemExchangeScrollSetTargetWritesClientTag() {
         ByteWriter writer = ItemExchangeScrollPacket.SetTarget(5, 6, [new ItemComponent(0, -1, 3, ItemTag.ChaosOnix)]);
