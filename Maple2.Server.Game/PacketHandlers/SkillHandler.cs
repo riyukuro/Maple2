@@ -310,7 +310,7 @@ public class SkillHandler : FieldPacketHandler {
                 Unknown = packet.ReadByte(),
             };
             targets.Add(targetRecord);
-            record.Hits.Declare(targetRecord.Uid, attackPoint);
+            record.Hits.Declare(targetRecord.Uid, attackPoint, targetRecord.TargetId);
 
             // While more targets in packet.
             while (packet.ReadBool()) {
@@ -322,7 +322,7 @@ public class SkillHandler : FieldPacketHandler {
                     Index = packet.ReadByte(),
                 };
                 targets.Add(targetRecord);
-                record.Hits.Declare(targetRecord.Uid, attackPoint);
+                record.Hits.Declare(targetRecord.Uid, attackPoint, targetRecord.TargetId);
             }
 
             session.Player.InBattle = true;
@@ -400,11 +400,12 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         // A target packet pays damage only for an attack its cast declared for this attack point, once (a bouncing
-        // arrow once per target it can reach), in time and with the impact near the cast (SkillHitRules). Anything
-        // else is dropped without damage.
+        // arrow once per target it can reach, again on a boomerang's way back and after each piercing interval), in
+        // time and with the impact near the cast (SkillHitRules). Anything else is dropped without damage.
+        session.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(record.Attack.MagicPathId, out IReadOnlyList<MagicPath>? paths);
         if (record.Hits.TooLate(session.Field.FieldTick)
             || SkillHitRules.ImpactTooFar(impactPosition, record.CastPosition, record.Attack.Range.Distance)
-            || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount)) {
+            || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount, SkillHitRules.TargetRounds(record.Attack, paths))) {
             Logger.Debug("Target packet dropped: attack {AttackUid} AttackPoint={AttackPoint} impact {Impact}: {Record}",
                 targetUid, attackPoint, impactPosition, record);
             return;
@@ -415,70 +416,45 @@ public class SkillHandler : FieldPacketHandler {
         record.Direction = direction;
 
         byte count = packet.ReadByte();
-        // The client sends every hit of a bounce chain in one packet: TargetCount first hits, each with up to
-        // BounceCount bounces.
-        int maxCount = record.Attack.TargetCount * (1 + Math.Max(0, record.Attack.Arrow.BounceCount));
-        if (count > maxCount) {
-            Logger.Warning("SkillId={SkillId} AttackPoint={AttackPoint} sent {Count} targets but TargetCount={TargetCount} BounceCount={BounceCount} — clamping.",
-                record.SkillId, attackPoint, count, record.Attack.TargetCount, record.Attack.Arrow.BounceCount);
-            count = (byte) Math.Min(maxCount, byte.MaxValue);
-        }
-
         packet.ReadInt(); // the cast's TickSync count so far (CSkillRecord::m_nSendCount), not used here
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Attack.Damage: {skillUid}; AttackPoint: {attackPoint}"));
         }
 
-        // Although the client feeds us this information and is right, we cannot rely on it and must validate it
-        // we should keep it just to ensure what the server gathers as proper targets is the same as the client
-        /*for (byte i = 0; i < count; i++) {
-            int targetId = packet.ReadInt();
-            if (record.Targets.ContainsKey(targetId)) {
-                continue;
-            }
-            packet.ReadByte();
-
-            switch (record.Attack.Range.ApplyTarget) {
-                case ApplyTargetType.Hostile:
-                    if (session.Field.Mobs.TryGetValue(targetId, out FieldNpc? npc)) {
-                        record.Targets.TryAdd(npc.ObjectId, npc);
-                    }
-                    continue;
-                case ApplyTargetType.Friendly:
-                    if (session.Field.TryGetPlayer(targetId, out FieldPlayer? player)) {
-                        record.Targets.TryAdd(player.ObjectId, player);
-                    }
-                    continue;
-                case ApplyTargetType.HungryMobs:
-                    if (session.Field.Pets.TryGetValue(targetId, out FieldPet? pet)) {
-                        record.Targets.TryAdd(pet.ObjectId, pet);
-                    }
-                    continue;
-                case ApplyTargetType.RegionBuff:
-                case ApplyTargetType.RegionBuff2:
-                default:
-                    Logger.Debug("Unhandled Target-SkillEntity:{Entity}", record.Attack.Range.ApplyTarget);
-                    continue;
-            }
-        }*/
-
-        IEnumerable<IActor> targets = session.Field.GetTargets(record);
-        if (session.Field.RankDuel != null) {
-            LogRankDuelTarget(session, record, targets.ToList());
+        // The objects the client hit, each with the number its arrow hit before (CMagic, magicdata.cpp). Each one
+        // pays only inside what the client's writer sends for the attack (SkillHitBudget.TakeHit) and when the field
+        // has it as an actor the range takes; any other is skipped, the rest of the packet still pays.
+        Span<int> ids = stackalloc int[count];
+        Span<byte> ordinals = stackalloc byte[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = packet.ReadInt();
+            ordinals[i] = packet.ReadByte();
         }
-        SkillMetadataArrow arrow = record.Attack.Arrow;
-        bool bounces = arrow.BounceCount > 0 && BounceChain.PicksAround(arrow.BounceType);
-        foreach (IActor target in targets) {
-            if (!bounces) {
-                record.Targets.TryAdd(target.ObjectId, target);
+        IActor?[] found = new IActor?[count];
+        session.Field.FindTargets(record, ids, found);
+        SkillHitShape shape = SkillHitRules.Shape(record.Attack, paths);
+        int refused = 0;
+        HitRefusal reason = HitRefusal.None;
+        for (int i = 0; i < count; i++) {
+            HitRefusal refusal = record.Hits.TakeHit(targetUid, ids[i], ordinals[i], shape);
+            if (refusal == HitRefusal.None && found[i] == null) {
+                refusal = HitRefusal.NoActor;
+            }
+            if (refusal != HitRefusal.None) {
+                refused++;
+                reason = refusal;
                 continue;
             }
-            // One damage record per object: a chain that comes back to an object it already hit adds no hit.
-            foreach (IActor hit in BounceChain.Build(target, arrow.BounceCount, arrow.BounceType, arrow.BounceOverlap,
-                         last => session.Field.GetBounceTargets(record, last))) {
-                record.Targets.TryAdd(hit.ObjectId, hit);
-            }
+            record.Targets.TryAdd(ids[i], found[i]!);
+        }
+        if (refused > 0 && session.Config.HitLog.Count(session.Field.FieldTick, refused) is > 0 and int unlogged) {
+            Logger.Information("Target packet hits skipped: {Refused} of {Count} ({Reason} last), {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
+                refused, count, reason, unlogged, targetUid, session.PlayerName, record);
+        }
+
+        if (session.Field.RankDuel != null) {
+            LogRankDuelTarget(session, record, record.Targets.Values.ToList());
         }
         session.Player.TargetAttack(record);
     }
@@ -591,6 +567,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         record.ServerTick = packet.ReadInt();
+        record.Hits.Sync();
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.SyncTick: {skillUid}"));

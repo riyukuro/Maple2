@@ -1150,6 +1150,11 @@ public partial class FieldManager {
     }
 
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {
+        return prisms.Filter(TargetSource(caster, targetType), limit, ignore);
+    }
+
+    // The actors of the kinds a caster's range takes (ApplyTargetType), wherever they stand.
+    private IEnumerable<IActor> TargetSource(IActor caster, ApplyTargetType targetType) {
         // A rank duel's onlookers take no part: their skills reach no one, and no one's reach them.
         if (caster is FieldPlayer onlooker && IsOnlooker(onlooker)) {
             return [];
@@ -1159,9 +1164,9 @@ public partial class FieldManager {
         if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 } friendlyCaster and not FieldPet) {
             switch (targetType) {
                 case ApplyTargetType.Hostile:
-                    return prisms.Filter(Mobs.Values.Where(mob => FightsNpc(friendlyCaster, mob)), limit, ignore);
+                    return Mobs.Values.Where(mob => FightsNpc(friendlyCaster, mob));
                 case ApplyTargetType.Friendly:
-                    return prisms.Filter(TargetPlayers, limit, ignore);
+                    return TargetPlayers;
             }
         }
         // A player's buffs may widen what the skill takes (forceApplyTarget, as the client's target filter
@@ -1171,7 +1176,7 @@ public partial class FieldManager {
         switch (targetType) {
             case ApplyTargetType.Friendly:
                 if (caster is FieldNpc) {
-                    return prisms.Filter(Mobs.Values, limit, ignore);
+                    return Mobs.Values;
                 } else if (caster is FieldPlayer friendlyPlayer) {
                     // The client's friendly filter (FilterTarget, basecollision.cpp:784) takes a player only while the
                     // caster's hostility test (PC::vfunc_122) gives 0: on a pk field an enemy gets no heal. Chosen here: in a
@@ -1180,38 +1185,38 @@ public partial class FieldManager {
                         ? TargetPlayers.Where(player => !PlayerHostile(friendlyPlayer, player))
                         : TargetPlayers;
                     if ((force & 1) != 0) {
-                        return prisms.Filter(friends.Cast<IActor>().Concat(Mobs.Values), limit, ignore);
+                        return friends.Cast<IActor>().Concat(Mobs.Values);
                     }
-                    return prisms.Filter(friends, limit, ignore);
+                    return friends;
                 }
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
             case ApplyTargetType.Hostile:
                 if (caster is FieldPet) {
-                    return prisms.Filter(TargetPlayers, limit, ignore);
+                    return TargetPlayers;
                 }
                 if (caster is FieldNpc monster) {
                     // The players and the friendly npcs the monster fights (a barrier a script waits on to fall).
-                    return prisms.Filter(TargetPlayers.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc))), limit, ignore);
+                    return TargetPlayers.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc)));
                 } else if (caster is FieldPlayer casterPlayer) {
                     if ((force & 2) != 0) {
-                        return prisms.Filter(Mobs.Values.Cast<IActor>().Concat(TargetPlayers), limit, ignore);
+                        return Mobs.Values.Cast<IActor>().Concat(TargetPlayers);
                     }
                     // In a rank duel's fight or a PvP zone the other side's players are hostile too; in Hide and Seek
                     // the seekers' skills reach the hiders; on a pk field the players the pk rule makes hostile.
                     if (FieldGameRuns || PkField) {
-                        return prisms.Filter(Mobs.Values.Cast<IActor>()
-                            .Concat(TargetPlayers.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
+                        return Mobs.Values.Cast<IActor>()
+                            .Concat(TargetPlayers.Where(player => PlayerHostile(casterPlayer, player)));
                     }
-                    return prisms.Filter(Mobs.Values, limit, ignore);
+                    return Mobs.Values;
                 }
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
             case ApplyTargetType.HungryMobs:
-                return prisms.Filter(Pets.Values.Where(pet => pet.OwnerId == 0), limit, ignore);
+                return Pets.Values.Where(pet => pet.OwnerId == 0);
             case ApplyTargetType.RegionBuff:
             case ApplyTargetType.RegionBuff2:
-                return prisms.Filter(TargetPlayers, limit, ignore);
+                return TargetPlayers;
             default:
                 Log.Debug("Unhandled SkillEntity:{Entity}", targetType);
                 return [];
@@ -1260,6 +1265,38 @@ public partial class FieldManager {
         Prism[] prisms = [record.Attack.GetPrism(record.ImpactPosition, record.Rotation.Z)];
         TargetSort sort = record.Attack.GetTargetSort(record.ImpactPosition, record.Rotation.Z);
         return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore, sort);
+    }
+
+    // The actors a player's target packet names (Skill sub 1): found[i] is the actor of ids[i], or null when it is
+    // not one the cast's range takes (TargetSource's kinds, living or a corpse as Prism.Filter takes them,
+    // RangeTargetSelect.Excludes, and a target choice of mode 2 that keeps only the passing ones; mode 3 depends on
+    // the whole pool and is let through), or is the caster while the range leaves it out. The field's actors are gone
+    // through once for the whole packet.
+    public void FindTargets(SkillRecord record, ReadOnlySpan<int> ids, IActor?[] found) {
+        IActor caster = record.Caster;
+        SkillMetadataRange range = record.Attack.Range;
+        foreach (IActor actor in TargetSource(caster, range.ApplyTarget)) {
+            if (actor.ObjectId == caster.ObjectId || actor.IsDead && actor is not FieldNpc { IsCorpse: true }) {
+                continue;
+            }
+            int index = ids.IndexOf(actor.ObjectId);
+            if (index < 0 || RangeTargetSelect.Excludes(range, actor)
+                || range.Select is { Mode: 2 } select && !RangeTargetSelect.Passes(select, caster, actor)) {
+                continue;
+            }
+            for (; index < ids.Length; index++) {
+                if (ids[index] == actor.ObjectId) {
+                    found[index] = actor;
+                }
+            }
+        }
+        if (range.IncludeCaster != IncludeCasterType.Exclude && !caster.IsDead && !(caster is FieldPlayer player && IsOnlooker(player))) {
+            for (int index = 0; index < ids.Length; index++) {
+                if (ids[index] == caster.ObjectId) {
+                    found[index] = caster;
+                }
+            }
+        }
     }
 
     // An arrow step's hits (StateSkill FUN_1417e9d20, DetectWithMatrixRotation): the range's actors in the query box

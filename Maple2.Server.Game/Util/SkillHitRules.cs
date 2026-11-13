@@ -1,4 +1,6 @@
 ﻿using System.Numerics;
+using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
 
@@ -53,6 +55,67 @@ public static class SkillHitRules {
 
     public static bool TooLate(long tick, long windowTick) => tick - windowTick > HitWindowMs;
 
+    // How the client writes the hits of an attack's target packets (CMagic, magicdata.cpp:2063): an attack with
+    // AttackMethodType 1 flies as an arrow (FUN_141465b30), any other is a region (FUN_141464d00). paths: the
+    // attack's magic path moves, which hold the arrow's piercing.
+    public static SkillHitShape Shape(SkillMetadataAttack attack, IReadOnlyList<MagicPath>? paths) {
+        SkillMetadataArrow arrow = attack.Arrow;
+        if (attack.AttackMethodType != 1) {
+            // A region hits at most TargetCount objects (FUN_141769410), each once; without nonTarget 1
+            // (SkillArrow::IsNonTargetOne) only the attack's own target, and an object a point group already hit
+            // this cast is left out (CSkillRecord::HasTarget).
+            return new SkillHitShape(false, arrow.NonTarget != SkillTargetType.Owner, Math.Max(0, attack.TargetCount), false, false, attack.PointGroup);
+        }
+        // An arrow hits at most max(1, bounceCount) objects, sending the number it hit before with each one; with
+        // nonTarget 0 only the attack's own target. Bounce types 3 and 4 pierce: with a piercing interval the arrow
+        // forgets what it pierced each interval and may hit it again (FUN_141466da0); without one at most
+        // piercingAttackMaxTargetCount (when set). Bounce type 4 comes back once at its move's end and counts from
+        // 0 again (FUN_141460700). Chosen here: the most lenient of the path's moves.
+        int max = Math.Max(1, arrow.BounceCount);
+        bool pierces = arrow.BounceType is BounceType.Pierce or BounceType.Boomerang;
+        bool repierce = false;
+        if (pierces && paths is { Count: > 0 }) {
+            repierce = paths.Any(path => path.PiercingAttackInterval != 0);
+            if (!repierce && paths.All(path => path.PiercingAttackMaxTargetCount != 0)) {
+                max = Math.Min(max, paths.Max(path => path.PiercingAttackMaxTargetCount));
+            }
+        }
+        return new SkillHitShape(true, arrow.NonTarget == SkillTargetType.None, max, arrow.BounceType == BounceType.Boomerang, repierce, 0);
+    }
+
+    // How many times an attack's arrow sends its packets: a boomerang forgets what it hit at its move's end and
+    // sends them again on the way back (FUN_141460700); an arrow with a piercing interval forgets what it pierced
+    // each interval (FUN_141466da0), so once more per interval of its flight: the longest of its paths' lifeTime and
+    // its move (distance or nonTargetMoveDistance over velocity) with the hold at the move's end, both ways for a boomerang (the hit window when neither is set). Chosen here: at most
+    // MaxTargetRounds.
+    public const int MaxTargetRounds = 100;
+
+    public static int TargetRounds(SkillMetadataAttack attack, IReadOnlyList<MagicPath>? paths) {
+        if (attack.AttackMethodType != 1) {
+            return 1;
+        }
+        int ways = attack.Arrow.BounceType == BounceType.Boomerang ? 2 : 1;
+        if (attack.Arrow.BounceType is not (BounceType.Pierce or BounceType.Boomerang) || paths is not { Count: > 0 }) {
+            return ways;
+        }
+        int interval = int.MaxValue;
+        float flightMs = 0;
+        foreach (MagicPath path in paths) {
+            if (path.PiercingAttackInterval > 0) {
+                interval = Math.Min(interval, path.PiercingAttackInterval);
+            }
+            float moveMs = path.Velocity > 0 ? MathF.Max(path.Distance, path.NonTargetMoveDistance) / path.Velocity * 1000 : 0;
+            flightMs = MathF.Max(flightMs, MathF.Max(path.LifeTime * 1000, moveMs + Math.Max(0, path.MoveEndHoldDuration)));
+        }
+        if (interval == int.MaxValue) {
+            return ways;
+        }
+        if (flightMs <= 0) {
+            flightMs = HitWindowMs;
+        }
+        return (int) Math.Min(MaxTargetRounds, ways + MathF.Ceiling(ways * flightMs / interval));
+    }
+
     // The most attacks an attack point packet declares for an attack.
     public static int MaxAttacks(int targetCount, bool nonTarget) {
         return Math.Min(MaxPointAttacks, Math.Max(targetCount, nonTarget ? 1 : 0));
@@ -73,6 +136,24 @@ public static class SkillHitRules {
     public static long IterationEarlyBy(long tick, long dueTick) => Math.Max(0, dueTick - HeldArrivalAllowanceMs - tick);
 }
 
+// How the client writes an attack's hits (SkillHitRules.Shape). Arrow: each hit carries the number of objects the
+// arrow hit before it; a region's carry 0. Targeted: only the attack's own target (the attack point packet's
+// TargetId). Max: the most objects one attack hits. Returns: the arrow comes back once and counts from 0 again.
+// Repierce: the arrow may hit an object again. PointGroup: a region's point group, 0 for none.
+public readonly record struct SkillHitShape(bool Arrow, bool Targeted, int Max, bool Returns, bool Repierce, int PointGroup);
+
+// Why a hit of a target packet pays nothing.
+public enum HitRefusal {
+    None,
+    Undeclared, // no attack declared under the uid
+    NotTarget, // a targeted attack naming another object
+    Ordinal, // an arrow's hit with the wrong number before it, or a region's with any
+    Again, // the attack hit the object before
+    Full, // the attack hit its most objects
+    PointGroup, // the point group hit the object this cast
+    NoActor, // no actor the range takes (FieldManager.FindTargets)
+}
+
 // What one cast may still hit. An attack point packet declares attacks by uid; a target packet pays damage for one
 // declared attack. In KMS2 each attack point is sent once per cast, a skill that continues while held sends it again
 // with the iteration one higher, and every target packet names an attack declared for its attack point, once
@@ -82,7 +163,17 @@ public sealed class SkillHitBudget {
     private long windowTick;
     private readonly Dictionary<byte, int> iterations = new();
     private readonly Dictionary<byte, long> dueTicks = new(); // when an attack point's next iteration is due
-    private readonly Dictionary<long, (byte AttackPoint, int Uses)> attacks = new();
+    private readonly Dictionary<long, Attack> attacks = new();
+    // The objects each point group hit since the cast's last tick sync: (point group << 32) | object id.
+    private readonly HashSet<long> pointGroupHits = new();
+
+    private sealed class Attack(byte attackPoint, int targetId) {
+        public readonly byte AttackPoint = attackPoint;
+        public readonly int TargetId = targetId;
+        public int Uses;
+        public HashSet<int>? Hit;
+        public bool Returned;
+    }
 
     // The cast: the time window starts here.
     public void Open(long tick) => windowTick = tick;
@@ -145,19 +236,67 @@ public sealed class SkillHitBudget {
         return true;
     }
 
-    public void Declare(long attackUid, byte attackPoint) {
-        attacks.TryAdd(attackUid, (attackPoint, 0));
+    // targetId: the object the attack point packet names for the attack (the client's tag caster id).
+    public void Declare(long attackUid, byte attackPoint, int targetId) {
+        attacks.TryAdd(attackUid, new Attack(attackPoint, targetId));
     }
 
-    public bool TakeTarget(long attackUid, byte attackPoint, int bounceCount) {
-        if (!attacks.TryGetValue(attackUid, out (byte AttackPoint, int Uses) attack) || attack.AttackPoint != attackPoint) {
+    // rounds: how many times the attack's arrow may send its 1 + bounceCount packets (SkillHitRules.TargetRounds).
+    public bool TakeTarget(long attackUid, byte attackPoint, int bounceCount, int rounds = 1) {
+        if (!attacks.TryGetValue(attackUid, out Attack? attack) || attack.AttackPoint != attackPoint) {
             return false;
         }
-        if (attack.Uses >= 1 + Math.Max(0, bounceCount)) {
+        if (attack.Uses >= (1 + Math.Max(0, bounceCount)) * Math.Max(1, rounds)) {
             return false;
         }
 
-        attacks[attackUid] = (attackPoint, attack.Uses + 1);
+        attack.Uses++;
         return true;
     }
+
+    // One hit of a target packet the attack's uid took (TakeTarget): objectId with the number the client sent with
+    // it. A taken hit counts whether or not the field finds its object, as the client counted it.
+    public HitRefusal TakeHit(long attackUid, int objectId, byte ordinal, in SkillHitShape shape) {
+        if (!attacks.TryGetValue(attackUid, out Attack? attack)) {
+            return HitRefusal.Undeclared;
+        }
+        if (shape.Targeted && objectId != attack.TargetId) {
+            return HitRefusal.NotTarget;
+        }
+        HashSet<int> hit = attack.Hit ??= new HashSet<int>();
+        if (!shape.Arrow) {
+            if (ordinal != 0) {
+                return HitRefusal.Ordinal;
+            }
+            if (hit.Contains(objectId)) {
+                return HitRefusal.Again;
+            }
+            if (hit.Count >= shape.Max) {
+                return HitRefusal.Full;
+            }
+            if (shape.PointGroup != 0 && !pointGroupHits.Add(((long) shape.PointGroup << 32) | (uint) objectId)) {
+                return HitRefusal.PointGroup;
+            }
+            hit.Add(objectId);
+            return HitRefusal.None;
+        }
+
+        if (ordinal != hit.Count) {
+            if (!shape.Returns || attack.Returned || ordinal != 0) {
+                return HitRefusal.Ordinal;
+            }
+            attack.Returned = true;
+            hit.Clear();
+        }
+        if (hit.Count >= shape.Max) {
+            return HitRefusal.Full;
+        }
+        if (!hit.Add(objectId) && !shape.Repierce) {
+            return HitRefusal.Again;
+        }
+        return HitRefusal.None;
+    }
+
+    // The cast's tick sync: the client forgets what its point groups hit (CSkillRecord::SendSkill).
+    public void Sync() => pointGroupHits.Clear();
 }

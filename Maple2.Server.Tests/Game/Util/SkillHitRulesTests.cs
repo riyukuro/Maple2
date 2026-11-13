@@ -9,9 +9,9 @@ public class SkillHitRulesTests {
         var budget = new SkillHitBudget();
         Assert.That(budget.TakeTarget(11, 0, 0), Is.False, "nothing declared");
         Assert.That(budget.TakePoint(0, 0, held: false, count: 3, tick: 0), Is.True);
-        budget.Declare(11, 0);
-        budget.Declare(12, 0);
-        budget.Declare(13, 0);
+        budget.Declare(11, 0, 0);
+        budget.Declare(12, 0, 0);
+        budget.Declare(13, 0, 0);
         Assert.That(budget.TakeTarget(11, 1, 0), Is.False, "another attack point");
         Assert.That(budget.TakeTarget(11, 0, 0), Is.True);
         Assert.That(budget.TakeTarget(11, 0, 0), Is.False, "spent");
@@ -24,7 +24,7 @@ public class SkillHitRulesTests {
     public void BouncingArrowPaysOncePerBounce() {
         var budget = new SkillHitBudget();
         Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.True);
-        budget.Declare(5, 0);
+        budget.Declare(5, 0, 0);
         for (int i = 0; i < 9; i++) {
             Assert.That(budget.TakeTarget(5, 0, bounceCount: 8), Is.True, $"use {i}");
         }
@@ -90,7 +90,7 @@ public class SkillHitRulesTests {
         for (int i = 0; i < 20; i++) {
             tick += 550;
             Assert.That(budget.TakePoint(0, i, held: true, count: 1, tick: tick), Is.True, $"iteration {i}");
-            budget.Declare(100 + i, 0);
+            budget.Declare(100 + i, 0, 0);
             Assert.That(budget.TooLate(tick + 200), Is.False);
             Assert.That(budget.TakeTarget(100 + i, 0, bounceCount: 0), Is.True);
         }
@@ -104,7 +104,7 @@ public class SkillHitRulesTests {
         var budget = new SkillHitBudget();
         budget.Open(10000);
         Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 14000), Is.True);
-        budget.Declare(100, 0);
+        budget.Declare(100, 0, 0);
         Assert.That(budget.TooLate(15000), Is.False);
         Assert.That(budget.TooLate(15100), Is.True, "the attack point packet does not restart the window");
         Assert.That(budget.TakePoint(1, 0, held: false, count: 1, tick: 15100), Is.False);

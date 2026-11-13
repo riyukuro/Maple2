@@ -183,11 +183,11 @@ public sealed class LogGate {
     private int unlogged;
     private long nextLog = long.MinValue;
 
-    // Counts one; returns how many to log now (those since the last line), 0 when a line was logged less than
-    // EveryMs ago.
-    public int Count(long now) {
+    // Counts n (one by default); returns how many to log now (those since the last line), 0 when a line was logged
+    // less than EveryMs ago.
+    public int Count(long now, int n = 1) {
         lock (mutex) {
-            unlogged++;
+            unlogged += n;
             if (now < nextLog) {
                 return 0;
             }
