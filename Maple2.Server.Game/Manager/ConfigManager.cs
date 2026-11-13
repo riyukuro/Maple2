@@ -35,6 +35,9 @@ public class ConfigManager {
     private readonly IList<long> favoriteDesigners;
     private readonly IDictionary<LapenshardSlot, int> lapenshards;
     private readonly IDictionary<int, SkillCooldown> skillCooldowns;
+    // skillCooldowns and lastCasts are written from the session (casts, map loads, the save) and from the field
+    // thread (an effect's cooldown reset or recharge give-back, BuffManager): each use locks skillCooldowns. A
+    // SkillCooldown handed out (GetSkillCooldown, BlockingCooldown) is read after the lock.
     // The town cooldowns a PvP-zone entry ended, put back on the way out.
     public readonly PvpCooldownHold<SkillCooldown> PvpHold = NewPvpHold();
     private readonly IDictionary<int, SkillCastRules.LastCast> lastCasts;
@@ -205,8 +208,10 @@ public class ConfigManager {
 
     #region SkillCooldowns
     public void SetCacheSkillCooldowns(IList<SkillCooldownInfo> cooldowns, long currentTick) {
-        foreach (SkillCooldownInfo cooldown in cooldowns) {
-            skillCooldowns[cooldown.SkillId] = FromCache(cooldown, currentTick);
+        lock (skillCooldowns) {
+            foreach (SkillCooldownInfo cooldown in cooldowns) {
+                skillCooldowns[cooldown.SkillId] = FromCache(cooldown, currentTick);
+            }
         }
     }
 
@@ -253,25 +258,27 @@ public class ConfigManager {
         return cooldown.EndTick;
     }
     public void SaveSkillCooldown(SkillMetadata skill, long startTick) {
-        // An accepted cast always starts its cooldown again (it may come up to the slack early); a skill with
-        // recharge uses keeps the one that runs while uses are still out (SkillCastRules.SettleRecharge).
-        long lengthMs = CooldownMs(skill);
-        bool recharge = skill.State.RechargeMaxCount > 0 && !skill.Data.Consume.UseItem;
-        skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown);
-        if (recharge && cooldown != null) {
-            ShortenRecharge(cooldown, lengthMs);
-            (cooldown.EndTick, cooldown.Charges) = SkillCastRules.SettleRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs, startTick);
-        }
-        if (cooldown == null || !recharge || cooldown.Charges <= 0) {
-            cooldown = new SkillCooldown(skill.Id, skill.Level) {
-                EndTick = lengthMs + startTick,
-                GroupId = skill.State.CooldownGroupId,
-                RechargeMs = recharge ? lengthMs : 0,
-            };
-            skillCooldowns[skill.Id] = cooldown;
-        }
-        if (skill.State.RechargeMaxCount > 0) {
-            cooldown.Charges = Math.Clamp(cooldown.Charges + 1, cooldown.Charges, skill.State.RechargeMaxCount);
+        lock (skillCooldowns) {
+            // An accepted cast always starts its cooldown again (it may come up to the slack early); a skill with
+            // recharge uses keeps the one that runs while uses are still out (SkillCastRules.SettleRecharge).
+            long lengthMs = CooldownMs(skill);
+            bool recharge = skill.State.RechargeMaxCount > 0 && !skill.Data.Consume.UseItem;
+            skillCooldowns.TryGetValue(skill.Id, out SkillCooldown? cooldown);
+            if (recharge && cooldown != null) {
+                ShortenRecharge(cooldown, lengthMs);
+                (cooldown.EndTick, cooldown.Charges) = SkillCastRules.SettleRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs, startTick);
+            }
+            if (cooldown == null || !recharge || cooldown.Charges <= 0) {
+                cooldown = new SkillCooldown(skill.Id, skill.Level) {
+                    EndTick = lengthMs + startTick,
+                    GroupId = skill.State.CooldownGroupId,
+                    RechargeMs = recharge ? lengthMs : 0,
+                };
+                skillCooldowns[skill.Id] = cooldown;
+            }
+            if (skill.State.RechargeMaxCount > 0) {
+                cooldown.Charges = Math.Clamp(cooldown.Charges + 1, cooldown.Charges, skill.State.RechargeMaxCount);
+            }
         }
     }
 
@@ -302,7 +309,9 @@ public class ConfigManager {
 
     // The cooldown, the skill's own or one of its cooldown group, that refuses a use at this tick; null when none.
     public SkillCooldown? BlockingCooldown(SkillMetadata skill, long tick) {
-        return SkillCastRules.BlockingCooldown(skillCooldowns.Values, skill.Id, skill.State.CooldownGroupId, tick);
+        lock (skillCooldowns) {
+            return SkillCastRules.BlockingCooldown(skillCooldowns.Values, skill.Id, skill.State.CooldownGroupId, tick);
+        }
     }
 
     // Why a cast comes too early, null when it does not (SkillCastRules.TimingRefusal): before the motion of the
@@ -313,15 +322,17 @@ public class ConfigManager {
     // session's lag budget, for the longer of the two.
     // clockTurnedFast: this cast's tick is the first of a fast time of the client's clock (to be logged).
     public string? CastTimingRefusal(SkillMetadata skill, bool cooldown, int castTick, long tick, out bool clockTurnedFast) {
-        clockTurnedFast = CastClock.Add(castTick, tick);
-        long motionMs = lastMotion is { } last
-            ? SkillCastRules.MotionShortfall(last, skill.Id, skill.Property.ImmediateActive, AttackSpeed, castTick, tick) : 0;
-        long cooldownMs = cooldown && skill.State.RechargeMaxCount <= 0
-            ? SkillCastRules.CooldownShortfall(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick, AttackSpeed) : 0;
-        long rechargeMs = RechargeShortfall(skill, castTick, tick);
-        cooldownMs = Math.Max(cooldownMs, rechargeMs);
-        string? reason = SkillCastRules.TimingRefusal(Math.Max(motionMs, cooldownMs), CastClock.IsFast(tick), Lag, tick);
-        return reason == null ? null : $"{(cooldownMs < motionMs ? "motion" : rechargeMs >= cooldownMs && rechargeMs > 0 ? "recharge" : "cooldown")}: {reason}";
+        lock (skillCooldowns) {
+            clockTurnedFast = CastClock.Add(castTick, tick);
+            long motionMs = lastMotion is { } last
+                ? SkillCastRules.MotionShortfall(last, skill.Id, skill.Property.ImmediateActive, AttackSpeed, castTick, tick) : 0;
+            long cooldownMs = cooldown && skill.State.RechargeMaxCount <= 0
+                ? SkillCastRules.CooldownShortfall(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, castTick, tick, AttackSpeed) : 0;
+            long rechargeMs = RechargeShortfall(skill, castTick, tick);
+            cooldownMs = Math.Max(cooldownMs, rechargeMs);
+            string? reason = SkillCastRules.TimingRefusal(Math.Max(motionMs, cooldownMs), CastClock.IsFast(tick), Lag, tick);
+            return reason == null ? null : $"{(cooldownMs < motionMs ? "motion" : rechargeMs >= cooldownMs && rechargeMs > 0 ? "recharge" : "cooldown")}: {reason}";
+        }
     }
 
     // The time a recharge skill's cast comes too early by: with no use left, or within the skill's gap after its
@@ -345,15 +356,17 @@ public class ConfigManager {
     }
 
     public void SaveCastTime(SkillMetadata skill, SkillMetadataMotionProperty motion, int castTick, long tick) {
-        // A cooldown under 1 s is not reduced (SkillCastRules.RequiredGap); one that a reduction brings under 1 s
-        // is not checked. The check holds the cast to the length the client starts (CooldownMs); a share of the
-        // caster's rate the server does not count (the game rule's, CEquipment::GetAbilityTotal) is not allowed for.
-        long fullMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
-        long cooldownMs = fullMs < 1000 ? fullMs : CooldownMs(skill);
-        if (fullMs >= 1000 && cooldownMs < 1000) {
-            cooldownMs = 0;
+        lock (skillCooldowns) {
+            // A cooldown under 1 s is not reduced (SkillCastRules.RequiredGap); one that a reduction brings under 1 s
+            // is not checked. The check holds the cast to the length the client starts (CooldownMs); a share of the
+            // caster's rate the server does not count (the game rule's, CEquipment::GetAbilityTotal) is not allowed for.
+            long fullMs = (long) (skill.Data.Condition.CooldownTime * TimeSpan.FromSeconds(1).TotalMilliseconds);
+            long cooldownMs = fullMs < 1000 ? fullMs : CooldownMs(skill);
+            if (fullMs >= 1000 && cooldownMs < 1000) {
+                cooldownMs = 0;
+            }
+            lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick, AttackSpeed, motion.SequenceSpeed, motion.MoveType);
         }
-        lastCasts[skill.Id] = new SkillCastRules.LastCast(skill.Id, skill.State.CooldownGroupId, cooldownMs, tick, castTick, AttackSpeed, motion.SequenceSpeed, motion.MoveType);
     }
 
     private long AttackSpeed => session.Player.Stats.Values[BasicAttribute.AttackSpeed].Total;
@@ -396,7 +409,9 @@ public class ConfigManager {
     }
 
     public SkillCooldown? GetSkillCooldown(int skillId) {
-        return skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) ? cooldown : null;
+        lock (skillCooldowns) {
+            return skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) ? cooldown : null;
+        }
     }
 
     // Gives the skill count recharge uses back (an effect's <RemoveRechargingCount>, SkillCastRules.GiveBackRecharge)
@@ -404,60 +419,68 @@ public class ConfigManager {
     // it; the client takes the skill's recharge origin itself. None out drops the record, as the client ends the
     // cooldown.
     public void GiveBackRecharge(int skillId, int count) {
-        if (skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) && cooldown.RechargeMs > 0) {
-            (cooldown.EndTick, cooldown.Charges) = SkillCastRules.GiveBackRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs,
-                Environment.TickCount64, count);
-            if (cooldown.Charges <= 0) {
-                skillCooldowns.Remove(skillId);
+        lock (skillCooldowns) {
+            if (skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) && cooldown.RechargeMs > 0) {
+                (cooldown.EndTick, cooldown.Charges) = SkillCastRules.GiveBackRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs,
+                    Environment.TickCount64, count);
+                if (cooldown.Charges <= 0) {
+                    skillCooldowns.Remove(skillId);
+                }
             }
         }
         session.Send(SkillPacket.RechargeUses(skillId, 0, count));
     }
 
     public void SetSkillCooldown(int skillId, short level = 1, int endTick = 0) {
-        var cooldown = new SkillCooldown(skillId, level) {
-            EndTick = endTick,
-        };
-        skillCooldowns[skillId] = cooldown;
-        // A reset cooldown lets the next cast come at once.
-        lastCasts.Remove(skillId);
+        lock (skillCooldowns) {
+            var cooldown = new SkillCooldown(skillId, level) {
+                EndTick = endTick,
+            };
+            skillCooldowns[skillId] = cooldown;
+            // A reset cooldown lets the next cast come at once.
+            lastCasts.Remove(skillId);
 
-        session.Send(SkillPacket.Cooldown(cooldown));
+            session.Send(SkillPacket.Cooldown(cooldown));
+        }
     }
 
     public void LoadSkillCooldowns() {
-        SettleRecharges(Environment.TickCount64);
-        if (session.Field is { } field) {
-            // Entering a PvP zone ends the cooldowns of the skills that clear there (SkillCastRules.PvpZoneClears);
-            // the town ones come back on the way out (PvpCooldownHold).
-            List<int> cleared = SkillCastRules.PvpZoneClears(field.Metadata.Property.Type, skillCooldowns.Keys,
-                id => field.SkillMetadata.TryGet(id, skillCooldowns[id].Level, out SkillMetadata? skill) && skill.State.ClearCooldownOnPvpZone);
-            PvpHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, skillCooldowns, cleared, Environment.TickCount64);
-            pvpCastHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, lastCasts, cleared, Environment.TickCount64);
-            foreach (int skillId in cleared) {
-                SetSkillCooldown(skillId, skillCooldowns[skillId].Level);
+        lock (skillCooldowns) {
+            SettleRecharges(Environment.TickCount64);
+            if (session.Field is { } field) {
+                // Entering a PvP zone ends the cooldowns of the skills that clear there (SkillCastRules.PvpZoneClears);
+                // the town ones come back on the way out (PvpCooldownHold).
+                List<int> cleared = SkillCastRules.PvpZoneClears(field.Metadata.Property.Type, skillCooldowns.Keys,
+                    id => field.SkillMetadata.TryGet(id, skillCooldowns[id].Level, out SkillMetadata? skill) && skill.State.ClearCooldownOnPvpZone);
+                PvpHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, skillCooldowns, cleared, Environment.TickCount64);
+                pvpCastHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, lastCasts, cleared, Environment.TickCount64);
+                foreach (int skillId in cleared) {
+                    SetSkillCooldown(skillId, skillCooldowns[skillId].Level);
+                }
             }
-        }
-        foreach ((int skillId, SkillCooldown cooldown) in skillCooldowns) {
-            if (Environment.TickCount64 > cooldown.EndTick) {
-                skillCooldowns.Remove(skillId);
+            foreach ((int skillId, SkillCooldown cooldown) in skillCooldowns) {
+                if (Environment.TickCount64 > cooldown.EndTick) {
+                    skillCooldowns.Remove(skillId);
+                }
             }
-        }
-        if (skillCooldowns.Count > 0) {
-            session.Send(SkillPacket.Cooldown(skillCooldowns.Values.ToArray()));
+            if (skillCooldowns.Count > 0) {
+                session.Send(SkillPacket.Cooldown(skillCooldowns.Values.ToArray()));
+            }
         }
     }
 
     public IList<SkillCooldown> GetCurrentSkillCooldowns() {
-        IList<SkillCooldown> cooldowns = new List<SkillCooldown>();
-        SettleRecharges(Environment.TickCount64);
-        foreach ((int skillId, SkillCooldown cooldown) in skillCooldowns) {
-            if (Environment.TickCount64 > cooldown.EndTick) {
-                continue;
+        lock (skillCooldowns) {
+            IList<SkillCooldown> cooldowns = new List<SkillCooldown>();
+            SettleRecharges(Environment.TickCount64);
+            foreach ((int skillId, SkillCooldown cooldown) in skillCooldowns) {
+                if (Environment.TickCount64 > cooldown.EndTick) {
+                    continue;
+                }
+                cooldowns.Add(cooldown);
             }
-            cooldowns.Add(cooldown);
+            return cooldowns;
         }
-        return cooldowns;
     }
     #endregion
 
