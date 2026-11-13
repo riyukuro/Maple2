@@ -5,7 +5,7 @@ namespace Maple2.Server.Core.Formulas;
 
 public static class Enchant {
     private static float[] LV_50_ENCHANT_ONYX_MULTIPLIER = [1, 1, 1, 1.37106f, 1.37106f, 1.742f, 2.1116f, 2.482f, 2.853f, 3.25f, 3.718f, 3.718f, 3.718f, 3.718f, 3.718f];
-    private static float[] LV_70_ENCHANT_ONYX_MULTIPLIER = [1, 1, 1, 1.37106f, 1.37106f, 1.742f, 2.1116f, 2.482f, 2.853f, 5.707f, 5.707f, 8.561f, 8.561f, 11.415f, 11.415f];
+    private static float[] LV_70_ENCHANT_ONYX_MULTIPLIER = [1, 1, 1, 1.37106f, 1.37106f, 1.742f, 2.1116f, 2.482f, 2.853f, 5.7075f, 5.7075f, 8.561f, 8.561f, 11.415f, 11.415f];
     private static float[] ONYX_RARITY_MULTIPLIER = [0, 1, 1.237f, 1.5548f, 1.9216f, 2.3115f, 2.7794f];
 
     private static float[] LV_50_ENCHANT_CRYSTAL_FRAGMENT_MULTIPLIER = [1, 1, 1, 1.4f, 1.4f, 1.7f, 2.1f, 2.5f, 2.9f, 3.2f, 3.7f, 3.7f, 3.7f, 3.7f, 3.7f];

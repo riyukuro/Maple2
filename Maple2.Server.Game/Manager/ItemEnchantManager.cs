@@ -16,7 +16,7 @@ public class ItemEnchantManager {
     private const int MaxExp = 10000;
     private const int ChargeRate = 1;
 
-    private static readonly int[] RequireFodder = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 3, 3, 4];
+    private static readonly int[] RequireFodder = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3, 4];
     private static readonly int[] GainExp = [10000, 10000, 10000, 5000, 5000, 5000, 2500, 2500, 2500, 2000, 3334, 2000, 2000, 1250, 1250];
     private static readonly int[] SuccessRate = [100, 100, 100, 95, 90, 80, 70, 60, 50, 40, 30, 20, 15, 10, 5];
     private static readonly int[] FodderRate = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 7, 5, 4, 2];
@@ -193,9 +193,10 @@ public class ItemEnchantManager {
                 return false;
             }
 
-            // Can't go over 30% rate with fodders
+            // Can't go over 30% rate with fodders. KR answers a copy past the needed ones at the cap with the
+            // excess_fodder line (event 5), not max_fodder.
             if (Type is EnchantType.Ophelia && fodders.Count >= RequiredFodder(enchants) && rates.Success + rates.Fodder >= MaxFodderRate) {
-                NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.max_fodder);
+                NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.excess_fodder);
                 return false;
             }
 

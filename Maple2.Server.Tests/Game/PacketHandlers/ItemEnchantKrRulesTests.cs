@@ -1,10 +1,12 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -20,10 +22,12 @@ public class ItemEnchantKrRulesTests {
         return metadata with { Property = metadata.Property with { Tag = tag } };
     }
 
-    private GameSession Login(int rarity, ItemEnchant enchant) {
+    private GameSession Login(int rarity, ItemEnchant enchant, int gearId = 11400001, int level = 50, int copies = 0) {
         test = new TestGameSession();
-        ItemMetadata gearMetadata = TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1);
-        gear = test.Store(gearMetadata with { Limit = gearMetadata.Limit with { Level = 50 } });
+        ItemMetadata gearMetadata = TestGameSession.Metadata(gearId, EquipSlot.CL, type: 1);
+        gearMetadata = gearMetadata with { Limit = gearMetadata.Limit with { Level = level } };
+        gear = test.Store(gearMetadata);
+        List<Item> stored = Enumerable.Range(0, copies).Select(_ => test.Store(gearMetadata)).ToList();
         test.Store(Material(OnyxId, ItemTag.Onix), amount: 30000);
         test.Store(Material(ChaosOnyxId, ItemTag.ChaosOnix), amount: 30000);
         test.Store(Material(FragmentId, ItemTag.CrystalPiece), amount: 30000);
@@ -39,9 +43,15 @@ public class ItemEnchantKrRulesTests {
         Item item = session.Item.Inventory.Get(gear.Uid)!;
         item.Rarity = rarity;
         item.Enchant = enchant;
+        copyUids = stored.Select(copy => copy.Uid).ToList();
+        foreach (long uid in copyUids) {
+            session.Item.Inventory.Get(uid)!.Rarity = rarity;
+        }
         test.TakeSent();
         return session;
     }
+
+    private List<long> copyUids = [];
 
     private static int Held(GameSession session, ItemTag tag) => session.Item.Inventory.Find(tag).Sum(item => item.Amount);
 
@@ -156,5 +166,52 @@ public class ItemEnchantKrRulesTests {
             Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.Onix)));
             Assert.That(Held(session, ItemTag.CrystalPiece), Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.CrystalPiece)));
         });
+    }
+
+    // KMS2 asks for one copy at +10 (the stage's required count), two from +11.
+    [Test]
+    public void Ophelia_TenNeedsOneCopy() {
+        GameSession session = Login(6, new ItemEnchant(enchants: 10));
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        byte[] stage = test.TakeSent().Last(p => (SendOp) (p[0] | p[1] << 8) == SendOp.ItemEnchant);
+        var tail = new ByteReader(stage, stage.Length - 10);
+        Assert.Multiple(() => {
+            Assert.That(tail.ReadInt(), Is.EqualTo(gear.Id));
+            Assert.That(tail.ReadShort(), Is.EqualTo(6));
+            Assert.That(tail.ReadInt(), Is.EqualTo(1));
+        });
+    }
+
+    // At +10 the base rate is the 30% cap: the needed copy is taken, a copy past it gets the smith's
+    // excess_fodder line (EnchantFail event 5) and is not added.
+    [Test]
+    public void Ophelia_ACopyPastTheCapGetsExcessFodder() {
+        GameSession session = Login(6, new ItemEnchant(enchants: 10), copies: 2);
+        test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>> {
+            [ScriptEventType.EnchantFail] = new() {
+                [5] = new ScriptEventConditionMetadata(5, ScriptEventType.EnchantFail, ItemEnchantError.excess_fodder, 0, [], 0,
+                    EnchantDamageType.None, EnchantResult.None),
+            },
+        }));
+        session.NpcScript = new NpcScriptManager(session, [new CinematicEventScript(5, [new ScriptContent("excess", "", "")])]);
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], add: true), Is.True);
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ItemEnchant }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[1], add: true), Is.False);
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.NpcTalk }));
+        });
+    }
+
+    // The onyx for a level 70 rarity 6 two-hand weapon at +10: 1908 x 2 x 5.7075 = 21780 in KMS2.
+    [Test]
+    public void Ophelia_TenOnyxForATwoHandAtLevel70() {
+        GameSession session = Login(6, new ItemEnchant(enchants: 10), gearId: 15000001, level: 70);
+        Item item = session.Item.Inventory.Get(gear.Uid)!;
+        Assume.That(item.Type.IsGreatsword, Is.True);
+        Assert.That(Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(item).Single(c => c.Tag == ItemTag.Onix).Amount, Is.EqualTo(21780));
     }
 }
