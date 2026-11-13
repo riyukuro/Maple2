@@ -724,6 +724,31 @@ public class InventoryManager {
         }
     }
 
+    // Deletes the survival match items (SurvivalItemRules) on entering a field whose survival element calls for it,
+    // with the normal remove packet and one log line per item. Chosen here.
+    public int ClearSurvivalItems(MapMetadataSurvival? survival, int mapId) {
+        string? reason = SurvivalItemRules.ClearReason(survival);
+        if (reason == null) {
+            return 0;
+        }
+        lock (session.Item) {
+            int count = 0;
+            foreach (Item item in tabs.Values.SelectMany(tab => tab.Where(item => SurvivalItemRules.IsMatchOnly(item.Metadata))).ToList()) {
+                int amount = item.Amount;
+                if (!RemoveInternal(item.Uid, -1, out Item? removed)) {
+                    continue;
+                }
+                if (removed.Uid != 0) {
+                    delete.Add(removed);
+                }
+                count++;
+                logger.Information("Survival item deleted: character {CharacterId}, item {ItemId}, uid {ItemUid}, amount {Amount}, map {MapId}: {Reason}",
+                    session.CharacterId, removed.Id, removed.Uid, amount, mapId, reason);
+            }
+            return count;
+        }
+    }
+
     public IList<Item> Filter(Func<Item, bool> condition, InventoryType? type = null) {
         lock (session.Item) {
             if (type != null) {

@@ -70,6 +70,9 @@ public record ItemMetadataProperty(
     // The property element's rank (CItemData::GetRank, 0: none), the rarity a maid recipe ingredient that is not
     // equipment must have. Null in a row ingested before this field existed.
     public int? Rank { get; init; }
+    // The property element's survival (1 on the 44 items of the survival match). The client never reads it
+    // (ItemProperty::Load, commonfiles/itemdatastruct.cpp:1122); the server's survival item rules do (SurvivalItemRules).
+    public bool Survival { get; init; }
 }
 
 public record ItemMetadataCustomize(

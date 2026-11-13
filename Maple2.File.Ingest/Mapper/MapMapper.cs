@@ -52,7 +52,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
             ).ToList();
         }
 
-        int marked = 0, packLists = 0, lists = 0, changedLists = 0;
+        int marked = 0, packLists = 0, lists = 0, changedLists = 0, survivalMaps = 0;
         foreach ((int id, string name, MapData data) in parser.Parse()) {
             bool lacking = PlayedClientMaps.Lacks(playedClientRows, notInPlayedClient, id);
             if (lacking) {
@@ -94,7 +94,16 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     CanClimb: data.property.checkClimb,
                     IndoorType: data.indoor.type,
                     MinimapPing: data.property.minimapPing,
-                    NotInPlayedClient: lacking),
+                    NotInPlayedClient: lacking) {
+                    // The parser gives every map a survival object; only the 6 maps whose xml has the element
+                    // carry values, so an all-zero object is a map without one.
+                    Survival = !HasSurvival(data.survival) ? null : new MapMetadataSurvival(
+                        UserDrop: data.survival.userDrop,
+                        UserAdditionalDrop: data.survival.userAdditionalDrop,
+                        PlusInven: data.survival.plusInven,
+                        PlusInvenBasic: data.survival.plusInven_Basic,
+                        PlusInvenZero: data.survival.plusInven_Zero),
+                },
                 Limit: new MapMetadataLimit(
                     Capacity: data.property.capacity,
                     MinLevel: data.property.enterMinLevel,
@@ -123,10 +132,17 @@ public class MapMapper : TypeMapper<MapMetadata> {
                 // TODO: There are also EntranceBuffs for Survival
                 EntranceBuffs: data.property.enteranceBuffIDs.Zip(data.property.enteranceBuffLevels,
                         (skillId, level) => new MapEntranceBuff(skillId, level)).ToArray());
+            survivalMaps += HasSurvival(data.survival) ? 1 : 0;
         }
+        Console.WriteLine($"maps with a survival element: {survivalMaps}");
         if (playedClientRows.Count > 0) {
             Console.WriteLine($"maps: {marked} marked as not in the played client (entry refused)");
             Console.WriteLine($"maps with a skillUseDisable list: {lists} ({packLists} in the data pack, {changedLists} taken from the played client)");
         }
+    }
+
+    private static bool HasSurvival(Maple2.File.Parser.Xml.Map.Survival? survival) {
+        return survival != null && (survival.userDrop != 0 || survival.userAdditionalDrop != 0 || survival.plusInven != 0
+            || survival.plusInven_Basic != 0 || survival.plusInven_Zero != 0);
     }
 }

@@ -58,6 +58,7 @@ public sealed class BlackMarketManager {
         }
         if (!BlackMarketRules.CanList(item.IsLocked, item.Transfer != null, item.Transfer?.Flag ?? TransferFlag.None,
                 item.Transfer?.RemainTrades ?? 0, item.Transfer?.Binding != null, item.Music != null && item.Music.Author != string.Empty)
+            || SurvivalItemRules.IsMatchOnly(item.Metadata)
             // A gem that may not go with the item (CItemSocket FUN_1406227f0); the client's own gem line has no
             // known error code here, so the generic refusal.
             || !TradeRules.AreGemsTradeable(item.Socket, id => session.ItemMetadata.TryGet(id, out ItemMetadata? gem) ? gem.Limit.TransferType : null,

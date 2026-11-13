@@ -37,6 +37,13 @@ public record MapMetadata(
     MapMetadataCashCall CashCall,
     MapEntranceBuff[] EntranceBuffs) : ISearchResult;
 
+public record MapMetadataSurvival(
+    int UserDrop,
+    int UserAdditionalDrop,
+    int PlusInven,
+    int PlusInvenBasic,
+    int PlusInvenZero);
+
 public record MapMetadataProperty(
     Continent Continent,
     MapRegion Region,
@@ -68,7 +75,11 @@ public record MapMetadataProperty(
     // field table has only an empty row for this map (no xblock name) or no row at all: that client cannot load the map and
     // hangs when it is sent there. The server then refuses every way in. False when the option is not set;
     // the JSON store omits false values, so the default must be false.
-    bool NotInPlayedClient = false);
+    bool NotInPlayedClient = false) {
+    // The map xml's survival element (82000000-82000003, 82000006, 82000012). Null where the map has none, and in a
+    // row ingested before this field existed. The client reads none of it: it is server data (SurvivalItemRules).
+    public MapMetadataSurvival? Survival { get; init; }
+}
 
 public record MapMetadataDrop(
     int Level,

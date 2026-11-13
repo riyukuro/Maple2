@@ -81,7 +81,7 @@ public sealed class StorageManager : IDisposable {
     public void Deposit(long uid, short slot, int amount) {
         lock (session.Item) {
             Item? deposit = session.Item.Inventory.Get(uid);
-            if (deposit == null || !StorageRules.IsCount(amount, deposit.Amount)) {
+            if (deposit == null || !StorageRules.IsCount(amount, deposit.Amount) || SurvivalItemRules.IsMatchOnly(deposit.Metadata)) {
                 session.Send(StorageInventoryPacket.Error(s_item_err_invalid_count));
                 return;
             }

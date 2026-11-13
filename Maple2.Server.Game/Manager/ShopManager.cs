@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -617,7 +618,7 @@ public sealed class ShopManager {
         }
 
         bool hasGem = item.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) ?? false;
-        if (!ShopRules.CanSell(item.Metadata.Limit.ShopSell, item.IsLocked, item.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), hasGem)) {
+        if (!ShopRules.CanSell(item.Metadata.Limit.ShopSell, item.IsLocked, item.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), hasGem) || SurvivalItemRules.IsMatchOnly(item.Metadata)) {
             // In KMS2 a refused sale is answered with code 5 and the sell command's number.
             session.Send(ShopPacket.Error(ShopError.s_err_cannot_sell_item, 5));
             return;

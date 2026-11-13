@@ -238,6 +238,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     MoveDisable = moveDisableEnabled && data.property.moveDisable,
                     IconCode = data.property.iconCode,
                     Rank = data.property.rank,
+                    Survival = data.property.survival != 0,
                     NotInPlayedClient = known != null && !known.Contains(id),
                 },
                 Customize: new ItemMetadataCustomize(

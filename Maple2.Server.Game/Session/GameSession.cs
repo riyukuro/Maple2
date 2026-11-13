@@ -765,6 +765,8 @@ public sealed partial class GameSession : Core.Network.Session {
             Send(PetPacket.UnSummon(Player.ObjectId, resummonPetUid));
         }
         Housing.EnterBuildField();
+        // Survival match items do not outlive the match (SurvivalItemRules, Chosen here).
+        Item.Inventory.ClearSurvivalItems(Field.Metadata.Property.Survival, Field.MapId);
 
         PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = AccountId,

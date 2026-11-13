@@ -169,7 +169,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
         Item? item = GetUgcItem(itemUid);
-        if (item?.Template == null || item.Template.Id == 0) {
+        if (item?.Template == null || item.Template.Id == 0 || SurvivalItemRules.IsMatchOnly(item.Metadata)) {
             return;
         }
 
