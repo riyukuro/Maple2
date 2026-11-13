@@ -14,7 +14,8 @@ namespace Maple2.Server.Game.Manager.Field;
 // in the zone's box when the fight starts become participants with their own PvP point (Pvp 0x64), the ranking rows
 // (0x67, 0x6a) follow the hits and deaths, the kill log (PlayerKillNotice 0) names each kill, and at the end each
 // participant here gets its rank (0x68), the win or loss pose (0x65), its reward and its point back to 0.
-// pvp_zone_ended is true from then on. See PvpZoneState for the rules.
+// pvp_zone_ended is true from then on. See PvpZoneState for the rules. The same zone runs 61000035's one punch round
+// (type 5, the client's mode 5) with its own reward, and 61000035_me_item's round (type 6) with none.
 public sealed class PvpZoneField : IPvpZoneField {
     private readonly ILogger logger = Log.Logger.ForContext<PvpZoneField>();
     private readonly object mutex = new();
@@ -28,6 +29,10 @@ public sealed class PvpZoneField : IPvpZoneField {
     // Chosen here: how far around the floor's anchor a waiting participant is put down.
     private const int FloorRadius = 1500;
     private readonly Action<IReadOnlyList<long>, int>? onEnd;
+    // The one punch round's minimum: 61000035_me's script starts the zone only with at least 4 players in box 701
+    // (its minimum-players state counts 4 users there, else it times out and moves everyone out); the tokens need as many
+    // participants at the start, so a round that lost its players before the fight pays nothing.
+    public const int OnePunchMinParticipants = 4;
 
     public int BoxId => state.BoxId;
     public bool Ended {
@@ -38,14 +43,14 @@ public sealed class PvpZoneField : IPvpZoneField {
 
     public PvpZoneField(FieldManager field, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId,
                         Func<IEnumerable<FieldPlayer>> playersInBox, Action<IReadOnlyList<long>, int>? onEnd, long tick,
-                        (TriggerBox Box, Vector3 Floor)? waiting = null) {
+                        (TriggerBox Box, Vector3 Floor)? waiting = null, int mode = PvpZoneState.FfaMode) {
         this.waiting = waiting;
         this.field = field;
         this.additionalEffectId = additionalEffectId;
         this.playersInBox = playersInBox;
         this.onEnd = onEnd;
         ConstantsTable constants = field.ServerTableMetadata.ConstantsTable;
-        state = new PvpZoneState(boxId, PvpZoneState.FfaMode, tick, prepareSeconds, matchSeconds, constants.ModePvPScoreKill, constants.ModePvPScoreDead) {
+        state = new PvpZoneState(boxId, mode, tick, prepareSeconds, matchSeconds, constants.ModePvPScoreKill, constants.ModePvPScoreDead) {
             ComboTickMs = constants.pvpFFALongComboTick,
             SlayerCount = constants.pvpFFASlayerCount,
             RulerCount = constants.pvpFFARulerCount,
@@ -155,11 +160,7 @@ public sealed class PvpZoneField : IPvpZoneField {
     private void End() {
         List<PvpZoneEntry> ranking = state.End();
         ConstantsTable constants = field.ServerTableMetadata.ConstantsTable;
-        int[] rewardCounts = [
-            constants.PvpFFAReward1Count, constants.PvpFFAReward2Count, constants.PvpFFAReward3Count, constants.PvpFFAReward4Count,
-            constants.PvpFFAReward5Count, constants.PvpFFAReward6Count, constants.PvpFFAReward7Count, constants.PvpFFAReward8Count,
-            constants.PvpFFAReward9Count, constants.PvpFFAReward10Count,
-        ];
+        (int[] Counts, int AdditionRate, int ItemId)? reward = Rewards(state.Mode, constants);
         for (int index = 0; index < ranking.Count; index++) {
             PvpZoneEntry entry = ranking[index];
             int rank = index + 1;
@@ -172,9 +173,14 @@ public sealed class PvpZoneField : IPvpZoneField {
                 PvpConditions.Win(player, field.MapId);
             }
             try {
-                // Rewards only in an arena match's field.
-                if (field.Arena != null) {
-                    Reward(player, rank, PvpZoneState.Reward(rank, entry.Kill, rewardCounts, constants.PvpFFAAdditionRewardRate), constants.PvpFFARewardItem);
+                if (state.Mode == PvpZoneState.OnePunchMode && reward is { } onePunch && ranking.Count >= OnePunchMinParticipants) {
+                    // The one punch round's tokens, to the participants still here: 61000035 is no arena match's field,
+                    // and only it sets type 5.
+                    Tokens(player, PvpZoneState.Reward(rank, entry.Kill, onePunch.Counts, onePunch.AdditionRate), onePunch.ItemId);
+                } else if (field.Arena != null && reward is { } ffa) {
+                    // The free-for-all's rewards only in an arena match's field.
+                    Tokens(player, PvpZoneState.Reward(rank, entry.Kill, ffa.Counts, ffa.AdditionRate), ffa.ItemId);
+                    BloodMineExp(player, rank);
                 }
             } catch (Exception ex) {
                 logger.Error(ex, "PvP zone reward of {CharacterId} not given", entry.CharacterId);
@@ -189,15 +195,39 @@ public sealed class PvpZoneField : IPvpZoneField {
         onEnd?.Invoke(ranking.Select(entry => entry.CharacterId).ToList(), ranking.Count > 0 ? 1 : 0);
     }
 
-    // The rank's tokens (the result dialog's reward) and the blood mine exp of the rank (the client's commonexptable
-    // rows bloodMineRank1 to 3 and bloodMineRankOther).
-    private void Reward(FieldPlayer player, int rank, int count, int itemId) {
+    // The result dialog's reward of the zone's mode (UIPvPResultDialog::FUN_141344210, CPvPInfo::GetRewardItemId): the
+    // free-for-all's PvpFFAReward<rank>Count plus PvpFFAAdditionRewardRate per kill of PvpFFARewardItem, the one punch
+    // round's PvpOnePunchReward<rank>Count with no kill addition of PvpOnePunchRewardItem; none in another mode (the
+    // dialog shows 0).
+    public static (int[] Counts, int AdditionRate, int ItemId)? Rewards(int mode, ConstantsTable constants) {
+        return mode switch {
+            PvpZoneState.FfaMode => ([
+                constants.PvpFFAReward1Count, constants.PvpFFAReward2Count, constants.PvpFFAReward3Count, constants.PvpFFAReward4Count,
+                constants.PvpFFAReward5Count, constants.PvpFFAReward6Count, constants.PvpFFAReward7Count, constants.PvpFFAReward8Count,
+                constants.PvpFFAReward9Count, constants.PvpFFAReward10Count,
+            ], constants.PvpFFAAdditionRewardRate, constants.PvpFFARewardItem),
+            PvpZoneState.OnePunchMode => ([
+                constants.PvpOnePunchReward1Count, constants.PvpOnePunchReward2Count, constants.PvpOnePunchReward3Count,
+                constants.PvpOnePunchReward4Count, constants.PvpOnePunchReward5Count, constants.PvpOnePunchReward6Count,
+                constants.PvpOnePunchReward7Count, constants.PvpOnePunchReward8Count, constants.PvpOnePunchReward9Count,
+                constants.PvpOnePunchReward10Count,
+            ], 0, constants.PvpOnePunchRewardItem),
+            _ => null,
+        };
+    }
+
+    // The rank's tokens (the result dialog's reward).
+    private void Tokens(FieldPlayer player, int count, int itemId) {
         if (count > 0 && itemId > 0) {
             Item? item = field.ItemDrop.CreateItem(itemId, amount: count);
             if (item != null && !player.Session.Item.Inventory.Add(item, notifyNew: true, commit: true)) {
                 logger.Warning("PvP zone reward {ItemId} x{Count} of {CharacterId} not added", itemId, count, player.Value.Character.Id);
             }
         }
+    }
+
+    // The blood mine exp of the rank (the client's commonexptable rows bloodMineRank1 to 3 and bloodMineRankOther).
+    private static void BloodMineExp(FieldPlayer player, int rank) {
         player.Session.Exp.AddExp(rank switch {
             1 => ExpType.bloodMineRank1,
             2 => ExpType.bloodMineRank2,

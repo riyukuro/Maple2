@@ -47,6 +47,8 @@ public static class PvpKillNotice {
 // participant gets a rank.
 public sealed class PvpZoneState {
     public const int FfaMode = 2;
+    // 61000035's one punch round (set_pvp_zone type 5, CPvPInfo::IsOnePunchMode).
+    public const int OnePunchMode = 5;
     public const int FirstPoint = 101;
 
     public int BoxId { get; }
@@ -180,7 +182,7 @@ public sealed class PvpZoneState {
             .ToList();
     }
 
-    // The tokens of a rank as the result dialog shows them: rewardCounts are PvpFFAReward1Count to 10.
+    // The tokens of a rank as the result dialog shows them: rewardCounts are the mode's Reward1Count to 10.
     public static int Reward(int rank, int kills, IReadOnlyList<int> rewardCounts, int additionRate) {
         if (rewardCounts.Count < 10) {
             return 0;

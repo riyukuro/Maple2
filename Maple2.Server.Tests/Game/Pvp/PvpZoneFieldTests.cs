@@ -19,6 +19,7 @@ namespace Maple2.Server.Tests.Game.Pvp;
 public class PvpZoneFieldTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
     private const int ArenaItem = 40100023;
+    private const int OnePunchItem = 30001533;
 
     private sealed class Arena {
         public required TestGameSession[] Tests;
@@ -32,19 +33,23 @@ public class PvpZoneFieldTests {
             PvpFFAReward1Count: 30, PvpFFAReward2Count: 25, PvpFFAReward3Count: 20, PvpFFAReward4Count: 15, PvpFFAReward5Count: 15,
             PvpFFAReward6Count: 15, PvpFFAReward7Count: 15, PvpFFAReward8Count: 10, PvpFFAReward9Count: 10, PvpFFAReward10Count: 10,
             PvpFFARewardItem: 90000006, pvpBtiRewardItem: 90000006, pvpBtiRewardWinnerCount: 30, pvpBtiRewardLoserCount: 10,
-            pvpFFALongComboTick: 10000, pvpFFASlayerCount: 5, pvpFFARulerCount: 10));
+            pvpFFALongComboTick: 10000, pvpFFASlayerCount: 5, pvpFFARulerCount: 10,
+            PvpOnePunchReward1Count: 9, PvpOnePunchReward2Count: 8, PvpOnePunchReward3Count: 7, PvpOnePunchReward4Count: 6,
+            PvpOnePunchReward5Count: 5, PvpOnePunchReward6Count: 4, PvpOnePunchReward7Count: 3, PvpOnePunchReward8Count: 3,
+            PvpOnePunchReward9Count: 2, PvpOnePunchReward10Count: 2, PvpOnePunchRewardItem: OnePunchItem));
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>>(), new Dictionary<int, long>()));
-        test.Register(TestGameSession.Metadata(90000006), TestGameSession.Metadata(ArenaItem, slotMax: 9999));
+        test.Register(TestGameSession.Metadata(90000006), TestGameSession.Metadata(ArenaItem, slotMax: 9999),
+            TestGameSession.Metadata(OnePunchItem, slotMax: 9999));
     }
 
     private static Arena Start() => Start(field => field.StartPvpZone(2, 101, 0, 1, 0, [], _ => field.Players.Values));
 
-    private static Arena Start(Action<FieldManager> zone) {
+    private static Arena Start(Action<FieldManager> zone, int players = 3, bool arenaMatch = true) {
         var first = new TestGameSession();
         first.Start();
         var tests = new List<TestGameSession> { first };
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < players - 1; i++) {
             var other = new TestGameSession(first.Options);
             other.Start();
             tests.Add(other);
@@ -60,7 +65,9 @@ public class PvpZoneFieldTests {
             tests[i].Session.Field = field;
         }
         var arena = new Arena { Tests = tests.ToArray(), Field = field };
-        field.StartArena(4, PvpHandlerTests.Arenas.Entries[2], tests.Select(test => test.CharacterId).ToList(), arena.Ended.Add);
+        if (arenaMatch) {
+            field.StartArena(4, PvpHandlerTests.Arenas.Entries[2], tests.Select(test => test.CharacterId).ToList(), arena.Ended.Add);
+        }
         // As the arena's script: box, 0 s to prepare, a short fight, no effect.
         zone(field);
         return arena;
@@ -117,6 +124,84 @@ public class PvpZoneFieldTests {
         Assert.That(arena.Field.PlayerHostile(arena.Player(0), arena.Player(1)), Is.False);
         System.Threading.SpinWait.SpinUntil(() => arena.Ended.Count > 0, 2000);
         Assert.That(arena.Ended, Is.EqualTo(new[] { 4 }));
+    }
+
+    private static int Held(Arena arena, int index, int itemId) =>
+        arena.Tests[index].Session.Item.Inventory.Find(itemId).Sum(item => item.Amount);
+
+    // 61000035's one punch round (type 5, box 701, 240 s, no effect) in a field that is no arena match: the points carry
+    // mode 5, and at the end each participant still here gets PvpOnePunchReward<rank>Count of PvpOnePunchRewardItem
+    // with no kill addition (UIPvPResultDialog::FUN_141344210) and no blood mine exp.
+    [Test]
+    public void OnePunch_ModeAndRankTokens() {
+        Arena arena = Start(field => field.StartPvpZone(5, 701, 0, 1, 0, [], _ => field.Players.Values), players: 4, arenaMatch: false);
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        List<string> start = Pvp(arena.Tests[0]);
+        Assert.That(start.Count(packet => packet.StartsWith("B60064") && packet.EndsWith("00" + "05")), Is.EqualTo(4));
+
+        // Player 0 kills player 1: rank 1 with a kill, still only the rank's 9.
+        arena.Field.PvpZone.Damage(arena.Player(0), arena.Player(1), 40);
+        arena.Field.PvpZone.Death(arena.Player(1));
+        arena.Field.PvpZone.Update(now + 2000);
+        Assert.That(arena.Field.PvpZone.Ended, Is.True);
+        Assert.That(Held(arena, 0, OnePunchItem), Is.EqualTo(9));
+        Assert.That(Held(arena, 1, OnePunchItem), Is.EqualTo(6));
+        Assert.That(new[] { Held(arena, 2, OnePunchItem), Held(arena, 3, OnePunchItem) }.Order(), Is.EqualTo(new[] { 7, 8 }));
+        Assert.That(Held(arena, 0, 90000006) + Held(arena, 0, ArenaItem), Is.Zero);
+        Assert.That(arena.Ended, Is.Empty);
+    }
+
+    // The farm guard: a round with fewer participants than the script's minimum (4) pays no tokens, and a participant
+    // that left before the end gets none.
+    [Test]
+    public void OnePunch_TokensNeedTheMinimumAndPresence() {
+        Arena few = Start(field => field.StartPvpZone(5, 701, 0, 1, 0, [], _ => field.Players.Values), players: 3, arenaMatch: false);
+        long now = Environment.TickCount64;
+        few.Field.PvpZone!.Update(now + 10);
+        few.Field.PvpZone.Update(now + 2000);
+        Assert.That(few.Field.PvpZone.Ended, Is.True);
+        Assert.That(Enumerable.Range(0, 3).Sum(index => Held(few, index, OnePunchItem)), Is.Zero);
+
+        Arena left = Start(field => field.StartPvpZone(5, 701, 0, 1, 0, [], _ => field.Players.Values), players: 4, arenaMatch: false);
+        now = Environment.TickCount64;
+        left.Field.PvpZone!.Update(now + 10);
+        left.Field.Players.TryRemove(left.Player(3).ObjectId, out _);
+        left.Field.PvpZone.Leave(left.Player(3));
+        left.Field.PvpZone.Update(now + 2000);
+        Assert.That(Held(left, 3, OnePunchItem), Is.Zero);
+        Assert.That(Enumerable.Range(0, 3).Select(index => Held(left, index, OnePunchItem)).Order(), Is.EqualTo(new[] { 7, 8, 9 }));
+    }
+
+    // 61000035_me_item's round (type 6): the same zone in mode 6, with no tokens (the client's dialog shows 0).
+    [Test]
+    public void ItemRound_ModeSixNoTokens() {
+        Arena arena = Start(field => field.StartPvpZone(6, 701, 0, 1, 0, [], _ => field.Players.Values), players: 4, arenaMatch: false);
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        Assert.That(Pvp(arena.Tests[0]).Count(packet => packet.StartsWith("B60064") && packet.EndsWith("00" + "06")), Is.EqualTo(4));
+        arena.Field.PvpZone.Update(now + 2000);
+        Assert.That(arena.Field.PvpZone.Ended, Is.True);
+        Assert.That(Enumerable.Range(0, 4).Sum(index => Held(arena, index, OnePunchItem) + Held(arena, index, 90000006)), Is.Zero);
+    }
+
+    // The free-for-all off an arena match's field (the guild and test maps) still pays nothing.
+    [Test]
+    public void FreeForAll_OffArenaNoTokens() {
+        Arena arena = Start(field => field.StartPvpZone(2, 101, 0, 1, 0, [], _ => field.Players.Values), players: 4, arenaMatch: false);
+        long tokens = arena.Tests[0].Session.Currency[CurrencyType.ValorToken];
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        arena.Field.PvpZone.Update(now + 2000);
+        Assert.That(arena.Field.PvpZone.Ended, Is.True);
+        Assert.That(arena.Tests[0].Session.Currency[CurrencyType.ValorToken], Is.EqualTo(tokens));
+        Assert.That(Held(arena, 0, OnePunchItem), Is.Zero);
     }
 
     // Treasure Island: the players are dealt to red (201) and blue (202) with mode 3, their rows, the score, the gauge
