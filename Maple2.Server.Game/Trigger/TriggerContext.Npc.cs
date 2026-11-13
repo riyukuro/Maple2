@@ -344,7 +344,7 @@ public partial class TriggerContext {
     private void SpawnNpc(int spawnId, bool useSpawnAnimation = false, int score = 0) {
         SpawnPointNPC? spawn = FindSpawnPoint(Field.Entities.EventNpcSpawns, Field.Entities.NpcSpawns, spawnId);
         if (spawn == null) {
-            logger.Error("[SpawnNpc] Invalid spawnId:{SpawnId}", spawnId);
+            logger.Warning("[SpawnNpc] Trigger {Trigger} of field {MapId}: no spawn point {SpawnId}", owner.Value.Name, Field.MapId, spawnId);
             return;
         }
         var eventSpawn = spawn as EventSpawnPointNPC;
