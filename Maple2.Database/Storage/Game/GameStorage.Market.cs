@@ -566,6 +566,37 @@ public partial class GameStorage {
             return listing;
         }
 
+        // Mails the seller the deposit of a listing that stays on the market (World refused it and it could not be
+        // taken back), and sets the listing's deposit to 0 in the same transaction, so a later cancel after expiry
+        // does not pay it twice. Answers the mail, or null when nothing was refunded.
+        public Maple2.Model.Game.Mail? RefundBlackMarketDeposit(long listingId, long characterId, Func<long, Maple2.Model.Game.Mail> refundMail) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            lock (BlackMarketLock) {
+                try {
+                    using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                    Model.BlackMarketListing? model = Context.BlackMarketListing
+                        .FirstOrDefault(row => row.Id == listingId && row.CharacterId == characterId);
+                    if (model == null || model.Deposit <= 0) {
+                        return null;
+                    }
+
+                    Maple2.Model.Game.Mail made = refundMail(model.Deposit);
+                    made.SetDefaultExpiry(game.serverTableMetadata.ConstantsTable.MailExpiryDays, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                    Model.Mail mailModel = made;
+                    mailModel.Id = 0;
+                    model.Deposit = 0;
+                    Context.Mail.Add(mailModel);
+                    Context.SaveChanges();
+                    transaction.Commit();
+                    return mailModel;
+                } catch (Exception ex) {
+                    Context.ChangeTracker.Clear();
+                    Logger.LogError(ex, "Failed to refund the deposit of black market listing {ListingId}", listingId);
+                    return null;
+                }
+            }
+        }
+
         private BlackMarketListing? ToBlackMarketingListing(Model.BlackMarketListing? model) {
             if (model == null) {
                 return null;

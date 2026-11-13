@@ -118,8 +118,14 @@ public sealed class BlackMarketManager {
             // of its own: the listing's request still tracks the rows it wrote.
             using GameStorage.Request takeDb = session.GameStorage.Context();
             if (takeDb.TakeBlackMarketListing(listing.Id, session.CharacterId, taken => RefundErrorMail(taken.Item.Id, depositFee), out _) == null) {
-                // The row and its item stay listed, as World will load them; the seller can take them back.
+                // The row and its item stay listed, as World will load them; the seller can take them back. The deposit
+                // is mailed back now (a cancel before expiry refunds none), and the row's deposit set to 0.
                 logger.Error("Failed to take back black market listing {ListingId} that World refused", listing.Id);
+                if (takeDb.RefundBlackMarketDeposit(listing.Id, session.CharacterId, deposit => RefundErrorMail(item.Id, deposit)) != null) {
+                    session.Mail.Notify(true);
+                } else {
+                    logger.Error("The deposit of black market listing {ListingId} that World refused was not refunded", listing.Id);
+                }
                 return;
             }
             session.Mail.Notify(true);

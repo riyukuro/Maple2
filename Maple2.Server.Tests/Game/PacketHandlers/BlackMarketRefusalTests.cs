@@ -193,6 +193,33 @@ public class BlackMarketRefusalTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // World refuses the new listing and the row cannot be taken back: the row and its item stay listed (the seller
+    // can take them back), and the deposit is mailed now, with the row's deposit set to 0 so a cancel after expiry
+    // does not pay it again (the deposit used to be lost: a cancel before expiry refunds none).
+    [Test]
+    public void Add_RefusedByWorld_TakeFails_DepositRefunded() {
+        test = new TestGameSession();
+        test.World.BlackMarketAnswer = (int) BlackMarketError.s_blackmarket_error_fail_register;
+        MoveIdsClear();
+        Item item = test.Store(metadata, amount: 5);
+        GameSession session = Login(test, 100000);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.BlackMarketListing>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Deleted);
+
+        Send(test, session, 2, item.Uid, 1000, 2);
+        test.FailSave = null;
+
+        long deposit = 100000 - session.Currency.Meso;
+        Assert.That(deposit, Is.GreaterThan(0));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetBlackMarketListings(test.CharacterId).Count(), Is.EqualTo(1));
+        Mail mail = db.GetAllMail(session.CharacterId).Single();
+        Assert.That((mail.Type, mail.Meso), Is.EqualTo((MailType.BlackMarketFail, deposit)));
+        Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(0));
+        using var context = new Ms2Context(test.Options);
+        Assert.That(context.BlackMarketListing.Select(row => row.Deposit).ToList(), Is.EqualTo(new[] { 0L }));
+    }
+
     // A take-back refused (another character's listing, or none): the error; the listing stays, nothing is mailed.
     [TestCase(false)]
     [TestCase(true)]
