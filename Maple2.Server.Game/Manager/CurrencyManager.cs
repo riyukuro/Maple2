@@ -4,6 +4,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Serilog;
 
 namespace Maple2.Server.Game.Manager;
 
@@ -20,6 +21,7 @@ public class CurrencyManager {
     // Meso is changed by the session's packet thread and by its field's thread (arcade, dark stream, mini game and
     // trigger rewards): each change reads and writes the balance under this lock, so one cannot undo the other.
     private readonly object mesoLock = new();
+    private readonly ILogger logger = Log.Logger.ForContext<CurrencyManager>();
 
     public CurrencyManager(GameSession session) {
         this.session = session;
@@ -124,10 +126,24 @@ public class CurrencyManager {
         return true;
     }
 
-    // Gives back a take made with TryTakeMeso(notify: false), without a packet.
+    // Gives back a take made with TryTakeMeso(notify: false) and sends the balance: a meso packet sent meanwhile
+    // (a gain on the field's thread) showed the balance without the take. Chosen here: the give-back stops at
+    // MaxMeso as every gain does, and a part over it (a gain reached the cap meanwhile) is logged.
     public void ReturnMeso(long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        long over;
         lock (mesoLock) {
-            Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
+            // Room left counted first: MaxMeso is long.MaxValue, so the sum itself could overflow.
+            long room = Constant.MaxMeso - Currency.Meso;
+            over = Math.Max(0, amount - room);
+            Currency.Meso += amount - over;
+            session.Send(CurrencyPacket.UpdateMeso(Currency));
+        }
+        session.Quest?.UpdateMeso();
+        if (over > 0) {
+            logger.Warning("Meso give-back of {Amount} for {CharacterId} over the cap by {Over}", amount, session.CharacterId, over);
         }
     }
 

@@ -257,7 +257,7 @@ public sealed class StorageManager : IDisposable {
             // A withdrawal is taken back from the bag only as far as the bag still holds it.
             long back = deposited < 0 ? -Math.Min(-deposited, session.Currency.Meso) : deposited;
             mesos -= back;
-            session.Currency.Meso += back;
+            session.Currency.ChangeMeso(back);
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
             session.Send(StorageInventoryPacket.Error(s_store_err_code));
         }

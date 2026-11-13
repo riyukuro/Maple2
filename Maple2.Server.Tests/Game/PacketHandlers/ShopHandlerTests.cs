@@ -337,10 +337,11 @@ public class ShopHandlerTests {
             Assert.That(session.Currency.Meso, Is.EqualTo(mesos));
             Assert.That(session.Item.Inventory.Find(20000003), Is.Empty);
             Assert.That(sent.Select(packet => (TestGameSession.Op(packet), Sub(packet))), Is.EqualTo(new[] {
-                (SendOp.Shop, (byte) 8), (SendOp.ItemInventory, (byte) 13), (SendOp.Shop, (byte) 7),
+                // The give-back sends the balance (the price was taken without a packet).
+                (SendOp.Shop, (byte) 8), (SendOp.ItemInventory, (byte) 13), (SendOp.Meso, sent[2][2]), (SendOp.Shop, (byte) 7),
             }));
             Assert.That(Convert.ToHexString(sent[1]), Is.EqualTo(Hex(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory))));
-            Assert.That(BitConverter.ToInt32(sent[2], 5), Is.EqualTo(entryId));
+            Assert.That(BitConverter.ToInt32(sent[3], 5), Is.EqualTo(entryId));
         });
 
         // Bought back again with the write working, it comes back once.

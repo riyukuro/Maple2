@@ -639,7 +639,8 @@ public sealed class MarriageManager {
                     session.Currency.ChangeMeso(-fee);
                     stored = db.FileDivorce(marriageId, session.CharacterId, now.FromEpochSeconds(), session.Player);
                     if (!stored) {
-                        session.Currency.Meso = DivorceRules.MesoAfterFiling(session.Currency.Meso, fee, stored);
+                        // In one step, as the take above: a gain on the field's thread meanwhile is kept.
+                        session.Currency.ChangeMeso(DivorceRules.MesoAfterFiling(0, fee, stored));
                     } else {
                         string end = MailDate(DivorceRules.CoolingOffEnd(now, constants.WeddingCoolingOffDay));
                         SendDivorceMail(db, session.CharacterId, MailFiled, 0, partnerName, end);
