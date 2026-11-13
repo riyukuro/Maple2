@@ -188,10 +188,21 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 return;
             }
 
-            item.Stats[ItemStats.Type.Random] = session.ChangeAttributesItem.Stats[ItemStats.Type.Random];
+            if (Keep(session, item, session.ChangeAttributesItem.Stats)) {
+                session.Stats.Refresh();
+            }
             session.ChangeAttributesItem = null;
             session.Send(ChangeAttributesScrollPacket.SelectItem(item));
         }
+    }
+
+    // Puts the kept options on the item and tells whether the owner's totals must be recounted: here the summoned
+    // pet, which stays in the Pets tab as the same item (PetHandler); the target comes from the bag, so worn gear
+    // does not reach it. The dialog path does the same (ChangeAttributesHandler.CountsInStats). Before, a scroll
+    // remake kept on a summoned pet left the old options in the totals until the next rebuild.
+    internal static bool Keep(GameSession session, Item item, ItemStats result) {
+        item.Stats![ItemStats.Type.Random] = result[ItemStats.Type.Random];
+        return ChangeAttributesHandler.CountsInStats(session, item.Uid);
     }
 
     private ChangeAttributesScrollError IsCompatibleScroll(Item item, Item scroll, out ItemRemakeScrollMetadata? metadata) {
