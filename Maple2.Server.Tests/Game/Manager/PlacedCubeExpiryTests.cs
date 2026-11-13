@@ -1,3 +1,5 @@
+using System.Linq;
+using Maple2.Database.Context;
 using Maple2.Model.Common;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -65,5 +67,54 @@ public class PlacedCubeExpiryTests {
         using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
             Assert.That(db.GetCube(created.Id)?.ExpiryTime, Is.EqualTo(Expiry));
         }
+    }
+
+    // A cube placed in an earlier session: its row on the player's home holds the expiry, and no storage stack of
+    // the item is left (the case of a stack used up and gone).
+    private static long PlacedCubeRow(TestGameSession test, ItemMetadata metadata) {
+        long mapId;
+        using (var context = new Ms2Context(test.Options)) {
+            mapId = context.UgcMap.Single(map => map.OwnerId == test.AccountId && map.Indoor).Id;
+        }
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        PlotInfo info = Info();
+        info.Id = mapId;
+        info.OwnerId = test.AccountId;
+        PlotCube cube = Cube(metadata, 0);
+        cube.ExpiryTime = Expiry;
+        return db.CreateCube(info, cube)!.Id;
+    }
+
+    [Test]
+    public void PickingUp_KeepsTheCubeExpiry() {
+        var test = new TestGameSession();
+        ItemMetadata metadata = TestGameSession.Metadata(CubeItem);
+        test.Register(metadata);
+        long cubeId = PlacedCubeRow(test, metadata);
+        GameSession session = test.Start();
+        test.EnterHome();
+
+        long itemUid = session.Item.Furnishing.RetrieveCube(cubeId);
+        Assert.That(itemUid, Is.Not.Zero);
+        Assert.That(session.Item.Furnishing.GetCube(itemUid)?.ExpiryTime, Is.EqualTo(Expiry));
+    }
+
+    // A stack of the same item with another expiry is not joined: the cube goes back to its own stack.
+    [Test]
+    public void PickingUp_DoesNotJoinAStackOfAnotherExpiry() {
+        const long Other = Expiry + 86400;
+        var test = new TestGameSession();
+        ItemMetadata metadata = TestGameSession.Metadata(CubeItem);
+        test.Register(metadata);
+        long cubeId = PlacedCubeRow(test, metadata);
+        GameSession session = test.Start();
+        test.EnterHome();
+        long otherUid = session.Item.Furnishing.AddCube(new Maple2.Model.Game.Item(metadata) { ExpiryTime = Other });
+
+        long itemUid = session.Item.Furnishing.RetrieveCube(cubeId);
+        Assert.That(itemUid, Is.Not.EqualTo(otherUid));
+        Assert.That(session.Item.Furnishing.GetCube(itemUid)?.ExpiryTime, Is.EqualTo(Expiry));
+        Assert.That((session.Item.Furnishing.GetCube(otherUid)?.Amount, session.Item.Furnishing.GetCube(otherUid)?.ExpiryTime),
+            Is.EqualTo(((int?) 1, (long?) Other)));
     }
 }

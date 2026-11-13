@@ -30,11 +30,8 @@ public class FurnishingManager {
         storage = new ItemCollection(Constant.FurnishingStorageMaxSlot);
         inventory = new ConcurrentDictionary<long, PlotCube>();
 
-        List<Item>? items = db.GetItemGroups(session.AccountId, ItemGroup.Furnishing).GetValueOrDefault(ItemGroup.Furnishing);
-        if (items == null) {
-            return;
-        }
-
+        // An account with no storage rows still loads its placed cubes (they can be picked up).
+        List<Item> items = db.GetItemGroups(session.AccountId, ItemGroup.Furnishing).GetValueOrDefault(ItemGroup.Furnishing) ?? [];
         foreach (Item item in items) {
             if (storage.Add(item).Count == 0) {
                 Log.Error("Failed to add furnishing:{Uid}", item.Uid);
@@ -440,12 +437,18 @@ public class FurnishingManager {
         }
     }
 
+    // A cube with an expiry (one placed from a timed item; the server's own, HeldCube.ReadFrom keeps none from the
+    // client) goes back with it, not with a new item's: it joins only a stack of the same expiry, or an empty one.
     private long AddStorage(HeldCube cube) {
         Item? item = session.Field?.ItemDrop.CreateItem(cube.ItemId);
         if (item == null) {
             return 0;
         }
 
+        if (cube.ExpiryTime > 0) {
+            item.ExpiryTime = cube.ExpiryTime;
+            return AddStorage(item, cube.Template, keepExpiry: true);
+        }
         return AddStorage(item, cube.Template);
     }
 
@@ -458,12 +461,17 @@ public class FurnishingManager {
         return AddStorage(item);
     }
 
-    public long AddStorage(Item item, UgcItemLook? template = null) {
+    public long AddStorage(Item item, UgcItemLook? template = null, bool keepExpiry = false) {
         const int amount = 1;
 
         lock (session.Item) {
             bool maidItem = item.Metadata.Housing?.MaidId > 0;
-            Item? stored = storage.FirstOrDefault(existing => MaidRules.CanJoin(existing, item.Id, template?.Url, maidItem));
+            Item? stored = keepExpiry
+                // A stack of the same expiry first, else an empty one, which takes the expiry.
+                ? storage.Where(existing => MaidRules.CanJoin(existing, item.Id, template?.Url, maidItem) &&
+                                            (existing.ExpiryTime == item.ExpiryTime || existing.Amount == 0))
+                    .OrderBy(existing => existing.ExpiryTime == item.ExpiryTime ? 0 : 1).FirstOrDefault()
+                : storage.FirstOrDefault(existing => MaidRules.CanJoin(existing, item.Id, template?.Url, maidItem));
             if (stored == null) {
                 if (storage.OpenSlots <= 0) {
                     logger.Error("Furnishing storage is full, cannot add item: {ItemId}", item.Id);
@@ -496,6 +504,9 @@ public class FurnishingManager {
 
             int previousAmount = stored.Amount;
             stored.Amount += amount;
+            if (keepExpiry) {
+                stored.ExpiryTime = item.ExpiryTime;
+            }
             if (previousAmount == 0) {
                 session.Send(FurnishingStoragePacket.Add(stored));
                 return stored.Uid;
