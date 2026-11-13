@@ -19,7 +19,7 @@ public static class ItemSocketScrollPacket {
         var pWriter = Packet.Of(SendOp.ItemSocketScroll);
         pWriter.Write<Command>(Command.UseScroll);
         pWriter.WriteLong(scroll.Uid);
-        pWriter.WriteInt(10000); // div 100 = Rate
+        pWriter.WriteInt(metadata.SuccessRate); // the dialog shows it div 100 as the success chance (FUN_140f67170)
         pWriter.WriteByte(metadata.SocketCount);
 
         return pWriter;

@@ -60,5 +60,8 @@ public record ItemSocketScrollMetadata(
     short MaxLevel,
     int[] ItemTypes,
     int[] Rarities,
-    byte SocketCount,
-    int TradableCountDeduction);
+    byte SocketCount, // the server pack's openCount
+    int TradableCountDeduction,
+    // From the server pack's copy of the table (successProb): the unlock's chance out of 10000. Data ingested before
+    // it was read has 10000, an unlock that always opens.
+    int SuccessRate = 10000);

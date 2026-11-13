@@ -1585,40 +1585,22 @@ public class TableMapper : TypeMapper<TableMetadata> {
     }
 
     private ItemSocketScrollTable ParseItemSocketScrollTable() {
-        // SELECT GROUP_CONCAT(Name), JSON_EXTRACT(`Function`, '$.Parameters') as param
-        //     FROM item
-        //     WHERE JSON_EXTRACT(`Function`, '$.Name')='ItemSocketScroll'
-        // GROUP BY param;
-        var socketCount = new Dictionary<int, byte> {
-            {10000001, 1}, {10000002, 2}, {10000003, 3},
-            {10000011, 1}, {10000012, 2},
-            {10000013, 1}, {10000014, 2},
-            {10000015, 1},
-            {10000016, 1},
-            {10000017, 1},
-            {10000018, 1},
-            {10000019, 1},
-            {10000020, 1},
-            {10000021, 1},
-            {10000022, 1}, {10000023, 2},
-            {10000024, 1}, {10000025, 2},
-            {10000026, 1}, {10000027, 2},
-            {10000028, 1}, {10000029, 2},
-            {10000030, 1},
-            {10000031, 1}, {10000032, 2},
-            {10000033, 1}, {10000034, 2},
-            {10000035, 1}, {10000036, 2},
-        };
-
+        // The sockets opened and the chance come from the server pack's copy (openCount, successProb). A scroll with
+        // no server row is left out, so the server refuses it as an unknown scroll (chosen here; every KR row has one).
+        Dictionary<int, ServerItemSocketScroll.Entry> serverRows = ServerItemSocketScroll.Read(serverReader);
         var results = new Dictionary<int, ItemSocketScrollMetadata>();
         foreach ((int id, ItemSocketScroll scroll) in parser.ParseItemSocketScroll()) {
+            if (!serverRows.TryGetValue(id, out ServerItemSocketScroll.Entry serverRow)) {
+                continue;
+            }
             results.Add(id, new ItemSocketScrollMetadata(
                 MinLevel: scroll.minLv,
                 MaxLevel: scroll.maxLv,
                 ItemTypes: scroll.slot,
                 Rarities: scroll.rank,
-                SocketCount: socketCount[id],
-                TradableCountDeduction: scroll.tradableCountDeduction));
+                SocketCount: serverRow.OpenCount,
+                TradableCountDeduction: scroll.tradableCountDeduction,
+                SuccessRate: serverRow.SuccessProb));
         }
 
         return new ItemSocketScrollTable(results);

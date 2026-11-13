@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using BagItem = Maple2.Model.Game.Item;
 
@@ -23,10 +24,11 @@ public class ItemSocketScrollHandlerTests {
     private BagItem gear = null!;
     private BagItem scroll = null!;
 
-    private GameSession Start(int skinType = 0, int rarity = 4, int level = 50, int gearId = 11200001) {
+    private GameSession Start(int skinType = 0, int rarity = 4, int level = 50, int gearId = 11200001, int successRate = 10000) {
         test = new TestGameSession();
         test.SetTable(new ItemSocketScrollTable(new Dictionary<int, ItemSocketScrollMetadata> {
-            [ScrollId] = new(MinLevel: 50, MaxLevel: 50, ItemTypes: [12], Rarities: [4], SocketCount: 1, TradableCountDeduction: 0),
+            [ScrollId] = new(MinLevel: 50, MaxLevel: 50, ItemTypes: [12], Rarities: [4], SocketCount: 1, TradableCountDeduction: 0,
+                SuccessRate: successRate),
         }));
         ItemMetadata gearData = TestGameSession.Metadata(gearId, type: 1, slotMax: 1);
         gear = test.Store(gearData with {
@@ -111,6 +113,21 @@ public class ItemSocketScrollHandlerTests {
             Assert.That(SentError(), Is.Null);
             Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
             Assert.That(ScrollHeld(session), Is.False);
+        });
+    }
+
+    // The dialog shows the int after the uid div 100 as the success chance (FUN_140f67170); it was always 10000.
+    [Test]
+    public void UseScroll_SendsTheScrollsRate() {
+        Start();
+        var metadata = new ItemSocketScrollMetadata(50, 50, [12], [4], 2, 0, SuccessRate: 5000);
+        ByteWriter writer = ItemSocketScrollPacket.UseScroll(scroll, metadata);
+        var reader = new ByteReader(writer.Buffer[..writer.Length], 2);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadByte(), Is.Zero);
+            Assert.That(reader.ReadLong(), Is.EqualTo(scroll.Uid));
+            Assert.That(reader.ReadInt(), Is.EqualTo(5000));
+            Assert.That(reader.ReadByte(), Is.EqualTo(2));
         });
     }
 }
