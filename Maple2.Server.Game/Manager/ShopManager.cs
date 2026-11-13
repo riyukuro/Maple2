@@ -603,7 +603,15 @@ public sealed class ShopManager {
         }
         // KMS2 order: the entry leaves the list, the item comes back, then the mesos are taken.
         session.Send(ShopPacket.RemoveBuyBackItem(id));
-        session.Item.Inventory.Add(buyBackItem.Item, true, commit: true);
+        if (!session.Item.Inventory.Add(buyBackItem.Item, true, commit: true)) {
+            // The bag's write failed (its room was checked above; the add sent the bag's notice): the entry is listed
+            // again and no meso is taken. Before, the mesos were taken and the item, out of the list and not in the
+            // bag, was lost. Chosen here: the entry comes back with its id, listed as a sale lists it (Shop 7).
+            buyBackItems[id] = buyBackItem;
+            session.Send(ShopPacket.LoadBuyBackItem(buyBackItem));
+            logger.Error("Buy back of item {Uid} not written for {CharacterId}", buyBackItem.Item.Uid, session.CharacterId);
+            return;
+        }
         session.Currency.Meso -= buyBackItem.Price;
         session.SavePurchase();
     }

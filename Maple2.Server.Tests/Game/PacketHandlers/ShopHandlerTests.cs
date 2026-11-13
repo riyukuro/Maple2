@@ -11,6 +11,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -310,6 +311,44 @@ public class ShopHandlerTests {
 
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_meso)) }));
         Assert.That(session.Item.Inventory.Find(20000003), Is.Empty);
+    }
+
+    // A buy back whose bag write fails: the entry is listed again with its id and no meso is taken. Before, the
+    // mesos were taken and the item, out of the list and not in the bag, was lost.
+    [Test]
+    public void BuyBack_FailedWriteKeepsTheEntryAndTheMesos() {
+        GameSession session = Login();
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        long mesos = session.Currency.Meso;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "Item");
+
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+        test.FailSave = null;
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesos));
+            Assert.That(session.Item.Inventory.Find(20000003), Is.Empty);
+            Assert.That(sent.Select(packet => (TestGameSession.Op(packet), Sub(packet))), Is.EqualTo(new[] {
+                (SendOp.Shop, (byte) 8), (SendOp.ItemInventory, (byte) 13), (SendOp.Shop, (byte) 7),
+            }));
+            Assert.That(Convert.ToHexString(sent[1]), Is.EqualTo(Hex(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory))));
+            Assert.That(BitConverter.ToInt32(sent[2], 5), Is.EqualTo(entryId));
+        });
+
+        // Bought back again with the write working, it comes back once.
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesos - 350));
+        });
     }
 
     private void SystemShop(GameSession session, bool open) {
