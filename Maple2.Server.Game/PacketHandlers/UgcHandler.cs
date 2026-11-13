@@ -570,6 +570,8 @@ public class UgcHandler : FieldPacketHandler {
                     db.UpdateBannerSlot(slot);
                 }
             }
+            // banner (23100186 "Reserve an image registration on the billboard"): +1 per confirmed upload.
+            session.ConditionUpdate(ConditionType.banner);
 
             // Shown now only on the banner's own field; elsewhere the banner list of that field has it.
             if (session.Field != null && session.Field.Banners.TryGetValue(banner.Id, out FieldUgcBanner? shown) && ReferenceEquals(shown, banner)) {

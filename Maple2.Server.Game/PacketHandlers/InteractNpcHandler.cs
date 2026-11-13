@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -28,5 +29,7 @@ public class InteractNpcHandler : FieldPacketHandler {
         }
 
         npc.Interact(interact);
+        // interact_npc (21230149 "Fire $npc:21803500$ {0} time(s)"): code the npc.
+        session.ConditionUpdate(ConditionType.interact_npc, codeLong: npc.Value.Id);
     }
 }

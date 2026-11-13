@@ -898,7 +898,10 @@ public class RequestCubeHandler : FieldPacketHandler {
             CharacterName = session.PlayerName,
         };
 
-        session.Item.Inventory.Add(item, notifyNew: true);
+        if (session.Item.Inventory.Add(item, notifyNew: true)) {
+            // create_blueprint (23500025 "Create a blueprint once").
+            session.ConditionUpdate(ConditionType.create_blueprint);
+        }
 
         session.StagedUgcItem = item;
         session.Send(CubePacket.CreateBlueprint(item.Uid, item.Blueprint!));

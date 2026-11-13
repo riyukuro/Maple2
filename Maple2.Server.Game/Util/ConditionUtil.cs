@@ -133,6 +133,10 @@ public static class ConditionUtil {
             case ConditionType.buff:
             case ConditionType.enchant_result:
             case ConditionType.dialogue:
+            // interact_npc: the npc the interact was used on (21230149 "Fire $npc:21803500$": codes 21803500-21803503,
+            // 21803510). dungeon_round_clear: the dungeon room (21230154 the Colosseum, 24096001).
+            case ConditionType.interact_npc:
+            case ConditionType.dungeon_round_clear:
             case ConditionType.talk_in:
             case ConditionType.npc:
             case ConditionType.npc_lasthit:

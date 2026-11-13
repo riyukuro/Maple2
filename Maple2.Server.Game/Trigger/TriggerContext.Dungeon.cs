@@ -34,6 +34,11 @@ public partial class TriggerContext {
             }
 
             player.Session.Dungeon.UserRecord.Round = round;
+            // dungeon_round_clear (21230154 "Achieve victory {0} time(s)" in the Colosseum): +1 per round won, code the
+            // dungeon room. Round 0 is the Colosseum script's failed round.
+            if (round > 0) {
+                player.Session.ConditionUpdate(ConditionType.dungeon_round_clear, codeLong: player.Session.Dungeon.UserRecord.DungeonId);
+            }
         }
     }
 
