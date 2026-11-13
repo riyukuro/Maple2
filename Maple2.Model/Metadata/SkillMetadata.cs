@@ -139,7 +139,11 @@ public record SkillMetadataAttack(
     // and 4 farthest first (forward distance for a box or frustum, distance for a cylinder or hole cylinder), 5 and 6
     // by how straight ahead the target stands (5 most first). Null when not given, which the client reads as 3 (kept
     // null so that 0 is stored: the metadata JSON leaves out values equal to their type's default).
-    int? Direction = null);
+    int? Direction = null,
+    // attackMethodType: 1 for an attack whose hit comes from its arrow (magic path); its range search then stands on
+    // the cast position with the plain facing, without the range's offset and z rotation (StateSkill FUN_1417e95a0
+    // through SkillLevelData::FUN_1408043f0).
+    int AttackMethodType = 0);
 
 public record SkillMetadataPet(
     int TamingGroup,

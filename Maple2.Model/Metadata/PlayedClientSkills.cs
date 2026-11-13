@@ -12,6 +12,9 @@ namespace Maple2.Model.Metadata;
 // - rechargeShareOrigin with originID: the skill counts its uses on its origin skill (SkillData::GetRechargeId).
 // - the <weapon lh rh> rows of <condition>: the hand weapons the client casts the skill with (SkillCondition::Load,
 //   CSkillSystem::FUN_14176a8c0). The data pack's beginCondition differs for two skills (11000146, 10100061).
+// - attackMethodType of each <attack> (SkillAttackData::Load, 0 when not given): the data pack gives it for 2 skills
+//   only. The client's search of an attack of type 1 takes neither the range offset nor its z rotation
+//   (SkillLevelData::FUN_1408043f0); see ReadAttackMethods.
 public static class PlayedClientSkills {
     public const string SkillFolder = "skilldata/";
 
@@ -44,6 +47,40 @@ public static class PlayedClientSkills {
             }
         }
         return entries;
+    }
+
+    // The attackMethodType of every attack of the client's levels, by skill id, level, the motion's place in the level
+    // and the attack's place in the motion (0 kept, so that a level the client has overrides the data pack's). The
+    // first <skill> of an id and the first <level> of a value are read, as in Read.
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), int> ReadAttackMethods(IEnumerable<XmlDocument> skillFiles) {
+        var methods = new Dictionary<(int, short, int, int), int>();
+        var skillIds = new HashSet<int>();
+        foreach (XmlDocument file in skillFiles) {
+            XmlNodeList? skills = file.SelectNodes("ms2/skill");
+            if (skills == null) {
+                continue;
+            }
+            foreach (XmlElement skill in skills.OfType<XmlElement>()) {
+                if (!int.TryParse(skill.GetAttribute("id"), out int id) || id == 0 || !skillIds.Add(id)) {
+                    continue;
+                }
+                var levelValues = new HashSet<short>();
+                foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
+                    if (!short.TryParse(level.GetAttribute("value"), out short value) || !levelValues.Add(value)) {
+                        continue;
+                    }
+                    int motionIndex = 0;
+                    foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                        int attackIndex = 0;
+                        foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                            methods[(id, value, motionIndex, attackIndex++)] = Number(attack, "attackMethodType");
+                        }
+                        motionIndex++;
+                    }
+                }
+            }
+        }
+        return methods;
     }
 
     // The main types whose skills take the caster off the ride at the cast.

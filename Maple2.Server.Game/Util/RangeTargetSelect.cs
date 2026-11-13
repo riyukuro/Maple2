@@ -43,25 +43,33 @@ public static class RangeTargetSelect {
     }
 
     // The client's exchange sort: each place swaps with every later target that should come before it, so ties keep
-    // the order the swaps leave (not a stable sort).
-    private static void ExchangeSort(List<IActor> targets, Func<int, int, bool> swaps) {
-        for (int i = 0; i < targets.Count; i++) {
-            for (int j = i + 1; j < targets.Count; j++) {
-                if (swaps(i, j)) {
-                    (targets[i], targets[j]) = (targets[j], targets[i]);
+    // the order the swaps leave (not a stable sort). Each target's key is worked out once and moves with it.
+    private static void ExchangeSort<TKey>(List<IActor> targets, Func<IActor, TKey> key, Func<TKey, TKey, bool> swaps) {
+        if (targets.Count < 2) {
+            return;
+        }
+        var keyed = targets.Select(target => (Target: target, Key: key(target))).ToArray();
+        for (int i = 0; i < keyed.Length; i++) {
+            for (int j = i + 1; j < keyed.Length; j++) {
+                if (swaps(keyed[i].Key, keyed[j].Key)) {
+                    (keyed[i], keyed[j]) = (keyed[j], keyed[i]);
                 }
             }
+        }
+        for (int i = 0; i < keyed.Length; i++) {
+            targets[i] = keyed[i].Target;
         }
     }
 
     private static void SortByStat(List<IActor> targets, int statSort, BasicAttribute stat) {
-        ExchangeSort(targets, (i, j) => statSort switch {
-            1 => Current(targets[i], stat) > Current(targets[j], stat),
-            2 => Current(targets[i], stat) < Current(targets[j], stat),
-            3 => Ratio(targets[i], stat) > Ratio(targets[j], stat),
-            4 => Ratio(targets[i], stat) < Ratio(targets[j], stat),
-            _ => false,
-        });
+        switch (statSort) {
+            case 1 or 2:
+                ExchangeSort(targets, target => Current(target, stat), (a, b) => statSort == 1 ? a > b : a < b);
+                break;
+            case 3 or 4:
+                ExchangeSort(targets, target => Ratio(target, stat), (a, b) => statSort == 3 ? a > b : a < b);
+                break;
+        }
     }
 
     // What the search measures for the direction order (CBaseCollision::TestShape and Detect): for a box or frustum
@@ -112,20 +120,16 @@ public static class RangeTargetSelect {
             }
             return;
         }
-        Dictionary<IActor, Measure> measures = targets.Distinct().ToDictionary(target => target, target => Measured(target, shape, sort));
         bool round = shape is SkillRegion.Cylinder or SkillRegion.HoleCylinder;
-        ExchangeSort(targets, (i, j) => {
-            Measure a = measures[targets[i]];
-            Measure b = measures[targets[j]];
-            return sort.Direction switch {
-                2 => a.Side < b.Side,
-                1 => a.Side > b.Side,
-                3 => round && a.Distance > b.Distance || a.Forward > b.Forward,
-                4 => round && a.Distance < b.Distance || a.Forward < b.Forward,
-                5 => a.Facing < b.Facing,
-                6 => a.Facing > b.Facing,
-                _ => false,
-            };
+        int direction = sort.Direction;
+        ExchangeSort(targets, target => Measured(target, shape, sort), (a, b) => direction switch {
+            2 => a.Side < b.Side,
+            1 => a.Side > b.Side,
+            3 => round && a.Distance > b.Distance || a.Forward > b.Forward,
+            4 => round && a.Distance < b.Distance || a.Forward < b.Forward,
+            5 => a.Facing < b.Facing,
+            6 => a.Facing > b.Facing,
+            _ => false,
         });
     }
 

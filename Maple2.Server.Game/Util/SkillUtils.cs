@@ -44,18 +44,24 @@ public static class SkillUtils {
         return new Prism(polygon, position.Z + range.RangeOffset.Z, range.Height + range.RangeAdd.Z);
     }
 
-    // The client's search frame for an attack cast at position facing angle (CMagic and StateSkill setting up the
-    // detect context): the origin is the position plus the range offset turned by the facing, the facing is the
-    // angle plus the range's z rotation, and the order is the attack's direction.
+    // The client's search frame for an attack cast at position facing angle (StateSkill FUN_1417e95a0 setting up the
+    // detect context): the origin is the position plus the range offset turned to the facing, the facing is the angle
+    // plus the range's z rotation, and the order is the attack's direction. An attack of method type 1 (its arrow
+    // hits) takes neither the offset nor the z rotation.
     public static TargetSort GetTargetSort(this SkillMetadataAttack attack, in Vector3 position, float angle) =>
-        attack.Range.GetTargetSort(attack.Direction ?? 3, position, angle);
+        attack.AttackMethodType == 1
+            ? new TargetSort(attack.Direction ?? 3, position, angle)
+            : attack.Range.GetTargetSort(attack.Direction ?? 3, position, angle);
 
-    public static TargetSort GetTargetSort(this SkillMetadataRange range, int direction, in Vector3 position, float angle) {
+    // The client turns the offset by MakeZRotation(pi - r) (r the facing in radians), so its y runs along the facing
+    // (sin r, -cos r) and its x along the right axis (-cos r, -sin r).
+    public static TargetSort GetTargetSort(this SkillMetadataRange range, int direction, in Vector3 position, float angle) =>
+        new(direction, position + TurnOffset(range.RangeOffset, angle), angle + range.RotateZDegree);
+
+    public static Vector3 TurnOffset(in Vector3 offset, float angle) {
         float radians = angle * MathF.PI / 180;
-        Vector3 offset = range.RangeOffset;
-        var turned = new Vector3(offset.X * MathF.Cos(radians) - offset.Y * MathF.Sin(radians),
-            offset.X * MathF.Sin(radians) + offset.Y * MathF.Cos(radians), offset.Z);
-        return new TargetSort(direction, position + turned, angle + range.RotateZDegree);
+        float sin = MathF.Sin(radians), cos = MathF.Cos(radians);
+        return new Vector3(-offset.X * cos + offset.Y * sin, -offset.X * sin - offset.Y * cos, offset.Z);
     }
 
     public static IEnumerable<T> Filter<T>(this Prism prism, IEnumerable<T> entities, int limit = 10) where T : IActor {

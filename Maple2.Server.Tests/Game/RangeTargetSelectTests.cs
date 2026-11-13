@@ -290,7 +290,7 @@ public class RangeTargetSelectTests {
     }
 
     // Through the field: the count is taken after the order, and the search's origin is the cast position plus the
-    // range offset turned by the facing, its facing the cast's plus the range's z rotation.
+    // range offset turned to the facing, its facing the cast's plus the range's z rotation.
     [Test]
     public void GetTargets_TakesTheCountAfterTheOrder() {
         Scene scene = Start();
@@ -306,9 +306,42 @@ public class RangeTargetSelectTests {
             Assert.That(nearest, Is.EqualTo(new[] { scene.B.ObjectId }));
             Assert.That(turned.Direction, Is.EqualTo(5));
             Assert.That(turned.Degrees, Is.EqualTo(120));
-            Assert.That(turned.Origin.X, Is.EqualTo(-90).Within(1e-3));
+            // Facing 90 is forward (1, 0), so the offset's y of 100 moves the origin from x 10 to 110.
+            Assert.That(turned.Origin.X, Is.EqualTo(110).Within(1e-3));
             Assert.That(turned.Origin.Y, Is.EqualTo(0).Within(1e-3));
             Assert.That(turned.Origin.Z, Is.EqualTo(5).Within(1e-3));
+        });
+    }
+
+    // The offset's y runs along the facing and its x along the right axis (the client's MakeZRotation(pi - r)): at
+    // facing 0, forward is (0, -1) and right (-1, 0).
+    [Test]
+    public void GetTargetSort_OffsetIsInFront() {
+        SkillMetadataRange range = Range(null) with { RangeOffset = new Vector3(0, 150, 0) };
+        TargetSort ahead = range.GetTargetSort(3, Vector3.Zero, 0);
+        TargetSort aside = (range with { RangeOffset = new Vector3(40, 0, 0) }).GetTargetSort(3, Vector3.Zero, 0);
+        Assert.Multiple(() => {
+            Assert.That(ahead.Origin.X, Is.EqualTo(0).Within(1e-3));
+            Assert.That(ahead.Origin.Y, Is.EqualTo(-150).Within(1e-3));
+            Assert.That(aside.Origin.X, Is.EqualTo(-40).Within(1e-3));
+            Assert.That(aside.Origin.Y, Is.EqualTo(0).Within(1e-3));
+        });
+    }
+
+    // An attack of method type 1 searches from the cast position with the plain facing.
+    [Test]
+    public void GetTargetSort_ArrowAttackKeepsThePosition() {
+        SkillMetadataRange range = Range(null) with { RangeOffset = new Vector3(0, 150, 0), RotateZDegree = 30 };
+        SkillMetadataAttack Attack(int method) => new("p0", 0, 1, 0, 0, 0, 0, [], null, range, null!, null!, [], [],
+            Direction: 4, AttackMethodType: method);
+        TargetSort arrow = Attack(1).GetTargetSort(new Vector3(10, 20, 0), 90);
+        TargetSort plain = Attack(0).GetTargetSort(new Vector3(10, 20, 0), 90);
+        Assert.Multiple(() => {
+            Assert.That(arrow, Is.EqualTo(new TargetSort(4, new Vector3(10, 20, 0), 90)));
+            Assert.That(plain.Direction, Is.EqualTo(4));
+            Assert.That(plain.Degrees, Is.EqualTo(120));
+            Assert.That(plain.Origin.X, Is.EqualTo(160).Within(1e-3));
+            Assert.That(plain.Origin.Y, Is.EqualTo(20).Within(1e-3));
         });
     }
 }

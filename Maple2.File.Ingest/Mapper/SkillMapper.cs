@@ -22,6 +22,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // levels of the data pack, which the ones added must have; empty without a played client.
     private readonly Dictionary<(int SkillId, short Level), PlayedClientActionAdditionals.LevelUses> clientEffects = [];
     private readonly HashSet<(int Id, short Level)> packEffects = [];
+    // The played client's attackMethodType of each attack of its levels (PlayedClientSkills.ReadAttackMethods); empty
+    // without a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), int> clientAttackMethods = [];
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -37,6 +40,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 }
             }
             Console.WriteLine($"Skill levels with effects in the played client's skill data: {clientEffects.Count} ({unsupported} effect rows left out for a condition the ingest does not read)");
+            clientAttackMethods = PlayedClientSkills.ReadAttackMethods(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)));
+            Console.WriteLine($"Skill attacks in the played client's skill data: {clientAttackMethods.Count} ({clientAttackMethods.Values.Count(method => method == 1)} of attack method type 1)");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -137,7 +143,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             Skills: attack.conditionSkill.Where(skill => !skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
                             SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
                             GrabTargetType: attack.grabTargetType,
-                            Direction: directions.Get(id, level.value, motionIndex, attackIndex)
+                            Direction: directions.Get(id, level.value, motionIndex, attackIndex),
+                            // The played client's type where it has the attack, else the data pack's.
+                            AttackMethodType: clientAttackMethods.TryGetValue((id, level.value, motionIndex, attackIndex), out int method)
+                                ? method : (int) attack.attackMethodType
                         )).ToArray(),
                         AttackPoints: motion.CollectAttackPoints()
                     )).ToArray(),

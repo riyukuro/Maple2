@@ -633,6 +633,30 @@ public class SkillCastRulesTests {
         Assert.That(PlayedClientSkills.IsSkillFile("skill/10/10000001.xml"), Is.False);
     }
 
+    // Every attack of the client's levels, by level, motion place and attack place, 0 kept; the first <skill> of an id
+    // and the first <level> of a value count.
+    [Test]
+    public void PlayedClientAttackMethods() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="200">
+                <level value="1"><motion><attack point="p0" attackMethodType="1" /><attack point="p1" /></motion><motion><attack attackMethodType="2" /></motion></level>
+                <level value="2"><motion><attack /></motion></level>
+                <level value="1"><motion><attack attackMethodType="2" /></motion></level>
+              </skill>
+              <skill id="200"><level value="3"><motion><attack attackMethodType="1" /></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int, short, int, int), int> read = PlayedClientSkills.ReadAttackMethods([document]);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), int> {
+            [(200, 1, 0, 0)] = 1,
+            [(200, 1, 0, 1)] = 0,
+            [(200, 1, 1, 0)] = 2,
+            [(200, 2, 0, 0)] = 0,
+        }));
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]
