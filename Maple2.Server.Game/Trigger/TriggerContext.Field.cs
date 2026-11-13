@@ -527,8 +527,9 @@ public partial class TriggerContext {
     }
 
     public void FieldWarEnd(bool isClear) {
-        // The war's rooms close by their own triggers (FieldGameStart 2 moves the players out); nothing more here.
-        DebugLog("[FieldWarEnd] isClear:{IsClear}", isClear);
+        // The war's rooms close by their own triggers (FieldGameStart 2 moves the players out); the end moves no one.
+        int rewardId = Field.EndFieldWar(isClear);
+        DebugLog("[FieldWarEnd] isClear:{IsClear}, reward:{RewardId}", isClear, rewardId);
     }
     #endregion
 

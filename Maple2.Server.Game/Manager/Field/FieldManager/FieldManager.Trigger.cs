@@ -116,6 +116,24 @@ public partial class FieldManager {
         }, TimeSpan.FromSeconds(Constants.FieldWarInstanceEnterableDurationSeconds));
     }
 
+    private int fieldWarEnded;
+
+    // FieldWarEnd: the room's war ends once (a later FieldWarEnd does nothing); a clear gives each player here the
+    // war's reward content (FieldWarRules.ClearReward). Returns the reward given, 0 for none.
+    public int EndFieldWar(bool isClear) {
+        if (Interlocked.Exchange(ref fieldWarEnded, 1) != 0) {
+            return 0;
+        }
+        IEnumerable<FieldWarMetadata> wars = ServerTableMetadata.TimeEventTable.FieldWar?.Values ?? [];
+        int rewardId = FieldWarRules.ClearReward(wars, MapId, isClear);
+        if (rewardId != 0) {
+            foreach (FieldPlayer player in Players.Values) {
+                player.Session.GetRewardContent(rewardId);
+            }
+        }
+        return rewardId;
+    }
+
     public bool TryGetTrigger(string name, [NotNullWhen(true)] out FieldTrigger? fieldTrigger) {
         return fieldTriggers.TryGetValue(name, out fieldTrigger);
     }

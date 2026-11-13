@@ -32,6 +32,19 @@ public class FieldWarRulesTests {
         });
     }
 
+    // FieldWarEnd isClear 1 gives the war of the map's rewardID; a failed war or a map of no war, nothing.
+    [TestCase(2020061, true, ExpectedResult = 31000003)]
+    [TestCase(2020065, true, ExpectedResult = 31000003)]
+    [TestCase(2020061, false, ExpectedResult = 0)]
+    [TestCase(2020069, true, ExpectedResult = 0)]
+    public int ClearReward_ByMap(int mapId, bool isClear) => FieldWarRules.ClearReward(Wars, mapId, isClear);
+
+    [Test]
+    public void ClearReward_LowestIdOfSharedMap() {
+        List<FieldWarMetadata> wars = [new(7, 1, 1, 100, 70, 0), new(3, 2, 1, 100, 30, 0), new(5, 1, 1, 200, 50, 0)];
+        Assert.That(FieldWarRules.ClearReward(wars, 100, true), Is.EqualTo(30));
+    }
+
     [TestCase(70, 70, 22200490, true, ExpectedResult = true)]
     [TestCase(69, 70, 22200490, true, ExpectedResult = false)]
     [TestCase(80, 70, 22200490, false, ExpectedResult = false)]

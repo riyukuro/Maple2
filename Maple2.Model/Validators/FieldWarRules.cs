@@ -37,6 +37,16 @@ public static class FieldWarRules {
         return wars.Where(war => war.GroupId == groupId && war.PickWeight > 0).OrderBy(war => war.Id);
     }
 
+    // FieldWarEnd isClear 1 (the war maps' triggers, after their own GiveRewardContent per phase): the reward
+    // content (fieldwardata rewardID) of the war of the map, 0 for none. Chosen here: the war is found by its map (each
+    // KR war has its own), the lowest id if several share one; a failed war (isClear 0) gives nothing.
+    public static int ClearReward(IEnumerable<FieldWarMetadata> wars, int mapId, bool isClear) {
+        if (!isClear) {
+            return 0;
+        }
+        return wars.Where(war => war.MapId == mapId).OrderBy(war => war.Id).FirstOrDefault()?.RewardId ?? 0;
+    }
+
     // A constant of 0 asks for nothing.
     public static bool Eligible(int level, int requireLevel, int requireAchievementId, Func<int, bool> hasAchievement) {
         return level >= requireLevel && (requireAchievementId <= 0 || hasAchievement(requireAchievementId));
