@@ -77,7 +77,10 @@ public class MarriagePartner : IByteSerializable, IDisposable {
         writer.WriteLong(CharacterId);
         writer.WriteLong(AccountId);
         writer.WriteUnicodeString(Name);
-        writer.WriteBool(!IsOnline);
+        // Client: Unk_WeddingPartner::Read (weddingproxy.cpp:77) reads this as the online flag. The wedding recall
+        // scroll (RecallWedding, itemfunctiondispatch.cpp:1383) asks WeddingManager::ApplyPartner
+        // (weddingmanager.cpp:441) and refuses to send when the partner's flag is false.
+        writer.WriteBool(IsOnline);
     }
 
     public void Dispose() {
