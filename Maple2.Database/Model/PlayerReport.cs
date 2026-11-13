@@ -16,6 +16,9 @@ internal class PlayerReport {
     public ReportCategory Category { get; set; }
     public required ReportInfo ReportInfo { get; set; }
     public DateTime CreateTime { get; set; }
+    // Set when a GM closes the report (the report command); ClosedBy is the GM's account id.
+    public DateTime? CloseTime { get; set; }
+    public long ClosedBy { get; set; }
 
     public static void Configure(EntityTypeBuilder<PlayerReport> builder) {
         builder.ToTable("player-reports");

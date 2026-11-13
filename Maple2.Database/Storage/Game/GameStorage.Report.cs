@@ -1,6 +1,8 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Database.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Database.Storage;
 
@@ -88,6 +90,48 @@ public partial class GameStorage {
                 ReportInfo = new PetReportInfo(flag.ToString(), petName),
             });
             Context.TrySaveChanges();
+        }
+
+        // The reports, newest first, at most count: the open ones, or every one with closed.
+        public IList<PlayerReportEntry> GetPlayerReports(bool closed, int count) {
+            return Context.PlayerReports.AsNoTracking()
+                .Where(report => closed || report.CloseTime == null)
+                .OrderByDescending(report => report.Id)
+                .Take(count)
+                .AsEnumerable()
+                .Select(ToEntry)
+                .ToList();
+        }
+
+        public PlayerReportEntry? GetPlayerReport(long id) {
+            PlayerReport? report = Context.PlayerReports.AsNoTracking().FirstOrDefault(report => report.Id == id);
+            return report == null ? null : ToEntry(report);
+        }
+
+        // Closes an open report; null when there is no such report, it is closed already, or the save failed.
+        public PlayerReportEntry? ClosePlayerReport(long id, long gmAccountId) {
+            // The context does not track by default; the close is written through a tracked read.
+            PlayerReport? report = Context.PlayerReports.AsTracking().FirstOrDefault(report => report.Id == id);
+            if (report == null || report.CloseTime != null) {
+                return null;
+            }
+            report.CloseTime = DateTime.Now;
+            report.ClosedBy = gmAccountId;
+            return Context.TrySaveChanges() ? ToEntry(report) : null;
+        }
+
+        private static PlayerReportEntry ToEntry(PlayerReport report) {
+            string detail = report.ReportInfo switch {
+                ChatReportInfo chat => $"{chat.Flag}: {chat.Message}",
+                HomeReportInfo home => $"{home.Flag}, home {home.HomeId} map {home.MapId} plot {home.PlotId}",
+                PetReportInfo pet => $"{pet.Flag}, pet {pet.PetName}",
+                PosterReportInfo poster => $"{poster.Flag}, poster {poster.PosterId} template {poster.TemplateId}",
+                ItemReportInfo item => $"{item.Flag}, listing {item.ListingId}",
+                PlayerReportInfo player => player.Flag,
+                _ => string.Empty,
+            };
+            return new PlayerReportEntry(report.Id, report.Category, report.CharacterId, report.PlayerName, report.ReporterCharacterId,
+                report.ReporterName, report.Reason, detail, report.CreateTime, report.CloseTime, report.ClosedBy);
         }
     }
 }

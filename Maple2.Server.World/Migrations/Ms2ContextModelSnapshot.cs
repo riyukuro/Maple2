@@ -1707,6 +1707,12 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("CharacterId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("CloseTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("ClosedBy")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreateTime")
                         .HasColumnType("datetime(6)");
 
