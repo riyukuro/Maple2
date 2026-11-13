@@ -63,11 +63,11 @@ public class StringCodeMapTests {
     // The home dice roll (HomeAction 0x0b) carries the client's id of s_ugcmap_fun_roll, then the name and the number.
     [Test]
     public void HomeRoll_WritesTheClientIndex() {
-        var character = new Character { AccountId = 7, Name = "roller", Mastery = new Mastery() };
+        var character = new Character { Id = 8, AccountId = 7, Name = "roller", Mastery = new Mastery() };
         var reader = new ByteReader(HomeActionPacket.Roll(character, 42).ToArray(), 0);
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.HomeAction));
         reader.ReadByte();
-        Assert.That(reader.ReadLong(), Is.EqualTo(7));
+        Assert.That(reader.ReadLong(), Is.EqualTo(8)); // the character id, the client's block-list key
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("roller"));
         reader.ReadByte();
         Assert.That(reader.ReadByte(), Is.EqualTo(1));

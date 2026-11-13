@@ -181,7 +181,9 @@ public static class HomeActionPacket {
     public static ByteWriter Roll(Character character, int number) {
         var pWriter = Packet.Of(SendOp.HomeAction);
         pWriter.Write<HomeActionCommand>(HomeActionCommand.Roll);
-        pWriter.WriteLong(character.AccountId);
+        // The client (CSceneStateGame::OnHomeAction 11) drops the line when the roller is on its block list, looked up
+        // by character id (CBuddyManager::FUN_140ae51b0, the buddy map keyed by the entry's character id), as for chat.
+        pWriter.WriteLong(character.Id);
         pWriter.WriteUnicodeString(character.Name);
         pWriter.WriteByte();
         pWriter.WriteByte(1);
