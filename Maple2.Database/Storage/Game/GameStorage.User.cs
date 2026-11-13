@@ -556,8 +556,28 @@ public partial class GameStorage {
             return t.Name;
         }
 
+        // The game character has no currency: the row converted from it carries an empty one, which is not written
+        // (the character's mesos and event merets are kept).
         public bool SaveCharacter(Character character) {
-            Context.Character.Update(character);
+            Context.Character.Update(character).Property(row => row.Currency).IsModified = false;
+            return Context.TrySaveChanges();
+        }
+
+        // Writes only the profile's picture of a character of the account, from the row as stored.
+        public bool SetCharacterPicture(long characterId, long accountId, string picture) {
+            Model.Character? row = Context.Character.AsTracking()
+                .FirstOrDefault(character => character.Id == characterId && character.AccountId == accountId);
+            if (row == null) {
+                return false;
+            }
+            row.Profile = new Model.Profile {
+                Motto = row.Profile.Motto,
+                Picture = picture,
+                Title = row.Profile.Title,
+                Insignia = row.Profile.Insignia,
+                SkinTabStart = row.Profile.SkinTabStart,
+                SkinTabEnd = row.Profile.SkinTabEnd,
+            };
             return Context.TrySaveChanges();
         }
 

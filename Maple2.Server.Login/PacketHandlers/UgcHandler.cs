@@ -40,8 +40,13 @@ public class UgcHandler : PacketHandler<LoginSession> {
             return;
         }
 
+        // Only the picture is written: a save of the whole character would also write the row's other columns as
+        // the game character carries them.
+        if (!db.SetCharacterPicture(character.Id, session.AccountId, picture)) {
+            Logger.Warning("Unable to save the picture of character {CharacterId}", character.Id);
+            return;
+        }
         character.Picture = picture;
-        db.SaveCharacter(character);
         session.Send(UgcPacket.ProfilePicture(character));
     }
 }
