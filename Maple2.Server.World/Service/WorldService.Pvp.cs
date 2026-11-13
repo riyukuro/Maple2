@@ -25,11 +25,21 @@ public partial class WorldService {
                 }
                 return Task.FromResult(new PvpResponse());
             case PvpRequest.PvpOneofCase.ArenaRegister: {
+                PvpRequest.Types.ArenaRegister register = request.ArenaRegister;
+                int minPlayers = register.MinPlayers > 0 ? register.MinPlayers : ArenaQueue.MinPlayers;
                 var response = new PvpResponse {
-                    Error = (int) pvpLookup.ArenaRegister(request.RequesterId, request.ArenaRegister.Arena, request.ArenaRegister.PlayerCount),
+                    Error = (int) (register.Members.Count > 0
+                        ? pvpLookup.ArenaRegisterSquad(register.Members.ToList(), register.Arena, register.PlayerCount, minPlayers)
+                        : pvpLookup.ArenaRegister(request.RequesterId, register.Arena, register.PlayerCount, minPlayers)),
                 };
                 response.ArenaWaits.Add(pvpLookup.ArenaWaits());
                 return Task.FromResult(response);
+            }
+            case PvpRequest.PvpOneofCase.ArenaDecline:
+                return Task.FromResult(new PvpResponse { Arena = pvpLookup.ArenaDecline(request.RequesterId) });
+            case PvpRequest.PvpOneofCase.QueueState: {
+                (int state, int arena) = pvpLookup.QueueState(request.RequesterId);
+                return Task.FromResult(new PvpResponse { QueueState = state, Arena = arena });
             }
             case PvpRequest.PvpOneofCase.ArenaUnregister: {
                 var response = new PvpResponse { Error = (int) pvpLookup.ArenaUnregister(request.RequesterId) };

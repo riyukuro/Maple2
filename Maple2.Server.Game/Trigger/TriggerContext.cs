@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Maple2.Server.Game.Util;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using BasicAttribute = Maple2.Model.Enum.BasicAttribute;
 using DungeonGroupType = Maple2.Model.Enum.DungeonGroupType;
@@ -241,6 +242,7 @@ public partial class TriggerContext : ITriggerContext {
             count = Field.Players.Values.Count(player => box.Contains(player.Position));
         }
 
+        minUsers = MapleSurvivalRules.ScriptCount(minUsers, Field.Arena?.Arena.ArenaType == MapleSurvivalRules.Arena);
         bool result = operatorType switch {
             OperatorType.Greater => count > minUsers,
             OperatorType.GreaterEqual => count >= minUsers,

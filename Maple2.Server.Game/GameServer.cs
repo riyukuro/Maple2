@@ -139,8 +139,8 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.HasPvpMatch(roomId);
     }
 
-    public FieldManager? CreateArena(int matchId, int arenaType, IReadOnlyList<long> characters) {
-        return fieldFactory.CreateArena(matchId, arenaType, characters);
+    public FieldManager? CreateArena(int matchId, int arenaType, IReadOnlyList<long> characters, IReadOnlyDictionary<long, long>? units = null) {
+        return fieldFactory.CreateArena(matchId, arenaType, characters, units);
     }
 
     // Whether the dungeon room still runs on this channel. Never creates a field.

@@ -57,7 +57,8 @@ public partial class ChannelService {
     // The rank duel match field (World PvpLookup): one field of a rank duel map for the two characters.
     private FieldResponse CreatePvpMatch(FieldRequest.Types.CreatePvpMatch create) {
         if (create.Arena != 0) {
-            FieldManager? arenaField = server.CreateArena(create.MatchId, create.Arena, create.CharacterIds.ToList());
+            Dictionary<long, long> units = create.CharacterIds.Zip(create.UnitIds).ToDictionary(pair => pair.First, pair => pair.Second);
+            FieldManager? arenaField = server.CreateArena(create.MatchId, create.Arena, create.CharacterIds.ToList(), units);
             return arenaField == null
                 ? new FieldResponse { Error = (int) MigrationError.s_move_err_FailCreateDungeon }
                 : new FieldResponse { Error = (int) MigrationError.ok, MapId = arenaField.MapId, RoomId = arenaField.RoomId };

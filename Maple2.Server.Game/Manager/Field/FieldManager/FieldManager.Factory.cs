@@ -277,8 +277,9 @@ public partial class FieldManager {
         /// A field for an individual arena match: a new room of the arena's fieldID (individualarena.xml). The map's
         /// own script runs the round; the field tells the world when its PvP zone ended.
         /// </summary>
-        public FieldManager? CreateArena(int matchId, int arenaType, IReadOnlyList<long> characters) {
-            if (TableMetadata == null || !TableMetadata.IndividualArenaTable.Entries.TryGetValue(arenaType, out IndividualArenaTable.Entry? arena)) {
+        public FieldManager? CreateArena(int matchId, int arenaType, IReadOnlyList<long> characters, IReadOnlyDictionary<long, long>? units = null) {
+            IndividualArenaTable.Entry? arena = arenaType == MapleSurvivalRules.Arena ? MapleSurvivalRules.Entry : null;
+            if (arena == null && (TableMetadata == null || !TableMetadata.IndividualArenaTable.Entries.TryGetValue(arenaType, out arena))) {
                 logger.Error("Arena {Arena} is not in the arena table", arenaType);
                 return null;
             }
@@ -289,6 +290,9 @@ public partial class FieldManager {
                 field?.StartArena(matchId, arena, characters, id => World.Pvp(new Maple2.Server.World.Service.PvpRequest {
                     End = new Maple2.Server.World.Service.PvpRequest.Types.End { MatchId = id, Arena = arenaType },
                 }, deadline: DateTime.UtcNow.AddSeconds(10)));
+                if (field?.Arena != null && units != null) {
+                    field.Arena.Units = units;
+                }
                 return field;
             } finally {
                 mapLock.Release();

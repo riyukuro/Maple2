@@ -294,9 +294,10 @@ public partial class TriggerContext {
     // The server runs no Maple Survival match, so no field is playing one.
     public bool IsPlayingMapleSurvival(bool negate) {
         DebugLog("[IsPlayingMapleSurvival] negate:{Negate}", negate);
-        return MapleSurvivalResult(negate);
+        return MapleSurvivalResult(Field.Survival is { Ended: false }, negate);
     }
 
-    public static bool MapleSurvivalResult(bool negate) => negate;
+    // While the field's survival game runs.
+    public static bool MapleSurvivalResult(bool playing, bool negate) => playing != negate;
     #endregion
 }

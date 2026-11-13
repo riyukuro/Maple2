@@ -1789,6 +1789,31 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("ugc-market-item-sold", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.SurvivalRecord", b =>
+                {
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SeasonId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Games")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kills")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Wins")
+                        .HasColumnType("int");
+
+                    b.HasKey("CharacterId", "SeasonId");
+
+                    b.ToTable("survival-record", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.SystemBanner", b =>
                 {
                     b.Property<int>("Id")
@@ -2362,6 +2387,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Account", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.SurvivalRecord", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

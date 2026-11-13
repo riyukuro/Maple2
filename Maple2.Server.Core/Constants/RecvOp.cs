@@ -191,4 +191,5 @@ public enum RecvOp : ushort
     LimitBreak = 0x00BC,
     PersonalInfoAgreement = 0x00C0,
     HomeBlock = 0x00C1,
+    MapleSurvival = 0x00C2, // the restored client's Maple Survival requests
 }

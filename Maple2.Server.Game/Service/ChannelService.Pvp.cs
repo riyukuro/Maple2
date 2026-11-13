@@ -3,6 +3,7 @@ using Maple2.Server.Channel.Service;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
 
@@ -19,7 +20,16 @@ public partial class ChannelService {
             return Task.FromResult(new PvpNoticeResponse());
         }
         if (server.GetSession(request.CharacterId, out GameSession? session)) {
-            if (request.Arena != 0) {
+            if (request.Squad != 0) {
+                // A Maple Survival squad member: its party's squad registered (1) or not (2).
+                session.Send(PartyPacket.SurvivalPartySearch(request.Squad == 1));
+            } else if (request.Arena == MapleSurvivalRules.Arena) {
+                // A made match ends the squad's registration (no line: the match box follows).
+                if (request.Matched) {
+                    session.Send(PartyPacket.SurvivalPartySearch(false, false));
+                }
+                session.Send(request.Matched ? MapleSurvivalPacket.Matched(request.CharacterId, false) : MapleSurvivalPacket.Idle());
+            } else if (request.Arena != 0) {
                 session.Send(request.Matched ? PvpPacket.ArenaMatchFound(request.Arena) : PvpPacket.ArenaUnregistered());
             } else {
                 session.Send(request.Matched ? PvpPacket.RankDuelMatchFound() : PvpPacket.RankDuelMatchFailed());

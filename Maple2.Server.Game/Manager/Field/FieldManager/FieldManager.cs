@@ -189,9 +189,17 @@ public partial class FieldManager : IField {
         return status.Failed() ? DotRecastHelper.FromNavMeshSpace(start) : DotRecastHelper.FromNavMeshSpace(randomPoint);
     }
 
-    // Whether a player's hostile skills reach another player here: the rank duel's fight or the PvP zone's.
+    // The Maple Survival game of a survival map (CreateFieldGame MapleSurvival); null before one is made.
+    public SurvivalGameField? Survival { get; private set; }
+
+    public void StartSurvival() {
+        Survival = new SurvivalGameField(this, Players.Values);
+    }
+
+    // Whether a player's hostile skills reach another player here: the rank duel's fight, the PvP zone's or the
+    // survival game's.
     public bool PlayerHostile(FieldPlayer caster, FieldPlayer target) {
-        return RankDuel?.Hostile(caster, target) == true || PvpZone?.Hostile(caster, target) == true;
+        return RankDuel?.Hostile(caster, target) == true || PvpZone?.Hostile(caster, target) == true || Survival?.Hostile(caster, target) == true;
     }
     public int RoomId { get; init; }
     public int DungeonId { get; init; }
@@ -505,6 +513,7 @@ public partial class FieldManager : IField {
         PerformanceStage?.Update();
         RankDuel?.Update(FieldTick);
         PvpZone?.Update(FieldTick);
+        Survival?.Update(FieldTick);
     }
 
     public void EnsurePlayerPosition(FieldPlayer player) {

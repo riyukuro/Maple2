@@ -852,6 +852,16 @@ message PvpRequest {
     int32 arena = 1;
     // The arena's playerCount (individualarena.xml).
     int32 player_count = 2;
+    // The fewest players a match may start with after the gathering wait (0: two).
+    int32 min_players = 3;
+    // A Maple Survival squad (0xC2 mode 4): the party's members, its chief first; they wait and play as one unit.
+    repeated int64 members = 4;
+  }
+  // A made match's character says no (the survival match box).
+  message ArenaDecline {
+  }
+  // The character's queue state: 0 none, 1 queued, 2 in a match (queue_state); for the survival state after the enter.
+  message QueueState {
   }
   message ArenaUnregister {
   }
@@ -871,6 +881,8 @@ message PvpRequest {
     ArenaUnregister arena_unregister = 7;
     ArenaJoin arena_join = 8;
     Observable observable = 9;
+    ArenaDecline arena_decline = 10;
+    QueueState queue_state = 11;
   }
 }
 
@@ -884,4 +896,7 @@ message PvpResponse {
   map<int32, int32> arena_waits = 5;
   // The join is to watch a running rank duel (the character has no match of its own).
   bool observer = 6;
+  // QueueState: 0 none, 1 queued, 2 in a match; with the arena (100 the survival match).
+  int32 queue_state = 7;
+  int32 arena = 8;
 }

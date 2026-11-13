@@ -55,6 +55,7 @@ public class TableMetadataStorage {
     private readonly Lazy<FieldMissionTable> fieldMissionTable;
     private readonly Lazy<WorldMapTable> worldMapTable;
     private readonly Lazy<SurvivalSkinInfoTable> survivalSkinInfoTable;
+    private readonly Lazy<MapleSurvivalTable> mapleSurvivalTable;
     private readonly Lazy<BannerTable> bannerTable;
     private readonly Lazy<WeddingTable> weddingTable;
     private readonly Lazy<RewardContentTable> rewardContentTable;
@@ -139,6 +140,7 @@ public class TableMetadataStorage {
     public FieldMissionTable FieldMissionTable => fieldMissionTable.Value;
     public WorldMapTable WorldMapTable => worldMapTable.Value;
     public SurvivalSkinInfoTable SurvivalSkinInfoTable => survivalSkinInfoTable.Value;
+    public MapleSurvivalTable MapleSurvivalTable => mapleSurvivalTable.Value;
     public BannerTable BannerTable => bannerTable.Value;
     public WeddingTable WeddingTable => weddingTable.Value;
     public RewardContentTable RewardContentTable => rewardContentTable.Value;
@@ -224,6 +226,7 @@ public class TableMetadataStorage {
         fieldMissionTable = Retrieve<FieldMissionTable>(context, TableNames.FIELD_MISSION);
         worldMapTable = Retrieve<WorldMapTable>(context, TableNames.WORLD_MAP);
         survivalSkinInfoTable = Retrieve<SurvivalSkinInfoTable>(context, TableNames.SURVIVAL_SKIN_INFO);
+        mapleSurvivalTable = Retrieve<MapleSurvivalTable>(context, TableNames.MAPLE_SURVIVAL);
         bannerTable = Retrieve<BannerTable>(context, TableNames.BANNER);
         weddingTable = Retrieve<WeddingTable>(context, TableNames.WEDDING);
         rewardContentTable = Retrieve<RewardContentTable>(context, TableNames.REWARD_CONTENT);

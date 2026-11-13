@@ -347,11 +347,14 @@ public static class PartyPacket {
         return pWriter;
     }
 
-    public static ByteWriter SurvivalPartySearch(bool searching) {
+    // CPartyManager::OnPartySurvivalSquadRegister: the party's Maple Survival squad is registered (the pass window's
+    // squad mode, IsSurvivalSquadRegistered); notify: the register or unregister line, its sound and the survival state
+    // refresh.
+    public static ByteWriter SurvivalPartySearch(bool searching, bool notify = true) {
         var pWriter = Packet.Of(SendOp.Party);
         pWriter.Write<Command>(Command.SurvivalPartySearch);
-        pWriter.WriteBool(searching); // Searching
-        pWriter.WriteBool(true); // always true
+        pWriter.WriteBool(searching);
+        pWriter.WriteBool(notify);
 
         return pWriter;
     }

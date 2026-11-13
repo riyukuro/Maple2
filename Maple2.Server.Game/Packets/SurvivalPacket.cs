@@ -43,8 +43,9 @@ public static class SurvivalPacket {
     public static ByteWriter LoadMedals(IDictionary<MedalType, Dictionary<int, Medal>> inventory, IDictionary<MedalType, Medal> equips) {
         var pWriter = Packet.Of(SendOp.Survival);
         pWriter.Write<Command>(Command.LoadMedals);
+        // The slots in the client's order (0 tail, 1 riding, 2 gliding: the restored client keeps the first three).
         pWriter.WriteByte((byte) inventory.Keys.Count);
-        foreach ((MedalType type, Dictionary<int, Medal> medals) in inventory) {
+        foreach ((MedalType type, Dictionary<int, Medal> medals) in inventory.OrderBy(entry => entry.Key)) {
             pWriter.WriteInt(equips[type].Id);
             pWriter.WriteInt(medals.Count);
             foreach (Medal medal in medals.Values) {

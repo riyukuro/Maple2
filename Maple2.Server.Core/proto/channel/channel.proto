@@ -539,6 +539,8 @@ message PvpNoticeRequest {
   int32 arena = 3;
   // A rank duel can be watched: every player of the channel outside a PvP field gets Pvp 0x19 (character_id is 0).
   bool observe_offer = 4;
+  // A Maple Survival squad's queue state for a member: 1 registered, 2 unregistered (Party 0x37), 0 none.
+  int32 squad = 5;
 }
 
 message PvpNoticeResponse {

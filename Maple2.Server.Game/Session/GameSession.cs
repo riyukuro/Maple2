@@ -26,6 +26,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.World.Service;
@@ -390,8 +391,17 @@ public sealed partial class GameSession : Core.Network.Session {
         //session.Send(Packet.Of(SendOp.REQUEST_SYSTEM_INFO));
         Send(MigrationPacket.MoveResult(MigrationError.ok));
 
-        Survival.Load();
+        // The survival lobby and queue state go only to the restored client (MapleSurvivalRules.RestoredClient); the
+        // KR client gets the record and medals as before.
+        if (MapleSurvivalRules.RestoredClient) {
+            MapleSurvivalProgress.SendLobby(this);
+        } else {
+            Survival.Load();
+        }
         RankDuelStanding.Send(this);
+        if (MapleSurvivalRules.RestoredClient) {
+            MapleSurvivalHandler.SendState(this);
+        }
         // MeretMarket
         // PCBangBonus
         Guild.Load();

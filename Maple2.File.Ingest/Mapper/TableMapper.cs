@@ -105,6 +105,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.FIELD_MISSION, Table = ParseFieldMissionTable() };
         yield return new TableMetadata { Name = TableNames.WORLD_MAP, Table = ParseWorldMapTable() };
         yield return new TableMetadata { Name = TableNames.SURVIVAL_SKIN_INFO, Table = ParseSurvivalSkinTable() };
+        yield return new TableMetadata { Name = TableNames.MAPLE_SURVIVAL, Table = ParseMapleSurvivalTable() };
         yield return new TableMetadata { Name = TableNames.BANNER, Table = ParseBanner() };
         yield return new TableMetadata { Name = TableNames.MASTERY_UGC_HOUSING, Table = ParseMasteryUgcHousingTable() };
         yield return new TableMetadata { Name = TableNames.UGC_HOUSING_POINT_REWARD, Table = ParseUgcHousingPointRewardTable() };
@@ -2041,6 +2042,63 @@ public class TableMapper : TypeMapper<TableMetadata> {
             throw new InvalidOperationException("No maps ingested for WorldMapTable");
         }
         return new WorldMapTable(mapList);
+    }
+
+    // The NA Maple Survival tables (table/na in the server's Xml), read as the restored client reads its copies.
+    private MapleSurvivalTable ParseMapleSurvivalTable() {
+        IEnumerable<XmlElement> Rows(string file, string node) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(f => f.Name == $"table/na/{file}");
+            if (entry == null) {
+                Console.WriteLine($"maple survival: table/na/{file} not found");
+                return [];
+            }
+            return xmlReader.GetXmlDocument(entry).SelectNodes($"ms2/{node}")!.OfType<XmlElement>().ToList();
+        }
+        static int Int(XmlElement row, string name) => int.TryParse(row.GetAttribute(name), out int value) ? value : 0;
+        static int[] Ints(XmlElement row, string name) => row.GetAttribute(name).Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(value => int.TryParse(value, out int result) ? result : 0).ToArray();
+        static DateTime Time(string value, DateTime fallback) =>
+            DateTime.TryParseExact(value, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime time) ? time : fallback;
+
+        var periods = new Dictionary<int, MapleSurvivalTable.Period>();
+        foreach (XmlElement row in Rows("maplesurvivalopenperiod.xml", "period")) {
+            periods[Int(row, "id")] = new MapleSurvivalTable.Period(Int(row, "id"), Int(row, "survivalRewardID"),
+                Time(row.GetAttribute("startTime"), DateTime.MinValue), Time(row.GetAttribute("endTime"), DateTime.MaxValue), Int(row, "passPrice"));
+        }
+        var levelExp = new Dictionary<int, long>();
+        foreach (XmlElement row in Rows("survivallevel.xml", "survivalLevelExp")) {
+            levelExp[Int(row, "level")] = long.TryParse(row.GetAttribute("reqExp"), out long exp) ? exp : 0;
+        }
+        var levelRewards = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>();
+        foreach (XmlElement row in Rows("survivallevelreward.xml", "survivalLevelReward")) {
+            var rewards = new List<MapleSurvivalTable.Reward>();
+            for (int i = 1; i <= 3; i++) {
+                if (Int(row, $"rewardItemID{i}") is int id and > 0) {
+                    rewards.Add(new MapleSurvivalTable.Reward("item", [id], [Int(row, $"rewardItemRank{i}")], [Int(row, $"rewardItemCount{i}")]));
+                }
+            }
+            levelRewards[Int(row, "level")] = rewards;
+        }
+        return new MapleSurvivalTable(periods, levelExp, levelRewards, Pass("survivalpassreward.xml"), Pass("survivalpassreward_paid.xml"));
+
+        IReadOnlyDictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>> Pass(string file) {
+            var results = new Dictionary<int, Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>();
+            foreach (XmlElement row in Rows(file, "survivalPassReward")) {
+                var rewards = new List<MapleSurvivalTable.Reward>();
+                for (int i = 1; i <= 2; i++) {
+                    string type = row.GetAttribute($"type{i}");
+                    if (type.Length > 0) {
+                        rewards.Add(new MapleSurvivalTable.Reward(type, Ints(row, $"id{i}"), Ints(row, $"value{i}"), Ints(row, $"count{i}")));
+                    }
+                }
+                if (!results.TryGetValue(Int(row, "id"), out Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>? levels)) {
+                    results[Int(row, "id")] = levels = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>();
+                }
+                levels[Int(row, "level")] = rewards;
+            }
+            Console.WriteLine($"maple survival: {file} {results.Sum(entry => entry.Value.Count)} rows");
+            return results.ToDictionary(entry => entry.Key, entry => (IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>) entry.Value);
+        }
     }
 
     private SurvivalSkinInfoTable ParseSurvivalSkinTable() {

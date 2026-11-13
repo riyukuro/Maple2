@@ -46,6 +46,7 @@ public static class TableNames {
     public const string FIELD_MISSION = "fieldmission.xml";
     public const string WORLD_MAP = "newworldmap.xml";
     public const string SURVIVAL_SKIN_INFO = "maplesurvivalskininfo.xml";
+    public const string MAPLE_SURVIVAL = "na/maplesurvival.xml";
     public const string BANNER = "banner.xml";
     public const string WEDDING = "wedding*.xml";
     public const string REWARD_CONTENT = "rewardcontent*.xml";

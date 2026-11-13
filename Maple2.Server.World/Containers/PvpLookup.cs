@@ -15,10 +15,12 @@ namespace Maple2.Server.World.Containers;
 // the World is never waited on by the World while it waits itself.
 public sealed class PvpLookup : IDisposable {
     // Makes the match field: (match id, arena (0: rank duel), characters) -> (error, channel, map id, room id).
-    public delegate (MigrationError Error, int Channel, int MapId, int RoomId) MakeField(int matchId, int arena, IReadOnlyList<long> characterIds);
+    public delegate (MigrationError Error, int Channel, int MapId, int RoomId) MakeField(int matchId, int arena, IReadOnlyList<long> characterIds,
+                                                                                      IReadOnlyDictionary<long, long> units);
     // Tells a character on its channel: true, a match was found; false, the search or the match ended. arena 0 is the
     // rank duel.
-    public delegate void Notify(long characterId, bool matched, int arena);
+    // squad: a Maple Survival squad member's queue state (1 registered, 2 unregistered; 0 for the other notices).
+    public delegate void Notify(long characterId, bool matched, int arena, int squad);
 
     private static readonly TimeSpan ExpireInterval = TimeSpan.FromSeconds(5);
 
@@ -105,14 +107,14 @@ public sealed class PvpLookup : IDisposable {
     }
 
     // The individual arena: queued for one arena; matches are made by ArenaQueue.Pair.
-    public RankDuelError ArenaRegister(long characterId, int arena, int playerCount) {
+    public RankDuelError ArenaRegister(long characterId, int arena, int playerCount, int minPlayers = ArenaQueue.MinPlayers) {
         List<ArenaMatch> made;
         RankDuelError error;
         lock (mutex) {
             if (queue.IsQueued(characterId) || queue.MatchOf(characterId) != null) {
                 return RankDuelError.Busy;
             }
-            error = arenas.Register(characterId, arena, playerCount, tick(), out made);
+            error = arenas.Register(characterId, arena, playerCount, tick(), minPlayers, out made);
         }
         MakeArenas(made);
         return error;
@@ -124,10 +126,62 @@ public sealed class PvpLookup : IDisposable {
         }
     }
 
-    public RankDuelError ArenaUnregister(long characterId) {
+    public int ArenaDecline(long characterId) {
         lock (mutex) {
-            return arenas.Unregister(characterId);
+            return arenas.Decline(characterId);
         }
+    }
+
+    // 0 none, 1 queued, 2 in a match, with the arena.
+    public (int State, int Arena) QueueState(long characterId) {
+        lock (mutex) {
+            if (arenas.MatchOf(characterId) is { } match) {
+                return (2, match.Arena);
+            }
+            if (arenas.IsQueued(characterId)) {
+                return (1, arenas.QueuedArena(characterId));
+            }
+            if (queue.MatchOf(characterId) != null) {
+                return (2, 0);
+            }
+            return (queue.IsQueued(characterId) ? 1 : 0, 0);
+        }
+    }
+
+    public RankDuelError ArenaUnregister(long characterId) {
+        List<long> unit;
+        RankDuelError error;
+        lock (mutex) {
+            unit = arenas.UnitOf(characterId);
+            error = arenas.Unregister(characterId);
+        }
+        // A squad's cancel takes the whole squad out: every member's party window shows it (Party 0x37 false).
+        if (error == RankDuelError.none && unit.Count > 1) {
+            foreach (long member in unit) {
+                TryNotify(member, false, 0, 2);
+            }
+        }
+        return error;
+    }
+
+    // A Maple Survival squad registers (its chief's 0xC2 mode 4): the members wait as one unit; each member's party window
+    // shows the squad registered (Party 0x37 true).
+    public RankDuelError ArenaRegisterSquad(IReadOnlyList<long> members, int arena, int playerCount, int minPlayers) {
+        List<ArenaMatch> made;
+        RankDuelError error;
+        lock (mutex) {
+            if (members.Any(member => queue.IsQueued(member) || queue.MatchOf(member) != null)) {
+                return RankDuelError.Busy;
+            }
+            error = arenas.RegisterSquad(members, arena, playerCount, tick(), minPlayers, out made);
+        }
+        if (error == RankDuelError.none) {
+            foreach (long member in members) {
+                TryNotify(member, false, 0, 1);
+            }
+        }
+        MakeArenas(made);
+        return error;
     }
 
     public RankDuelError ArenaJoin(long characterId, out int channel, out int mapId, out int roomId) {
@@ -313,7 +367,7 @@ public sealed class PvpLookup : IDisposable {
     private void MakeMatch(RankDuelMatch match) {
         (MigrationError error, int channel, int mapId, int roomId) result;
         try {
-            result = makeField(match.Id, 0, [match.First, match.Second]);
+            result = makeField(match.Id, 0, [match.First, match.Second], new Dictionary<long, long>());
         } catch (Exception ex) {
             logger.Warning(ex, "Rank duel match {MatchId}: the match field was not made", match.Id);
             result = (MigrationError.s_move_err_FailCreateDungeon, 0, 0, 0);
@@ -346,7 +400,7 @@ public sealed class PvpLookup : IDisposable {
     private void MakeArena(ArenaMatch match) {
         (MigrationError error, int channel, int mapId, int roomId) result;
         try {
-            result = makeField(match.Id, match.Arena, match.Characters);
+            result = makeField(match.Id, match.Arena, match.Characters, match.Units);
         } catch (Exception ex) {
             logger.Warning(ex, "Arena match {MatchId}: the match field was not made", match.Id);
             result = (MigrationError.s_move_err_FailCreateDungeon, 0, 0, 0);
@@ -364,16 +418,16 @@ public sealed class PvpLookup : IDisposable {
         }
     }
 
-    private void TryNotify(long characterId, bool matched, int arena) {
+    private void TryNotify(long characterId, bool matched, int arena, int squad = 0) {
         try {
-            notify(characterId, matched, arena);
+            notify(characterId, matched, arena, squad);
         } catch (Exception ex) {
             logger.Warning(ex, "Rank duel notice to {CharacterId} not sent", characterId);
         }
     }
 
     private static MakeField ChannelField(ChannelClientLookup channelClients) {
-        return (matchId, arena, characterIds) => {
+        return (matchId, arena, characterIds, units) => {
             int channel = channelClients.FirstChannel();
             if (!channelClients.TryGetClient(channel, out ChannelClient? client)) {
                 return (MigrationError.s_move_err_no_server, 0, 0, 0);
@@ -382,13 +436,14 @@ public sealed class PvpLookup : IDisposable {
                 CreatePvpMatch = new FieldRequest.Types.CreatePvpMatch { MatchId = matchId, Arena = arena },
             };
             request.CreatePvpMatch.CharacterIds.AddRange(characterIds);
+            request.CreatePvpMatch.UnitIds.AddRange(characterIds.Select(id => units.GetValueOrDefault(id, id)));
             FieldResponse response = client.Field(request, deadline: DateTime.UtcNow.AddSeconds(10));
             return ((MigrationError) response.Error, channel, response.MapId, response.RoomId);
         };
     }
 
     private static Notify ChannelNotify(ChannelClientLookup channelClients, PlayerInfoLookup playerLookup) {
-        return (characterId, matched, arena) => {
+        return (characterId, matched, arena, squad) => {
             if (!playerLookup.TryGet(characterId, out PlayerInfo? info) || !info.Online) {
                 return;
             }
@@ -396,7 +451,7 @@ public sealed class PvpLookup : IDisposable {
                 return;
             }
             try {
-                client.Pvp(new PvpNoticeRequest { CharacterId = characterId, Matched = matched, Arena = arena }, deadline: DateTime.UtcNow.AddSeconds(5));
+                client.Pvp(new PvpNoticeRequest { CharacterId = characterId, Matched = matched, Arena = arena, Squad = squad }, deadline: DateTime.UtcNow.AddSeconds(5));
             } catch (RpcException) { }
         };
     }

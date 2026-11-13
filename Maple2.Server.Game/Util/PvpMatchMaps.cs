@@ -8,7 +8,7 @@ namespace Maple2.Server.Game.Util;
 // that is gone is not made again.
 public static class PvpMatchMaps {
     public static IReadOnlyCollection<int> All(TableMetadataStorage? tableMetadata) {
-        var maps = new HashSet<int>(RankDuelField.Maps);
+        var maps = new HashSet<int>(RankDuelField.Maps) { MapleSurvivalRules.MapId };
         try {
             if (tableMetadata != null) {
                 maps.UnionWith(tableMetadata.IndividualArenaTable.Entries.Values.Select(arena => arena.FieldId));

@@ -21,6 +21,8 @@ message FieldRequest {
     repeated int64 character_ids = 2;
     // The individual arena (its fieldID is the map); 0 for a rank duel.
     int32 arena = 3;
+    // Each character's unit (the same index as character_ids): its squad's first member, else itself.
+    repeated int64 unit_ids = 4;
   }
   int64 requester_id = 1;
   oneof field {

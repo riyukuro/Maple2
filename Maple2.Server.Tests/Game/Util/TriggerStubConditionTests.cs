@@ -61,8 +61,10 @@ public class TriggerStubConditionTests {
     }
 
     [Test]
-    public void IsPlayingMapleSurvival_IsFalseUnlessNegated() {
-        Assert.That(TriggerContext.MapleSurvivalResult(false), Is.False);
-        Assert.That(TriggerContext.MapleSurvivalResult(true), Is.True);
+    public void IsPlayingMapleSurvival_FollowsTheGame() {
+        Assert.That(TriggerContext.MapleSurvivalResult(false, false), Is.False);
+        Assert.That(TriggerContext.MapleSurvivalResult(false, true), Is.True);
+        Assert.That(TriggerContext.MapleSurvivalResult(true, false), Is.True);
+        Assert.That(TriggerContext.MapleSurvivalResult(true, true), Is.False);
     }
 }

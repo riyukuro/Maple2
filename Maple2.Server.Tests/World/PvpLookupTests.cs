@@ -13,6 +13,8 @@ public class PvpLookupTests {
     private readonly List<(int MatchId, long[] Characters)> made = [];
     private readonly List<(long CharacterId, bool Matched, int Arena)> arenaNotices = [];
     private readonly List<int> madeArenas = [];
+    private readonly List<IReadOnlyDictionary<long, long>> madeUnits = [];
+    private readonly List<(long CharacterId, int Squad)> squadNotices = [];
     private long tick;
 
     [SetUp]
@@ -21,15 +23,22 @@ public class PvpLookupTests {
         made.Clear();
         arenaNotices.Clear();
         madeArenas.Clear();
+        madeUnits.Clear();
+        squadNotices.Clear();
         tick = 0;
     }
 
     private PvpLookup Lookup(MigrationError error = MigrationError.ok) {
-        return new PvpLookup((matchId, arena, characterIds) => {
+        return new PvpLookup((matchId, arena, characterIds, units) => {
             made.Add((matchId, characterIds.ToArray()));
             madeArenas.Add(arena);
+            madeUnits.Add(units);
             return (error, 1, 65010002, error == MigrationError.ok ? 900 + matchId : 0);
-        }, (characterId, matched, arena) => {
+        }, (characterId, matched, arena, squad) => {
+            if (squad != 0) {
+                squadNotices.Add((characterId, squad));
+                return;
+            }
             notices.Add((characterId, matched));
             arenaNotices.Add((characterId, matched, arena));
         }, () => tick);
@@ -153,5 +162,27 @@ public class PvpLookupTests {
         Assert.That(arenaNotices, Is.EqualTo(new[] { (2L, false, 2) }));
         Assert.That(lookup.ArenaMatchOf(1), Is.Null);
         Assert.That(lookup.RankDuelOrArenaFree(1), Is.True);
+    }
+
+    // A Maple Survival squad (0xC2 mode 4) waits as one unit: each member is told it is registered (squad 1); a member's
+    // cancel takes the squad out and tells every member (squad 2); a match takes the whole squad with a solo player, and
+    // the field gets each character's unit (the squad's first member, else itself).
+    [Test]
+    public void Squad_RegistersCancelsAndMatchesAsOneUnit() {
+        PvpLookup lookup = Lookup();
+        Assert.That(lookup.ArenaRegisterSquad([1, 2], 100, 3, 3), Is.EqualTo(RankDuelError.none));
+        Assert.That(squadNotices, Is.EquivalentTo(new[] { (1L, 1), (2L, 1) }));
+        Assert.That(lookup.ArenaRegisterSquad([2, 5], 100, 3, 3), Is.EqualTo(RankDuelError.Busy));
+        squadNotices.Clear();
+        Assert.That(lookup.ArenaUnregister(2), Is.EqualTo(RankDuelError.none));
+        Assert.That(squadNotices, Is.EquivalentTo(new[] { (1L, 2), (2L, 2) }));
+        Assert.That(lookup.ArenaUnregister(1), Is.EqualTo(RankDuelError.NotQueued));
+
+        lookup.ArenaRegisterSquad([1, 2], 100, 3, 3);
+        Assert.That(made, Is.Empty);
+        lookup.ArenaRegister(7, 100, 3, 3);
+        lookup.LastStep.Wait();
+        Assert.That(made.Single().Characters, Is.EquivalentTo(new long[] { 1, 2, 7 }));
+        Assert.That(madeUnits.Single(), Is.EquivalentTo(new Dictionary<long, long> { [1] = 1, [2] = 1, [7] = 7 }));
     }
 }

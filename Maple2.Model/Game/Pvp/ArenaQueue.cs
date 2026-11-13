@@ -5,6 +5,8 @@ public sealed class ArenaMatch {
     public required int Id { get; init; }
     public required int Arena { get; init; }
     public required IReadOnlyList<long> Characters { get; init; }
+    // Each character's unit: the squad's first member for a squad (Maple Survival squads), else the character itself.
+    public IReadOnlyDictionary<long, long> Units { get; init; } = new Dictionary<long, long>();
     public required long CreatedTick { get; init; }
     public int Channel { get; set; }
     public int MapId { get; set; }
@@ -30,7 +32,10 @@ public sealed class ArenaQueue {
     public const long NoShowMs = 60_000;
     public const long LifetimeMs = 20 * 60_000;
 
-    private sealed record Waiter(long CharacterId, int Arena, int PlayerCount, long Since);
+    // Unit: the waiters that go into a match together (a squad: the squad's first member); a lone waiter is its own.
+    private sealed record Waiter(long CharacterId, int Arena, int PlayerCount, long Since, int MinPlayers = MinPlayers, long Unit = 0) {
+        public long UnitId => Unit != 0 ? Unit : CharacterId;
+    }
 
     private readonly List<Waiter> waiting = [];
     private readonly Dictionary<long, int> matchOf = [];
@@ -39,11 +44,18 @@ public sealed class ArenaQueue {
 
     public bool IsQueued(long characterId) => waiting.Any(waiter => waiter.CharacterId == characterId);
 
+    public int QueuedArena(long characterId) => waiting.FirstOrDefault(waiter => waiter.CharacterId == characterId)?.Arena ?? 0;
+
     public ArenaMatch? MatchOf(long characterId) {
         return matchOf.TryGetValue(characterId, out int matchId) ? matches.GetValueOrDefault(matchId) : null;
     }
 
-    public RankDuelError Register(long characterId, int arena, int playerCount, long tick, out List<ArenaMatch> made) {
+    public RankDuelError Register(long characterId, int arena, int playerCount, long tick, out List<ArenaMatch> made) =>
+        Register(characterId, arena, playerCount, tick, MinPlayers, out made);
+
+    // minPlayers: the fewest a match of this arena may start with after GatherMs (the survival match takes its full
+    // count only).
+    public RankDuelError Register(long characterId, int arena, int playerCount, long tick, int minPlayers, out List<ArenaMatch> made) {
         made = [];
         // Queued for this arena already: it stays. For another arena: it moves to this one (its wait starts over).
         Waiter? queued = waiting.FirstOrDefault(waiter => waiter.CharacterId == characterId);
@@ -56,29 +68,63 @@ public sealed class ArenaQueue {
         if (matchOf.ContainsKey(characterId)) {
             return RankDuelError.Busy;
         }
-        waiting.Add(new Waiter(characterId, arena, Math.Max(MinPlayers, playerCount), tick));
+        int size = Math.Max(MinPlayers, playerCount);
+        waiting.Add(new Waiter(characterId, arena, size, tick, Math.Clamp(minPlayers, MinPlayers, size)));
         made = Pair(tick);
         return RankDuelError.none;
+    }
+
+    // A squad (Maple Survival, 0xC2 mode 4: the party's members, its chief first) waits as one unit: a match takes all
+    // of it or none of it. Refused (Busy) when a member waits or plays already.
+    public RankDuelError RegisterSquad(IReadOnlyList<long> members, int arena, int playerCount, long tick, int minPlayers, out List<ArenaMatch> made) {
+        made = [];
+        if (members.Count == 0 || members.Any(member => IsQueued(member) || matchOf.ContainsKey(member))) {
+            return RankDuelError.Busy;
+        }
+        int size = Math.Max(MinPlayers, playerCount);
+        foreach (long member in members.Distinct()) {
+            waiting.Add(new Waiter(member, arena, size, tick, Math.Clamp(minPlayers, MinPlayers, size), members[0]));
+        }
+        made = Pair(tick);
+        return RankDuelError.none;
+    }
+
+    // The characters waiting with this one (its squad, itself included); empty when it does not wait.
+    public List<long> UnitOf(long characterId) {
+        Waiter? waiter = waiting.FirstOrDefault(entry => entry.CharacterId == characterId);
+        return waiter == null ? [] : waiting.Where(entry => entry.UnitId == waiter.UnitId).Select(entry => entry.CharacterId).ToList();
     }
 
     public RankDuelError Unregister(long characterId) {
         return Remove(characterId) ? RankDuelError.none : RankDuelError.NotQueued;
     }
 
-    public bool Remove(long characterId) => waiting.RemoveAll(waiter => waiter.CharacterId == characterId) > 0;
+    // A waiter leaves with its whole unit (a squad member's cancel takes the squad out).
+    public bool Remove(long characterId) {
+        Waiter? waiter = waiting.FirstOrDefault(entry => entry.CharacterId == characterId);
+        return waiter != null && waiting.RemoveAll(entry => entry.UnitId == waiter.UnitId) > 0;
+    }
 
     // The matches the waiting characters make at this tick, by arena.
     public List<ArenaMatch> Pair(long tick) {
         var made = new List<ArenaMatch>();
         foreach (IGrouping<int, Waiter> arena in waiting.GroupBy(waiter => waiter.Arena).ToList()) {
-            List<Waiter> order = arena.OrderBy(waiter => waiter.Since).ToList();
-            int size = order[0].PlayerCount;
-            while (order.Count >= size || (order.Count >= MinPlayers && tick - order[0].Since >= GatherMs)) {
-                List<Waiter> taken = order.Take(size).ToList();
-                order.RemoveRange(0, taken.Count);
+            // Whole units in the order they came: a unit's members all go into one match. A match takes units until it
+            // holds the arena's count (a squad may take it past the count: chosen, a squad is never split).
+            List<List<Waiter>> order = arena.GroupBy(waiter => waiter.UnitId).Select(unit => unit.ToList())
+                .OrderBy(unit => unit.Min(waiter => waiter.Since)).ToList();
+            int size = order[0][0].PlayerCount;
+            int fewest = order[0][0].MinPlayers;
+            while (order.Sum(unit => unit.Count) >= size || (order.Sum(unit => unit.Count) >= fewest && tick - order[0].Min(waiter => waiter.Since) >= GatherMs)) {
+                var taken = new List<Waiter>();
+                while (order.Count > 0 && taken.Count < size) {
+                    taken.AddRange(order[0]);
+                    order.RemoveAt(0);
+                }
                 waiting.RemoveAll(taken.Contains);
                 var match = new ArenaMatch {
                     Id = nextMatchId++, Arena = arena.Key, Characters = taken.Select(waiter => waiter.CharacterId).ToList(), CreatedTick = tick,
+                    Units = taken.ToDictionary(waiter => waiter.CharacterId, waiter => waiter.UnitId),
                 };
                 matches[match.Id] = match;
                 foreach (long characterId in match.Characters) {
@@ -115,6 +161,16 @@ public sealed class ArenaQueue {
         }
         match.Joined.Add(characterId);
         return RankDuelError.none;
+    }
+
+    // A character of a made match says no (the survival match box's refuse): it leaves the match at once, the match
+    // goes on for the others. Its arena, or 0 when it was in no match.
+    public int Decline(long characterId) {
+        if (MatchOf(characterId) is not { } match || match.Joined.Contains(characterId) || !match.Released.Add(characterId)) {
+            return 0;
+        }
+        matchOf.Remove(characterId);
+        return match.Arena;
     }
 
     public ArenaMatch? End(int matchId) {

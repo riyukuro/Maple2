@@ -893,7 +893,7 @@ public partial class FieldManager {
                 } else if (caster is FieldPlayer casterPlayer) {
                     //TODO Include other players if PVP is Active
                     // In a rank duel's fight or a PvP zone the other side's players are hostile too.
-                    if (RankDuel != null || PvpZone != null) {
+                    if (RankDuel != null || PvpZone != null || Survival != null) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>()
                             .Concat(TargetPlayers.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
                     }
@@ -1467,6 +1467,7 @@ public partial class FieldManager {
             // A duelist who leaves the rank duel loses it.
             RankDuel?.Leave(fieldPlayer);
             PvpZone?.Leave(fieldPlayer);
+            Survival?.Leave(fieldPlayer);
             Arena?.Left(this);
             // Last, and guarded: a failed send to the world must not cut the leave short.
             try {

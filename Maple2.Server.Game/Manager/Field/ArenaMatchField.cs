@@ -16,6 +16,10 @@ public sealed class ArenaMatchField {
     public int MatchId { get; }
     public IndividualArenaTable.Entry Arena { get; }
     public IReadOnlyList<long> Characters { get; }
+    // Each character's unit (a Maple Survival squad: its first member); a character not listed is its own unit.
+    public IReadOnlyDictionary<long, long> Units { get; set; } = new Dictionary<long, long>();
+
+    public long UnitOf(long characterId) => Units.GetValueOrDefault(characterId, characterId);
 
     public ArenaMatchField(FieldManager field, int matchId, IndividualArenaTable.Entry arena, IReadOnlyList<long> characters, Action<int> onEnd) {
         this.field = field;

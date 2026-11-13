@@ -536,6 +536,9 @@ public class FieldPlayer : Actor<Player> {
             }
         }
         // A hit between players in a PvP zone grows the attacker's damage row.
+        if (caster is FieldPlayer survivor && Field.Survival != null) {
+            Field.Survival.Damage(survivor, this);
+        }
         if (caster is FieldPlayer attacker && Field.PvpZone != null) {
             long taken = healthBefore - Stats.Values[BasicAttribute.Health].Current;
             if (taken > 0) {
@@ -597,6 +600,7 @@ public class FieldPlayer : Actor<Player> {
         // A duelist who dies in the rank duel's fight loses it; a PvP zone counts the death and the kill.
         Field.RankDuel?.Death(this);
         Field.PvpZone?.Death(this);
+        Field.Survival?.Death(this);
         // Spring Farm and Boom Boom Ocean: a death takes one of the game's lives.
         Field.SpringFarmDied();
         Field.BoomBoomOceanDied(this);

@@ -92,7 +92,7 @@ public class PvpHandler : FieldPacketHandler {
     }
 
     // RankDuelField.CanLeaveFor for the session's player and field.
-    private static bool CanLeave(GameSession session) {
+    internal static bool CanLeave(GameSession session) {
         InstanceFieldMetadata? instance = session.Field?.FieldInstance;
         return RankDuelField.CanLeaveFor(session.Player.IsDead, session.Field is DungeonFieldManager,
             instance != null && RankDuelField.RefusesInstance(instance.Type),
@@ -177,7 +177,7 @@ public class PvpHandler : FieldPacketHandler {
 
     // Moves the character into the match field the World named; a failed move sends `failed` (the client's way back to
     // state 0).
-    private static void MoveToMatch(GameSession session, PvpResponse response, Maple2.PacketLib.Tools.ByteWriter failed) {
+    internal static void MoveToMatch(GameSession session, PvpResponse response, Maple2.PacketLib.Tools.ByteWriter failed) {
         // Back to this spot after the match (GameSession.ReturnField), when this is the return field.
         Maple2.Model.Game.Character character = session.Player.Value.Character;
         if (character.MapId == character.ReturnMaps.Peek()) {
@@ -214,7 +214,7 @@ public class PvpHandler : FieldPacketHandler {
         session.Disconnect();
     }
 
-    private static PvpResponse? Request(GameSession session, PvpRequest request) {
+    internal static PvpResponse? Request(GameSession session, PvpRequest request) {
         try {
             return session.World.Pvp(request, deadline: DateTime.UtcNow.AddSeconds(5));
         } catch (RpcException) {

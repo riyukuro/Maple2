@@ -83,6 +83,7 @@ public class TableMetadata {
 [JsonDerivedType(typeof(FieldMissionTable), typeDiscriminator: "fieldmission")]
 [JsonDerivedType(typeof(WorldMapTable), typeDiscriminator: "worldmap")]
 [JsonDerivedType(typeof(SurvivalSkinInfoTable), typeDiscriminator: "survivalskininfo")]
+[JsonDerivedType(typeof(MapleSurvivalTable), typeDiscriminator: "maplesurvival")]
 [JsonDerivedType(typeof(BannerTable), typeDiscriminator: "banner")]
 [JsonDerivedType(typeof(WeddingTable), typeDiscriminator: "wedding*")]
 [JsonDerivedType(typeof(MasteryUgcHousingTable), typeDiscriminator: "masteryugchousing")]

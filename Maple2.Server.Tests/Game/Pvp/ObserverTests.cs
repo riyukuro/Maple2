@@ -66,10 +66,10 @@ public class ObserverTests {
     public void Lookup_ObserveJoin() {
         var made = new List<int>();
         int offers = 0;
-        var lookup = new PvpLookup((matchId, arena, ids) => {
+        var lookup = new PvpLookup((matchId, arena, ids, _) => {
             made.Add(matchId);
             return (MigrationError.ok, 1, 65010003, 700 + matchId);
-        }, (_, _, _) => { }, () => 0);
+        }, (_, _, _, _) => { }, () => 0);
         lookup.SetOffer(() => offers++);
         lookup.Register(1);
         lookup.Register(2);
