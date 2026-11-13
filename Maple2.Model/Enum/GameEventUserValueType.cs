@@ -8,6 +8,7 @@ public enum GameEventUserValueType {
     AttendanceCompletedTimestamp = 101,
     AttendanceRewardsClaimed = 102, // Also used for Cash Attendance and DT Attendance
     AttendanceEarlyParticipationRemaining = 103,
+    AttendanceItemStartEnd = 104, // when an item-started (requirement kind 2) event runs out for the player; the client does not read 104, it gets the time in Attendance 6
     AttendanceNear = 105,
     AttendanceAccumulatedTime = 106,
 

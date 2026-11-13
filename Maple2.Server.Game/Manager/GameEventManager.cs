@@ -292,6 +292,18 @@ public sealed class GameEventManager {
         return AttendanceRules.PlaySeconds(stored, PlayStart, now);
     }
 
+    // The attendance events the player has started with an item (user value 104), with the time each runs out,
+    // for Attendance 6.
+    public List<(int EventId, long EndTime)> ItemStartedEvents() {
+        long now = DateTime.Now.ToEpochSeconds();
+        lock (valuesLock) {
+            return eventValues.Values.SelectMany(dict => dict.Values)
+                .Where(value => value.Type == GameEventUserValueType.AttendanceItemStartEnd && value.ExpirationTime > now)
+                .Select(value => (value.EventId, value.ExpirationTime))
+                .ToList();
+        }
+    }
+
     public void Set(int gameEventId, GameEventUserValueType type, object value) {
         GameEventUserValue gameEventUserValue;
         lock (valuesLock) {

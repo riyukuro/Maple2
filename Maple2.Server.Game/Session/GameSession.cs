@@ -597,10 +597,10 @@ public sealed partial class GameSession : Core.Network.Session {
         Config.LoadCharacterAbilities();
         Config.LoadKeyTable();
         Send(GuideRecordPacket.Load(Config.GuideRecords));
-        // No item starts an attendance event here, so the list is empty; KMS2 sends it after the guide records.
-        Send(AttendancePacket.StartedEvents([]));
         // DailyWonder*
         GameEvent.Load();
+        // The attendance events started with an item (CashAttendEvent), after the user values they are read from.
+        Send(AttendancePacket.StartedEvents(GameEvent.ItemStartedEvents()));
         server.LoadEvents(this);
         Send(BannerListPacket.Load(server.GetSystemBanners()));
         Dungeon.Load();

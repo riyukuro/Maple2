@@ -1,11 +1,13 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using Grpc.Core;
+using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Model.Validators;
@@ -204,6 +206,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 break;
             case ItemFunction.PetExtraction:
                 HandlePetExtraction(session, item, packet);
+                break;
+            case ItemFunction.CashAttendEvent:
+                HandleCashAttendEvent(session, item);
                 break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
@@ -1273,6 +1278,61 @@ public class ItemUseHandler : FieldPacketHandler {
         }
         Item shown = rewards.First();
         session.Send(ItemScriptPacket.TreasureMapResult(shown.Id, shown.Rarity));
+    }
+
+    // CashAttendEvent: starts the AttendGift event whose item requirement names this item (AttendanceRules.StartByItem)
+    // for the requirement's days, and uses up the item. The client gets the start in Attendance 6, which adds it to
+    // its map of started events, then Attendance 7 with the event id, which selects the event in the gift window
+    // (uiattendgiftdialog.cpp:363). The start and the used item are stored at once in one transaction.
+    private void HandleCashAttendEvent(GameSession session, Item item) {
+        List<(int Id, AttendGift Data)> events = session.FindEvent(GameEventType.AttendGift)
+            .Where(gameEvent => gameEvent.Metadata.Data is AttendGift)
+            .Select(gameEvent => (gameEvent.Id, (AttendGift) gameEvent.Metadata.Data))
+            .ToList();
+        (AttendanceRules.ItemStart result, int eventId) = AttendanceRules.StartByItem(events, item.Id,
+            id => session.GameEvent.Peek(GameEventUserValueType.AttendanceItemStartEnd, id) != null);
+        switch (result) {
+            case AttendanceRules.ItemStart.NotFound:
+                session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_item_attend_not_found_evnet));
+                return;
+            case AttendanceRules.ItemStart.AlreadyStarted:
+                session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_item_attend_already_used));
+                return;
+        }
+
+        GameEvent? gameEvent = session.FindEvent(eventId);
+        if (gameEvent?.Metadata.Data is not AttendGift attendGift) {
+            return;
+        }
+        long end = AttendanceRules.ItemStartEnd(DateTime.Now.ToEpochSeconds(), attendGift.Requirement!.Value2, gameEvent.EndTime);
+        // The used item and the start are stored at once, together or not at all. Left to the session save, a save
+        // of the whole bag before it (a rename, a gender change, a committed add merging into the stack) stored the
+        // used item without the start, so a crash then lost both the item and the start.
+        var stored = new GameEventUserValue(GameEventUserValueType.AttendanceItemStartEnd, end, eventId);
+        stored.SetValue(end.ToString());
+        bool taken = false;
+        if (!session.TrySavePurchase(db => {
+                if (!db.SaveGameEventUserValues(session.CharacterId, [stored])) {
+                    return false;
+                }
+                if (!session.Item.Inventory.SaveConsumed(db, item.Uid, 1)) {
+                    return false;
+                }
+                // Under the account lock, so no session save between the commit and memory writes the old value.
+                db.AfterCommit(() => {
+                    taken = session.Item.Inventory.ConsumeStored(item.Uid, 1);
+                    session.GameEvent.Get(GameEventUserValueType.AttendanceItemStartEnd, eventId, end);
+                    session.GameEvent.Set(eventId, GameEventUserValueType.AttendanceItemStartEnd, end);
+                });
+                return true;
+            })) {
+            return;
+        }
+        if (!taken) {
+            Logger.Error("CashAttendEvent {ItemUid}: the start was stored but the item was not taken from the bag of {CharacterId}", item.Uid, session.CharacterId);
+        }
+        session.Send(AttendancePacket.StartedEvents([(eventId, end)]));
+        session.Send(AttendancePacket.SelectEvent(eventId));
     }
 
     // The client's QuestStart: parameter "questId[,level]", level 10 when it is absent or 0. The client checks the

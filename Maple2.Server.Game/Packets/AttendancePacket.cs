@@ -7,15 +7,17 @@ namespace Maple2.Server.Game.Packets;
 
 public static class AttendancePacket {
     private enum Command : byte {
-        Unknown5 = 5,
+        RefreshAll = 5,
         StartedEvents = 6,
-        Unknown7 = 7,
+        SelectEvent = 7,
         Error = 9,
     }
 
-    public static ByteWriter Unknown5() {
+    // The gift window and the meret attendance window redraw (UIAttendGiftDialog::RefreshAll,
+    // uiattendgiftdialog.cpp:357; uicashattenddialog.cpp:552). No body.
+    public static ByteWriter RefreshAll() {
         var pWriter = Packet.Of(SendOp.Attendance);
-        pWriter.Write<Command>(Command.Unknown5);
+        pWriter.WriteByte((byte) Command.RefreshAll);
 
         return pWriter;
     }
@@ -38,18 +40,21 @@ public static class AttendancePacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown7() {
+    // An event id: a window that lists the event selects it, and redraws when it is open, else opens
+    // (UIAttendGiftDialog::FUN_14102ecc0, uiattendgiftdialog.cpp:363; UICashAttendDialog::OnSelectEventPacket,
+    // uicashattenddialog.cpp:557). Sent after an item has started the event.
+    public static ByteWriter SelectEvent(int eventId) {
         var pWriter = Packet.Of(SendOp.Attendance);
-        pWriter.Write<Command>(Command.Unknown7);
-        pWriter.WriteInt();
+        pWriter.WriteByte((byte) Command.SelectEvent);
+        pWriter.WriteInt(eventId);
 
         return pWriter;
     }
 
     public static ByteWriter Error(AttendanceError error) {
         var pWriter = Packet.Of(SendOp.Attendance);
-        pWriter.Write<Command>(Command.Error);
-        pWriter.Write<AttendanceError>(error);
+        pWriter.WriteByte((byte) Command.Error);
+        pWriter.WriteByte((byte) error);
 
         return pWriter;
     }

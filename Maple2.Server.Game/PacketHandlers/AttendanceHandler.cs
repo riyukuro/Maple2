@@ -62,7 +62,7 @@ public class AttendanceHandler : FieldPacketHandler {
         bool claimed = false;
         bool alreadyUsed = false;
         foreach (GameEvent gameEvent in gameEvents) {
-            if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift)) {
+            if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift, gameEvent)) {
                 continue;
             }
 
@@ -97,9 +97,11 @@ public class AttendanceHandler : FieldPacketHandler {
             () => session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds()));
     }
 
-    // The event's requirement, tested on the player's user values with id 0 as the client tests them.
-    private static bool RequirementMet(GameSession session, AttendGift attendGift) {
-        return AttendanceRules.RequirementMet(attendGift.Requirement, type => session.GameEvent.Peek((GameEventUserValueType) type, 0));
+    // The event's requirement, tested on the player's user values with id 0 as the client tests them; a kind 2
+    // event on the player's unexpired item start (user value 104 of the event).
+    private static bool RequirementMet(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
+        return AttendanceRules.RequirementMet(attendGift.Requirement, type => session.GameEvent.Peek((GameEventUserValueType) type, 0),
+            session.GameEvent.Peek(GameEventUserValueType.AttendanceItemStartEnd, gameEvent.Id) != null);
     }
 
     private void HandleBeginTimer(GameSession session) {
@@ -116,7 +118,7 @@ public class AttendanceHandler : FieldPacketHandler {
 
             // An event without play time is attended here: the client sends no claim for it (AttendsAtGameStart).
             if (gameEvent.Metadata.Data is AttendGift attendGift && AttendanceRules.AttendsAtGameStart(attendGift.RequiredPlaySeconds)
-                && RequirementMet(session, attendGift) && !AttendedToday(session, gameEvent)) {
+                && RequirementMet(session, attendGift, gameEvent) && !AttendedToday(session, gameEvent)) {
                 Attend(session, attendGift, gameEvent);
             }
         }
@@ -180,7 +182,7 @@ public class AttendanceHandler : FieldPacketHandler {
         // uid of the pay-attend coupon item when the box's coupon checkbox is ticked, else 0
         (int eventId, long couponUid) = AttendanceRules.ReadEarlyParticipation(packet);
         GameEvent? gameEvent = session.FindEvent(eventId);
-        if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift)) {
+        if (gameEvent?.Metadata.Data is not AttendGift attendGift || !RequirementMet(session, attendGift, gameEvent)) {
             return;
         }
 

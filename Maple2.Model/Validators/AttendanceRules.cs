@@ -98,15 +98,50 @@ public static class AttendanceRules {
 
     // Whether the player may attend the event. userValue is the text of the player's unexpired user value
     // of the given type with id 0, null when there is none. The client lists a kind 1 event only while the
-    // value reads true and a kind 3 event only while there is no value (FUN_140ce3510). A kind 2 event needs
-    // an item to start it, which the server does not do (chosen here), so it is never attended.
-    public static bool RequirementMet(AttendGift.Require? require, Func<int, string?> userValue) {
+    // value reads true and a kind 3 event only while there is no value (FUN_140ce3510). A kind 2 event is
+    // listed for everyone, but until the player has started it with its item the window names that item
+    // instead of the period (uiattendgiftdialog.cpp:557), so it is attended only while itemStarted.
+    public static bool RequirementMet(AttendGift.Require? require, Func<int, string?> userValue, bool itemStarted) {
         return RequireKind(require) switch {
             1 => UserValueTrue(userValue(require!.Value1)),
-            2 => false,
+            2 => itemStarted,
             3 => userValue(require!.Value1) == null,
             _ => true,
         };
+    }
+
+    public enum ItemStart { NotFound, AlreadyStarted, Start }
+
+    // A CashAttendEvent item (ItemFunction 7, no parameter in any KR item) sent with the plain item use
+    // (Unk_Inventory::RequestUseItem, inventory.cpp:1200): it starts the first live AttendGift event whose kind 2
+    // requirement names the item and that the player has not started. None: error 6
+    // (s_attendGift_item_attend_not_found_evnet); every such event already started and its time not run out: error 5 (s_attendGift_item_attend_already_used,
+    // uiattendgiftdialog.cpp:610). events are the live events' ids and data; started tells whether the
+    // player's start of an event id is unexpired.
+    public static (ItemStart Result, int EventId) StartByItem(IEnumerable<(int Id, AttendGift Data)> events, int itemId, Func<int, bool> started) {
+        int startedId = 0;
+        foreach ((int id, AttendGift data) in events) {
+            if (RequireKind(data.Requirement) != 2 || data.Requirement!.Value1 != itemId) {
+                continue;
+            }
+            if (!started(id)) {
+                return (ItemStart.Start, id);
+            }
+            if (startedId == 0) {
+                startedId = id;
+            }
+        }
+        return startedId != 0 ? (ItemStart.AlreadyStarted, startedId) : (ItemStart.NotFound, 0);
+    }
+
+    // When an item start runs out (epoch seconds): the requirement's value2 days from the use (92 and 7 days
+    // in KR), never after the event's own end. A value2 of 0 or less lasts until the event's end. The client
+    // shows this time as the end of the event's period (GameEventAttendGiftCli::GetEndTime, gameeventcli.cpp:562).
+    public static long ItemStartEnd(long now, int days, long eventEnd) {
+        if (days <= 0) {
+            return eventEnd;
+        }
+        return Math.Min(eventEnd, now + days * 86400L);
     }
 
     // The tab name of an AttendGift event: value2's string node names it with tabButton in every KR and NA row

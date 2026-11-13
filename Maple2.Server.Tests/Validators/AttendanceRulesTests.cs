@@ -163,20 +163,50 @@ public class AttendanceRulesTests {
         Assert.That(AttendanceRules.UserValueTrue(text), Is.EqualTo(result));
     }
 
-    // Kind 1 needs a value that reads true, kind 3 no value, kind 2 is never attended, no requirement always is.
+    // Kind 1 needs a value that reads true, kind 3 no value, kind 2 the item start, no requirement always is.
     [Test]
     public void RequirementMet() {
         var values = new Dictionary<int, string> { { 3000, "True" }, { 3002, "False" } };
         string? Lookup(int type) => values.TryGetValue(type, out string? text) ? text : null;
 
-        Assert.That(AttendanceRules.RequirementMet(null, Lookup), Is.True);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.None, 0, 0), Lookup), Is.True);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3000, 0), Lookup), Is.True);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3002, 0), Lookup), Is.False);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3001, 0), Lookup), Is.False);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3001, 0), Lookup), Is.True);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3002, 0), Lookup), Is.False);
-        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.ItemId, 20300001, 7), Lookup), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(null, Lookup, false), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.None, 0, 0), Lookup, false), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3000, 0), Lookup, false), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3002, 0), Lookup, false), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3001, 0), Lookup, false), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3001, 0), Lookup, false), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.NotUserValue, 3002, 0), Lookup, false), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.ItemId, 20300001, 7), Lookup, false), Is.False);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.ItemId, 20300001, 7), Lookup, true), Is.True);
+        Assert.That(AttendanceRules.RequirementMet(new AttendGift.Require(AttendGiftRequirement.UserValue, 3001, 0), Lookup, true), Is.False);
+    }
+
+    private static AttendGift ItemGift(AttendGiftRequirement type, int value1) {
+        return new AttendGift([], "gift", "title", "content", string.Empty, 0, new AttendGift.Require(type, value1, 7));
+    }
+
+    // The event whose kind 2 requirement names the item; a user value requirement with the same number is not it.
+    [Test]
+    public void StartByItem() {
+        var events = new List<(int, AttendGift)> {
+            (1, ItemGift(AttendGiftRequirement.UserValue, 20300636)),
+            (2, ItemGift(AttendGiftRequirement.ItemId, 20301532)),
+            (3, ItemGift(AttendGiftRequirement.ItemId, 20300636)),
+        };
+        Assert.That(AttendanceRules.StartByItem(events, 20300636, _ => false), Is.EqualTo((AttendanceRules.ItemStart.Start, 3)));
+        Assert.That(AttendanceRules.StartByItem(events, 20301532, id => id == 2), Is.EqualTo((AttendanceRules.ItemStart.AlreadyStarted, 2)));
+        Assert.That(AttendanceRules.StartByItem(events, 30000717, _ => false), Is.EqualTo((AttendanceRules.ItemStart.NotFound, 0)));
+        // Two events name the same item: the first not yet started is the one started.
+        events.Add((4, ItemGift(AttendGiftRequirement.ItemId, 20301532)));
+        Assert.That(AttendanceRules.StartByItem(events, 20301532, id => id == 2), Is.EqualTo((AttendanceRules.ItemStart.Start, 4)));
+        Assert.That(AttendanceRules.StartByItem(events, 20301532, _ => true), Is.EqualTo((AttendanceRules.ItemStart.AlreadyStarted, 2)));
+    }
+
+    [TestCase(1000L, 7, 10000000L, 1000L + 7 * 86400L)]
+    [TestCase(1000L, 92, 2000000L, 2000000L)]
+    [TestCase(1000L, 0, 2000000L, 2000000L)]
+    public void ItemStartEnd(long now, int days, long eventEnd, long result) {
+        Assert.That(AttendanceRules.ItemStartEnd(now, days, eventEnd), Is.EqualTo(result));
     }
 
     [Test]
