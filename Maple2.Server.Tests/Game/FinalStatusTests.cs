@@ -22,6 +22,7 @@ public class FinalStatusTests {
           <key id="175" option="defensive_physicaldamage" valueType="2" />
           <key id="177" option="offensive_physicaldamage" valueType="2" />
           <key id="187" option="msp" valueType="1" />
+          <key id="204" option="aevp" valueType="2" />
           <key id="195" option="pap" valueType="1" />
           <key id="196" option="map" valueType="1" />
           <key id="199" option="pen" valueType="2" />
@@ -66,9 +67,9 @@ public class FinalStatusTests {
     public void CountsTypesWithoutAServerStat() {
         ClientSpecialAbility specialAbility = SpecialAbility();
         var stats = new ClientSpecialAbility.Stats();
-        Assert.That(specialAbility.Add(stats, "atpToBap", 100), Is.False);
+        Assert.That(specialAbility.Add(stats, "aevp", 100), Is.False);
         Assert.That(specialAbility.Add(stats, "notAType", 100), Is.False);
-        Assert.That(specialAbility.Unmapped, Is.EqualTo(new Dictionary<string, int> { ["atpToBap"] = 1, ["notAType"] = 1 }));
+        Assert.That(specialAbility.Unmapped, Is.EqualTo(new Dictionary<string, int> { ["aevp"] = 1, ["notAType"] = 1 }));
         Assert.That(stats.Rates, Is.Empty);
     }
 

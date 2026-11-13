@@ -2,6 +2,7 @@ using System.Xml;
 using Maple2.File.IO;
 using Maple2.File.IO.Crypto.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 
 namespace Maple2.File.Ingest.Helpers;
 
@@ -25,9 +26,13 @@ namespace Maple2.File.Ingest.Helpers;
 // - defensive_physicaldamage and defensive_magicaldamage: the physical and magical damage taken rates (the data
 //   pack's DefensiveProperty papDamageR 0.3 is the client's 300, 90001005);
 // - every other type whose name is a SpecialAttribute option of the parser (MapperExtensions.OptionIndex): that
-//   special value (valueType 1) or rate (valueType 2).
-// The rest (atpToBap, strToInt, defensive_damageV, cap_ignore_limit, aevp, reduce_do_heal_hp, ...) has no server
-// stat; Add returns false and counts it in Unmapped.
+//   special value (valueType 1) or rate (valueType 2);
+// - atpToBap and strToInt (valueType 2, shown as bonus attack from accuracy and intelligence from strength):
+//   the stat conversion, Accuracy to BonusAtk and Strength to Intelligence at the rate (the data pack
+//   writes the same rows as <Status statChangeBase statChangeResult statChangeRate>, 2.2 on 90051195 and 0.7 on
+//   10900041, and the client has no statChange attributes). A level holds one conversion; a second one is unmapped.
+// The rest (defensive_damageV, cap_ignore_limit, cad_ignore_limit, cap_ignore_limit_extra, aevp,
+// reduce_do_heal_hp, ...) has no server stat; Add returns false and counts it in Unmapped.
 public sealed class ClientSpecialAbility {
     // The stats an additional effect level adds, as AdditionalEffectMetadataStatus holds them.
     public sealed class Stats {
@@ -37,6 +42,7 @@ public sealed class ClientSpecialAbility {
         public Dictionary<SpecialAttribute, float> SpecialRates { get; init; } = new();
         public float PhysicalDamageTakenRate { get; set; }
         public float MagicalDamageTakenRate { get; set; }
+        public AdditionalEffectMetadataStatus.StatConversion? Conversion { get; set; }
     }
 
     public const string TableName = "table/specialabilitystringtable.xml";
@@ -137,6 +143,12 @@ public sealed class ClientSpecialAbility {
         ["finalAttackPower"] = [BasicAttribute.PhysicalAtk, BasicAttribute.MagicalAtk],
     };
 
+    // The conversion types: the attribute converted from and the one it adds to.
+    private static readonly Dictionary<string, (BasicAttribute Base, BasicAttribute Result)> Conversion = new(StringComparer.OrdinalIgnoreCase) {
+        ["atpToBap"] = (BasicAttribute.Accuracy, BasicAttribute.BonusAtk),
+        ["strToInt"] = (BasicAttribute.Strength, BasicAttribute.Intelligence),
+    };
+
     private static readonly Dictionary<string, SpecialAttribute> Special = BuildSpecial();
 
     private static Dictionary<string, SpecialAttribute> BuildSpecial() {
@@ -223,6 +235,13 @@ public sealed class ClientSpecialAbility {
         }
         if (string.Equals(type, "defensive_magicaldamage", StringComparison.OrdinalIgnoreCase) && rate) {
             stats.MagicalDamageTakenRate += scaled;
+            return true;
+        }
+        if (Conversion.TryGetValue(type, out (BasicAttribute Base, BasicAttribute Result) conversion)) {
+            if (!rate || stats.Conversion != null) {
+                return Skip(type);
+            }
+            stats.Conversion = new AdditionalEffectMetadataStatus.StatConversion(conversion.Base, conversion.Result, scaled);
             return true;
         }
         if (Special.TryGetValue(type, out SpecialAttribute special)) {

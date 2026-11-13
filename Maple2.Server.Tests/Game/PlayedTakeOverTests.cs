@@ -79,7 +79,7 @@ public class PlayedTakeOverTests {
               <Basic durationTick="60000" />
               <SpecialAbility>
                 <v type="offensive_physicaldamage" value="30" />
-                <v type="atpToBap" value="100" />
+                <v type="aevp" value="100" />
                 <v type="notInTheTable" value="5" />
               </SpecialAbility>
             </level>
@@ -111,7 +111,7 @@ public class PlayedTakeOverTests {
             <level level="1">
               <Basic durationTick="60000" />
               <SpecialAbility>
-                <v type="atpToBap" value="100" />
+                <v type="aevp" value="100" />
               </SpecialAbility>
             </level>
           </additional>
@@ -228,8 +228,10 @@ public class PlayedTakeOverTests {
         <ms2>
           <key id="10" option="atpToBap" valueType="2" />
           <key id="19" option="fireDamage" valueType="2" />
+          <key id="111" option="strToInt" valueType="2" />
           <key id="130" option="improve_stat_wap_u" valueType="2" />
           <key id="177" option="offensive_physicaldamage" valueType="2" />
+          <key id="204" option="aevp" valueType="2" />
           <key id="999" option="noValueType" valueType="0" />
         </ms2>
         """));
@@ -418,7 +420,7 @@ public class PlayedTakeOverTests {
         });
     }
 
-    // A type the client keeps with no server stat (atpToBap) holds the level; one the table lacks the client drops.
+    // A type the client keeps with no server stat (aevp) holds the level; one the table lacks the client drops.
     [Test]
     public void KeepsALevelWholeWhileASpecialAbilityTypeHasNoStat() {
         (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800212);
@@ -428,7 +430,7 @@ public class PlayedTakeOverTests {
         var unmapped = new List<string>();
         PlayedAdditionalRows.SpecialAbilityStats(Table, Abilities(10800212), unmapped);
         Assert.Multiple(() => {
-            Assert.That(unmapped, Is.EqualTo(new[] { "atpToBap" }));
+            Assert.That(unmapped, Is.EqualTo(new[] { "aevp" }));
             Assert.That(holding, Is.EqualTo(new[] { "SpecialAbility" }));
             Assert.That(metadata, Is.SameAs(pack));
         });
@@ -546,6 +548,41 @@ public class PlayedTakeOverTests {
         });
     }
 
+    // atpToBap and strToInt are the stat conversion (Accuracy to BonusAtk, Strength to Intelligence at the rate);
+    // a level holds one, a second type is unmapped.
+    [Test]
+    public void TheConversionTypesAreTheStatConversion() {
+        var unmapped = new List<string>();
+        ClientSpecialAbility.Stats stats = PlayedAdditionalRows.SpecialAbilityStats(Table, new Dictionary<string, int> { ["atpToBap"] = 2200 }, unmapped);
+        var both = new List<string>();
+        ClientSpecialAbility.Stats two = PlayedAdditionalRows.SpecialAbilityStats(Table, new Dictionary<string, int> { ["atpToBap"] = 2200, ["strToInt"] = 700 }, both);
+        Assert.Multiple(() => {
+            Assert.That(unmapped, Is.Empty);
+            Assert.That(stats.Conversion, Is.EqualTo(new AdditionalEffectMetadataStatus.StatConversion(Maple2.Model.Enum.BasicAttribute.Accuracy, Maple2.Model.Enum.BasicAttribute.BonusAtk, 2.2f)));
+            Assert.That(stats.Rates, Is.Empty);
+            Assert.That(both, Has.Count.EqualTo(1));
+            Assert.That(two.Conversion, Is.Not.Null);
+        });
+    }
+
+    // A conversion the pack has too holds nothing and keeps the pack's status; one the pack lacks is taken.
+    [Test]
+    public void AConversionLikeThePacksHoldsNothing() {
+        AdditionalEffectMetadataStatus status = PlayedAdditionalRows.WithStats(Levels(10800213).Pack.Status, new ClientSpecialAbility.Stats());
+        AdditionalEffectMetadataStatus pack = status with {
+            Conversion = new AdditionalEffectMetadataStatus.StatConversion(Maple2.Model.Enum.BasicAttribute.Strength, Maple2.Model.Enum.BasicAttribute.Intelligence, 0.7f),
+        };
+        var abilities = new Dictionary<string, int> { ["strToInt"] = 700 };
+        string? same = PlayedAdditionalRows.SpecialAbility(Table, abilities, pack, false, out AdditionalEffectMetadataStatus? unchanged);
+        string? taken = PlayedAdditionalRows.SpecialAbility(Table, abilities, status, false, out AdditionalEffectMetadataStatus? converted);
+        Assert.Multiple(() => {
+            Assert.That(same, Is.Null);
+            Assert.That(unchanged, Is.Null);
+            Assert.That(taken, Is.Null);
+            Assert.That(converted!.Conversion, Is.EqualTo(pack.Conversion));
+        });
+    }
+
     private static (List<AdditionalEffectMetadata>? Levels, List<string> Unread) Own(int id) {
         Dictionary<int, PlayedClientAdditionalEffects.Entry> played = PlayedClientAdditionalEffects.Read([Xml(Played)], _ => true);
         var mapper = (AdditionalEffectMapper) RuntimeHelpers.GetUninitializedObject(typeof(AdditionalEffectMapper));
@@ -573,7 +610,7 @@ public class PlayedTakeOverTests {
         });
     }
 
-    // One with a type that has no server stat (atpToBap) is left out.
+    // One with a type that has no server stat (aevp) is left out.
     [Test]
     public void APlayedOnlyEffectWithATypeWithoutAStatIsLeftOut() {
         (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800216);

@@ -202,7 +202,7 @@ public static class PlayedAdditionalRows {
 
     // The client's <SpecialAbility> against the pack's stats (pack: the level's status as Build makes it, final stats
     // added): status gets the pack's with the client's stats in place of its own (values, rates, special values and
-    // rates, damage taken rates; the resistances, compulsion, conversion, recovery rates, immune break and
+    // rates, damage taken rates, conversion; the resistances, compulsion, recovery rates, immune break and
     // invincible stay the pack's), null where they are the same. The reason a level holds instead, else null:
     // - "SpecialAbility": a type the client keeps that has no server stat;
     // - "SpecialAbility.FinalStatus": the level has final stats (finalRows), which the client writes as its
@@ -235,18 +235,27 @@ public static class PlayedAdditionalRows {
             SpecialRates = NonZero(stats.SpecialRates),
             PhysicalDamageTakenRate = stats.PhysicalDamageTakenRate,
             MagicalDamageTakenRate = stats.MagicalDamageTakenRate,
+            Conversion = stats.Conversion,
         };
     }
 
     private static bool Empty(ClientSpecialAbility.Stats stats) {
         return NonZero(stats.Values).Count == 0 && NonZero(stats.Rates).Count == 0 && NonZero(stats.SpecialValues).Count == 0 && NonZero(stats.SpecialRates).Count == 0
-               && Same(stats.PhysicalDamageTakenRate, 0) && Same(stats.MagicalDamageTakenRate, 0);
+               && Same(stats.PhysicalDamageTakenRate, 0) && Same(stats.MagicalDamageTakenRate, 0) && stats.Conversion == null;
     }
 
     private static bool SameStats(ClientSpecialAbility.Stats client, AdditionalEffectMetadataStatus pack) {
         return Same(client.Values, pack.Values) && Same(client.Rates, pack.Rates) && Same(client.SpecialValues, pack.SpecialValues)
                && Same(client.SpecialRates, pack.SpecialRates)
-               && Same(client.PhysicalDamageTakenRate, pack.PhysicalDamageTakenRate) && Same(client.MagicalDamageTakenRate, pack.MagicalDamageTakenRate);
+               && Same(client.PhysicalDamageTakenRate, pack.PhysicalDamageTakenRate) && Same(client.MagicalDamageTakenRate, pack.MagicalDamageTakenRate)
+               && Same(client.Conversion, pack.Conversion);
+    }
+
+    private static bool Same(AdditionalEffectMetadataStatus.StatConversion? a, AdditionalEffectMetadataStatus.StatConversion? b) {
+        if (a == null || b == null) {
+            return a == null && b == null;
+        }
+        return a.BaseAttribute == b.BaseAttribute && a.ResultAttribute == b.ResultAttribute && Same(a.Rate, b.Rate);
     }
 
     private static Dictionary<TKey, long> NonZero<TKey>(IReadOnlyDictionary<TKey, long> values) where TKey : notnull {
