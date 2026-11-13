@@ -199,6 +199,20 @@ public class MapleSurvivalTests {
         Assert.That(test.TakeSent(), Is.Empty);
     }
 
+    // SpectateMushtopia 0xAB: the watch request is answered with the server's pick; a switch (mode 2) only when the
+    // pick is not the character the client already turned to.
+    [Test]
+    public void SpectateAnswer() {
+        Assert.Multiple(() => {
+            Assert.That(SpectateMushtopiaHandler.Answer(false, 7, 7), Is.EqualTo(7));
+            Assert.That(SpectateMushtopiaHandler.Answer(false, 7, 8), Is.EqualTo(8));
+            Assert.That(SpectateMushtopiaHandler.Answer(true, 7, 7), Is.EqualTo(0));
+            Assert.That(SpectateMushtopiaHandler.Answer(true, 7, 8), Is.EqualTo(8));
+            Assert.That(SpectateMushtopiaHandler.Answer(true, 7, 0), Is.EqualTo(0));
+            Assert.That(SpectateMushtopiaHandler.Answer(false, 7, 0), Is.EqualTo(0));
+        });
+    }
+
     // The windows' packets (layouts.md 2): the lobby value, the season, the skin equipped, the pass progress, the
     // spectate answer (SpectateMushtopia 0x11A mode 1), the record (0x17) and the skin slots in slot order.
     [Test]
