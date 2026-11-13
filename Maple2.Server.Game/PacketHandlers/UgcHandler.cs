@@ -601,7 +601,13 @@ public class UgcHandler : FieldPacketHandler {
                 }
 
                 uid = newAdd.Uid;
-                session.Item.AddOrMail(newAdd, notifyNew: true);
+                // The row is the character's already, so an item neither the bag nor the mail takes (a full bag and a
+                // failed mail write) is not lost: it stays out of the bag, and the next login places or mails it.
+                // Its result was not read before; it is logged now.
+                if (!session.Item.AddOrMail(newAdd, notifyNew: true)) {
+                    Logger.Error("UGC item {ItemUid} ({ItemId}) of {CharacterId} neither added nor mailed; its row stays the character's",
+                        newAdd.Uid, newAdd.Id, session.CharacterId);
+                }
             }
 
             session.Send(UgcPacket.UpdateItem(session.Player.ObjectId, uid, item, ugcMetadata.CreatePrice, info.Type));
