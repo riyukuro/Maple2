@@ -13,11 +13,16 @@ public static class WeddingReservationRules {
     public const WeddingError NoRefundDeclined = WeddingError.decline_reservation_cancel;
     public const WeddingError NoRefundNoPartner = WeddingError.s_wedding_result_err_same_field;
 
-    // Only the engaged couple (0x23), only the partner who reserved (0x3e), and not from modifyLimitHours
-    // (WeddingHallModifyLimitHour) before the ceremony on (0x2a).
-    public static WeddingError CheckEdit(MaritalStatus status, long reserverId, long characterId, long ceremonyTime, long now, int modifyLimitHours) {
+    // Only the engaged couple (0x23), not from promiseLimitDays (WeddingPromiseLimitDay) after the engagement on
+    // (0x29, the client's CheckBase, weddingproxy.cpp:531), only the partner who reserved (0x3e), and not from
+    // modifyLimitHours (WeddingHallModifyLimitHour) before the ceremony on (0x2a).
+    public static WeddingError CheckEdit(MaritalStatus status, long engagedTime, long reserverId, long characterId, long ceremonyTime, long now,
+                                         int promiseLimitDays, int modifyLimitHours) {
         if (status != MaritalStatus.Engaged) {
             return WeddingError.s_wedding_result_err_only_promise_user;
+        }
+        if (now >= engagedTime + promiseLimitDays * 86400L) {
+            return WeddingError.s_wedding_result_late_promise_time;
         }
         if (reserverId != characterId) {
             return WeddingError.s_wedding_result_only_booking_character;

@@ -341,7 +341,10 @@ public partial class GameStorage {
         public Dictionary<long, long>? CancelWeddingHall(long hallId) {
             try {
                 using IDbContextTransaction transaction = Context.Database.BeginTransaction();
-                Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `wedding-hall` WHERE `Id` = {0} FOR UPDATE", hallId);
+                // The in-memory store (the tests) has no row lock to take.
+                if (Context.Database.IsRelational()) {
+                    Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `wedding-hall` WHERE `Id` = {0} FOR UPDATE", hallId);
+                }
                 Model.WeddingHall? hall = Context.WeddingHall.Find(hallId);
                 if (hall == null) {
                     return null;

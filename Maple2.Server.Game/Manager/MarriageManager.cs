@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -24,16 +25,22 @@ public sealed class MarriageManager {
 
     public MarriagePartner Partner => session.CharacterId == Marriage.Partner1.CharacterId ? Marriage.Partner2 : Marriage.Partner1;
 
+    // The new hall reservation (Wedding 0x0D, answered with 0x0E) this player was asked to agree to, the partner
+    // who sent it, and the coupon that partner pays with (0 for merets). The coupon goes with the ask: it was kept on
+    // the one who reserved, set before the partner was found, so a refused ask left it for the next one.
     public WeddingHall? UnconfirmedReservation;
-    // The partner who asked this player to agree to a change (Wedding 0x14, answered with 0x15) or to a cancel
-    // (0x10, answered with 0x12): only that ask is answered.
-    private long changeAskedBy;
-    private long cancelAskedBy;
-    // The partner who sent this player a new hall reservation (Wedding 0x0D, answered with 0x0E).
     private long reservationAskedBy;
-    // The no-refund cancel box (0x11) is open on this player's client.
-    private bool noRefundOffered;
-    private long couponItemUid;
+    private long reservationCouponUid;
+    // The partner who asked this player to agree to a change (Wedding 0x14, answered with 0x15) or to a cancel
+    // (0x10, answered with 0x12), and the hall asked about: only that ask, on that hall, is answered. The changed
+    // hall is kept apart from a 0x0D ask.
+    private WeddingHall? changeReservation;
+    private long changeAskedBy;
+    private long changeAskedHall;
+    private long cancelAskedBy;
+    private long cancelAskedHall;
+    // The hall whose no-refund cancel box (0x11) is open on this player's client, 0 for none.
+    private long noRefundHall;
 
     private readonly ILogger logger = Log.Logger.ForContext<MarriageManager>();
 
@@ -870,21 +877,15 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_invalid_wedding_hall;
         }
 
+        long couponUid = 0;
         if (useCoupon) {
-            ItemTag couponTag = package.Id switch {
-                1 => ItemTag.WeddingHallCoupon_Grade1,
-                2 => ItemTag.WeddingHallCoupon_Grade2,
-                3 => ItemTag.WeddingHallCoupon_Grade3,
-                _ => ItemTag.None,
-            };
-            IList<Item> items = session.Item.Inventory.Find(couponTag).ToList();
-            if (!items.Any()) {
+            Item? coupon = session.Item.Inventory.Find(WeddingHallPayRules.CouponTag(package.Id)).FirstOrDefault();
+            if (coupon == null) {
                 return WeddingError.s_wedding_result_lack_coupon;
             }
 
-            couponItemUid = items.First().Uid;
+            couponUid = coupon.Uid;
         } else {
-            couponItemUid = 0;
             if (session.Currency.CanAddMeret(-hallData.MeretCost) != -hallData.MeretCost) {
                 return WeddingError.s_wedding_result_err_lack_meratal;
             }
@@ -899,6 +900,7 @@ public sealed class MarriageManager {
         // not by a name that can change.
         partner.Session.Marriage.UnconfirmedReservation = hall;
         partner.Session.Marriage.reservationAskedBy = session.CharacterId;
+        partner.Session.Marriage.reservationCouponUid = couponUid;
 
         partner.Session.Send(WeddingPacket.Reserve(hall));
         return WeddingError.s_wedding_result_send_wedding_hall_reservation;
@@ -909,8 +911,21 @@ public sealed class MarriageManager {
         if (reservationAskedBy == 0) {
             return;
         }
+        ClearReservationAsk();
+    }
+
+    private void ClearReservationAsk() {
         reservationAskedBy = 0;
+        reservationCouponUid = 0;
         UnconfirmedReservation = null;
+    }
+
+    // The client's CheckReservationCancel (weddingproxy.cpp:574), the test of a cancel and of a change, on the hall
+    // this marriage holds, for the partner who asks.
+    private WeddingError CheckEdit(long characterId) {
+        return WeddingReservationRules.CheckEdit(Marriage.Status, Marriage.CreationTime, WeddingHall.ReserverCharacterId, characterId,
+            WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingPromiseLimitDay,
+            session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
     }
 
     // The ceremony time of the hall this marriage holds, 0 for none.
@@ -921,10 +936,17 @@ public sealed class MarriageManager {
         if (UnconfirmedReservation == null || reservationAskedBy == 0 || reservationAskedBy != Partner.CharacterId) {
             return WeddingError.s_wedding_result_err_invalid_wedding_hall;
         }
-        if (WeddingReservationRules.HoldsReservation(HeldTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
-            reservationAskedBy = 0;
-            UnconfirmedReservation = null;
-            return WeddingError.s_wedding_result_already_reservation;
+        // The reservation's tests are run again at the yes: the promise limit, the time limit or the hall's time may
+        // have passed, or the time been taken, while the box was open. A refused ask is gone.
+        WeddingError rule = WeddingReservationRules.CheckReserve(Marriage.Status, Marriage.CreationTime, HeldTime, UnconfirmedReservation.CeremonyTime,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingPromiseLimitDay,
+            session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
+        if (rule == WeddingError.none) {
+            ValidHallTime(UnconfirmedReservation.CeremonyTime, out rule);
+        }
+        if (rule != WeddingError.none) {
+            ClearReservationAsk();
+            return rule;
         }
 
         if (!session.TableMetadata.WeddingTable.Packages.TryGetValue(UnconfirmedReservation.PackageId, out WeddingPackage? package) ||
@@ -937,15 +959,14 @@ public sealed class MarriageManager {
         }
 
         WeddingHall reservation = UnconfirmedReservation;
-        if (!PayWeddingHall(partner, hallData, change: false, 0, db => db.CreateWeddingHall(reservation, Marriage),
+        if (!PayWeddingHall(partner, reservation.PackageId, hallData, reservationCouponUid, change: false, 0, db => db.CreateWeddingHall(reservation, Marriage),
                 out WeddingHall? weddingHall, out WeddingError payError)) {
             return payError;
         }
 
         // The ask is answered once the hall is stored (a second yes paid and stored the hall again); a hall that
         // was not stored can be confirmed again.
-        reservationAskedBy = 0;
-        UnconfirmedReservation = null;
+        ClearReservationAsk();
         WeddingHall = weddingHall;
         partner.Session.Marriage.WeddingHall = weddingHall;
 
@@ -958,20 +979,26 @@ public sealed class MarriageManager {
         return WeddingError.s_wedding_propose_ok;
     }
 
-    // The payer is the partner who sent the reservation, so the coupon is the one their ReserveHall picked. The
+    // The payer is the partner who sent the reservation, so the coupon is the one their ReserveHall picked; it must
+    // still be in the payer's bag, unexpired, and of the package's grade (it was only looked up by uid, so any coupon
+    // paid any grade and the cancel gave back a coupon of the hall's grade). The
     // payer's merets and the hall row (storeHall) are stored together under the payer's account lock, through the
     // payer's own session (TrySavePurchase), or not at all: a hall that is not stored takes no merets and no coupon
     // (the merets used to be taken from the payer's session and never stored, and kept when the hall failed). This
     // runs on the field thread, where both partners' wedding packets and the payer's other field packets run.
-    private bool PayWeddingHall(FieldPlayer partner, WeddingPackage.HallData hallData, bool change, long differenceCost,
+    private bool PayWeddingHall(FieldPlayer partner, int packageId, WeddingPackage.HallData hallData, long couponUid, bool change, long differenceCost,
                                 Func<GameStorage.Request, WeddingHall?> storeHall, [NotNullWhen(true)] out WeddingHall? stored, out WeddingError error) {
-        MarriageManager payer = partner.Session.Marriage;
-        long couponUid = change ? 0 : payer.couponItemUid;
+        if (change) {
+            couponUid = 0;
+        }
         (long cost, bool gifts) = WeddingHallPayRules.Pay(change, couponUid != 0, hallData.MeretCost, differenceCost);
         stored = null;
-        if (couponUid != 0 && partner.Session.Item.Inventory.Get(couponUid) == null) {
-            error = WeddingError.s_wedding_result_lack_coupon;
-            return false;
+        if (couponUid != 0) {
+            Item? coupon = partner.Session.Item.Inventory.Get(couponUid);
+            if (coupon == null || !WeddingHallPayRules.CouponFits(coupon.Metadata.Property.Tag, coupon.IsExpired(), packageId)) {
+                error = WeddingError.s_wedding_result_lack_coupon;
+                return false;
+            }
         }
         // The merets are checked and taken in one step before the save, so the save stores the paid balance; they are
         // shown (the Meret update, the merets spent) once the save is done, and given back when it fails. Before, the
@@ -1012,7 +1039,6 @@ public sealed class MarriageManager {
             if (!couponTaken) {
                 logger.Error("Wedding hall {HallId} stored, but its coupon {Uid} was not used up", hall.Id, couponUid);
             }
-            payer.couponItemUid = 0;
         }
 
         if (gifts) {
@@ -1070,8 +1096,7 @@ public sealed class MarriageManager {
     // 0x22), as the client's text for it says: the partner is not there, so the cancel can only be without a coupon.
     public void CancelReservationRequest() {
         if (session.Field is null) return;
-        WeddingError check = WeddingReservationRules.CheckEdit(Marriage.Status, WeddingHall.ReserverCharacterId, session.CharacterId,
-            WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
+        WeddingError check = CheckEdit(session.CharacterId);
         if (check != WeddingError.none) {
             session.Send(WeddingPacket.Error(check));
             return;
@@ -1082,15 +1107,16 @@ public sealed class MarriageManager {
             return;
         }
 
-        noRefundOffered = false;
+        noRefundHall = 0;
         fieldPartner.Session.Marriage.cancelAskedBy = session.CharacterId;
+        fieldPartner.Session.Marriage.cancelAskedHall = WeddingHall.Id;
         session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_send_wedding_hall_reservation_cancel));
         fieldPartner.Session.Send(WeddingPacket.RequestCancelReservation());
     }
 
     // The partner who reserved gets the no-refund box; only its answer (Wedding 0x11) cancels without a coupon.
     private void OfferNoRefund(WeddingError reason) {
-        noRefundOffered = true;
+        noRefundHall = WeddingHall.Id;
         session.Send(WeddingPacket.DeclinedCancelReservation(reason));
     }
 
@@ -1099,10 +1125,13 @@ public sealed class MarriageManager {
     // client has no text for it.
     public WeddingError CancelReservationReply(WeddingError response) {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
-        if (cancelAskedBy == 0 || cancelAskedBy != Partner.CharacterId) {
+        // An ask about a hall since cancelled or changed is not answered.
+        bool asked = cancelAskedBy != 0 && cancelAskedBy == Partner.CharacterId && cancelAskedHall != 0 && cancelAskedHall == WeddingHall.Id;
+        cancelAskedBy = 0;
+        cancelAskedHall = 0;
+        if (!asked) {
             return WeddingError.none;
         }
-        cancelAskedBy = 0;
         if (response != WeddingError.accept_reservation_cancel && response != WeddingError.decline_reservation_cancel) {
             return WeddingError.none;
         }
@@ -1115,8 +1144,7 @@ public sealed class MarriageManager {
             return WeddingError.none;
         }
         // The partner who asked is the one who reserved; the time limit may have passed while the box was open.
-        WeddingError check = WeddingReservationRules.CheckEdit(Marriage.Status, WeddingHall.ReserverCharacterId, Partner.CharacterId,
-            WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
+        WeddingError check = CheckEdit(Partner.CharacterId);
         if (check != WeddingError.none) {
             return check;
         }
@@ -1141,67 +1169,68 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_system;
         }
 
-        var mail = new Mail {
-            ReceiverId = Partner.CharacterId,
-            SenderId = Partner.CharacterId,
-            Type = MailType.System,
-            Content = 40000013.ToString(), // Specific ID in string/systemmailcontent[locale].xml
-        };
-
         using GameStorage.Request db = session.GameStorage.Context();
 
-        mail = db.CreateMail(mail);
-        if (mail == null) {
-            logger.Error("Failed to create mail for wedding hall cancellation for {CharacterId}", Partner.CharacterId);
-            return WeddingError.s_wedding_result_err_system;
-        }
-
-        coupon = db.CreateItem(mail.Id, coupon);
-        if (coupon == null) {
-            logger.Error("Failed to create coupon item for wedding hall cancellation for {CharacterId}", Partner.CharacterId);
-            return WeddingError.s_wedding_result_err_system;
-        }
-
-        mail.Items.Add(coupon);
-        try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = Partner.CharacterId,
-                MailId = mail.Id,
-            });
-        } catch { /* ignored */
-        }
-
-        // The guests are read and the row deleted under the row's lock.
-        Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(WeddingHall.Id);
+        // The row is deleted first, the guests read and the row deleted under the row's lock, and the coupon mailed
+        // only once it is gone: the coupon used to be mailed first and a failed delete only logged, so the couple
+        // kept the hall and the coupon. A hall that stays sends no 0x13 and mails nothing.
+        WeddingHall cancelled = WeddingHall;
+        Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(cancelled.Id);
         if (cancelGuests == null) {
-            logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
-        } else {
-            MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
+            logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, cancelled.Id);
+            return WeddingError.s_wedding_result_err_system;
         }
 
-        session.Send(WeddingPacket.AcceptCancelReservation());
-        fieldPartner.Session.Send(WeddingPacket.AcceptCancelReservation());
         WeddingHall = WeddingHall.Default;
         fieldPartner.Session.Marriage.WeddingHall = WeddingHall.Default;
+        session.Send(WeddingPacket.AcceptCancelReservation());
+        fieldPartner.Session.Send(WeddingPacket.AcceptCancelReservation());
+
+        MailCancelCoupon(db, cancelled, coupon);
+        MailGuests(db, cancelled, cancelGuests.Keys, WeddingGuestMail.Cancel);
 
         session.ConditionUpdate(ConditionType.wedding_hall_cancel);
         fieldPartner.Session.ConditionUpdate(ConditionType.wedding_hall_cancel);
         return WeddingError.none;
     }
 
+    // The coupon of the cancelled hall's grade (40000013) to the partner who reserved it. The hall is gone by now,
+    // so a mail that fails is logged with what it held.
+    private void MailCancelCoupon(GameStorage.Request db, WeddingHall cancelled, Item coupon) {
+        long receiverId = cancelled.ReserverCharacterId;
+        Mail? mail = db.CreateMail(new Mail {
+            ReceiverId = receiverId,
+            SenderId = receiverId,
+            Type = MailType.System,
+            Content = 40000013.ToString(), // Specific ID in string/systemmailcontent[locale].xml
+        });
+        Item? stored = mail == null ? null : db.CreateItem(mail.Id, coupon);
+        if (mail == null || stored == null) {
+            logger.Error("Wedding hall {HallId} cancelled, but its coupon {ItemId} was not mailed to {CharacterId}", cancelled.Id, coupon.Id, receiverId);
+            return;
+        }
+
+        mail.Items.Add(stored);
+        try {
+            session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = receiverId,
+                MailId = mail.Id,
+            });
+        } catch { /* ignored */
+        }
+    }
+
     // The answer to the no-refund box (Wedding 0x11: 9 yes, 10 no), only after the server opened it. Yes cancels
     // the hall without a coupon; the partner, when not in the field, is told through the world.
     public WeddingError CancelNoRefund(WeddingError response) {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
-        if (!noRefundOffered) {
+        // A box opened for a hall since cancelled or changed is not answered.
+        bool offered = noRefundHall != 0 && noRefundHall == WeddingHall.Id;
+        noRefundHall = 0;
+        if (!offered || response != WeddingError.accept_reservation_cancel) {
             return WeddingError.none;
         }
-        noRefundOffered = false;
-        if (response != WeddingError.accept_reservation_cancel) {
-            return WeddingError.none;
-        }
-        WeddingError check = WeddingReservationRules.CheckEdit(Marriage.Status, WeddingHall.ReserverCharacterId, session.CharacterId,
-            WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
+        WeddingError check = CheckEdit(session.CharacterId);
         if (check != WeddingError.none) {
             return check;
         }
@@ -1209,12 +1238,13 @@ public sealed class MarriageManager {
 
         using GameStorage.Request db = session.GameStorage.Context();
         // The guests are read and the row deleted under the row's lock.
+        // A hall that stays sends no 0x13 (a failed delete was only logged, and both were told it was cancelled).
         Dictionary<long, long>? cancelGuests = db.CancelWeddingHall(WeddingHall.Id);
         if (cancelGuests == null) {
             logger.Error("Failed to delete wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
-        } else {
-            MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
+            return WeddingError.s_wedding_result_err_system;
         }
+        MailGuests(db, WeddingHall, cancelGuests.Keys, WeddingGuestMail.Cancel);
 
         session.Send(WeddingPacket.AcceptCancelReservation());
         WeddingHall = WeddingHall.Default;
@@ -1259,8 +1289,7 @@ public sealed class MarriageManager {
         if (WeddingReservationRules.SameReservation(WeddingHall, hall)) {
             return WeddingError.s_wedding_result_already_same_reservation;
         }
-        WeddingError check = WeddingReservationRules.CheckEdit(Marriage.Status, WeddingHall.ReserverCharacterId, session.CharacterId,
-            WeddingHall.CeremonyTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.WeddingHallModifyLimitHour);
+        WeddingError check = CheckEdit(session.CharacterId);
         if (check != WeddingError.none) {
             return check;
         }
@@ -1279,9 +1308,11 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_same_field;
         }
 
-        UnconfirmedReservation = hall;
-        partnerPlayer.Session.Marriage.UnconfirmedReservation = hall;
+        // Only the asked partner keeps the change, apart from a 0x0D ask (the one who asked wrote it into their own
+        // reservation ask too), with the hall it changes.
+        partnerPlayer.Session.Marriage.changeReservation = hall;
         partnerPlayer.Session.Marriage.changeAskedBy = session.CharacterId;
+        partnerPlayer.Session.Marriage.changeAskedHall = WeddingHall.Id;
 
         partnerPlayer.Session.Send(WeddingPacket.ChangeReservationRequest(hall, cost));
         return WeddingError.s_wedding_result_send_wedding_hall_reservation_change;
@@ -1291,17 +1322,29 @@ public sealed class MarriageManager {
     // reader), so a no sends nothing.
     public WeddingError ChangeReservationReply(WeddingError response) {
         if (session.Field is null) return WeddingError.s_wedding_result_err_system;
-        if (changeAskedBy == 0 || changeAskedBy != Partner.CharacterId) {
-            return WeddingError.none;
-        }
+        // An ask about a hall since cancelled or changed is not answered.
+        WeddingHall? reservation = changeReservation;
+        bool asked = changeAskedBy != 0 && changeAskedBy == Partner.CharacterId && changeAskedHall != 0 && changeAskedHall == WeddingHall.Id;
         changeAskedBy = 0;
-        if (response != WeddingError.accept_reservation_change || UnconfirmedReservation == null) {
+        changeAskedHall = 0;
+        changeReservation = null;
+        if (!asked || response != WeddingError.accept_reservation_change || reservation == null) {
             return WeddingError.none;
         }
 
-        if (!session.TableMetadata.WeddingTable.Packages.TryGetValue(UnconfirmedReservation.PackageId, out WeddingPackage? package) ||
-            !package.Halls.TryGetValue(UnconfirmedReservation.PackageHallId, out WeddingPackage.HallData? hallData)) {
+        if (!session.TableMetadata.WeddingTable.Packages.TryGetValue(reservation.PackageId, out WeddingPackage? package) ||
+            !package.Halls.TryGetValue(reservation.PackageHallId, out WeddingPackage.HallData? hallData)) {
             return WeddingError.s_wedding_result_err_invalid_wedding_hall;
+        }
+
+        // The change's tests are run again at the yes, for the partner who asked: the limits may have passed, or the
+        // new time been taken, while the box was open.
+        WeddingError check = CheckEdit(Partner.CharacterId);
+        if (check == WeddingError.none && reservation.CeremonyTime != WeddingHall.CeremonyTime) {
+            ValidHallTime(reservation.CeremonyTime, out check);
+        }
+        if (check != WeddingError.none) {
+            return check;
         }
 
         if (!session.Field.TryGetPlayerById(Partner.CharacterId, out FieldPlayer? partner)) {
@@ -1319,8 +1362,7 @@ public sealed class MarriageManager {
         // The changed hall is stored as a new row that keeps the guests of the old one; the read of the
         // guests, the delete and the new row are one transaction under the old row's lock, the payment's.
         WeddingHall before = WeddingHall;
-        WeddingHall reservation = UnconfirmedReservation;
-        if (!PayWeddingHall(partner, hallData, change: true, differenceCost, db => db.ChangeWeddingHall(before.Id, reservation, Marriage),
+        if (!PayWeddingHall(partner, reservation.PackageId, hallData, 0, change: true, differenceCost, db => db.ChangeWeddingHall(before.Id, reservation, Marriage),
                 out WeddingHall? weddingHall, out WeddingError payError)) {
             return payError;
         }

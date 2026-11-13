@@ -236,4 +236,31 @@ public class WeddingReservationTests {
         Assert.That(proposer.Session.Marriage.ReserveHall(Reservation(proposer, Now + 86400)), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
         Assert.That(Modes(accepter), Is.EqualTo(new List<byte> { 0xd }));
     }
+
+    // The reservation's tests are run again at the yes: a time inside the limit hours by then (0x36), or a promise
+    // limit passed while the box was open (0x29), stores and pays nothing, and the ask is gone.
+    [Test]
+    public void Confirm_InsideTheModifyLimitHoursByThen_Is0x36() {
+        Assume.That(proposer.Session.Marriage.ReserveHall(Reservation(proposer, Now + 86400)), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        accepter.Session.Marriage.UnconfirmedReservation!.CeremonyTime = Now + 3600;
+
+        Assert.That(accepter.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_result_early_wedding_reserve));
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(0));
+            Assert.That(proposer.Session.Currency.Meret, Is.EqualTo(1000));
+            Assert.That(accepter.Session.Marriage.UnconfirmedReservation, Is.Null);
+        });
+    }
+
+    [Test]
+    public void Confirm_AfterThePromiseLimitByThen_Is0x29() {
+        Assume.That(proposer.Session.Marriage.ReserveHall(Reservation(proposer, Now + 86400)), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        accepter.Session.Marriage.Marriage.CreationTime = Now - 8 * 86400L;
+
+        Assert.That(accepter.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_result_late_promise_time));
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(0));
+            Assert.That(proposer.Session.Currency.Meret, Is.EqualTo(1000));
+        });
+    }
 }

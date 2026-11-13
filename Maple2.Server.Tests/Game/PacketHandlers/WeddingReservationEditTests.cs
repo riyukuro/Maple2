@@ -18,9 +18,11 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // The cancel (Wedding 0x10, 0x12, 0x11) and the change (0x14, 0x15) of a reserved hall, as the client's
 // WeddingManager reads them: the asked partner's answer counts only when asked, a declined or partner-less cancel
 // opens the reserver's no-refund box (0x11 with reason 10 or 0x22), 0x13 has no body, and nothing is sent for a
-// declined change or to the partner who declined a cancel (the client has no reader for 0x12 or 0x15). The hall's
-// delete and change lock the row (SELECT ... FOR UPDATE), which the in-memory store cannot run: the stored rows are
-// checked on MySQL only (MS2_TEST_GAME_DB).
+// declined change or to the partner who declined a cancel (the client has no reader for 0x12 or 0x15). An answer
+// counts only for the hall it was asked about, the tests are run again at the yes, a cancel whose delete fails mails
+// no coupon and sends no 0x13, and the promise limit (0x29) is tested first, as the client's CheckBase. The hall's
+// change locks the row (SELECT ... FOR UPDATE), which the in-memory store cannot run: it is stored on MySQL only
+// (MS2_TEST_GAME_DB).
 [TestFixture(false)]
 [TestFixture(true)]
 public class WeddingReservationEditTests(bool mysql) {
@@ -31,23 +33,26 @@ public class WeddingReservationEditTests(bool mysql) {
     private TestGameSession confirmer = null!;
     private DbContextOptions options = null!;
     private readonly WeddingHandler handler = new();
+    private readonly HallDeleteFault fault = new();
     private int mailsBefore;
 
     private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
     [SetUp]
     public void SetUp() {
+        fault.Fail = false;
         if (mysql) {
             if (Connection == null) {
                 Assert.Ignore("the hall's row lock is MySQL's: set MS2_TEST_GAME_DB");
             }
-            options = new DbContextOptionsBuilder().UseMySql(Connection, ServerVersion.AutoDetect(Connection)).Options;
+            options = new DbContextOptionsBuilder().UseMySql(Connection, ServerVersion.AutoDetect(Connection)).AddInterceptors(fault).Options;
             using var context = new Ms2Context(options);
             context.Database.EnsureCreated();
         } else {
             options = new DbContextOptionsBuilder()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .AddInterceptors(fault)
                 .Options;
         }
         payer = new TestGameSession(options, Gender.Male);
@@ -103,6 +108,7 @@ public class WeddingReservationEditTests(bool mysql) {
 
     [TearDown]
     public void TearDown() {
+        fault.Fail = false;
         if (!mysql || Connection == null || payer == null) {
             return;
         }
@@ -114,6 +120,19 @@ public class WeddingReservationEditTests(bool mysql) {
         context.Mail.Where(mail => characters.Contains(mail.ReceiverId)).ExecuteDelete();
         context.Item.Where(item => characters.Contains(item.OwnerId)).ExecuteDelete();
         context.Buddy.Where(buddy => characters.Contains(buddy.OwnerId)).ExecuteDelete();
+    }
+
+    // A save that deletes a hall row fails, as a database that refuses it would.
+    private sealed class HallDeleteFault : SaveChangesInterceptor {
+        public bool Fail;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.WeddingHall>()
+                    .Any(entry => entry.State == EntityState.Deleted)) {
+                throw new DbUpdateException("The test made this save fail");
+            }
+            return result;
+        }
     }
 
     private WeddingHall Reservation(long ceremonyTime, int hallId = 1) => new() {
@@ -145,11 +164,7 @@ public class WeddingReservationEditTests(bool mysql) {
 
     private static byte[] Short(short value) => BitConverter.GetBytes(value);
 
-    // The stored halls: on the in-memory store the row's lock fails, so the delete is not run there.
-    private int StoredHalls(int inMemory) {
-        if (!mysql) {
-            return inMemory;
-        }
+    private int StoredHalls() {
         using var context = new Ms2Context(options);
         long marriageId = payer.Session.Marriage.Marriage.Id;
         return context.WeddingHall.Count(hall => hall.MarriageId == marriageId);
@@ -164,6 +179,21 @@ public class WeddingReservationEditTests(bool mysql) {
         Assume.That(payer.Session.Field!.Players.TryRemove(1002, out _), Is.True);
     }
 
+    // The hall cancelled and another one reserved, as between an ask and its answer.
+    private long ReplaceHall() {
+        using (GameStorage.Request db = payer.Storage.Context()) {
+            Assume.That(db.CancelWeddingHall(payer.Session.Marriage.WeddingHall.Id), Is.Not.Null);
+        }
+        WeddingHall? next;
+        using (GameStorage.Request db = payer.Storage.Context()) {
+            next = db.CreateWeddingHall(Reservation(Now + 2 * 86400), payer.Session.Marriage.Marriage);
+        }
+        Assume.That(next, Is.Not.Null);
+        payer.Session.Marriage.WeddingHall = next!;
+        confirmer.Session.Marriage.WeddingHall = next!;
+        return next!.Id;
+    }
+
     private void SetCeremony(long time) {
         payer.Session.Marriage.WeddingHall.CeremonyTime = time;
         confirmer.Session.Marriage.WeddingHall.CeremonyTime = time;
@@ -175,12 +205,12 @@ public class WeddingReservationEditTests(bool mysql) {
         Send(payer, 0x10);
 
         Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (0x11, Short(0x22)) }));
-        Assert.That(StoredHalls(1), Is.EqualTo(1));
+        Assert.That(StoredHalls(), Is.EqualTo(1));
 
         Send(payer, 0x11, 9);
         Assert.Multiple(() => {
             Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (0x13, Array.Empty<byte>()) }));
-            Assert.That(StoredHalls(0), Is.EqualTo(0));
+            Assert.That(StoredHalls(), Is.EqualTo(0));
             Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.EqualTo(0));
             Assert.That(payer.World.MarriageRequests.Single().ReceiverId, Is.EqualTo(confirmer.CharacterId));
             Assert.That(payer.World.MarriageRequests.Single().RemoveWeddingHall, Is.Not.Null);
@@ -203,7 +233,7 @@ public class WeddingReservationEditTests(bool mysql) {
         Send(payer, 0x11, 10);
         Assert.Multiple(() => {
             Assert.That(Wedding(payer), Is.Empty);
-            Assert.That(StoredHalls(1), Is.EqualTo(1));
+            Assert.That(StoredHalls(), Is.EqualTo(1));
         });
     }
 
@@ -217,7 +247,7 @@ public class WeddingReservationEditTests(bool mysql) {
         Assert.Multiple(() => {
             Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (0x13, Array.Empty<byte>()) }));
             Assert.That(Wedding(confirmer), Is.EqualTo(new List<(byte, byte[])> { (0x13, Array.Empty<byte>()) }));
-            Assert.That(StoredHalls(0), Is.EqualTo(0));
+            Assert.That(StoredHalls(), Is.EqualTo(0));
             Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(1));
         });
     }
@@ -228,7 +258,7 @@ public class WeddingReservationEditTests(bool mysql) {
         Send(confirmer, 0x12, 9);
         Send(payer, 0x11, 9);
         Assert.Multiple(() => {
-            Assert.That(StoredHalls(1), Is.EqualTo(1));
+            Assert.That(StoredHalls(), Is.EqualTo(1));
             Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(0));
             Assert.That(Wedding(payer), Is.Empty);
             Assert.That(Wedding(confirmer), Is.Empty);
@@ -302,5 +332,142 @@ public class WeddingReservationEditTests(bool mysql) {
         // A second answer is not asked for.
         Send(confirmer, 0x15, 0xb);
         Assert.That(Wedding(payer), Is.Empty);
+    }
+
+    // The hall is deleted before the coupon is mailed: a delete that fails mails no coupon, keeps the hall on both
+    // and sends no 0x13 (the coupon was mailed first and the failed delete only logged).
+    [Test]
+    public void Cancel_DeleteFails_MailsNoCouponAndKeepsTheHall() {
+        Send(payer, 0x10);
+        payer.TakeSent();
+        confirmer.TakeSent();
+        fault.Fail = true;
+
+        Send(confirmer, 0x12, 9);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(confirmer), Is.EqualTo(new List<(byte, byte[])> { (2, [unchecked((byte) WeddingError.s_wedding_result_err_system)]) }));
+            Assert.That(Wedding(payer), Is.Empty);
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(Mails(payer.CharacterId) - mailsBefore, Is.EqualTo(0));
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
+            Assert.That(confirmer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void CancelNoRefund_DeleteFails_KeepsTheHall() {
+        PartnerLeaves();
+        Send(payer, 0x10);
+        payer.TakeSent();
+        fault.Fail = true;
+
+        Send(payer, 0x11, 9);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (2, [unchecked((byte) WeddingError.s_wedding_result_err_system)]) }));
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
+            Assert.That(payer.World.MarriageRequests, Is.Empty);
+        });
+    }
+
+    // The client's CheckBase tests the promise limit before the cancel's and the change's own tests.
+    [Test]
+    public void Cancel_AfterThePromiseLimit_Is0x29() {
+        payer.Session.Marriage.Marriage.CreationTime = Now - 8 * 86400L;
+        Send(payer, 0x10);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (2, [0x29]) }));
+            Assert.That(Wedding(confirmer), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Change_AfterThePromiseLimit_Is0x29() {
+        payer.Session.Marriage.Marriage.CreationTime = Now - 8 * 86400L;
+        WeddingHall current = payer.Session.Marriage.WeddingHall;
+        Assert.That(payer.Session.Marriage.ChangeReservationRequest(Reservation(current.CeremonyTime, hallId: 2)),
+            Is.EqualTo(WeddingError.s_wedding_result_late_promise_time));
+    }
+
+    // An answer counts only for the hall it was asked about: the yes to a cancel asked about a hall since replaced
+    // deleted the new hall and mailed a coupon.
+    [Test]
+    public void Cancel_AskedAboutAReplacedHall_IsIgnored() {
+        Send(payer, 0x10);
+        long next = ReplaceHall();
+        payer.TakeSent();
+        confirmer.TakeSent();
+        int mails = Mails(payer.CharacterId);
+
+        Send(confirmer, 0x12, 9);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(payer), Is.Empty);
+            Assert.That(Wedding(confirmer), Is.Empty);
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.EqualTo(next));
+            Assert.That(Mails(payer.CharacterId), Is.EqualTo(mails));
+        });
+    }
+
+    [Test]
+    public void NoRefund_OpenedForAReplacedHall_IsIgnored() {
+        PartnerLeaves();
+        Send(payer, 0x10);
+        long next = ReplaceHall();
+        payer.TakeSent();
+
+        Send(payer, 0x11, 9);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(payer), Is.Empty);
+            Assert.That(StoredHalls(), Is.EqualTo(1));
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.EqualTo(next));
+        });
+    }
+
+    [Test]
+    public void Change_AskedAboutAReplacedHall_IsIgnored() {
+        WeddingHall current = payer.Session.Marriage.WeddingHall;
+        Assume.That(payer.Session.Marriage.ChangeReservationRequest(Reservation(current.CeremonyTime, hallId: 2)),
+            Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation_change));
+        long next = ReplaceHall();
+        payer.TakeSent();
+        confirmer.TakeSent();
+
+        Send(confirmer, 0x15, 0xb);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(payer), Is.Empty);
+            Assert.That(Wedding(confirmer), Is.Empty);
+            Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.EqualTo(next));
+            Assert.That(payer.Session.Marriage.WeddingHall.PackageHallId, Is.EqualTo(1));
+        });
+    }
+
+    // The change's tests are run again at the yes: the limit hours reached while the box was open refuse it (0x2a).
+    [Test]
+    public void Change_YesInsideTheLimitHours_Refused() {
+        WeddingHall current = payer.Session.Marriage.WeddingHall;
+        Assume.That(payer.Session.Marriage.ChangeReservationRequest(Reservation(current.CeremonyTime, hallId: 2)),
+            Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation_change));
+        confirmer.TakeSent();
+        SetCeremony(Now + 2 * 3600);
+
+        Send(confirmer, 0x15, 0xb);
+        Assert.Multiple(() => {
+            Assert.That(Wedding(confirmer), Is.EqualTo(new List<(byte, byte[])> { (2, [0x2a]) }));
+            Assert.That(Wedding(payer), Is.Empty);
+            Assert.That(payer.Session.Marriage.WeddingHall.PackageHallId, Is.EqualTo(1));
+        });
+    }
+
+    // Only the asked partner keeps the change: the one who asked wrote it into their own 0x0D ask field too.
+    [Test]
+    public void Change_LeavesTheRequestersReservationAskAlone() {
+        WeddingHall current = payer.Session.Marriage.WeddingHall;
+        Assume.That(payer.Session.Marriage.ChangeReservationRequest(Reservation(current.CeremonyTime, hallId: 2)),
+            Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation_change));
+        Assert.Multiple(() => {
+            Assert.That(payer.Session.Marriage.UnconfirmedReservation, Is.Null);
+            Assert.That(confirmer.Session.Marriage.UnconfirmedReservation, Is.Null);
+        });
     }
 }

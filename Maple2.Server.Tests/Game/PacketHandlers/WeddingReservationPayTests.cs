@@ -9,6 +9,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -25,12 +26,14 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class WeddingReservationPayTests(bool mysql) {
     private static readonly string? Connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
     private const int CouponId = 20300999;
+    private const int Grade3CouponId = 20300998;
     private const int Cost = 300;
 
     private TestGameSession payer = null!;
     private TestGameSession confirmer = null!;
     private DbContextOptions options = null!;
     private readonly HallFault fault = new();
+    private Item grade3Coupon = null!;
     private readonly WeddingHandler handler = new();
 
     [SetUp]
@@ -58,9 +61,14 @@ public class WeddingReservationPayTests(bool mysql) {
         confirmer.Register(TestGameSession.Metadata(Constant.ProposalItemId));
         ItemMetadata coupon = TestGameSession.Metadata(CouponId);
         payer.Store(coupon with { Property = coupon.Property with { Tag = ItemTag.WeddingHallCoupon_Grade1 } });
+        ItemMetadata grade3 = TestGameSession.Metadata(Grade3CouponId);
+        grade3Coupon = payer.Store(grade3 with { Property = grade3.Property with { Tag = ItemTag.WeddingHallCoupon_Grade3 } });
         var hall = new WeddingPackage.HallData(1, 2000023, 2000023, 1, Cost, [], []);
         var table = new WeddingTable(new Dictionary<MarriageExpType, WeddingReward>(),
-            new Dictionary<int, WeddingPackage> { [1] = new WeddingPackage(1, 0, new Dictionary<int, WeddingPackage.HallData> { [1] = hall }) });
+            new Dictionary<int, WeddingPackage> {
+                [1] = new WeddingPackage(1, 0, new Dictionary<int, WeddingPackage.HallData> { [1] = hall }),
+                [3] = new WeddingPackage(3, 0, new Dictionary<int, WeddingPackage.HallData> { [1] = hall }),
+            });
         foreach (TestGameSession test in new[] { payer, confirmer }) {
             test.World.AddPlayer(payer.AccountId, payer.CharacterId, "payer");
             test.World.AddPlayer(confirmer.AccountId, confirmer.CharacterId, "confirmer");
@@ -122,10 +130,10 @@ public class WeddingReservationPayTests(bool mysql) {
         }
     }
 
-    private WeddingHall Reservation() => new() {
+    private WeddingHall Reservation(int packageId = 1) => new() {
         Id = 0,
         MarriageId = payer.Session.Marriage.Marriage.Id,
-        PackageId = 1,
+        PackageId = packageId,
         PackageHallId = 1,
         ReserverAccountId = payer.AccountId,
         ReserverCharacterId = payer.CharacterId,
@@ -256,6 +264,40 @@ public class WeddingReservationPayTests(bool mysql) {
             Assert.That(StoredCoupons(), Is.EqualTo(0));
             Assert.That((payer.Session.Currency.Meret, StoredMeret()), Is.EqualTo((1000L, 1000L)));
             Assert.That(StoredHalls(), Is.EqualTo(1));
+        });
+    }
+
+    // A reservation refused because the partner is away (0x22) leaves nothing behind: the coupon it picked used
+    // to be kept on the one who reserved and paid the ask still open instead of its merets.
+    [Test]
+    public void Coupon_PickedByAReservationWithoutThePartner_IsNotUsed() {
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation()), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        Assume.That(payer.Session.Field!.Players.TryRemove(1002, out FieldPlayer? away), Is.True);
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation(), useCoupon: true), Is.EqualTo(WeddingError.s_wedding_result_err_same_field));
+        payer.Session.Field.Players[1002] = away!;
+
+        Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_propose_ok));
+        Assert.Multiple(() => {
+            Assert.That(Coupons(), Is.EqualTo(1));
+            Assert.That(payer.Session.Currency.Meret, Is.EqualTo(1000 - Cost));
+        });
+    }
+
+    // The coupon is checked against the hall's grade when the hall is paid. A grade-3 ask whose coupon is gone was
+    // paid with the grade-1 coupon a later reservation picked (and its cancel mailed back a grade-3 coupon).
+    [Test]
+    public void Coupon_OfAnotherGrade_DoesNotPayTheHall() {
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation(packageId: 3), useCoupon: true), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        Assume.That(payer.Session.Item.Inventory.Consume(grade3Coupon.Uid, 1), Is.True);
+        Assume.That(payer.Session.Field!.Players.TryRemove(1002, out FieldPlayer? away), Is.True);
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation(), useCoupon: true), Is.EqualTo(WeddingError.s_wedding_result_err_same_field));
+        payer.Session.Field.Players[1002] = away!;
+
+        Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_result_lack_coupon));
+        Assert.Multiple(() => {
+            Assert.That(StoredHalls(), Is.EqualTo(0));
+            Assert.That(Coupons(), Is.EqualTo(1));
+            Assert.That(payer.Session.Currency.Meret, Is.EqualTo(1000));
         });
     }
 }
