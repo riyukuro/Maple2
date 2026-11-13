@@ -598,8 +598,12 @@ public class GuildManager : IDisposable {
                 return GuildError.s_guild_err_unknown;
             }
 
-            // The channel's rolls (ItemRolls); without them (or unreadable) the item is mailed bare.
-            var gifted = new Item(metadata, rarity, amount);
+            // The channel's rolls (ItemRolls); without them (or unreadable) the item is mailed bare. A stored rarity
+            // of 0 or below is mailed at the rarity the channel rolled it at (ItemDropManager.CreateItem): the
+            // option's constant id 1-6, else 1. The storage keeps its own key.
+            int mailedRarity = rarity > 0 ? rarity
+                : metadata.Option is { ConstantId: > 0 and < 7 } ? metadata.Option.ConstantId : 1;
+            var gifted = new Item(metadata, mailedRarity, amount);
             ItemRolls.Apply(gifted, rolls);
 
             GuildStorageLog[] oldLog = Guild.StorageLogSnapshot();
@@ -827,14 +831,30 @@ public class GuildManager : IDisposable {
     // change. A false answer of the store wrote nothing. A thrown one can come after the commit went through (its
     // answer lost): then the row is read back, and the change counts as saved when the stored row holds it, so the
     // caller does not undo what the database keeps. Without landed, or when the row cannot be read, false.
+    // A read-back proves a change only while the row held everything else of the memory: after a save that failed
+    // and was kept (a check-in, a quest's exp and fund), a stored row can match the memory's new fund by chance. Then
+    // the read-back is not trusted until a save goes through.
     private bool TrySave(Func<Guild, bool>? landed = null) {
         try {
             using GameStorage.Request db = GameStorage.Context();
-            return db.SaveGuild(Guild);
+            bool saved = db.SaveGuild(Guild);
+            if (saved) {
+                rowBehind = false;
+            } else if (landed == null) {
+                rowBehind = true;
+            }
+            return saved;
         } catch (Exception) {
-            return landed != null && StoredRowHolds(landed);
+            if (landed == null) {
+                rowBehind = true;
+                return false;
+            }
+            return !rowBehind && StoredRowHolds(landed);
         }
     }
+
+    // Set by a failed save whose change the memory kept; under guildLock as every save.
+    private bool rowBehind;
 
     private bool StoredRowHolds(Func<Guild, bool> landed) {
         try {
