@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -118,6 +120,63 @@ public class ChangeAttributesScrollValueTests {
         Assert.Multiple(() => {
             Assert.That(ChangeAttributesHandler.IsValidItem(new Item(open, rarity: 4)), Is.True);
             Assert.That(ChangeAttributesHandler.IsValidItem(new Item(data, rarity: 4)), Is.False);
+        });
+    }
+    private static Item Rolled(int id, params BasicAttribute[] basics) {
+        var random = new Dictionary<BasicAttribute, BasicOption>();
+        foreach (BasicAttribute basic in basics) {
+            random[basic] = new BasicOption(1);
+        }
+        var groups = new Dictionary<BasicAttribute, BasicOption>[5];
+        groups[(int) ItemStats.Type.Random] = random;
+        return new Item(TestGameSession.Metadata(id), rarity: 4) {
+            Stats = new ItemStats(groups.Select(group => group ?? new Dictionary<BasicAttribute, BasicOption>()).ToArray(),
+                Enumerable.Range(0, 5).Select(_ => new Dictionary<SpecialAttribute, SpecialOption>()).ToArray()),
+        };
+    }
+
+    private static Item WithOption(int id, int rarity, int constantId) =>
+        new(TestGameSession.Metadata(id) with {
+            Option = new ItemMetadataOption(0, default, 61000019, default, constantId, default, 0, 0),
+        }, rarity: rarity);
+
+    // The table the option check reads is the client's (FUN_14053eff0, itemdata.cpp:1633): a pet's by its rarity, none
+    // for rarity 1 or without a constant option, any other item's own RandomId. Before, a pet's RandomId (61000019) was
+    // read at every rarity.
+    [Test]
+    public void RandomTable_PetsByRarity() {
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(61000001, 2, 1)), Is.EqualTo(61000001));
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(61000001, 3, 1)), Is.EqualTo(61000002));
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(61000001, 4, 1)), Is.EqualTo(61000003));
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(61000001, 6, 1)), Is.EqualTo(61000004));
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(61000001, 1, 1)), Is.Zero);
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(61000001, 3, 0)), Is.Zero);
+            Assert.That(ChangeAttributesScrollHandler.RandomTableId(WithOption(11200001, 4, 0)), Is.EqualTo(61000019));
+        });
+    }
+
+    private static readonly ItemOption Table = new(1f, new ItemOption.Range<int>(1, 4), [
+        new ItemOption.Entry(BasicAttribute.Strength), new ItemOption.Entry(BasicAttribute.Dexterity),
+        new ItemOption.Entry(BasicAttribute.Health), new ItemOption.Entry(BasicAttribute.Defense),
+    ]);
+
+    // The last check of the client's test (itemremakescrolldata.cpp:320-353), error 3 for each: no random options, an
+    // option outside the item's random table, no table, and an armor with two exclusive options (FUN_1405f78f0);
+    // an accessory may hold both. Before, none of these was checked.
+    [Test]
+    public void OptionTable_InvalidTargetStat() {
+        const ChangeAttributesScrollError stat = ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesScrollHandler.OptionsFit(Rolled(11400001, BasicAttribute.Strength, BasicAttribute.Health), Table),
+                Is.EqualTo(ChangeAttributesScrollError.none));
+            Assert.That(ChangeAttributesScrollHandler.OptionsFit(Rolled(11400001), Table), Is.EqualTo(stat));
+            Assert.That(ChangeAttributesScrollHandler.OptionsFit(Rolled(11400001, BasicAttribute.Luck), Table), Is.EqualTo(stat));
+            Assert.That(ChangeAttributesScrollHandler.OptionsFit(Rolled(11400001, BasicAttribute.Health), null), Is.EqualTo(stat));
+            Assert.That(ChangeAttributesScrollHandler.OptionsFit(Rolled(11400001, BasicAttribute.Strength, BasicAttribute.Dexterity), Table),
+                Is.EqualTo(stat));
+            Assert.That(ChangeAttributesScrollHandler.OptionsFit(Rolled(11200001, BasicAttribute.Strength, BasicAttribute.Dexterity), Table),
+                Is.EqualTo(ChangeAttributesScrollError.none));
         });
     }
 }

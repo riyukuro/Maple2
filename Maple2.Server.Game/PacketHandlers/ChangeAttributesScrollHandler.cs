@@ -10,6 +10,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -64,11 +65,6 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_data, itemUid);
                 return;
             }
-            if (item.Stats == null) {
-                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat, itemUid);
-                return;
-            }
-
             ChangeAttributesScrollError error = IsCompatibleScroll(item, scroll, out ItemRemakeScrollMetadata? itemRemakeScrollMetadata);
             if (error is not ChangeAttributesScrollError.none || itemRemakeScrollMetadata is null) {
                 Refuse(session, error, itemUid);
@@ -206,10 +202,77 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         if (!TableMetadata.ItemRemakeScrollTable.Entries.TryGetValue(remakeId, out metadata)) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;
         }
-        return ScrollFits(item, metadata);
+        ChangeAttributesScrollError error = ScrollFits(item, metadata);
+        if (error != ChangeAttributesScrollError.none) {
+            return error;
+        }
+        ItemOption? random = null;
+        if (item.Metadata.Option != null) {
+            // Chosen here: a table the data lacks (KR has no 61000003 or 61000004) falls back to the item's RandomId.
+            if (!TableMetadata.ItemOptionRandomTable.Options.TryGetValue(RandomTableId(item), item.Rarity, out random)) {
+                TableMetadata.ItemOptionRandomTable.Options.TryGetValue(item.Metadata.Option.RandomId, item.Rarity, out random);
+            }
+        }
+        return OptionsFit(item, random);
     }
 
-    // The checks of the scroll's row, the client's whole test (FUN_140616170, itemremakescrolldata.cpp:283-355), in its
+    // The random table the client's test reads (CItemData::FUN_14053eff0, itemdata.cpp:1633): a pet's by its rarity
+    // (2 to 61000001, 3 to 61000002, 4 to 61000003, 5 and 6 to 61000004; none for another rarity or a pet without
+    // a constant option), any other item's own RandomId. The KR data has no 61000003 or 61000004; the caller then
+    // falls back to the item's RandomId.
+    internal static int RandomTableId(Item item) {
+        if (item.Metadata.Option == null) {
+            return 0;
+        }
+        if (!item.Type.IsPet) {
+            return item.Metadata.Option.RandomId;
+        }
+        if (item.Metadata.Option.ConstantId == 0) {
+            return 0;
+        }
+        return item.Rarity switch {
+            2 => 61000001,
+            3 => 61000002,
+            4 => 61000003,
+            5 or 6 => 61000004,
+            _ => 0,
+        };
+    }
+
+    // The armor's exclusive options (CItemOptionTable::FUN_1405f78f0, commonfiles/itemoptiondata_3.cpp:817-853): the
+    // stats and special stats of which an armor's random options may hold one.
+    private static readonly BasicAttribute[] ExclusiveBasics = [
+        BasicAttribute.PhysicalAtk, BasicAttribute.MagicalAtk, BasicAttribute.Strength, BasicAttribute.Intelligence,
+        BasicAttribute.Luck, BasicAttribute.Dexterity, BasicAttribute.Accuracy, BasicAttribute.AttackSpeed, BasicAttribute.Piercing,
+    ];
+    private static readonly SpecialAttribute[] ExclusiveSpecials = [
+        SpecialAttribute.MagicalPiercing, SpecialAttribute.PhysicalPiercing, SpecialAttribute.NormalNpcDamage,
+        SpecialAttribute.EliteNpcDamage, SpecialAttribute.BossNpcDamage, SpecialAttribute.ReduceCooldown,
+    ];
+
+    // The last check of the client's test (FUN_140616170, itemremakescrolldata.cpp:320-353), after the row's: the item's
+    // random options must not be empty, every one must be in the random option table of the item and its rarity, and an
+    // armor (FUN_14053d600) may hold at most one exclusive option; else 3. The table is the client's (RandomTableId) at
+    // the item's rarity. An item without a table is refused (chosen here: the client reads the table unchecked).
+    internal static ChangeAttributesScrollError OptionsFit(Item item, ItemOption? random) {
+        if (item.Stats == null || random == null) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
+        }
+        ItemStats.Option option = item.Stats[ItemStats.Type.Random];
+        if (option.Basic.Count == 0 && option.Special.Count == 0) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
+        }
+        if (option.Basic.Keys.Any(basic => !random.Entries.Any(entry => entry.BasicAttribute == basic))
+            || option.Special.Keys.Any(special => !random.Entries.Any(entry => entry.SpecialAttribute == special))) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
+        }
+        if (item.Type.IsArmor && option.Basic.Keys.Count(ExclusiveBasics.Contains) + option.Special.Keys.Count(ExclusiveSpecials.Contains) > 1) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
+        }
+        return ChangeAttributesScrollError.none;
+    }
+
+    // The checks of the scroll's row, the client's test up to the option table (FUN_140616170, itemremakescrolldata.cpp:283-319; OptionsFit does the rest), in its
     // order and with its codes: an item with remakeDisable (7); no options (3); a row with an item list takes only those
     // ids (8), else a pet row (onlyPet) takes any pet (1) and another row the item types of its slot list (4); then the row's rarities (5), its levels (6) and its option value (addOpValue 0: 11). The row alone
     // decides: before, the attribute dialog's own gate (rarity 4 to 6, level 50, weapon, armor, accessory or pet) came
