@@ -7,6 +7,36 @@ public partial class Trigger {
         States = states ?? [];
     }
 
+    // The combine spawn groups this script starts (start_combine_spawn with is_start) in any state: on enter, on
+    // exit or under a condition.
+    public IEnumerable<int> StartedCombineSpawnGroups() {
+        foreach (State state in States) {
+            IEnumerable<IAction> actions = (state.Enter?.Actions ?? Enumerable.Empty<IAction>())
+                .Concat(state.Exit?.Actions ?? Enumerable.Empty<IAction>())
+                .Concat(ConditionActions(state.Conditions));
+            foreach (IAction action in actions) {
+                if (action is StartCombineSpawn { IsStart: true } start) {
+                    foreach (int groupId in start.GroupIds) {
+                        yield return groupId;
+                    }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<IAction> ConditionActions(IEnumerable<ICondition> conditions) {
+        foreach (ICondition condition in conditions) {
+            foreach (IAction action in condition.Actions) {
+                yield return action;
+            }
+            if (condition is IGroupCondition group) {
+                foreach (IAction action in ConditionActions(group.Conditions)) {
+                    yield return action;
+                }
+            }
+        }
+    }
+
     public class State {
         public string Name { get; }
 

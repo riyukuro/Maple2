@@ -76,49 +76,16 @@ public class FieldSpawnGroup : FieldEntity<SpawnGroupMetadata> {
     }
 
     private void SpawnNpcs() {
-        var removedSpawnIds = new List<int>();
-        foreach (int spawnId in spawnIds) {
-            if (!Field.GetActorsBySpawnId(spawnId).Any()) {
-                removedSpawnIds.Add(spawnId);
-            }
-        }
-
-        foreach (int spawnId in removedSpawnIds) {
-            spawnIds.Remove(spawnId);
-        }
-
         int totalCount = SpawnGroupRules.TotalCount(Value.TotalCount, npcs.Select(entry => entry.Item1.SpawnId));
-        while (spawnIds.Count < totalCount) {
-            SpawnNpcMetadata npc = npcs.Get();
-            if (spawnIds.Contains(npc.SpawnId)) {
-                continue;
-            }
-            Field.ToggleNpcSpawnPoint(npc.SpawnId);
-            spawnIds.Add(npc.SpawnId);
-        }
+        SpawnGroupRules.Refill(spawnIds, spawnId => Field.GetActorsBySpawnId(spawnId).Any(), totalCount,
+            () => npcs.Get().SpawnId, Field.ToggleNpcSpawnPoint);
     }
 
     private void SpawnInteractObjects() {
-        var removedSpawnIds = new List<int>();
-        foreach (int spawnId in spawnIds) {
-            if (!Field.GetInteractObjectsBySpawnId(spawnId).Any()) {
-                removedSpawnIds.Add(spawnId);
-            }
-        }
-
-        foreach (int spawnId in removedSpawnIds) {
-            spawnIds.Remove(spawnId);
-        }
-
         int totalCount = SpawnGroupRules.TotalCount(Value.TotalCount, interactObjects.Select(entry => entry.Item1.RegionSpawnId));
-        while (spawnIds.Count < totalCount) {
-            SpawnInteractObjectMetadata interactObject = interactObjects.Get();
-            if (spawnIds.Contains(interactObject.RegionSpawnId)) {
-                continue;
-            }
-            Field.SpawnInteractObject(interactObject);
-            spawnIds.Add(interactObject.RegionSpawnId);
-        }
+        SpawnInteractObjectMetadata? picked = null;
+        SpawnGroupRules.Refill(spawnIds, spawnId => Field.GetInteractObjectsBySpawnId(spawnId).Any(), totalCount,
+            () => (picked = interactObjects.Get()).RegionSpawnId, _ => Field.SpawnInteractObject(picked!));
     }
 
     public override void Update(long tickCount) {

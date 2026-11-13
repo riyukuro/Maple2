@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Model;
@@ -12,14 +13,19 @@ public class FieldSpawnPointNpc : FieldEntity<SpawnPointNPC> {
 
     private long checkTick;
 
-    public FieldSpawnPointNpc(FieldManager field, int objectId, SpawnPointNPC metadata) : base(field, objectId, metadata) {
-        if (metadata.RegenCheckTime > 0) {
-            active = true;
-        }
+    // Named by a combine spawn group of this field (CombineSpawnRules.GroupSpawnIds): the point spawns only when the
+    // group picks it (start_combine_spawn, then each group reset), not at field creation or on its own regen.
+    // Chosen here: the group's totalCount is how many of its points are up, so a point that filled itself would
+    // put up every point of the map at once (82000000: all 1188 at the first field update).
+    public bool GroupSpawned { get; }
+
+    public FieldSpawnPointNpc(FieldManager field, int objectId, SpawnPointNPC metadata, bool groupSpawned = false) : base(field, objectId, metadata) {
+        GroupSpawned = groupSpawned;
+        active = SpawnGroupRules.SelfFills(metadata, groupSpawned);
     }
 
     public void SpawnOnCreate() {
-        if (Value.SpawnOnFieldCreate) {
+        if (SpawnGroupRules.SpawnsOnCreate(Value, GroupSpawned)) {
             TriggerSpawn(forceFullSpawn: true);
         }
     }

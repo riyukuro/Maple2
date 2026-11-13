@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Util;
@@ -59,6 +60,74 @@ public class CombineSpawnTests {
     public void UnknownGroupIsMissing() {
         Assert.That(CombineSpawnRules.Find(Table(), 82000002, 99, _ => true, _ => true, out SpawnGroupMetadata? group), Is.EqualTo(CombineSpawnRules.Source.Missing));
         Assert.That(group, Is.Null);
+    }
+
+    [Test]
+    public void GroupPointsOfTheOwnMap() {
+        // 82000012 lists group 30; 82000001's group 10 is not on it (its points are not there).
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 82000012, id => id == 900, []), Is.EquivalentTo(new[] { 900 }));
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 82000001, CopyNpcSpawns.Contains, []), Is.EquivalentTo(new[] { 501, 502 }));
+    }
+
+    [Test]
+    public void GroupPointsOfACopyMap() {
+        // 82000000's triggers start groups 10, 20 and 30: it has both of group 10's points; group 30's point is not
+        // on it, and box groups name no point.
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 82000000, id => CopyNpcSpawns.Contains(id) || id == 777, [10, 20, 30, 10]), Is.EquivalentTo(new[] { 501, 502 }));
+    }
+
+    [Test]
+    public void ACopyMapTakesOnlyTheGroupsItsTriggersStart() {
+        // A map with points 501 and 502 by chance (small ids are reused) whose triggers start no group, or only an
+        // unknown one, keeps them as points that fill themselves.
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 2000402, CopyNpcSpawns.Contains, []), Is.Empty);
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 82000002, CopyNpcSpawns.Contains, [10000382]), Is.Empty);
+    }
+
+    [Test]
+    public void AMapWithItsOwnGroupsTakesNoOtherMapsPoints() {
+        // 82000012 has 82000001's points 501 and 502 too, but lists group 30 of its own.
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 82000012, id => CopyNpcSpawns.Contains(id) || id == 900, [10]), Is.EquivalentTo(new[] { 900 }));
+    }
+
+    [Test]
+    public void NoGroupPointsWhenAGroupIsOnlyPartlyOnTheField() {
+        // Point 501 alone stays a point that fills itself.
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 82000000, id => id == 501, [10]), Is.Empty);
+        Assert.That(CombineSpawnRules.GroupSpawnIds(Table(), 2000001, _ => false, [10]), Is.Empty);
+    }
+
+    [Test]
+    public void AResetRefillsOnlyTheKilledPick() {
+        // A group keeping 2 of its points up: the start puts up 501 and 502; 501's npc is killed, so the
+        // next reset draws again and puts up a point that is not up (503), leaving 502 as it is.
+        var up = new List<int>();
+        var draws = new Queue<int>([501, 502]);
+        var spawned = new List<int>();
+        Assert.That(SpawnGroupRules.Refill(up, _ => true, 2, draws.Dequeue, spawned.Add), Is.EqualTo(new[] { 501, 502 }));
+
+        draws = new Queue<int>([502, 503]);
+        List<int> added = SpawnGroupRules.Refill(up, spawnId => spawnId != 501, 2, draws.Dequeue, spawned.Add);
+        Assert.Multiple(() => {
+            Assert.That(added, Is.EqualTo(new[] { 503 }));
+            Assert.That(up, Is.EquivalentTo(new[] { 502, 503 }));
+            Assert.That(spawned, Is.EqualTo(new[] { 501, 502, 503 }));
+        });
+
+        // Nothing killed: a reset puts nothing up.
+        Assert.That(SpawnGroupRules.Refill(up, _ => true, 2, () => throw new AssertionException("no draw"), spawned.Add), Is.Empty);
+    }
+
+    [Test]
+    public void AGroupPointNeverFillsItself() {
+        SpawnPointNPC point = new("SpawnPointNPC_501", 501, Vector3.Zero, Vector3.Zero, true, true, 0f, [], 30, null);
+        Assert.Multiple(() => {
+            Assert.That(SpawnGroupRules.SelfFills(point, groupSpawned: false), Is.True);
+            Assert.That(SpawnGroupRules.SpawnsOnCreate(point, groupSpawned: false), Is.True);
+            Assert.That(SpawnGroupRules.SelfFills(point, groupSpawned: true), Is.False);
+            Assert.That(SpawnGroupRules.SpawnsOnCreate(point, groupSpawned: true), Is.False);
+            Assert.That(SpawnGroupRules.SelfFills(point with { RegenCheckTime = 0 }, groupSpawned: false), Is.False);
+        });
     }
 
     [Test]

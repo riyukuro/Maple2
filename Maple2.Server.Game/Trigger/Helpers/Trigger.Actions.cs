@@ -728,6 +728,8 @@ public partial class Trigger {
     }
 
     public class StartCombineSpawn(int[] groupId, bool isStart) : IAction {
+        public int[] GroupIds => groupId;
+        public bool IsStart => isStart;
         public void Execute(TriggerContext context) => context.StartCombineSpawn(groupId, isStart);
     }
 

@@ -520,8 +520,31 @@ public partial class FieldManager {
         return fieldMobSpawn;
     }
 
+    // The spawn points the field's combine spawn groups name (CombineSpawnRules.GroupSpawnIds), read on the first add.
+    private HashSet<int>? groupSpawnIds;
+
+    // The combine spawn groups the field's own trigger scripts start (start_combine_spawn), read only for a map the
+    // table lists no group for.
+    private IEnumerable<int> StartedCombineSpawnGroups() {
+        if (ServerTableMetadata.CombineSpawnTable.Groups.ContainsKey(MapId) || TriggerCache == null) {
+            yield break;
+        }
+        foreach (TriggerModel model in Entities.TriggerModels.Values) {
+            if (!TriggerCache.TryGet(Metadata.XBlock, model.Name.ToLower(), out Trigger.Helpers.Trigger? trigger)) {
+                continue;
+            }
+            foreach (int groupId in trigger.StartedCombineSpawnGroups()) {
+                yield return groupId;
+            }
+        }
+    }
+
     public FieldSpawnPointNpc AddSpawnPointNpc(SpawnPointNPC metadata) {
-        var fieldSpawnPointNpc = new FieldSpawnPointNpc(this, NextLocalId(), metadata) {
+        if (groupSpawnIds == null) {
+            var npcSpawns = Entities.NpcSpawns.Select(spawn => spawn.SpawnPointId).ToHashSet();
+            groupSpawnIds = CombineSpawnRules.GroupSpawnIds(ServerTableMetadata.CombineSpawnTable, MapId, npcSpawns.Contains, StartedCombineSpawnGroups());
+        }
+        var fieldSpawnPointNpc = new FieldSpawnPointNpc(this, NextLocalId(), metadata, groupSpawnIds.Contains(metadata.SpawnPointId)) {
             Position = metadata.Position,
             Rotation = metadata.Rotation,
         };
