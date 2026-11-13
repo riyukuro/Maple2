@@ -131,10 +131,26 @@ public static class ItemInventoryPacket {
         return pWriter;
     }
 
+    // The client's reader (scenestategame.cpp:3004-3016) reads an item id and a short after the two level errors, so
+    // they go through ErrorRestrictedByLevel; sent here they would leave the client reading past the packet.
     public static ByteWriter Error(ItemInventoryError error) {
+        if (error is ItemInventoryError.s_itemdrop_error_restricted_by_user_level_ex or ItemInventoryError.s_itempickup_error_restricted_by_user_level_ex) {
+            throw new ArgumentException($"{error} carries an item and a level: use ErrorRestrictedByLevel", nameof(error));
+        }
         var pWriter = Packet.Of(SendOp.ItemInventory);
         pWriter.Write<Command>(Command.Error);
-        pWriter.Write<ItemInventoryError>(error);
+        pWriter.WriteInt((int) error);
+
+        return pWriter;
+    }
+
+    // Errors 40 and 41 (drop or pickup needs a level): int error, int item id, short level (the "{1}" of the message).
+    public static ByteWriter ErrorRestrictedByLevel(bool pickup, int itemId, short level) {
+        var pWriter = Packet.Of(SendOp.ItemInventory);
+        pWriter.Write<Command>(Command.Error);
+        pWriter.WriteInt((int) (pickup ? ItemInventoryError.s_itempickup_error_restricted_by_user_level_ex : ItemInventoryError.s_itemdrop_error_restricted_by_user_level_ex));
+        pWriter.WriteInt(itemId);
+        pWriter.WriteShort(level);
 
         return pWriter;
     }
