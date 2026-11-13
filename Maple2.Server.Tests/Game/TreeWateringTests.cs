@@ -173,8 +173,9 @@ public class TreeWateringSessionTests {
     private TestGameSession test = null!;
     private GameSession session => test.Session;
 
-    private void Start(bool holdsPot = true, bool emotionDay = true, int fieldId = FieldId) {
+    private void Start(bool holdsPot = true, bool emotionDay = true, int fieldId = FieldId, params AchievementMetadata[] trophies) {
         test = new TestGameSession();
+        test.AddAchievement(trophies);
         test.Register(TestGameSession.Metadata(WaterRewardId), TestGameSession.Metadata(EmotionRewardId));
         if (holdsPot) {
             test.Store(TestGameSession.Metadata(PotId));
@@ -221,6 +222,16 @@ public class TreeWateringSessionTests {
         // Stored with the reward, before any logout.
         Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.TreeWateringCount), Is.EqualTo("2"));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // splash_plant counts each rewarded watering; its code is the event's water pot (92000149: 30001431).
+    [TestCase(PotId, 1L)]
+    [TestCase(PotId + 1, null)]
+    public void Water_CountsTheSplashPlantTrophyOfThePot(int code, long? expected) {
+        const int trophy = 92000149;
+        Start(trophies: TestGameSession.Trophy(trophy, ConditionType.splash_plant, [100], codes: [code]));
+        Send(TreeWateringEvent.Action.Water);
+        Assert.That(test.TrophyCounter(trophy), Is.EqualTo(expected));
     }
 
     [Test]

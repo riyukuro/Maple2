@@ -36,6 +36,8 @@ public class TreeWateringHandler : FieldPacketHandler {
                 return;
             }
             Reward(session, gameEvent, tree.WaterReward, action);
+            // The splash_plant trophies name the event's water pot as the code (92000091 20301391 ... 92000149 30001431).
+            session.ConditionUpdate(ConditionType.splash_plant, codeLong: tree.WaterPotItemId);
             session.Send(TreeWateringPacket.Water(result, waterCount + 1, tree.WaterLimit));
             return;
         }

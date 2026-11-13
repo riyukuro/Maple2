@@ -193,6 +193,8 @@ public static class ConditionUtil {
             case ConditionType.survive_cube:
             // jump: the map of the jump (quests 70400081 and 70400103 name one map each).
             case ConditionType.jump:
+            // splash_plant: the water pot of the tree watering event (92000091 20301391, 92000149 30001431).
+            case ConditionType.splash_plant:
             case ConditionType.spawner:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
