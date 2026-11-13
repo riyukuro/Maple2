@@ -1,3 +1,4 @@
+using System;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
@@ -53,5 +54,14 @@ public class RecallScrollCloseTests {
         Assert.That(RecallSlots.TakeExpired(recalls, 101), Is.EqualTo(new[] { RecallScrollType.Guild }));
         Assert.That(recalls[(int) RecallScrollType.Wedding], Is.Not.Null);
         Assert.That(RecallSlots.TakeExpired(recalls, 101), Is.Empty);
+    }
+
+    [Test]
+    public void TakeExpiredWithNoRecallReturnsTheSharedEmptyArray() {
+        var recalls = new PendingRecall?[3];
+        Assert.That(RecallSlots.TakeExpired(recalls, 100), Is.SameAs(Array.Empty<RecallScrollType>()));
+        RecallSlots.Offer(recalls, RecallScrollType.Guild, Recall(2, 200));
+        Assert.That(RecallSlots.TakeExpired(recalls, 100), Is.SameAs(Array.Empty<RecallScrollType>()));
+        Assert.That(recalls[(int) RecallScrollType.Guild], Is.Not.Null);
     }
 }

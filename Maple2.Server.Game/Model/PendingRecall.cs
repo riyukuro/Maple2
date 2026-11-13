@@ -47,17 +47,30 @@ public static class RecallSlots {
 
     /// <summary>
     /// Drops every recall whose end time (seconds) is before now, as the answer refuses it, and returns their types.
+    /// Runs on every field tick, so it allocates nothing when no recall has expired: the slots are first read
+    /// without the lock (a slot set meanwhile is seen on the next tick).
     /// </summary>
-    public static List<RecallScrollType> TakeExpired(PendingRecall?[] recalls, long now) {
-        var expired = new List<RecallScrollType>();
+    public static RecallScrollType[] TakeExpired(PendingRecall?[] recalls, long now) {
+        bool any = false;
+        foreach (PendingRecall? recall in recalls) {
+            if (recall != null && recall.EndTime < now) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) {
+            return [];
+        }
+
+        List<RecallScrollType>? expired = null;
         lock (recalls) {
             for (int i = 0; i < recalls.Length; i++) {
                 if (recalls[i] is { } recall && recall.EndTime < now) {
                     recalls[i] = null;
-                    expired.Add((RecallScrollType) i);
+                    (expired ??= []).Add((RecallScrollType) i);
                 }
             }
         }
-        return expired;
+        return expired?.ToArray() ?? [];
     }
 }
