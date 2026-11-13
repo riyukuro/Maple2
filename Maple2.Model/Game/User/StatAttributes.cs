@@ -92,7 +92,7 @@ public class StatAttributes : IByteSerializable {
         public void WriteTo(IByteWriter writer) {
             writer.WriteInt(points.Count);
             foreach ((BasicAttribute type, int value) in points) {
-                writer.Write<BasicAttribute>(type);
+                writer.WriteByte(type.ClientStat());
                 writer.WriteInt(value);
             }
         }

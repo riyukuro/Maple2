@@ -92,7 +92,7 @@ public static class ItemMergePacket {
         // Basic Attributes
         pWriter.WriteInt(metadata.BasicOptions.Count);
         foreach ((BasicAttribute attribute, ItemMergeTable.Option mergeOption) in metadata.BasicOptions) {
-            pWriter.WriteShort((short) attribute);
+            pWriter.WriteShort(attribute.ClientStat());
             pWriter.WriteMergeStat(mergeOption);
         }
 

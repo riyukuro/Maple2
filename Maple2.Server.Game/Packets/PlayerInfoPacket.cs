@@ -110,7 +110,7 @@ public static class PlayerInfoPacket {
         #region Stats
         for (int i = 0; i < Stat.TOTAL; i++) {
             for (int j = 0; j < Stats.BASIC_TOTAL; j++) {
-                buffer.WriteLong(fieldPlayer.Stats.Values[(BasicAttribute) j][i]);
+                buffer.WriteLong(fieldPlayer.Stats.Values[BasicAttributeIds.ServerStat(j)][i]);
             }
         }
         // Client: CPCData::Read (commonfiles/pcdata.cpp:101): after the 3 x 35 longs an int pair count, then per pair

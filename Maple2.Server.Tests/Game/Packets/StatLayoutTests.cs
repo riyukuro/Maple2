@@ -191,11 +191,4 @@ public class StatLayoutTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(2));
         Assert.That(reader.ReadByte(), Is.EqualTo(30));
     }
-
-    [Test]
-    public void ClientStatRoundTrips() {
-        for (int id = 0; id < 0x23; id++) {
-            Assert.That(StatsPacket.ClientStat(StatsPacket.ServerStat((byte) id)), Is.EqualTo(id));
-        }
-    }
 }

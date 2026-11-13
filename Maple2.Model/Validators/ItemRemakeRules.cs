@@ -6,7 +6,8 @@ using Maple2.PacketLib.Tools;
 namespace Maple2.Model.Validators;
 
 // ChangeAttributes 0x0075 mode 0 and ChangeAttributesScroll 0x0076 mode 1 end with the options the
-// player keeps: u8 count, then per option u8 kind (0 basic, 1 special) and i16 attribute.
+// player keeps: u8 count, then per option u8 kind (0 basic, 1 special) and i16 attribute (a basic one in the
+// client's stat ids).
 public static class ItemRemakeRules {
     public readonly record struct Lock(bool Special, short Attribute);
 
@@ -16,7 +17,8 @@ public static class ItemRemakeRules {
         for (int i = 0; i < count; i++) {
             bool special = packet.ReadBool();
             short attribute = packet.ReadShort();
-            locks.Add(new Lock(special, attribute));
+            // A basic option's id is the client's stat id; the lock keeps the server's (BasicAttributeIds).
+            locks.Add(new Lock(special, special ? attribute : (short) BasicAttributeIds.ServerStat(attribute)));
         }
         return locks;
     }

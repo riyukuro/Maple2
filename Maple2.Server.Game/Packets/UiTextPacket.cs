@@ -12,7 +12,7 @@ public static class UiTextPacket {
     public static ByteWriter Recover(int objectId, BasicAttribute attribute, int amount) {
         var pWriter = Packet.Of(SendOp.UiText);
         pWriter.WriteInt(objectId);
-        pWriter.WriteInt((int) attribute);
+        pWriter.WriteInt(attribute.ClientStat());
         pWriter.WriteInt(amount);
         return pWriter;
     }

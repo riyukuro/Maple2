@@ -271,7 +271,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         bool useLock = packet.ReadBool();
         if (useLock) {
             byte index = packet.ReadByte();
-            var attribute = (BasicAttribute) packet.ReadShort();
+            BasicAttribute attribute = BasicAttributeIds.ServerStat(packet.ReadShort());
         }
 
         packet.ReadBool();

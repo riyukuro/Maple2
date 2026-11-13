@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
@@ -100,7 +101,7 @@ public class BlackMarketHandler : FieldPacketHandler {
                 continue;
             }
             statOptions.Add(new StatOption {
-                StatId = statId,
+                StatId = ServerStatKey(statId),
                 Value = value,
             });
         }
@@ -157,5 +158,16 @@ public class BlackMarketHandler : FieldPacketHandler {
         int rarity = packet.ReadInt();
 
         session.BlackMarket.Preview(itemId, rarity);
+    }
+
+    // The client's search key is group, percent and stat as "%01d%01d%03d" (FUN_1401bce20,
+    // blackmarketitemoption.cpp:262; uiblackmarketpage.cpp:902), so 11000+ is a special stat and 1000+ a basic rate.
+    // A basic stat is the client's stat id (blackmarkettable.xml names it: <stat name="bap">), mapped to the server's.
+    public static int ServerStatKey(int key) {
+        if (key >= 11000) {
+            return key;
+        }
+        int rate = key >= 1000 ? 1000 : 0;
+        return rate + (int) BasicAttributeIds.ServerStat(key - rate);
     }
 }

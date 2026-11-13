@@ -22,7 +22,7 @@ public static class DpsStatPacket {
         var pWriter = Packet.Of(SendOp.DpsStat);
         pWriter.WriteByte((byte) Command.Recover);
         pWriter.WriteBool(natural);
-        pWriter.WriteInt((int) attribute);
+        pWriter.WriteInt(attribute.ClientStat());
         pWriter.WriteInt(amount);
 
         return pWriter;

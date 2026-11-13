@@ -39,7 +39,7 @@ public static class ItemEnchantPacket {
 
         pWriter.WriteInt(statDeltas.Count);
         foreach ((BasicAttribute attribute, BasicOption delta) in statDeltas) {
-            pWriter.WriteShort((short) attribute);
+            pWriter.WriteShort(attribute.ClientStat());
             pWriter.Write<BasicOption>(delta);
         }
 
@@ -120,7 +120,7 @@ public static class ItemEnchantPacket {
 
         pWriter.WriteInt(statDeltas.Count);
         foreach ((BasicAttribute attribute, BasicOption delta) in statDeltas) {
-            pWriter.WriteShort((short) attribute);
+            pWriter.WriteShort(attribute.ClientStat());
             pWriter.Write<BasicOption>(delta);
         }
 
