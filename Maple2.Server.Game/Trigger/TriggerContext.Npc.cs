@@ -186,6 +186,12 @@ public partial class TriggerContext {
 
     public void SetNpcDuelHpBar(bool isOpen, int spawnId, int durationTick, int npcHpStep) {
         DebugLog("[SetNpcDuelHpBar] isOpen:{IsOpen}, spawnId:{SpawnId}, durationTick:{Duration}, npcHpStep:{HpStep}", isOpen, spawnId, durationTick, npcHpStep);
+        // The client's close reads only the flag (Trigger 21, CTriggerService::OnNpcDuelHpBar), and the KR scripts
+        // close the bar after the duel npc died or was destroyed, so the close needs no npc.
+        if (!isOpen) {
+            Broadcast(TriggerPacket.DuelHpBar(false));
+            return;
+        }
         IActor? actor = Field.GetActorsBySpawnId(spawnId).FirstOrDefault();
         if (actor is null) {
             return;
