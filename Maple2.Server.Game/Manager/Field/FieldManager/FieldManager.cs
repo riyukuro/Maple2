@@ -718,6 +718,7 @@ public partial class FieldManager : IField {
                         }
 
                         session.Send(PortalPacket.MoveByPortal(session.Player, destinationCube.Position, default));
+                        session.Player.PortalInvincible();
                         return true;
                     case CubePortalDestination.SelectedMap:
                         session.Migrate(srcPortal.TargetMapId);
@@ -740,7 +741,7 @@ public partial class FieldManager : IField {
                 return false;
             case PortalType.LeaveDungeon:
                 //TODO: Migrate back to original channel
-                session.Send(session.PrepareField(session.ReturnMapId())
+                session.Send(session.PrepareFieldByPortal(session.ReturnMapId())
                     ? FieldEnterPacket.Request(session.Player)
                     : FieldEnterPacket.Error(MigrationError.s_move_err_default));
                 return true;
@@ -749,7 +750,7 @@ public partial class FieldManager : IField {
                     logger.Warning("DungeonReturnToLobby portal used in non-dungeon map {MapId}", MapId);
                     return false;
                 }
-                session.Send(session.PrepareField(dungeonField.Lobby.MapId, portalId: 2, roomId: dungeonField.Lobby.RoomId)
+                session.Send(session.PrepareFieldByPortal(dungeonField.Lobby.MapId, portalId: 2, roomId: dungeonField.Lobby.RoomId)
                     ? FieldEnterPacket.Request(session.Player)
                     : FieldEnterPacket.Error(MigrationError.s_move_err_default));
                 return true;
@@ -788,19 +789,20 @@ public partial class FieldManager : IField {
                     position += forward * offset;
                 }
                 session.Send(PortalPacket.MoveByPortal(session.Player, position, rotation));
+                session.Player.PortalInvincible();
             }
 
             return true;
         }
 
         if (srcPortal.TargetMapId == 0) {
-            session.ReturnField();
+            session.ReturnFieldByPortal();
             return true;
         }
 
         // The "map" condition counts a portal that was taken, not one whose entry was refused. A portal to a
         // room (a bonus map) leads into that room, not into the map's shared field.
-        bool entered = session.PrepareField(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId, roomId: fieldPortal.RoomId);
+        bool entered = session.PrepareFieldByPortal(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId, roomId: fieldPortal.RoomId);
         if (entered) {
             session.ConditionUpdate(ConditionType.map, codeLong: srcPortal.TargetMapId);
         }
@@ -849,7 +851,7 @@ public partial class FieldManager : IField {
             RemovePortal(fieldPortal.ObjectId);
         }
 
-        bool entered = session.PrepareField(roomField.MapId, roomId: roomField.RoomId);
+        bool entered = session.PrepareFieldByPortal(roomField.MapId, roomId: roomField.RoomId);
         if (entered) {
             session.ConditionUpdate(ConditionType.map, codeLong: roomField.MapId);
         } else {

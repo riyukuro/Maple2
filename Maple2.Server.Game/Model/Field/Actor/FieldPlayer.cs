@@ -71,8 +71,11 @@ public class FieldPlayer : Actor<Player> {
     private int autoReviveDelay;
     private long autoReviveTick;
     // The client makes a revived player invincible for UserRevivalInvincibleTick (CSceneStateGame::OnRevival,
-    // scenestategame.cpp:7408). Monster damage is ours, so the server keeps the same window.
-    private long revivalInvincibleUntil;
+    // scenestategame.cpp:7408) and a player who arrives by portal for UserPortalInvincibleTick (InvincibleEffect,
+    // scenestategame.cpp:4280). Monster damage is ours, so the server keeps the same window. The client ends it
+    // only when the time is over (PC::FUN_1416615f0, pc.cpp:2612), not on a skill or an attack, so neither does
+    // the server.
+    private long invincibleUntil;
     private readonly HealthSyncClock healthSync = new();
     private long healthSyncTick; // the tick of the last Update
 
@@ -507,13 +510,22 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
-    public static bool TakesDamage(bool isDead, long tick, long revivalInvincibleUntil) => !isDead && tick >= revivalInvincibleUntil;
+    public static bool TakesDamage(bool isDead, long tick, long invincibleUntil) => !isDead && tick >= invincibleUntil;
+
+    // A new window never shortens one that is still running.
+    public static long InvincibleUntil(long current, long tick, int window) => Math.Max(current, tick + window);
+
+    // A portal arrival: the client shows the invincible effect for UserPortalInvincibleTick from the packet on.
+    public void PortalInvincible() {
+        invincibleUntil = InvincibleUntil(invincibleUntil, Field.FieldTick, Session.ServerTableMetadata.ConstantsTable.UserPortalInvincibleTick);
+        Session.Send(PortalPacket.InvincibleEffect());
+    }
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
-        if (!TakesDamage(IsDead, Field.FieldTick, revivalInvincibleUntil)) {
+        if (!TakesDamage(IsDead, Field.FieldTick, invincibleUntil)) {
             if (caster is FieldPlayer && Field.RankDuel != null) {
-                Logger.Information("Rank duel hit on {Target} by {Caster}, skill {SkillId}: not taken (dead {Dead}, revival invincible {Ms} ms more)",
-                    Value.Character.Name, ((FieldPlayer) caster).Value.Character.Name, damage.SkillId, IsDead, revivalInvincibleUntil - Field.FieldTick);
+                Logger.Information("Rank duel hit on {Target} by {Caster}, skill {SkillId}: not taken (dead {Dead}, invincible {Ms} ms more)",
+                    Value.Character.Name, ((FieldPlayer) caster).Value.Character.Name, damage.SkillId, IsDead, invincibleUntil - Field.FieldTick);
             }
             return;
         }
@@ -675,13 +687,13 @@ public class FieldPlayer : Actor<Player> {
             Session.Send(RevivalPacket.RevivalCount(Session.Config.InstantReviveCount));
         }
         Field.Broadcast(RevivalPacket.Revive(ObjectId));
-        revivalInvincibleUntil = Field.FieldTick + Session.ServerTableMetadata.ConstantsTable.UserRevivalInvincibleTick;
+        invincibleUntil = Field.FieldTick + Session.ServerTableMetadata.ConstantsTable.UserRevivalInvincibleTick;
         // A participant of a running PvP zone comes back with the PvP revive buff and the PvP invincible time (the
         // server constants ModePvPReviveBuff and ModePvPInvincibleTime; chosen here: level 1, and the longer of the two
         // invincible times).
         if (Field.PvpZone?.IsParticipant(this) == true) {
             ConstantsTable pvpConstants = Session.ServerTableMetadata.ConstantsTable;
-            revivalInvincibleUntil = Math.Max(revivalInvincibleUntil, Field.FieldTick + pvpConstants.ModePvPInvincibleTime);
+            invincibleUntil = InvincibleUntil(invincibleUntil, Field.FieldTick, pvpConstants.ModePvPInvincibleTime);
             if (pvpConstants.ModePvPReviveBuff > 0) {
                 Buffs.AddBuff(this, this, pvpConstants.ModePvPReviveBuff, 1, Field.FieldTick);
             }

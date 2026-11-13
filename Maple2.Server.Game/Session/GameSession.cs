@@ -598,11 +598,33 @@ public sealed partial class GameSession : Core.Network.Session {
         return PrepareFieldInternal(mapId, out _, portalId, ownerId, roomId, position, rotation);
     }
 
+    // Set when the field being entered was reached by a portal: EnterField then sends InvincibleEffect. Chosen from
+    // the constant's name (UserPortalInvincibleTick): portals only, not a login, a revival, a GM or a trigger move,
+    // and not a portal that migrates to another server.
+    public bool PortalArrival { get; private set; }
+
+    public bool PrepareFieldByPortal(int mapId, int portalId = -1, int roomId = 0) {
+        bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, roomId, default, default);
+        PortalArrival = prepared;
+        return prepared;
+    }
+
+    // A portal that returns the player (target map 0) goes through ReturnField: it counts when a new field was
+    // prepared on this server.
+    public void ReturnFieldByPortal() {
+        FieldManager? before = Field;
+        ReturnField();
+        if (Field != before) {
+            PortalArrival = true;
+        }
+    }
+
     public bool PrepareField(int mapId, [NotNullWhen(true)] out FieldManager? newField, int portalId = -1, long ownerId = 0, int roomId = 0, in Vector3 position = default, in Vector3 rotation = default) {
         return PrepareFieldInternal(mapId, out newField, portalId, ownerId, roomId, position, rotation);
     }
 
     private bool PrepareFieldInternal(int mapId, out FieldManager? newField, int portalId, long ownerId, int roomId, in Vector3 position, in Vector3 rotation) {
+        PortalArrival = false;
         // If entering home without instanceKey set, default to own home.
         if (mapId == Player.Value.Home.Indoor.MapId && ownerId == 0) {
             ownerId = AccountId;
@@ -808,6 +830,10 @@ public sealed partial class GameSession : Core.Network.Session {
         ChannelsResponse response = World.Channels(new ChannelsRequest());
         Send(ChannelPacket.Load(response.Channels));
         Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels));
+        if (PortalArrival) {
+            PortalArrival = false;
+            Player.PortalInvincible();
+        }
         return true;
     }
 

@@ -97,4 +97,10 @@ public static class PortalPacket {
 
         return pWriter;
     }
+
+    // No body: the client gives the local player the invincible effect for UserPortalInvincibleTick
+    // (CSceneStateGame::OnInvincibleEffect, scenestategame.cpp:4280).
+    public static ByteWriter InvincibleEffect() {
+        return Packet.Of(SendOp.InvincibleEffect);
+    }
 }
