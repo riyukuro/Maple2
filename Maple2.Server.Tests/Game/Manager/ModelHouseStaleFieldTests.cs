@@ -323,6 +323,25 @@ public class ModelHouseStaleFieldTests {
         });
     }
 
+    // A rotation whose row write fails leaves the cube as it was, to the exact value: a rotation outside 0..360 (as a
+    // row can hold) is kept, so the field's rotation still equals its row's. Before, the turn-back rotated the other
+    // way, which gives the old value only modulo 360.
+    [Test]
+    public void FailedRotation_KeepsTheExactRotation() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        PlotCube cube = plot.Cubes[new Vector3B(-1, -1, 0)];
+        cube.Rotation = -90f;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.DeleteCube(cube), Is.True);
+        }
+        Assert.Multiple(() => {
+            Assert.That(session.Housing.TryRotateCube(plot, cube.Position, true, out _), Is.False);
+            Assert.That(cube.Rotation, Is.EqualTo(-90f));
+        });
+    }
+
     // A rotation made in another instance of the home (its row has another rotation, the same ids) makes this field
     // outdated: its leave would write the old rotation back. Before, only the row ids were compared.
     [Test]

@@ -704,6 +704,7 @@ public class HousingManager {
             if (!plot.Cubes.TryGetValue(position, out cube)) {
                 return false;
             }
+            float before = cube.Rotation;
             cube.Rotate(clockwise);
             if (plot.IsPlanner || plot.Id == 0 || cube.Id >= Constant.FurnishingBaseId) {
                 return true;
@@ -711,7 +712,7 @@ public class HousingManager {
             using GameStorage.Request db = session.GameStorage.Context();
             if (!db.SetCubeRotation(cube.Id, cube.Rotation)) {
                 logger.Error("Failed to save the rotation of cube {CubeId} at position {Position}.", cube.Id, cube.Position);
-                cube.Rotate(!clockwise);
+                cube.Rotation = before;
                 return false;
             }
             return true;
