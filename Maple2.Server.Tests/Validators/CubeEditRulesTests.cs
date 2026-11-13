@@ -21,6 +21,25 @@ public class CubeEditRulesTests {
         Assert.That(CubeEditRules.Taken(isReplace, existing, item), Is.EqualTo(expected));
     }
 
+    // A home's build space for area 10 and height 4: X and Y in (-10, 0], Z in [0, 4]; above it is a height refusal.
+    [TestCase(0, 0, 0, UgcMapError.s_ugcmap_ok)]
+    [TestCase(-9, -9, 4, UgcMapError.s_ugcmap_ok)]
+    [TestCase(-1, -1, 5, UgcMapError.s_ugcmap_height_limit)]
+    [TestCase(1, -1, 1, UgcMapError.s_ugcmap_area_limit)]
+    [TestCase(-1, 1, 1, UgcMapError.s_ugcmap_area_limit)]
+    [TestCase(-10, -1, 1, UgcMapError.s_ugcmap_area_limit)]
+    [TestCase(-1, -10, 5, UgcMapError.s_ugcmap_area_limit)]
+    [TestCase(-1, -1, -1, UgcMapError.s_ugcmap_area_limit)]
+    public void HomeBounds(int x, int y, int z, UgcMapError expected) {
+        Assert.That(CubeEditRules.HomeBounds(x, y, z, 10, 4), Is.EqualTo(expected));
+    }
+
+    [TestCase(3f, 3, UgcMapError.s_ugcmap_ok)]
+    [TestCase(4f, 3, UgcMapError.s_ugcmap_height_limit)]
+    public void PlotHeight(float aboveGround, int limit, UgcMapError expected) {
+        Assert.That(CubeEditRules.PlotHeight(aboveGround, limit), Is.EqualTo(expected));
+    }
+
     // A template cube (one with a ucc mesh) needs a look with an id; a cube without a mesh needs none.
     [TestCase("ugc_mesh", null, UgcMapError.s_err_ugcmap_cant_build_empty_ugc)]
     [TestCase("ugc_mesh", 0L, UgcMapError.s_err_ugcmap_cant_build_empty_ugc)]

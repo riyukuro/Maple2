@@ -824,14 +824,9 @@ public class HousingManager {
             return false;
         }
 
-        if (plot.MapId is Constant.DefaultHomeMapId && IsCoordOutsideArea(position)) {
-            Refuse(UgcMapError.s_ugcmap_area_limit);
-            return false;
-        }
-
-        // Only check height on outside plots since we already check if it's inside the area when getting the ground height
-        if (outdoor && position.Z - groundHeight > plot.Metadata.Limit.Height) {
-            Refuse(UgcMapError.s_ugcmap_area_limit);
+        UgcMapError bounds = outdoor ? CubeEditRules.PlotHeight(position.Z - groundHeight, plot.Metadata.Limit.Height) : HomeBounds(position);
+        if (bounds != UgcMapError.s_ugcmap_ok) {
+            Refuse(bounds);
             return false;
         }
 
@@ -1390,22 +1385,12 @@ public class HousingManager {
     }
     #endregion
 
-    public bool IsCoordOutsideArea(Vector3B position) {
-        int height = Home.IsPlanner ? Home.PlannerHeight : Home.Height;
-        int area = Home.IsPlanner ? Home.PlannerArea : Home.Area;
+    public bool IsCoordOutsideArea(Vector3B position) => HomeBounds(position) != UgcMapError.s_ugcmap_ok;
 
-        // Check if the position is outside the planar area bounds
-        if (position.X > 0 || position.Y > 0 || position.Z < 0) {
-            return true;
-        }
-
-        area *= -1;
-        if (position.X <= area || position.Y <= area) {
-            return true;
-        }
-
-        // Check if the position is outside the height bounds
-        return position.Z > height;
+    private UgcMapError HomeBounds(Vector3B position) {
+        return Home.IsPlanner
+            ? CubeEditRules.HomeBounds(position.X, position.Y, position.Z, Home.PlannerArea, Home.PlannerHeight)
+            : CubeEditRules.HomeBounds(position.X, position.Y, position.Z, Home.Area, Home.Height);
     }
 
     public bool RequestLayout(HomeLayout layout, out (Dictionary<FurnishingCurrencyType, long> cubeCosts, int cubeCount) result) {

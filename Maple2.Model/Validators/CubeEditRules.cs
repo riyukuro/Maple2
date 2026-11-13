@@ -18,6 +18,21 @@ public static class CubeEditRules {
         return existingItemId == itemId ? UgcMapError.s_ugcmap_cant_replace_same_cube : UgcMapError.s_ugcmap_ok;
     }
 
+    // A place outside the home's build space (the client checks none of it, so the error is the server's choice): a
+    // cell outside the planar area, X and Y in (-area, 0] and Z at 0 or above, gets s_ugcmap_area_limit (44); a cell
+    // above the build height, Z over height, s_ugcmap_height_limit (43). Both were 44 before.
+    public static UgcMapError HomeBounds(int x, int y, int z, int area, int height) {
+        if (x > 0 || y > 0 || z < 0 || x <= -area || y <= -area) {
+            return UgcMapError.s_ugcmap_area_limit;
+        }
+        return z > height ? UgcMapError.s_ugcmap_height_limit : UgcMapError.s_ugcmap_ok;
+    }
+
+    // An outdoor plot's height: a cell more than the plot's limit height above its ground tile gets
+    // s_ugcmap_height_limit (43); it got s_ugcmap_area_limit (44).
+    public static UgcMapError PlotHeight(float aboveGround, int limitHeight) =>
+        aboveGround > limitHeight ? UgcMapError.s_ugcmap_height_limit : UgcMapError.s_ugcmap_ok;
+
     // A cube the builder may not place yet: s_ugcmap_cube_lock (88), which the client shows before it sends the place
     // (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:954; MyPC::FUN_1415302e0, mypc.cpp:4446). The client locks a
     // cube whose trophy grade (housing trophyID, trophyLevel) is not cleared: its own in its home or on a plot, the home

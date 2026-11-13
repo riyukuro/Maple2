@@ -52,7 +52,7 @@ public class PlaceHeldCubeTests {
         return (session, plot);
     }
 
-    private void Place(GameSession session, int held, int placed) {
+    private void Place(GameSession session, int held, int placed, Vector3B? position = null) {
         session.HeldCube = null;
         if (held != 0) {
             session.ItemMetadata.TryGet(held, out ItemMetadata? metadata);
@@ -60,7 +60,7 @@ public class PlaceHeldCubeTests {
         }
         new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(10);
-            writer.Write<Vector3B>(new Vector3B(-1, -1, 1));
+            writer.Write<Vector3B>(position ?? new Vector3B(-1, -1, 1));
             writer.WriteInt(placed);
             writer.WriteLong(0);
             writer.WriteLong(0);
@@ -101,6 +101,25 @@ public class PlaceHeldCubeTests {
         byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_building_count, session.Player.ObjectId).ToArray();
         Assert.Multiple(() => {
             Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    // A cell above the home's build height gets 0x0A s_ugcmap_height_limit (43), one outside its area
+    // s_ugcmap_area_limit (44); nothing is paid. Both were 44.
+    [Test]
+    public void OutsideTheBuildSpace_IsRefusedByHeightOrArea() {
+        (GameSession session, Plot plot) = StartInHome();
+        var above = new Vector3B(-1, -1, session.Player.Value.Home.Height + 1);
+        Place(session, Cube, Cube, above);
+        byte[] height = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_height_limit, session.Player.ObjectId).ToArray();
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(height) }));
+
+        Place(session, Cube, Cube, new Vector3B(1, -1, 1));
+        byte[] area = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_area_limit, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(area) }));
             Assert.That(plot.Cubes, Is.Empty);
             Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         });
