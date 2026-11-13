@@ -94,6 +94,8 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
             SkillMetadataMotionProperty? motion = value.Data.Motions.FirstOrDefault()?.MotionProperty;
             ManualOnly = true;
             Active = true;
+            // It fires only through Invoke, so its fire count never runs down: its life alone ends it.
+            FireCount = 0;
             NextTick = long.MaxValue;
             endTick = baseTick + (motion?.SplashLifeTick ?? 0);
             invokeCoolTick = motion?.SplashInvokeCoolTick ?? 0;

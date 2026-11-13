@@ -37,8 +37,8 @@ public class ManualSplashTests {
         typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, tick);
     }
 
-    private static FieldSkill Place(FieldManager field, int objectId, IActor caster, SkillMetadata skill) {
-        var placed = new FieldSkill(field, objectId, caster, skill, -1, Splash, Vector3.Zero) { Position = Vector3.Zero };
+    private static FieldSkill Place(FieldManager field, int objectId, IActor caster, SkillMetadata skill, int fireCount = -1) {
+        var placed = new FieldSkill(field, objectId, caster, skill, fireCount, Splash, Vector3.Zero) { Position = Vector3.Zero };
         FieldInfo info = typeof(FieldManager).GetField("fieldSkills", Any)!;
         if (info.GetValue(field) is not ConcurrentDictionary<int, FieldSkill> skills) {
             // The test field is made without its initializers.
@@ -70,6 +70,25 @@ public class ManualSplashTests {
             Assert.That(field.InvokeSplashes(test.Session.Player, [Region]), Is.EqualTo(0), "past its 6000 ms life");
             Assert.That(region.Enabled, Is.False);
         });
+    }
+
+    // An effect with a fire count (none in KR, which places 10400292 with fireCount 0) still ends at the region's life:
+    // the count never runs down, as the region does not fire on its own.
+    [Test]
+    public void ManualRegionWithAFireCountEndsAtItsLife() {
+        var test = new TestGameSession();
+        test.Start();
+        FieldManager field = test.Session.Field!;
+        SetTick(field, 1_000);
+        FieldSkill region = Place(field, 904, test.Session.Player, Skill(Region, true), fireCount: 3);
+        Assert.Multiple(() => {
+            Assert.That(region.FireCount, Is.EqualTo(0));
+            Assert.That(region.Enabled, Is.True);
+        });
+        SetTick(field, 7_000);
+        Assert.That(region.Enabled, Is.True, "at the end of its life");
+        SetTick(field, 7_001);
+        Assert.That(region.Enabled, Is.False, "past its 6000 ms life");
     }
 
     [Test]
