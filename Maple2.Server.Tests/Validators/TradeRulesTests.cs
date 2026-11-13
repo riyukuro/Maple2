@@ -116,4 +116,27 @@ public class TradeRulesTests {
         socket.Sockets[2] = new ItemGemstone(2, stats: new ItemStats());
         Assert.That(TradeRules.AreGemsTradeable(socket, Type, 100), Is.False);
     }
+
+    // The fee the receiver pays (FUN_14087d150): mesos * percent / 100 in whole numbers, times (1 - the receiver's
+    // reduce rate), cut to a whole number and never below 0.
+    [TestCase(1000L, 10, 0f, 100L)]
+    [TestCase(1000L, 10, 0.25f, 75L)]
+    [TestCase(999L, 10, 0f, 99L)]
+    [TestCase(1L, 10, 0f, 0L)]
+    [TestCase(0L, 10, 0f, 0L)]
+    [TestCase(1000L, 10, 1.5f, 0L)]
+    [TestCase(1000L, 0, 0f, 0L)]
+    public void Fee(long mesos, int percent, float rate, long expected) {
+        Assert.That(TradeRules.Fee(mesos, percent, rate), Is.EqualTo(expected));
+    }
+
+    // Mode 10: 0 takes the offer back; any other amount lies in TradeMinMeso..TradeMaxMeso (FUN_14087d200).
+    [TestCase(0L, true)]
+    [TestCase(99L, false)]
+    [TestCase(100L, true)]
+    [TestCase(1000L, true)]
+    [TestCase(1001L, false)]
+    public void MesoOffer(long amount, bool expected) {
+        Assert.That(TradeRules.IsMesoOffer(amount, 100, 1000), Is.EqualTo(expected));
+    }
 }

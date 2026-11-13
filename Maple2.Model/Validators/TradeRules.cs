@@ -25,6 +25,26 @@ public static class TradeRules {
         return null;
     }
 
+    // Trade 0x0049 mode 10 (the meso offer): 0 takes the offer back; any other amount lies in the constants'
+    // TradeMinMeso..TradeMaxMeso (FUN_14087d200). The client puts 0 in the input and shows
+    // s_trade_error_invalid_meso_range for an amount outside it (UITradeDialogEx::ValidateMeso).
+    public static bool IsMesoOffer(long amount, long min, long max) {
+        return amount == 0 || (amount >= min && amount <= max);
+    }
+
+    // The fee taken from the mesos a trader receives, as the client shows it under the other player's offer
+    // (UITradeDialogEx::UpdateFee, FUN_14087d150): mesos * TradeFeePercent / 100 in whole numbers, then times
+    // (1 - rate) in float and cut to a whole number, where rate is the receiver's own reduce_meso_trade_fee
+    // (special attribute 0x40, total / 1000). Never below 0.
+    public static long Fee(long mesos, int percent, float rate) {
+        if (mesos == 0) {
+            return 0;
+        }
+        long fee = mesos * percent / 100;
+        fee = (long) (float) (fee * (1.0f - rate));
+        return fee < 0 ? 0 : fee;
+    }
+
     public static bool IsOfferAmount(int amount) {
         return amount > 0;
     }

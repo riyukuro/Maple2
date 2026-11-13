@@ -42,7 +42,7 @@ public class TradeHandlerTests {
         // The request's time-out is set far off: with the table's 0 seconds the timer can end the request before
         // the taker's answer below, and the trade then never starts.
         foreach (TestGameSession test in new[] { giverTest, takerTest }) {
-            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { TradeMaxMeso = 1000000, TradeRequestDuration = 30 });
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { TradeMinMeso = 100, TradeMaxMeso = 1000000, TradeRequestDuration = 30 });
         }
         giverTest.Start();
         takerTest.Start();
@@ -152,6 +152,24 @@ public class TradeHandlerTests {
         Assert.That(taker.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
         Assert.That(giver.Trade, Is.Null);
         Assert.That(taker.Trade, Is.Null);
+    }
+
+    // The receiver pays the fee on the mesos it gets, lowered by its own reduce_meso_trade_fee (total / 1000), the
+    // amount the client shows under the other offer: 10% of 1000 is 100, a quarter off leaves 75.
+    [Test]
+    public void Complete_TakesTheReceiversFee() {
+        foreach (TestGameSession test in new[] { giverTest, takerTest }) {
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { TradeFeePercent = 10 });
+        }
+        giver.Stats.Values[SpecialAttribute.ReduceMesoTradeFee].AddTotal(250);
+        Offer();
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+
+        Assert.That(giver.Currency.Meso, Is.EqualTo(925));
+        Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
     }
 
     // The handed item's row is the taker's once the trade ends. Before, it stayed the giver's until the taker's next
@@ -355,10 +373,11 @@ public class TradeHandlerTests {
     }
 
     // A refused offer: the notice (or nothing), and neither the bag nor the mesos nor the other window change.
-    // 6000 is more than the player has, 2000000 more than a trade takes, -5 is not an amount; after the player's
-    // own lock every change is refused as latched.
+    // 6000 is more than the player has, 2000000 more than a trade takes, 50 less than it takes (TradeMinMeso), -5 is
+    // not an amount; after the player's own lock every change is refused as latched.
     [TestCase(6000L, false, "s_trade_error_meso")]
     [TestCase(2000000L, false, "s_trade_error_invalid_meso")]
+    [TestCase(50L, false, "s_trade_error_invalid_meso")]
     [TestCase(-5L, false, null)]
     [TestCase(1000L, true, "s_trade_error_latched")]
     public void SetMesos_Refused(long amount, bool locked, string? error) {

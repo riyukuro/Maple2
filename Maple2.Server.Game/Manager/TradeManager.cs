@@ -305,7 +305,7 @@ public class TradeManager : IDisposable {
             return;
         }
 
-        if (amount > Constants.TradeMaxMeso) {
+        if (!TradeRules.IsMesoOffer(amount, Constants.TradeMinMeso, Constants.TradeMaxMeso)) {
             caller.Send(TradePacket.Error(s_trade_error_invalid_meso));
             return;
         }
@@ -457,7 +457,9 @@ public class TradeManager : IDisposable {
                 }
             }
 
-            long fee = success ? (long) (Constants.TradeFeePercent / 100f * trader.Mesos) : 0;
+            // The receiver (trader.Session after the swap) pays the fee, lowered by their own reduce_meso_trade_fee:
+            // the amount the client showed under the other player's offer.
+            long fee = success ? TradeRules.Fee(trader.Mesos, Constants.TradeFeePercent, FeeRate(trader.Session)) : 0;
             if (trader.Mesos - fee != 0) {
                 trader.Session.Currency.ChangeMeso(trader.Mesos - fee);
             }
@@ -465,6 +467,11 @@ public class TradeManager : IDisposable {
             // Clear just to be safe in case of multiple calls
             trader.Clear();
         }
+    }
+
+    // CEquipment::GetAbilityRate((SAType) 0x40): the total of reduce_meso_trade_fee over 1000.
+    private static float FeeRate(GameSession session) {
+        return session.Player.Stats.Values[SpecialAttribute.ReduceMesoTradeFee].Total / 1000f;
     }
 
     // |mutex| Locking is done externally.
