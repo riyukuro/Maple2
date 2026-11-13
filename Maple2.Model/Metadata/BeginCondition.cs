@@ -29,7 +29,9 @@ public record BeginCondition(
     BeginConditionTarget? Owner,
     BeginConditionTarget? Caster,
     // Seconds a recharge skill is not cast again after a use (defaultRechargingCooldownTime).
-    float RechargeGap = 0);
+    float RechargeGap = 0,
+    // Outside PvP zones only, in them only, or anywhere (applyPvPZoneType).
+    PvpZoneApply PvpZone = PvpZoneApply.Everywhere);
 
 public record BeginConditionWeapon(
     ItemType LeftHand,

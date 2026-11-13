@@ -98,6 +98,9 @@ public static class SkillUtils {
     }
 
     public static bool Check(this BeginCondition condition, IActor caster, IActor owner, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0) {
+        if (condition.PvpZone != PvpZoneApply.Everywhere && !PvpZoneHolds(condition.PvpZone, owner.Field.Metadata.Property.Type)) {
+            return false;
+        }
         if (caster is FieldPlayer player) {
             if (condition is not { Probability: 1 } && condition.Probability < Random.Shared.NextDouble()) {
                 return false;
@@ -167,6 +170,19 @@ public static class SkillUtils {
         }
 
         return condition.Caster.Check(caster, eventType, eventSkillId, eventBuffId) && condition.Owner.Check(owner, eventType, eventSkillId, eventBuffId) && condition.Target.Check(target, eventType, eventSkillId, eventBuffId);
+    }
+
+    // applyPvPZoneType (4,823 effect levels on 1,699 effects; no skill uses it): 1 holds outside PvP zones, 2 only in
+    // them. The client loads it into its effect level data (AdditionalLevelData::LoadCondition @0x1401757f0) and
+    // reads it nowhere else, so the server checks it. A PvP zone is a map of type Pvp (arenas and battlefields), as
+    // for clearEffectFromPVPZone on entering one (BuffManager.EnterField); chosen here: the holder's map, for npcs
+    // too. Before, both halves of a PvE/PvP pair (10100151 and 10100152) applied everywhere at once.
+    internal static bool PvpZoneHolds(PvpZoneApply apply, MapType mapType) {
+        return apply switch {
+            PvpZoneApply.OutsidePvp => mapType != MapType.Pvp,
+            PvpZoneApply.InsidePvp => mapType == MapType.Pvp,
+            _ => true,
+        };
     }
 
     private static bool Check(this BeginConditionTarget? condition, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0) {

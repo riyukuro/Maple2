@@ -63,6 +63,14 @@ public enum SkillGroupType : byte {
     Lapenshard = 2,
 }
 
+// Where a begin condition holds by the map (applyPvPZoneType): 1 outside PvP zones, 2 only in them. A passive comes
+// in pairs of the two (10100151 damage rate 0.25 and 10100152 0.125, the same buff for PvE and for PvP).
+public enum PvpZoneApply {
+    Everywhere = 0,
+    OutsidePvp = 1,
+    InsidePvp = 2,
+}
+
 public enum SkillRank : byte {
     Basic = 0,
     Awakening = 1,
